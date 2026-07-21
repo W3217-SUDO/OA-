@@ -2860,15 +2860,25 @@ async def list_notifications(
 @app.get(f"{settings.api_prefix}/users/directory")
 async def user_directory(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     items = (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
-    return {"items": [{
-        "username": item.username,
-        "display_name": item.display_name,
-        "department": item.department,
-        "is_active": item.is_active,
-        "role": item.role,
-        "position": str((item.profile or {}).get("position") or ""),
-        "staff_role": str((item.profile or {}).get("staff_role") or ""),
-    } for item in items]}
+    job_roles = (await db.scalars(select(JobRole).where(JobRole.is_active.is_(True)))).all()
+    roles_by_name = {item.name: item for item in job_roles}
+    payload = []
+    for item in items:
+        position = str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "")
+        job_role = roles_by_name.get(position)
+        job_permissions = list(job_role.permissions or []) if job_role else []
+        payload.append({
+            "username": item.username,
+            "display_name": item.display_name,
+            "department": item.department,
+            "is_active": item.is_active,
+            "role": item.role,
+            "position": position,
+            "staff_role": str((item.profile or {}).get("staff_role") or ""),
+            "job_permissions": job_permissions,
+            "can_approve_contract": item.role == "admin" or "合同审批" in set(job_permissions),
+        })
+    return {"items": payload}
 
 
 @app.post(f"{settings.api_prefix}/notifications/send", status_code=status.HTTP_201_CREATED)
@@ -4164,6 +4174,31 @@ async def _resolve_contract_customer(customer_name: str, data: dict, identity: d
     return customer
 
 
+async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSession) -> bool:
+    """Resolve business action permission from the employee's configured job role."""
+    if user.role == "admin":
+        return True
+    profile = user.profile or {}
+    job_role_name = str(profile.get("position") or profile.get("staff_role") or "").strip()
+    if not job_role_name:
+        return False
+    job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
+    return bool(job_role and permission_name in set(job_role.permissions or []))
+
+
+async def _ensure_contract_approval_access(contract_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    contract = await db.get(BusinessRecord, contract_id)
+    if not contract or contract.module != "contract":
+        raise HTTPException(status_code=404, detail="合同不存在")
+    assigned = await db.scalar(select(ContractApprovalStep.id).where(
+        ContractApprovalStep.contract_record_id == contract_id,
+        ContractApprovalStep.approver == identity["username"],
+    ))
+    if assigned or identity.get("role") == "admin":
+        return contract
+    return await _ensure_record_module(contract_id, "contract", identity, db)
+
+
 @app.post(f"{settings.api_prefix}/contracts", status_code=status.HTTP_201_CREATED)
 async def create_contract_draft(body: ContractDraftInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no.strip())):
@@ -4216,7 +4251,7 @@ async def update_contract_draft(contract_id: int, body: ContractDraftInput, iden
 
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/approvals")
 async def contract_approvals(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    contract = await _ensure_contract_approval_access(contract_id, identity, db)
     steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
     return {"contract": await _record_dict_for_identity(contract, identity, db), "items": [_approval_step_dict(x) for x in steps], "current_step": next((_approval_step_dict(x) for x in steps if x.status == "待审批"), None)}
 
@@ -4227,12 +4262,12 @@ async def submit_contract(contract_id: int, body: ContractSubmitInput, identity:
     await _require_record_owner_or_manager(contract, identity, db)
     if contract.status not in {"草稿", "已拒绝"}: raise HTTPException(status_code=409, detail="只有草稿或已拒绝合同可以重新提交")
     approvers = [x.strip() for x in body.approvers if x.strip()]
-    if len(approvers) != 1: raise HTTPException(status_code=422, detail="合同审批只能选择一名部长")
+    if len(approvers) != 1: raise HTTPException(status_code=422, detail="合同审批只能选择一名具有合同审批权限的人员")
+    if approvers[0] == identity["username"]: raise HTTPException(status_code=422, detail="合同发起人不能审批自己提交的合同")
     approver_user = await db.scalar(select(User).where(User.username == approvers[0], User.is_active.is_(True)))
     if not approver_user: raise HTTPException(status_code=422, detail="审批人不存在或已停用")
-    approver_profile = approver_user.profile or {}
-    approver_position = str(approver_profile.get("position") or approver_profile.get("staff_role") or "").strip()
-    if "部长" not in approver_position: raise HTTPException(status_code=422, detail="合同审批人必须是部长")
+    if not await _user_has_job_permission(approver_user, "合同审批", db):
+        raise HTTPException(status_code=422, detail="所选人员的岗位角色没有合同审批权限")
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id))
     for index, approver in enumerate(approvers, 1):
         db.add(ContractApprovalStep(contract_record_id=contract_id, step_order=index, approver=approver, status="待审批" if index == 1 else "等待中"))
@@ -4244,30 +4279,43 @@ async def submit_contract(contract_id: int, body: ContractSubmitInput, identity:
         "submitted_at": datetime.now().isoformat(timespec="seconds"),
         "submitted_by": identity["username"],
         "submit_comment": body.comment.strip(),
+        "current_approver": approvers[0],
     }
-    db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批部长：{approvers[0]}")); await db.commit(); await db.refresh(contract)
+    db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批人：{approvers[0]}")); await db.commit(); await db.refresh(contract)
     return await _record_dict_for_identity(contract, identity, db)
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/approve")
 async def approve_contract(contract_id: int, body: ContractApprovalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    contract = await _ensure_contract_approval_access(contract_id, identity, db)
     if contract.status != "审批中": raise HTTPException(status_code=409, detail="合同当前不在审批中")
     if not body.approved and not body.comment.strip(): raise HTTPException(status_code=422, detail="拒绝时必须填写审批意见")
     steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
     current = next((x for x in steps if x.status == "待审批"), None)
     if not current: raise HTTPException(status_code=409, detail="合同没有待处理的审批节点")
-    if identity.get("role") != "admin" and current.approver != identity["username"]: raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批")
+    if current.approver != identity["username"]: raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批，管理员也不能代替指定审批人操作")
     current.comment = body.comment.strip(); current.acted_at = datetime.now(); old = contract.status
     if not body.approved:
         current.status = "已拒绝"; contract.status = "已拒绝"
+        contract.data = {**(contract.data or {}), "current_approver": ""}
         for step in steps:
             if step.status == "等待中": step.status = "已取消"
         action = "合同审批拒绝"
     else:
         current.status = "已通过"; next_step = next((x for x in steps if x.status == "等待中"), None)
-        if next_step: next_step.status = "待审批"; action = "合同节点通过"
-        else: contract.status = "已通过"; action = "合同审批完成"
+        if next_step:
+            next_step.status = "待审批"; action = "合同节点通过"
+            contract.data = {**(contract.data or {}), "current_approver": next_step.approver}
+        else:
+            contract.status = "已通过"; action = "合同审批完成"
+            contract.data = {**(contract.data or {}), "current_approver": ""}
+            seal_application_id = int((contract.data or {}).get("seal_application_id") or 0)
+            if seal_application_id and (contract.data or {}).get("sync_seal"):
+                seal_application = await db.get(BusinessRecord, seal_application_id)
+                if seal_application and seal_application.module == "seal" and seal_application.status == "草稿":
+                    seal_application.status = "待审批"
+                    contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds")}
+                    db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
     db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {current.approver}：{body.comment}")); await db.commit(); await db.refresh(contract)
     return await _record_dict_for_identity(contract, identity, db)
 
@@ -4276,8 +4324,10 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
 async def create_contract_seal_application(contract_id: int, body: ContractSealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status not in {"已通过", "履行中", "已完成"}:
-        raise HTTPException(status_code=409, detail="合同审批通过后才能发起用印")
+    if contract.status == "审批中" and body.submit:
+        raise HTTPException(status_code=409, detail="合同审批中只能保存同步用印资料，审批通过后系统会自动提交")
+    if contract.status not in {"审批中", "已通过", "履行中", "已完成"}:
+        raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
     existing_id = int((contract.data or {}).get("seal_application_id") or 0)
     if existing_id:
         existing = await db.get(BusinessRecord, existing_id)
@@ -4320,10 +4370,11 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         "seal_application_id": seal.id,
         "seal_application_no": seal.serial_no,
         "seal_requested_at": datetime.now().isoformat(timespec="seconds"),
+        "sync_seal": contract.status == "审批中",
     }
     db.add_all([
         WorkflowEvent(record_id=seal.id, action="创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),
-        WorkflowEvent(record_id=contract.id, action="发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if body.submit else "，保存为草稿")),
+        WorkflowEvent(record_id=contract.id, action="配置同步用印" if contract.status == "审批中" else "发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if body.submit else "，保存为草稿")),
     ])
     await db.commit()
     await db.refresh(seal)
@@ -4921,7 +4972,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if clue_data.get("converted_case_id") or clue.status == "已转案件": errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索已经转为案件"}); continue
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
         if clue.customer.strip() != contract.customer.strip(): errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索客户与合同客户不一致"}); continue
-        serial_no = f"AJ{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:4].upper()}"
+        serial_no = await _next_case_serial(body.case_type, db)
         case_record = BusinessRecord(module="case", serial_no=serial_no, title=clue.title, customer=contract.customer, status="等待公证书", owner=clue.owner, department=contract.department, description=f"由已取证线索 {clue.serial_no} 批量转案", data={"contract_id": contract.id, "contract_no": contract.serial_no, "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title, "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
         db.add(case_record); await db.flush(); previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
         notary = await db.get(BusinessRecord, int(clue_data.get("notary_record_id") or 0)) if clue_data.get("notary_record_id") else None
@@ -9643,10 +9694,32 @@ async def _ensure_case_fixed_tasks(case_record: BusinessRecord, db: AsyncSession
     return [*existing, *created]
 
 
+async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
+    """Generate the compact legacy-style case number: SH + type + YY + 5 digits."""
+    parameter_names = {case_type}
+    if case_type == "民事案件":
+        parameter_names.add("民事争议")
+    parameter = await db.scalar(select(SystemParameter).where(
+        SystemParameter.category == "case_type",
+        SystemParameter.name.in_(parameter_names),
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))
+    default_codes = {"民事案件": "MS", "刑事案件": "XS", "行政案件及国家赔偿": "XZ", "法律顾问": "GW", "仲裁": "ZC"}
+    type_code = str((parameter.extra or {}).get("letter_code") if parameter else default_codes.get(case_type, "AJ")).strip().upper()
+    prefix = f"SH{type_code}{datetime.now():%y}"
+    existing = (await db.scalars(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "case",
+        BusinessRecord.serial_no.like(f"{prefix}%"),
+    ).order_by(BusinessRecord.serial_no.desc()))).all()
+    sequence = max((int(match.group(1)) for value in existing if (match := re.fullmatch(rf"{re.escape(prefix)}(\d{{5}})", value))), default=0) + 1
+    if sequence > 99999:
+        raise HTTPException(status_code=409, detail=f"{datetime.now():%Y} 年{case_type}案件编号已用尽")
+    return f"{prefix}{sequence:05d}"
+
+
 @app.post(f"{settings.api_prefix}/cases", status_code=status.HTTP_201_CREATED)
 async def create_case(body: CaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """从有效合同建立案件；客户、部门和合同编号均以合同资料为准。"""
-    serial_no = body.serial_no.strip() or f"AJ{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:8].upper()}"
     title = body.title.strip()
     case_type = body.case_type.strip()
     cause_or_charge = body.cause_or_charge.strip()
@@ -9654,6 +9727,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         raise HTTPException(status_code=422, detail="案件名称不能为空")
     if case_type not in CASE_CREATABLE_TYPES:
         raise HTTPException(status_code=422, detail="案件类型不是原系统允许的新建类型")
+    serial_no = body.serial_no.strip() or await _next_case_serial(case_type, db)
     if body.status != "新案待分配":
         raise HTTPException(status_code=422, detail="新建案件阶段必须为待分配")
     counsel_type = body.counsel_type.strip()

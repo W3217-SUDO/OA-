@@ -177,6 +177,17 @@ def passed(name: str):
     print(f"[PASS] {name}")
 
 
+def contract_approve_as(username: str, contract_id: int, approved: bool, comment: str, *, expected=(200,)):
+    """Exercise the contract node with the assigned approver instead of an administrator override."""
+    global TOKEN
+    previous = TOKEN
+    TOKEN = login(username, "SmokePass2026!")["access_token"]
+    try:
+        return call("POST", f"/contracts/{contract_id}/approve", {"approved": approved, "comment": comment}, expected=expected)
+    finally:
+        TOKEN = previous
+
+
 def main():
     global TOKEN
     if not PASSWORD:
@@ -340,10 +351,10 @@ def main():
         member_name = f"smoke_member_{suffix}".lower()
         outsider_name = f"smoke_outsider_{suffix}".lower()
         auditor_name = f"smoke_auditor_{suffix}".lower()
-        manager = call("POST", "/system/users", {"username": manager_name, "display_name": "范围经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "诉讼部部长", "staff_role": "诉讼部部长"}}, expected=(201,)); users.append(manager["id"])
-        peer_manager = call("POST", "/system/users", {"username": peer_manager_name, "display_name": "同部门旁观经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "调查部部长", "staff_role": "调查部部长"}}, expected=(201,)); users.append(peer_manager["id"])
+        manager = call("POST", "/system/users", {"username": manager_name, "display_name": "范围经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师"}}, expected=(201,)); users.append(manager["id"])
+        peer_manager = call("POST", "/system/users", {"username": peer_manager_name, "display_name": "同部门旁观经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师"}}, expected=(201,)); users.append(peer_manager["id"])
         manager_directory = next(item for item in call("GET", "/users/directory")["items"] if item["username"] == manager_name)
-        assert manager_directory["position"] == "诉讼部部长" and manager_directory["staff_role"] == "诉讼部部长"
+        assert manager_directory["position"] == "合伙人律师" and manager_directory["can_approve_contract"] is True and "合同审批" in manager_directory["job_permissions"]
         department_peer = call("POST", "/system/users", {"username": department_peer_name, "display_name": "同部门成员", "department": "北京分所", "password": "SmokePass2026!", "role": "user"}, expected=(201,)); users.append(department_peer["id"])
         member = call("POST", "/system/users", {"username": member_name, "display_name": "范围成员", "department": "深圳分所", "password": "SmokePass2026!", "role": "user"}, expected=(201,)); users.append(member["id"])
         outsider = call("POST", "/system/users", {"username": outsider_name, "display_name": "范围外人员", "department": "上海分所", "password": "SmokePass2026!", "role": "user"}, expected=(201,)); users.append(outsider["id"])
@@ -1029,7 +1040,7 @@ def main():
             "status": "已通过", "owner": USERNAME, "department": "上海分所", "data": {},
         }, expected=(201,)); records.append(conflict_contract["id"])
         call("POST", f"/contracts/{conflict_contract['id']}/submit", {"approvers": [manager_name], "comment": "利益检索测试合同审批"})
-        conflict_contract = call("POST", f"/contracts/{conflict_contract['id']}/approve", {"approved": True, "comment": "利益检索测试合同审批通过"})
+        conflict_contract = contract_approve_as(manager_name, conflict_contract["id"], True, "利益检索测试合同审批通过")
 
         def create_conflict_case(label: str, filing_date: str | None):
             created = call("POST", "/cases", {
@@ -1122,7 +1133,7 @@ def main():
         }, expected=(201,)); records.append(aligned_contract["id"])
         assert aligned_contract["data"]["external_contract_numbers"] == [f"EXT-A-{suffix}", f"EXT-B-{suffix}"]
         call("POST", f"/contracts/{aligned_contract['id']}/submit", {"approvers": [manager_name], "comment": "蓝图合同审批"})
-        call("POST", f"/contracts/{aligned_contract['id']}/approve", {"approved": True, "comment": "蓝图合同审批通过"})
+        contract_approve_as(manager_name, aligned_contract["id"], True, "蓝图合同审批通过")
         portal_document = multipart_upload("/attachments", {"record_id": aligned_contract["id"], "category": "客户可见合同", "remark": "客户服务端下载验收"}, f"smoke-portal-{suffix}.txt", b"portal document")
         attachments.append(portal_document["id"])
         portal = call("POST", f"/customers/{aligned_customer['id']}/portal/open", {"comment": "签约后开通客户服务端"})
@@ -1162,10 +1173,19 @@ def main():
         assert [item["status"] for item in approval_state["items"]] == ["待审批"]
         assert approval_state["current_step"]["approver"] == manager_name
         assert any(item["id"] == contract_attachment["id"] for item in call("GET", f"/attachments?record_id={contract['id']}")["items"])
-        first = call("POST", f"/contracts/{contract['id']}/approve", {"approved": True, "comment": "部长审批通过"})
+        sync_assets = call("GET", "/seals/assets")["items"]
+        sync_asset = next(item for item in sync_assets if item["status"] == "可用")
+        sync_linked_seal = call("POST", f"/contracts/{contract['id']}/seal-application", {"seal_asset_id": sync_asset["id"], "copies": 1, "purpose": "合同审批同步用印验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "冒烟合同附件", "description": "合同审批完成后自动提交用印", "submit": False}, expected=(201,))
+        records.append(sync_linked_seal["id"])
+        sync_contract_state = call("GET", f"/records/{contract['id']}")
+        assert sync_linked_seal["status"] == "草稿" and sync_contract_state["data"]["sync_seal"] is True
+        call("POST", f"/contracts/{contract['id']}/approve", {"approved": True, "comment": "管理员不得代审"}, expected=(403,))
+        first = contract_approve_as(manager_name, contract["id"], True, "角色审批通过")
         assert first["status"] == "已通过"
+        sync_linked_seal = call("GET", f"/records/{sync_linked_seal['id']}")
+        assert sync_linked_seal["status"] == "待审批" and sync_linked_seal["data"]["contract_no"] == contract["serial_no"]
         approval_state = call("GET", f"/contracts/{contract['id']}/approvals")
-        assert approval_state["items"][0]["comment"] == "部长审批通过" and approval_state["items"][0]["acted_at"]
+        assert approval_state["items"][0]["comment"] == "角色审批通过" and approval_state["items"][0]["acted_at"]
         assert approval_state["current_step"] is None
         contract_investigation = call("POST", f"/contracts/{contract['id']}/investigation", {"title": f"冒烟合同调查任务-{suffix}", "owner": "", "authorized_from": str(date.today()), "authorized_to": str(date.today() + timedelta(days=30)), "region": "上海市", "right_type": "商标", "customer_review": True, "description": "合同发起调查任务验收"}, expected=(201,))
         records.append(contract_investigation["id"])
@@ -1185,11 +1205,11 @@ def main():
         assert {"提交合同审批", "合同审批完成"}.issubset({item["action"] for item in contract_history})
         rejected_contract = create_record("contract", "草稿", "驳回续办冒烟合同", {"amount": 300})
         call("POST", f"/contracts/{rejected_contract['id']}/submit", {"approvers": [manager_name], "comment": "首次提交"})
-        call("POST", f"/contracts/{rejected_contract['id']}/approve", {"approved": False, "comment": ""}, expected=(422,))
-        rejected = call("POST", f"/contracts/{rejected_contract['id']}/approve", {"approved": False, "comment": "附件需要补正"})
+        contract_approve_as(manager_name, rejected_contract["id"], False, "", expected=(422,))
+        rejected = contract_approve_as(manager_name, rejected_contract["id"], False, "附件需要补正")
         assert rejected["status"] == "已拒绝"
         call("POST", f"/contracts/{rejected_contract['id']}/submit", {"approvers": [manager_name], "comment": "补正后重新提交"})
-        assert call("POST", f"/contracts/{rejected_contract['id']}/approve", {"approved": True, "comment": "补正通过"})["status"] == "已通过"
+        assert contract_approve_as(manager_name, rejected_contract["id"], True, "补正通过")["status"] == "已通过"
         assert len(call("GET", f"/records/{rejected_contract['id']}/history")["items"]) >= 5
         changed = call("POST", f"/contracts/{contract['id']}/changes", {"change_type": "金额调整", "reason": "补充服务范围", "amount": 1200, "external_contract_no": f"EXT-CHANGED-{suffix}", "end_date": str(date.today() + timedelta(days=365))}, expected=(201,))
         assert changed["status"] == "待审批" and changed["contract"]["data"]["amount"] == 1000 and len(changed["changes"]) == 3
@@ -1199,7 +1219,7 @@ def main():
         assert change_history["total"] == 2 and all(item["reason"] == "补充服务范围" for item in change_history["items"])
         archive_contract = create_record("contract", "草稿", "归档冒烟合同", {"amount": 500})
         call("POST", f"/contracts/{archive_contract['id']}/submit", {"approvers": [manager_name], "comment": "归档前审批"})
-        call("POST", f"/contracts/{archive_contract['id']}/approve", {"approved": True, "comment": "审批通过"})
+        contract_approve_as(manager_name, archive_contract["id"], True, "审批通过")
         archived_contract = call("POST", f"/contracts/{archive_contract['id']}/archive")
         assert archived_contract["status"] == "已归档" and archived_contract["data"]["archived_at"]
         plan = call("POST", "/receivables", {"contract_record_id": contract["id"], "phase": "首期款", "due_date": str(date.today() + timedelta(days=10)), "amount": 1000, "payer": "冒烟客户"}, expected=(201,))
@@ -1235,7 +1255,8 @@ def main():
         automatic_case_a = call("POST", "/cases", {**automatic_case_payload, "title": "SMOKE服务端自动案号 A"}, expected=(201,))
         automatic_case_b = call("POST", "/cases", {**automatic_case_payload, "title": "SMOKE服务端自动案号 B"}, expected=(201,))
         records.extend([automatic_case_a["id"], automatic_case_b["id"]])
-        assert automatic_case_a["serial_no"].startswith("AJ") and automatic_case_b["serial_no"].startswith("AJ")
+        assert automatic_case_a["serial_no"].startswith("SHXS") and len(automatic_case_a["serial_no"]) == 11 and automatic_case_a["serial_no"][4:].isdigit()
+        assert automatic_case_b["serial_no"].startswith("SHXS") and len(automatic_case_b["serial_no"]) == 11 and automatic_case_b["serial_no"][4:].isdigit()
         assert automatic_case_a["serial_no"] != automatic_case_b["serial_no"]
         assert automatic_case_a["owner"] == USERNAME and automatic_case_b["owner"] == USERNAME
         case = call("POST", "/cases", case_payload, expected=(201,))
@@ -2793,8 +2814,7 @@ def main():
         available_seal_types = {item["seal_type"] for item in assets if item["status"] == "可用"}
         assert required_seal_types <= available_seal_types, f"合同用印缺少基础印章类型：{sorted(required_seal_types - available_seal_types)}"
         asset = next(item for item in assets if item["status"] == "可用")
-        linked_seal = call("POST", f"/contracts/{contract['id']}/seal-application", {"seal_asset_id": asset["id"], "copies": 1, "purpose": "合同向导用印衔接验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "冒烟合同附件", "description": "合同四步向导", "submit": True}, expected=(201,))
-        records.append(linked_seal["id"])
+        linked_seal = call("GET", f"/records/{sync_linked_seal['id']}")
         assert linked_seal["status"] == "待审批" and linked_seal["data"]["contract_no"] == contract["serial_no"]
         linked_contract = call("GET", f"/records/{contract['id']}")
         assert linked_contract["data"]["seal_application_id"] == linked_seal["id"] and linked_contract["data"]["seal_application_no"] == linked_seal["serial_no"]

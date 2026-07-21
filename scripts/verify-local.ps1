@@ -41,8 +41,13 @@ if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
 Write-Host '[1/5] Frontend production build' -ForegroundColor Cyan
 Push-Location $web
 try {
-    & npm.cmd run build
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend production build failed.' }
+    # Run the local binaries directly. npm on Node 24 for Windows can finish the
+    # Vite build successfully and then abort in libuv while closing its child
+    # process, which produces a false-negative verification result.
+    & (Join-Path $web 'node_modules\.bin\tsc.cmd') -b
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend TypeScript build failed.' }
+    & (Join-Path $web 'node_modules\.bin\vite.cmd') build
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend Vite production build failed.' }
 }
 finally {
     Pop-Location

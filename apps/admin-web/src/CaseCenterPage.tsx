@@ -692,7 +692,7 @@ export default function CaseCenterPage({
       setCounselLogs(logRes.data.items || []);
       setSelectedCounselAttachmentKeys([]);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "法律顾问案件详情加载失败");
+      message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
   };
   const createCounselReminder = async () => {
@@ -1245,7 +1245,7 @@ export default function CaseCenterPage({
     }
   };
   const originalCaseColumns = [
-    {title:"基本信息",key:"base",width:185,render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openCaseTasks(row)}>案件编号:{row.serial_no}</Button></p><p>案件名称:{row.title}</p></>},
+    {title:"基本信息",key:"base",width:185,render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>案件编号:{row.serial_no}</Button></p><p>案件名称:{row.title}</p></>},
     {title:"当事人信息",key:"parties",width:250,render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},
     {title:"阶段信息",key:"phase",width:175,render:(_:unknown,row:CaseRow)=><><p>案件阶段:{row.status}</p><p>变更时间:{row.data.phase_changed_at||""}</p></>},
     {title:"法院信息",key:"court",width:205,render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>法院案号:{row.data.court_case_no||""}</p></>},
@@ -1781,7 +1781,7 @@ export default function CaseCenterPage({
       <Drawer
         size={1050}
         open={Boolean(viewingCounselCase)}
-        title={`法律顾问案件：${viewingCounselCase?.serial_no || ""}`}
+        title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
         onClose={() => setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
       >
@@ -1789,14 +1789,15 @@ export default function CaseCenterPage({
           <Card size="small" title="基本信息" className="case-counsel-detail-card">
             <div className="form-grid">
               <p><strong>案件编号：</strong>{viewingCounselCase.serial_no}</p>
-              <p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p>
-              <p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p>
+              <p><strong>案件类型：</strong>{viewingCounselCase.data.case_type||"—"}</p>
+              <p><strong>案件阶段：</strong>{viewingCounselCase.status||"—"}</p>
               <p><strong>案件名称：</strong>{viewingCounselCase.title}</p>
               <p><strong>案源律师：</strong>{viewingCounselCase.data.source_person||viewingCounselCase.owner||"—"}</p>
               <p><strong>客户：</strong>{viewingCounselCase.customer}</p>
               <p><strong>经办律师：</strong>{(viewingCounselCase.data.handling_lawyers||[]).join("、")||"—"}</p>
               <p><strong>合同号：</strong>{viewingCounselCase.data.contract_no||"—"}</p>
               <p><strong>律师助理：</strong>{viewingCounselCase.data.assistant||"—"}</p>
+              {viewingCounselCase.data.case_type === "法律顾问" ? <><p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p><p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p></> : <><p><strong>原告/申请人：</strong>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</p><p><strong>被告/被申请人：</strong>{viewingCounselCase.data.opponent||"—"}</p><p><strong>法院/机构：</strong>{viewingCounselCase.data.court||viewingCounselCase.data.first_court_name||"—"}</p><p><strong>案由/罪名：</strong>{viewingCounselCase.data.cause_or_charge||"—"}</p></>}
             </div>
           </Card>
           <Tabs

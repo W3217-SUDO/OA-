@@ -236,18 +236,18 @@ def main() -> None:
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
     assert 'sessionStorage.getItem("sunhold:contract-customer")' in CONTRACT, "contract creation must consume customer context from the customer page"
-    assert '.includes("部长")' in CONTRACT and 'notFoundContent="没有可用部长，请由管理员创建部长审批账号"' in CONTRACT, "contract approval selector must expose only department-head accounts and explain an empty directory"
-    assert all(token in MAIN for token in ('"is_active": item.is_active', '"position": str((item.profile or {}).get("position")', '"staff_role": str((item.profile or {}).get("staff_role")')), "user directory must expose active and position fields consumed by approval selectors"
-    assert '>新增部长审批人</Button>' in CONTRACT and 'role: "manager"' in CONTRACT and 'profile: { position: values.position, staff_role: values.position }' in CONTRACT and 'must_change_password: true' in CONTRACT, "contract workflow must let administrators create a first-login-protected department-head account"
-    assert '合同审批只能选择一名部长' in MAIN and '合同审批人必须是部长' in MAIN, "contract API must enforce exactly one active department-head approver"
-    assert 'approvers: values.approvers ? [values.approvers] : []' in CONTRACT and 'name="approvers"' in CONTRACT and 'placeholder="请选择一名部长"' in CONTRACT, "contract approval UI must submit exactly one approver"
+    assert 'user.can_approve_contract' in CONTRACT and 'notFoundContent="没有可用审批人，请由管理员在角色管理中授予合同审批权限"' in CONTRACT, "contract approval selector must use configured job-role permission and explain an empty directory"
+    assert all(token in MAIN for token in ('"job_permissions": job_permissions', '"can_approve_contract": item.role == "admin"', '_user_has_job_permission(approver_user, "合同审批", db)')), "user directory and contract submission must resolve contract approval from job-role permissions"
+    assert '>新增审批人</Button>' in CONTRACT and 'role: "auditor"' in CONTRACT and 'profile: { position: values.position, staff_role: values.position }' in CONTRACT and 'must_change_password: true' in CONTRACT, "contract workflow must let administrators create a first-login-protected contract approver"
+    assert '合同审批只能选择一名具有合同审批权限的人员' in MAIN and '合同发起人不能审批自己提交的合同' in MAIN and '管理员也不能代替指定审批人操作' in MAIN, "contract API must enforce one role-authorized approver and separation of duties"
+    assert 'approvers: values.approvers ? [values.approvers] : []' in CONTRACT and 'name="approvers"' in CONTRACT and 'placeholder="请选择具有合同审批权限的人员"' in CONTRACT, "contract approval UI must submit exactly one role-authorized approver"
     assert 'value:customer.id' in normalized_contract and 'customer.id===Number(v.customer_id)' in normalized_contract, "contract customer selection must persist a unique customer id instead of an ambiguous duplicate name"
     assert 'title.normalize("NFKC").trim().toLocaleLowerCase()' in CONTRACT and 'label:customer.title' in normalized_contract and '${customer.serial_no}' not in CONTRACT[CONTRACT.index('const customerOptions'):CONTRACT.index('const openChange')], "contract customer selection must display only one option per normalized customer name without showing its number"
     assert '_ensure_unique_customer_name' in MAIN and '客户名称已存在，不能创建或改为同名客户' in MAIN, "customer API must block exact duplicate names on create and rename"
     assert 'employeeEditFields' in HR and '员工完整资料修改' in HR and '保存全部修改' in HR and 'lawyer_license_no' in HR and 'school' in HR and 'editableData' in HR, "employee edit must expose and save the full employee profile"
     assert 'name="username" label="用户名"' in HR and 'username:value.username' in normalized_hr and '_rename_system_username' in MAIN, "administrator employee edit must rename the login account and migrate exact username references"
     assert 'dayjs.isDayjs(v.signed_at)' in CONTRACT and 'loading={savingContract}' in CONTRACT, "contract creation must safely default hidden fields and expose the real save-in-progress state"
-    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and 'if (contract.data.seal_application_id)' in CONTRACT and '>继续新建合同</Button>' in CONTRACT, "completed contract wizard must clear recovery state and expose an explicit create-another action"
+    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and '是否同步办理合同用印？' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another, and ask for synchronous sealing"
     assert 'sunhold:route-reselect' in CONTRACT and 'sunhold:route-reselect' in APP, "reselecting the active contract-new menu must reset the wizard instead of keeping the completed contract"
     assert '_resolve_contract_customer' in MAIN and '不能手工录入未登记客户名称' in MAIN, "contract API must reject unregistered customer names"
     for seal_type in ("合同章", "公章", "所函专用章", "法人章", "发票章", "财务专用章", "财务三排章"):
@@ -974,7 +974,7 @@ def main() -> None:
         'label="顾问类型"name="counsel_type"',
         'columns={counselListMode?counselCaseColumns:originalCaseColumns}',
         'onClick={()=>voidopenCounselDetail(row)}',
-        'title={`法律顾问案件：${viewingCounselCase?.serial_no||""}`}',
+        'title={`${viewingCounselCase?.data.case_type||"案件"}详情：${viewingCounselCase?.serial_no||""}`}',
         'label:"文档信息"', 'label:"律所费用"', 'label:"平台费用"', 'label:"内部结算"',
         'label:"系统日志"', 'label:"案件任务"', 'label:"客户任务"',
         'api.put(`/cases/${editingCounselCase.id}/counsel-basic`',
@@ -985,6 +985,9 @@ def main() -> None:
         '>导出全部（CSV）</Button>',
     ):
         assert token in normalized_case, f"legal counsel list/detail contract missing: {token}"
+    assert 'onClick={()=>voidopenCounselDetail(row)}' in normalized_case, "case number action must open the case detail drawer rather than the task-creation flow"
+    normalized_main = re.sub(r"\s+", "", MAIN)
+    assert 'asyncdef_next_case_serial(case_type:str,db:AsyncSession)->str:' in normalized_main and 'prefix=f"SH{type_code}{datetime.now():%y}"' in normalized_main and 'returnf"{prefix}{sequence:05d}"' in normalized_main, "case creation must generate the compact recognizable SH/type/year/sequence identifier"
     for token in (
         '@app.post(f"{settings.api_prefix}/cases/counsel/search")',
         '@app.post(f"{settings.api_prefix}/cases/counsel/export")',
