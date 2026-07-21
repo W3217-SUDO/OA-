@@ -40,6 +40,7 @@ HR = (ROOT / "apps/admin-web/src/HrCenterPage.tsx").read_text(encoding="utf-8")
 ORGANIZATION = (ROOT / "apps/admin-web/src/OrganizationCenterPage.tsx").read_text(encoding="utf-8")
 REPORT = (ROOT / "apps/admin-web/src/ReportCenterPage.tsx").read_text(encoding="utf-8")
 SEAL_CSS = (ROOT / "apps/admin-web/src/seal-center.css").read_text(encoding="utf-8")
+WEB_NGINX = (ROOT / "apps/admin-web/nginx.conf").read_text(encoding="utf-8")
 
 
 def declared_menus() -> list[tuple[str, str, str, str, int]]:
@@ -2511,6 +2512,9 @@ def main() -> None:
     ]
     assert not missing_independent_scroll, f"independent shell scrolling contract missing: {missing_independent_scroll}"
     print("INDEPENDENT_SCROLL_OK: fixed viewport shell with separate stable-gutter sidebar and content scroll containers")
+    assert all(token in APP for token in ("lazyWithVersionRecovery", "sunhold:chunk-reload:", "window.location.reload()", "class PageLoadBoundary", "页面资源加载失败")), "lazy page chunks must recover once after a version deployment and render a visible fallback on repeated failure"
+    assert 'location = /index.html' in WEB_NGINX and 'Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always' in WEB_NGINX, "the application shell must not be cached across hashed-asset deployments"
+    print("VERSIONED_ASSET_RECOVERY_OK: no-store application shell, one-shot lazy chunk reload and visible repeated-failure fallback")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")
 
 

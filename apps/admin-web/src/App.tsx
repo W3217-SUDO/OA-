@@ -1,9 +1,11 @@
 import {
+  Component,
   lazy,
   Suspense,
   useEffect,
   useMemo,
   useState,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import {
@@ -36,27 +38,73 @@ import { api, AUTH_EXPIRED_EVENT } from "./api";
 import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
 
-const CustomerConflictPage = lazy(() => import("./CustomerConflictPage"));
-const ContractReceivablesPage = lazy(() => import("./ContractReceivablesPage"));
-const InvestigationCenterPage = lazy(() => import("./InvestigationCenterPage"));
-const CaseCenterPage = lazy(() => import("./CaseCenterPage"));
-const TaskCenterPage = lazy(() => import("./TaskCenterPage"));
-const DocumentCenterPage = lazy(() => import("./DocumentCenterPage"));
-const FinanceCenterPage = lazy(() => import("./FinanceCenterPage"));
-const SystemCenterPage = lazy(() => import("./SystemCenterPage"));
-const HrCenterPage = lazy(() => import("./HrCenterPage"));
-const OrganizationCenterPage = lazy(() => import("./OrganizationCenterPage"));
-const WarehousePage = lazy(() => import("./WarehousePage"));
-const ReportCenterPage = lazy(() => import("./ReportCenterPage"));
-const CustomerCenterPage = lazy(() => import("./CustomerCenterPage"));
-const ContractCenterPage = lazy(() => import("./ContractCenterPage"));
-const AuditLogPage = lazy(() => import("./AuditLogPage"));
-const AgentDocumentPage = lazy(() => import("./AgentDocumentPage"));
-const SealCenterPage = lazy(() => import("./SealCenterPage"));
-const UserCenterPage = lazy(() => import("./UserCenterPage"));
-const MessageCenterPage = lazy(() => import("./MessageCenterPage"));
-const CommunicationLogPage = lazy(() => import("./CommunicationLogPage"));
-const CustomerPortalPage = lazy(() => import("./CustomerPortalPage"));
+function lazyWithVersionRecovery<T extends ComponentType<any>>(
+  key: string,
+  importer: () => Promise<{ default: T }>,
+) {
+  return lazy(async () => {
+    const marker = `sunhold:chunk-reload:${key}`;
+    try {
+      const module = await importer();
+      sessionStorage.removeItem(marker);
+      return module;
+    } catch (error) {
+      // A user can keep the previous shell open while a new image replaces its
+      // hashed chunks. Reload once to fetch the current no-store index page.
+      if (!sessionStorage.getItem(marker)) {
+        sessionStorage.setItem(marker, "1");
+        window.location.reload();
+        return new Promise<never>(() => undefined);
+      }
+      sessionStorage.removeItem(marker);
+      throw error;
+    }
+  });
+}
+
+class PageLoadBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="页面资源加载失败"
+        description="系统版本已更新或网络暂时中断，请刷新后重试。"
+        action={<Button onClick={() => window.location.reload()}>刷新页面</Button>}
+      />
+    );
+  }
+}
+
+const CustomerConflictPage = lazyWithVersionRecovery("customer-conflict", () => import("./CustomerConflictPage"));
+const ContractReceivablesPage = lazyWithVersionRecovery("contract-receivables", () => import("./ContractReceivablesPage"));
+const InvestigationCenterPage = lazyWithVersionRecovery("investigation", () => import("./InvestigationCenterPage"));
+const CaseCenterPage = lazyWithVersionRecovery("case", () => import("./CaseCenterPage"));
+const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./TaskCenterPage"));
+const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./DocumentCenterPage"));
+const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
+const SystemCenterPage = lazyWithVersionRecovery("system", () => import("./SystemCenterPage"));
+const HrCenterPage = lazyWithVersionRecovery("hr", () => import("./HrCenterPage"));
+const OrganizationCenterPage = lazyWithVersionRecovery("organization", () => import("./OrganizationCenterPage"));
+const WarehousePage = lazyWithVersionRecovery("warehouse", () => import("./WarehousePage"));
+const ReportCenterPage = lazyWithVersionRecovery("report", () => import("./ReportCenterPage"));
+const CustomerCenterPage = lazyWithVersionRecovery("customer", () => import("./CustomerCenterPage"));
+const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./ContractCenterPage"));
+const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
+const AgentDocumentPage = lazyWithVersionRecovery("agent-document", () => import("./AgentDocumentPage"));
+const SealCenterPage = lazyWithVersionRecovery("seal", () => import("./SealCenterPage"));
+const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCenterPage"));
+const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
+const CommunicationLogPage = lazyWithVersionRecovery("communication", () => import("./CommunicationLogPage"));
+const CustomerPortalPage = lazyWithVersionRecovery("customer-portal", () => import("./CustomerPortalPage"));
 
 const { Header, Sider, Content } = Layout;
 
@@ -1024,7 +1072,7 @@ export default function App() {
     setActive("dashboard");
   };
   if (new URLSearchParams(window.location.search).get("page") === "customer-portal")
-    return <Suspense fallback={<div className="page-loading">加载客户服务端…</div>}><CustomerPortalPage /></Suspense>;
+    return <PageLoadBoundary><Suspense fallback={<div className="page-loading">加载客户服务端…</div>}><CustomerPortalPage /></Suspense></PageLoadBoundary>;
   if (!loggedIn)
     return (
       <Login
@@ -1250,9 +1298,11 @@ export default function App() {
               closable: openPages.length > 1,
             }))}
           />
-          <Suspense fallback={<div className="loading">正在加载页面...</div>}>
-            {currentPage}
-          </Suspense>
+          <PageLoadBoundary key={active}>
+            <Suspense fallback={<div className="loading">正在加载页面...</div>}>
+              {currentPage}
+            </Suspense>
+          </PageLoadBoundary>
         </Content>
       </Layout>
     </Layout>
