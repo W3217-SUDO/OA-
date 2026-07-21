@@ -1,0 +1,1260 @@
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  Layout,
+  Menu,
+  message,
+  Modal,
+  Space,
+  Table,
+  Tabs,
+  Tag,
+} from "antd";
+import {
+  BankOutlined,
+  DashboardOutlined,
+  FileTextOutlined,
+  LinkOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SearchOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import { api, AUTH_EXPIRED_EVENT } from "./api";
+import NotificationCenter from "./NotificationCenter";
+import GlobalSearch from "./GlobalSearch";
+
+const CustomerConflictPage = lazy(() => import("./CustomerConflictPage"));
+const ContractReceivablesPage = lazy(() => import("./ContractReceivablesPage"));
+const InvestigationCenterPage = lazy(() => import("./InvestigationCenterPage"));
+const CaseCenterPage = lazy(() => import("./CaseCenterPage"));
+const TaskCenterPage = lazy(() => import("./TaskCenterPage"));
+const DocumentCenterPage = lazy(() => import("./DocumentCenterPage"));
+const FinanceCenterPage = lazy(() => import("./FinanceCenterPage"));
+const SystemCenterPage = lazy(() => import("./SystemCenterPage"));
+const HrCenterPage = lazy(() => import("./HrCenterPage"));
+const OrganizationCenterPage = lazy(() => import("./OrganizationCenterPage"));
+const WarehousePage = lazy(() => import("./WarehousePage"));
+const ReportCenterPage = lazy(() => import("./ReportCenterPage"));
+const CustomerCenterPage = lazy(() => import("./CustomerCenterPage"));
+const ContractCenterPage = lazy(() => import("./ContractCenterPage"));
+const AuditLogPage = lazy(() => import("./AuditLogPage"));
+const AgentDocumentPage = lazy(() => import("./AgentDocumentPage"));
+const SealCenterPage = lazy(() => import("./SealCenterPage"));
+const UserCenterPage = lazy(() => import("./UserCenterPage"));
+const MessageCenterPage = lazy(() => import("./MessageCenterPage"));
+const CommunicationLogPage = lazy(() => import("./CommunicationLogPage"));
+const CustomerPortalPage = lazy(() => import("./CustomerPortalPage"));
+
+const { Header, Sider, Content } = Layout;
+
+type NavItem = {
+  key: string;
+  icon?: ReactNode;
+  label: string;
+  badge?: string;
+  children?: NavItem[];
+};
+type NavConfig = {
+  id: number;
+  key: string;
+  parent_key: string;
+  label: string;
+  icon: string;
+  sort_order: number;
+  is_visible: boolean;
+  is_active: boolean;
+};
+
+const menuItems: NavItem[] = [
+  {
+    key: "dashboard",
+    icon: <DashboardOutlined />,
+    label: "控制台",
+    badge: "hot",
+  },
+  {
+    key: "seal",
+    icon: <FileTextOutlined />,
+    label: "用印中心",
+    children: [
+      { key: "seal-my", label: "我的申请" },
+      { key: "seal-audit", label: "用印审批" },
+      { key: "seal-admin", label: "印章管理" },
+    ],
+  },
+  {
+    key: "task",
+    icon: <FileTextOutlined />,
+    label: "事务中心",
+    children: [
+      {
+        key: "task-my",
+        label: "我的任务",
+        children: [
+          { key: "task-my-created", label: "我发起的任务" },
+          { key: "task-my-accepted", label: "我接受的任务" },
+          { key: "task-my-collaborating", label: "我协作的任务" },
+          { key: "task-my-unread", label: "未读新消息的任务" },
+        ],
+      },
+      {
+        key: "task-dept",
+        label: "部门任务",
+        children: [
+          { key: "task-dept-created", label: "部门发起的任务" },
+          { key: "task-dept-accepted", label: "部门接受的任务" },
+          { key: "task-dept-collaborating", label: "部门协作的任务" },
+        ],
+      },
+      {
+        key: "task-company",
+        label: "全所任务",
+        children: [
+          { key: "task-company-created", label: "公司发起的任务" },
+          { key: "task-company-accepted", label: "公司接受的任务" },
+          { key: "task-company-collaborating", label: "公司协作的任务" },
+        ],
+      },
+    ],
+  },
+  {
+    key: "customer",
+    icon: <TeamOutlined />,
+    label: "客户管理",
+    children: [
+      { key: "customer-new", label: "新建客户" },
+      { key: "customer-mine", label: "我的客户" },
+      { key: "customer-recycle", label: "个人回收站" },
+      { key: "customer-dept", label: "部门客户" },
+      { key: "customer-dept-recycle", label: "部门回收站" },
+      { key: "customer-company", label: "公司客户" },
+      { key: "customer-public", label: "公海客户" },
+      { key: "customer-shared", label: "我的共享客户" },
+      { key: "customer-recent-contact", label: "最近联系的客户" },
+      { key: "customer-recent-update", label: "最近更新的客户" },
+      { key: "customer-company-recycle", label: "公司回收站" },
+      { key: "customer-conflict", label: "客户利益检索" },
+    ],
+  },
+  {
+    key: "contract",
+    icon: <FileTextOutlined />,
+    label: "合同中心",
+    children: [
+      { key: "contract-new", label: "合同新建" },
+      { key: "contract-mine", label: "我的合同" },
+      { key: "contract-audit", label: "合同审批" },
+      { key: "contract-receivable", label: "合同应收" },
+    ],
+  },
+  {
+    key: "case",
+    icon: <FileTextOutlined />,
+    label: "案件中心",
+    children: [
+      {
+        key: "case-new",
+        label: "新建案件",
+        children: [
+          { key: "case-new-civil", label: "民事争议" },
+          { key: "case-new-criminal", label: "刑事案件" },
+          { key: "case-new-administrative", label: "行政案件及国家赔偿" },
+          { key: "case-new-counsel", label: "法律顾问" },
+          { key: "case-new-arbitration", label: "仲裁" },
+        ],
+      },
+      { key: "case-mine", label: "我的案件" },
+      { key: "case-dept", label: "部门案件" },
+      { key: "case-company", label: "全所案件" },
+      { key: "case-schedule", label: "开庭排期" },
+      { key: "case-execution", label: "执行案件" },
+      { key: "case-archive", label: "归档审核" },
+    ],
+  },
+  {
+    key: "investigation",
+    icon: <SearchOutlined />,
+    label: "调查大厅",
+    children: [
+      { key: "clue", label: "线索管理" },
+      { key: "notary", label: "公证管理" },
+      { key: "evidence", label: "证据管理" },
+    ],
+  },
+  {
+    key: "documents",
+    icon: <FileTextOutlined />,
+    label: "收发文台",
+    children: [
+      { key: "documents-official", label: "官文收文" },
+      { key: "documents-my", label: "我的收文" },
+      { key: "documents-company", label: "公司收文" },
+      { key: "documents-register", label: "收发文登记" },
+      { key: "documents-files", label: "文件附件" },
+      { key: "documents-template", label: "文书模板" },
+      { key: "documents-agent", label: "AI 智能文档" },
+      { key: "documents-archive", label: "归档材料" },
+    ],
+  },
+  {
+    key: "finance",
+    icon: <FileTextOutlined />,
+    label: "财务中心",
+    children: [
+      {
+        key: "finance-receipts",
+        label: "回款管理",
+        children: [
+          { key: "finance-receipts-icbc", label: "回款(工行)" },
+          { key: "finance-receipts-citic", label: "回款(中信)" },
+          { key: "finance-receipts-boc", label: "回款(中行)" },
+          { key: "finance-receipts-new", label: "新增回款" },
+          { key: "finance-receipts-manage", label: "回款管理" },
+          { key: "finance-receipts-claim", label: "回款领取" },
+          { key: "finance-receipts-pending", label: "待分配回款" },
+          { key: "finance-receipts-allocated", label: "已分配回款" },
+          { key: "finance-receipts-query", label: "到账查询" },
+        ],
+      },
+      {
+        key: "finance-payment",
+        label: "付款管理",
+        children: [
+          { key: "finance-payment-mine", label: "我的请款单" },
+          { key: "finance-payment-audit", label: "请款单审批" },
+          { key: "finance-payment-waiting", label: "待付款列表" },
+          { key: "finance-payment-print", label: "付款单打印" },
+          { key: "finance-payment-writeoff", label: "待核销列表" },
+          { key: "finance-payment-query", label: "付款单查询" },
+        ],
+      },
+      { key: "finance-internal", label: "内部费用" },
+      { key: "finance-invoice", label: "开票管理" },
+      { key: "finance-settlement", label: "结算管理" },
+      { key: "finance-archive-fee", label: "归档费结算" },
+      { key: "finance-fee-query", label: "费用查询" },
+    ],
+  },
+  {
+    key: "platform-finance",
+    icon: <BankOutlined />,
+    label: "平台财务中心",
+    children: [
+      { key: "platform-finance-overview", label: "回款管理" },
+      { key: "platform-finance-payment", label: "付款管理" },
+      { key: "platform-finance-invoice", label: "开票管理" },
+      { key: "platform-finance-settlement", label: "结算管理" },
+      { key: "platform-finance-archive-fee", label: "归档费结算" },
+      { key: "platform-finance-fee-query", label: "费用查询" },
+    ],
+  },
+  {
+    key: "user-center",
+    icon: <UserOutlined />,
+    label: "用户中心",
+    children: [
+      { key: "user-messages", label: "消息通知" },
+      { key: "user-communications", label: "沟通日志" },
+      { key: "user-account", label: "账户管理" },
+    ],
+  },
+  {
+    key: "hr",
+    icon: <TeamOutlined />,
+    label: "人事中心",
+    children: [
+      { key: "hr-new", label: "新建员工" },
+      { key: "hr-all", label: "员工管理" },
+      { key: "hr-departments", label: "部门管理" },
+      { key: "hr-roles", label: "角色管理" },
+    ],
+  },
+  {
+    key: "system",
+    icon: <UserOutlined />,
+    label: "系统中心",
+    children: [
+      {
+        key: "system-parameters",
+        label: "系统参数",
+        children: [
+          { key: "system-parameters-case-type", label: "案件类型" },
+          { key: "system-parameters-fee-type", label: "费用类型" },
+          { key: "system-parameters-case-phase", label: "案件阶段" },
+          { key: "system-parameters-court", label: "法院设置" },
+          { key: "system-parameters-notary", label: "公证处设置" },
+          { key: "system-parameters-cause", label: "案由设置" },
+          { key: "system-parameters-payment", label: "付款类型" },
+          { key: "system-parameters-company", label: "公司设置" },
+        ],
+      },
+      {
+        key: "system-management",
+        label: "系统管理",
+        children: [
+          { key: "system-management-cache", label: "缓存管理" },
+          { key: "system-management-menu", label: "菜单管理" },
+          { key: "system-management-config", label: "系统配置" },
+        ],
+      },
+    ],
+  },
+  {
+    key: "warehouse",
+    icon: <FileTextOutlined />,
+    label: "仓库管理",
+    children: [{ key: "warehouse-list", label: "仓库一览表" }],
+  },
+  { key: "reports", icon: <DashboardOutlined />, label: "报表中心" },
+];
+
+function configuredMenuItems(rows: NavConfig[]): NavItem[] {
+  if (!rows.length) return menuItems;
+  const icon = (name: string) =>
+    name === "dashboard" ? (
+      <DashboardOutlined />
+    ) : name === "team" ? (
+      <TeamOutlined />
+    ) : name === "search" ? (
+      <SearchOutlined />
+    ) : name === "bank" ? (
+      <BankOutlined />
+    ) : name === "user" ? (
+      <UserOutlined />
+    ) : (
+      <FileTextOutlined />
+    );
+  const ordered = rows.filter(
+    (item) =>
+      item.is_visible &&
+      item.is_active &&
+      item.key !== "task-reminders",
+  ).sort(
+    (a, b) => a.sort_order - b.sort_order || a.id - b.id,
+  );
+  const build = (parentKey: string): NavItem[] =>
+    ordered
+      .filter((item) => item.parent_key === parentKey)
+      .map((item) => {
+        const children = build(item.key);
+        return {
+          key: item.key,
+          label: item.label,
+          icon: parentKey ? undefined : icon(item.icon),
+          badge: item.key === "dashboard" ? "hot" : undefined,
+          children: children.length ? children : undefined,
+        };
+      });
+  return build("");
+}
+
+function flattenMenu(items: NavItem[]): NavItem[] {
+  return items.flatMap((item) => [item, ...flattenMenu(item.children || [])]);
+}
+function rootMenuKey(items: NavItem[], target: string): string | undefined {
+  for (const item of items) {
+    if (item.key === target) return item.key;
+    if (
+      item.children &&
+      flattenMenu(item.children).some((child) => child.key === target)
+    )
+      return item.key;
+  }
+}
+function ancestorMenuKeys(
+  items: NavItem[],
+  target: string,
+  path: string[] = [],
+): string[] {
+  for (const item of items) {
+    if (item.key === target) return path;
+    if (item.children) {
+      const result = ancestorMenuKeys(item.children, target, [...path, item.key]);
+      if (result.length) return result;
+    }
+  }
+  return [];
+}
+function canonicalRoute(route: string): string {
+  if (route.endsWith("-schedule") && route.startsWith("case-"))
+    return "case-schedule";
+  if (route.endsWith("-execution") && route.startsWith("case-"))
+    return "case-execution";
+  if (
+    route.startsWith("investigation-task-published") ||
+    route.startsWith("investigation-task-sub-published")
+  )
+    return "task-my-created";
+  if (
+    route.startsWith("investigation-task-mine") ||
+    route.startsWith("investigation-task-sub-mine")
+  )
+    return "task-my-accepted";
+  if (route === "investigation-task-overdue") return "task-reminders";
+  if (route === "investigation-task-unassigned") return "task-company";
+  if (route.startsWith("reports-")) return "reports";
+  const prefixes = [
+    "seal-my",
+    "seal-audit",
+    "seal-admin",
+    "task-my",
+    "task-dept",
+    "task-company",
+    "contract-audit",
+    "contract-receivable",
+    "case-new",
+    "case-mine",
+    "case-dept",
+    "case-company",
+    "case-archive",
+    "clue",
+    "notary",
+    "evidence",
+    "finance-fees",
+    "finance-audit",
+    "finance-receipts",
+    "finance-invoice",
+    "platform-finance-overview",
+    "platform-finance-invoice",
+  ];
+  return prefixes.find((prefix) => route.startsWith(`${prefix}-`)) || route;
+}
+
+function financeRouteFromPlatform(route: string): string {
+  const roots: Record<string, string> = {
+    "platform-finance-overview": "finance-receipts-manage",
+    "platform-finance-payment": "finance-payment-mine",
+    "platform-finance-invoice": "finance-invoice-company",
+    "platform-finance-settlement": "finance-settlement-pending",
+    "platform-finance-archive-fee": "finance-archive-fee-pending",
+    "platform-finance-fee-query": "finance-fee-query",
+  };
+  if (roots[route]) return roots[route];
+  return route
+    .replace("platform-finance-overview-", "finance-receipts-")
+    .replace("platform-finance-payment-", "finance-payment-")
+    .replace("platform-finance-invoice-", "finance-invoice-")
+    .replace("platform-finance-settlement-", "finance-settlement-")
+    .replace("platform-finance-archive-fee-", "finance-archive-fee-");
+}
+
+const supportTools = [
+  {
+    label: "国家知识产权局商标局",
+    href: "https://sbj.cnipa.gov.cn/sbj/index.html",
+  },
+  {
+    label: "国家知识产权局专利局",
+    href: "https://www.cnipa.gov.cn/col/col1510/index.html",
+  },
+  { label: "全国组织机构查询平台", href: "https://www.cods.org.cn/" },
+  { label: "法律法规查询", href: "https://flk.npc.gov.cn/" },
+  { label: "裁判文书检索", href: "https://wenshu.court.gov.cn/" },
+];
+
+type DashboardData = {
+  metrics: { label: string; value: string; tone: string }[];
+  todos: (string | number)[][];
+  hearings: Record<string, string>[];
+  latest_cases: Record<string, string>[];
+  case_trend: { date: string; value: number }[];
+  civil_distribution: { label: string; value: number; color: string }[];
+};
+type SessionUser = {
+  username: string;
+  display_name: string;
+  department?: string;
+  role: string;
+  menu_keys?: string[];
+  data_scope?: string;
+  must_change_password?: boolean;
+};
+type OpenPage = { key: string; label: string };
+
+function readOpenPages(active: string): OpenPage[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem("sunhold:open-pages") || "[]") as OpenPage[];
+    const valid = stored.filter((item) => item?.key && item?.label);
+    if (valid.some((item) => item.key === active)) return valid;
+    return [...valid, { key: active, label: active === "dashboard" ? "控制台" : active }];
+  } catch {
+    return [{ key: active, label: active === "dashboard" ? "控制台" : active }];
+  }
+}
+
+function readStoredUser(): SessionUser | null {
+  try {
+    return JSON.parse(
+      localStorage.getItem("user") || "null",
+    ) as SessionUser | null;
+  } catch {
+    return null;
+  }
+}
+
+function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
+  const [passwordForm] = Form.useForm();
+  const submit = async (values: { username: string; password: string }) => {
+    setLoading(true);
+    try {
+      const form = new URLSearchParams(values);
+      const { data } = await api.post("/auth/login", form);
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      if (data.must_change_password) {
+        setPendingUser(data.user);
+        passwordForm.resetFields();
+        message.warning("首次登录必须修改一次性初始密码");
+      } else {
+        onSuccess(data.user);
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "账号或密码错误");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const forcePasswordChange = async () => {
+    const values = await passwordForm.validateFields();
+    setLoading(true);
+    try {
+      const { data } = await api.patch("/auth/me", { current_password: values.current_password, new_password: values.new_password });
+      const user = { ...pendingUser, ...data, must_change_password: false } as SessionUser;
+      localStorage.setItem("user", JSON.stringify(user));
+      setPendingUser(null);
+      message.success("初始密码已更换，请妥善保管新密码");
+      onSuccess(user);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "密码修改失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="login-page">
+      <div className="login-brand">
+        <b>Sunhold</b>
+        <span>法律服务机构管理系统</span>
+      </div>
+      <Card className="login-card">
+        <h2>系统登录</h2>
+        <p>欢迎进入思法汇成协作平台</p>
+        <Form
+          onFinish={submit}
+          layout="vertical"
+        >
+          <Form.Item name="username" label="账号" rules={[{ required: true }]}>
+            <Input size="large" prefix={<UserOutlined />} />
+          </Form.Item>
+          <Form.Item name="password" label="密码" rules={[{ required: true }]}>
+            <Input.Password size="large" />
+          </Form.Item>
+          <Button
+            block
+            size="large"
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+          >
+            登 录
+          </Button>
+        </Form>
+      </Card>
+      <Modal open={Boolean(pendingUser)} title="首次登录修改密码" closable={false} maskClosable={false} keyboard={false} okText="修改密码并进入系统" cancelButtonProps={{style:{display:"none"}}} confirmLoading={loading} onOk={forcePasswordChange}>
+        <Alert type="warning" showIcon title="当前密码是一次性初始密码，修改前不能进入任何业务页面。" style={{marginBottom:16}} />
+        <Form form={passwordForm} layout="vertical">
+          <Form.Item name="current_password" label="当前初始密码" rules={[{required:true,message:"请输入当前初始密码"}]}><Input.Password autoComplete="current-password" /></Form.Item>
+          <Form.Item name="new_password" label="新密码" rules={[{required:true,min:8,message:"新密码至少 8 位"}]}><Input.Password autoComplete="new-password" /></Form.Item>
+          <Form.Item name="confirm_password" label="确认新密码" dependencies={["new_password"]} rules={[{required:true,message:"请再次输入新密码"},({getFieldValue})=>({validator(_,value){return !value||getFieldValue("new_password")===value?Promise.resolve():Promise.reject(new Error("两次输入的新密码不一致"))}})]}><Input.Password autoComplete="new-password" /></Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
+function CaseTrendChart({
+  items,
+}: {
+  items: { date: string; value: number }[];
+}) {
+  const width = 470,
+    height = 220,
+    left = 38,
+    right = 12,
+    top = 12,
+    bottom = 52,
+    plotWidth = width - left - right,
+    plotHeight = height - top - bottom,
+    maxValue = Math.max(1, ...items.map((item) => item.value)),
+    max = Math.max(5, Math.ceil(maxValue / 5) * 5),
+    ticks = Array.from({ length: 5 }, (_, index) => Math.round((max * index) / 4));
+  const points = items
+    .map(
+      (item, index) =>
+        `${left + (items.length === 1 ? 0 : (index * plotWidth) / (items.length - 1))},${top + plotHeight - (item.value / max) * plotHeight}`,
+    )
+    .join(" ");
+  return (
+    <svg
+      className="case-trend-chart"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="案件趋势折线图"
+    >
+      {ticks.map((value) => {
+        const y = top + plotHeight - (value / max) * plotHeight;
+        return (
+          <g key={value}>
+            <line
+              x1={left}
+              y1={y}
+              x2={width - right}
+              y2={y}
+              className="trend-grid-line"
+            />
+            <text
+              x={left - 8}
+              y={y + 4}
+              textAnchor="end"
+              className="trend-axis-text"
+            >
+              {value}
+            </text>
+          </g>
+        );
+      })}
+      {items.map((item, index) => {
+        const x =
+          left +
+          (items.length === 1 ? 0 : (index * plotWidth) / (items.length - 1));
+        return (
+          <line
+            key={item.date}
+            x1={x}
+            y1={top}
+            x2={x}
+            y2={top + plotHeight}
+            className="trend-grid-line vertical"
+          />
+        );
+      })}
+      <polyline points={points} className="trend-line" />
+      {items.map((item, index) => {
+        const x =
+            left +
+            (items.length === 1 ? 0 : (index * plotWidth) / (items.length - 1)),
+          y = top + plotHeight - (item.value / max) * plotHeight;
+        return (
+          <g key={`${item.date}-point`}>
+            <circle cx={x} cy={y} r="3.5" className="trend-point" />
+            <text
+              transform={`translate(${x - 2} ${height - 38}) rotate(-45)`}
+              textAnchor="end"
+              className="trend-date-text"
+            >
+              {item.date}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function CivilDistribution({
+  items,
+}: {
+  items: { label: string; value: number; color: string }[];
+}) {
+  const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
+  let cursor = 0;
+  const gradient = items
+    .map((item) => {
+      const start = (cursor / total) * 360;
+      cursor += item.value;
+      const end = (cursor / total) * 360;
+      return `${item.color} ${start}deg ${end}deg`;
+    })
+    .join(",");
+  return (
+    <div className="civil-distribution">
+      <div
+        className="donut-chart"
+        style={{ background: `conic-gradient(${gradient})` }}
+      >
+        <div className="donut-hole" />
+      </div>
+      <div className="donut-legend">
+        {items.map((item) => (
+          <span key={item.label}>
+            <i style={{ background: item.color }} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
+  const [data, setData] = useState<DashboardData | null>(null);
+  useEffect(() => {
+    api
+      .get("/dashboard")
+      .then((r) => setData(r.data))
+      .catch(() => message.error("看板加载失败"));
+  }, []);
+  const metricRoutes = [
+    "finance-fee-query",
+    "finance-fee-query",
+    "evidence",
+    "case-company",
+    "case-company",
+    "case-execution",
+    "case-company",
+    "finance-fee-query",
+  ];
+  const todoRoutes: Record<string, string> = {
+    待处理任务: "task-my",
+    待审批官方费用: "finance-payment-audit",
+    待审批线索: "clue",
+    待审批内部费用: "finance-internal-fee-audit",
+    待审批合同: "contract-audit",
+    待审批结算费用: "finance-settlement-audit",
+    待审批用印: "seal-audit",
+    待审批归档费用: "finance-archive-fee-pending",
+    待审核归档: "case-archive",
+    待审核预损费用: "finance-internal-fee-audit",
+  };
+  const keyboardNavigate = (event: React.KeyboardEvent, route: string) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onNavigate(route);
+    }
+  };
+  const hearingCols = useMemo(
+    () => [
+      { title: "星期", dataIndex: "weekday", width: 80 },
+      { title: "日期", dataIndex: "date", width: 100 },
+      { title: "时间", dataIndex: "time", width: 90 },
+      { title: "开庭法院", dataIndex: "court", ellipsis: true },
+      {
+        title: "案号",
+        dataIndex: "case_no",
+        width: 140,
+        render: (v: string) => (
+          <a onClick={() => onNavigate("case-company")}>{v}</a>
+        ),
+      },
+      { title: "客户", dataIndex: "client", ellipsis: true },
+      {
+        title: "开庭律师",
+        dataIndex: "lawyer",
+        width: 105,
+        render: (v: string) => <span>{v}</span>,
+      },
+      {
+        title: "经办律师",
+        dataIndex: "agent",
+        width: 115,
+        render: (v: string) => <span>{v}</span>,
+      },
+      { title: "律师助理", dataIndex: "assistant", width: 105 },
+    ],
+    [],
+  );
+  const latestCaseCols = useMemo(
+    () => [
+      {
+        title: "案号",
+        dataIndex: "case_no",
+        width: 125,
+        render: (v: string) => (
+          <a onClick={() => onNavigate("case-company")}>{v}</a>
+        ),
+      },
+      { title: "阶段", dataIndex: "stage", width: 100 },
+      { title: "原告", dataIndex: "plaintiff", width: 185, ellipsis: true },
+      { title: "被告", dataIndex: "defendant", width: 205, ellipsis: true },
+      { title: "案源日期", dataIndex: "date", width: 100 },
+      { title: "客户管理人", dataIndex: "manager", width: 90 },
+      { title: "开庭律师", dataIndex: "lawyer", width: 85 },
+      { title: "经办律师", dataIndex: "agent", width: 100, ellipsis: true },
+      { title: "律师助理", dataIndex: "assistant", width: 85 },
+    ],
+    [],
+  );
+  if (!data) return <div className="loading">正在加载...</div>;
+  return (
+    <div className="reference-dashboard">
+      <div className="dashboard-top-grid">
+        <div className="metrics reference-metrics">
+          {data.metrics.map((m, i) => (
+            <div
+              className={`metric target-${i}`}
+              key={m.label}
+              role="button"
+              tabIndex={0}
+              onClick={() => onNavigate(metricRoutes[i])}
+              onKeyDown={(event) => keyboardNavigate(event, metricRoutes[i])}
+            >
+              <div className="metric-icon">
+                {["◷", "✉", "♟", "⚖", "⚑", "▤", "☕", "¥"][i]}
+              </div>
+              <div>
+                <strong>{m.value}</strong>
+                <span>{m.label}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="dashboard-split-row dashboard-todo-trend-row">
+        <Card title="➤ 待办事项" className="dashboard-card compact-todo-card">
+          <table className="todo-table">
+            <tbody>
+              {data.todos.map((row, i) => (
+                <tr key={i}>
+                  {row.map((c, j) => {
+                    const route =
+                      todoRoutes[String(row[j < 3 ? 0 : 3])] || "dashboard";
+                    return (
+                      <td
+                        key={j}
+                        className={
+                          typeof c === "number" ? `count count-${j % 3}` : ""
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="todo-link"
+                          onClick={() => onNavigate(route)}
+                        >
+                          {c}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+        <Card title="◩ 案件趋势" className="dashboard-card target-trend-card">
+          <CaseTrendChart items={data.case_trend} />
+        </Card>
+      </div>
+      <Card title="▥ 开庭排期" className="dashboard-card target-hearing-card dashboard-full-row-card">
+        <Table
+          rowKey={(r) => `${r.case_no}-${r.time}`}
+          size="small"
+          pagination={false}
+          columns={hearingCols}
+          dataSource={data.hearings}
+          scroll={{ x: 1050 }}
+        />
+      </Card>
+      <div className="dashboard-split-row latest-row">
+        <Card title="◉ 最新案件" className="dashboard-card latest-cases-card">
+          <Table
+            rowKey="case_no"
+            size="small"
+            pagination={false}
+            columns={latestCaseCols}
+            dataSource={data.latest_cases}
+            scroll={{ x: 1100 }}
+          />
+        </Card>
+        <Card title="◔ 民事案件" className="dashboard-card civil-card">
+          <CivilDistribution items={data.civil_distribution} />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [loggedIn, setLoggedIn] = useState(
+    Boolean(localStorage.getItem("access_token")),
+  );
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(
+    readStoredUser,
+  );
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("sunhold:sidebar-auto-collapse") === "yes",
+  );
+  const [active, setActive] = useState(() => new URLSearchParams(window.location.search).get("page") || "dashboard");
+  const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(new URLSearchParams(window.location.search).get("page") || "dashboard"));
+  const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
+  const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+  useEffect(() => {
+    const restoreRouteFromHistory = () => {
+      setActive(new URLSearchParams(window.location.search).get("page") || "dashboard");
+    };
+    window.addEventListener("popstate", restoreRouteFromHistory);
+    return () => window.removeEventListener("popstate", restoreRouteFromHistory);
+  }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const routeFromUrl = params.get("page") || "dashboard";
+    if (routeFromUrl === active) return;
+    if (active === "dashboard") params.delete("page");
+    else params.set("page", active);
+    const query = params.toString();
+    window.history.pushState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+  }, [active]);
+  useEffect(() => {
+    const expired = () => {
+      setLoggedIn(false);
+      setSessionUser(null);
+      setActive("dashboard");
+      message.warning("登录状态已过期，请重新登录");
+    };
+    const profileUpdated = () => setSessionUser(readStoredUser());
+    const preferencesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ auto_collapse?: string }>).detail;
+      if (detail?.auto_collapse) setCollapsed(detail.auto_collapse === "yes");
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, expired);
+    window.addEventListener("sunhold:profile-updated", profileUpdated);
+    window.addEventListener("sunhold:preferences-updated", preferencesUpdated);
+    return () => {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, expired);
+      window.removeEventListener("sunhold:profile-updated", profileUpdated);
+      window.removeEventListener(
+        "sunhold:preferences-updated",
+        preferencesUpdated,
+      );
+    };
+  }, []);
+  useEffect(() => {
+    if (!loggedIn) return;
+    api
+      .get("/auth/me")
+      .then(({ data }) => {
+        const user = {
+          username: data.username,
+          display_name: data.display_name,
+          department: data.department,
+          role: data.role,
+          menu_keys: data.menu_keys,
+          data_scope: data.data_scope,
+        };
+        setSessionUser(user);
+        localStorage.setItem("user", JSON.stringify(user));
+        if (data.menu_auto_collapse === "yes" || data.menu_auto_collapse === "no") {
+          localStorage.setItem(
+            "sunhold:sidebar-auto-collapse",
+            data.menu_auto_collapse,
+          );
+          setCollapsed(data.menu_auto_collapse === "yes");
+        }
+      })
+      .catch(() => undefined);
+  }, [loggedIn]);
+  useEffect(() => {
+    if (!loggedIn) return;
+    const loadMenus = () =>
+      api
+        .get("/system/menus/navigation")
+        .then(({ data }) => setMenuConfig(data.items))
+        .catch(() => setMenuConfig([]));
+    loadMenus();
+    window.addEventListener("sunhold:menus-updated", loadMenus);
+    return () => window.removeEventListener("sunhold:menus-updated", loadMenus);
+  }, [loggedIn]);
+  const effectiveMenuItems = useMemo(
+    () => configuredMenuItems(menuConfig),
+    [menuConfig],
+  );
+  const navigate = (route: string) => {
+    if (route === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: route }));
+    setActive(route);
+  };
+  useEffect(() => {
+    const item = flattenMenu(effectiveMenuItems).find((entry) => entry.key === active);
+    const label = active.startsWith("case-new-") ? "新建案件" : item?.label || active;
+    setOpenPages((current) => {
+      const next = current.some((entry) => entry.key === active)
+        ? current.map((entry) => entry.key === active ? { ...entry, label } : entry)
+        : [...current, { key: active, label }];
+      localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
+      return next;
+    });
+  }, [active, effectiveMenuItems]);
+  const closeOpenPage = (target: string) => {
+    setOpenPages((current) => {
+      if (current.length <= 1) return current;
+      const index = current.findIndex((entry) => entry.key === target);
+      const next = current.filter((entry) => entry.key !== target);
+      localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
+      if (target === active) setActive(next[Math.max(0, index - 1)]?.key || "dashboard");
+      return next;
+    });
+  };
+  useEffect(() => {
+    const ancestors = ancestorMenuKeys(effectiveMenuItems, active);
+    if (!ancestors.length) return;
+    setOpenMenuKeys((current) => Array.from(new Set([...current, ...ancestors])));
+  }, [active, effectiveMenuItems]);
+  const logout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    setLoggedIn(false);
+    setSessionUser(null);
+    setActive("dashboard");
+  };
+  if (new URLSearchParams(window.location.search).get("page") === "customer-portal")
+    return <Suspense fallback={<div className="page-loading">加载客户服务端…</div>}><CustomerPortalPage /></Suspense>;
+  if (!loggedIn)
+    return (
+      <Login
+        onSuccess={(user) => {
+          setSessionUser(user);
+          setLoggedIn(true);
+        }}
+      />
+    );
+  const selected = flattenMenu(effectiveMenuItems).find(
+    (i) => i.key === active,
+  );
+  const allowedRoots = new Set(
+    sessionUser?.role === "admin"
+      ? effectiveMenuItems.map((item) => item.key)
+      : sessionUser?.menu_keys || ["user-center"],
+  );
+  const canUseCustomerConflict =
+    sessionUser?.role === "admin" ||
+    Boolean(sessionUser?.menu_keys?.includes("customer-conflict"));
+  const sideMenuItems = effectiveMenuItems
+    .filter((item) => item.key === "dashboard" || allowedRoots.has(item.key))
+    .map((item) =>
+      item.key === "customer" && item.children
+        ? {
+            ...item,
+            children: item.children.filter(
+              (child) =>
+                child.key !== "customer-conflict" || canUseCustomerConflict,
+            ),
+          }
+        : item,
+    );
+  const activeRoot =
+    active === "dashboard"
+      ? "dashboard"
+      : rootMenuKey(effectiveMenuItems, active);
+  const route = canonicalRoute(active);
+  const pageAllowed =
+    sessionUser?.role === "admin" ||
+    activeRoot === "dashboard" ||
+    (Boolean(activeRoot && allowedRoots.has(activeRoot)) &&
+      (route !== "customer-conflict" || canUseCustomerConflict));
+  const requestedPage =
+    route === "dashboard" ? (
+      <Dashboard onNavigate={navigate} />
+    ) : route.startsWith("seal-") ? (
+      <SealCenterPage initialView={active} />
+    ) : route === "customer-conflict" ? (
+      <CustomerConflictPage />
+    ) : route.startsWith("customer-") ? (
+      <CustomerCenterPage initialView={route} onNavigate={navigate} />
+    ) : route === "contract-receivable" ? (
+      <ContractReceivablesPage initialView={active} />
+    ) : route.startsWith("contract-") ? (
+      <ContractCenterPage initialView={active} onNavigate={navigate} />
+    ) : active.startsWith("investigation-task-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
+      <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
+    ) : route.startsWith("case-") ? (
+      <CaseCenterPage initialView={active} />
+    ) : route.startsWith("task-") ? (
+      <TaskCenterPage initialView={active} />
+    ) : route === "documents-agent" ? (
+      <AgentDocumentPage />
+    ) : route.startsWith("documents-") ? (
+      <DocumentCenterPage initialView={route} />
+    ) : route.startsWith("platform-finance-") ? (
+      <FinanceCenterPage
+        initialView={financeRouteFromPlatform(active)}
+        platformMode
+        onNavigate={navigate}
+      />
+    ) : route === "user-messages" ? (
+      <MessageCenterPage />
+    ) : route === "user-communications" ? (
+      <CommunicationLogPage />
+    ) : ["user-center", "user-account"].includes(route) ? (
+      <UserCenterPage />
+    ) : route.startsWith("finance-") ? (
+      <FinanceCenterPage initialView={active} onNavigate={navigate} />
+    ) : route === "system-audit" ? (
+      <AuditLogPage />
+    ) : route.startsWith("system-") ? (
+      <SystemCenterPage initialView={route} />
+    ) : ["hr-departments", "hr-roles"].includes(route) ? (
+      <OrganizationCenterPage initialView={route} />
+    ) : route.startsWith("hr-") ? (
+      <HrCenterPage initialView={route} />
+    ) : route.startsWith("warehouse") ? (
+      <WarehousePage />
+    ) : route === "reports" ? (
+      <ReportCenterPage initialView={active} />
+    ) : (
+      <Card className="panel">
+        <div className="placeholder">页面不存在，请从左侧菜单重新选择。</div>
+      </Card>
+    );
+  const currentPage = pageAllowed ? (
+    requestedPage
+  ) : (
+    <Card className="panel">
+      <div className="placeholder">
+        <h2>无权访问</h2>
+        <p>当前角色没有该功能的菜单权限，请联系系统管理员。</p>
+        <Button type="primary" onClick={() => setActive("dashboard")}>
+          返回控制台
+        </Button>
+      </div>
+    </Card>
+  );
+  return (
+    <Layout className="app-shell">
+      <Header className="topbar">
+        <div
+          className={`logo ${collapsed ? "logo-collapsed" : ""}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("dashboard")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              navigate("dashboard");
+            }
+          }}
+        >
+          {collapsed ? "S" : "Sunhold"}
+        </div>
+        <Button
+          type="text"
+          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+          title={collapsed ? "展开侧栏" : "收起侧栏"}
+          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => setCollapsed((v) => !v)}
+        />
+        <div className="global-search">
+          <GlobalSearch onNavigate={navigate} />
+        </div>
+        <Space className="top-actions">
+          <NotificationCenter onNavigate={navigate} />
+          <span>
+            <UserOutlined />{" "}
+            {(() => {
+              const username = sessionUser?.username || "admin";
+              const account = `${username.slice(0, 1).toUpperCase()}${username.slice(1)}`;
+              const displayName = sessionUser?.display_name || "管理者";
+              return displayName.toLowerCase() === username.toLowerCase()
+                ? account
+                : `${account} ${displayName}`;
+            })()}
+          </span>
+          <Button type="link" onClick={logout}>
+            退出
+          </Button>
+        </Space>
+      </Header>
+      <Layout className="app-body">
+        <Sider
+          width={230}
+          collapsedWidth={50}
+          collapsed={collapsed}
+          className="sidebar"
+        >
+          {!collapsed && (
+            <div className="user-panel">
+              <div className="avatar">
+                {(sessionUser?.username || "admin").slice(0, 1).toUpperCase()}
+              </div>
+              <div>
+                <b>{sessionUser?.display_name || sessionUser?.username || "管理员"}</b>
+                <span>● 在线</span>
+              </div>
+            </div>
+          )}
+          <Menu
+            mode="inline"
+            theme="dark"
+            items={sideMenuItems}
+            selectedKeys={[active]}
+            openKeys={openMenuKeys}
+            onOpenChange={(keys) => setOpenMenuKeys(keys as string[])}
+            onClick={({ key }) => navigate(key)}
+          />
+          {!collapsed && (
+            <div className="support-tools">
+              <div className="support-tools-title">办案辅助工具</div>
+              {supportTools.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <LinkOutlined />
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          )}
+        </Sider>
+        <Content
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""}`}
+        >
+          <div className="page-head">
+            <div>
+              <h1>
+                {active.startsWith("case-new-") ? "新建案件" : selected?.label || "控制台"}
+                {active === "dashboard" && <sup className="dashboard-hot">hot</sup>}
+              </h1>
+              <span>首页 / {active.startsWith("case-new-") ? "新建案件" : selected?.label || "控制台"}</span>
+            </div>
+          </div>
+          <Tabs
+            className="workspace-tabs"
+            type="editable-card"
+            hideAdd
+            size="small"
+            activeKey={active}
+            onChange={navigate}
+            onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
+            items={openPages.map((item) => ({
+              key: item.key,
+              label: item.label,
+              closable: openPages.length > 1,
+            }))}
+          />
+          <Suspense fallback={<div className="loading">正在加载页面...</div>}>
+            {currentPage}
+          </Suspense>
+        </Content>
+      </Layout>
+    </Layout>
+  );
+}

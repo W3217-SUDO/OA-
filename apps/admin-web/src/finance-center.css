@@ -1,0 +1,1640 @@
+.finance-rule {
+  margin-bottom: 15px;
+}
+.finance-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.finance-stats .ant-card {
+  border-radius: 0;
+  border-top: 3px solid #00a65a;
+}
+.voucher-table {
+  margin: 14px 0 18px;
+}
+.voucher-upload-form {
+  padding: 14px;
+  border: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+.voucher-upload-form .ant-form-item {
+  margin-bottom: 12px;
+}
+.voucher-upload-form input[type="file"] {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px;
+  border: 1px solid #d9d9d9;
+  background: #fff;
+}
+
+.content:has(.finance-original-panel) > .page-head {
+  display: none;
+}
+.content:has(.finance-original-panel) {
+  padding-top: 9px;
+}
+.finance-original-panel {
+  border-top: 2px solid #1ab997;
+  color: #222;
+  background: #fff;
+}
+.finance-original-title {
+  height: 41px;
+  padding: 4px 0;
+  border-bottom: 1px solid #ddd;
+}
+.finance-original-title h5 {
+  margin: 4px 8px 4px 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.finance-original-query-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 5px 12px;
+  padding: 10px 12px 5px;
+}
+.finance-original-field {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  color: #333;
+  font-size: 12px;
+}
+.finance-original-field > span {
+  padding-right: 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+.finance-original-field .ant-input,
+.finance-original-field .ant-picker,
+.finance-original-field .ant-select-selector {
+  width: 100%;
+  min-height: 27px !important;
+  height: 27px !important;
+  border-radius: 0 !important;
+  font-size: 12px;
+}
+.finance-original-field .ant-select,
+.finance-original-field .ant-picker {
+  width: 100%;
+}
+.finance-original-field .ant-select-selection-item,
+.finance-original-field .ant-select-selection-placeholder {
+  line-height: 25px !important;
+}
+.finance-original-field .ant-picker-input > input {
+  font-size: 12px;
+}
+.finance-original-query-actions {
+  display: flex;
+  gap: 5px;
+  min-height: 37px;
+  padding: 2px 12px 8px 82px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-original-query-actions .ant-btn,
+.finance-original-footer .ant-btn {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-original-query-actions .ant-btn-primary {
+  background: #149ec5;
+}
+.finance-original-table-wrap {
+  padding: 9px 10px 0;
+}
+.finance-original-table-wrap .ant-table {
+  color: #111;
+  font-size: 12px;
+}
+.finance-original-table-wrap .ant-table-container {
+  border-inline-start: 1px solid #ddd !important;
+  border-top: 1px solid #ddd !important;
+}
+.finance-original-table-wrap .ant-table-thead > tr > th {
+  height: 36px;
+  padding: 3px 5px !important;
+  color: #222;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  white-space: nowrap;
+  background: #f1f1f1 !important;
+  border-color: #ddd !important;
+}
+.finance-stacked-header {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 15px;
+}
+.finance-original-table-wrap .ant-table-tbody > tr > td {
+  height: 33px;
+  padding: 3px 5px !important;
+  border-color: #ddd !important;
+  white-space: nowrap;
+}
+.finance-original-table-wrap .ant-table-tbody > tr:nth-child(odd) > td {
+  background: #f7f7f7;
+}
+.finance-original-table-wrap .ant-table-row-selected > td {
+  background: #e6f7f2 !important;
+}
+.finance-original-table-wrap .ant-btn-link {
+  height: auto;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.finance-original-table-wrap .ant-pagination {
+  min-height: 30px;
+  margin: 8px 0 4px;
+  font-size: 12px;
+}
+.finance-original-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 39px;
+  padding: 3px 10px 7px 28px;
+  color: #777;
+  font-size: 12px;
+}
+.finance-original-note {
+  margin: 0 10px 7px;
+  padding: 7px 10px;
+  border: 1px solid #f3d69a;
+  color: #8a5a00;
+  font-size: 12px;
+  background: #fffbe6;
+}
+.finance-original-settlement-pending {
+  position: relative;
+}
+.finance-original-settlement-pending .finance-original-title {
+  height: 39px;
+}
+.finance-original-settlement-pending .finance-original-title h5 {
+  margin-top: 2px;
+  padding-left: 8px;
+}
+.finance-original-settlement-pending .finance-original-query-grid {
+  grid-template-columns: 220px 220px 300px;
+  grid-auto-rows: 26px;
+  gap: 0;
+  width: 756px;
+  height: 112px;
+  padding: 0 8px;
+}
+.finance-original-settlement-pending .finance-original-field {
+  grid-template-columns: 69px minmax(0, 1fr);
+}
+.finance-original-settlement-pending .finance-original-field:nth-child(3n) {
+  grid-template-columns: 89px minmax(0, 1fr);
+}
+.finance-original-settlement-pending .finance-original-field:nth-child(10) {
+  margin-top: 5px;
+}
+.finance-original-settlement-pending .finance-original-field .ant-input,
+.finance-original-settlement-pending .finance-original-field .ant-picker {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-settlement-pending .finance-original-query-actions {
+  position: absolute;
+  z-index: 2;
+  top: 122px;
+  left: 237px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+}
+.finance-original-settlement-pending .finance-original-query-actions .ant-btn {
+  width: 51px;
+  height: 24px;
+  padding: 0;
+}
+.finance-original-settlement-pending .finance-original-table-wrap {
+  padding: 4px 8px 0;
+}
+.finance-original-archive-pending {
+  position: relative;
+}
+.finance-original-archive-pending .finance-original-title {
+  height: 39px;
+}
+.finance-original-archive-pending .finance-original-title h5 {
+  margin-top: 2px;
+  padding-left: 8px;
+}
+.finance-original-archive-pending .finance-original-query-grid {
+  grid-template-columns: 220px 220px 220px 300px;
+  grid-auto-rows: 26px;
+  gap: 0;
+  width: 976px;
+  height: 86px;
+  padding: 0 8px;
+}
+.finance-original-archive-pending .finance-original-field {
+  grid-template-columns: 60px minmax(0, 1fr);
+}
+.finance-original-archive-pending .finance-original-field:nth-child(4n) {
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+.finance-original-archive-pending .finance-original-field:nth-child(9),
+.finance-original-archive-pending .finance-original-field:nth-child(10),
+.finance-original-archive-pending .finance-original-field:nth-child(11),
+.finance-original-archive-pending .finance-original-field:nth-child(12) {
+  height: 34px;
+}
+.finance-original-archive-pending .finance-original-field .ant-input,
+.finance-original-archive-pending .finance-original-field .ant-picker,
+.finance-original-archive-pending .finance-original-field .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-archive-pending .finance-original-query-actions {
+  position: absolute;
+  z-index: 2;
+  top: 97px;
+  left: 676px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+}
+.finance-original-archive-pending .finance-original-query-actions .ant-btn {
+  width: 51px;
+  height: 24px;
+  padding: 0;
+}
+.finance-original-archive-pending .finance-original-table-wrap {
+  padding: 4px 8px 0;
+}
+.finance-original-archive-paid .finance-original-query-grid {
+  height: 112px;
+}
+.finance-original-archive-paid .finance-original-query-actions {
+  top: 123px;
+  left: 237px;
+}
+.finance-original-archive-paid .finance-archive-payment-context {
+  min-height: 69px;
+}
+.finance-original-archive-rejected .finance-original-query-grid {
+  grid-template-columns: 220px 220px 220px 260px;
+  width: 936px;
+  height: 112px;
+}
+.finance-original-archive-rejected .finance-original-query-actions {
+  top: 123px;
+  left: 77px;
+}
+.finance-original-archive-rejected .finance-archive-payment-context {
+  grid-template-columns: 180px 269px 252px minmax(1044px, 1fr);
+  min-height: 69px;
+  padding-left: 144px;
+}
+.finance-archive-rejected-status {
+  color: #f00;
+}
+.finance-original-archive-pending .finance-archive-settlement-grand-total > td {
+  height: 33px;
+  padding: 3px 5px !important;
+  text-align: left;
+  background: #fff !important;
+}
+.finance-archive-settlement-footer {
+  min-height: 39px;
+  margin-top: -43px;
+  padding: 3px 10px 4px 28px;
+  pointer-events: none;
+}
+.finance-archive-settlement-footer .ant-btn {
+  height: 32px;
+  border-radius: 0;
+  font-size: 12px;
+  pointer-events: auto;
+}
+.finance-original-settlement-audit {
+  position: relative;
+}
+.finance-original-settlement-audit .finance-original-title {
+  height: 39px;
+}
+.finance-original-settlement-audit .finance-original-title h5 {
+  margin-top: 2px;
+  padding-left: 8px;
+}
+.finance-original-settlement-audit .finance-original-query-grid {
+  grid-template-columns: 220px 220px 220px 300px;
+  grid-auto-rows: 26px;
+  gap: 0;
+  width: 976px;
+  height: 112px;
+  padding: 0 8px;
+}
+.finance-original-settlement-audit .finance-original-field {
+  grid-template-columns: 69px minmax(0, 1fr);
+}
+.finance-original-settlement-audit .finance-original-field:nth-child(4n + 3),
+.finance-original-settlement-audit .finance-original-field:nth-child(4n) {
+  grid-template-columns: 89px minmax(0, 1fr);
+}
+.finance-original-settlement-audit .finance-original-field:nth-child(13) {
+  margin-top: 5px;
+}
+.finance-original-settlement-audit .finance-original-field .ant-input,
+.finance-original-settlement-audit .finance-original-field .ant-picker {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-settlement-audit .finance-original-query-actions {
+  position: absolute;
+  z-index: 2;
+  top: 122px;
+  left: 237px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+}
+.finance-original-settlement-audit .finance-original-query-actions .ant-btn {
+  width: 51px;
+  height: 24px;
+  padding: 0;
+}
+.finance-original-settlement-audit .finance-original-table-wrap {
+  padding: 4px 8px 0;
+}
+.finance-original-settlement-paid {
+  position: relative;
+}
+.finance-original-settlement-paid .finance-original-title {
+  height: 39px;
+}
+.finance-original-settlement-paid .finance-original-title h5 {
+  margin-top: 2px;
+  padding-left: 8px;
+}
+.finance-original-settlement-paid .finance-original-query-grid {
+  grid-template-columns: 220px 220px 220px 300px;
+  grid-auto-rows: 26px;
+  gap: 0;
+  width: 976px;
+  height: 112px;
+  padding: 0 8px;
+}
+.finance-original-settlement-paid .finance-original-field {
+  grid-template-columns: 69px minmax(0, 1fr);
+}
+.finance-original-settlement-paid .finance-original-field:nth-child(4n + 3),
+.finance-original-settlement-paid .finance-original-field:nth-child(4n),
+.finance-original-settlement-paid .finance-original-field:nth-child(14) {
+  grid-template-columns: 89px minmax(0, 1fr);
+}
+.finance-original-settlement-paid .finance-original-field:nth-child(13) {
+  margin-top: 5px;
+}
+.finance-original-settlement-paid .finance-original-field:nth-child(14) {
+  grid-column: 4;
+  grid-row: 4;
+  margin-top: 5px;
+}
+.finance-original-settlement-paid .finance-original-field .ant-input,
+.finance-original-settlement-paid .finance-original-field .ant-picker {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-settlement-paid .finance-original-query-actions {
+  position: absolute;
+  z-index: 2;
+  top: 122px;
+  left: 237px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+}
+.finance-original-settlement-paid .finance-original-query-actions .ant-btn {
+  width: 51px;
+  height: 24px;
+  padding: 0;
+}
+.finance-original-settlement-paid .finance-original-table-wrap {
+  padding: 4px 8px 0;
+}
+.finance-original-settlement-pending .finance-settlement-grand-total > td,
+.finance-original-settlement-audit .finance-settlement-grand-total > td,
+.finance-original-settlement-paid .finance-settlement-grand-total > td {
+  height: 45px;
+  padding: 10px 5px !important;
+  text-align: right;
+  background: #fff !important;
+}
+.finance-original-settlement-pending .ant-table-expanded-row > td,
+.finance-original-settlement-audit .ant-table-expanded-row > td,
+.finance-original-settlement-paid .ant-table-expanded-row > td {
+  height: auto !important;
+  padding: 0 !important;
+  white-space: normal;
+  background: #fff !important;
+}
+.finance-original-archive-pending .ant-table-expanded-row > td {
+  height: auto !important;
+  padding: 0 !important;
+  white-space: normal;
+  background: #fff !important;
+}
+.finance-archive-payment-context {
+  display: grid;
+  grid-template-columns: 395px 405px 590px minmax(497px, 1fr);
+  min-height: 50px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-archive-payment-context > span {
+  padding: 3px 5px;
+  border-right: 1px solid #ddd;
+  line-height: 21px;
+}
+.finance-archive-payment-context > span:last-child {
+  border-right: 0;
+}
+.finance-settlement-expanded {
+  width: 100%;
+}
+.finance-settlement-context {
+  display: grid;
+  grid-template-columns: 260px minmax(600px, 1fr);
+  min-height: 25px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-settlement-context > span,
+.finance-settlement-review-note {
+  padding: 3px 5px;
+  line-height: 18px;
+}
+.finance-settlement-context > span:first-child {
+  border-right: 1px solid #ddd;
+}
+.finance-settlement-review-note {
+  min-height: 25px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-settlement-audit-context {
+  display: grid;
+  grid-template-columns: 260px 350px minmax(600px, 1fr);
+  min-height: 50px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-settlement-audit-context > span {
+  padding: 3px 5px;
+  border-right: 1px solid #ddd;
+  line-height: 21px;
+}
+.finance-settlement-audit-context > span:last-child {
+  border-right: 0;
+}
+.finance-settlement-payment-context {
+  display: grid;
+  grid-template-columns: 260px 220px 430px minmax(600px, 1fr);
+  min-height: 50px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-original-settlement-paid .finance-settlement-payment-context {
+  grid-template-columns: 260px 220px 430px 220px minmax(600px, 1fr);
+}
+.finance-settlement-rejected-context {
+  display: grid;
+  grid-template-columns: 260px 220px 520px minmax(600px, 1fr);
+  min-height: 50px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-settlement-rejected-context > span {
+  padding: 3px 5px;
+  border-right: 1px solid #ddd;
+  line-height: 21px;
+}
+.finance-settlement-rejected-context > span:last-child {
+  border-right: 0;
+}
+.finance-settlement-rejected-context em {
+  color: red;
+  font-style: normal;
+}
+.finance-settlement-payment-context > span {
+  padding: 3px 5px;
+  border-right: 1px solid #ddd;
+  line-height: 21px;
+}
+.finance-settlement-payment-context > span:last-child {
+  border-right: 0;
+}
+.finance-settlement-payment-context em {
+  color: green;
+  font-style: normal;
+}
+.finance-settlement-row-actions .ant-btn {
+  width: 22px;
+  padding: 0;
+  color: #18bc9c;
+}
+.finance-settlement-detail-table {
+  padding: 0;
+}
+.finance-settlement-detail-table .ant-table-container {
+  border-top: 0 !important;
+  border-inline-start: 0 !important;
+}
+.finance-settlement-detail-table .ant-table-thead > tr > th,
+.finance-settlement-detail-table .ant-table-tbody > tr > td {
+  text-align: center;
+}
+.finance-settlement-detail-table .ant-table-tbody > tr > td:nth-child(n + 6):nth-child(-n + 11) {
+  text-align: right;
+}
+.finance-original-settlement-pending .ant-pagination {
+  margin-left: 440px;
+}
+.finance-original-settlement-audit .ant-pagination,
+.finance-original-settlement-paid .ant-pagination {
+  margin-left: 540px;
+}
+.finance-settlement-footer {
+  position: relative;
+  z-index: 2;
+  width: 420px;
+  height: 39px;
+  margin-top: -43px;
+  padding: 4px 0 7px 36px;
+}
+.finance-settlement-footer .ant-btn {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-original-settlement-audit .finance-settlement-footer {
+  width: 530px;
+}
+.finance-settlement-review-field {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+}
+.finance-settlement-review-field > span {
+  text-align: right;
+}
+.finance-original-internal-mine {
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-internal-mine .finance-original-query-grid {
+  grid-template-columns: repeat(3, 240px);
+  gap: 2px 0;
+  padding: 1px 8px 0;
+}
+.finance-original-internal-mine .finance-original-field {
+  grid-template-columns: 61px 172px;
+}
+.finance-original-internal-mine .finance-original-field:nth-child(1),
+.finance-original-internal-mine .finance-original-field:nth-child(4) {
+  grid-template-columns: 61px 172px;
+}
+.finance-original-internal-mine .finance-original-field:nth-child(2),
+.finance-original-internal-mine .finance-original-field:nth-child(5),
+.finance-original-internal-mine .finance-original-field:nth-child(8) {
+  grid-template-columns: 61px 151px;
+}
+.finance-original-internal-mine .finance-original-field:nth-child(3),
+.finance-original-internal-mine .finance-original-field:nth-child(6),
+.finance-original-internal-mine .finance-original-field:nth-child(9) {
+  grid-template-columns: 61px 151px;
+}
+.finance-original-internal-mine .finance-original-field .ant-input,
+.finance-original-internal-mine .finance-original-field .ant-picker,
+.finance-original-internal-mine .finance-original-field .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-internal-mine .finance-original-field .ant-select {
+  height: 24px;
+}
+.finance-original-internal-mine
+  .finance-original-field
+  .ant-select-selection-item,
+.finance-original-internal-mine
+  .finance-original-field
+  .ant-select-selection-placeholder {
+  line-height: 22px !important;
+}
+.finance-original-internal-mine .finance-original-query-actions {
+  min-height: 39px;
+  padding: 6px 8px 9px 69px;
+}
+.finance-original-internal-mine .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 10px;
+}
+.finance-original-internal-mine .finance-original-table-wrap {
+  padding: 23px 8px 0;
+}
+.finance-original-internal-settle {
+  position: relative;
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-internal-settle .finance-original-query-grid {
+  grid-template-columns: 220px 220px 220px 247px;
+  grid-template-rows: 26px 26px 34px;
+  gap: 0;
+  height: 86px;
+  padding: 0 8px;
+}
+.finance-original-internal-settle .finance-original-field {
+  grid-template-columns: 61px 142px;
+}
+.finance-original-internal-settle .finance-original-field:nth-child(4),
+.finance-original-internal-settle .finance-original-field:nth-child(8) {
+  grid-template-columns: 61px 169px;
+}
+.finance-original-internal-settle .finance-original-field .ant-input,
+.finance-original-internal-settle .finance-original-field .ant-picker,
+.finance-original-internal-settle .finance-original-field .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-internal-settle .finance-original-query-actions {
+  position: absolute;
+  top: 93px;
+  left: 228px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+}
+.finance-original-internal-settle .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 10px;
+}
+.finance-original-internal-settle .finance-original-table-wrap {
+  padding: 4px 0 0;
+}
+.finance-original-internal-settle
+  .finance-original-table-wrap
+  .ant-table-thead
+  > tr
+  > th {
+  height: 41px;
+}
+.finance-original-internal-settle .finance-original-footer {
+  justify-content: flex-start;
+  gap: 14px;
+  padding-left: 32px;
+}
+.finance-original-internal-settle .finance-original-footer > span {
+  margin-left: auto;
+}
+.finance-original-internal-approval {
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-internal-approval .finance-original-query-grid {
+  grid-template-columns: repeat(3, 240px);
+  gap: 2px 0;
+  padding: 1px 8px 0;
+}
+.finance-original-internal-approval .finance-original-field {
+  grid-template-columns: 61px 172px;
+}
+.finance-original-internal-approval .finance-original-field:nth-child(2),
+.finance-original-internal-approval .finance-original-field:nth-child(3),
+.finance-original-internal-approval .finance-original-field:nth-child(5),
+.finance-original-internal-approval .finance-original-field:nth-child(6),
+.finance-original-internal-approval .finance-original-field:nth-child(8),
+.finance-original-internal-approval .finance-original-field:nth-child(9) {
+  grid-template-columns: 61px 151px;
+}
+.finance-original-internal-approval .finance-original-field .ant-input,
+.finance-original-internal-approval .finance-original-field .ant-picker,
+.finance-original-internal-approval
+  .finance-original-field
+  .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-internal-approval .finance-original-field .ant-select {
+  height: 24px;
+}
+.finance-original-internal-approval
+  .finance-original-field
+  .ant-select-selection-item,
+.finance-original-internal-approval
+  .finance-original-field
+  .ant-select-selection-placeholder {
+  line-height: 22px !important;
+}
+.finance-original-internal-approval .finance-original-query-actions {
+  min-height: 27px;
+  padding: 2px 8px 1px 69px;
+}
+.finance-original-internal-approval .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 10px;
+}
+.finance-original-internal-approval .finance-original-table-wrap {
+  padding: 2px 0 0;
+}
+.finance-original-internal-list {
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-internal-list .finance-original-title h5 {
+  width: max-content;
+}
+.finance-original-internal-list .finance-original-query-grid {
+  grid-template-columns: repeat(3, 240px);
+  gap: 2px 0;
+  padding: 1px 8px 0;
+}
+.finance-original-internal-list .finance-original-field {
+  grid-template-columns: 61px 172px;
+}
+.finance-original-internal-list .finance-original-field:nth-child(2),
+.finance-original-internal-list .finance-original-field:nth-child(3),
+.finance-original-internal-list .finance-original-field:nth-child(5),
+.finance-original-internal-list .finance-original-field:nth-child(6),
+.finance-original-internal-list .finance-original-field:nth-child(8),
+.finance-original-internal-list .finance-original-field:nth-child(9) {
+  grid-template-columns: 61px 151px;
+}
+.finance-original-internal-list .finance-original-field .ant-input,
+.finance-original-internal-list .finance-original-field .ant-picker,
+.finance-original-internal-list .finance-original-field .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-internal-list .finance-original-field .ant-select {
+  height: 24px;
+}
+.finance-original-internal-list
+  .finance-original-field
+  .ant-select-selection-item,
+.finance-original-internal-list
+  .finance-original-field
+  .ant-select-selection-placeholder {
+  line-height: 22px !important;
+}
+.finance-original-internal-list .finance-original-query-actions {
+  min-height: 31px;
+  padding: 6px 8px 1px 69px;
+}
+.finance-original-internal-list .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 10px;
+}
+.finance-original-internal-list .finance-original-table-wrap {
+  padding: 6px 0 0;
+}
+.finance-original-internal-list
+  .finance-original-table-wrap
+  .ant-table-thead
+  > tr
+  > th,
+.finance-original-internal-list
+  .finance-original-table-wrap
+  .ant-table-tbody
+  > tr
+  > td,
+.finance-original-internal-list .finance-internal-list-summary > td {
+  height: 25px;
+  padding: 2px 5px !important;
+}
+.finance-original-internal-list .finance-internal-list-summary > td {
+  border-color: #ddd !important;
+  background: #fff;
+}
+.finance-original-internal-payment {
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-internal-payment .finance-original-query-grid {
+  grid-template-columns: repeat(3, 240px);
+  gap: 2px 0;
+  padding: 1px 8px 0;
+}
+.finance-original-internal-payment .finance-original-field {
+  grid-template-columns: 61px 172px;
+}
+.finance-original-internal-payment .finance-original-field:nth-child(2),
+.finance-original-internal-payment .finance-original-field:nth-child(3),
+.finance-original-internal-payment .finance-original-field:nth-child(5),
+.finance-original-internal-payment .finance-original-field:nth-child(6),
+.finance-original-internal-payment .finance-original-field:nth-child(8),
+.finance-original-internal-payment .finance-original-field:nth-child(9) {
+  grid-template-columns: 61px 151px;
+}
+.finance-original-internal-payment .finance-original-field .ant-input,
+.finance-original-internal-payment .finance-original-field .ant-picker,
+.finance-original-internal-payment
+  .finance-original-field
+  .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-internal-payment .finance-original-field .ant-select {
+  height: 24px;
+}
+.finance-original-internal-payment
+  .finance-original-field
+  .ant-select-selection-item,
+.finance-original-internal-payment
+  .finance-original-field
+  .ant-select-selection-placeholder {
+  line-height: 22px !important;
+}
+.finance-original-internal-payment .finance-original-query-actions {
+  min-height: 31px;
+  padding: 6px 8px 1px 69px;
+}
+.finance-original-internal-payment .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 10px;
+}
+.finance-original-internal-payment .finance-original-table-wrap {
+  padding: 6px 0 0;
+}
+.finance-original-internal-payment
+  .finance-original-table-wrap
+  .ant-table-thead
+  > tr
+  > th,
+.finance-original-internal-payment
+  .finance-original-table-wrap
+  .ant-table-tbody
+  > tr
+  > td,
+.finance-original-internal-payment .finance-internal-list-summary > td {
+  height: 25px;
+  padding: 2px 5px !important;
+}
+.finance-original-internal-payment .finance-internal-list-summary > td {
+  border-color: #ddd !important;
+  background: #fff;
+}
+.finance-original-payment-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 38px;
+  padding: 3px 10px 7px 29px;
+  color: #777;
+  font-size: 12px;
+}
+.finance-original-payment-footer .ant-btn {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-original-payment-packages {
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-payment-packages .finance-original-query-grid {
+  grid-template-columns: repeat(2, 300px);
+  gap: 2px 0;
+  padding: 1px 8px 0;
+}
+.finance-original-payment-packages .finance-original-field {
+  grid-template-columns: 80px 190px;
+}
+.finance-original-payment-packages .finance-original-field .ant-input,
+.finance-original-payment-packages .finance-original-field .ant-picker,
+.finance-original-payment-packages .finance-original-field .ant-select-selector {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-payment-packages .finance-original-field .ant-select {
+  height: 24px;
+}
+.finance-original-payment-packages
+  .finance-original-field
+  .ant-select-selection-item,
+.finance-original-payment-packages
+  .finance-original-field
+  .ant-select-selection-placeholder {
+  line-height: 22px !important;
+}
+.finance-original-payment-packages .finance-original-query-actions {
+  min-height: 31px;
+  padding: 6px 8px 1px 88px;
+}
+.finance-original-payment-packages .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 0;
+}
+.finance-original-payment-packages .finance-original-table-wrap {
+  padding: 6px 0 0;
+}
+.finance-original-payment-packages
+  .finance-original-table-wrap
+  .ant-table-thead
+  > tr
+  > th,
+.finance-original-payment-packages
+  .finance-original-table-wrap
+  .ant-table-tbody
+  > tr
+  > td,
+.finance-original-payment-packages .finance-payment-package-summary > td {
+  height: 25px;
+  padding: 2px 5px !important;
+}
+.finance-original-payment-packages .finance-payment-package-summary > td {
+  border-color: #ddd !important;
+  background: #fff;
+}
+.finance-original-payment-packages
+  .finance-payment-package-grand-total
+  > td {
+  height: 25px;
+  padding: 2px 5px !important;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+}
+.finance-original-payment-packages .ant-btn-link {
+  height: 22px;
+  padding: 0;
+  font-size: 12px;
+}
+.finance-original-internal-detail .finance-original-query-grid {
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 5px 12px;
+  padding: 10px 12px 5px;
+}
+.finance-original-internal-detail .finance-original-table-wrap {
+  padding-top: 9px;
+}
+.finance-original-internal-detail
+  .finance-internal-detail-grand-total
+  > td,
+.finance-original-internal-detail .finance-internal-detail-summary > td {
+  height: 25px;
+  padding: 2px 5px !important;
+  border-color: #ddd !important;
+  background: #fff;
+}
+.finance-original-internal-detail .finance-original-footer {
+  justify-content: flex-start;
+  padding-left: 28px;
+}
+.finance-internal-tree-picker {
+  width: 260px;
+  max-height: 340px;
+  padding: 5px 2px 2px;
+}
+.finance-internal-tree-picker .ant-checkbox-group {
+  display: flex;
+  max-height: 255px;
+  flex-direction: column;
+  gap: 5px;
+  overflow: auto;
+}
+.finance-internal-tree-picker .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+  font-size: 12px;
+}
+.finance-internal-tree-empty {
+  padding: 18px 4px;
+  color: #999;
+  text-align: center;
+}
+.finance-internal-tree-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #eee;
+}
+.finance-internal-tree-actions .ant-btn {
+  height: 26px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-payment-package-writeoff-modal .ant-modal-content {
+  border-radius: 0;
+}
+.finance-payment-package-writeoff-modal .ant-modal-header {
+  margin-bottom: 10px;
+}
+.finance-payment-package-writeoff-modal .ant-form-item {
+  margin-bottom: 10px;
+}
+.finance-payment-package-writeoff-modal .ant-form-item-label {
+  padding-bottom: 2px;
+}
+.finance-payment-package-writeoff-modal .ant-form-item-label > label,
+.finance-payment-package-writeoff-modal .ant-input,
+.finance-payment-package-writeoff-modal .ant-input-number,
+.finance-payment-package-writeoff-modal .ant-picker,
+.finance-payment-package-writeoff-modal .ant-select,
+.finance-payment-package-writeoff-modal .ant-btn {
+  font-size: 12px;
+}
+.finance-internal-payment-detail {
+  margin: 0 8px;
+  border-top: 0;
+  font-size: 12px;
+}
+.finance-payment-detail-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.finance-payment-detail-title .ant-btn {
+  height: 24px;
+  margin-right: 8px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-payment-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  margin: 10px 8px 14px;
+  border: 1px solid #ddd;
+  background: #f7f7f7;
+}
+.finance-payment-flow > span {
+  position: relative;
+  min-height: 34px;
+  padding: 8px 18px;
+  border-right: 1px solid #ddd;
+  color: #777;
+  text-align: center;
+}
+.finance-payment-flow > span:last-child {
+  border-right: 0;
+}
+.finance-payment-flow > span.active {
+  color: #fff;
+  background: #1ab997;
+}
+.finance-payment-base-info {
+  margin: 0 8px 10px;
+}
+.finance-payment-base-info .ant-descriptions-item-label,
+.finance-payment-base-info .ant-descriptions-item-content {
+  padding: 6px 10px !important;
+  border-color: #ddd !important;
+  font-size: 12px;
+}
+.finance-payment-base-info .ant-descriptions-item-label {
+  width: 120px;
+  color: #555;
+  background: #fafafa !important;
+  text-align: right;
+}
+.finance-payment-info-tabs {
+  margin: 0 8px 16px;
+}
+.finance-payment-info-tabs .ant-tabs-nav {
+  margin-bottom: 6px;
+}
+.finance-payment-info-tabs .ant-tabs-tab {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.finance-payment-info-tabs .ant-table-thead > tr > th,
+.finance-payment-info-tabs .ant-table-tbody > tr > td {
+  height: 28px;
+  padding: 3px 6px !important;
+  border-color: #ddd !important;
+  font-size: 12px;
+}
+.finance-payment-package-print {
+  margin: 0 8px;
+  border-top: 0;
+  font-size: 12px;
+}
+.finance-payment-package-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.finance-payment-package-actions .ant-btn {
+  height: 25px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-payment-print-sheet {
+  width: min(1040px, calc(100% - 32px));
+  margin: 18px auto 32px;
+  color: #111;
+}
+.finance-payment-print-heading {
+  margin-bottom: 10px;
+  text-align: center;
+}
+.finance-payment-print-heading strong {
+  font-size: 18px;
+  font-weight: 500;
+}
+.finance-payment-print-heading h2 {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 500;
+}
+.finance-payment-print-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.finance-payment-print-sheet th,
+.finance-payment-print-sheet td {
+  padding: 7px 8px;
+  border: 1px solid #777;
+  font-weight: 400;
+  text-align: left;
+}
+.finance-payment-print-meta th {
+  width: 13%;
+  background: #f5f5f5;
+}
+.finance-payment-print-meta td {
+  width: 20%;
+}
+.finance-payment-print-items {
+  margin-top: 10px;
+}
+.finance-payment-print-items thead th,
+.finance-payment-print-subtotal th {
+  font-weight: 600;
+  text-align: center;
+  background: #f5f5f5;
+}
+.finance-payment-print-subtotal td:first-child {
+  color: #555;
+}
+.finance-payment-print-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+  margin-top: 44px;
+  padding: 0 18px;
+}
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .finance-payment-print-sheet,
+  .finance-payment-print-sheet * {
+    visibility: visible !important;
+  }
+  .finance-payment-print-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    margin: 0;
+  }
+}
+.finance-original-approval-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 36px;
+  padding: 2px 10px 6px 30px;
+  color: #777;
+  font-size: 12px;
+}
+.finance-original-approval-footer .ant-btn {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-review-drawer .ant-drawer-content {
+  border-left: 1px solid #cfcfcf;
+  border-top: 1px solid #cfcfcf;
+}
+.finance-review-drawer .ant-drawer-header {
+  min-height: 40px;
+  padding: 11px 16px 4px 17px;
+  border-bottom: 1px solid #ddd;
+}
+.finance-review-drawer .ant-drawer-title h5 {
+  width: 72px;
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 24px;
+}
+.finance-review-drawer .ant-drawer-body {
+  padding: 35px 16px 64px;
+}
+.finance-review-drawer textarea[aria-label="审批意见"] {
+  display: block;
+  width: 440px;
+  height: 59px !important;
+  min-height: 59px !important;
+  margin-left: 9px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-review-drawer .finance-review-actions {
+  display: flex;
+  gap: 4px !important;
+  margin: 16px 0 24px 9px;
+}
+.finance-review-drawer .finance-review-actions .ant-btn {
+  width: 50px;
+  height: 24px;
+  padding: 0;
+  border-radius: 0;
+  font-size: 12px;
+}
+.finance-review-drawer .ant-table {
+  font-size: 12px;
+}
+.finance-review-drawer .ant-table-content table {
+  width: 549px !important;
+  border-bottom: 1px solid #ddd;
+}
+.finance-review-drawer .ant-table-wrapper {
+  width: 551px;
+  margin-top: -1px;
+  margin-left: -1px;
+}
+.finance-review-drawer .ant-table-container {
+  border-inline-start: 1px solid #ddd !important;
+  border-top: 1px solid #ddd !important;
+  border-bottom: 1px solid #ddd !important;
+}
+.finance-review-drawer .ant-table-thead > tr > th {
+  height: 40px;
+  padding: 2px !important;
+  line-height: 15px;
+  text-align: center;
+  background: #f5f5f5 !important;
+  border-color: #ddd !important;
+}
+.finance-review-drawer .ant-table-tbody > tr > td {
+  height: 40px;
+  padding: 2px !important;
+  overflow: hidden;
+  line-height: 16px;
+  text-align: center;
+  text-overflow: ellipsis;
+  border-color: #ddd !important;
+}
+.finance-review-drawer .ant-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px 16px;
+  border-top: 0;
+}
+.finance-review-drawer .ant-drawer-footer .ant-btn {
+  width: 58px;
+  height: 32px;
+  padding: 0;
+  border-radius: 0;
+}
+.finance-review-actions {
+  margin: 10px 0;
+}
+.finance-original-invoice-mine .finance-original-query-grid,
+.finance-original-invoice-pending .finance-original-query-grid,
+.finance-original-invoice-company .finance-original-query-grid {
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: 2px 0;
+  padding: 7px 8px 0;
+}
+.finance-original-invoice-mine .finance-original-query-actions,
+.finance-original-invoice-pending .finance-original-query-actions,
+.finance-original-invoice-company .finance-original-query-actions {
+  min-height: 31px;
+  padding: 4px 0 3px 88px;
+}
+.finance-original-invoice-mine .finance-original-table-wrap,
+.finance-original-invoice-pending .finance-original-table-wrap,
+.finance-original-invoice-company .finance-original-table-wrap {
+  padding: 9px 8px 0;
+}
+.finance-original-invoice-mine .finance-invoice-grand-total > td,
+.finance-original-invoice-mine .finance-invoice-page-total > td,
+.finance-original-invoice-pending .finance-invoice-grand-total > td,
+.finance-original-invoice-pending .finance-invoice-page-total > td,
+.finance-original-invoice-company .finance-invoice-grand-total > td,
+.finance-original-invoice-company .finance-invoice-page-total > td {
+  height: 25px;
+  padding: 2px 5px !important;
+  border-color: #ddd !important;
+  background: #fff;
+}
+.finance-original-invoice-mine .finance-original-footer,
+.finance-original-invoice-pending .finance-original-footer,
+.finance-original-invoice-company .finance-original-footer {
+  justify-content: flex-start;
+  gap: 7px;
+  padding-left: 10px;
+}
+.finance-original-invoice-mine .finance-invoice-cancelled-row > td:nth-child(n + 3) {
+  text-decoration: line-through;
+}
+.finance-original-invoice-company .ant-table-cell .ant-space {
+  flex-wrap: nowrap;
+}
+.finance-original-invoice-unissued {
+  position: relative;
+  margin: 0 8px;
+  border-top: 0;
+}
+.finance-original-invoice-unissued .finance-original-title {
+  height: 33px;
+  padding: 4px 0;
+}
+.finance-original-invoice-unissued .finance-original-query-grid {
+  width: min(918px, 100%);
+  min-height: 112px;
+  grid-template-columns: repeat(4, minmax(185px, 227px));
+  grid-auto-rows: 28px;
+  gap: 0;
+  padding: 0 8px;
+}
+.finance-original-invoice-unissued
+  .finance-original-field:nth-child(13) {
+  grid-column: 2;
+}
+.finance-original-invoice-unissued .finance-original-field {
+  grid-template-columns: 78px minmax(0, 1fr);
+}
+.finance-original-invoice-unissued .finance-original-field .ant-input,
+.finance-original-invoice-unissued .finance-original-field .ant-picker,
+.finance-original-invoice-unissued
+  .finance-original-field
+  .ant-select-selector,
+.finance-original-invoice-unissued .finance-original-field .ant-input-number {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-invoice-unissued .finance-original-field .ant-input-number {
+  width: 100%;
+  border-radius: 0;
+}
+.finance-original-invoice-unissued .finance-original-query-actions {
+  position: absolute;
+  top: 117px;
+  left: 8px;
+  min-height: 24px;
+  padding: 0 0 0 8px;
+  border-bottom: 0;
+}
+.finance-original-invoice-unissued .finance-original-query-actions .ant-btn {
+  height: 24px;
+  padding: 0 11px;
+}
+.finance-original-invoice-unissued .finance-original-table-wrap {
+  padding: 4px 0 0;
+}
+.finance-original-invoice-unissued
+  .finance-original-table-wrap
+  .ant-table-thead
+  > tr
+  > th {
+  height: 41px;
+}
+.finance-original-invoice-unissued
+  .finance-original-table-wrap
+  .ant-table-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finance-original-invoice-unissued
+  .finance-invoice-unissued-grand-total
+  > td,
+.finance-original-invoice-unissued
+  .finance-invoice-unissued-page-total
+  > td {
+  height: 25px;
+  padding: 2px 5px !important;
+  border-color: #ddd !important;
+  background: #fff;
+}
+.finance-original-invoice-unissued .finance-original-footer {
+  justify-content: flex-start;
+  gap: 7px;
+  min-height: 39px;
+  padding: 3px 10px 7px 38px;
+}
+.finance-original-invoice-unissued .finance-original-footer .ant-btn {
+  height: 32px;
+  padding: 0 12px;
+}
+.finance-invoice-detail-page {
+  min-width: 1120px;
+  min-height: 100%;
+  padding-bottom: 24px;
+  border-top: 2px solid #00a65a;
+  background: #fff;
+}
+.content:has(.finance-invoice-detail-page) > .page-head {
+  display: none;
+}
+.content:has(.finance-invoice-detail-page) {
+  padding-top: 8px;
+}
+.finance-invoice-detail-page .finance-original-title {
+  padding: 7px 10px;
+}
+.finance-invoice-process-box {
+  margin: 0 16px 10px;
+  border: 1px solid #ddd;
+  background: #fff;
+}
+.finance-invoice-cancel-box {
+  display: grid;
+  grid-template-columns: 86px minmax(360px, 1fr) 62px;
+  align-items: start;
+  gap: 8px;
+  margin: 0 16px 10px;
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  background: #fff;
+}
+.finance-invoice-cancel-box label {
+  padding-top: 5px;
+  text-align: right;
+}
+.finance-invoice-cancel-box .ant-btn {
+  border-radius: 0;
+}
+.finance-invoice-process-title {
+  padding: 7px 12px;
+  border-bottom: 1px solid #ddd;
+  background: #f5f5f5;
+  font-weight: 600;
+}
+.finance-invoice-process-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 0 12px;
+  padding: 12px 14px 0;
+}
+.finance-invoice-process-form .ant-form-item {
+  margin-bottom: 10px;
+}
+.finance-invoice-process-form .ant-form-item-label {
+  width: 78px;
+}
+.finance-invoice-process-form .finance-invoice-process-opinion {
+  grid-column: span 2;
+}
+.finance-invoice-process-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 12px 92px;
+}
+.finance-invoice-detail-page .ant-descriptions {
+  padding: 8px 16px 12px;
+  font-size: 12px;
+}
+.finance-invoice-detail-section-title {
+  margin-top: 4px;
+  padding: 6px 15px;
+  color: #333;
+  font-weight: 600;
+  border-bottom: 1px solid #ddd;
+  background: #f5f5f5;
+}
+.finance-invoice-detail-table {
+  width: calc(100% - 32px);
+  margin: 10px 16px 14px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.finance-invoice-detail-table th,
+.finance-invoice-detail-table td {
+  height: 32px;
+  padding: 4px 7px;
+  text-align: center;
+  border: 1px solid #ddd;
+}
+.finance-invoice-detail-table thead th {
+  background: #f5f5f5;
+}
+.finance-invoice-detail-total th {
+  text-align: right;
+}
+.finance-invoice-detail-actions {
+  padding: 0 16px;
+  text-align: right;
+}
+@media (max-width: 1100px) {
+  .finance-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .finance-original-query-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+  }
+  .finance-original-internal-mine .finance-original-query-grid {
+    grid-template-columns: repeat(2, 240px);
+  }
+}
+@media (max-width: 720px) {
+  .finance-stats {
+    grid-template-columns: 1fr;
+  }
+  .finance-original-query-grid {
+    grid-template-columns: 1fr;
+  }
+  .finance-original-internal-mine .finance-original-query-grid {
+    grid-template-columns: 1fr;
+  }
+  .finance-original-query-actions {
+    padding-left: 82px;
+  }
+  .finance-original-footer {
+    padding-left: 10px;
+  }
+}
+
+/* 财务中心 / 费用查询：原系统四列三行紧凑查询布局。 */
+.finance-original-fee-query {
+  position: relative;
+}
+.finance-original-fee-query .finance-original-title {
+  height: 39px;
+}
+.finance-original-fee-query .finance-original-title h5 {
+  margin-top: 2px;
+  padding-left: 8px;
+}
+.finance-original-fee-query .finance-original-query-grid {
+  grid-template-columns: 220px 220px 220px 300px;
+  grid-auto-rows: 26px;
+  gap: 0;
+  width: 976px;
+  height: 112px;
+  padding: 0 8px;
+}
+.finance-original-fee-query .finance-original-field {
+  grid-template-columns: 60px minmax(0, 1fr);
+}
+.finance-original-fee-query .finance-original-field:nth-child(4n) {
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+.finance-original-fee-query .finance-original-field .ant-input,
+.finance-original-fee-query .finance-original-field .ant-picker,
+.finance-original-fee-query .finance-original-field .ant-select-selector,
+.finance-original-fee-query .finance-original-field .ant-input-number {
+  min-height: 24px !important;
+  height: 24px !important;
+}
+.finance-original-fee-query .finance-original-field .ant-input-number {
+  width: 100%;
+  border-radius: 0;
+}
+.finance-original-fee-query .finance-original-query-actions {
+  position: absolute;
+  z-index: 2;
+  top: 123px;
+  left: 77px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+}
+.finance-original-fee-query .finance-original-query-actions .ant-btn {
+  min-width: 51px;
+  height: 24px;
+  padding: 0 11px;
+}
+.finance-original-fee-query .finance-original-table-wrap {
+  padding: 4px 8px 0;
+}
+.finance-original-fee-query .finance-original-table-wrap .ant-table-content > table {
+  min-width: 1904px !important;
+}
+.finance-original-fee-query
+  .finance-original-table-wrap
+  col.ant-table-selection-col,
+.finance-original-fee-query
+  .finance-original-table-wrap
+  .ant-table-selection-column {
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+}
+.finance-original-fee-query .finance-original-footer {
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 39px;
+  padding: 3px 10px 7px 44px;
+}

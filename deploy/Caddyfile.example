@@ -1,0 +1,27 @@
+# Replace this placeholder with the production hostname before enabling Caddy.
+# Caddy 2.10+ is required for the request_body directive.
+legal.example.com {
+	encode zstd gzip
+
+	# The application accepts files up to 20 MB. Keep 1 MB of proxy overhead,
+	# while rejecting unexpectedly large request bodies at the public edge.
+	request_body {
+		max_size 21MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 120s
+		}
+	}
+}

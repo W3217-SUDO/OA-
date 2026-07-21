@@ -1,0 +1,34 @@
+模块,业务规则,证据等级,直接依据,重构约束
+客户,客户编号按公司和年度序列生成,A,P_CRM_Customer_No_Create,编号生成必须服务端原子化
+客户,删除后可以恢复,A,CustomerDelete/CustomerRestore/IsActived,使用回收生命周期而非物理删除
+客户,公海客户可以拾回,A,CustomerOpen/CustomerClose,拾回时重新计算负责人和共享关系
+合同,合同必须关联客户,A,FCM_Contract.CustomerId/CustomerNo,保存时验证客户存在且可见
+合同,合同提交后进入独立审批,A,Contract.ToAudit/ContractAuditCreate,禁止通用 PATCH 修改审批状态
+合同,归档合同不能新建案件,A,CaseController 明确拦截,建案命令必须重新校验合同状态
+合同,开票要求外部合同号,A,InvoiceController 明确拦截,开票前校验 RefContractNo
+案件,线索不能重复生成案件,A,CaseController 已生成案件拦截,线索转案件需要幂等键
+案件,不同客户案件不能合并,A,CaseController 客户不一致拦截,合并命令验证客户主体一致
+案件,案件费用未到账不能提交归档,A,CaseArchiveController,归档命令读取实时财务状态
+案件,归档包含内部审核和正式审核,A,InternalApproved/Approved,使用两级审批状态机
+任务,创建必须有负责人,A,TaskController/TaskNodeController,负责人字段服务端必填
+任务,结束时间晚于开始时间,A,TaskController/TaskNodeController,服务端校验日期区间
+任务,完成与验收是两个状态,A,Finished/Checked 和状态枚举,负责人完成后由授权人验收
+任务,已完成任务可重新打开,A,ReOpen 和页面按钮,仅允许合法终态回到进行中
+任务,存在完成超过 N 天查询,A,TaskDao SQL GetFinishedTaskListAfter5Days,定时动作仍需继续确认
+任务,交接 5 天未开始自动完成,C,当前项目不可破坏规则,保留规则但继续补原服务直接证据
+任务,任务期限超过 30 天拒绝,C,当前项目不可破坏规则,保留规则并补原服务直接证据
+调查,调查项目需要合同,A,InvestigationController contractId 校验,创建时验证有效合同
+线索,内部审核和客户审核分离,A,Auditor/CustomerAuditor 与两套动作,按项目配置决定是否客户审核
+线索,并案目标必须存在,A,InvestigationClueAuditController,并案命令验证案件存在
+证据,导入文件必须匹配线索,A,InvestigationClueEvidenceController,拒绝无业务归属文件
+证物,入库出库销毁是独立生命周期,B,EvidenceStatus/NcStatus/仓库库位字段,不能使用普通附件删除替代
+用印,用印是独立模块,A,AWS 三张独立表及三组控制器,独立聚合根和状态机
+用印,可以关联合同或案件,A,CreateByContract/CreateByCase,关联可选但必须验证对象可见
+用印,撤回是正常高频状态,B,状态枚举及 678 条分布,撤回保留审计不可删除
+发票,实际开票金额为零不能提交,A,InvoiceController,金额计算和校验放在服务端
+发票,撤回申请与作废发票不同,A,ApplicationCancel/InvoiceCancel,分别维护状态和原因
+内部费用,请款经过提交审批打包付款核销,A,InternalFeeController 动作,分阶段命令不可通用修改
+结算,多案件分配由财务处理,A,SettlementController 明确拦截,复杂分配要求财务权限
+结算,回款分配后再结算,B,Payment 与 Payment_Object 结构,以分配明细作为结算事实
+权限,admin 拥有全部菜单全所数据全部字段,A,项目不可破坏规则,后端强制最高权限
+权限,按钮权限不能代替后端校验,B,多控制器动作和角色/负责人字段,每个命令校验菜单数据范围和状态

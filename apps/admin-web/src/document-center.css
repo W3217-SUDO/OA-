@@ -1,0 +1,146 @@
+.document-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.document-stats .ant-card {
+  border-radius: 0;
+  border-top: 3px solid #00a65a;
+}
+@media (max-width: 1100px) {
+  .document-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 720px) {
+  .document-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.content:has(.receipt-original-panel) > .page-head {
+  display: none;
+}
+.receipt-original-panel {
+  border-radius: 0;
+  margin: -2px 0 0;
+  box-shadow: none;
+}
+.receipt-original-panel > .ant-card-head {
+  min-height: 39px;
+  border-top: 3px solid #18b878;
+  border-radius: 0;
+  padding: 0 12px;
+}
+.receipt-original-panel > .ant-card-head .ant-card-head-title {
+  padding: 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.receipt-original-panel > .ant-card-body {
+  padding: 10px 10px 0;
+}
+.receipt-query-form {
+  padding: 10px 12px 4px;
+  margin-bottom: 10px;
+  background: #f7f7f7;
+  border: 1px solid #e5e5e5;
+}
+.receipt-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  column-gap: 22px;
+  row-gap: 1px;
+}
+.receipt-filter-grid .ant-form-item {
+  margin-bottom: 9px;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  align-items: center;
+}
+.receipt-filter-grid .ant-form-item-label {
+  padding: 0;
+  text-align: right;
+}
+.receipt-filter-grid .ant-form-item-label > label {
+  height: 28px;
+  font-size: 12px;
+  color: #444;
+}
+.receipt-filter-grid .ant-form-item-control-input {
+  min-height: 28px;
+}
+.receipt-filter-grid .ant-input,
+.receipt-filter-grid .ant-select-selector,
+.receipt-filter-grid .ant-picker {
+  border-radius: 0 !important;
+  font-size: 12px;
+}
+.receipt-filter-grid .ant-picker {
+  width: 100%;
+}
+.receipt-query-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 2px 0 6px;
+}
+.receipt-query-actions .ant-btn {
+  height: 28px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.receipt-table .ant-table {
+  font-size: 12px;
+}
+.receipt-table .ant-table-thead > tr > th {
+  padding: 7px 8px !important;
+  background: #f3f3f3 !important;
+  text-align: center;
+  font-weight: 600;
+  color: #333;
+}
+.receipt-table .ant-table-tbody > tr > td {
+  padding: 6px 8px !important;
+  border-color: #e5e5e5;
+}
+.receipt-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: #f6f6f6;
+}
+.receipt-table .ant-table-tbody > tr:hover > td {
+  background: #fffbe6 !important;
+}
+.receipt-table .ant-pagination {
+  margin: 10px 0 6px !important;
+  font-size: 12px;
+}
+.receipt-imported {
+  color: #00a65a;
+}
+.receipt-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 0;
+  border-top: 1px solid #eee;
+  color: #777;
+  font-size: 12px;
+}
+.receipt-footer-actions .ant-btn {
+  border-radius: 0;
+}
+@media (max-width: 1200px) {
+  .receipt-filter-grid {
+    grid-template-columns: repeat(2, minmax(250px, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .receipt-filter-grid {
+    grid-template-columns: 1fr;
+  }
+  .receipt-filter-grid .ant-form-item {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+}

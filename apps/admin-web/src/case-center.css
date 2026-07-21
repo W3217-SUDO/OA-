@@ -1,0 +1,36 @@
+.content:has(.case-original-panel) > .page-head { display: none; }
+.content:has(.case-original-panel) { padding-top: 8px; }
+.case-original-layout { display: grid; grid-template-columns: 168px minmax(0,1fr); gap: 8px; }
+.case-phase-panel { min-height: calc(100vh - 58px); padding: 8px 7px; background: #e8edf3; border-right: 1px solid #d2d7de; }
+.case-phase-title { margin: -8px -7px 6px; padding: 9px 10px; color:#333; font-size:13px; font-weight:600; background:#d7dee7; }
+.case-phase-panel button { display:block; width:100%; padding:3px 4px; color:#555; font-size:12px; text-align:left; background:transparent; border:0; cursor:pointer; }
+.case-phase-panel button:hover { color:#079cc0; background:#fff; }
+.case-original-panel.ant-card { border:0; border-radius:0; box-shadow:none; }
+.case-original-panel > .ant-card-head { min-height:34px; padding:0 8px; border-top:2px solid #19b894; border-bottom:1px solid #ddd; }
+.case-original-panel > .ant-card-head .ant-card-head-title { position:relative; padding:6px 0 6px 10px; font-size:14px; font-weight:400; }
+.case-original-panel > .ant-card-head .ant-card-head-title::before { position:absolute; top:7px; bottom:7px; left:0; width:2px; background:#21a5d5; content:''; }
+.case-original-panel > .ant-card-body { padding:5px 0 8px; }
+.case-advanced-query { display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:2px 7px; padding:0 8px 5px; overflow:hidden; }
+.case-advanced-query:not(.case-query-expanded) { max-height:0; padding-top:0; padding-bottom:0; }
+.case-advanced-query .ant-form-item { margin-bottom:0; }
+.case-advanced-query .ant-form-item-row { flex-wrap:nowrap; }
+.case-advanced-query .ant-form-item-label { flex:0 0 64px; padding:0 5px 0 0; }
+.case-advanced-query .ant-form-item-label > label { height:25px; font-size:12px; }
+.case-advanced-query .ant-input,.case-advanced-query .ant-btn { height:25px; border-radius:0; font-size:12px; }
+.case-query-buttons { grid-column:1/-1; padding-left:64px; }
+.case-original-table .ant-table { color:#111; font-size:12px; }
+.case-original-table .ant-table-container { border-inline-start:1px solid #ddd; border-top:1px solid #ddd; }
+.case-original-table .ant-table-thead > tr > th { height:34px; padding:4px 7px!important; color:#222; font-weight:600; text-align:center; background:#f1f1f1!important; border-color:#ddd!important; }
+.case-original-table .ant-table-tbody > tr > td { height:58px; padding:4px 8px!important; vertical-align:top; border-color:#ddd!important; }
+.case-original-table .ant-table-tbody > tr:nth-child(even)>td { background:#f3f3f3; }
+.case-original-table .ant-table-row-selected>td { background:#e6f7f2!important; }
+.case-original-table p { max-width:100%; margin:0; overflow:hidden; line-height:23px; text-overflow:ellipsis; white-space:nowrap; }
+.case-cell-link.ant-btn-link { height:auto; max-width:190px; padding:0; overflow:hidden; color:#0588bd; font-size:12px; text-overflow:ellipsis; }
+.case-bottom-actions { margin-top:-34px; min-height:34px; padding-left:8px; }
+.case-bottom-actions .ant-btn { height:28px; padding:0 12px; border-radius:0; font-size:12px; }
+.case-archive-query{display:grid!important;grid-template-columns:repeat(4,minmax(220px,1fr));gap:3px 8px;padding:8px}.case-archive-query .ant-form-item{margin:0}.case-archive-query .ant-form-item-row{flex-wrap:nowrap}.case-archive-query .ant-form-item-label{flex:0 0 118px}.case-archive-query .ant-input,.case-archive-query .ant-picker,.case-archive-query .ant-btn{height:26px;border-radius:0;font-size:12px}.case-archive-query-actions{grid-column:1/-1;padding-left:118px}
+.case-special-query{display:grid;grid-template-columns:repeat(4,minmax(210px,1fr));gap:3px 8px;padding:8px}.case-special-query .ant-form-item{margin:0}.case-special-query .ant-form-item-row{flex-wrap:nowrap}.case-special-query .ant-form-item-label{flex:0 0 112px}.case-special-query .ant-input,.case-special-query .ant-picker,.case-special-query .ant-select-selector,.case-special-query .ant-btn{height:26px!important;border-radius:0!important;font-size:12px}.case-special-query-actions{grid-column:1/-1;padding-left:112px}.case-special-panel .case-bottom-actions{margin-top:4px}.case-stage-query{display:flex;gap:6px;padding:8px}.case-stage-query .ant-picker,.case-stage-query .ant-btn{height:27px;border-radius:0}
+.case-special-query.case-query-hidden{max-height:92px;overflow:hidden}
+.case-invoice-import{padding:8px;border-bottom:1px solid #ddd}.case-invoice-import .ant-btn{height:27px;border-radius:0;font-size:12px}
+.case-create-route-page{min-height:calc(100vh - 95px);padding:8px;background:#fff}.case-create-steps{margin:8px 0 10px}.case-create-steps .ant-steps-item{padding:0!important}.case-create-steps .ant-steps-item-container{height:27px;background:#ccc}.case-create-steps .ant-steps-item-process .ant-steps-item-container,.case-create-steps .ant-steps-item-finish .ant-steps-item-container{background:#22b7ce}.case-create-steps .ant-steps-item-icon{display:none}.case-create-steps .ant-steps-item-content{display:block!important;width:auto!important;min-height:27px!important;text-align:center}.case-create-steps .ant-steps-item-title{padding:0!important;color:#fff!important;font-size:12px!important;line-height:27px!important}.case-create-steps .ant-steps-item-title::after{display:none!important}.case-create-step{min-height:430px;border:1px solid #ddd}.case-create-section-title{height:39px;padding:10px 17px;border-left:3px solid #687888;background:#f5f6f9;color:#222;font-size:13px}.case-create-fields{width:min(820px,90%);margin:23px auto}.case-create-wizard-form .ant-form-item{margin-bottom:12px}.case-create-wizard-form .ant-form-item-label>label{height:28px;font-size:12px}.case-create-wizard-form .ant-input,.case-create-wizard-form .ant-select-selector,.case-create-wizard-form .ant-picker{min-height:29px!important;border-radius:0!important;font-size:12px}.case-create-actions{width:min(820px,90%);margin:-60px auto 18px;padding-left:20.8%}.case-create-actions .ant-btn{height:33px;border-radius:0;font-size:12px}
+@media(max-width:1150px){.case-advanced-query{grid-template-columns:repeat(2,minmax(230px,1fr))}.case-bottom-actions{margin-top:8px}.case-original-layout{grid-template-columns:140px minmax(0,1fr)}}
