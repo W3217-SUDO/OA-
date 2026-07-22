@@ -24,6 +24,10 @@ import {
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { consumeContractDetailTarget } from "./contractDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { formatRequiredDate } from "./formSafety";
 import "./contract-center.css";
 type Contract = {
@@ -92,7 +96,7 @@ type Change = {
 type Profile = { username: string; display_name: string; department: string; role: string };
 type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
 type ApprovalRole = { id: number; name: string; permissions: string[]; is_active: boolean };
-type LinkedCustomerContext = { id: number; name: string; serial_no?: string };
+type LinkedCustomerContext = { id: number; name: string; serial_no?: string; at?: number };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
 type SealAsset = { id: number; code: string; name: string; seal_type: string; status: string };
@@ -184,6 +188,21 @@ export default function ContractCenterPage({
       setDirectory((directoryRes.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
       setSealAssets((sealRes.data.items || []).filter((item: SealAsset) => item.status === "可用"));
       setCustomers(customerRes.data.items || []);
+      const relationTarget = consumeCustomerRelationTarget();
+      if (relationTarget?.target === "contracts") {
+        const customerKeyword = relationTarget.title || relationTarget.serial_no || "";
+        queryForm.setFieldsValue({ customer: customerKeyword });
+        setQuery((value) => ({ ...value, customer: customerKeyword }));
+      }
+      const target = consumeContractDetailTarget();
+      if (target) {
+        const targetRow = (recordsRes.data.items || []).find((item: Contract) =>
+          (target.id && item.id === target.id) ||
+          (target.serial_no && item.serial_no === target.serial_no)
+        );
+        if (targetRow) setViewing(targetRow);
+        else message.warning("未找到关联合同或当前账号无权查看");
+      }
       setApprovalRoles((roleRes.data.items || []).filter((item: ApprovalRole) => item.is_active !== false && (item.permissions || []).includes("合同审批")));
     } catch {
       message.error("合同数据加载失败");
@@ -255,6 +274,36 @@ export default function ContractCenterPage({
       );
     return list;
   }, [allRows, initialView, profile, query]);
+  const getContractCustomerContext = (): LinkedCustomerContext | null => {
+    try {
+      const context = JSON.parse(sessionStorage.getItem("sunhold:contract-customer") || "null");
+      if (!context?.id || !context?.name) return null;
+      if (context.at && Date.now() - Number(context.at) > 60 * 60 * 1000) return null;
+      return {
+        id: Number(context.id),
+        name: String(context.name),
+        serial_no: context.serial_no ? String(context.serial_no) : "",
+        at: Number(context.at || 0),
+      };
+    } catch {
+      return null;
+    }
+  };
+  const resolveCustomerRef = (customerId: number | undefined): CustomerRef | null => {
+    if (!customerId || Number.isNaN(customerId)) return null;
+    const exact = customers.find((item) => item.id === customerId);
+    if (exact) return exact;
+    if (linkedCustomerContext && linkedCustomerContext.id === customerId) {
+      return {
+        id: linkedCustomerContext.id,
+        serial_no: linkedCustomerContext.serial_no || `C-${linkedCustomerContext.id}`,
+        title: linkedCustomerContext.name,
+        owner: profile.username || "",
+        data: { customer_managers: [profile.username] },
+      };
+    }
+    return null;
+  };
   const startCreate = () => {
     localStorage.removeItem(WIZARD_STORAGE_KEY);
     setEditing(null);
@@ -270,13 +319,14 @@ export default function ContractCenterPage({
     sealForm.resetFields();
     let linkedCustomerId: number | undefined;
     let linkedContext: LinkedCustomerContext | null = null;
-    try {
-      const context = JSON.parse(sessionStorage.getItem("sunhold:contract-customer") || "null");
-      if (context?.id && context?.name && Date.now() - Number(context.at || 0) < 60 * 60 * 1000) {
-        linkedCustomerId = Number(context.id);
-        linkedContext = { id: Number(context.id), name: String(context.name), serial_no: String(context.serial_no || "") };
+    const context = getContractCustomerContext();
+    if (context) {
+      linkedContext = context;
+      if (customers.some((item) => item.id === context.id)) {
+        linkedCustomerId = context.id;
       }
-    } catch { /* ignore invalid navigation context */ }
+    }
+    sessionStorage.removeItem("sunhold:contract-customer");
     setLinkedCustomerContext(linkedContext);
     form.setFieldsValue({
       serial_no: contractNo(),
@@ -376,7 +426,7 @@ export default function ContractCenterPage({
       message.warning("请先补全红色提示的合同必填信息");
       return;
     }
-    const selectedCustomer = customers.find((customer) => customer.id === Number(v.customer_id));
+    const selectedCustomer = customers.find((customer) => customer.id === Number(v.customer_id)) || resolveCustomerRef(Number(v.customer_id));
     if (!selectedCustomer) {
       form.setFields([{ name: "customer_id", errors: ["请从客户列表中选择准确客户"] }]);
       message.warning("请输入客户关键字，并从匹配结果中选择客户");
@@ -823,6 +873,7 @@ export default function ContractCenterPage({
       serial_no: contract.serial_no,
       title: contract.title,
       customer: contract.customer,
+      at: Date.now(),
     }));
     onNavigate?.("case-new");
   };
@@ -1026,6 +1077,22 @@ export default function ContractCenterPage({
     value: user.username,
     label: `${user.display_name || user.username}（${user.position || user.staff_role || "合同审批角色"}｜${user.department || "未分部门"}）`,
   }));
+  const openRelatedCustomer = (contract: Contract) => {
+    if (!rememberCustomerDetailTarget({ id: Number(contract.data.customer_id) || undefined, serial_no: contract.data.customer_no, title: contract.customer })) {
+      message.warning("当前合同未关联客户");
+      return;
+    }
+    onNavigate?.("customer-company");
+  };
+  const openRelatedCase = (caseNo: unknown) => {
+    const serialNo = String(caseNo || "").trim();
+    if (!serialNo || serialNo === "—") {
+      message.warning("当前合同未关联案件");
+      return;
+    }
+    rememberCaseDetailTarget({ serial_no: serialNo });
+    onNavigate?.("case-company");
+  };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());
   const customerOptions = uniqueCustomers.map((customer) => ({
     value: customer.id,
@@ -1316,7 +1383,8 @@ export default function ContractCenterPage({
             {key:"serial",label:"合同号",children:viewing.serial_no},
             {key:"status",label:"合同状态",children:viewing.status},
             {key:"title",label:"合同名称",children:viewing.title,span:2},
-            {key:"customer",label:"客户名称",children:viewing.customer},
+            {key:"customer",label:"客户名称",children:<Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(viewing)}>{viewing.customer || "—"}</Button>},
+            {key:"case",label:"关联案号",children:viewing.data.case_no ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCase(viewing.data.case_no)}>{viewing.data.case_no}</Button> : "—"},
             {key:"body",label:"合同主体",children:viewing.data.contract_body||"律所"},
             {key:"type",label:"合同类型",children:viewing.data.type||"—"},
             {key:"fee",label:"收费类型",children:viewing.data.fee_type||"—"},

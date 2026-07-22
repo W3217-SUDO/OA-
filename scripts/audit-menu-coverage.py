@@ -214,8 +214,8 @@ def main() -> None:
         '<ButtononClick={()=>goToCustomerPage(Number(jumpPage||page))}>GO</Button>',
         '<ButtononClick={()=>{consttarget=requireSingleSelected();if(target)voidopenDetail(target);}}>客户查看</Button>',
         'onClick={()=>openDetail(r)}',
-        'onClick={()=>onNavigate?.("contract-mine")}',
-        'onClick={()=>onNavigate?.("case-mine-civil")}',
+        'onClick={()=>openCustomerContracts(r)}',
+        'onClick={()=>openCustomerCivilCases(r)}',
         'sessionStorage.setItem("sunhold:contract-customer"',
         'onNavigate?.("contract-new")',
         'api.get("/attachments",{params:{record_id:target.id}})',
@@ -780,7 +780,7 @@ def main() -> None:
     assert 'window.addEventListener("popstate", restoreRouteFromHistory)' in APP, "browser history must restore the selected deep route"
     assert 'window.history.pushState(' in APP and 'params.set("page", active)' in APP, "menu navigation must keep the page query synchronized"
     assert 'const ancestors = ancestorMenuKeys(effectiveMenuItems, active)' in APP, "deep routes must expand their parent menus"
-    assert '<TaskCenterPage initialView={active} />' in APP, "task routes must preserve the unread leaf key when rendering"
+    assert '<TaskCenterPage initialView={active}' in APP, "task routes must preserve the unread leaf key when rendering"
     assert '{ key: "task-reminders", label: "任务提醒" }' not in APP, "original sidebar must not invent a visible task-reminders fallback leaf"
     assert 'item.key !== "task-reminders"' in APP, "configured backend menus must not re-expose the internal task-reminders route in the sidebar"
     assert "task:'task-reminders'" in NOTIFICATION, "task notifications must retain their internal reminder route"

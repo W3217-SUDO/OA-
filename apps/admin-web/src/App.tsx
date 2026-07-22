@@ -37,6 +37,7 @@ import {
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 
 function lazyWithVersionRecovery<T extends ComponentType<any>>(
   key: string,
@@ -795,6 +796,10 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
       onNavigate(route);
     }
   };
+  const openDashboardCase = (caseNo: string) => {
+    rememberCaseDetailTarget({ serial_no: caseNo });
+    onNavigate("case-company");
+  };
   const hearingCols = useMemo(
     () => [
       { title: "星期", dataIndex: "weekday", width: 80 },
@@ -806,7 +811,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
         dataIndex: "case_no",
         width: 140,
         render: (v: string) => (
-          <a onClick={() => onNavigate("case-company")}>{v}</a>
+          <a onClick={() => openDashboardCase(v)}>{v}</a>
         ),
       },
       { title: "客户", dataIndex: "client", ellipsis: true },
@@ -833,7 +838,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
         dataIndex: "case_no",
         width: 125,
         render: (v: string) => (
-          <a onClick={() => onNavigate("case-company")}>{v}</a>
+          <a onClick={() => openDashboardCase(v)}>{v}</a>
         ),
       },
       { title: "阶段", dataIndex: "stage", width: 100 },
@@ -1120,25 +1125,25 @@ export default function App() {
     route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (
-      <SealCenterPage initialView={active} />
+      <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "customer-conflict" ? (
       <CustomerConflictPage />
     ) : route.startsWith("customer-") ? (
       <CustomerCenterPage initialView={route} onNavigate={navigate} />
     ) : route === "contract-receivable" ? (
-      <ContractReceivablesPage initialView={active} />
+      <ContractReceivablesPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("contract-") ? (
       <ContractCenterPage initialView={active} onNavigate={navigate} />
     ) : active.startsWith("investigation-task-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
       <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
     ) : route.startsWith("case-") ? (
-      <CaseCenterPage initialView={active} />
+      <CaseCenterPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("task-") ? (
-      <TaskCenterPage initialView={active} />
+      <TaskCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "documents-agent" ? (
-      <AgentDocumentPage />
+      <AgentDocumentPage onNavigate={navigate} />
     ) : route.startsWith("documents-") ? (
-      <DocumentCenterPage initialView={route} />
+      <DocumentCenterPage initialView={route} onNavigate={navigate} />
     ) : route.startsWith("platform-finance-") ? (
       <FinanceCenterPage
         initialView={financeRouteFromPlatform(active)}
@@ -1148,13 +1153,13 @@ export default function App() {
     ) : route === "user-messages" ? (
       <MessageCenterPage />
     ) : route === "user-communications" ? (
-      <CommunicationLogPage />
+      <CommunicationLogPage onNavigate={navigate} />
     ) : ["user-center", "user-account"].includes(route) ? (
       <UserCenterPage />
     ) : route.startsWith("finance-") ? (
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "system-audit" ? (
-      <AuditLogPage />
+      <AuditLogPage onNavigate={navigate} />
     ) : route.startsWith("system-") ? (
       <SystemCenterPage initialView={route} />
     ) : ["hr-departments", "hr-roles"].includes(route) ? (
@@ -1162,7 +1167,7 @@ export default function App() {
     ) : route.startsWith("hr-") ? (
       <HrCenterPage initialView={route} />
     ) : route.startsWith("warehouse") ? (
-      <WarehousePage />
+      <WarehousePage onNavigate={navigate} />
     ) : route === "reports" ? (
       <ReportCenterPage initialView={active} />
     ) : (

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, Card, DatePicker, Form, Input, message, Select, Table } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberContractDetailTarget } from "./contractDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import "./contract-center.css";
 
 type Receivable = {
@@ -32,7 +35,7 @@ type Profile = { username: string; display_name: string; department: string };
 
 const money = (value: unknown) => Number(value || 0).toFixed(2);
 
-export default function ContractReceivablesPage({ initialView }: { initialView: string }) {
+export default function ContractReceivablesPage({ initialView, onNavigate }: { initialView: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [profile, setProfile] = useState<Profile>({ username: "", display_name: "", department: "" });
@@ -76,6 +79,22 @@ export default function ContractReceivablesPage({ initialView }: { initialView: 
   }, [contracts, initialView, profile, query]);
 
   const contractById = useMemo(() => new Map(contracts.map((row) => [row.id, row])), [contracts]);
+  const openContract = (contract: { id?: number; serial_no?: string; contract_no?: string; contract_record_id?: number }) => {
+    rememberContractDetailTarget({ id: contract.id || contract.contract_record_id, serial_no: contract.serial_no || contract.contract_no });
+    onNavigate?.("contract-my");
+  };
+  const openCase = (serialNo: unknown) => {
+    const value = String(serialNo || "").trim();
+    if (!value) return;
+    rememberCaseDetailTarget({ serial_no: value });
+    onNavigate?.("case-company");
+  };
+  const openCustomer = (name: unknown) => {
+    const title = String(name || "").trim();
+    if (!title) return;
+    rememberCustomerDetailTarget({ title });
+    onNavigate?.("customer-management");
+  };
   const detailRows = useMemo(() => receivables.filter((item) => {
     const contract = contractById.get(item.contract_record_id);
     if (!contract) return false;
@@ -88,7 +107,7 @@ export default function ContractReceivablesPage({ initialView }: { initialView: 
   }), [receivables, contractById, query]);
 
   const listColumns = [
-    { title: "合同号", dataIndex: "serial_no", width: 130 },
+    { title: "合同号", dataIndex: "serial_no", width: 130, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openContract(row)}>{row.serial_no}</Button> },
     { title: "合同名称", dataIndex: "title", width: 210, ellipsis: true },
     { title: "合同状态", dataIndex: "status", width: 90 },
     { title: "官费支付金额", key: "official_paid", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.official_paid) },
@@ -101,10 +120,10 @@ export default function ContractReceivablesPage({ initialView }: { initialView: 
     { title: "案源人", key: "source", width: 90, render: (_: unknown, row: Contract) => row.data.source_person || row.owner },
     { title: "客户管理人", key: "manager", width: 100, render: (_: unknown, row: Contract) => row.data.customer_manager || "—" },
     { title: "签订日期", key: "signed_at", width: 105, render: (_: unknown, row: Contract) => row.data.signed_at || "—" },
-    { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true },
+    { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string) => <Button type="link" onClick={() => openCustomer(value)}>{value}</Button> },
   ];
   const detailColumns = [
-    { title: "合同号", dataIndex: "contract_no", width: 130 },
+    { title: "合同号", dataIndex: "contract_no", width: 130, render: (_: unknown, row: Receivable) => <Button type="link" onClick={() => openContract(row)}>{row.contract_no}</Button> },
     { title: "合同名称", dataIndex: "contract_title", width: 200, ellipsis: true },
     { title: "官费支付金额", key: "official_paid", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.official_paid) },
     { title: "官费到账金额", key: "official_received", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.official_received) },
@@ -113,7 +132,10 @@ export default function ContractReceivablesPage({ initialView }: { initialView: 
     { title: "代理费总金额", key: "agency_total", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.agency_total) },
     { title: "代理费到账金额", key: "agency_received", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.agency_received) },
     { title: "代理费待收金额", key: "agency_due", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.agency_due) },
-    { title: "案号", key: "case_no", width: 130, render: (_: unknown, row: Receivable) => contractById.get(row.contract_record_id)?.data.case_no || "—" },
+    { title: "案号", key: "case_no", width: 130, render: (_: unknown, row: Receivable) => {
+      const caseNo = contractById.get(row.contract_record_id)?.data.case_no;
+      return caseNo ? <Button type="link" onClick={() => openCase(caseNo)}>{caseNo}</Button> : "—";
+    } },
     { title: "案件阶段", dataIndex: "phase", width: 110 },
     { title: "案件类型", key: "case_type", width: 110, render: (_: unknown, row: Receivable) => contractById.get(row.contract_record_id)?.data.case_type || "—" },
     { title: "费用类型", key: "fee_type", width: 110, render: (_: unknown, row: Receivable) => contractById.get(row.contract_record_id)?.data.fee_type || "代理费" },

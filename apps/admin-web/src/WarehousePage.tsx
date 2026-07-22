@@ -4,6 +4,7 @@ import type {MenuProps, TableColumnsType} from 'antd'
 import {EllipsisOutlined} from '@ant-design/icons'
 import dayjs, {type Dayjs} from 'dayjs'
 import {api} from './api'
+import {rememberCaseDetailTarget} from './caseDetailNavigation'
 import {formatRequiredDate} from './formSafety'
 import './warehouse.css'
 
@@ -17,7 +18,7 @@ const evidenceStatuses=['未入库','已入库','已出库','已重新入库','�
 const statusColor:Record<string,string>={未入库:'default',已入库:'green',已出库:'orange',已重新入库:'cyan',已销毁:'red'}
 const statusOf=(row:Item)=>String(row.data?.evidence_status||({在库:'已入库',借出:'已出库',归还中:'已出库',报废:'已销毁'} as Record<string,string>)[row.status]||'未入库')
 
-export default function WarehousePage(){
+export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=>void}){
   const [allRows,setAllRows]=useState<Item[]>([])
   const [loading,setLoading]=useState(false)
   const [warehouse,setWarehouse]=useState('')
@@ -59,6 +60,7 @@ export default function WarehousePage(){
   const submitAction=async()=>{if(!action)return;try{const values=await actionForm.validateFields();setSaving(true);await api.post(`/warehouse/evidence/${action.row.id}/${action.kind}`,values);message.success({"check-in":'证物已入库',"check-out":'证物已出库',"recheck-in":'证物已重新入库',destroy:'证物已销毁'}[action.kind]);setAction(null);await load()}catch(error:any){if(error?.errorFields)return;message.error(error?.response?.data?.detail||'业务办理失败')}finally{setSaving(false)}}
   const openHistory=async(row:Item)=>{setHistoryRow(row);setHistory([]);try{const {data}=await api.get(`/records/${row.id}/history`);setHistory(data.items||[])}catch{message.error('流程记录加载失败')}}
 
+  const openCaseDetail=(caseNo:unknown)=>{const serialNo=String(caseNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联案件');return}rememberCaseDetailTarget({serial_no:serialNo});onNavigate?.('case-company')}
   const rowMenu=(row:Item):MenuProps['items']=>{
     const rowStatus=statusOf(row)
     const items:MenuProps['items']=[{key:'history',label:'查看流程记录',onClick:()=>void openHistory(row)}]
@@ -72,7 +74,7 @@ export default function WarehousePage(){
     {title:'库位',key:'location',width:120,sorter:(a,b)=>String(a.data.location||'').localeCompare(String(b.data.location||'')),render:(_v,row)=>row.data.location||'—'},
     {title:'线索编号',dataIndex:'serial_no',width:150},
     {title:'公证书号',key:'notary',width:150,render:(_v,row)=>row.data.notary_no||'—'},
-    {title:'案件编号',key:'caseNo',width:145,render:(_v,row)=>row.data.case_no||'—'},
+    {title:'案件编号',key:'caseNo',width:145,render:(_v,row)=>row.data.case_no?<Button type="link" onClick={()=>openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button>:'—'},
     {title:'货物出售店铺',key:'shop',width:180,render:(_v,row)=>row.data.shop_name||row.title||'—'},
     {title:'调查员',key:'investigator',width:110,render:(_v,row)=>row.data.investigator||row.owner||'—'},
     {title:'公证处',key:'notaryOffice',width:180,render:(_v,row)=>row.data.notary_office||'—'},

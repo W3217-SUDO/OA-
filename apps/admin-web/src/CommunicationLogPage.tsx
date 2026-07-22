@@ -5,12 +5,13 @@ import {PlusOutlined} from '@ant-design/icons'
 import dayjs from 'dayjs'
 import {api} from './api'
 import {formatRequiredDate} from './formSafety'
+import {rememberCustomerDetailTarget} from './customerDetailNavigation'
 import './communication-log.css'
 
 type Communication={id:number;customer_record_id:number;customer_name:string;contact:string;phone:string;content:string;occurred_at:string;operator:string;updated_at:string}
 type Customer={id:number;serial_no:string;title:string;data:Record<string,unknown>}
 
-export default function CommunicationLogPage(){
+export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:string)=>void}){
   const [rows,setRows]=useState<Communication[]>([])
   const [customers,setCustomers]=useState<Customer[]>([])
   const [customerName,setCustomerName]=useState('')
@@ -47,6 +48,11 @@ export default function CommunicationLogPage(){
     form.setFieldsValue({...row,occurred_at:dayjs(row.occurred_at)})
     setOpen(true)
   }
+  const openCustomer=(customerId:number, customerName?:string)=>{
+    const customer=customers.find(item=>item.id===customerId)
+    rememberCustomerDetailTarget({id:customer?.id||customerId,serial_no:customer?.serial_no,title:customer?.title||customerName})
+    onNavigate?.('customer-management')
+  }
   const save=async()=>{
     try{
       const value=await form.validateFields()
@@ -61,8 +67,8 @@ export default function CommunicationLogPage(){
   const columns:TableColumnsType<Communication>=[
     {title:'用户',dataIndex:'operator',width:110},
     {title:'记录时间',dataIndex:'occurred_at',width:165,render:(value:string)=>new Date(value).toLocaleString('zh-CN',{hour12:false})},
-    {title:'客户ID',dataIndex:'customer_record_id',width:110,align:'center',render:(value:number)=>customers.find(item=>item.id===value)?.serial_no||value},
-    {title:'客户名称',dataIndex:'customer_name',width:220,ellipsis:true},
+    {title:'客户ID',dataIndex:'customer_record_id',width:110,align:'center',render:(value:number,row)=><Button type="link" onClick={()=>openCustomer(value,row.customer_name)}>{customers.find(item=>item.id===value)?.serial_no||value}</Button>},
+    {title:'客户名称',dataIndex:'customer_name',width:220,ellipsis:true,render:(value:string,row)=><Button type="link" onClick={()=>openCustomer(row.customer_record_id,value)}>{value}</Button>},
     {title:'联系人',dataIndex:'contact',width:110,render:(value:string)=>value||'—'},
     {title:'联系电话',dataIndex:'phone',width:135,render:(value:string)=>value||'—'},
     {title:'内容',dataIndex:'content',ellipsis:true},

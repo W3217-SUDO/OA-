@@ -22,6 +22,8 @@ import {
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { consumeTaskDetailTarget } from "./taskDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import "./task-center.css";
 
@@ -174,8 +176,10 @@ const contains = (value: unknown, query?: string) =>
 
 export default function TaskCenterPage({
   initialView,
+  onNavigate,
 }: {
   initialView: string;
+  onNavigate?: (route: string) => void;
 }) {
   const profile = useMemo(() => {
     try {
@@ -316,6 +320,25 @@ export default function TaskCenterPage({
           pageSize: data.page_size || pageSize,
           statusCounts: data.status_counts || {},
         });
+        const target = consumeTaskDetailTarget();
+        if (target) {
+          let targetRow = (data.items as TaskRow[]).find((row) =>
+            (target.id && row.id === target.id) ||
+            (target.serial_no && row.serial_no === target.serial_no),
+          );
+          if (!targetRow && target.serial_no) {
+            const taskRes = await api.get("/tasks", { params: { serial_no: target.serial_no, page_size: 20 } });
+            targetRow = (taskRes.data.items as TaskRow[]).find((row) => row.serial_no === target.serial_no);
+          }
+          if (targetRow) {
+            setCommunication(targetRow);
+            commentForm.resetFields();
+            const historyRes = await api.get(`/tasks/${targetRow.id}/history`);
+            setHistory(historyRes.data.items || []);
+          } else {
+            message.warning("未找到关联任务或当前账号无权查看");
+          }
+        }
       }
     } catch (error: any) {
       if (requestId === loadRequestRef.current) {
@@ -566,6 +589,14 @@ export default function TaskCenterPage({
     if (!record) message.warning("未找到关联案件或当前账号无权查看");
     return record || null;
   };
+  const openCaseDetail = (row: TaskRow) => {
+    if (!row.case_no) {
+      message.warning("当前任务未关联案件");
+      return;
+    }
+    rememberCaseDetailTarget({ serial_no: row.case_no });
+    onNavigate?.("case-company");
+  };
   const openCaseContext = async (row: TaskRow, mode: "tasks" | "logs") => {
     setCaseContextLoading(true);
     try {
@@ -661,7 +692,12 @@ export default function TaskCenterPage({
       title: "案号编号",
       dataIndex: "case_no",
       width: 140,
-      render: (value: string) => value || "",
+      render: (value: string, row: TaskRow) =>
+        value ? (
+          <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(row)}>
+            {value}
+          </Button>
+        ) : "",
     },
     {
       title: "原告",
@@ -767,7 +803,7 @@ export default function TaskCenterPage({
   ];
   const unreadColumns: any[] = [
     { title: "任务编号", dataIndex: "serial_no", width: 178, render: (value: string, row: TaskRow) => <Button className="task-cell-link" type="link" onClick={() => openCommunication(row)}>{`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}</Button> },
-    { title: "案号编号", dataIndex: "case_no", width: 140, render: (value: string) => value || "" },
+    { title: "案号编号", dataIndex: "case_no", width: 140, render: (value: string, row: TaskRow) => value ? <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(row)}>{value}</Button> : "" },
     { title: "原告", dataIndex: "plaintiff", width: 160, ellipsis: true, render: (value: string) => value || "" },
     { title: "被告", dataIndex: "defendant", width: 160, ellipsis: true, render: (value: string) => value || "" },
     { title: "案件阶段", dataIndex: "case_stage", width: 105, render: (value: string) => value || "" },
@@ -1441,7 +1477,7 @@ export default function TaskCenterPage({
           <span><b>任务编号：</b>{communication?.serial_no?.replace(/^\([^)]*\)/, "") || "-"}</span>
           <span><b>当前负责人：</b>{communication?.owner || "-"}</span>
           <span><b>发布人：</b>{communication?.initiator || "-"}</span>
-          <span><b>关联案号：</b>{communication?.case_no || "-"}</span>
+          <span><b>关联案号：</b>{communication?.case_no ? <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(communication)}>{communication.case_no}</Button> : "-"}</span>
           <span><b>截止日期：</b>{communication?.deadline || "-"}</span>
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
           <span><b>当前协作人：</b>{communication?.collaborators?.join(",") || "-"}</span>

@@ -2,6 +2,11 @@ import {useEffect, useMemo, useState} from 'react'
 import {Button, Card, Descriptions, Divider, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Timeline} from 'antd'
 import {DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons'
 import {api} from './api'
+import {rememberCaseDetailTarget} from './caseDetailNavigation'
+import {rememberContractDetailTarget} from './contractDetailNavigation'
+import {rememberCustomerDetailTarget} from './customerDetailNavigation'
+import {rememberTaskDetailTarget} from './taskDetailNavigation'
+import {rememberInvestigationDetailTarget} from './investigationDetailNavigation'
 
 type RecordRow = {
   id:number; module:string; serial_no:string; title:string; customer:string; status:string;
@@ -39,7 +44,7 @@ function nextSerial(prefix:string){
   return `${prefix}${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
 }
 
-export default function BusinessPage({module,title,openCreate=false,defaultStatus=''}:{module:string;title?:string;openCreate?:boolean;defaultStatus?:string}){
+export default function BusinessPage({module,title,openCreate=false,defaultStatus='',onNavigate}:{module:string;title?:string;openCreate?:boolean;defaultStatus?:string;onNavigate?: (route:string)=>void}){
   const config=configs[module]||configs.system
   const [rows,setRows]=useState<RecordRow[]>([])
   const [total,setTotal]=useState(0)
@@ -55,6 +60,23 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
   const [transitionTarget,setTransitionTarget]=useState('')
   const [transitionComment,setTransitionComment]=useState('')
   const [form]=Form.useForm()
+  const openBusinessTarget=(targetModule:string,serialNo?:unknown,id?:number,titleText?:string)=>{
+    const serial=String(serialNo||'').trim()
+    if(targetModule==='case'){rememberCaseDetailTarget({id,serial_no:serial});onNavigate?.('case-company');return}
+    if(targetModule==='contract'){rememberContractDetailTarget({id,serial_no:serial});onNavigate?.('contract-company');return}
+    if(targetModule==='customer'){rememberCustomerDetailTarget({id,serial_no:serial,title:titleText});onNavigate?.('customer-company');return}
+    if(targetModule==='task'){rememberTaskDetailTarget({id,serial_no:serial});onNavigate?.('task-company-accepted');return}
+    if(['clue','notary','evidence'].includes(targetModule)){rememberInvestigationDetailTarget({id,serial_no:serial,module:targetModule});onNavigate?.(targetModule);return}
+    if(viewing) void openDetails(viewing)
+  }
+  const renderLinkedField=(field:{key:string;label:string},value:unknown)=>{
+    const text=String(value??'')
+    if(!text||text==='-')return '-'
+    if(field.key==='case_no'||field.label.includes('案'))return <Button type="link" onClick={()=>openBusinessTarget('case',text)}>{text}</Button>
+    if(field.key==='contract_no'||field.label.includes('合同'))return <Button type="link" onClick={()=>openBusinessTarget('contract',text)}>{text}</Button>
+    if(field.key==='clue_no'||field.label.includes('线索'))return <Button type="link" onClick={()=>openBusinessTarget('clue',text)}>{text}</Button>
+    return text
+  }
 
   const load=async(nextPage=page)=>{setLoading(true);try{const {data}=await api.get('/records',{params:{module,keyword,record_status:recordStatus,page:nextPage,page_size:20}});setRows(data.items);setTotal(data.total)}catch{message.error('业务数据加载失败')}finally{setLoading(false)}}
   useEffect(()=>{setPage(1);load(1)},[module])
@@ -89,7 +111,7 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
       <Form form={form} layout="vertical"><div className="form-grid"><Form.Item label="业务编号" name="serial_no" rules={[{required:true}]}><Input disabled={Boolean(editing)}/></Form.Item><Form.Item label="流程状态" name="status" rules={[{required:true}]}><Select options={config.statuses.map(v=>({label:v,value:v}))}/></Form.Item><Form.Item className="span-2" label="标题/事项" name="title" rules={[{required:true,message:'请输入标题'}]}><Input/></Form.Item><Form.Item label="客户/主体" name="customer"><Input/></Form.Item><Form.Item label="负责人" name="owner" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="所属部门" name="department"><Input/></Form.Item>{config.fields.map(field=><Form.Item key={field.key} label={field.label} name={field.key}><Input placeholder={field.placeholder}/></Form.Item>)}<Form.Item className="span-2" label="备注说明" name="description"><Input.TextArea rows={3}/></Form.Item></div></Form>
     </Modal>
     <Drawer size={620} open={Boolean(viewing)} title={`${title||config.title}详情`} onClose={()=>setViewing(null)} extra={viewing&&<Button type="primary" onClick={()=>{startEdit(viewing);setViewing(null)}}>编辑</Button>}>
-      {viewing&&<><Descriptions bordered column={2} size="small"><Descriptions.Item label="业务编号">{viewing.serial_no}</Descriptions.Item><Descriptions.Item label="状态"><Tag color={statusColors[viewing.status]||'blue'}>{viewing.status}</Tag></Descriptions.Item><Descriptions.Item label="标题" span={2}>{viewing.title}</Descriptions.Item><Descriptions.Item label="客户/主体" span={2}>{viewing.customer||'-'}</Descriptions.Item><Descriptions.Item label="负责人">{viewing.owner}</Descriptions.Item><Descriptions.Item label="部门">{viewing.department}</Descriptions.Item>{config.fields.map(f=><Descriptions.Item key={f.key} label={f.label}>{String(viewing.data?.[f.key]??'-')}</Descriptions.Item>)}<Descriptions.Item label="备注" span={2}>{viewing.description||'-'}</Descriptions.Item></Descriptions><Divider titlePlacement="start">流程操作</Divider>{history.transitions.length?<Space wrap>{history.transitions.map(target=><Button key={target} type={['已拒绝','已驳回','已退回','已撤回'].includes(target)?'default':'primary'} danger={['已拒绝','已驳回','已退回'].includes(target)} onClick={()=>startTransition(target)}>{target}</Button>)}</Space>:<span className="workflow-finished">当前状态暂无后续操作</span>}<Divider titlePlacement="start">审批与操作记录</Divider>{history.items.length?<Timeline items={history.items.map(event=>({color:event.action.includes('驳回')?'red':event.action==='创建'?'blue':'green',children:<div className="history-item"><b>{event.action}</b>{event.from_status&&event.from_status!==event.to_status&&<span>{event.from_status} → {event.to_status}</span>}<small>{event.operator} · {new Date(event.created_at).toLocaleString('zh-CN')}</small>{event.comment&&<p>{event.comment}</p>}</div>}))}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无操作记录"/>}</>}
+      {viewing&&<><Descriptions bordered column={2} size="small"><Descriptions.Item label="业务编号">{viewing.serial_no}</Descriptions.Item><Descriptions.Item label="状态"><Tag color={statusColors[viewing.status]||'blue'}>{viewing.status}</Tag></Descriptions.Item><Descriptions.Item label="标题" span={2}>{viewing.title}</Descriptions.Item><Descriptions.Item label="客户/主体" span={2}>{viewing.customer?<Button type="link" onClick={()=>openBusinessTarget('customer',viewing.data?.customer_no,viewing.id,viewing.customer)}>{viewing.customer}</Button>:'-'}</Descriptions.Item><Descriptions.Item label="负责人">{viewing.owner}</Descriptions.Item><Descriptions.Item label="部门">{viewing.department}</Descriptions.Item>{config.fields.map(f=><Descriptions.Item key={f.key} label={f.label}>{renderLinkedField(f,viewing.data?.[f.key]??'-')}</Descriptions.Item>)}<Descriptions.Item label="备注" span={2}>{viewing.description||'-'}</Descriptions.Item></Descriptions><Divider titlePlacement="start">流程操作</Divider>{history.transitions.length?<Space wrap>{history.transitions.map(target=><Button key={target} type={['已拒绝','已驳回','已退回','已撤回'].includes(target)?'default':'primary'} danger={['已拒绝','已驳回','已退回'].includes(target)} onClick={()=>startTransition(target)}>{target}</Button>)}</Space>:<span className="workflow-finished">当前状态暂无后续操作</span>}<Divider titlePlacement="start">审批与操作记录</Divider>{history.items.length?<Timeline items={history.items.map(event=>({color:event.action.includes('驳回')?'red':event.action==='创建'?'blue':'green',children:<div className="history-item"><b>{event.action}</b>{event.from_status&&event.from_status!==event.to_status&&<span>{event.from_status} → {event.to_status}</span>}<small>{event.operator} · {new Date(event.created_at).toLocaleString('zh-CN')}</small>{event.comment&&<p>{event.comment}</p>}</div>}))}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无操作记录"/>}</>}
     </Drawer>
     <Modal open={transitionOpen} title={`流程操作：${transitionTarget}`} okText="确认提交" cancelText="取消" onOk={submitTransition} onCancel={()=>setTransitionOpen(false)}><p>当前状态：<Tag>{viewing?.status}</Tag> → 目标状态：<Tag color="green">{transitionTarget}</Tag></p><Input.TextArea rows={4} value={transitionComment} onChange={e=>setTransitionComment(e.target.value)} placeholder="填写审批意见、办理说明或驳回原因"/></Modal>
   </>

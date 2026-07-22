@@ -31,6 +31,8 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
+import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
 import "./customer-center.css";
 type Contact = {
   id: string;
@@ -276,6 +278,17 @@ export default function CustomerCenterPage({
       });
       setProfile(profileRes.data);
       setDirectory(directoryRes.data.items || []);
+      const target = consumeCustomerDetailTarget();
+      if (target) {
+        const normalizedTitle = String(target.title || "").trim();
+        const targetRow = responseItems.find((item: Customer) =>
+          (target.id && item.id === target.id) ||
+          (target.serial_no && item.serial_no === target.serial_no) ||
+          (normalizedTitle && item.title === normalizedTitle)
+        );
+        if (targetRow) void openDetail(targetRow);
+        else message.warning("未找到关联客户或当前账号无权查看");
+      }
     } catch {
       message.error("客户数据加载失败");
     } finally {
@@ -576,6 +589,14 @@ export default function CustomerCenterPage({
     setAttachments([]);
     await refreshDetail(r);
   };
+  const openCustomerContracts = (customer: Customer) => {
+    rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "contracts" });
+    onNavigate?.("contract-company");
+  };
+  const openCustomerCivilCases = (customer: Customer) => {
+    rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "civil-cases" });
+    onNavigate?.("case-company-civil");
+  };
   const addContact = async () => {
     if (!contacts) return;
     const v = await contactForm.validateFields();
@@ -864,7 +885,7 @@ export default function CustomerCenterPage({
         <Button
           type="link"
           className="customer-cell-link"
-          onClick={() => onNavigate?.("contract-mine")}
+          onClick={() => openCustomerContracts(r)}
         >
           {r.data.contract_count ?? 0}
         </Button>
@@ -879,7 +900,7 @@ export default function CustomerCenterPage({
         <Button
           type="link"
           className="customer-cell-link"
-          onClick={() => onNavigate?.("case-mine-civil")}
+          onClick={() => openCustomerCivilCases(r)}
         >
           {r.data.civil_case_count ?? 0}
         </Button>

@@ -38,6 +38,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./document-center.css";
@@ -118,8 +119,10 @@ type ReceiptRow = RecordRow & {
 
 export default function DocumentCenterPage({
   initialView,
+  onNavigate,
 }: {
   initialView: string;
+  onNavigate?: (route: string) => void;
 }) {
   const profile = useMemo(() => {
     try {
@@ -170,6 +173,15 @@ export default function DocumentCenterPage({
   const [templateForm] = Form.useForm();
   const [actionForm] = Form.useForm();
   const [receiptForm] = Form.useForm();
+  const openCaseDetail = (caseNo: unknown) => {
+    const serialNo = String(caseNo || "").trim();
+    if (!serialNo || serialNo === "—") {
+      message.warning("当前文档未关联案件");
+      return;
+    }
+    rememberCaseDetailTarget({ serial_no: serialNo });
+    onNavigate?.("case-company");
+  };
   const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>({});
   const [selectedReceiptKeys, setSelectedReceiptKeys] = useState<Key[]>([]);
   const [receiptDateOpen, setReceiptDateOpen] = useState(false);
@@ -425,7 +437,7 @@ export default function DocumentCenterPage({
       title: "关联案号",
       key: "case",
       width: 145,
-      render: (_: unknown, r: RecordRow) => r.data.case_no || "—",
+      render: (_: unknown, r: RecordRow) => r.data.case_no ? <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
     },
     {
       title: "来文/送达单位",
@@ -739,9 +751,9 @@ export default function DocumentCenterPage({
       title: "案号",
       key: "case_no",
       width: 145,
-      render: (_: unknown, r: ReceiptRow) => (
-        <a onClick={() => showReceipt(r)}>{r.data.case_no}</a>
-      ),
+      render: (_: unknown, r: ReceiptRow) => r.data.case_no ? (
+        <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button>
+      ) : "—",
     },
     {
       title: "原告",
@@ -805,9 +817,9 @@ export default function DocumentCenterPage({
       title: "案号",
       key: "case_no",
       width: 145,
-      render: (_: unknown, r: ReceiptRow) => (
-        <a onClick={() => showReceipt(r)}>{r.data.case_no}</a>
-      ),
+      render: (_: unknown, r: ReceiptRow) => r.data.case_no ? (
+        <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button>
+      ) : "—",
     },
     {
       title: "法院案号",
@@ -1503,7 +1515,7 @@ export default function DocumentCenterPage({
                 {viewing.customer || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="关联案号">
-                {viewing.data.case_no || "—"}
+                {viewing.data.case_no ? <Button type="link" onClick={() => openCaseDetail(viewing.data.case_no)}>{viewing.data.case_no}</Button> : "—"}
               </Descriptions.Item>
               <Descriptions.Item label="来文/送达单位">
                 {viewing.data.sender || "—"}

@@ -40,6 +40,9 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberContractDetailTarget } from "./contractDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import { ReceiptCreatePage } from "./PlatformFinancePage";
@@ -213,6 +216,34 @@ export default function FinanceCenterPage({
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
   const [cases, setCases] = useState<Fee[]>([]);
+  const openCaseDetail = (caseNo: unknown) => {
+    const serialNo = String(caseNo || "").trim();
+    if (!serialNo || serialNo === "—") {
+      message.warning("当前记录未关联案件");
+      return;
+    }
+    rememberCaseDetailTarget({ serial_no: serialNo });
+    onNavigate?.("case-company");
+  };
+  const openContractDetail = (contractNo: unknown) => {
+    const serialNo = String(contractNo || "").trim();
+    if (!serialNo || serialNo === "—") {
+      message.warning("当前记录未关联合同");
+      return;
+    }
+    rememberContractDetailTarget({ serial_no: serialNo });
+    onNavigate?.("contract-company");
+  };
+  const openCustomerDetail = (customer: unknown, customerNo?: unknown) => {
+    const title = String(customer || "").trim();
+    const serialNo = String(customerNo || "").trim();
+    if (!title && !serialNo) {
+      message.warning("当前记录未关联客户");
+      return;
+    }
+    rememberCustomerDetailTarget({ title, serial_no: serialNo });
+    onNavigate?.("customer-company");
+  };
   const [customers, setCustomers] = useState<Fee[]>([]);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [incoming, setIncoming] = useState<IncomingPayment[]>([]);
@@ -2992,7 +3023,7 @@ export default function FinanceCenterPage({
     {
       title: "案件编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.case_no || "—",
+      render: (_: unknown, row: Fee) => row.data.case_no ? <Button type="link" onClick={() => openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button> : "—",
     },
     {
       title: "案件阶段",
@@ -3002,7 +3033,7 @@ export default function FinanceCenterPage({
     {
       title: "合同编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.contract_no || "—",
+      render: (_: unknown, row: Fee) => row.data.contract_no ? <Button type="link" onClick={() => openContractDetail(row.data.contract_no)}>{row.data.contract_no}</Button> : "—",
     },
     {
       title: "付款日期",
@@ -4864,15 +4895,15 @@ export default function FinanceCenterPage({
           "finance-internal-void",
           "finance-internal-query",
         ].includes(initialView) && header === "案件编号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
       ) : initialView === "finance-internal-settle" && header === "案号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
       ) : isInvoiceUnissuedRoute && header === "案号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
       ) : isInvoiceUnissuedRoute && header === "发票查看" ? (
@@ -4891,16 +4922,20 @@ export default function FinanceCenterPage({
           </Button>
         ) : null
       ) : isInternalDetailRoute && header === "案号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
       ) : isArchiveSettlementActiveRoute && header === "案号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
       ) : isFeeQueryRoute && header === "案号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
+        </Button>
+      ) : ["合同号", "合同编号"].includes(header) ? (
+        <Button type="link" onClick={() => openContractDetail(cellValue(row, header))}>
+          {cellValue(row, header) || "—"}
         </Button>
       ) : (isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute) && header === "请票单号" ? (
         <Button
@@ -4915,7 +4950,7 @@ export default function FinanceCenterPage({
         </Button>
       ) : initialView === "finance-internal-payment" &&
         header === "案件编号" ? (
-        <Button type="link" onClick={() => onNavigate?.("case-company")}>
+        <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
       ) : activeRouteConfig.source === "paymentPackages" &&
@@ -6059,22 +6094,22 @@ export default function FinanceCenterPage({
           column={2}
         >
           <Descriptions.Item label="案件编号">
-            {feeDetail.data.case_no || "—"}
+            {feeDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(feeDetail.data.case_no)}>{feeDetail.data.case_no}</Button> : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="案件名称">
             {linkedCaseForFee(feeDetail)?.title || feeDetail.title || "—"}
           </Descriptions.Item>
           <Descriptions.Item label="合同编号">
-            {feeDetail.data.contract_no || "—"}
+            {feeDetail.data.contract_no ? <Button type="link" onClick={() => openContractDetail(feeDetail.data.contract_no)}>{feeDetail.data.contract_no}</Button> : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="合同名称">
             {feeDetail.data.contract_title || "—"}
           </Descriptions.Item>
           <Descriptions.Item label="客户编号">
-            {feeDetail.data.customer_no || "—"}
+            {feeDetail.data.customer_no ? <Button type="link" onClick={() => openCustomerDetail(feeDetail.customer, feeDetail.data.customer_no)}>{feeDetail.data.customer_no}</Button> : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="客户名称">
-            {feeDetail.customer || "—"}
+            {feeDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(feeDetail.customer, feeDetail.data.customer_no)}>{feeDetail.customer}</Button> : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="客户管理人">
             {feeDetail.data.customer_manager || "—"}
@@ -6273,7 +6308,7 @@ export default function FinanceCenterPage({
           </Descriptions.Item>
           <Descriptions.Item label="申请备注" span={4}>{invoiceDetailData.remark || ""}</Descriptions.Item>
         </> : invoiceCancel ? <>
-          <Descriptions.Item label="合同编号">{invoiceDetailData.contract_no || ""}</Descriptions.Item>
+          <Descriptions.Item label="合同编号">{invoiceDetailData.contract_no ? <Button type="link" onClick={() => openContractDetail(invoiceDetailData.contract_no)}>{invoiceDetailData.contract_no}</Button> : ""}</Descriptions.Item>
           <Descriptions.Item label="外部合同号">{invoiceDetailData.external_contract_no || ""}</Descriptions.Item>
           <Descriptions.Item label="合同名称">{invoiceDetailData.contract_name || ""}</Descriptions.Item>
           <Descriptions.Item label="客户名称">{invoiceDisplay.customer}</Descriptions.Item>
@@ -6373,7 +6408,7 @@ export default function FinanceCenterPage({
                   invoiceDetailData.case_no || "",
                 ]).map((value, index) =>
                   index === (invoiceProcess ? 2 : invoiceCancel ? 2 : 4) && value ? (
-                    <td key={index}><Button type="link" onClick={() => onNavigate?.("case-company")}>{value}</Button></td>
+                    <td key={index}><Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button></td>
                   ) : <td key={index}>{value}</td>,
                 )}
             <td>{invoiceDetailData.fee_type || "律师代理费"}</td>
@@ -6704,7 +6739,7 @@ export default function FinanceCenterPage({
                                       </Space>
                                     ),
                                   },
-                                  { title: "案号", dataIndex: "case_no", width: 144, render: (value) => <Button type="link" onClick={() => onNavigate?.("case-company")}>{value || "—"}</Button> },
+                                  { title: "案号", dataIndex: "case_no", width: 144, render: (value) => <Button type="link" onClick={() => openCaseDetail(value)}>{value || "—"}</Button> },
                                   { title: "阶段", dataIndex: "case_stage", width: 115 },
                                   { title: <span className="finance-stacked-header"><span>费用</span><span>类型</span></span>, dataIndex: "fee_type", width: 115 },
                                   { title: <span className="finance-stacked-header"><span>费用</span><span>总金额</span></span>, dataIndex: "fee_total_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
@@ -6716,7 +6751,7 @@ export default function FinanceCenterPage({
                                   { title: "客户", dataIndex: "customer", width: 216 },
                                   { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 115 },
                                   { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 115 },
-                                  { title: "合同号", dataIndex: "contract_no", width: 144, render: (value) => <Button type="link" onClick={() => onNavigate?.("contract-company")}>{value || "—"}</Button> },
+                                  { title: "合同号", dataIndex: "contract_no", width: 144, render: (value) => <Button type="link" onClick={() => openContractDetail(value)}>{value || "—"}</Button> },
                                 ]}
                               />
                             )}
@@ -8699,7 +8734,7 @@ export default function FinanceCenterPage({
               {feeDetail.data.fee_type || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="案件编号">
-              {feeDetail.data.case_no || "—"}
+              {feeDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(feeDetail.data.case_no)}>{feeDetail.data.case_no}</Button> : "—"}
             </Descriptions.Item>
             <Descriptions.Item label="案件阶段">
               {feeDetail.data.case_stage ||
@@ -8711,7 +8746,7 @@ export default function FinanceCenterPage({
               {linkedCaseForFee(feeDetail)?.title || feeDetail.title || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="客户名称">
-              {feeDetail.customer || "—"}
+              {feeDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(feeDetail.customer, feeDetail.data.customer_no)}>{feeDetail.customer}</Button> : "—"}
             </Descriptions.Item>
             <Descriptions.Item label="收款单位">
               {feeDetail.data.payee || "—"}

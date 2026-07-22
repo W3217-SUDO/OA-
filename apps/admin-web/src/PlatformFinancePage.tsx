@@ -18,6 +18,8 @@ import type { TableColumnsType } from "antd";
 import { DownloadOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, UndoOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import "./platform-finance.css";
 
@@ -576,8 +578,10 @@ export function ReceiptCreatePage() {
 
 export default function PlatformFinancePage({
   initialView = "platform-finance-overview-query",
+  onNavigate,
 }: {
   initialView?: string;
+  onNavigate?: (route: string) => void;
 }) {
   const config = pages[initialView] || pages["platform-finance-overview-query"];
   const fields = fieldsByKind[config.kind];
@@ -632,6 +636,24 @@ export default function PlatformFinancePage({
   if (config.kind === "receipt-create") return <ReceiptCreatePage />;
 
   const money = (value: unknown) => value == null ? "—" : `¥ ${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2 })}`;
+  const openCaseDetail = (caseNo: unknown) => {
+    const serialNo = String(caseNo || "").trim();
+    if (!serialNo || serialNo === "—") {
+      message.warning("当前财务记录未关联案件");
+      return;
+    }
+    rememberCaseDetailTarget({ serial_no: serialNo });
+    onNavigate?.("case-company");
+  };
+  const openContractDetail = (contractNo: unknown) => {
+    const serialNo = String(contractNo || "").trim();
+    if (!serialNo || serialNo === "—") {
+      message.warning("当前财务记录未关联合同");
+      return;
+    }
+    rememberContractDetailTarget({ serial_no: serialNo });
+    onNavigate?.("contract-company");
+  };
   const tableRows = sourceRows
     .filter((item) => {
       if (config.kind === "settlement" && item.data?.fee_type !== "结算费用") return false;
@@ -704,6 +726,18 @@ export default function PlatformFinancePage({
     ...item,
     fixed: "left" as const,
     render: (_: unknown, row: any) => <Button type="link" icon={<EyeOutlined />} onClick={() => setDetail(row._source)}>详情</Button>,
+  } : ["案件编号", "案号"].includes(String(item.title)) ? {
+    ...item,
+    render: (_: unknown, row: any) => {
+      const value = row[item.title] || row._source?.data?.case_no;
+      return value && value !== "—" ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—";
+    },
+  } : ["合同编号", "合同号"].includes(String(item.title)) ? {
+    ...item,
+    render: (_: unknown, row: any) => {
+      const value = row[item.title] || row._source?.data?.contract_no;
+      return value && value !== "—" ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—";
+    },
   } : item);
   const exportCsv = () => {
     const titles = renderedColumns.map((item: any) => String(item.title)).filter((title) => title !== "操作");
@@ -776,6 +810,8 @@ export default function PlatformFinancePage({
           { key: "status", label: "状态", children: <Tag>{detail.status}</Tag> },
           { key: "customer", label: "客户", children: detail.claimed_customer || detail.customer || "—" },
           { key: "amount", label: "金额", children: money(detail.amount ?? detail.data?.amount) },
+          { key: "case_no", label: "案件编号", children: detail.data?.case_no ? <Button type="link" onClick={() => openCaseDetail(detail.data.case_no)}>{detail.data.case_no}</Button> : "—" },
+          { key: "contract_no", label: "合同编号", children: detail.data?.contract_no ? <Button type="link" onClick={() => openContractDetail(detail.data.contract_no)}>{detail.data.contract_no}</Button> : "—" },
           { key: "owner", label: "负责人", children: detail.claimant || detail.owner || detail.operator || "—" },
           { key: "date", label: "日期", children: detail.received_date || detail.created_at || "—" },
           { key: "remark", label: "说明", children: detail.remark || detail.description || "—" },
