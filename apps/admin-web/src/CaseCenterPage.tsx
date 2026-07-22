@@ -222,6 +222,7 @@ export default function CaseCenterPage({
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
+  const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
   const [reminderOpen, setReminderOpen] = useState(false);
   const [caseLogOpen, setCaseLogOpen] = useState(false);
   const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
@@ -718,6 +719,7 @@ export default function CaseCenterPage({
       setCounselReminders(reminderRes.data.items || []);
       setCounselLogs(logRes.data.items || []);
       setSelectedCounselAttachmentKeys([]);
+      setActiveCounselDocCategory("");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
@@ -823,6 +825,10 @@ export default function CaseCenterPage({
         const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number)});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
       }catch(error:any){message.error(error?.response?.data?.detail||"案件文件删除失败");}
     }});
+  };
+  const selectCounselDocCategory = (category: string) => {
+    setActiveCounselDocCategory(category);
+    setSelectedCounselAttachmentKeys([]);
   };
   const openCounselEdit = (row: CaseRow) => {
     counselEditForm.setFieldsValue({
@@ -937,7 +943,16 @@ export default function CaseCenterPage({
   };
   const caseColumns = useMemo(
     () => [
-      { title: "案号", dataIndex: "serial_no", width: 150 },
+      {
+        title: "案号",
+        dataIndex: "serial_no",
+        width: 150,
+        render: (value: string, row: CaseRow) => (
+          <Button type="link" className="case-cell-link" onClick={() => void openCounselDetail(row)}>
+            {value}
+          </Button>
+        ),
+      },
       { title: "案件名称", dataIndex: "title", width: 220, ellipsis: true },
       {
         title: "关联合同",
@@ -1049,7 +1064,7 @@ export default function CaseCenterPage({
         ),
       },
     ],
-    [],
+    [cases],
   );
   const hearingColumns = [
     { title: "星期", dataIndex: "weekday", width: 75 },
@@ -1057,7 +1072,19 @@ export default function CaseCenterPage({
     { title: "时间", dataIndex: "hearing_time", width: 75 },
     { title: "开庭法院", dataIndex: "court", width: 220 },
     { title: "法庭", dataIndex: "courtroom", width: 100 },
-    { title: "案号", dataIndex: "case_no", width: 145 },
+    {
+      title: "案号",
+      dataIndex: "case_no",
+      width: 145,
+      render: (value: string, row: Hearing) => {
+        const target = cases.find((item) => item.id === row.case_record_id || item.serial_no === value);
+        return value ? (
+          <Button type="link" className="case-cell-link" onClick={() => target ? void openCounselDetail(target) : message.warning("当前记录未找到关联案件")}>
+            {value}
+          </Button>
+        ) : "—";
+      },
+    },
     { title: "客户", dataIndex: "customer", width: 190 },
     { title: "开庭类型", dataIndex: "hearing_type", width: 100 },
     { title: "开庭律师", dataIndex: "hearing_lawyer", width: 90 },
@@ -1423,6 +1450,23 @@ export default function CaseCenterPage({
     receipt:["案号","案件名称","客户","费用类型","金额","申请人","通知日期","已收","已付","已开票"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>[row.serial_no,row.title,row.customer,row.data.fee_type,row.data.amount,row.owner,row.data.notice_date,row.data.received_amount,row.data.paid_amount,row.data.invoiced_amount][i]||""})),
     invoice:[{title:"文件名",dataIndex:"original_name"},{title:"案件编号",render:(_:unknown,row:AttachmentRow)=>invoiceCase(row)?.serial_no||relatedFinance(row.record_id||0)?.data?.case_no||""},{title:"案件类型",render:(_:unknown,row:AttachmentRow)=>invoiceCase(row)?.data.case_type||""},{title:"发票申请人",dataIndex:"uploader"},{title:"费用类型",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.fee_type||row.category},{title:"费用金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据编号",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_no||row.remark||""},{title:"票据金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_amount??relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据日期",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_date||row.created_at}],
   };
+  const counselDocTree=[
+    {label:"客户文档",category:"客户文档",type:"folder"},
+    {label:"合同文档",category:"合同文档",type:"folder"},
+    {label:"调查文档",category:"调查文档",type:"folder-open"},
+    {label:"鉴别资料",category:"鉴别资料",type:"child"},
+    {label:"调查文档",category:"调查文档",type:"child"},
+    {label:"取证文档",category:"取证文档",type:"child"},
+    {label:"案件文档",category:"案件文档",type:"folder-open"},
+    {label:"主体及委托资料",category:"主体及委托资料",type:"child"},
+    {label:"起诉材料及证据",category:"起诉材料及证据",type:"child"},
+    {label:"答辩材料及证据",category:"答辩材料及证据",type:"child"},
+    {label:"法院诉讼文书",category:"法院诉讼文书",type:"child"},
+    {label:"庭审及庭后文件",category:"庭审及庭后文件",type:"child"},
+  ];
+  const filteredCounselDetailAttachments=activeCounselDocCategory
+    ? counselDetailAttachments.filter(row=>String(row.category||"").includes(activeCounselDocCategory))
+    : counselDetailAttachments;
   return (
     <>
       {isCreateView && (
@@ -1877,23 +1921,22 @@ export default function CaseCenterPage({
           </Card>
           <div className="case-detail-body-grid">
             <aside className="case-detail-doc-tree">
-              <div className="case-doc-folder">客户文档</div>
-              <div className="case-doc-folder">合同文档</div>
-              <div className="case-doc-folder case-doc-folder-open">调查文档</div>
-              <div className="case-doc-child">鉴别资料</div>
-              <div className="case-doc-child">调查文档</div>
-              <div className="case-doc-child">取证文档</div>
-              <div className="case-doc-folder case-doc-folder-open">案件文档</div>
-              <div className="case-doc-child">主体及委托资料</div>
-              <div className="case-doc-child">起诉材料及证据</div>
-              <div className="case-doc-child">答辩材料及证据</div>
-              <div className="case-doc-child">法院诉讼文书</div>
-              <div className="case-doc-child">庭审及庭后文件</div>
+              <button className={`case-doc-all ${!activeCounselDocCategory?"case-doc-active":""}`} onClick={()=>selectCounselDocCategory("")}>全部文档</button>
+              {counselDocTree.map((item,index)=>(
+                <button
+                  key={`${item.category}-${item.type}-${index}`}
+                  className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.type==="folder-open"?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
+                  onClick={()=>selectCounselDocCategory(item.category)}
+                  title={`查看${item.label}`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </aside>
             <div className="case-detail-tab-area">
           <Tabs
             items={[
-              {key:"documents",label:"文档信息",children:<><Space style={{marginBottom:10}}><Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button><Button danger disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={deleteCounselAttachments}>删除选中</Button></Space><Table rowKey="id" size="small" pagination={false} dataSource={counselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[{title:"文件名称",dataIndex:"original_name"},{title:"分类",dataIndex:"category",width:130},{title:"上传人",dataIndex:"uploader",width:110},{title:"上传时间",dataIndex:"created_at",width:170}]}/></>},
+              {key:"documents",label:"文档信息",children:<><Space style={{marginBottom:10}}><Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button><Button danger disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={deleteCounselAttachments}>删除选中</Button>{activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[{title:"文件名称",dataIndex:"original_name"},{title:"分类",dataIndex:"category",width:130},{title:"上传人",dataIndex:"uploader",width:110},{title:"上传时间",dataIndex:"created_at",width:170}]}/></>},
               {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"platform-fees",label:"平台费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("平台"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"internal-fees",label:"内部结算",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},

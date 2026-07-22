@@ -39,6 +39,12 @@ import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 
+function reloadAppShell() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("_v", String(Date.now()));
+  window.location.replace(url.toString());
+}
+
 function lazyWithVersionRecovery<T extends ComponentType<any>>(
   key: string,
   importer: () => Promise<{ default: T }>,
@@ -54,7 +60,7 @@ function lazyWithVersionRecovery<T extends ComponentType<any>>(
       // hashed chunks. Reload once to fetch the current no-store index page.
       if (!sessionStorage.getItem(marker)) {
         sessionStorage.setItem(marker, "1");
-        window.location.reload();
+        reloadAppShell();
         return new Promise<never>(() => undefined);
       }
       sessionStorage.removeItem(marker);
@@ -79,7 +85,7 @@ class PageLoadBoundary extends Component<
         showIcon
         message="页面资源加载失败"
         description="系统版本已更新或网络暂时中断，请刷新后重试。"
-        action={<Button onClick={() => window.location.reload()}>刷新页面</Button>}
+        action={<Button onClick={reloadAppShell}>刷新页面</Button>}
       />
     );
   }
