@@ -1284,6 +1284,17 @@ export default function FinanceCenterPage({
   const allocateIncoming = async () => {
     if (!allocateTarget) return;
     const v = await allocateForm.validateFields();
+    const amount = Number(v.amount || 0);
+    const settlementAmount = v.settlement_amount == null ? null : Number(v.settlement_amount);
+    const archiveFee = Number(v.archive_fee || 0);
+    if (settlementAmount != null && settlementAmount > amount + 0.001) {
+      message.warning("结算金额不能大于本次分配金额");
+      return;
+    }
+    if (archiveFee > 0 && (settlementAmount == null || archiveFee > settlementAmount + 0.001)) {
+      message.warning("归档费不能大于结算金额");
+      return;
+    }
     try {
       await api.post(
         `/finance/incoming-payments/${allocateTarget.id}/allocate`,
@@ -1293,6 +1304,14 @@ export default function FinanceCenterPage({
               receivable_plan_id: v.receivable_plan_id,
               amount: v.amount,
               case_no: v.case_no || "",
+              settlement_items: v.case_no && settlementAmount != null
+                ? [{
+                    fee_type: v.settlement_fee_type || "代理费",
+                    amount: v.amount,
+                    settlement_amount: settlementAmount,
+                    archive_fee: archiveFee,
+                  }]
+                : [],
             },
           ],
           comment: v.comment || "",
@@ -8563,14 +8582,17 @@ export default function FinanceCenterPage({
                 }))}
               onChange={(id) => {
                 const plan = receivables.find((x) => x.id === id);
-                if (plan && allocateTarget?.remaining_amount != null)
+                if (plan && allocateTarget?.remaining_amount != null) {
+                  const allocationAmount = Math.min(
+                    plan.remaining_amount,
+                    allocateTarget.remaining_amount,
+                  );
                   allocateForm.setFieldValue(
                     "amount",
-                    Math.min(
-                      plan.remaining_amount,
-                      allocateTarget.remaining_amount,
-                    ),
+                    allocationAmount,
                   );
+                  allocateForm.setFieldValue("settlement_amount", allocationAmount);
+                }
                 allocateForm.setFieldValue("case_no", undefined);
               }}
             />
@@ -8602,6 +8624,15 @@ export default function FinanceCenterPage({
           </Form.Item>
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="结算费用类型" name="settlement_fee_type" initialValue="代理费">
+            <Select options={["代理费", "官方费用", "其他费用"].map((value) => ({ value, label: value }))} />
+          </Form.Item>
+          <Form.Item label="本笔结算金额" name="settlement_amount">
+            <InputNumber min={0} precision={2} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="本笔归档费" name="archive_fee" initialValue={0}>
+            <InputNumber min={0} precision={2} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
         {Boolean(allocateTarget?.allocations?.length) && (
