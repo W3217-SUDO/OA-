@@ -947,6 +947,14 @@ def main() -> None:
     ):
         assert token in MAIN, f"criminal case backend guard missing: {token}"
     for token in (
+        'def _record_links_to_case(record: BusinessRecord, case_record: BusinessRecord) -> bool:',
+        'linked_case_id = int(record_data.get("case_id") or record_data.get("case_record_id") or 0)',
+        'return linked_case_id == case_record.id',
+        'return str(record_data.get("case_no") or "") == case_record.serial_no',
+        'if _record_links_to_case(item, case_record)',
+    ):
+        assert token in MAIN, f"case archive linkage must prefer case id: {token}"
+    for token in (
         'call("PATCH",f"/records/{case[\'id\']}",{"status":"已归档"},expected=(409,))',
         'call("POST",f"/records/{case[\'id\']}/transition",{"to_status":"文书准备","comment":"禁止通用流转绕过"},expected=(409,))',
         'call("PUT",f"/cases/{case[\'id\']}/litigants",{',

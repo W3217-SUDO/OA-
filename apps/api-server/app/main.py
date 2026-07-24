@@ -1953,17 +1953,22 @@ async def _sync_case_document_readiness(case_record: BusinessRecord, db: AsyncSe
     return complete
 
 
+def _record_links_to_case(record: BusinessRecord, case_record: BusinessRecord) -> bool:
+    """Prefer the persisted case id; use the case number only for legacy rows."""
+    record_data = record.data or {}
+    linked_case_id = int(record_data.get("case_id") or record_data.get("case_record_id") or 0)
+    if linked_case_id:
+        return linked_case_id == case_record.id
+    return str(record_data.get("case_no") or "") == case_record.serial_no
+
+
 async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) -> dict[str, bool]:
     """Calculate archive readiness from persisted business facts, never client checkboxes."""
     data = dict(case_record.data or {})
     documents_complete = await _sync_case_document_readiness(case_record, db)
     related_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module.in_({"finance", "invoice", "refund"})))).all()
 
-    def belongs_to_case(item: BusinessRecord) -> bool:
-        item_data = item.data or {}
-        return int(item_data.get("case_id") or item_data.get("case_record_id") or 0) == case_record.id or str(item_data.get("case_no") or "") == case_record.serial_no
-
-    related = [item for item in related_rows if belongs_to_case(item)]
+    related = [item for item in related_rows if _record_links_to_case(item, case_record)]
     fees = [item for item in related if item.module == "finance"]
     invoices = [item for item in related if item.module == "invoice"]
     refunds = [item for item in related if item.module == "refund"]
@@ -10291,7 +10296,11 @@ async def close_case_for_archive(case_id: int, body: TaskActionInput, identity: 
     if case_record.status in {"待归档审核", "已归档"}: raise HTTPException(status_code=409, detail="归档审核中或已归档案件不能重复办结")
     if (case_record.data or {}).get("case_closed_at"): raise HTTPException(status_code=409, detail="案件已经办理办结确认")
     tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all()
-    active_tasks = [item for item in tasks if (int((item.data or {}).get("case_id") or 0) == case_record.id or str((item.data or {}).get("case_no") or "") == case_record.serial_no) and item.status not in {"已完成", "已验收", "已停止", "已撤回", "已拒绝"}]
+    active_tasks = [
+        item for item in tasks
+        if _record_links_to_case(item, case_record)
+        and item.status not in {"已完成", "已验收", "已停止", "已撤回", "已拒绝"}
+    ]
     if active_tasks: raise HTTPException(status_code=409, detail=f"仍有 {len(active_tasks)} 项案件任务未办结，不能确认案件办结")
     now = datetime.now(timezone.utc)
     case_record.data = {**(case_record.data or {}), "case_closed": True, "case_closed_at": now.isoformat(), "case_closed_by": identity["username"], "case_close_comment": body.comment.strip(), "business_stage": "结案"}
