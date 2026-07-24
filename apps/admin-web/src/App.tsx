@@ -77,6 +77,10 @@ class PageLoadBoundary extends Component<
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    // Keep the generic recovery UI, but retain the real failure in browser logs.
+    console.error("Page render failed", error, info.componentStack);
+  }
   render() {
     if (!this.state.failed) return this.props.children;
     return (
