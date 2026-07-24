@@ -2376,12 +2376,14 @@ export default function FinanceCenterPage({
       .sort((a, b) =>
         String(b.transaction_date).localeCompare(String(a.transaction_date)),
       )[0];
-  const linkedCaseForFee = (fee: Fee) =>
-    cases.find(
+  const linkedCaseForFee = (fee: Fee) => {
+    const data = fee.data || {};
+    return cases.find(
       (item) =>
-        (fee.data.case_id && Number(fee.data.case_id) === item.id) ||
-        (fee.data.case_no && fee.data.case_no === item.serial_no),
+        (data.case_id && Number(data.case_id) === item.id) ||
+        (data.case_no && data.case_no === item.serial_no),
     );
+  };
   const paymentStatus = (fee: Fee) => {
     if (fee.data.payment_status) return fee.data.payment_status;
     if (fee.data.writeoff_status === "待核销") return "待核销";
