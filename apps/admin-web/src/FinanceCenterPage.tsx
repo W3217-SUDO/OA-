@@ -4863,7 +4863,7 @@ export default function FinanceCenterPage({
           "finance-internal-query",
         ].includes(initialView) ? (
           internalListOperation(_, row)
-        ) : activeRouteConfig.source === "invoices" ? (
+        ) : activeRouteConfig?.source === "invoices" ? (
           isInvoiceMineRoute
             ? invoiceMineOperation(_, row)
             : isInvoicePendingRoute
@@ -4871,13 +4871,13 @@ export default function FinanceCenterPage({
               : isInvoiceCompanyRoute
                 ? invoiceCompanyOperation(_, row)
                 : originalInvoiceOperation(_, row)
-        ) : activeRouteConfig.source === "incoming" ? (
+        ) : activeRouteConfig?.source === "incoming" ? (
           originalIncomingOperation(_, row)
-        ) : activeRouteConfig.source === "generalSettlements" ? (
+        ) : activeRouteConfig?.source === "generalSettlements" ? (
           generalSettlementOperation(_, row)
-        ) : activeRouteConfig.source === "archiveSettlements" ? (
+        ) : activeRouteConfig?.source === "archiveSettlements" ? (
           archiveSettlementPendingOperation(_, row)
-        ) : activeRouteConfig.source === "paymentPackages" ? (
+        ) : activeRouteConfig?.source === "paymentPackages" ? (
           paymentPackageOperation(_, row)
         ) : (
           originalOperation(_, row)
@@ -4953,7 +4953,7 @@ export default function FinanceCenterPage({
         <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
-      ) : activeRouteConfig.source === "paymentPackages" &&
+      ) : activeRouteConfig?.source === "paymentPackages" &&
         header === "付款包号码" ? (
         <Button type="link" onClick={() => setPaymentPackageDetail(row)}>
           {cellValue(row, header)}
@@ -4976,30 +4976,30 @@ export default function FinanceCenterPage({
             ? [...invoiceCompanyRows]
           : isInvoiceUnissuedRoute
             ? [...invoiceUnissuedRows]
-            : activeRouteConfig.source === "incoming"
+            : activeRouteConfig?.source === "incoming"
               ? [...incoming]
-              : activeRouteConfig.source === "generalSettlements"
+              : activeRouteConfig?.source === "generalSettlements"
                 ? [...generalSettlementRows]
-              : activeRouteConfig.source === "archiveSettlements"
+              : activeRouteConfig?.source === "archiveSettlements"
                 ? [...archiveSettlementRows]
-              : activeRouteConfig.source === "settlements"
+              : activeRouteConfig?.source === "settlements"
                 ? [...pendingSettlements]
-                : activeRouteConfig.source === "paymentPackages"
+                : activeRouteConfig?.source === "paymentPackages"
                   ? [...paymentPackages]
-                  : activeRouteConfig.source === "refundReviewFees"
+                  : activeRouteConfig?.source === "refundReviewFees"
                     ? [...refundReviewFees]
-                    : activeRouteConfig.source === "invoices"
+                    : activeRouteConfig?.source === "invoices"
                       ? [...invoices]
                       : [...fees];
-    if (activeRouteConfig.source === "archiveSettlements") return rows;
+    if (activeRouteConfig?.source === "archiveSettlements") return rows;
     if (
       initialView.startsWith("finance-internal") &&
-      activeRouteConfig.source !== "paymentPackages"
+      activeRouteConfig?.source !== "paymentPackages"
     )
       rows = rows.filter((row) => row.data?.fee_type === "内部费用");
     if (
       initialView.startsWith("finance-settlement") &&
-      activeRouteConfig.source === "fees"
+      activeRouteConfig?.source === "fees"
     )
       rows = rows.filter((row) => row.data?.fee_type === "结算费用");
     if (initialView.startsWith("finance-archive-fee"))
@@ -6902,7 +6902,7 @@ export default function FinanceCenterPage({
                             ),
                           },
                         }
-                    : activeRouteConfig.source === "paymentPackages"
+                    : activeRouteConfig?.source === "paymentPackages"
                     ? {
                         body: {
                           wrapper: ({ children, ...bodyProps }: any) => (
