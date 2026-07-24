@@ -8830,7 +8830,11 @@ export default function FinanceCenterPage({
             >
               <Input />
             </Form.Item>
-            <Form.Item label="关联案号" name="case_no">
+            <Form.Item
+              label="关联案号"
+              name="case_no"
+              rules={[{ required: true, message: "请选择或填写关联案号" }]}
+            >
               <Input />
             </Form.Item>
             <Form.Item label="客户" name="customer">

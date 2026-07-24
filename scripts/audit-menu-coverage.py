@@ -2344,6 +2344,10 @@ def main() -> None:
     ):
         assert token in FINANCE, f"finance fee query page contract missing: {token}"
     assert (
+        'name="case_no"\n              rules={[{ required: true, message: "请选择或填写关联案号" }]}'
+        in FINANCE
+    ), "finance fee creation must require a case number before the backend approval guard"
+    assert (
         'isFeeQueryRoute?feeQueryMeta.pageSize' in NORMALIZED_FINANCE
     ), "finance fee query must use its dedicated server-side page size"
     assert (
