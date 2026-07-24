@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, DatePicker, Form, Input, message, Select, Table } from "antd";
+import { Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Select, Table } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { formatRequiredDate } from "./formSafety";
 import "./contract-center.css";
 
 type Receivable = {
@@ -41,7 +42,9 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
   const [profile, setProfile] = useState<Profile>({ username: "", display_name: "", department: "" });
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState<Record<string, any>>({});
+  const [creating, setCreating] = useState(false);
   const [form] = Form.useForm();
+  const [receivableForm] = Form.useForm();
   const detailView = initialView === "contract-receivable-detail";
 
   const load = async () => {
@@ -105,6 +108,26 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     if (query.source_person && !String(contract.data.source_person || contract.owner).toLowerCase().includes(String(query.source_person).toLowerCase())) return false;
     return true;
   }), [receivables, contractById, query]);
+
+  const openCreateReceivable = () => {
+    receivableForm.resetFields();
+    receivableForm.setFieldsValue({ due_date: dayjs() });
+    setCreating(true);
+  };
+  const createReceivable = async () => {
+    const values = await receivableForm.validateFields();
+    try {
+      await api.post("/receivables", {
+        ...values,
+        due_date: formatRequiredDate(values.due_date, "到期日"),
+      });
+      message.success("应收计划已创建");
+      setCreating(false);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "应收计划创建失败");
+    }
+  };
 
   const listColumns = [
     { title: "合同号", dataIndex: "serial_no", width: 130, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openContract(row)}>{row.serial_no}</Button> },
@@ -179,6 +202,30 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     ) : (
       <Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ pageSize: 15, showTotal: (total) => `共 ${total} 条` }} />
     )}
-    <div className="contract-bottom-actions"><Button onClick={exportExcel}>导出Excel</Button></div>
+    <div className="contract-bottom-actions"><Button type="primary" onClick={openCreateReceivable}>新增应收计划</Button><Button onClick={exportExcel}>导出Excel</Button></div>
+    <Modal
+      open={creating}
+      title="新增应收计划"
+      okText="创建计划"
+      cancelText="取消"
+      onOk={() => void createReceivable()}
+      onCancel={() => setCreating(false)}
+    >
+      <Form form={receivableForm} layout="vertical">
+        <Form.Item label="合同" name="contract_record_id" rules={[{ required: true, message: "请选择合同" }]}>
+          <Select
+            showSearch
+            optionFilterProp="label"
+            placeholder="选择可见合同"
+            options={visibleContracts.filter((contract) => ["已通过", "履行中"].includes(contract.status)).map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))}
+          />
+        </Form.Item>
+        <Form.Item label="应收阶段" name="phase" rules={[{ required: true, message: "请填写应收阶段" }]}><Input placeholder="例如：首期代理费" /></Form.Item>
+        <Form.Item label="到期日" name="due_date" rules={[{ required: true, message: "请选择到期日" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+        <Form.Item label="应收金额" name="amount" rules={[{ required: true, message: "请填写应收金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
+        <Form.Item label="付款方" name="payer"><Input placeholder="默认使用合同客户" /></Form.Item>
+        <Form.Item label="备注" name="remark"><Input.TextArea rows={3} /></Form.Item>
+      </Form>
+    </Modal>
   </Card>;
 }
