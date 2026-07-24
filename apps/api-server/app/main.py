@@ -4776,20 +4776,21 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
     return {"created": updated, "updated": updated, "updated_ids": sorted(seen), "items": imported_rows, "failed": len(errors), "errors": errors}
 
 
-async def _import_notary_named_file(file: UploadFile, match_field: str, category: str, identity: dict, db: AsyncSession):
+async def _import_notary_named_file(file: UploadFile, match_field: str, reference_no: str, category: str, identity: dict, db: AsyncSession):
     filename = Path(file.filename or "").name
     if Path(filename).suffix.lower() != ".pdf":
         raise HTTPException(status_code=422, detail="仅支持 PDF 文件")
-    lookup = Path(filename).stem.strip().casefold()
+    lookup = reference_no.strip().casefold()
     if not lookup:
-        raise HTTPException(status_code=422, detail="文件名缺少可匹配编号")
+        label = "公证书号" if match_field == "certificate_no" else "发票号"
+        raise HTTPException(status_code=422, detail=f"请填写{label}")
     records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "notary", *(await _record_scope_conditions(identity, db))))).all()
     matches = [item for item in records if str((item.data or {}).get(match_field, "")).strip().casefold() == lookup]
     if not matches:
         label = "公证书号" if match_field == "certificate_no" else "发票号"
-        raise HTTPException(status_code=422, detail=f"文件名 {Path(filename).stem} 未匹配到任何{label}对应的公证记录")
+        raise HTTPException(status_code=422, detail=f"{label} {reference_no.strip()} 未匹配到任何公证记录")
     if len(matches) > 1:
-        raise HTTPException(status_code=409, detail="文件名匹配到多条公证记录，请先清理重复编号")
+        raise HTTPException(status_code=409, detail=f"{label}匹配到多条公证记录，请先清理重复编号")
     record = matches[0]
     duplicate = await db.scalar(select(FileAttachment).where(FileAttachment.record_id == record.id, FileAttachment.category == category, FileAttachment.original_name == filename))
     if duplicate:
@@ -4798,20 +4799,20 @@ async def _import_notary_named_file(file: UploadFile, match_field: str, category
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
     stored_name = f"{uuid4().hex}.pdf"; target = UPLOAD_ROOT / stored_name; target.write_bytes(content)
-    item = FileAttachment(record_id=record.id, category=category, original_name=filename, stored_name=stored_name, content_type=file.content_type or "application/pdf", size=len(content), path=str(target), uploader=identity["username"], remark=f"按{match_field}自动匹配导入")
+    item = FileAttachment(record_id=record.id, category=category, original_name=filename, stored_name=stored_name, content_type=file.content_type or "application/pdf", size=len(content), path=str(target), uploader=identity["username"], remark=f"按{match_field}显式编号匹配导入")
     db.add(item); db.add(WorkflowEvent(record_id=record.id, action=f"导入{category}", from_status=record.status, to_status=record.status, operator=identity["username"], comment=filename))
     await db.commit(); await db.refresh(item)
     return {"created": 1, "failed": 0, "errors": [], "record_id": record.id, "record_no": record.serial_no, "attachment": _attachment_dict(item, record)}
 
 
 @app.post(f"{settings.api_prefix}/investigations/notaries/files/import", status_code=status.HTTP_201_CREATED)
-async def import_notary_certificate_file(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await _import_notary_named_file(file, "certificate_no", "公证书扫描件", identity, db)
+async def import_notary_certificate_file(file: UploadFile = File(...), certificate_no: str = Form(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _import_notary_named_file(file, "certificate_no", certificate_no, "公证书扫描件", identity, db)
 
 
 @app.post(f"{settings.api_prefix}/investigations/notaries/invoices/import", status_code=status.HTTP_201_CREATED)
-async def import_notary_invoice_file(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await _import_notary_named_file(file, "invoice_no", "公证发票", identity, db)
+async def import_notary_invoice_file(file: UploadFile = File(...), invoice_no: str = Form(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _import_notary_named_file(file, "invoice_no", invoice_no, "公证发票", identity, db)
 
 
 @app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/submit")

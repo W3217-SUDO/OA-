@@ -1619,6 +1619,9 @@ def main() -> None:
     assert import_match and "notary-import-storage" in import_match.group(1), "notary storage import must use the dedicated upload page"
     for endpoint in ("/investigations/notaries/storage/import", "/investigations/notaries/files/import", "/investigations/notaries/invoices/import"):
         assert endpoint in INVESTIGATION, f"notary page is missing its real import endpoint {endpoint}"
+    assert "form.append('certificate_no',importReference.trim())" in INVESTIGATION, "certificate-file import must transmit the explicitly entered certificate number"
+    assert "form.append('invoice_no',importReference.trim())" in INVESTIGATION, "invoice-file import must transmit the explicitly entered invoice number"
+    assert "certificate_no: str = Form(...)" in MAIN and "invoice_no: str = Form(...)" in MAIN, "notary file APIs must require explicit matching numbers"
     assert ".seal-stats,.seal-original-tabs{display:none!important}" in SEAL_CSS, "legacy seal statistics/tabs must stay hidden in original-layout views"
 
     report_execution_titles = [
