@@ -2605,11 +2605,23 @@ export default function FinanceCenterPage({
     queryField("案件阶段", "caseStage"),
     queryField("费用类型", "feeType"),
   ];
-  const internalMineOperation = (_: unknown, row: Fee) => (
-    <Button type="link" onClick={() => setFeeDetail(row)}>
-      查看
-    </Button>
-  );
+  const internalMineOperation = (_: unknown, row: Fee) => {
+    const maySubmit =
+      ["草稿", "已退回"].includes(row.status) &&
+      (role === "admin" || role === "manager" || row.owner === currentUser.username);
+    return (
+      <Space size={0}>
+        {maySubmit && (
+          <Button type="link" onClick={() => feeAction(row, "submit")}>
+            提交审批
+          </Button>
+        )}
+        <Button type="link" onClick={() => setFeeDetail(row)}>
+          查看
+        </Button>
+      </Space>
+    );
+  };
   const feeQueryFields = [
     queryField("案件编号", "caseNo"),
     queryField("法院案号", "courtCaseNo"),
