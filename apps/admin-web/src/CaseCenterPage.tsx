@@ -233,6 +233,7 @@ export default function CaseCenterPage({
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
   const [selectedCaseKeys, setSelectedCaseKeys] = useState<Key[]>([]);
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
+  const [caseUploadCategory, setCaseUploadCategory] = useState("案件文件");
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const [createForm] = Form.useForm();
   const createCustomer = Form.useWatch("customer", createForm);
@@ -1294,7 +1295,8 @@ export default function CaseCenterPage({
   };
   const uploadCaseFile = async (file?: File) => {
     if (!file || !selectedCase) return message.warning("请先选择案件再上传文件");
-    const data = new FormData(); data.append("file",file); data.append("record_id",String(selectedCase.id)); data.append("category",initialView==="case-files-receipt"?"案件票据文件":"案件文件"); data.append("remark",initialView==="case-files-receipt"?"案件票据批量上传":"案件列表上传");
+    const category = initialView === "case-files-receipt" ? "案件票据文件" : caseUploadCategory;
+    const data = new FormData(); data.append("file",file); data.append("record_id",String(selectedCase.id)); data.append("category",category); data.append("remark",initialView==="case-files-receipt"?"案件票据批量上传":`案件列表上传：${category}`);
     try { await api.post("/attachments",data); message.success("案件文件已上传"); } catch(error:any){message.error(error?.response?.data?.detail||"上传失败");}
     finally { if(caseUploadRef.current) caseUploadRef.current.value=""; }
   };
@@ -1610,6 +1612,13 @@ export default function CaseCenterPage({
           <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?1420:2300}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{pageSize:10,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode)return;const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           <div className="case-bottom-actions"><Space size={5} wrap>
             {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<Button onClick={exportCases}>导出全部（CSV）</Button>}
+            <Select
+              aria-label="上传材料分类"
+              value={caseUploadCategory}
+              onChange={setCaseUploadCategory}
+              style={{ width: 150 }}
+              options={["案件文件", "委托材料", "证据材料", "诉讼文书", "裁判文书"].map((value) => ({ value, label: value }))}
+            />
             <Button onClick={()=>selectedCase?caseUploadRef.current?.click():message.warning("请先选择案件")}>上传文件</Button>
             {["admin","manager"].includes(profile.role||"")&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,true)}}>立案审批通过</Button>}
             {["admin","manager"].includes(profile.role||"")&&<Button danger onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,false)}}>立案审批驳回</Button>}
