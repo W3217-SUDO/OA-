@@ -871,6 +871,19 @@ class InvestigationFeeInput(BaseModel):
     description: str = ""
 
 
+INVESTIGATION_RECORD_MODULES = {"investigation", "clue", "notary", "evidence"}
+INVESTIGATION_CREATE_STATUS_BY_MODULE = {
+    "investigation": "待分配",
+    "clue": "草稿",
+    "notary": "待审核",
+    "evidence": "待整理",
+}
+INVESTIGATION_EDIT_DATA_FIELDS = {
+    "region", "address", "right_type", "deadline", "priority", "platform",
+    "product", "source", "infringement_method",
+}
+
+
 class CaseAssignmentInput(BaseModel):
     customer_manager: str = ""
     hearing_lawyer: str
@@ -4569,6 +4582,55 @@ async def _sync_investigation_materials(record: BusinessRecord, db: AsyncSession
 async def clue_import_template(_: dict = Depends(current_identity)):
     content = "\ufeff线索标题,客户,调查平台,侵权产品,负责人,对方主体,来源链接,说明\r\n线上店铺销售疑似侵权产品,示例客户,淘宝,示例商品,管理者,示例店铺,https://example.com,每一行仅填写一种侵权产品"
     return Response(content=content.encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="clue-import-template.csv"'})
+
+
+@app.post(f"{settings.api_prefix}/investigations/records", status_code=status.HTTP_201_CREATED)
+async def create_investigation_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if body.module not in INVESTIGATION_RECORD_MODULES:
+        raise HTTPException(status_code=422, detail="调查中心记录类型无效")
+    if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no)):
+        raise HTTPException(status_code=409, detail="业务编号已存在")
+    payload = body.model_dump()
+    payload["status"] = INVESTIGATION_CREATE_STATUS_BY_MODULE[body.module]
+    if identity.get("role") != "admin":
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        if not user:
+            raise HTTPException(status_code=401, detail="当前用户不存在")
+        payload["department"] = user.department
+        if identity.get("role") == "user":
+            payload["owner"] = user.username
+    record = BusinessRecord(**payload)
+    db.add(record)
+    await db.flush()
+    db.add(WorkflowEvent(record_id=record.id, action="创建调查中心记录", to_status=record.status, operator=identity["username"], comment=f"类型：{body.module}"))
+    await db.commit()
+    await db.refresh(record)
+    return _record_dict(record)
+
+
+@app.patch(f"{settings.api_prefix}/investigations/records/{{record_id}}")
+async def update_investigation_record(record_id: int, body: RecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_visible(record_id, identity, db)
+    if record.module not in INVESTIGATION_RECORD_MODULES:
+        raise HTTPException(status_code=404, detail="调查中心记录不存在")
+    await _require_record_owner_or_manager(record, identity, db)
+    changes = body.model_dump(exclude_unset=True)
+    if changes.get("status") and changes["status"] != record.status:
+        raise HTTPException(status_code=409, detail="调查中心状态必须通过专用审批或办理入口变更")
+    if changes.get("owner") and changes["owner"] != record.owner:
+        raise HTTPException(status_code=409, detail="调查员/负责人必须通过分配调查员入口修改")
+    old_status = record.status
+    for field in ("title", "customer", "description"):
+        if field in changes and changes[field] is not None:
+            setattr(record, field, changes[field])
+    if "data" in changes and changes["data"] is not None:
+        incoming_data = dict(changes["data"] or {})
+        editable_data = {key: incoming_data[key] for key in INVESTIGATION_EDIT_DATA_FIELDS if key in incoming_data}
+        record.data = {**(record.data or {}), **editable_data}
+    db.add(WorkflowEvent(record_id=record.id, action="修改调查中心资料", from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过调查中心专用入口修改基础资料"))
+    await db.commit()
+    await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
 
 
 @app.post(f"{settings.api_prefix}/investigations/clues/import")
