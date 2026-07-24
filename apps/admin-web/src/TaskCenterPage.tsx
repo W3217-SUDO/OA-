@@ -246,7 +246,9 @@ export default function TaskCenterPage({
   const isUnread = initialView === "task-my-unread";
   const isReminder = initialView === "task-reminders";
   const canManageInitiatedTask = isPersonalView && isCreated;
-  const canManageAcceptedTask = isPersonalView && isAccepted;
+  const canManageAcceptedTask =
+    (isPersonalView && isAccepted) ||
+    (profile.role === "admin" && initialView === "task-company-accepted");
   const canManageCompanyCreatedTask =
     profile.role === "admin" && initialView === "task-company-created";
   const hideTaskFooter =
