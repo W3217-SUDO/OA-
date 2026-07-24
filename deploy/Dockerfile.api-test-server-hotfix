@@ -1,0 +1,5 @@
+ARG BASE_API_IMAGE
+FROM ${BASE_API_IMAGE}
+
+WORKDIR /app
+COPY apps/api-server/app ./app
