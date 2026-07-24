@@ -10199,7 +10199,8 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
 @app.get(f"{settings.api_prefix}/cases/{{case_id}}/tasks")
 async def list_case_tasks(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    items = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task", or_(BusinessRecord.data["case_id"].as_integer() == case_record.id, BusinessRecord.data["case_no"].as_string() == case_record.serial_no)).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
+    task_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task").order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
+    items = [item for item in task_rows if _record_links_to_case(item, case_record)]
     return {"case": _record_dict(case_record), "items": [_task_dict(item) for item in items], "total": len(items)}
 
 
