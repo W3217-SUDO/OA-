@@ -1177,8 +1177,9 @@ def main() -> None:
     for terminal_status in ("已拒绝", "已停止", "已撤回"):
         assert terminal_status not in collaborating_tabs, f"original my-collaborating node-status tabs do not include {terminal_status}"
     assert 'elif relation == "collaborating":' in MAIN, "task API collaborating relation is missing"
-    relation_guard = re.search(r'username = identity\["username"\]\s*if identity\.get\("role"\) != "admin"(?: and scope != "department")?:\s*(.*?)\s*items = \[_task_dict', MAIN, re.S)
-    assert relation_guard and 'elif relation == "collaborating":' in relation_guard.group(1), "admin must bypass relation narrowing while ordinary users retain collaborating filtering"
+    relation_guard = re.search(r'username = identity\["username"\]\s*if scope != "department":\s*(.*?)\s*items = \[_task_dict', MAIN, re.S)
+    assert relation_guard and 'elif relation == "collaborating":' in relation_guard.group(1), "task participant-role narrowing must retain collaborating filtering"
+    assert 'scope == "company" and identity.get("role") == "admin"' in relation_guard.group(1), "company-wide initiated tasks must remain organization-wide while accepted tasks honor ownership"
     assert task_query_fields == [
         "priority", "serial_no", "title", "description", "initiator", "case_no",
         "source", "created_range", "owner", "plaintiff", "defendant", "deadline_range",
@@ -1348,7 +1349,7 @@ def main() -> None:
         'if relation == "owned":',
         'elif relation == "collaborating":',
         'tasks = [task for task in tasks if task.department == user.department]',
-        'if identity.get("role") != "admin" and scope != "department":',
+        'if scope != "department":',
     ):
         assert token in MAIN, f"department task backend scope contract missing: {token}"
     for token in (

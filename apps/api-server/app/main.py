@@ -5368,8 +5368,11 @@ async def list_tasks(
     elif scope == "company" and identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="只有系统管理员可以查看全所任务")
     username = identity["username"]
-    if identity.get("role") != "admin" and scope != "department":
-        if relation == "initiated":
+    if scope != "department":
+        # Company-wide administrators may read every task, but the received and
+        # collaborating views must still honor their selected participant role.
+        # The initiated company view intentionally remains organization-wide.
+        if relation == "initiated" and not (scope == "company" and identity.get("role") == "admin"):
             tasks = [task for task in tasks if (task.data or {}).get("initiator") == username]
         elif relation == "owned":
             tasks = [task for task in tasks if task.owner == username]
