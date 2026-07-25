@@ -1121,11 +1121,11 @@ export default function App() {
           }
         : item,
     );
-  const activeRoot =
-    active === "dashboard"
-      ? "dashboard"
-      : rootMenuKey(effectiveMenuItems, active);
   const route = canonicalRoute(active);
+  const activeRoot =
+    route === "dashboard"
+      ? "dashboard"
+      : rootMenuKey(effectiveMenuItems, route);
   const pageAllowed =
     sessionUser?.role === "admin" ||
     activeRoot === "dashboard" ||

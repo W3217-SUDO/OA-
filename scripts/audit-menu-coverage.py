@@ -780,6 +780,7 @@ def main() -> None:
     assert 'new URLSearchParams(window.location.search).get("page") || "dashboard"' in APP, "page query deep-link initialization is missing"
     assert 'window.addEventListener("popstate", restoreRouteFromHistory)' in APP, "browser history must restore the selected deep route"
     assert 'window.history.pushState(' in APP and 'params.set("page", active)' in APP, "menu navigation must keep the page query synchronized"
+    assert 'const route = canonicalRoute(active);\n  const activeRoot =\n    route === "dashboard"\n      ? "dashboard"\n      : rootMenuKey(effectiveMenuItems, route);' in APP, "deep routes must resolve authorization from their canonical menu parent"
     assert 'const ancestors = ancestorMenuKeys(effectiveMenuItems, active)' in APP, "deep routes must expand their parent menus"
     assert '<TaskCenterPage initialView={active}' in APP, "task routes must preserve the unread leaf key when rendering"
     assert '{ key: "task-reminders", label: "任务提醒" }' not in APP, "original sidebar must not invent a visible task-reminders fallback leaf"
