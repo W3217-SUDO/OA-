@@ -4830,6 +4830,51 @@ async def import_notary_invoice_file(file: UploadFile = File(...), invoice_no: s
     return await _import_notary_named_file(file, "invoice_no", invoice_no, "公证发票", identity, db)
 
 
+@app.get(f"{settings.api_prefix}/investigations/notaries/files")
+async def list_notary_files(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return one query row per imported certificate or invoice attachment."""
+    rows = (await db.execute(
+        select(FileAttachment, BusinessRecord)
+        .join(BusinessRecord, FileAttachment.record_id == BusinessRecord.id)
+        .where(
+            BusinessRecord.module == "notary",
+            FileAttachment.category.in_({"公证书扫描件", "公证发票"}),
+            *(await _record_scope_conditions(identity, db)),
+        )
+        .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
+    )).all()
+    items = []
+    for attachment, record in rows:
+        data = record.data or {}
+        items.append({
+            "id": attachment.id,
+            "module": "notary_file",
+            "serial_no": record.serial_no,
+            "title": attachment.original_name,
+            "customer": record.customer,
+            "status": record.status,
+            "owner": attachment.uploader or record.owner,
+            "description": attachment.remark,
+            "created_at": attachment.created_at.isoformat() if attachment.created_at else "",
+            "updated_at": attachment.created_at.isoformat() if attachment.created_at else "",
+            "data": {
+                "attachment_id": attachment.id,
+                "attachment_category": attachment.category,
+                "invoice_no": data.get("invoice_no") or "",
+                "certificate_no": data.get("certificate_no") or "",
+                "collected_at": data.get("collected_at") or "",
+                "notary_institution": data.get("notary_institution") or "",
+                "clue_no": data.get("clue_no") or "",
+                "case_no": data.get("case_no") or "",
+                "document_type": attachment.category,
+                "shop_name": data.get("shop_name") or record.title,
+                "handler": attachment.uploader or record.owner,
+                "imported_at": attachment.created_at.isoformat() if attachment.created_at else "",
+            },
+        })
+    return {"items": items, "total": len(items)}
+
+
 @app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/submit")
 async def submit_investigation_clue(clue_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     clue = await _ensure_record_module(clue_id, "clue", identity, db); await _require_record_owner_or_manager(clue, identity, db)
