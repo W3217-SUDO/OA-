@@ -1039,7 +1039,7 @@ export default function ContractCenterPage({
     },
     { title: "客户名称", dataIndex: "customer", width: 180, ellipsis: true },
   ];
-  const isAuditView = initialView.startsWith("contract-audit-");
+  const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
   const stepItems = steps.map((s) => ({
     title: `第${s.step_order}级：${s.approver}`,
     description: (

@@ -232,6 +232,7 @@ def main() -> None:
     normalized_app = re.sub(r"\s+", "", APP)
     normalized_hr = re.sub(r"\s+", "", HR)
     normalized_contract = re.sub(r"\s+", "", CONTRACT)
+    assert 'constisAuditView=initialView==="contract-audit"||initialView.startsWith("contract-audit-");' in normalized_contract, "contract-audit menu route must render the approval view and expose pending contract-change review actions"
     assert 'className="workspace-tabs"' in APP and 'sunhold:open-pages' in APP and 'closeOpenPage' in APP, "workspace must retain independently closeable accumulated page tabs"
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
