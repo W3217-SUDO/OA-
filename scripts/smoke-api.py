@@ -1566,12 +1566,14 @@ def main():
         assert storage_import["updated"] == 1 and storage_import["failed"] == 0 and storage_import["items"][0]["公证书号"] == imported_certificate_no and storage_import["items"][0]["仓库"] == "测试公证仓库 A-01"
         stored_notary = call("GET", f"/records/{imported_notary['id']}")
         assert stored_notary["data"]["certificate_no"] == imported_certificate_no and stored_notary["data"]["invoice_no"] == imported_invoice_no and stored_notary["data"]["warehouse"] == "测试公证仓库 A-01"
-        certificate_import = multipart_upload("/investigations/notaries/files/import", {}, f"{imported_certificate_no}.pdf", b"%PDF-1.4\nsmoke certificate\n%%EOF")
-        invoice_import = multipart_upload("/investigations/notaries/invoices/import", {}, f"{imported_invoice_no}.pdf", b"%PDF-1.4\nsmoke invoice\n%%EOF")
+        multipart_upload("/investigations/notaries/files/import", {}, "smoke-missing-certificate.pdf", b"%PDF-1.4\n%%EOF", expected=(422,))
+        multipart_upload("/investigations/notaries/invoices/import", {}, "smoke-missing-invoice.pdf", b"%PDF-1.4\n%%EOF", expected=(422,))
+        certificate_import = multipart_upload("/investigations/notaries/files/import", {"certificate_no": imported_certificate_no}, "smoke-certificate.pdf", b"%PDF-1.4\nsmoke certificate\n%%EOF")
+        invoice_import = multipart_upload("/investigations/notaries/invoices/import", {"invoice_no": imported_invoice_no}, "smoke-invoice.pdf", b"%PDF-1.4\nsmoke invoice\n%%EOF")
         attachments.extend([certificate_import["attachment"]["id"], invoice_import["attachment"]["id"]])
         assert certificate_import["record_id"] == imported_notary["id"] and certificate_import["attachment"]["category"] == "公证书扫描件"
         assert invoice_import["record_id"] == imported_notary["id"] and invoice_import["attachment"]["category"] == "公证发票"
-        multipart_upload("/investigations/notaries/files/import", {}, "smoke-unmatched-certificate.pdf", b"%PDF-1.4\n%%EOF", expected=(422,))
+        multipart_upload("/investigations/notaries/files/import", {"certificate_no": serial("NOTARY-MISSING")}, "smoke-unmatched-certificate.pdf", b"%PDF-1.4\n%%EOF", expected=(422,))
         batch_cases = call("POST", "/investigations/clues/batch-cases", {"clue_ids": [clue["id"]], "contract_record_id": contract["id"], "case_type": "民事案件", "court": "上海市测试人民法院"}, expected=(201,))
         assert batch_cases["created"] == 1 and batch_cases["failed"] == 0
         records.extend(batch_cases["created_ids"])
