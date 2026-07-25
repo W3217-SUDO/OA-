@@ -2051,6 +2051,16 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
     }
 
 
+async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
+    """Expose the contract approval workbench to users assigned that job permission."""
+    permission = await _user_permission_payload(user, db)
+    can_approve_contract = await _user_has_job_permission(user, "合同审批", db)
+    menu_keys = list(permission["menu_keys"])
+    if can_approve_contract and "contract" not in menu_keys:
+        menu_keys.append("contract")
+    return {**permission, "menu_keys": menu_keys, "can_approve_contract": can_approve_contract}
+
+
 async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
     if identity.get("role") == "admin":
         return set(FIELD_KEYS)
@@ -2217,7 +2227,7 @@ async def current_user_profile(identity: dict = Depends(current_identity), db: A
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user or not user.is_active:
         raise HTTPException(status_code=404, detail="当前用户不存在")
-    return {**_system_user_dict(user), **(await _permission_payload(user.role, db))}
+    return {**_system_user_dict(user), **(await _user_permission_payload(user, db))}
 
 
 @app.patch(f"{settings.api_prefix}/auth/me")
@@ -2250,7 +2260,7 @@ async def update_current_user_profile(body: CurrentUserUpdate, identity: dict = 
         user.password_changed_at = datetime.now(); user.failed_login_attempts = 0; user.locked_until = None; user.must_change_password = False
     await db.commit()
     await db.refresh(user)
-    return {**_system_user_dict(user), **(await _permission_payload(user.role, db))}
+    return {**_system_user_dict(user), **(await _user_permission_payload(user, db))}
 
 
 def _require_admin(identity: dict) -> None:
