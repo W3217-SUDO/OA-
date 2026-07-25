@@ -38,6 +38,11 @@ import { api, AUTH_EXPIRED_EVENT } from "./api";
 import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import {
+  CONTRACT_DETAIL_TARGET_EVENT,
+  clearContractDetailTarget,
+  type ContractDetailNavigationContext,
+} from "./contractDetailNavigation";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -962,6 +967,7 @@ export default function App() {
     () => localStorage.getItem("sunhold:sidebar-auto-collapse") === "yes",
   );
   const [active, setActive] = useState(() => new URLSearchParams(window.location.search).get("page") || "dashboard");
+  const [contractDetailTarget, setContractDetailTarget] = useState<ContractDetailNavigationContext | null>(null);
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(new URLSearchParams(window.location.search).get("page") || "dashboard"));
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
@@ -971,6 +977,14 @@ export default function App() {
     };
     window.addEventListener("popstate", restoreRouteFromHistory);
     return () => window.removeEventListener("popstate", restoreRouteFromHistory);
+  }, []);
+  useEffect(() => {
+    const receiveContractDetailTarget = (event: Event) => {
+      const target = (event as CustomEvent<ContractDetailNavigationContext>).detail;
+      if (target?.id || target?.serial_no) setContractDetailTarget(target);
+    };
+    window.addEventListener(CONTRACT_DETAIL_TARGET_EVENT, receiveContractDetailTarget);
+    return () => window.removeEventListener(CONTRACT_DETAIL_TARGET_EVENT, receiveContractDetailTarget);
   }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1143,7 +1157,15 @@ export default function App() {
     ) : route === "contract-receivable" ? (
       <ContractReceivablesPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("contract-") ? (
-      <ContractCenterPage initialView={active} onNavigate={navigate} />
+      <ContractCenterPage
+        initialView={active}
+        onNavigate={navigate}
+        detailTarget={contractDetailTarget}
+        onDetailTargetHandled={() => {
+          clearContractDetailTarget();
+          setContractDetailTarget(null);
+        }}
+      />
     ) : active.startsWith("investigation-task-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
       <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
     ) : route.startsWith("case-") ? (

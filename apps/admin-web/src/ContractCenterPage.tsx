@@ -25,7 +25,7 @@ import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
-import { consumeContractDetailTarget } from "./contractDetailNavigation";
+import { consumeContractDetailTarget, type ContractDetailNavigationContext } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { formatRequiredDate } from "./formSafety";
@@ -127,9 +127,13 @@ const initialProfile = (): Profile => {
 export default function ContractCenterPage({
   initialView,
   onNavigate,
+  detailTarget,
+  onDetailTargetHandled,
 }: {
   initialView: string;
   onNavigate?: (key: string) => void;
+  detailTarget?: ContractDetailNavigationContext | null;
+  onDetailTargetHandled?: () => void;
 }) {
   const [allRows, setAllRows] = useState<Contract[]>([]),
     [loading, setLoading] = useState(false),
@@ -194,7 +198,7 @@ export default function ContractCenterPage({
         queryForm.setFieldsValue({ customer: customerKeyword });
         setQuery((value) => ({ ...value, customer: customerKeyword }));
       }
-      const target = consumeContractDetailTarget();
+      const target = detailTarget || consumeContractDetailTarget();
       if (target) {
         const targetRow = (recordsRes.data.items || []).find((item: Contract) =>
           (target.id && item.id === target.id) ||
@@ -202,6 +206,7 @@ export default function ContractCenterPage({
         );
         if (targetRow) setViewing(targetRow);
         else message.warning("未找到关联合同或当前账号无权查看");
+        onDetailTargetHandled?.();
       }
       setApprovalRoles((roleRes.data.items || []).filter((item: ApprovalRole) => item.is_active !== false && (item.permissions || []).includes("合同审批")));
     } catch {
@@ -212,7 +217,7 @@ export default function ContractCenterPage({
   };
   useEffect(() => {
     load();
-  }, [initialView]);
+  }, [initialView, detailTarget?.id, detailTarget?.serial_no]);
   useEffect(() => {
     if (initialView !== "contract-new") {
       setOpen(false);
