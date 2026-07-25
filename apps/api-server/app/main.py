@@ -12014,6 +12014,14 @@ async def delete_agent_document(document_id: int, identity: dict = Depends(curre
     if linked_record and linked_record.module == "customer":
         await _ensure_agent_document_access(document_id, identity, db, write=True)
     if identity.get("role") != "admin" and item.creator != identity["username"]: raise HTTPException(status_code=403, detail="只能删除本人创建的智能文档任务")
+    if item.record_id:
+        await db.execute(
+            delete(WorkflowEvent).where(
+                WorkflowEvent.record_id == item.record_id,
+                WorkflowEvent.action == "创建智能文档",
+                WorkflowEvent.comment.like(f"{item.job_no}|%"),
+            )
+        )
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
