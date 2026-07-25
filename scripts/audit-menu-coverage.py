@@ -1431,9 +1431,9 @@ def main() -> None:
         source = MAIN if token.startswith('department_usernames.') else NORMALIZED_SMOKE
         assert token in source, f"department-collaborating backend/anti-bypass evidence missing: {token}"
 
-    # Original /9001003010 is a company-wide initiated-task shell.  It keeps
-    # the two administrator operations (complete/handoff) visible on non-empty
-    # tabs, while personal create/resend/confirm/restart controls stay isolated.
+    # Original /9001003010 is a company-wide initiated-task shell. It keeps
+    # administrator lifecycle operations visible on non-empty tabs, including
+    # confirmation/restart after a receiver has submitted completion.
     assert '("task-company-created", "task-company", "公司发起的任务", "", 1)' in MAIN, "company-created route/menu declaration is missing"
     for token in (
         'constisPersonalView=initialView.startsWith("task-my");',
@@ -1448,7 +1448,7 @@ def main() -> None:
         'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
         '{canManageInitiatedTask&&selected?.status==="已拒绝"&&(',
-        '{canManageInitiatedTask&&["已完成","待确认"].includes(',
+        '{(canManageInitiatedTask||canManageCompanyCreatedTask)&&["已完成","待确认"].includes(',
         '{canManageCompanyCreatedTask&&(',
         'requireOne((row)=>voidsimpleAction(row,"complete"))',
         'requireOne((row)=>{setHandoff(row);handoffForm.setFieldsValue({recipient:"",comment:""});})',

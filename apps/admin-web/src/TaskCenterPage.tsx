@@ -1112,7 +1112,7 @@ export default function TaskCenterPage({
               {canManageInitiatedTask && selected?.status === "已拒绝" && (
                 <Button onClick={() => openDialog(selected, "resend")}>重新派发</Button>
               )}
-              {canManageInitiatedTask && ["已完成", "待确认"].includes(selected?.workflow_status || selected?.status || "") && (
+              {(canManageInitiatedTask || canManageCompanyCreatedTask) && ["已完成", "待确认"].includes(selected?.workflow_status || selected?.status || "") && (
                 <>
                   <Button onClick={() => selected && void simpleAction(selected, "confirm")}>确认完成</Button>
                   {!selected?.auto_completed && (
