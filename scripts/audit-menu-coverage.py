@@ -33,6 +33,7 @@ NOTIFICATION = (ROOT / "apps/admin-web/src/NotificationCenter.tsx").read_text(en
 SMOKE = (ROOT / "scripts/smoke-api.py").read_text(encoding="utf-8")
 NORMALIZED_SMOKE = re.sub(r"\s+", "", SMOKE)
 DOCUMENT = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
+AGENT_DOCUMENT = (ROOT / "apps/admin-web/src/AgentDocumentPage.tsx").read_text(encoding="utf-8")
 SEAL = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")
 WAREHOUSE = (ROOT / "apps/admin-web/src/WarehousePage.tsx").read_text(encoding="utf-8")
 SYSTEM = (ROOT / "apps/admin-web/src/SystemCenterPage.tsx").read_text(encoding="utf-8")
@@ -1613,6 +1614,17 @@ def main() -> None:
 
     assert 'owner: profile.username || "admin"' in DOCUMENT, "document creation must default to the signed-in account"
     assert '"/documents/official/upload"' in DOCUMENT and '/documents/official/upload' in MAIN, "official receipt upload must atomically create a document record and attachment"
+    normalized_agent_document = re.sub(r"\s+", "", AGENT_DOCUMENT)
+    for token in (
+        "['case','contract','customer','clue','notary','evidence']",
+        "constopenRecord=async(row:Job)=>",
+        "api.get(`/records/${row.record_id}`)",
+        "rememberInvestigationDetailTarget({id:record?.id,serial_no:row.record_no,module})",
+        "onNavigate?.(module)",
+        "scroll={{x:1500}}",
+    ):
+        assert token in normalized_agent_document, f"agent document related-record contract missing: {token}"
+    print("AGENT_DOCUMENT_RELATION_OK: all six business modules, record-id fallback and read-only investigation navigation")
     assert "['草稿','待审批']" in SEAL, "the pending seal page must keep drafts reachable for submission"
     assert 'BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"})' in MAIN, "seal audit history views must receive approved and rejected applications"
     assert '"approval_comment": body.comment.strip()' in MAIN, "seal approval must persist approver, time and opinion"
