@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     initial_admin_department: str = "上海分所"
     seed_demo_data: bool = True
     access_token_minutes: int = 720
-    minio_endpoint: str = "minio:9000"
+    # Local non-Docker development falls back to uploads/; Docker/production
+    # explicitly set minio:9000, preventing unavailable MinIO from blocking uploads.
+    minio_endpoint: str = ""
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin123"
     dify_base_url: str = ""
