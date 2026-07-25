@@ -827,8 +827,11 @@ def main() -> None:
         'name="authorized_to"',
         '授权结束日期不能早于开始日期',
         "targetModule==='investigation'",
+        "删除:()=>batchDeleteSelected(selectedRows)",
     ):
         assert token in INVESTIGATION, f"investigation-task creation dialog contract missing: {token}"
+    assert 'module.in_(["investigation", "clue", "task"])' in MAIN, "investigation cleanup must use the protected batch-delete endpoint"
+    assert 'else {"待分配"}' in MAIN, "investigation cleanup must be limited to not-started records"
     print("INVESTIGATION_TASK_CREATE_OK: dedicated task dialog, required authorization dates and client-side date-order guard")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"

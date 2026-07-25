@@ -4990,28 +4990,34 @@ async def create_investigation_fee_application(record_id: int, body: Investigati
 
 @app.post(f"{settings.api_prefix}/investigations/batch-delete")
 async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(set(body.record_ids)), BusinessRecord.module.in_(["clue", "task"]), *(await _record_scope_conditions(identity, db))))).all()
+    records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(set(body.record_ids)), BusinessRecord.module.in_(["investigation", "clue", "task"]), *(await _record_scope_conditions(identity, db))))).all()
     found = {item.id: item for item in records}; errors: list[dict] = []; deleted = 0; paths: list[Path] = []
     manager = identity.get("role") in {"admin", "manager"}
     for record_id in dict.fromkeys(body.record_ids):
         record = found.get(record_id)
         if not record:
             errors.append({"record_id": record_id, "error": "记录不存在或无权访问"}); continue
+        if record.module == "investigation" and identity.get("role") != "admin":
+            errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "仅管理员可以删除调查任务"}); continue
         if record.module == "task" and identity.get("role") != "admin" and record.owner != identity["username"] and (record.data or {}).get("initiator") != identity["username"]:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "只能删除本人负责或发起的任务"}); continue
-        if record.module != "task" and not manager and record.owner != identity["username"]:
+        if record.module not in {"task", "investigation"} and not manager and record.owner != identity["username"]:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "只能删除本人负责的记录"}); continue
-        allowed = record.status in ({"草稿", "已驳回"} if record.module == "clue" else {"待接收", "未开始", "已驳回"})
+        allowed = record.status in ({"草稿", "已驳回"} if record.module == "clue" else {"待接收", "未开始", "已驳回"} if record.module == "task" else {"待分配"})
         if not allowed:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": f"当前状态“{record.status}”不允许删除"}); continue
         if record.module == "clue":
             related = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module.in_(["notary", "case"]), BusinessRecord.data["clue_id"].as_integer() == record.id))
             if related:
                 errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "已关联公证或案件，不能删除"}); continue
-        else:
+        elif record.module == "task":
             child = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "task", BusinessRecord.data["parent_task_id"].as_integer() == record.id))
             if child:
                 errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "任务存在子任务，不能删除"}); continue
+        else:
+            child = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "task", BusinessRecord.data["investigation_record_id"].as_integer() == record.id))
+            if child:
+                errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "调查任务存在子任务，不能删除"}); continue
         attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id))).all()
         for attachment in attachments:
             paths.append(Path(attachment.path)); await db.delete(attachment)
