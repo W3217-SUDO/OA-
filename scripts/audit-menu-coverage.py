@@ -1635,6 +1635,7 @@ def main() -> None:
     for token in (
         "const openInvestigationDetail=async(row:Row)",
         "const openLinkedCustomer=async(customerName:string)",
+        "if(targetRow)setInvestigationDetail(targetRow)",
         "title:'调查编号',dataIndex:'serial_no',width:170,render:(value:string,r:Row)=><Button type=\"link\" onClick={()=>void openInvestigationDetail(r)}>",
         "rememberCustomerDetailTarget({id:customer.id,serial_no:customer.serial_no,title:customer.title})",
         "调查详情：${investigationDetail?.serial_no||''}",
