@@ -2053,7 +2053,7 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
 
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     """Expose the contract approval workbench to users assigned that job permission."""
-    permission = await _user_permission_payload(user, db)
+    permission = await _permission_payload(user.role, db)
     can_approve_contract = await _user_has_job_permission(user, "合同审批", db)
     menu_keys = list(permission["menu_keys"])
     if can_approve_contract and "contract" not in menu_keys:
@@ -2218,7 +2218,7 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
         raise HTTPException(status_code=401, detail=f"账号或密码错误，还可尝试 {policy.max_failed_attempts - user.failed_login_attempts} 次")
     user.failed_login_attempts = 0; user.locked_until = None; user.last_login_at = now
     await db.commit()
-    permission = await _permission_payload(user.role, db)
+    permission = await _user_permission_payload(user, db)
     return {"access_token": create_token(user.username, user.role, policy.token_minutes), "token_type": "bearer", "expires_in": policy.token_minutes * 60, "must_change_password": user.must_change_password, "user": {"username": user.username, "display_name": user.display_name, "department": user.department, "role": user.role, "must_change_password": user.must_change_password, **permission}}
 
 
