@@ -2115,11 +2115,11 @@ export default function CaseCenterPage({
         cancelText="取消"
         onOk={() => archive(true)}
         onCancel={() => setArchiving(null)}
-        footer={(_, actions) => (
+        footer={() => (
           <>
             <Button onClick={() => archive(false)}>保存检查</Button>
-            {actions.CancelBtn}
-            {actions.OkBtn}
+            <Button onClick={() => setArchiving(null)}>取消</Button>
+            <Button type="primary" onClick={() => archive(true)}>提交归档审核</Button>
           </>
         )}
       >
