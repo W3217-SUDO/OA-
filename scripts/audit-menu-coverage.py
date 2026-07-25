@@ -820,7 +820,7 @@ def main() -> None:
     assert 'route.startsWith("case-files-")' not in APP, "case receipt/invoice routes must not collapse into the generic document page"
     assert 'active.startsWith("investigation-task-")' in APP, "investigation parent/subtask routes must stay in InvestigationCenterPage"
     for token in (
-        'open={Boolean(investigationCreateOpen)}',
+        'open={investigationCreateOpen}',
         'title="新建调查任务"',
         'okText="保存调查任务"',
         'name="authorized_from"',
