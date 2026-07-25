@@ -248,7 +248,7 @@ def main() -> None:
     assert 'employeeEditFields' in HR and '员工完整资料修改' in HR and '保存全部修改' in HR and 'lawyer_license_no' in HR and 'school' in HR and 'editableData' in HR, "employee edit must expose and save the full employee profile"
     assert 'name="username" label="用户名"' in HR and 'username:value.username' in normalized_hr and '_rename_system_username' in MAIN, "administrator employee edit must rename the login account and migrate exact username references"
     assert 'dayjs.isDayjs(v.signed_at)' in CONTRACT and 'loading={savingContract}' in CONTRACT, "contract creation must safely default hidden fields and expose the real save-in-progress state"
-    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and '是否同步办理合同用印？' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another, and ask for synchronous sealing"
+    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>开始新建合同</Button>' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and '是否同步办理合同用印？' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another from every sealing state, and ask for synchronous sealing"
     assert 'sunhold:route-reselect' in CONTRACT and 'sunhold:route-reselect' in APP, "reselecting the active contract-new menu must reset the wizard instead of keeping the completed contract"
     assert '_resolve_contract_customer' in MAIN and '不能手工录入未登记客户名称' in MAIN, "contract API must reject unregistered customer names"
     for seal_type in ("合同章", "公章", "所函专用章", "法人章", "发票章", "财务专用章", "财务三排章"):
@@ -1332,7 +1332,7 @@ def main() -> None:
     for token in (
         'constisPersonalView=initialView.startsWith("task-my");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=isPersonalView&&isAccepted;',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
         'if(!isPersonalView)returntasks;',
         'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
@@ -1386,7 +1386,7 @@ def main() -> None:
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisCollaborating=initialView.endsWith("-collaborating");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=isPersonalView&&isAccepted;',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'scope=isPersonalView?"mine":initialView.startsWith("task-dept")?"department"',
         'isCollaborating?"collaborating":"owned"',
@@ -1436,7 +1436,7 @@ def main() -> None:
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisCreated=initialView.endsWith("-created");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=isPersonalView&&isAccepted;',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
         'constcanManageCompanyCreatedTask=profile.role==="admin"&&initialView==="task-company-created";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'initialView.startsWith("task-company")?"company":"default"',
@@ -1490,7 +1490,7 @@ def main() -> None:
     for token in (
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisAccepted=initialView.endsWith("-accepted");',
-        'constcanManageAcceptedTask=isPersonalView&&isAccepted;',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
         'constcanManageCompanyCreatedTask=profile.role==="admin"&&initialView==="task-company-created";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'initialView.startsWith("task-company")?"company":"default"',
@@ -1548,7 +1548,7 @@ def main() -> None:
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisCollaborating=initialView.endsWith("-collaborating");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=isPersonalView&&isAccepted;',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
         'constcanManageCompanyCreatedTask=profile.role==="admin"&&initialView==="task-company-created";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'initialView.startsWith("task-company")?"company":"default"',
