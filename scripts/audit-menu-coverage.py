@@ -819,6 +819,17 @@ def main() -> None:
 
     assert 'route.startsWith("case-files-")' not in APP, "case receipt/invoice routes must not collapse into the generic document page"
     assert 'active.startsWith("investigation-task-")' in APP, "investigation parent/subtask routes must stay in InvestigationCenterPage"
+    for token in (
+        'open={Boolean(investigationCreateOpen)}',
+        'title="新建调查任务"',
+        'okText="保存调查任务"',
+        'name="authorized_from"',
+        'name="authorized_to"',
+        '授权结束日期不能早于开始日期',
+        "targetModule==='investigation'",
+    ):
+        assert token in INVESTIGATION, f"investigation-task creation dialog contract missing: {token}"
+    print("INVESTIGATION_TASK_CREATE_OK: dedicated task dialog, required authorization dates and client-side date-order guard")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"
     assert '("case-new-civil", "case-new", "民事争议", "", 1)' in MAIN, "civil case creation must be available from the case menu"
