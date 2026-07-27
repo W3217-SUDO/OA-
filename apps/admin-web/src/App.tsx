@@ -550,7 +550,12 @@ type OpenPage = { key: string; label: string };
 
 // Deep routes are not all navigation-menu leaves. Keep workspace tabs readable
 // instead of exposing an internal route key to users.
+const legacyRouteAliases: Record<string, string> = {
+  "agent-document": "documents-agent",
+};
+const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route;
 const routePageLabels: Record<string, string> = {
+  "documents-agent": "AI 智能文档",
   "notary-import-info": "公证信息导入",
   "notary-import-storage": "取证信息文件导入",
   "notary-import-files": "公证书文件导入",
@@ -563,9 +568,14 @@ function readOpenPages(active: string): OpenPage[] {
     key === "dashboard" ? "控制台" : routePageLabels[key] || fallback || key;
   try {
     const stored = JSON.parse(localStorage.getItem("sunhold:open-pages") || "[]") as OpenPage[];
-    const valid = stored
-      .filter((item) => item?.key && item?.label)
-      .map((item) => ({ ...item, label: labelFor(item.key, item.label) }));
+    const valid = Array.from(new Map(
+      stored
+        .filter((item) => item?.key && item?.label)
+        .map((item) => {
+          const key = normalizeWorkspaceRoute(item.key);
+          return [key, { key, label: labelFor(key, item.label) }];
+        }),
+    ).values());
     if (valid.some((item) => item.key === active)) return valid;
     return [...valid, { key: active, label: labelFor(active) }];
   } catch {
@@ -980,14 +990,15 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sunhold:sidebar-auto-collapse") === "yes",
   );
-  const [active, setActive] = useState(() => new URLSearchParams(window.location.search).get("page") || "dashboard");
+  const routeFromLocation = () => normalizeWorkspaceRoute(new URLSearchParams(window.location.search).get("page") || "dashboard");
+  const [active, setActive] = useState(routeFromLocation);
   const [contractDetailTarget, setContractDetailTarget] = useState<ContractDetailNavigationContext | null>(null);
-  const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(new URLSearchParams(window.location.search).get("page") || "dashboard"));
+  const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   useEffect(() => {
     const restoreRouteFromHistory = () => {
-      setActive(new URLSearchParams(window.location.search).get("page") || "dashboard");
+      setActive(routeFromLocation());
     };
     window.addEventListener("popstate", restoreRouteFromHistory);
     return () => window.removeEventListener("popstate", restoreRouteFromHistory);
@@ -1078,8 +1089,9 @@ export default function App() {
     [menuConfig],
   );
   const navigate = (route: string) => {
-    if (route === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: route }));
-    setActive(route);
+    const normalizedRoute = normalizeWorkspaceRoute(route);
+    if (normalizedRoute === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: normalizedRoute }));
+    setActive(normalizedRoute);
   };
   useEffect(() => {
     const item = flattenMenu(effectiveMenuItems).find((entry) => entry.key === active);

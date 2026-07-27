@@ -247,12 +247,16 @@ def main() -> None:
         assert token in CONTRACT, f"contract audit customer relation detail entry missing: {token}"
     print("CONTRACT_AUDIT_CUSTOMER_RELATION_OK: audit customer number and name open the real read-only customer detail")
     assert 'className="workspace-tabs"' in APP and 'sunhold:open-pages' in APP and 'closeOpenPage' in APP, "workspace must retain independently closeable accumulated page tabs"
-    route_labels_source = APP[APP.index("const routePageLabels"):APP.index("function readStoredUser")]
+    route_labels_source = APP[APP.index("const legacyRouteAliases"):APP.index("function readStoredUser")]
     for token in (
+        '"agent-document": "documents-agent"',
+        '"documents-agent": "AI 智能文档"',
+        'const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route',
         '"notary-import-info": "公证信息导入"',
         'const labelFor = (key: string, fallback?: string)',
         'routePageLabels[key] || fallback || key',
-        '.map((item) => ({ ...item, label: labelFor(item.key, item.label) }))',
+        'const key = normalizeWorkspaceRoute(item.key)',
+        'return [key, { key, label: labelFor(key, item.label) }]',
     ):
         assert token in route_labels_source, f"workspace deep-route label recovery missing: {token}"
     print("WORKSPACE_ROUTE_LABELS_OK: stored deep-route tabs recover human-readable labels instead of internal keys")
