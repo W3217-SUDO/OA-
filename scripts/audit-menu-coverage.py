@@ -2089,6 +2089,23 @@ def main() -> None:
         'media_type="application/vnd.ms-excel"',
     ):
         assert token in MAIN, f"internal fee detail API contract missing: {token}"
+    payment_audit_source = FINANCE[FINANCE.index("const paymentAuditOriginalColumns"):FINANCE.index("const internalOriginalColumns")]
+    internal_source = FINANCE[FINANCE.index("const internalOriginalColumns"):FINANCE.index("const feeQueryOriginalColumns")]
+    fee_query_source = FINANCE[FINANCE.index("const feeQueryOriginalColumns"):FINANCE.index("type OriginalFieldSpec")]
+    configured_finance_source = FINANCE[FINANCE.index("const configuredColumns"):FINANCE.index("const configuredRows")]
+    for source, token in (
+        (payment_audit_source, 'openCaseDetail(row.data.case_no)'),
+        (payment_audit_source, 'openContractDetail(row.data.contract_no)'),
+        (internal_source, 'openCaseDetail(row.data.case_no)'),
+        (fee_query_source, 'openCaseDetail(row.data.case_no)'),
+        (fee_query_source, 'openContractDetail(row.data.contract_no)'),
+        (fee_query_source, 'openCustomerDetail(value, row.data.customer_no)'),
+        (configured_finance_source, 'isFeeQueryRoute && ["案号", "案件编号"].includes(header)'),
+        (configured_finance_source, '["客户", "客户名称", "客户编号"].includes(header)'),
+        (configured_finance_source, 'openFinanceCustomerDetail(row, header)'),
+    ):
+        assert token in source, f"original finance relation detail entry missing: {token}"
+    print("FINANCE_ORIGINAL_RELATION_LINKS_OK: payment audit, internal fee, fee-query and configured finance case/contract/customer fields open real details")
     print("FINANCE_INTERNAL_DETAIL_OK: personal/company scopes, 12 filters, 14 columns plus placeholder, totals, 15-row server paging, case links and real Excel export")
     invoice_mine_contract = [
         'const invoiceMineFields = [...invoiceBaseFields, f("案件编号")]',

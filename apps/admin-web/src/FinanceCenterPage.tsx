@@ -3123,7 +3123,7 @@ export default function FinanceCenterPage({
     {
       title: "案件编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.case_no || "—",
+      render: (_: unknown, row: Fee) => row.data.case_no ? <Button type="link" onClick={() => openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button> : "—",
     },
     {
       title: "案件阶段",
@@ -3133,7 +3133,7 @@ export default function FinanceCenterPage({
     {
       title: "合同编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.contract_no || "—",
+      render: (_: unknown, row: Fee) => row.data.contract_no ? <Button type="link" onClick={() => openContractDetail(row.data.contract_no)}>{row.data.contract_no}</Button> : "—",
     },
     {
       title: "合同名称",
@@ -3186,7 +3186,7 @@ export default function FinanceCenterPage({
     {
       title: "案件编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.case_no || "—",
+      render: (_: unknown, row: Fee) => row.data.case_no ? <Button type="link" onClick={() => openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button> : "—",
     },
     {
       title: "案件阶段",
@@ -3249,7 +3249,7 @@ export default function FinanceCenterPage({
     {
       title: "案件编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.case_no || "—",
+      render: (_: unknown, row: Fee) => row.data.case_no ? <Button type="link" onClick={() => openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button> : "—",
     },
     {
       title: "案件阶段",
@@ -3259,9 +3259,9 @@ export default function FinanceCenterPage({
     {
       title: "合同编号",
       width: 145,
-      render: (_: unknown, row: Fee) => row.data.contract_no || "—",
+      render: (_: unknown, row: Fee) => row.data.contract_no ? <Button type="link" onClick={() => openContractDetail(row.data.contract_no)}>{row.data.contract_no}</Button> : "—",
     },
-    { title: "客户名称", dataIndex: "customer", width: 180 },
+    { title: "客户名称", dataIndex: "customer", width: 180, render: (value: string, row: Fee) => value ? <Button type="link" onClick={() => openCustomerDetail(value, row.data.customer_no)}>{value}</Button> : "—" },
     {
       title: "申请人",
       width: 90,
@@ -4819,6 +4819,18 @@ export default function FinanceCenterPage({
       return Number(value).toFixed(2);
     return typeof value === "number" ? money(value) : value;
   };
+  const openFinanceCustomerDetail = (row: any, header: string) => {
+    const customerNo =
+      row.data?.customer_no ||
+      row.data?.customer_serial_no ||
+      row.customer_no ||
+      (header === "客户编号" ? cellValue(row, header) : undefined);
+    const customerName =
+      header === "客户编号"
+        ? row.data?.customer || row.customer || row.data?.claimed_customer || customerNo
+        : cellValue(row, header);
+    openCustomerDetail(customerName, customerNo);
+  };
   const activeRouteConfig = routeConfigs[initialView];
   const settlementColumnWidths = [
     86, 129, 172, 69, 129, 69, 86, 69, 69, 69, 69, 69, 69, 69,
@@ -4962,8 +4974,15 @@ export default function FinanceCenterPage({
         <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
           {cellValue(row, header)}
         </Button>
-      ) : isFeeQueryRoute && header === "案号" ? (
+      ) : isFeeQueryRoute && ["案号", "案件编号"].includes(header) ? (
         <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>
+          {cellValue(row, header)}
+        </Button>
+      ) : ["客户", "客户名称", "客户编号"].includes(header) ? (
+        <Button
+          type="link"
+          onClick={() => openFinanceCustomerDetail(row, header)}
+        >
           {cellValue(row, header)}
         </Button>
       ) : ["合同号", "合同编号"].includes(header) ? (
