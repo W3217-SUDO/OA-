@@ -243,6 +243,15 @@ def main() -> None:
         assert token in CONTRACT, f"contract audit customer relation detail entry missing: {token}"
     print("CONTRACT_AUDIT_CUSTOMER_RELATION_OK: audit customer number and name open the real read-only customer detail")
     assert 'className="workspace-tabs"' in APP and 'sunhold:open-pages' in APP and 'closeOpenPage' in APP, "workspace must retain independently closeable accumulated page tabs"
+    route_labels_source = APP[APP.index("const routePageLabels"):APP.index("function readStoredUser")]
+    for token in (
+        '"notary-import-info": "公证信息导入"',
+        'const labelFor = (key: string, fallback?: string)',
+        'routePageLabels[key] || fallback || key',
+        '.map((item) => ({ ...item, label: labelFor(item.key, item.label) }))',
+    ):
+        assert token in route_labels_source, f"workspace deep-route label recovery missing: {token}"
+    print("WORKSPACE_ROUTE_LABELS_OK: stored deep-route tabs recover human-readable labels instead of internal keys")
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"

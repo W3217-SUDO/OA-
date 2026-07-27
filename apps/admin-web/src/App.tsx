@@ -559,13 +559,17 @@ const routePageLabels: Record<string, string> = {
 };
 
 function readOpenPages(active: string): OpenPage[] {
+  const labelFor = (key: string, fallback?: string) =>
+    key === "dashboard" ? "控制台" : routePageLabels[key] || fallback || key;
   try {
     const stored = JSON.parse(localStorage.getItem("sunhold:open-pages") || "[]") as OpenPage[];
-    const valid = stored.filter((item) => item?.key && item?.label);
+    const valid = stored
+      .filter((item) => item?.key && item?.label)
+      .map((item) => ({ ...item, label: labelFor(item.key, item.label) }));
     if (valid.some((item) => item.key === active)) return valid;
-    return [...valid, { key: active, label: active === "dashboard" ? "控制台" : active }];
+    return [...valid, { key: active, label: labelFor(active) }];
   } catch {
-    return [{ key: active, label: active === "dashboard" ? "控制台" : active }];
+    return [{ key: active, label: labelFor(active) }];
   }
 }
 
