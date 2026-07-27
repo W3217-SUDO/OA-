@@ -1040,9 +1040,15 @@ export default function ContractCenterPage({
       key: "customerNo",
       width: 105,
       render: (_: unknown, r: Contract) =>
-        String((r.data as Record<string, any>).customer_no || "—"),
+        r.id < 0 ? "" : (r.data.customer_no ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{r.data.customer_no}</Button> : "—"),
     },
-    { title: "客户名称", dataIndex: "customer", width: 180, ellipsis: true },
+    {
+      title: "客户名称",
+      dataIndex: "customer",
+      width: 180,
+      ellipsis: true,
+      render: (value: string, r: Contract) => r.id < 0 ? "" : value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{value}</Button> : "—",
+    },
   ];
   const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
   const stepItems = steps.map((s) => ({

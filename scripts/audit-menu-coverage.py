@@ -234,6 +234,14 @@ def main() -> None:
     normalized_hr = re.sub(r"\s+", "", HR)
     normalized_contract = re.sub(r"\s+", "", CONTRACT)
     assert 'constisAuditView=initialView==="contract-audit"||initialView.startsWith("contract-audit-");' in normalized_contract, "contract-audit menu route must render the approval view and expose pending contract-change review actions"
+    for token in (
+        'title: "客户编号"',
+        'onClick={() => openRelatedCustomer(r)}>{r.data.customer_no}</Button>',
+        'title: "客户名称"',
+        'onClick={() => openRelatedCustomer(r)}>{value}</Button>',
+    ):
+        assert token in CONTRACT, f"contract audit customer relation detail entry missing: {token}"
+    print("CONTRACT_AUDIT_CUSTOMER_RELATION_OK: audit customer number and name open the real read-only customer detail")
     assert 'className="workspace-tabs"' in APP and 'sunhold:open-pages' in APP and 'closeOpenPage' in APP, "workspace must retain independently closeable accumulated page tabs"
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
