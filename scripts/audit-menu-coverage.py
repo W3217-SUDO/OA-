@@ -1657,6 +1657,15 @@ def main() -> None:
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
         assert token in (MAIN + CASE), f"case create reference/locking contract missing: {token}"
     assert '>登记证物</Button>' in WAREHOUSE and 'rowSelection={{columnWidth:42}}' not in WAREHOUSE, "warehouse must expose evidence registration without a dead selection column"
+    for token in (
+        "const openClueDetail=(clueNo:unknown)",
+        "const openNotaryDetail=async(certificateNo:unknown)",
+        "const openCustomerDetail=async(customerName:unknown)",
+        "openClueDetail(action.row.serial_no)",
+        "openNotaryDetail(row.data.notary_no)",
+    ):
+        assert token in WAREHOUSE, f"warehouse evidence relation link missing: {token}"
+    print("WAREHOUSE_RELATION_LINKS_OK: evidence list and lifecycle dialogs link clue, notary, case and rights-holder details")
     assert "sunhold:company-bank-address" not in SYSTEM and '"bank_address"' in MAIN, "company bank address must persist through the backend config"
     assert "api.post('/hr/employees'" in HR and '/hr/employees"' in MAIN, "employee account and HR record creation must use one atomic endpoint"
     assert "const rawCellValue" in FINANCE and 'spec.control === "date"' in FINANCE and 'spec.control === "money"' in FINANCE, "finance route queries must apply typed field filters"

@@ -5,7 +5,9 @@ import {EllipsisOutlined} from '@ant-design/icons'
 import dayjs, {type Dayjs} from 'dayjs'
 import {api} from './api'
 import {rememberCaseDetailTarget} from './caseDetailNavigation'
+import {rememberCustomerDetailTarget} from './customerDetailNavigation'
 import {formatRequiredDate} from './formSafety'
+import {rememberInvestigationDetailTarget} from './investigationDetailNavigation'
 import './warehouse.css'
 
 type EvidenceData=Record<string, string|number>
@@ -61,6 +63,9 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
   const openHistory=async(row:Item)=>{setHistoryRow(row);setHistory([]);try{const {data}=await api.get(`/records/${row.id}/history`);setHistory(data.items||[])}catch{message.error('流程记录加载失败')}}
 
   const openCaseDetail=(caseNo:unknown)=>{const serialNo=String(caseNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联案件');return}rememberCaseDetailTarget({serial_no:serialNo});onNavigate?.('case-company')}
+  const openClueDetail=(clueNo:unknown)=>{const serialNo=String(clueNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联线索');return}rememberInvestigationDetailTarget({serial_no:serialNo,module:'clue'});onNavigate?.('clue-company-draft')}
+  const openNotaryDetail=async(certificateNo:unknown)=>{const certificate=String(certificateNo||'').trim();if(!certificate||certificate==='—'){message.warning('当前证物未关联公证信息');return}try{const {data}=await api.get('/notaries/lookup',{params:{certificate_no:certificate}});rememberInvestigationDetailTarget({id:data.id,serial_no:data.serial_no,module:'notary'});onNavigate?.('notary')}catch(error:any){message.error(error?.response?.data?.detail||'关联公证加载失败')}}
+  const openCustomerDetail=async(customerName:unknown)=>{const title=String(customerName||'').trim();if(!title||title==='—'){message.warning('当前证物未关联权利人');return}try{const {data}=await api.get('/records',{params:{module:'customer',keyword:title,page_size:100}});const customer=(data.items as Item[]).find(item=>item.title===title||item.customer===title);if(!customer){message.warning('未找到关联权利人档案或当前账号无权查看');return}rememberCustomerDetailTarget({id:customer.id,serial_no:customer.serial_no,title:customer.title});onNavigate?.('customer-company')}catch(error:any){message.error(error?.response?.data?.detail||'关联权利人加载失败')}}
   const rowMenu=(row:Item):MenuProps['items']=>{
     const rowStatus=statusOf(row)
     const items:MenuProps['items']=[{key:'history',label:'查看流程记录',onClick:()=>void openHistory(row)}]
@@ -72,13 +77,13 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
   }
   const columns:TableColumnsType<Item>=[
     {title:'库位',key:'location',width:120,sorter:(a,b)=>String(a.data.location||'').localeCompare(String(b.data.location||'')),render:(_v,row)=>row.data.location||'—'},
-    {title:'线索编号',dataIndex:'serial_no',width:150},
-    {title:'公证书号',key:'notary',width:150,render:(_v,row)=>row.data.notary_no||'—'},
+    {title:'线索编号',dataIndex:'serial_no',width:150,render:(value)=>value?<Button type="link" onClick={()=>openClueDetail(value)}>{value}</Button>:'—'},
+    {title:'公证书号',key:'notary',width:150,render:(_v,row)=>row.data.notary_no?<Button type="link" onClick={()=>void openNotaryDetail(row.data.notary_no)}>{row.data.notary_no}</Button>:'—'},
     {title:'案件编号',key:'caseNo',width:145,render:(_v,row)=>row.data.case_no?<Button type="link" onClick={()=>openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button>:'—'},
     {title:'货物出售店铺',key:'shop',width:180,render:(_v,row)=>row.data.shop_name||row.title||'—'},
     {title:'调查员',key:'investigator',width:110,render:(_v,row)=>row.data.investigator||row.owner||'—'},
     {title:'公证处',key:'notaryOffice',width:180,render:(_v,row)=>row.data.notary_office||'—'},
-    {title:'权利人',key:'rightsHolder',width:160,render:(_v,row)=>row.data.rights_holder||'—'},
+    {title:'权利人',key:'rightsHolder',width:160,render:(_v,row)=>row.data.rights_holder?<Button type="link" onClick={()=>void openCustomerDetail(row.data.rights_holder)}>{row.data.rights_holder}</Button>:'—'},
     {title:'取证日期',key:'date',width:115,render:(_v,row)=>row.data.evidence_date||row.data.collected_at||'—'},
     {title:'证物状态',key:'status',width:115,render:(_v,row)=><Tag color={statusColor[statusOf(row)]}>{statusOf(row)}</Tag>},
     {title:'',key:'action',width:45,fixed:'right',render:(_v,row)=><Dropdown trigger={['click']} menu={{items:rowMenu(row)}}><Button type="text" size="small" aria-label={`操作 ${row.serial_no}`} icon={<EllipsisOutlined/>}/></Dropdown>},
@@ -123,7 +128,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
     </Modal>
 
     <Modal title={actionTitle} open={Boolean(action)} confirmLoading={saving} onCancel={()=>setAction(null)} onOk={()=>void submitAction()} okText="确认办理" okButtonProps={{danger:action?.kind==='destroy'}} destroyOnHidden>
-      {action&&<><Descriptions size="small" column={1} bordered items={[{key:'serial',label:'线索编号',children:action.row.serial_no},{key:'shop',label:'货物出售店铺',children:String(action.row.data.shop_name||action.row.title)},{key:'status',label:'当前状态',children:<Tag color={statusColor[statusOf(action.row)]}>{statusOf(action.row)}</Tag>}]}/><Form form={actionForm} layout="vertical" className="warehouse-action-form">
+      {action&&<><Descriptions size="small" column={1} bordered items={[{key:'serial',label:'线索编号',children:<Button type="link" onClick={()=>openClueDetail(action.row.serial_no)}>{action.row.serial_no}</Button>},{key:'shop',label:'货物出售店铺',children:String(action.row.data.shop_name||action.row.title)},{key:'status',label:'当前状态',children:<Tag color={statusColor[statusOf(action.row)]}>{statusOf(action.row)}</Tag>}]}/><Form form={actionForm} layout="vertical" className="warehouse-action-form">
         {(action.kind==='check-in'||action.kind==='recheck-in')&&<><Form.Item label="仓库" name="warehouse" rules={[{required:true,message:'请选择仓库'}]}><Select options={warehouses.map(value=>({value,label:value}))}/></Form.Item><Form.Item label="库位" name="location" rules={[{required:true,message:'请输入库位'}]}><Input/></Form.Item></>}
         {action.kind==='recheck-in'&&<Form.Item label="证物状况" name="condition" rules={[{required:true,message:'请输入证物状况'}]}><Input/></Form.Item>}
         {action.kind==='check-out'&&<><Form.Item label="领取人" name="recipient" rules={[{required:true,message:'请输入领取人'}]}><Input/></Form.Item><Form.Item label="出库用途" name="purpose" rules={[{required:true,message:'请输入出库用途'}]}><Input.TextArea rows={2}/></Form.Item></>}
