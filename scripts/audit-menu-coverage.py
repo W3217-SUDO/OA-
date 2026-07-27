@@ -2127,6 +2127,9 @@ def main() -> None:
         assert token in MAIN, f"my invoice API contract missing: {token}"
     invoice_mine_config = re.search(r'"finance-invoice-mine": \{(.*?)\n    \},', FINANCE, re.S)
     assert invoice_mine_config and invoice_mine_config.group(1).count('"') >= 22, "my invoice must keep ten named columns plus the original blank placeholder"
+    invoice_customer_link = 'onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button>'
+    assert FINANCE.count(invoice_customer_link) == 3, "all three invoice detail states must link the customer to its read-only detail"
+    print("FINANCE_INVOICE_CUSTOMER_RELATION_OK: invoice process, cancellation and detail customers open the real read-only customer detail")
     print("FINANCE_INVOICE_MINE_OK: 8 filters, 10 columns plus placeholder, active-only global/page totals, 15-row server paging, view/withdraw, cancellation strike-through and real Excel export")
     invoice_pending_contract = [
         'const isInvoicePendingRoute = initialView === "finance-invoice-pending"',

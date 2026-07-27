@@ -6333,7 +6333,7 @@ export default function FinanceCenterPage({
             {dayjs(invoiceDetailData.application_date || invoiceDisplay.created_at).format("YYYY年MM月DD日")}
           </Descriptions.Item>
           <Descriptions.Item label="开票申请号">{invoiceDisplay.serial_no}</Descriptions.Item>
-          <Descriptions.Item label="客户名称">{invoiceDisplay.customer}</Descriptions.Item>
+          <Descriptions.Item label="客户名称">{invoiceDisplay.customer ? <Button type="link" onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button> : "—"}</Descriptions.Item>
           <Descriptions.Item label="开票申请人">
             {(invoiceDetailData.applicant || invoiceDisplay.owner) === currentUser.username
               ? currentUser.displayName || currentUser.username
@@ -6344,7 +6344,7 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="合同编号">{invoiceDetailData.contract_no ? <Button type="link" onClick={() => openContractDetail(invoiceDetailData.contract_no)}>{invoiceDetailData.contract_no}</Button> : ""}</Descriptions.Item>
           <Descriptions.Item label="外部合同号">{invoiceDetailData.external_contract_no || ""}</Descriptions.Item>
           <Descriptions.Item label="合同名称">{invoiceDetailData.contract_name || ""}</Descriptions.Item>
-          <Descriptions.Item label="客户名称">{invoiceDisplay.customer}</Descriptions.Item>
+          <Descriptions.Item label="客户名称">{invoiceDisplay.customer ? <Button type="link" onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button> : "—"}</Descriptions.Item>
           <Descriptions.Item label="开票申请人">
             {(invoiceDetailData.applicant || invoiceDisplay.owner) === currentUser.username
               ? currentUser.displayName || currentUser.username
@@ -6368,7 +6368,7 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="申请日期">
             {dayjs(invoiceDetailData.application_date || invoiceDisplay.created_at).format("YYYY年MM月DD日")}
           </Descriptions.Item>
-          <Descriptions.Item label="客户名称">{invoiceDisplay.customer}</Descriptions.Item>
+          <Descriptions.Item label="客户名称">{invoiceDisplay.customer ? <Button type="link" onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button> : "—"}</Descriptions.Item>
           <Descriptions.Item label="发票号">{invoiceDetailData.invoice_no || ""}</Descriptions.Item>
           <Descriptions.Item label="票据状态">{invoiceDisplay.status}</Descriptions.Item>
           <Descriptions.Item label="领票人">{invoiceDetailData.recipient || ""}</Descriptions.Item>
