@@ -139,6 +139,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-management-menu", "system-management", "菜单管理", "", 2),
     ("system-management-config", "system-management", "系统配置", "", 3),
 ]
+SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
 LEGACY_FINANCE_MENU_KEYS = {
     "finance-fees", "finance-audit", "finance-refund", "finance-transactions", "finance-reconcile",
     "platform-finance-reconcile",
@@ -2563,13 +2564,19 @@ def _system_menu_dict(item: SystemMenu) -> dict:
         "id": item.id, "key": item.key, "parent_key": item.parent_key,
         "label": item.label, "icon": item.icon, "sort_order": item.sort_order,
         "is_visible": item.is_visible, "is_active": item.is_active,
+        "is_system": item.key in SYSTEM_MENU_ROUTE_KEYS,
         "updated_by": item.updated_by, "updated_at": item.updated_at,
     }
 
 
 @app.get(f"{settings.api_prefix}/system/menus/navigation")
 async def navigation_menus(_: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    items = (await db.scalars(select(SystemMenu).where(SystemMenu.is_active.is_(True), SystemMenu.is_visible.is_(True)).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
+    items = [
+        item for item in (await db.scalars(
+            select(SystemMenu).where(SystemMenu.is_active.is_(True), SystemMenu.is_visible.is_(True)).order_by(SystemMenu.sort_order, SystemMenu.id)
+        )).all()
+        if item.key in SYSTEM_MENU_ROUTE_KEYS
+    ]
     visible_keys = {item.key for item in items if not item.parent_key}
     changed = True
     while changed:
@@ -2592,6 +2599,8 @@ async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(cur
     _require_admin(identity)
     menu_key = body.key.strip()
     parent_key = body.parent_key.strip()
+    if menu_key not in SYSTEM_MENU_ROUTE_KEYS:
+        raise HTTPException(status_code=422, detail="菜单标识不是已实现的系统路由，不能创建菜单入口")
     if await db.scalar(select(SystemMenu.id).where(SystemMenu.key == menu_key)):
         raise HTTPException(status_code=409, detail="菜单标识已经存在")
     if parent_key and not await db.scalar(select(SystemMenu.id).where(SystemMenu.key == parent_key)):

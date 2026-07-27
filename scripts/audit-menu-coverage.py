@@ -133,6 +133,10 @@ def main() -> None:
     missing = [(key, canonical_route(key)) for key in leaves if not is_implemented(canonical_route(key))]
     assert not missing, f"menu leaves without a page component: {missing}"
     assert "页面不存在，请从左侧菜单重新选择" in APP, "missing explicit unknown-route guard"
+    assert "SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}" in MAIN, "system menu keys must derive from implemented routes"
+    assert "if item.key in SYSTEM_MENU_ROUTE_KEYS" in MAIN, "navigation must hide menus without an implemented route"
+    assert "菜单标识不是已实现的系统路由" in MAIN, "menu API must block dead custom menu routes"
+    assert "新增菜单" not in SYSTEM, "menu management must not expose dead-route creation"
 
     fallback_menu = APP[APP.index("const menuItems: NavItem[] = [") : APP.index("function configuredMenuItems")]
     fallback_top_order = [

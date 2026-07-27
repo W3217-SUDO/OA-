@@ -907,13 +907,8 @@ def main():
             ("system-parameters", "系统参数"), ("system-management", "系统管理"),
         ]
         assert any(item["key"] == "warehouse-list" and item["parent_key"] == "warehouse" for item in navigation)
-        custom_menu = call("POST", "/system/menus", {"key": f"smoke-menu-{suffix.lower()}", "parent_key": "system-management", "label": f"冒烟自定义菜单-{suffix}", "icon": "", "sort_order": 9999, "is_visible": True, "is_active": True}, expected=(201,))
-        system_menus.append(custom_menu["id"])
-        assert custom_menu["parent_key"] == "system-management"
-        call("POST", "/system/menus", {"key": custom_menu["key"], "parent_key": "", "label": "重复菜单", "sort_order": 9999}, expected=(409,))
-        assert any(item["key"] == custom_menu["key"] for item in call("GET", "/system/menus/navigation")["items"])
-        call("DELETE", f"/system/menus/{custom_menu['id']}", expected=(204,))
-        system_menus.remove(custom_menu["id"])
+        call("POST", "/system/menus", {"key": f"smoke-menu-{suffix.lower()}", "parent_key": "system-management", "label": f"冒烟自定义菜单-{suffix}", "icon": "", "sort_order": 9999, "is_visible": True, "is_active": True}, expected=(422,))
+        assert all(item["is_system"] for item in navigation)
         call("DELETE", f"/system/menus/{next(item for item in menus if item['key'] == 'dashboard')['id']}", expected=(422,))
         legacy_task_menus = [item for item in menus if item["key"] == "task-reminders"]
         assert all(item["is_visible"] is False and item["is_active"] is False for item in legacy_task_menus)
