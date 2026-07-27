@@ -1629,6 +1629,15 @@ def main() -> None:
 
     assert 'owner: profile.username || "admin"' in DOCUMENT, "document creation must default to the signed-in account"
     assert '"/documents/official/upload"' in DOCUMENT and '/documents/official/upload' in MAIN, "official receipt upload must atomically create a document record and attachment"
+    for token in (
+        'import { rememberCustomerDetailTarget } from "./customerDetailNavigation";',
+        'const openCustomerDetail = async (customerName: unknown) =>',
+        'params: { module: "customer", keyword: title, page_size: 100 }',
+        'onClick={() => void openCustomerDetail(value)}',
+        'onClick={() => void openCustomerDetail(viewing.customer)}',
+    ):
+        assert token in DOCUMENT, f"document customer relation detail entry missing: {token}"
+    print("DOCUMENT_CUSTOMER_RELATION_OK: document list and drawer customers open scoped read-only customer details")
     normalized_agent_document = re.sub(r"\s+", "", AGENT_DOCUMENT)
     for token in (
         "['case','contract','customer','clue','notary','evidence']",

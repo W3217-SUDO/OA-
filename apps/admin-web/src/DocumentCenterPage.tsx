@@ -39,6 +39,7 @@ import {
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./document-center.css";
@@ -181,6 +182,33 @@ export default function DocumentCenterPage({
     }
     rememberCaseDetailTarget({ serial_no: serialNo });
     onNavigate?.("case-company");
+  };
+  const openCustomerDetail = async (customerName: unknown) => {
+    const title = String(customerName || "").trim();
+    if (!title || title === "—") {
+      message.warning("当前文档未关联客户");
+      return;
+    }
+    try {
+      const response = await api.get("/records", {
+        params: { module: "customer", keyword: title, page_size: 100 },
+      });
+      const customer = (response.data.items as RecordRow[]).find(
+        (item) => item.title === title || item.customer === title,
+      );
+      if (!customer) {
+        message.warning("未找到关联客户档案或当前账号无权查看");
+        return;
+      }
+      rememberCustomerDetailTarget({
+        id: customer.id,
+        serial_no: customer.serial_no,
+        title: customer.title,
+      });
+      onNavigate?.("customer-company");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联客户加载失败");
+    }
   };
   const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>({});
   const [selectedReceiptKeys, setSelectedReceiptKeys] = useState<Key[]>([]);
@@ -432,7 +460,12 @@ export default function DocumentCenterPage({
         </Tag>
       ),
     },
-    { title: "客户", dataIndex: "customer", width: 170 },
+    {
+      title: "客户",
+      dataIndex: "customer",
+      width: 170,
+      render: (value: string) => value ? <Button type="link" onClick={() => void openCustomerDetail(value)}>{value}</Button> : "—",
+    },
     {
       title: "关联案号",
       key: "case",
@@ -1512,7 +1545,7 @@ export default function DocumentCenterPage({
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="客户/主体" span={2}>
-                {viewing.customer || "—"}
+                {viewing.customer ? <Button type="link" onClick={() => void openCustomerDetail(viewing.customer)}>{viewing.customer}</Button> : "—"}
               </Descriptions.Item>
               <Descriptions.Item label="关联案号">
                 {viewing.data.case_no ? <Button type="link" onClick={() => openCaseDetail(viewing.data.case_no)}>{viewing.data.case_no}</Button> : "—"}
