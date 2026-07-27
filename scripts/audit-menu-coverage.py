@@ -1688,6 +1688,14 @@ def main() -> None:
         "调查详情：${investigationDetail?.serial_no||''}",
     ):
         assert token in INVESTIGATION, f"investigation identifier/customer link detail entry missing: {token}"
+    for token in (
+        "unclaimed:[\"案号\"",
+        "onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>",
+        "openSpecialCaseDetail({case_no:row.data.case_no||row.serial_no})",
+        "target||{case_no:caseNo}",
+    ):
+        assert token in CASE, f"case special-list relation link missing: {token}"
+    print("CASE_SPECIAL_RELATION_LINKS_OK: unclaimed, refund, receipt and invoice attachment case numbers open real case details")
     assert "form.append('certificate_no',importReference.trim())" in INVESTIGATION, "certificate-file import must transmit the explicitly entered certificate number"
     assert "form.append('invoice_no',importReference.trim())" in INVESTIGATION, "invoice-file import must transmit the explicitly entered invoice number"
     assert "certificate_no: str = Form(...)" in MAIN and "invoice_no: str = Form(...)" in MAIN, "notary file APIs must require explicit matching numbers"
