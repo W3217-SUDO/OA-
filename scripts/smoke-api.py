@@ -2821,8 +2821,15 @@ def main():
         linked_contract = call("GET", f"/records/{contract['id']}")
         assert linked_contract["data"]["seal_application_id"] == linked_seal["id"] and linked_contract["data"]["seal_application_no"] == linked_seal["serial_no"]
         call("POST", f"/contracts/{contract['id']}/seal-application", {"seal_asset_id": asset["id"], "copies": 1, "purpose": "重复用印", "use_date": str(date.today() + timedelta(days=1))}, expected=(409,))
-        seal = call("POST", "/seals/applications", {"title": "冒烟用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 2, "purpose": "接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "测试文件"}, expected=(201,))
+        seal = call("POST", "/seals/applications", {"title": "冒烟用印", "customer": "冒烟客户", "case_no": case["serial_no"], "contract_no": contract["serial_no"], "use_type": "案件用印", "seal_asset_id": asset["id"], "copies": 2, "purpose": "接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "测试文件"}, expected=(201,))
         records.append(seal["id"])
+        assert seal["data"]["contract_no"] == contract["serial_no"] and seal["data"]["use_type"] == "案件用印"
+        seal_query = urllib.parse.urlencode({"view": "all", "record_status": "草稿", "contract_no": contract["serial_no"]})
+        queried_seals = call("GET", f"/seals/applications?{seal_query}")["items"]
+        assert any(item["id"] == seal["id"] for item in queried_seals)
+        deletable_seal = call("POST", "/seals/applications", {"title": "冒烟可删除用印草稿", "customer": "冒烟客户", "contract_no": contract["serial_no"], "use_type": "合同用印", "seal_asset_id": asset["id"], "copies": 1, "purpose": "草稿删除验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印"}, expected=(201,))
+        call("DELETE", f"/seals/applications/{deletable_seal['id']}", expected=(204,))
+        call("GET", f"/records/{deletable_seal['id']}", expected=(404,))
         call("PATCH", f"/records/{seal['id']}", {"status": "已用印"}, expected=(409,))
         call("POST", f"/records/{seal['id']}/transition", {"to_status": "已用印", "comment": "绕过用印审批"}, expected=(409,))
         call("DELETE", f"/records/{seal['id']}", expected=(409,))

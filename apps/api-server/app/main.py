@@ -1716,6 +1716,8 @@ class SealApplicationInput(BaseModel):
     title: str
     customer: str = ""
     case_no: str = ""
+    contract_no: str = ""
+    use_type: str = ""
     seal_asset_id: int
     copies: int = Field(ge=1, le=999)
     purpose: str
@@ -5420,14 +5422,14 @@ async def list_tasks(
         raise HTTPException(status_code=403, detail="只有系统管理员可以查看全所任务")
     username = identity["username"]
     if scope != "department":
-        # Company-wide administrators may read every task, but the received and
-        # collaborating views must still honor their selected participant role.
-        # The initiated company view intentionally remains organization-wide.
-        if relation == "initiated" and not (scope == "company" and identity.get("role") == "admin"):
+        # 管理员无论从“我的”“部门”或“公司”入口进入，都保留全所数据范围；
+        # 不能因为选择“发起/接收/协作”再把最高权限缩回为本人参与的任务。
+        is_admin_global_view = identity.get("role") == "admin"
+        if relation == "initiated" and not is_admin_global_view:
             tasks = [task for task in tasks if (task.data or {}).get("initiator") == username]
-        elif relation == "owned":
+        elif relation == "owned" and not is_admin_global_view:
             tasks = [task for task in tasks if task.owner == username]
-        elif relation == "collaborating":
+        elif relation == "collaborating" and not is_admin_global_view:
             tasks = [task for task in tasks if username in (task.data or {}).get("collaborators", [])]
     items = [_task_dict(item) for item in tasks]
 
@@ -10879,7 +10881,7 @@ async def _seal_record_dict(record: BusinessRecord, db: AsyncSession) -> dict:
 
 
 @app.get(f"{settings.api_prefix}/seals/applications")
-async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", serial_no: str = "", applicant: str = "", date_from: date | None = None, date_to: date | None = None, case_no: str = "", contract_no: str = "", customer: str = "", use_type: str = "", file_name: str = "", page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if view not in {"my", "audit", "all"}: raise HTTPException(status_code=422, detail="无效的用印视图")
     if view == "all" and identity.get("role") != "admin": raise HTTPException(status_code=403, detail="只有系统管理员可以查看全部用印申请")
     scope_conditions = await _record_scope_conditions(identity, db)
@@ -10887,9 +10889,21 @@ async def list_seal_applications(view: str = "my", keyword: str = "", record_sta
     if view == "my": conditions.append(BusinessRecord.owner == identity["username"])
     if view == "audit": conditions.append(BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"}))
     if record_status: conditions.append(BusinessRecord.status == record_status)
+    def text_filter(column, value: str):
+        if value.strip():
+            conditions.append(column.ilike(f"%{value.strip()}%"))
+    text_filter(BusinessRecord.serial_no, serial_no)
+    text_filter(BusinessRecord.owner, applicant)
+    text_filter(BusinessRecord.customer, customer)
+    text_filter(BusinessRecord.data["case_no"].as_string(), case_no)
+    text_filter(BusinessRecord.data["contract_no"].as_string(), contract_no)
+    text_filter(BusinessRecord.data["document_names"].as_string(), file_name)
+    if use_type.strip(): conditions.append(BusinessRecord.data["use_type"].as_string() == use_type.strip())
+    if date_from: conditions.append(func.date(BusinessRecord.created_at) >= date_from)
+    if date_to: conditions.append(func.date(BusinessRecord.created_at) <= date_to)
     if keyword:
         like = f"%{keyword.strip()}%"
-        conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
+        conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like), BusinessRecord.data["case_no"].as_string().ilike(like), BusinessRecord.data["contract_no"].as_string().ilike(like), BusinessRecord.data["document_names"].as_string().ilike(like)))
     total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
     rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     all_seals = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "seal", *scope_conditions))).all()
@@ -10940,7 +10954,8 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
-    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": body.case_no, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "document_names": body.document_names})
+    use_type = body.use_type.strip() or ("案件用印" if body.case_no.strip() else "合同用印" if body.contract_no.strip() else "行政用印")
+    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "document_names": body.document_names})
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
@@ -10956,10 +10971,27 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     item.title = body.title.strip(); item.customer = body.customer.strip(); item.description = body.description.strip()
-    item.data = {"case_no": body.case_no, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "document_names": body.document_names}
+    use_type = body.use_type.strip() or ("案件用印" if body.case_no.strip() else "合同用印" if body.contract_no.strip() else "行政用印")
+    item.data = {"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "document_names": body.document_names}
     db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
     return await _seal_record_dict(item, db)
+
+
+@app.delete(f"{settings.api_prefix}/seals/applications/{{record_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_seal_application(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Remove only an untouched draft so page-created test data can be safely cleaned."""
+    item = await _get_seal_application(record_id, identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status != "草稿":
+        raise HTTPException(status_code=409, detail="只有草稿用印申请可以删除；已提交申请请按流程撤回")
+    attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == item.id)) or 0)
+    if attachment_count:
+        raise HTTPException(status_code=409, detail="草稿已有关联附件，请先通过附件流程处理后再删除")
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id))
+    await db.delete(item)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 async def _get_seal_application(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:

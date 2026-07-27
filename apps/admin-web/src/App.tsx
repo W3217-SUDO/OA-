@@ -548,6 +548,16 @@ type SessionUser = {
 };
 type OpenPage = { key: string; label: string };
 
+// Deep routes are not all navigation-menu leaves. Keep workspace tabs readable
+// instead of exposing an internal route key to users.
+const routePageLabels: Record<string, string> = {
+  "notary-import-info": "公证信息导入",
+  "notary-import-storage": "取证信息文件导入",
+  "notary-import-files": "公证书文件导入",
+  "notary-import-invoices": "发票文件导入",
+  "notary-query-files": "公证书文件列表",
+};
+
 function readOpenPages(active: string): OpenPage[] {
   try {
     const stored = JSON.parse(localStorage.getItem("sunhold:open-pages") || "[]") as OpenPage[];
@@ -1070,10 +1080,11 @@ export default function App() {
   useEffect(() => {
     const item = flattenMenu(effectiveMenuItems).find((entry) => entry.key === active);
     const label = active.startsWith("case-new-") ? "新建案件" : item?.label || active;
+    const effectiveLabel = routePageLabels[active] || label;
     setOpenPages((current) => {
       const next = current.some((entry) => entry.key === active)
-        ? current.map((entry) => entry.key === active ? { ...entry, label } : entry)
-        : [...current, { key: active, label }];
+        ? current.map((entry) => entry.key === active ? { ...entry, label: effectiveLabel } : entry)
+        : [...current, { key: active, label: effectiveLabel }];
       localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
       return next;
     });

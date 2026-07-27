@@ -1192,10 +1192,11 @@ def main() -> None:
     assert 'label: "进行中"' in collaborating_tabs and 'label: "完成"' in collaborating_tabs, "my-collaborating tabs must match the original 进行中/完成 labels"
     for terminal_status in ("已拒绝", "已停止", "已撤回"):
         assert terminal_status not in collaborating_tabs, f"original my-collaborating node-status tabs do not include {terminal_status}"
-    assert 'elif relation == "collaborating":' in MAIN, "task API collaborating relation is missing"
+    assert 'elif relation == "collaborating" and not is_admin_global_view:' in MAIN, "task API collaborating relation is missing"
     relation_guard = re.search(r'username = identity\["username"\]\s*if scope != "department":\s*(.*?)\s*items = \[_task_dict', MAIN, re.S)
-    assert relation_guard and 'elif relation == "collaborating":' in relation_guard.group(1), "task participant-role narrowing must retain collaborating filtering"
-    assert 'scope == "company" and identity.get("role") == "admin"' in relation_guard.group(1), "company-wide initiated tasks must remain organization-wide while accepted tasks honor ownership"
+    assert relation_guard and 'elif relation == "collaborating" and not is_admin_global_view:' in relation_guard.group(1), "task participant-role narrowing must retain collaborating filtering for non-admin users"
+    assert 'is_admin_global_view = identity.get("role") == "admin"' in relation_guard.group(1), "administrators must retain organization-wide task views"
+    assert 'elif relation == "owned" and not is_admin_global_view:' in relation_guard.group(1), "administrators must retain organization-wide owned-task views"
     assert task_query_fields == [
         "priority", "serial_no", "title", "description", "initiator", "case_no",
         "source", "created_range", "owner", "plaintiff", "defendant", "deadline_range",
@@ -1640,8 +1641,19 @@ def main() -> None:
         assert token in normalized_agent_document, f"agent document related-record contract missing: {token}"
     print("AGENT_DOCUMENT_RELATION_OK: all six business modules, record-id fallback and read-only investigation navigation")
     assert "['草稿','待审批']" in SEAL, "the pending seal page must keep drafts reachable for submission"
+    assert 'is_admin_global_view = identity.get("role") == "admin"' in MAIN, "task views must not shrink the administrator's full-firm data scope"
     assert 'BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"})' in MAIN, "seal audit history views must receive approved and rejected applications"
     assert '"approval_comment": body.comment.strip()' in MAIN, "seal approval must persist approver, time and opinion"
+    for token in ('contract_no: str = ""', '"contract_no": body.contract_no', '"use_type": use_type'):
+        assert token in MAIN, f"seal contract relation persistence missing: {token}"
+    for token in ('serial_no: str = ""', 'applicant: str = ""', 'file_name: str = ""', 'BusinessRecord.data["contract_no"].as_string()', 'func.date(BusinessRecord.created_at)'):
+        assert token in MAIN, f"seal server-side query filter missing: {token}"
+    for token in ('constsealStatusOptions=', 'page_size:100', 'contract_no:query.contract_no', "record_status:routeStatuses.length===1?routeStatuses[0]:query.record_status"):
+        assert token in SEAL.replace(" ", ""), f"seal page must use the persisted query/status contract: {token}"
+    for token in ('@app.delete(f"{settings.api_prefix}/seals/applications/{{record_id}}", status_code=status.HTTP_204_NO_CONTENT)', '只有草稿用印申请可以删除', 'delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id)'):
+        assert token in MAIN, f"seal draft cleanup endpoint missing: {token}"
+    for token in ('constremoveDraft=', "api.delete(`/seals/applications/${row.id}`)", '>删除</Button>'):
+        assert token in SEAL.replace(" ", ""), f"seal draft cleanup action missing: {token}"
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
         assert token in (MAIN + CASE), f"case create reference/locking contract missing: {token}"
     assert '>登记证物</Button>' in WAREHOUSE and 'rowSelection={{columnWidth:42}}' not in WAREHOUSE, "warehouse must expose evidence registration without a dead selection column"
