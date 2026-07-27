@@ -1682,6 +1682,16 @@ def main() -> None:
     assert "form.append('certificate_no',importReference.trim())" in INVESTIGATION, "certificate-file import must transmit the explicitly entered certificate number"
     assert "form.append('invoice_no',importReference.trim())" in INVESTIGATION, "invoice-file import must transmit the explicitly entered invoice number"
     assert "certificate_no: str = Form(...)" in MAIN and "invoice_no: str = Form(...)" in MAIN, "notary file APIs must require explicit matching numbers"
+    for token in (
+        "const openLinkedNotary=async(recordId?:number,certificateNo?:string)",
+        "api.get('/notaries/lookup'",
+        "openLinkedNotary(r.data.notary_record_id, r.data.certificate_no)",
+        "openLinkedInvestigation(String(r.data.clue_no),'clue')",
+        "openLinkedNotary(undefined,String(value))",
+    ):
+        assert token in INVESTIGATION, f"investigation notary/clue relation link missing: {token}"
+    assert '@app.get(f"{settings.api_prefix}/notaries/lookup")' in MAIN, "certificate number must resolve to a scoped notary record before opening detail"
+    print("INVESTIGATION_RELATION_LINKS_OK: clue, notary, evidence and certificate-file relation fields open real scoped details")
     assert ".seal-stats,.seal-original-tabs{display:none!important}" in SEAL_CSS, "legacy seal statistics/tabs must stay hidden in original-layout views"
 
     report_execution_titles = [

@@ -4938,6 +4938,18 @@ async def file_evidence(evidence_id: int, body: TaskActionInput, identity: dict 
     db.add(WorkflowEvent(record_id=item.id, action="证据入卷", from_status="已整理", to_status=item.status, operator=identity["username"], comment=body.comment)); await db.commit(); await db.refresh(item); return _record_dict(item)
 
 
+@app.get(f"{settings.api_prefix}/notaries/lookup")
+async def lookup_notary_by_certificate(certificate_no: str = Query(min_length=2, max_length=128), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    lookup = certificate_no.strip().casefold()
+    records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "notary", *(await _record_scope_conditions(identity, db))))).all()
+    matches = [item for item in records if str((item.data or {}).get("certificate_no", "")).strip().casefold() == lookup]
+    if not matches:
+        raise HTTPException(status_code=404, detail="未找到关联公证记录或当前账号无权查看")
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="公证书号匹配到多条记录，请先处理重复编号")
+    return _record_dict(matches[0], await _allowed_field_keys(identity, db))
+
+
 @app.post(f"{settings.api_prefix}/notaries/{{notary_id}}/certificate")
 async def register_notary_certificate(notary_id: int, body: NotaryCertificateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     notary = await _ensure_record_module(notary_id, "notary", identity, db); await _require_record_owner_or_manager(notary, identity, db)
