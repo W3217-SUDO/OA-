@@ -265,6 +265,7 @@ export default function CaseCenterPage({
   const [batchFeeOpen, setBatchFeeOpen] = useState(false);
   const [editingCounselCase, setEditingCounselCase] = useState<CaseRow | null>(null);
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
+  const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
@@ -289,6 +290,7 @@ export default function CaseCenterPage({
   const [progressForm] = Form.useForm();
   const [counselEditForm] = Form.useForm();
   const [normalCaseEditForm] = Form.useForm();
+  const [arbitrationBasicForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
   const [reminderForm] = Form.useForm();
@@ -1103,6 +1105,25 @@ export default function CaseCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件基本信息保存失败");
     }
+  };
+  const openArbitrationBasicEdit = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
+    if (row.data.case_type !== "仲裁") return message.warning("当前案件不是仲裁案件");
+    arbitrationBasicForm.setFieldsValue({
+      customer_record_id: Number(row.data.customer_record_id || row.data.customer_id) || caseCustomers.find(item=>item.title===row.customer)?.id,
+      title: row.title, case_phase: row.status, cause_or_charge: row.data.cause_or_charge || "",
+      handling_lawyers: row.data.handling_lawyers || [], assistant: row.data.assistant || "", investigator: row.data.investigator || "",
+      investigation_clue_ids: Array.isArray(row.data.investigation_clue_ids) ? row.data.investigation_clue_ids : [], comment: "",
+    });
+    setEditingArbitrationCase(row);
+  };
+  const saveArbitrationBasic = async () => {
+    if (!editingArbitrationCase) return;
+    const values = await arbitrationBasicForm.validateFields();
+    try {
+      const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, {...values, title:values.title.trim(),case_phase:values.case_phase.trim(),cause_or_charge:values.cause_or_charge.trim(),handling_lawyers:values.handling_lawyers||[],assistant:values.assistant||"",investigator:values.investigator||"",investigation_clue_ids:values.investigation_clue_ids||[],comment:values.comment||""});
+      message.success("仲裁案件基本信息已保存"); setEditingArbitrationCase(null); setViewingCounselCase(data); await load();
+    } catch(error:any) { message.error(error?.response?.data?.detail||"仲裁案件基本信息保存失败"); }
   };
   const createCaseTask = async () => {
     if (!taskCase) return;
@@ -2237,6 +2258,7 @@ export default function CaseCenterPage({
           {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "法律顾问" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
+          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
@@ -2399,6 +2421,15 @@ export default function CaseCenterPage({
           </div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
+        </Form>
+      </Modal>
+      <Modal width={720} open={Boolean(editingArbitrationCase)} title={`修改仲裁案件基本信息：${editingArbitrationCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveArbitrationBasic} onCancel={()=>setEditingArbitrationCase(null)} destroyOnHidden>
+        <Alert type="info" showIcon title="仲裁案件使用独立基本信息流程，不复用民事、刑事、行政或法律顾问案件接口。" style={{marginBottom:12}}/>
+        <Form form={arbitrationBasicForm} layout="vertical">
+          <div className="form-grid"><Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}><Select options={caseStatuses.map(value=>({value,label:value}))}/></Form.Item></div>
+          <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
+          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请录入经办律师"}]}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item><Form.Item label="律师助理" name="assistant"><Input/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item></div>
+          <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
       <Drawer

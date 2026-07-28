@@ -1022,6 +1022,19 @@ class CaseNormalBasicInput(BaseModel):
     comment: str = Field(default="", max_length=500)
 
 
+class CaseArbitrationBasicInput(BaseModel):
+    """Dedicated legacy arbitration basic-information branch (not normal/counsel)."""
+    customer_record_id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=256)
+    case_phase: str = Field(min_length=1, max_length=64)
+    cause_or_charge: str = Field(min_length=1, max_length=256)
+    handling_lawyers: list[str] = Field(min_length=1, max_length=20)
+    assistant: str = Field(default="", max_length=128)
+    investigator: str = Field(default="", max_length=128)
+    investigation_clue_ids: list[int] = Field(default_factory=list, max_length=50)
+    comment: str = Field(default="", max_length=500)
+
+
 class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
     customer: str = Field(default="", max_length=256)
@@ -10724,6 +10737,51 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     ))
     await db.commit()
     await db.refresh(case_record)
+    return _record_dict(case_record)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/arbitration-basic")
+async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasicInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Keep the old arbitration edit branch isolated from normal/counsel cases."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    case_data = case_record.data or {}
+    if str(case_data.get("case_type") or "") != "仲裁":
+        raise HTTPException(status_code=409, detail="该接口仅用于仲裁案件")
+    _require_case_creation_completed(case_record)
+    if case_record.status in {"待归档审核", "已归档"}:
+        raise HTTPException(status_code=409, detail="归档中的仲裁案件不能修改基本信息")
+    title, phase, cause_or_charge = body.title.strip(), body.case_phase.strip(), body.cause_or_charge.strip()
+    if phase not in CASE_BASIC_EDITABLE_PHASES:
+        raise HTTPException(status_code=422, detail="案件阶段不是允许的办理阶段")
+    if not title or not cause_or_charge:
+        raise HTTPException(status_code=422, detail="案件名称和案由不能为空")
+    customer = await _customer_or_404(body.customer_record_id, identity, db)
+    if customer.status in {"公海", "已回收"}:
+        raise HTTPException(status_code=409, detail="不能关联公海或回收站客户")
+    lawyers = list(dict.fromkeys(str(item or "").strip() for item in body.handling_lawyers if str(item or "").strip()))
+    lawyers, lawyer_usernames = await _resolve_active_case_people(lawyers, db, field_name="经办律师")
+    if not lawyers:
+        raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
+    assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant.strip()] if body.assistant.strip() else [], db, field_name="律师助理")
+    investigator_values, _ = await _resolve_active_case_people([body.investigator.strip()] if body.investigator.strip() else [], db, field_name="调查员")
+    clue_ids = list(dict.fromkeys(body.investigation_clue_ids))
+    clues = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", *(await _record_scope_conditions(identity, db))))).all()) if clue_ids else []
+    if len({item.id for item in clues}) != len(clue_ids):
+        raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
+    by_id = {item.id: item for item in clues}; clue_nos = [by_id[item_id].serial_no for item_id in clue_ids]
+    previous_status = case_record.status
+    old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
+    case_record.title, case_record.customer, case_record.status = title, customer.title, phase
+    case_record.data = _case_team_payload({
+        **case_data, "customer_record_id": customer.id, "customer_id": customer.id, "customer_no": customer.serial_no,
+        "cause_or_charge": cause_or_charge, "investigator": investigator_values[0] if investigator_values else "",
+        "investigation_clue_ids": clue_ids, "investigation_clue_nos": clue_nos,
+        "investigation_clue_id": clue_ids[0] if clue_ids else None, "investigation_clue": "、".join(clue_nos),
+        "clue_record_id": clue_ids[0] if clue_ids else None, "clue_no": clue_nos[0] if clue_nos else "",
+    }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
+    db.add(WorkflowEvent(record_id=case_record.id, action="修改仲裁案件基本信息", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else "")))
+    await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
 
 
