@@ -208,6 +208,7 @@ export default function CustomerCenterPage({
     [keyChangeCustomer, setKeyChangeCustomer] = useState<Customer | null>(null),
     [portalResult, setPortalResult] = useState<{ account: string; activation_code: string } | null>(null),
     [contacts, setContacts] = useState<Customer | null>(null),
+    [editingContact, setEditingContact] = useState<Contact | null>(null),
     [detailPageOpen, setDetailPageOpen] = useState(false),
     [newEditor, setNewEditor] = useState<"contact" | "note" | "document" | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]),
@@ -229,6 +230,7 @@ export default function CustomerCenterPage({
     [assignForm] = Form.useForm(),
     [shareForm] = Form.useForm(),
     [contactForm] = Form.useForm(),
+    [contactEditForm] = Form.useForm(),
     [noteForm] = Form.useForm(),
     [levelForm] = Form.useForm(),
     [keyChangeForm] = Form.useForm(),
@@ -622,6 +624,24 @@ export default function CustomerCenterPage({
       message.error("删除失败");
     }
   };
+  const openContactEdit = (contact: Contact) => {
+    contactEditForm.setFieldsValue({ ...contact });
+    setEditingContact(contact);
+  };
+  const updateContact = async () => {
+    if (!contacts || !editingContact) return;
+    const values = await contactEditForm.validateFields();
+    try {
+      await api.put(`/customers/${contacts.id}/contacts/${editingContact.id}`, values);
+      message.success("联系人已更新");
+      setEditingContact(null);
+      contactEditForm.resetFields();
+      await refreshDetail();
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "联系人更新失败");
+    }
+  };
   const addNote = async () => {
     if (!contacts) return;
     const v = await noteForm.validateFields();
@@ -808,6 +828,12 @@ export default function CustomerCenterPage({
   };
   const userLabel = (username: string) =>
     directory.find((user) => user.username === username)?.display_name || username;
+  const canManageCurrentCustomer = Boolean(contacts && (
+    profile.role === "admin" ||
+    contacts.owner === profile.username ||
+    (contacts.data.customer_managers || []).includes(profile.username) ||
+    (profile.role === "manager" && contacts.department === profile.department)
+  ));
   const columns = [
     {
       title: "客户编号",
@@ -1030,7 +1056,7 @@ export default function CustomerCenterPage({
                 key: "contacts",
                 label: "联系人",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.contacts || []} scroll={{ x: 1180 }} locale={{emptyText:"没有查询到联系人"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"操作",render:()=>null},
+                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>:null},
                 ]} />,
               },
               {
@@ -1239,7 +1265,7 @@ export default function CustomerCenterPage({
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.contacts || []} scroll={{ x: 1180 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
                     {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
-                    {title:"操作",render:(_:unknown,row:Contact)=><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
+                    {title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
                   ]} />
                   {(contacts?.data.contacts?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button>}
                 </>
@@ -1283,6 +1309,24 @@ export default function CustomerCenterPage({
             <Form.Item name="contact_status" label="联系状态" initialValue="正常联系"><Select options={["正常联系","暂缓联系","停止联系"].map(value=>({value,label:value}))} /></Form.Item>
           </div>
           <Form.Item name="is_valid" valuePropName="checked" initialValue><Checkbox>是否有效</Checkbox></Form.Item>
+        </Form>
+      </Modal>
+      <Modal open={Boolean(editingContact)} title={`编辑联系人：${editingContact?.name || ""}`} okText="保存" cancelText="取消" onOk={updateContact} onCancel={()=>{setEditingContact(null);contactEditForm.resetFields();}} destroyOnHidden>
+        <Form form={contactEditForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item name="name" label="姓名" rules={[{required:true,message:"请输入联系人姓名"}]}><Input /></Form.Item>
+            <Form.Item name="position" label="职务"><Input /></Form.Item>
+            <Form.Item name="project_role" label="项目角色"><Input /></Form.Item>
+            <Form.Item name="office_phone" label="办公电话"><Input /></Form.Item>
+            <Form.Item name="phone" label="移动电话"><Input /></Form.Item>
+            <Form.Item name="im_account" label="IM"><Input /></Form.Item>
+            <Form.Item name="email" label="邮箱"><Input /></Form.Item>
+            <Form.Item name="contact_status" label="联系状态"><Select options={["正常联系","暂缓联系","停止联系"].map(value=>({value,label:value}))} /></Form.Item>
+          </div>
+          <Form.Item name="is_valid" valuePropName="checked"><Checkbox>是否有效</Checkbox></Form.Item>
+          <Form.Item name="is_primary" valuePropName="checked"><Checkbox>设为主要联系人</Checkbox></Form.Item>
+          <Form.Item name="remark" label="备注"><Input.TextArea rows={3} /></Form.Item>
+          <Alert type="info" showIcon title="保存会直接更新原联系人记录，不会删除重建，并写入客户审计日志。" />
         </Form>
       </Modal>
       <Modal open={newEditor === "note"} title="新建事项记录" okText="保存" cancelText="取消" onOk={addNote} onCancel={()=>setNewEditor(null)} destroyOnHidden>
@@ -1554,16 +1598,14 @@ export default function CustomerCenterPage({
                       { title: "有效", dataIndex: "is_valid", render: (value: boolean) => value !== false ? "是" : "否" },
                       {
                         title: "操作",
-                        render: (_: unknown, r: Contact) => (
-                          <Popconfirm
-                            title="删除联系人？"
-                            onConfirm={() => deleteContact(r.id)}
-                          >
-                            <Button type="link" danger>
-                              删除
-                            </Button>
-                          </Popconfirm>
-                        ),
+                        render: (_: unknown, r: Contact) => canManageCurrentCustomer ? (
+                          <Space size={0}>
+                            <Button type="link" onClick={() => openContactEdit(r)}>编辑</Button>
+                            <Popconfirm title="删除联系人？" onConfirm={() => deleteContact(r.id)}>
+                              <Button type="link" danger>删除</Button>
+                            </Popconfirm>
+                          </Space>
+                        ) : null,
                       },
                     ]}
                   />

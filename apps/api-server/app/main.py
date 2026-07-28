@@ -686,6 +686,12 @@ class DocumentTransitionInput(BaseModel):
     comment: str = ""
 
 
+class OfficialDocumentProcessInput(BaseModel):
+    record_ids: list[int] = Field(min_length=1, max_length=100)
+    processed: bool
+    comment: str = Field(default="", max_length=1000)
+
+
 class HrTransitionInput(BaseModel):
     to_status: str
     effective_date: date = Field(default_factory=date.today)
@@ -3469,8 +3475,8 @@ async def export_official_documents(ids: str = "", identity: dict = Depends(curr
     rows = []
     for item in records:
         data = item.data or {}
-        rows.append([data.get("case_no") or item.serial_no, data.get("plaintiff") or item.customer, data.get("defendant") or data.get("sender", ""), item.title, data.get("document_date") or data.get("received_at", ""), data.get("uploaded_at") or data.get("registered_at", ""), data.get("uploader") or item.owner, data.get("import_status", "已导入"), item.status])
-    return _csv_response(f"官文收文-{date.today()}.csv", ["案号", "原告", "被告", "文件名称", "文件日期", "上传日期", "上传人", "导入状态", "办理状态"], rows)
+        rows.append([data.get("case_no") or item.serial_no, data.get("plaintiff") or item.customer, data.get("defendant") or data.get("sender", ""), item.title, data.get("document_date") or data.get("received_at", ""), data.get("uploaded_at") or data.get("registered_at", ""), data.get("uploader") or item.owner, data.get("import_status", "已导入"), data.get("business_process_status", "未处理"), item.status])
+    return _csv_response(f"官文收文-{date.today()}.csv", ["案号", "原告", "被告", "文件名称", "文件日期", "上传日期", "上传人", "导入状态", "业务处理状态", "办理状态"], rows)
 
 
 @app.get(f"{settings.api_prefix}/tasks/print-export")
@@ -4101,6 +4107,54 @@ async def add_customer_contact(customer_id: int, body: CustomerContactInput, ide
     contacts.append(contact); customer.data = {**data, "contacts": contacts}
     db.add(_customer_event(customer, "新增联系人", identity, f"联系人：{contact['name']}")); await db.commit()
     return contact
+
+
+@app.put(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}")
+async def update_customer_contact(customer_id: int, contact_id: str, body: CustomerContactInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Update an existing contact in place; customer scope and edit authority are never bypassed."""
+    customer = await _customer_or_404(customer_id, identity, db)
+    await _require_record_owner_or_manager(customer, identity, db)
+    data = customer.data or {}
+    contacts = list(data.get("contacts", []))
+    index = next((i for i, item in enumerate(contacts) if item.get("id") == contact_id), None)
+    if index is None:
+        raise HTTPException(status_code=404, detail="联系人不存在")
+    name = body.name.strip()
+    phone = body.phone.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="请输入联系人姓名")
+    if any(item.get("id") != contact_id and item.get("name") == name and item.get("phone", "") == phone for item in contacts):
+        raise HTTPException(status_code=409, detail="相同联系人已存在")
+    previous = contacts[index]
+    updated = {
+        **previous,
+        "name": name,
+        "project_role": body.project_role.strip(),
+        "position": body.position.strip(),
+        "phone": phone,
+        "office_phone": body.office_phone.strip(),
+        "im_account": body.im_account.strip(),
+        "email": body.email.strip(),
+        "contact_status": body.contact_status.strip() or "正常联系",
+        "is_valid": body.is_valid,
+        "is_primary": body.is_primary,
+        "remark": body.remark.strip(),
+    }
+    if body.is_primary:
+        contacts = [{**item, "is_primary": False} if item.get("id") != contact_id else updated for item in contacts]
+    else:
+        contacts[index] = updated
+    changed_labels = {
+        "name": "姓名", "position": "职务", "project_role": "项目角色", "phone": "移动电话",
+        "office_phone": "办公电话", "im_account": "IM", "email": "邮箱",
+        "contact_status": "联系状态", "is_valid": "有效状态", "is_primary": "主要联系人", "remark": "备注",
+    }
+    changed = [label for key, label in changed_labels.items() if previous.get(key) != updated.get(key)]
+    customer.data = {**data, "contacts": contacts}
+    if changed:
+        db.add(_customer_event(customer, "修改联系人", identity, f"联系人：{previous.get('name', '')} → {updated['name']}；修改字段：{'、'.join(changed)}"))
+    await db.commit()
+    return updated
 
 
 @app.delete(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -11315,6 +11369,52 @@ async def transition_document(document_id: int, body: DocumentTransitionInput, i
     return _record_dict(item, await _allowed_field_keys(identity, db))
 
 
+@app.post(f"{settings.api_prefix}/documents/official/process")
+async def process_official_documents(body: OfficialDocumentProcessInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Mark selected official incoming documents as business processed/unprocessed.
+
+    This status is intentionally separate from registration, signing and archive
+    lifecycle.  It mirrors the legacy Patent Office batch actions without
+    allowing a generic record update to bypass document lifecycle controls.
+    """
+    record_ids = list(dict.fromkeys(body.record_ids))
+    if not record_ids:
+        raise HTTPException(status_code=422, detail="请选择至少一条官文收文记录")
+    target_status = "已处理" if body.processed else "未处理"
+    action = "标记官文已处理" if body.processed else "标记官文未处理"
+    changed: list[BusinessRecord] = []
+    for record_id in record_ids:
+        item = await _ensure_record_visible(record_id, identity, db)
+        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+            raise HTTPException(status_code=422, detail="所选记录不是官文收文")
+        await _require_record_owner_or_manager(item, identity, db)
+        data = dict(item.data or {})
+        previous = data.get("business_process_status", "未处理")
+        if previous == target_status:
+            continue
+        data.update({
+            "business_process_status": target_status,
+            "business_processed_at": datetime.now().isoformat(timespec="seconds"),
+            "business_processed_by": identity["username"],
+        })
+        item.data = data
+        # Do not change item.status: document registration/sign/archive has its
+        # own dedicated state machine and must remain independently auditable.
+        db.add(WorkflowEvent(
+            record_id=item.id,
+            action=action,
+            from_status=item.status,
+            to_status=item.status,
+            operator=identity["username"],
+            comment=body.comment.strip(),
+        ))
+        changed.append(item)
+    await db.commit()
+    for item in changed:
+        await db.refresh(item)
+    return {"processed": len(changed), "business_process_status": target_status, "items": [_record_dict(item, await _allowed_field_keys(identity, db)) for item in changed]}
+
+
 @app.get(f"{settings.api_prefix}/templates")
 async def list_templates(category: str = "", _: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     query = select(DocumentTemplate).order_by(DocumentTemplate.category, DocumentTemplate.name)
@@ -11501,7 +11601,7 @@ async def upload_official_document(
         module="document", serial_no=f"SW{now:%Y%m%d%H%M%S%f}", title=original_name,
         customer="", status="待签收", owner=identity["username"], department=user.department,
         description=remark,
-        data={"direction": "收文", "document_date": str(date.today()), "uploaded_at": str(date.today()), "uploader": identity["username"], "import_status": "已导入"},
+        data={"direction": "收文", "document_date": str(date.today()), "uploaded_at": str(date.today()), "uploader": identity["username"], "import_status": "已导入", "business_process_status": "未处理"},
     )
     try:
         db.add(record)
