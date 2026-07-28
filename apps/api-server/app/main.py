@@ -1035,6 +1035,28 @@ class CaseArbitrationBasicInput(BaseModel):
     comment: str = Field(default="", max_length=500)
 
 
+class CriminalPublicSecurityMaintenanceInput(BaseModel):
+    public_security_name: str = Field(default="", max_length=256)
+    public_security_case_no: str = Field(default="", max_length=128)
+    public_security_address: str = Field(default="", max_length=500)
+    public_security_operator: str = Field(default="", max_length=128)
+    comment: str = Field(default="", max_length=500)
+
+
+class CriminalProcuratorateMaintenanceInput(BaseModel):
+    first_procuratorate_name: str = Field(default="", max_length=256); first_procuratorate_case_no: str = Field(default="", max_length=128); first_procuratorate_operator: str = Field(default="", max_length=128)
+    second_procuratorate_name: str = Field(default="", max_length=256); second_procuratorate_case_no: str = Field(default="", max_length=128); second_procuratorate_operator: str = Field(default="", max_length=128)
+    retrial_procuratorate_name: str = Field(default="", max_length=256); retrial_procuratorate_case_no: str = Field(default="", max_length=128); retrial_procuratorate_operator: str = Field(default="", max_length=128)
+    comment: str = Field(default="", max_length=500)
+
+
+class CriminalCourtMaintenanceInput(BaseModel):
+    first_court_name: str = Field(default="", max_length=256); first_court_case_no: str = Field(default="", max_length=128); first_court_courtroom: str = Field(default="", max_length=128); first_court_judge: str = Field(default="", max_length=128); first_court_clerk: str = Field(default="", max_length=128)
+    second_court_name: str = Field(default="", max_length=256); second_court_case_no: str = Field(default="", max_length=128); second_court_courtroom: str = Field(default="", max_length=128); second_court_judge: str = Field(default="", max_length=128); second_court_clerk: str = Field(default="", max_length=128)
+    retrial_court_name: str = Field(default="", max_length=256); retrial_court_case_no: str = Field(default="", max_length=128); retrial_court_courtroom: str = Field(default="", max_length=128); retrial_court_judge: str = Field(default="", max_length=128); retrial_court_clerk: str = Field(default="", max_length=128)
+    comment: str = Field(default="", max_length=500)
+
+
 class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
     customer: str = Field(default="", max_length=256)
@@ -10783,6 +10805,46 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     db.add(WorkflowEvent(record_id=case_record.id, action="修改仲裁案件基本信息", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else "")))
     await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
+
+
+async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    record = await _ensure_record_module(case_id, "case", identity, db); await _require_record_owner_or_manager(record, identity, db)
+    if str((record.data or {}).get("case_type") or "") != "刑事案件": raise HTTPException(status_code=409, detail="该接口仅用于刑事案件")
+    _require_case_creation_completed(record)
+    if record.status in {"待归档审核", "已归档"}: raise HTTPException(status_code=409, detail="归档中的刑事案件不能维护资料")
+    return record
+
+
+async def _save_criminal_detail(record: BusinessRecord, payload: dict, action: str, comment: str, identity: dict, db: AsyncSession):
+    record.data = {**(record.data or {}), **payload}
+    db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=comment.strip()))
+    await db.commit(); await db.refresh(record); return _record_dict(record)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/litigants")
+async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    def clean(items: list[str]): return list(dict.fromkeys(str(x or "").strip() for x in items if str(x or "").strip()))
+    payload = {key: clean(getattr(body, key)) for key in ("plaintiffs","plaintiff_agents","defendants","defendant_agents","third_parties","third_party_agents")}
+    return await _save_criminal_detail(record, payload, "修改刑事案件当事人", body.comment, identity, db)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/public-security")
+async def maintain_criminal_public_security(case_id: int, body: CriminalPublicSecurityMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    return await _save_criminal_detail(record, {k: str(v or "").strip() for k,v in body.model_dump(exclude={"comment"}).items()}, "修改刑事案件公安机关信息", body.comment, identity, db)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/procuratorates")
+async def maintain_criminal_procuratorates(case_id: int, body: CriminalProcuratorateMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    return await _save_criminal_detail(record, {k: str(v or "").strip() for k,v in body.model_dump(exclude={"comment"}).items()}, "修改刑事案件检察院信息", body.comment, identity, db)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/courts")
+async def maintain_criminal_courts(case_id: int, body: CriminalCourtMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    return await _save_criminal_detail(record, {k: str(v or "").strip() for k,v in body.model_dump(exclude={"comment"}).items()}, "修改刑事案件审级法院信息", body.comment, identity, db)
 
 
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/judicial")

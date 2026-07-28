@@ -266,6 +266,7 @@ export default function CaseCenterPage({
   const [editingCounselCase, setEditingCounselCase] = useState<CaseRow | null>(null);
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
   const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
+  const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
@@ -291,6 +292,7 @@ export default function CaseCenterPage({
   const [counselEditForm] = Form.useForm();
   const [normalCaseEditForm] = Form.useForm();
   const [arbitrationBasicForm] = Form.useForm();
+  const [criminalMaintenanceForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
   const [reminderForm] = Form.useForm();
@@ -1124,6 +1126,14 @@ export default function CaseCenterPage({
       const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, {...values, title:values.title.trim(),case_phase:values.case_phase.trim(),cause_or_charge:values.cause_or_charge.trim(),handling_lawyers:values.handling_lawyers||[],assistant:values.assistant||"",investigator:values.investigator||"",investigation_clue_ids:values.investigation_clue_ids||[],comment:values.comment||""});
       message.success("仲裁案件基本信息已保存"); setEditingArbitrationCase(null); setViewingCounselCase(data); await load();
     } catch(error:any) { message.error(error?.response?.data?.detail||"仲裁案件基本信息保存失败"); }
+  };
+  const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
+    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有维护刑事案件资料权限");
+    criminalMaintenanceForm.setFieldsValue({...row.data,comment:""}); setCriminalMaintenance({row,kind});
+  };
+  const saveCriminalMaintenance = async () => {
+    if (!criminalMaintenance) return; const values=await criminalMaintenanceForm.validateFields();
+    try { const {data}=await api.put(`/cases/${criminalMaintenance.row.id}/criminal/${criminalMaintenance.kind}`,values); message.success("刑事案件资料已保存"); setCriminalMaintenance(null);setViewingCounselCase(data);await load(); } catch(error:any){message.error(error?.response?.data?.detail||"刑事案件资料保存失败");}
   };
   const createCaseTask = async () => {
     if (!taskCase) return;
@@ -2259,6 +2269,7 @@ export default function CaseCenterPage({
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "法律顾问" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
+          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Dropdown menu={{items:[{key:"litigants",label:"修改当事人"},{key:"public-security",label:"修改公安机关"},{key:"procuratorates",label:"修改检察院"},{key:"courts",label:"修改审级法院"}],onClick:({key})=>openCriminalMaintenance(viewingCounselCase,key as "litigants"|"public-security"|"procuratorates"|"courts")}}><Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)}>维护刑事资料</Button></Dropdown>}
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
@@ -2430,6 +2441,15 @@ export default function CaseCenterPage({
           <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请录入经办律师"}]}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item><Form.Item label="律师助理" name="assistant"><Input/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item></div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
+        </Form>
+      </Modal>
+      <Modal width={760} open={Boolean(criminalMaintenance)} title={`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
+        <Form form={criminalMaintenanceForm} layout="vertical">
+          {criminalMaintenance?.kind==="litigants"&&<div className="form-grid">{[["plaintiffs","受害人"],["plaintiff_agents","受害人代理人"],["defendants","被告/犯罪嫌疑人"],["defendant_agents","被告代理人"],["third_parties","第三人"],["third_party_agents","第三人代理人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>)}</div>}
+          {criminalMaintenance?.kind==="public-security"&&<div className="form-grid">{[["public_security_name","公安机关"],["public_security_case_no","公安案件号"],["public_security_address","地址"],["public_security_operator","承办人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>}
+          {criminalMaintenance?.kind==="procuratorates"&&["first","second","retrial"].map(level=><div className="form-grid" key={level}>{[[`${level}_procuratorate_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}检察院`],[`${level}_procuratorate_case_no`,`案件号`],[`${level}_procuratorate_operator`,`承办人`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>)}
+          {criminalMaintenance?.kind==="courts"&&["first","second","retrial"].map(level=><div className="form-grid" key={level}>{[[`${level}_court_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}法院`],[`${level}_court_case_no`,`案号`],[`${level}_court_courtroom`,`法庭`],[`${level}_court_judge`,`法官`],[`${level}_court_clerk`,`书记员`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>)}
+          <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
       <Drawer
