@@ -742,6 +742,7 @@ export default function CustomerCenterPage({
           { key: "contract", label: "新增合同" },
           { key: "level", label: "申请客户分级调整" },
           { key: "key-change", label: "申请关键字段变更" },
+          { key: "share", label: "共享客户" },
           { key: "portal-open", label: "开通/重置客户服务端" },
           { key: "portal-close", label: "停用客户服务端" },
         ]

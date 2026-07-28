@@ -301,7 +301,7 @@ def main() -> None:
         "最后修改日期", "联系次数", "合同数量", "民事案件数", "代理费", "官费", "客户状态",
     ):
         assert header in CUSTOMER, f"customer-mine current table is missing header {header}"
-    for action_label in ("客户删除", "客户编辑", "新增合同"):
+    for action_label in ("客户删除", "客户编辑", "新增合同", "共享客户"):
         assert action_label in CUSTOMER, f"customer-mine operation is missing: {action_label}"
     for token in (
         'constrecycleCustomer=(row:Customer)=>{',
@@ -312,6 +312,13 @@ def main() -> None:
     ):
         assert token in normalized_customer, f"customer-mine delete-to-recycle contract missing: {token}"
     assert 'api.delete(`/records/${row.id}`)' not in CUSTOMER, "customer production UI must not hard-delete customer records"
+    for token in (
+        '{key:"share",label:"共享客户"}',
+        'if(key==="share"){shareForm.resetFields();setSharing(target);}',
+        'awaitapi.post(`/customers/${sharing.id}/share`,{',
+        'message.success("客户共享成功")',
+    ):
+        assert token in normalized_customer, f"customer-mine share operation is not reachable: {token}"
     customer_list_start = CUSTOMER.index('<Card className="panel customer-list-panel"')
     customer_list_end = CUSTOMER.index('</Card>', customer_list_start)
     customer_list_source = CUSTOMER[customer_list_start:customer_list_end]
