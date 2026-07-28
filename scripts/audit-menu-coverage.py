@@ -1608,6 +1608,7 @@ def main() -> None:
         'populated.sort(key=lambda item: item[sort_by], reverse=reverse_sort)',
         'items.sort(key=lambda item: (item["latest_unread_at"], item["latest_unread_notification_id"]), reverse=True)',
         '@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/messages/read")',
+        '@app.post(f"{settings.api_prefix}/tasks/messages/batch-read")',
         'if not _is_task_participant(task, identity):',
         'item.is_read = True',
         'return {"task_id": task.id, "updated": len(items), "is_read": True}',
@@ -1622,10 +1623,12 @@ def main() -> None:
         assert token in NOTIFICATION, f"notification badge refresh listener contract missing: {token}"
     for endpoint in (
         'await api.post(`/tasks/${row.id}/messages/read`);',
+        'api.post("/tasks/messages/batch-read",',
         'await api.post(`/tasks/${communication.id}/history/${item.id}/mark-unread`);',
     ):
         start = TASK.find(endpoint)
-        assert start >= 0 and 'window.dispatchEvent(new Event("sunhold:notifications-updated"));' in TASK[start:start + 220], f"task unread mutation must immediately refresh the bell badge: {endpoint}"
+        assert start >= 0 and 'window.dispatchEvent(new Event("sunhold:notifications-updated"));' in TASK[start:start + 420], f"task unread mutation must immediately refresh the bell badge: {endpoint}"
+    assert 'isUnread&&selectedRows.length>0' in NORMALIZED_TASK, "original unread-task selected-row mark-read button is missing"
     for token in (
         'assertcall("GET",f"/tasks/unread-messages?{unread_task_query}")["total"]==0',
         'manager_unread["items"][0]["latest_unread_message"]=="任务已分派."',
@@ -1634,6 +1637,7 @@ def main() -> None:
         '"sort_by":"deadline","sort_order":"asc"',
         'unread_collab_sorted["items"]',
         'call("POST",f"/tasks/{task[\'id\']}/messages/read")',
+        'call("POST","/tasks/messages/batch-read",{"task_ids":[task["id"]]})',
         'call("POST",f"/tasks/{task[\'id\']}/messages/read",expected=(403,))',
         'terminal_unread_page["items"][0]["latest_unread_message"]=="任务已确认完成."',
         'overdue_unread_task["items"][0]["latest_unread_message"]=="任务已分派."',
@@ -2025,6 +2029,24 @@ def main() -> None:
         assert token in MAIN, f"seal draft cleanup endpoint missing: {token}"
     for token in ('constremoveDraft=', "api.delete(`/seals/applications/${row.id}`)", '>删除</Button>'):
         assert token in SEAL.replace(" ", ""), f"seal draft cleanup action missing: {token}"
+    for token in (
+        'is_electronic_seal: bool = False',
+        'is_offline_print: bool = False',
+        '只有草稿用印申请可以上传或替换用印文件',
+        '请先上传至少一个用印文件后再提交审批',
+        'async def _sync_seal_document_names',
+    ):
+        assert token in MAIN, f"seal file/print lifecycle protection missing: {token}"
+    for token in (
+        "constloadDetailFiles=async",
+        "category:'用印文件'",
+        "上传用印文件",
+        "暂无用印文件；提交审批前请上传至少一个文件",
+        'is_electronic_seal',
+        'is_offline_print',
+    ):
+        assert token in SEAL.replace(" ", ""), f"seal file/print UI missing: {token}"
+    print("SEAL_FILES_AND_PRINT_OPTIONS_OK: real seal attachments, upload/download/delete, submission block and legacy print options are covered")
     for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column)}', "dataSource={assets}"):
         assert token in SEAL, f"seal asset ledger must render its own searchable, maintainable table: {token}"
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
@@ -2132,6 +2154,8 @@ def main() -> None:
         assert f'PAGE_SPECS["{route}"]' in REPORT, f"{route} must reuse the complete ten-chart original report"
     assert 'execution_statuses = ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案", "执行终本", "执行终结", "执行中止"]' in MAIN, "all execution report APIs must return the original ten charts"
     assert "report-toolbar" not in REPORT and "report-detail-panel" not in REPORT, "original report pages must not expose invented toolbar or detail table UI"
+    assert 'mode="multiple"' in REPORT and 'customer: values.customer?.join(",") || ""' in REPORT and 'court_lawyer: values.courtLawyer?.join(",") || ""' in REPORT, "ROI report must retain the original multi-customer and multi-lawyer selectors"
+    assert 'customers_selected = {value.strip() for value in customer.split(",") if value.strip()}' in MAIN and 'court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}' in MAIN, "report API must apply every selected customer and hearing lawyer"
 
     finance_match = re.search(r"const originalFinanceRoutes = \[(.*?)\];", FINANCE, re.S)
     assert finance_match, "FinanceCenterPage original route declaration not found"

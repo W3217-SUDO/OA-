@@ -14,6 +14,17 @@ import "./report-center.css";
 
 type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number }[] };
 type Analytics = { charts: ChartResult[]; filter_options: { customers: string[]; lawyers: string[] }; source: "realtime" };
+type ReportFilterValues = {
+  customer?: string[];
+  courtLawyer?: string[];
+  handlingLawyer?: string;
+  assistant?: string;
+  investigator?: string;
+  court?: string;
+  groupMode?: string;
+  sourceDate?: any;
+  hearingDate?: any;
+};
 
 type ChartSpec = {
   title: string;
@@ -88,22 +99,21 @@ PAGE_SPECS["reports-execution-3"] = {
   charts: [...PAGE_SPECS["reports-execution-1"].charts],
 };
 
-function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options: Analytics["filter_options"]; onQuery: (values: any) => void }) {
+function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options: Analytics["filter_options"]; onQuery: (values: ReportFilterValues) => void }) {
   const [form] = Form.useForm();
-  const blankOption = [{ value: "", label: "请选择" }];
 
   return (
     <Form
       form={form}
       className="report-filter"
-      initialValues={{ customer: "", courtLawyer: "", groupMode: "按律师分组统计" }}
+      initialValues={{ customer: [], courtLawyer: [], groupMode: "按律师分组统计" }}
       onFinish={onQuery}
     >
       <Form.Item className="report-filter-wide" label="客户名称" name="customer">
-        <Select showSearch options={[{ value: "", label: "请选择客户" }, ...options.customers.map(value => ({ value, label: value }))]} />
+        <Select mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="请选择客户" options={options.customers.map(value => ({ value, label: value }))} />
       </Form.Item>
       <Form.Item className="report-filter-wide" label="开庭律师" name="courtLawyer">
-        <Select showSearch options={[...blankOption, ...options.lawyers.map(value => ({ value, label: value }))]} />
+        <Select mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="请选择" options={options.lawyers.map(value => ({ value, label: value }))} />
       </Form.Item>
       {kind === "brand" ? (
         <Form.Item label="经办律师" name="handlingLawyer">
@@ -173,13 +183,13 @@ export default function ReportCenterPage({ initialView = "reports-brand" }: { in
   const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
   const [loading, setLoading] = useState(false);
   const [analytics, setAnalytics] = useState<Analytics>({ charts: [], filter_options: { customers: [], lawyers: [] }, source: "realtime" });
-  const [query, setQuery] = useState<Record<string, any>>({});
+  const [query, setQuery] = useState<ReportFilterValues>({});
   const view = initialView.replace("reports-", "");
 
-  const paramsFor = (values: Record<string, any>) => ({
+  const paramsFor = (values: ReportFilterValues) => ({
     view,
-    customer: values.customer || "",
-    court_lawyer: values.courtLawyer || "",
+    customer: values.customer?.join(",") || "",
+    court_lawyer: values.courtLawyer?.join(",") || "",
     handling_lawyer: values.handlingLawyer || "",
     assistant: values.assistant || "",
     investigator: values.investigator || "",
@@ -190,7 +200,7 @@ export default function ReportCenterPage({ initialView = "reports-brand" }: { in
     hearing_from: values.hearingDate?.[0]?.format("YYYY-MM-DD"),
     hearing_to: values.hearingDate?.[1]?.format("YYYY-MM-DD"),
   });
-  const load = async (values: Record<string, any> = query) => {
+  const load = async (values: ReportFilterValues = query) => {
     setLoading(true);
     try {
       const { data } = await api.get("/reports/analytics", { params: paramsFor(values) });
@@ -206,7 +216,7 @@ export default function ReportCenterPage({ initialView = "reports-brand" }: { in
     setQuery({});
     void load({});
   }, [initialView]);
-  const queryReport = (values: any) => { setQuery(values); void load(values); };
+  const queryReport = (values: ReportFilterValues) => { setQuery(values); void load(values); };
   const chartItems = (title: string) => analytics.charts.find(item => item.title === title)?.items ?? [];
   return (
     <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>

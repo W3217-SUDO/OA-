@@ -1230,6 +1230,11 @@ class TaskBatchLifecycleInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+class TaskBatchReadInput(BaseModel):
+    """Selected task rows on the personal unread-message page."""
+    task_ids: list[int] = Field(min_length=1, max_length=100)
+
+
 class TemplateInput(BaseModel):
     name: str
     category: str
@@ -1818,6 +1823,8 @@ class SealApplicationInput(BaseModel):
     purpose: str
     use_date: date
     delivery_method: str = "现场用印"
+    is_electronic_seal: bool = False
+    is_offline_print: bool = False
     document_names: str = ""
     description: str = ""
 
@@ -3334,9 +3341,11 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
     if group_mode and group_mode not in {"按律师分组统计", "按文书分组统计"}: raise HTTPException(status_code=422, detail="不支持的分组模式")
     scope = await _record_scope_conditions(identity, db)
     cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope))).all()
+    customers_selected = {value.strip() for value in customer.split(",") if value.strip()}
+    court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}
     def matches(item: BusinessRecord) -> bool:
         data = item.data or {}; handlers = data.get("handling_lawyers", [])
-        return (not customer or customer in item.customer) and (not court_lawyer or court_lawyer == data.get("hearing_lawyer")) and (not handling_lawyer or handling_lawyer in handlers) and (not assistant or assistant in str(data.get("assistant", ""))) and (not investigator or investigator in str(data.get("investigator", "")))
+        return (not customers_selected or any(value in item.customer for value in customers_selected)) and (not court_lawyers_selected or data.get("hearing_lawyer") in court_lawyers_selected) and (not handling_lawyer or handling_lawyer in handlers) and (not assistant or assistant in str(data.get("assistant", ""))) and (not investigator or investigator in str(data.get("investigator", "")))
     cases = [item for item in cases if matches(item) and (not source_from or item.created_at.date() >= source_from) and (not source_to or item.created_at.date() <= source_to)]
     if court or hearing_from or hearing_to:
         case_ids = {item.id for item in cases}
@@ -3351,7 +3360,7 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
     if view in {"refund", "execution-1", "execution-2", "execution-3"}:
         if view == "refund":
             refunds = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "refund", *scope))).all()
-            refunds = [item for item in refunds if not customer or customer in item.customer]
+            refunds = [item for item in refunds if not customers_selected or any(value in item.customer for value in customers_selected)]
             specs = [("准备资料进度案件数量", {"草稿", "准备资料", "待提交"}), ("客户盖章进度案件数量", {"客户盖章"}), ("提交法院进度案件数量", {"提交法院", "已提交法院"}), ("等待客户回款进度案件数量", {"等待客户回款", "待回款"})]
             charts = [{"title": title, "unit": "个/案", "items": [{"name": "案件数", "value": sum(item.status in statuses for item in refunds)}]} for title, statuses in specs]
         else:
@@ -4690,9 +4699,14 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
             if seal_application_id and (contract.data or {}).get("sync_seal"):
                 seal_application = await db.get(BusinessRecord, seal_application_id)
                 if seal_application and seal_application.module == "seal" and seal_application.status == "草稿":
-                    seal_application.status = "待审批"
-                    contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds")}
-                    db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
+                    seal_file_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == seal_application.id, FileAttachment.category == "用印文件")) or 0)
+                    if seal_file_count:
+                        seal_application.status = "待审批"
+                        contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"), "sync_seal_file_required": False}
+                        db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
+                    else:
+                        contract.data = {**(contract.data or {}), "sync_seal_file_required": True}
+                        db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后等待用印文件", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已通过；请在用印中心上传真实用印文件后提交审批"))
     db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {current.approver}：{body.comment}")); await db.commit(); await db.refresh(contract)
     return await _record_dict_for_identity(contract, identity, db)
 
@@ -4705,6 +4719,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         raise HTTPException(status_code=409, detail="合同审批中只能保存同步用印资料，审批通过后系统会自动提交")
     if contract.status not in {"审批中", "已通过", "履行中", "已完成"}:
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
+    if body.submit:
+        raise HTTPException(status_code=409, detail="请先保存合同用印草稿，在用印中心上传真实用印文件后再提交审批")
     existing_id = int((contract.data or {}).get("seal_application_id") or 0)
     if existing_id:
         existing = await db.get(BusinessRecord, existing_id)
@@ -4716,7 +4732,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     if asset.status != "可用":
         raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
-    seal_status = "待审批" if body.submit else "草稿"
+    seal_status = "草稿"
     seal = BusinessRecord(
         module="seal",
         serial_no=serial,
@@ -6609,6 +6625,41 @@ async def read_task_messages(task_id: int, identity: dict = Depends(current_iden
         item.read_at = now
     await db.commit()
     return {"task_id": task.id, "updated": len(items), "is_read": True}
+
+
+@app.post(f"{settings.api_prefix}/tasks/messages/batch-read")
+async def batch_read_task_messages(body: TaskBatchReadInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Mark unread task messages read for the current recipient only.
+
+    The original unread-task page has a selected-row "标记已读" action.  This
+    command deliberately does not grant administrators access to somebody
+    else's personal inbox: every notification is still filtered by recipient.
+    All selected tasks are checked before any notification changes, so a mixed
+    selection cannot partially succeed.
+    """
+    task_ids = list(dict.fromkeys(body.task_ids))
+    tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task", BusinessRecord.id.in_(task_ids),
+    ))).all())
+    if len(tasks) != len(task_ids):
+        raise HTTPException(status_code=404, detail="部分任务不存在")
+    for task in tasks:
+        if not _is_task_participant(task, identity):
+            raise HTTPException(status_code=403, detail="只有任务参与人可以读取任务消息")
+    items = list((await db.scalars(select(Notification).where(
+        Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False),
+        Notification.is_read.is_(False), Notification.source_type == "task", Notification.source_id.in_(task_ids),
+        or_(
+            Notification.source_key.like("task-message-%"),
+            Notification.source_key.like("task-history-%"),
+        ),
+    ))).all())
+    now = datetime.now()
+    for item in items:
+        item.is_read = True
+        item.read_at = now
+    await db.commit()
+    return {"task_ids": task_ids, "updated": len(items), "is_read": True}
 
 
 @app.post(f"{settings.api_prefix}/tasks/{{task_id}}/handoff")
@@ -11685,6 +11736,16 @@ async def list_attachments(record_id: int | None = None, finance_transaction_id:
     return {"items": [_attachment_dict(item, records.get(item.record_id)) for item in items], "total": len(items), "required_archive_categories": sorted(ARCHIVE_REQUIRED_CATEGORIES)}
 
 
+async def _sync_seal_document_names(record: BusinessRecord, db: AsyncSession) -> None:
+    """Keep the legacy file-name projection derived from real seal attachments."""
+    files = (await db.scalars(
+        select(FileAttachment.original_name)
+        .where(FileAttachment.record_id == record.id, FileAttachment.category == "用印文件")
+        .order_by(FileAttachment.created_at, FileAttachment.id)
+    )).all()
+    record.data = {**(record.data or {}), "document_names": "、".join(files)}
+
+
 @app.post(f"{settings.api_prefix}/cases/attachments/download")
 async def download_case_attachments(body: AttachmentBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
@@ -11855,6 +11916,12 @@ async def upload_attachment(
                 raise HTTPException(status_code=422, detail="任务附件类型无效")
         if record.module == "customer":
             await _require_record_owner_or_manager(record, identity, db)
+        if record.module == "seal":
+            await _require_record_owner_or_manager(record, identity, db)
+            if record.status != "草稿":
+                raise HTTPException(status_code=409, detail="只有草稿用印申请可以上传或替换用印文件")
+            if category != "用印文件":
+                raise HTTPException(status_code=422, detail="用印申请附件类型必须为用印文件")
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES:
             await _require_record_owner_or_manager(record, identity, db)
             if category == "公证书扫描件":
@@ -11890,6 +11957,9 @@ async def upload_attachment(
             db.add(WorkflowEvent(record_id=record.id, action="提交公证书审核", from_status=previous_notary_status, to_status="待审核", operator=identity["username"], comment=f"扫描件 {item.original_name}；审核期限 30 日"))
     elif record and record.module == "customer":
         db.add(WorkflowEvent(record_id=record.id, action="上传客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
+    elif record and record.module == "seal":
+        await _sync_seal_document_names(record, db)
+        db.add(WorkflowEvent(record_id=record.id, action="上传用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
     elif record and record.module == "task":
         await _add_task_message_notifications(
             record,
@@ -11932,6 +12002,7 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     may_manage_customer_document = False
     may_manage_case_document = False
     may_manage_task_attachment = False
+    may_manage_seal_attachment = False
     if record and record.module == "task":
         record = await _ensure_attachment_record_visible(record.id, identity, db)
         if item.category not in {"任务反馈附件", "任务资料附件"}:
@@ -11947,8 +12018,16 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         record = await _ensure_record_module(record.id, "customer", identity, db)
         await _require_record_owner_or_manager(record, identity, db)
         may_manage_customer_document = True
+    if record and record.module == "seal":
+        record = await _ensure_record_module(record.id, "seal", identity, db)
+        await _require_record_owner_or_manager(record, identity, db)
+        if record.status != "草稿":
+            raise HTTPException(status_code=409, detail="只有草稿用印申请可以删除用印文件")
+        if item.category != "用印文件":
+            raise HTTPException(status_code=422, detail="用印申请附件类型无效")
+        may_manage_seal_attachment = True
     may_manage_hr_document = identity.get("role") == "manager" and record and record.module == "hr" and item.category == "员工档案"
-    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment:
+    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
     path = Path(item.path)
     await db.delete(item)
@@ -11967,6 +12046,9 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
             db.add(WorkflowEvent(record_id=record.id, action="撤回公证书审核", from_status="待审核", to_status="等待材料", operator=identity["username"], comment="公证书扫描件已删除"))
     elif record and record.module == "customer":
         db.add(WorkflowEvent(record_id=record.id, action="删除客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
+    elif record and record.module == "seal":
+        await _sync_seal_document_names(record, db)
+        db.add(WorkflowEvent(record_id=record.id, action="删除用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
     elif record and record.module == "task":
         await _add_task_message_notifications(
             record,
@@ -12112,7 +12194,7 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
     use_type = body.use_type.strip() or ("案件用印" if body.case_no.strip() else "合同用印" if body.contract_no.strip() else "行政用印")
-    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "document_names": body.document_names})
+    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
@@ -12129,7 +12211,8 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     item.title = body.title.strip(); item.customer = body.customer.strip(); item.description = body.description.strip()
     use_type = body.use_type.strip() or ("案件用印" if body.case_no.strip() else "合同用印" if body.contract_no.strip() else "行政用印")
-    item.data = {"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "document_names": body.document_names}
+    existing_names = str((item.data or {}).get("document_names") or "")
+    item.data = {"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
     db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
     return await _seal_record_dict(item, db)
@@ -12164,6 +12247,9 @@ async def submit_seal_application(record_id: int, body: TaskActionInput, identit
     item = await _get_seal_application(record_id, identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     if item.status != "草稿": raise HTTPException(status_code=409, detail="只有草稿可以提交审批")
+    attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == item.id, FileAttachment.category == "用印文件")) or 0)
+    if not attachment_count:
+        raise HTTPException(status_code=409, detail="请先上传至少一个用印文件后再提交审批")
     old = item.status; item.status = "待审批"
     db.add(WorkflowEvent(record_id=item.id, action="提交用印审批", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)

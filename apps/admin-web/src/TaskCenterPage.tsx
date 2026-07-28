@@ -863,6 +863,26 @@ export default function TaskCenterPage({
     }
     void simpleAction(selected, selected.handoff_auto_complete_at ? "restart" : "accept");
   };
+  const markSelectedUnreadTasksRead = async () => {
+    if (!selectedRows.length) {
+      message.warning("请先勾选需要标记已读的任务");
+      return;
+    }
+    if (!beginTaskAction()) return;
+    try {
+      const { data } = await api.post("/tasks/messages/batch-read", {
+        task_ids: selectedRows.map((row) => row.id),
+      });
+      message.success(`已标记 ${data.updated} 条消息为已读`);
+      setSelectedKeys([]);
+      window.dispatchEvent(new Event("sunhold:notifications-updated"));
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量标记已读失败");
+    } finally {
+      endTaskAction();
+    }
+  };
   const taskBatchLabels: Record<TaskBatchLifecycleAction, string> = {
     accept: "批量接收任务",
     complete: "批量提交完成",
@@ -1336,6 +1356,9 @@ export default function TaskCenterPage({
         {!hideTaskFooter && (
           <div className="task-bottom-actions">
             <Space size={5} wrap>
+              {isUnread && selectedRows.length > 0 && (
+                <Button loading={actionSubmitting} onClick={() => void markSelectedUnreadTasksRead()}>标记已读</Button>
+              )}
               {canManageInitiatedTask && <Button onClick={openCreateTask}>新增任务</Button>}
               {canWithdrawTask(selected) && <Button danger onClick={() => selected && requestTaskWithdrawal(selected)}>撤回任务</Button>}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && selected?.status === "已拒绝" && (

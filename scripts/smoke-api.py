@@ -1230,6 +1230,8 @@ def main():
         sync_asset = next(item for item in sync_assets if item["status"] == "可用")
         sync_linked_seal = call("POST", f"/contracts/{contract['id']}/seal-application", {"seal_asset_id": sync_asset["id"], "copies": 1, "purpose": "合同审批同步用印验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "冒烟合同附件", "description": "合同审批完成后自动提交用印", "submit": False}, expected=(201,))
         records.append(sync_linked_seal["id"])
+        sync_linked_attachment = multipart_upload("/attachments", {"record_id": sync_linked_seal["id"], "category": "用印文件", "remark": "合同同步用印真实附件"}, f"smoke-contract-seal-{suffix}.txt", b"contract seal attachment")
+        attachments.append(sync_linked_attachment["id"])
         sync_contract_state = call("GET", f"/records/{contract['id']}")
         assert sync_linked_seal["status"] == "草稿" and sync_contract_state["data"]["sync_seal"] is True
         call("POST", f"/contracts/{contract['id']}/approve", {"approved": True, "comment": "管理员不得代审"}, expected=(403,))
@@ -2071,7 +2073,7 @@ def main():
             assert manager_unread["total"] == 1 and manager_unread["unread_messages"] == 1
             assert manager_unread["items"][0]["id"] == task["id"] and manager_unread["items"][0]["latest_unread_message"] == "任务已分派."
             assert manager_unread["items"][0]["latest_unread_sender"] and manager_unread["items"][0]["latest_unread_at"] and manager_unread["items"][0]["unread_count"] == 1
-            assert call("POST", f"/tasks/{task['id']}/messages/read")["updated"] == 1
+            assert call("POST", "/tasks/messages/batch-read", {"task_ids": [task["id"]]})["updated"] == 1
             assert call("GET", f"/tasks/unread-messages?{unread_task_query}")["total"] == 0
         finally:
             TOKEN = admin_token
@@ -3169,6 +3171,7 @@ def main():
         seal_query = urllib.parse.urlencode({"view": "all", "record_status": "草稿", "contract_no": contract["serial_no"]})
         queried_seals = call("GET", f"/seals/applications?{seal_query}")["items"]
         assert any(item["id"] == seal["id"] for item in queried_seals)
+        call("POST", f"/seals/applications/{seal['id']}/submit", {"comment": "无附件不能提交"}, expected=(409,))
         deletable_seal = call("POST", "/seals/applications", {"title": "冒烟可删除用印草稿", "customer": "冒烟客户", "contract_no": contract["serial_no"], "use_type": "合同用印", "seal_asset_id": asset["id"], "copies": 1, "purpose": "草稿删除验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印"}, expected=(201,))
         call("DELETE", f"/seals/applications/{deletable_seal['id']}", expected=(204,))
         call("GET", f"/records/{deletable_seal['id']}", expected=(404,))
@@ -3190,6 +3193,8 @@ def main():
         assert archived["status"] == "已归档"
         withdrawn_seal = call("POST", "/seals/applications", {"title": "冒烟撤回用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "撤回接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "撤回测试文件"}, expected=(201,))
         records.append(withdrawn_seal["id"])
+        withdrawn_attachment = multipart_upload("/attachments", {"record_id": withdrawn_seal["id"], "category": "用印文件", "remark": "撤回用印附件"}, f"smoke-seal-withdraw-{suffix}.txt", b"seal withdrawal attachment")
+        attachments.append(withdrawn_attachment["id"])
         call("POST", f"/seals/applications/{withdrawn_seal['id']}/submit", {"comment": "提交后测试撤回"})
         TOKEN = login(member_name, "SmokePass2026!")["access_token"]
         call("POST", f"/seals/applications/{withdrawn_seal['id']}/withdraw", {"comment": "非申请人越权撤回"}, expected=(404,))
@@ -3201,6 +3206,8 @@ def main():
         assert any(event["action"] == "撤回用印申请" and event["to_status"] == "已撤回" for event in seal_history)
         approved_withdrawal = call("POST", "/seals/applications", {"title": "冒烟已审撤回用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "已审待用印撤回验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "已审撤回测试文件"}, expected=(201,))
         records.append(approved_withdrawal["id"])
+        approved_withdrawal_attachment = multipart_upload("/attachments", {"record_id": approved_withdrawal["id"], "category": "用印文件", "remark": "已审撤回附件"}, f"smoke-seal-approved-withdraw-{suffix}.txt", b"seal approved withdrawal attachment")
+        attachments.append(approved_withdrawal_attachment["id"])
         call("POST", f"/seals/applications/{approved_withdrawal['id']}/submit", {"comment": "提交审批"})
         approved_withdrawal = call("POST", f"/seals/applications/{approved_withdrawal['id']}/approve", {"approved": True, "comment": "审批通过后撤回"})
         assert approved_withdrawal["status"] == "待用印"
@@ -3208,6 +3215,8 @@ def main():
         assert approved_withdrawal["status"] == "已撤回"
         refused_seal = call("POST", "/seals/applications", {"title": "冒烟拒绝用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "拒绝流转验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "拒绝测试文件"}, expected=(201,))
         records.append(refused_seal["id"])
+        refused_attachment = multipart_upload("/attachments", {"record_id": refused_seal["id"], "category": "用印文件", "remark": "拒绝用印附件"}, f"smoke-seal-refused-{suffix}.txt", b"seal refused attachment")
+        attachments.append(refused_attachment["id"])
         call("POST", f"/seals/applications/{refused_seal['id']}/submit", {"comment": "提交拒绝测试"})
         refused_seal = call("POST", f"/seals/applications/{refused_seal['id']}/approve", {"approved": False, "comment": "材料不完整"})
         assert refused_seal["status"] == "已拒绝" and refused_seal["data"]["approval_comment"] == "材料不完整"
@@ -3224,6 +3233,9 @@ def main():
         call("GET", "/reports/analytics?view=unsupported", expected=(422,))
         call("GET", "/reports/analytics?view=brand&source_from=2026-07-31&source_to=2026-07-01", expected=(422,))
         call("GET", f"/reports/analytics?view=lawyer&group_mode={urllib.parse.quote('无效分组')}", expected=(422,))
+        selected_customers = urllib.parse.quote(f"{contract['customer']},不匹配的客户")
+        multi_customer_analytics = call("GET", f"/reports/analytics?view=brand&customer={selected_customers}")
+        assert any(item["name"] == contract["customer"] for item in multi_customer_analytics["charts"][0]["items"])
         analytics_csv = call("GET", "/reports/analytics/export?view=brand", raw=True)[1]
         assert analytics_csv.startswith(b"\xef\xbb\xbf") and "统计图,分组,数值,单位".encode() in analytics_csv
         report = call("POST", "/reports/generate", {"title": "冒烟经营报表", "report_type": "综合经营报表", "period": str(date.today())[:7], "format": "CSV", "description": suffix}, expected=(201,))
