@@ -1499,8 +1499,14 @@ def main():
         assert unarchived["status"] != "已归档" and unarchived["data"]["unarchive_request"]["status"] == "已通过"
         passed("案件关联合同、手工立案审批、固定任务、人员分配、诉讼要素自动推进阶段、开庭、两级归档及特殊解档审批")
 
-        clue = create_record("clue", "调查中", f"SMOKE调查线索-{suffix}", {"platform": "淘宝", "product": "测试侵权商品"})
-        assert clue["status"] == "草稿"
+        call("POST", "/records", {"module": "clue", "serial_no": serial("BYPASS-CLUE"), "title": f"SMOKE禁止通用线索-{suffix}", "status": "草稿", "owner": USERNAME, "department": "上海分所", "customer": "冒烟测试客户", "data": {"platform": "淘宝", "product": "测试侵权商品"}}, expected=(422,))
+        smoke_investigation = call("POST", "/investigations/records", {"module": "investigation", "serial_no": serial("SMOKE-INV"), "title": f"SMOKE线索来源调查-{suffix}", "status": "待分配", "owner": USERNAME, "department": "上海分所", "customer": "冒烟测试客户", "data": {"authorized_from": str(date.today()), "authorized_to": str(date.today() + timedelta(days=30)), "region": "上海", "right_type": "商标", "customer_review": True}}, expected=(201,))
+        records.append(smoke_investigation["id"])
+        smoke_task = call("POST", f"/investigations/{smoke_investigation['id']}/tasks", {"title": f"SMOKE线索取证任务-{suffix}", "owner": USERNAME, "deadline": str(date.today() + timedelta(days=6)), "priority": "普通", "description": "线索创建来源任务"}, expected=(201,))
+        records.append(smoke_task["id"])
+        clue = call("POST", "/investigations/records", {"module": "clue", "serial_no": serial("SMOKE-CLUE"), "title": f"SMOKE调查线索-{suffix}", "status": "草稿", "owner": USERNAME, "department": "上海分所", "customer": "冒烟测试客户", "data": {"platform": "淘宝", "product": "测试侵权商品", "source_task_id": smoke_task["id"], "customer_review": False}}, expected=(201,))
+        records.append(clue["id"])
+        assert clue["status"] == "草稿" and clue["data"]["source_task_id"] == smoke_task["id"] and clue["data"]["customer_review"] is True
         call("POST", f"/records/{clue['id']}/transition", {"to_status": "调查中", "comment": "禁止绕过审批"}, expected=(409,))
         call("PATCH", f"/records/{clue['id']}", {"title": "不应通过通用入口修改"}, expected=(409,))
         draft_edited_clue = call("PATCH", f"/investigations/records/{clue['id']}", {"title": f"SMOKE调查线索已补材料-{suffix}", "data": {"platform": "淘宝", "product": "测试侵权商品", "region": "上海"}})
@@ -1513,8 +1519,11 @@ def main():
         assert retried_clue["title"].endswith(suffix) and retried_clue["status"] == "已驳回" and retried_clue["data"]["region"] == "上海浦东新区"
         resubmitted_clue = call("POST", f"/investigations/clues/{clue['id']}/submit", {"comment": "补充调查区域后重新提交审批"})
         assert resubmitted_clue["status"] == "待审批"
-        approved_after_retry = call("POST", f"/investigations/clues/{clue['id']}/review", {"approved": True, "comment": "补正后审批通过"})
-        assert approved_after_retry["status"] == "待取证"
+        approved_after_retry = call("POST", f"/investigations/clues/{clue['id']}/review", {"approved": True, "comment": "补正后内部审批通过"})
+        assert approved_after_retry["status"] == "待客户审核"
+        call("PATCH", f"/investigations/records/{clue['id']}", {"title": "待客户审核不可直接修改"}, expected=(409,))
+        customer_approved = call("POST", f"/investigations/clues/{clue['id']}/customer-review", {"approved": True, "comment": "客户确认后进入取证"})
+        assert customer_approved["status"] == "待取证" and customer_approved["data"]["customer_reviewer"] == USERNAME
         premature_cases = call("POST", "/investigations/clues/batch-cases", {"clue_ids": [clue["id"]], "contract_record_id": contract["id"]}, expected=(201,))
         assert premature_cases["created"] == 0 and premature_cases["failed"] == 1
         collected_clue = call("POST", f"/investigations/clues/{clue['id']}/collect", {"collected_at": str(date.today()), "notary_institution": "上海市测试公证处", "comment": "当日完成取证"})

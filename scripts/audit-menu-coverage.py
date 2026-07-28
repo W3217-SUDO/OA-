@@ -909,6 +909,10 @@ def main() -> None:
     ):
         assert token in INVESTIGATION, "investigation edit dialog must use the dedicated endpoint and not offer an invalid owner edit"
     assert '@app.patch(f"{settings.api_prefix}/investigations/records/{{record_id}}")' in MAIN, "dedicated investigation edit endpoint must remain available"
+    assert '@app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/customer-review")' in MAIN, "customer-review clues must retain their dedicated transition endpoint"
+    assert 'if body.module in INVESTIGATION_RECORD_MODULES:' in MAIN, "generic record creation must reject investigation modules"
+    assert 'source_task_id = int((payload.get("data") or {}).get("source_task_id") or 0)' in MAIN, "clue creation must be tied to a source investigation task"
+    assert "customer_review:targetModule==='clue'?Boolean(createContextTask?.data.customer_review):Boolean(values.customer_review)" in INVESTIGATION, "clue creation must inherit the source task customer-review rule"
     print("INVESTIGATION_EDIT_ENTRY_OK: edit dialog uses the protected investigation endpoint and directs owner changes to assignment")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"

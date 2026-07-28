@@ -4614,14 +4614,33 @@ async def clue_import_template(_: dict = Depends(current_identity)):
 async def create_investigation_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if body.module not in INVESTIGATION_RECORD_MODULES:
         raise HTTPException(status_code=422, detail="调查中心记录类型无效")
+    if body.module in {"notary", "evidence"}:
+        raise HTTPException(status_code=422, detail="公证和证据必须从线索专用办理入口创建")
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no)):
         raise HTTPException(status_code=409, detail="业务编号已存在")
     payload = body.model_dump()
     payload["status"] = INVESTIGATION_CREATE_STATUS_BY_MODULE[body.module]
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not user:
+        raise HTTPException(status_code=401, detail="当前用户不存在")
+    if body.module == "investigation" and identity.get("role") != "admin" and not await _user_has_job_permission(user, "调查任务发布", db):
+        raise HTTPException(status_code=403, detail="当前岗位没有发布调查任务权限")
+    if body.module == "clue":
+        if identity.get("role") != "admin" and not await _user_has_job_permission(user, "线索提交", db):
+            raise HTTPException(status_code=403, detail="当前岗位没有创建调查线索权限")
+        source_task_id = int((payload.get("data") or {}).get("source_task_id") or 0)
+        if not source_task_id:
+            raise HTTPException(status_code=422, detail="创建线索必须关联已接收的调查任务")
+        source_task = await _ensure_record_module(source_task_id, "task", identity, db)
+        if not (source_task.data or {}).get("investigation_record_id"):
+            raise HTTPException(status_code=422, detail="线索来源必须是调查中心任务")
+        if identity.get("role") != "admin" and source_task.owner != identity["username"]:
+            raise HTTPException(status_code=403, detail="只能在本人负责的调查任务下创建线索")
+        payload["owner"] = source_task.owner
+        payload["customer"] = source_task.customer
+        payload["department"] = source_task.department
+        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": (source_task.data or {}).get("investigation_record_id"), "investigation_no": (source_task.data or {}).get("investigation_no"), "customer_review": bool((source_task.data or {}).get("customer_review"))}
     if identity.get("role") != "admin":
-        user = await db.scalar(select(User).where(User.username == identity["username"]))
-        if not user:
-            raise HTTPException(status_code=401, detail="当前用户不存在")
         payload["department"] = user.department
         if identity.get("role") == "user":
             payload["owner"] = user.username
@@ -4640,6 +4659,8 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
     if record.module not in INVESTIGATION_RECORD_MODULES:
         raise HTTPException(status_code=404, detail="调查中心记录不存在")
     await _require_record_owner_or_manager(record, identity, db)
+    if record.module == "clue" and record.status not in {"草稿", "已驳回"}:
+        raise HTTPException(status_code=409, detail="待审批、待客户审核及后续线索不可直接修改；请等待审核结果或走驳回后重提流程")
     changes = body.model_dump(exclude_unset=True)
     if changes.get("status") and changes["status"] != record.status:
         raise HTTPException(status_code=409, detail="调查中心状态必须通过专用审批或办理入口变更")
@@ -4902,8 +4923,22 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
     if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有线索审批权限")
     clue = await _ensure_record_module(clue_id, "clue", identity, db)
     if clue.status != "待审批": raise HTTPException(status_code=409, detail="只有待审批线索可以审核")
-    clue.status = "待取证" if body.approved else "已驳回"; clue.data = {**(clue.data or {}), "reviewer": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment}
-    db.add(WorkflowEvent(record_id=clue.id, action="线索审批通过" if body.approved else "线索审批驳回", from_status="待审批", to_status=clue.status, operator=identity["username"], comment=body.comment))
+    next_status = "待客户审核" if body.approved and bool((clue.data or {}).get("customer_review")) else "待取证" if body.approved else "已驳回"
+    clue.status = next_status; clue.data = {**(clue.data or {}), "reviewer": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment}
+    db.add(WorkflowEvent(record_id=clue.id, action="线索内部审批通过，待客户审核" if next_status == "待客户审核" else "线索审批通过" if body.approved else "线索审批驳回", from_status="待审批", to_status=clue.status, operator=identity["username"], comment=body.comment))
+    await db.commit(); await db.refresh(clue); return _record_dict(clue)
+
+
+@app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/customer-review")
+async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有客户审核确认权限")
+    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    if clue.status != "待客户审核":
+        raise HTTPException(status_code=409, detail="只有待客户审核线索可以确认客户审核结果")
+    clue.status = "待取证" if body.approved else "已驳回"
+    clue.data = {**(clue.data or {}), "customer_reviewer": identity["username"], "customer_reviewed_at": datetime.now().isoformat(timespec="seconds"), "customer_review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment}
+    db.add(WorkflowEvent(record_id=clue.id, action="客户审核通过" if body.approved else "客户审核驳回", from_status="待客户审核", to_status=clue.status, operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
@@ -5103,7 +5138,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     user = await db.scalar(select(User).where(User.username == identity["username"])); owner = body.owner.strip()
     if identity.get("role") == "user": owner = identity["username"]
     owner = await _active_task_username(owner, db, field_name="负责人")
-    serial_no = f"RW{datetime.now():%Y%m%d%H%M%S%f}"; task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data={"deadline": str(body.deadline), "priority": body.priority, "source": "调查任务", "initiator": identity["username"], "collaborators": [], "case_no": "", "investigation_record_id": source.id, "investigation_no": source.serial_no, "investigation_module": source.module, "parent_task_id": parent.id if parent else None, "parent_task_no": parent.serial_no if parent else ""})
+    serial_no = f"RW{datetime.now():%Y%m%d%H%M%S%f}"; task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data={"deadline": str(body.deadline), "priority": body.priority, "source": "调查任务", "initiator": identity["username"], "collaborators": [], "case_no": "", "investigation_record_id": source.id, "investigation_no": source.serial_no, "investigation_module": source.module, "customer_review": bool((source.data or {}).get("customer_review")), "parent_task_id": parent.id if parent else None, "parent_task_no": parent.serial_no if parent else ""})
     db.add(task); await db.flush()
     db.add(WorkflowEvent(record_id=source.id, action="创建调查任务", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"{serial_no}：{body.title}"))
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="创建调查任务", to_status="待接收", operator=identity["username"], comment=f"来源 {source.serial_no}" + (f"；父任务 {parent.serial_no}" if parent else "")), db, content="任务已分派.")
@@ -11595,6 +11630,8 @@ async def scrap_warehouse_item(item_id: int, body: WarehouseScrapInput, identity
 
 @app.post(f"{settings.api_prefix}/records", status_code=status.HTTP_201_CREATED)
 async def create_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if body.module in INVESTIGATION_RECORD_MODULES:
+        raise HTTPException(status_code=422, detail="调查、公证和证据记录必须使用调查中心专用入口创建")
     if body.module == "customer":
         raise HTTPException(status_code=422, detail="新建客户必须使用客户专用入口")
     if body.module == "contract":
