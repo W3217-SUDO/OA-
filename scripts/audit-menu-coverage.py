@@ -2919,6 +2919,27 @@ def main() -> None:
     assert all(token in APP for token in ("lazyWithVersionRecovery", "sunhold:chunk-reload:", "reloadAppShell()", "class PageLoadBoundary", "页面资源加载失败")), "lazy page chunks must recover once after a version deployment and render a visible fallback on repeated failure"
     assert 'location = /index.html' in WEB_NGINX and 'Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always' in WEB_NGINX, "the application shell must not be cached across hashed-asset deployments"
     print("VERSIONED_ASSET_RECOVERY_OK: no-store application shell, one-shot lazy chunk reload and visible repeated-failure fallback")
+    for token in (
+        'const transitionOptions=(status:string)=>status===\'试用\'?',
+        '办理状态',
+        '办理人事状态：',
+        '账号启停请使用列表中的“办理状态”',
+        'api.post(`/hr/employees/${transitioningEmployee.id}/transition`',
+    ):
+        assert token in HR, f"HR lifecycle UI contract missing: {token}"
+    for token in (
+        'expected_active = employee.status not in {"离职", "停用"}',
+        '员工账号启停必须通过“办理状态”完成',
+        '@app.post(f"{settings.api_prefix}/hr/{{employee_id}}/transition")',
+    ):
+        assert token in MAIN, f"HR account lifecycle API contract missing: {token}"
+    for token in (
+        'expected=(409,))\n        assert call("GET", f"/system/users?keyword={renamed_atomic_name}")',
+        'regularized = call("POST", f"/hr/{hr[\'id\']}/transition"',
+        'offboarded = call("POST", f"/hr/{hr[\'id\']}/transition"',
+    ):
+        assert token in SMOKE, f"HR lifecycle smoke coverage missing: {token}"
+    print("HR_ACCOUNT_LIFECYCLE_OK: dedicated employee status flow controls linked account access and blocks profile-edit bypass")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")
 
 
