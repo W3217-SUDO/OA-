@@ -227,7 +227,10 @@ export default function TaskCenterPage({
   const [communication, setCommunication] = useState<TaskRow | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [feedbackAttachments, setFeedbackAttachments] = useState<TaskFeedbackAttachment[]>([]);
+  const [taskMaterialAttachments, setTaskMaterialAttachments] = useState<TaskFeedbackAttachment[]>([]);
   const [feedbackFiles, setFeedbackFiles] = useState<UploadFile[]>([]);
+  const [taskMaterialFiles, setTaskMaterialFiles] = useState<UploadFile[]>([]);
+  const [createMaterialFiles, setCreateMaterialFiles] = useState<UploadFile[]>([]);
   const [caseContext, setCaseContext] = useState<{ mode: "tasks" | "logs"; record: CaseRecord } | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
   const [caseHistory, setCaseHistory] = useState<HistoryItem[]>([]);
@@ -300,11 +303,13 @@ export default function TaskCenterPage({
     if (!isTaskParticipant(row)) {
       setHistory([]);
       setFeedbackAttachments([]);
+      setTaskMaterialAttachments([]);
       return;
     }
-    const [historyResult, attachmentResult] = await Promise.allSettled([
+    const [historyResult, feedbackResult, materialResult] = await Promise.allSettled([
       api.get(`/tasks/${row.id}/history`),
       api.get("/attachments", { params: { record_id: row.id, category: "任务反馈附件" } }),
+      api.get("/attachments", { params: { record_id: row.id, category: "任务资料附件" } }),
     ]);
     if (historyResult.status === "fulfilled") {
       setHistory(historyResult.value.data.items || []);
@@ -313,12 +318,19 @@ export default function TaskCenterPage({
       const error: any = historyResult.reason;
       message.error(error?.response?.data?.detail || "沟通记录加载失败，请稍后重试");
     }
-    if (attachmentResult.status === "fulfilled") {
-      setFeedbackAttachments(attachmentResult.value.data.items || []);
+    if (feedbackResult.status === "fulfilled") {
+      setFeedbackAttachments(feedbackResult.value.data.items || []);
     } else {
       setFeedbackAttachments([]);
-      const error: any = attachmentResult.reason;
+      const error: any = feedbackResult.reason;
       message.error(error?.response?.data?.detail || "任务反馈附件加载失败，请稍后重试");
+    }
+    if (materialResult.status === "fulfilled") {
+      setTaskMaterialAttachments(materialResult.value.data.items || []);
+    } else {
+      setTaskMaterialAttachments([]);
+      const error: any = materialResult.reason;
+      message.error(error?.response?.data?.detail || "任务资料附件加载失败，请稍后重试");
     }
   };
 
@@ -396,6 +408,7 @@ export default function TaskCenterPage({
             setCommunication(targetRow);
             commentForm.resetFields();
             setFeedbackFiles([]);
+            setTaskMaterialFiles([]);
             await loadTaskFeedback(targetRow);
           } else {
             message.warning("未找到关联任务或当前账号无权查看");
@@ -504,14 +517,31 @@ export default function TaskCenterPage({
     const values = await createForm.validateFields();
     if (!beginTaskAction()) return;
     try {
-      await api.post("/tasks", {
+      const { data: createdTask } = await api.post("/tasks", {
         ...values,
         collaborators: values.collaborators || [],
         deadline: formatRequiredDate(values.deadline, "截止日期"),
       });
-      message.success("任务已发起，等待负责人接收");
+      if (createMaterialFiles.length) {
+        const materialBody = new FormData();
+        for (const file of createMaterialFiles) {
+          if (file.originFileObj) materialBody.append("files", file.originFileObj);
+        }
+        try {
+          await api.post(`/tasks/${createdTask.id}/materials`, materialBody);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "任务已发起，但任务资料附件上传失败");
+          setCreateMaterialFiles([]);
+          setCreateOpen(false);
+          createForm.resetFields();
+          void load();
+          return;
+        }
+      }
+      message.success(createMaterialFiles.length ? "任务及资料附件已发起，等待负责人接收" : "任务已发起，等待负责人接收");
       setCreateOpen(false);
       createForm.resetFields();
+      setCreateMaterialFiles([]);
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "任务创建失败");
@@ -650,6 +680,7 @@ export default function TaskCenterPage({
     setCommunication(row);
     commentForm.resetFields();
     setFeedbackFiles([]);
+    setTaskMaterialFiles([]);
     if (isUnread && isTaskParticipant(row)) {
       try {
         await api.post(`/tasks/${row.id}/messages/read`);
@@ -661,6 +692,11 @@ export default function TaskCenterPage({
       }
     }
     await loadTaskFeedback(row);
+  };
+  const closeCommunication = () => {
+    setCommunication(null);
+    setFeedbackFiles([]);
+    setTaskMaterialFiles([]);
   };
   const resolveLinkedCase = async (row: TaskRow) => {
     if (!row.case_no) {
@@ -736,7 +772,7 @@ export default function TaskCenterPage({
       endTaskAction();
     }
   };
-  const downloadFeedbackAttachment = async (item: TaskFeedbackAttachment) => {
+  const downloadTaskAttachment = async (item: TaskFeedbackAttachment) => {
     try {
       const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
       const url = URL.createObjectURL(response.data);
@@ -749,9 +785,9 @@ export default function TaskCenterPage({
       message.error(error?.response?.data?.detail || "附件下载失败");
     }
   };
-  const deleteFeedbackAttachment = (item: TaskFeedbackAttachment) => {
+  const deleteTaskAttachment = (item: TaskFeedbackAttachment, categoryLabel: "任务反馈附件" | "任务资料附件") => {
     Modal.confirm({
-      title: "删除任务反馈附件",
+      title: `删除${categoryLabel}`,
       content: `确定删除“${item.original_name}”吗？此操作不可恢复。`,
       okText: "删除",
       cancelText: "取消",
@@ -759,14 +795,35 @@ export default function TaskCenterPage({
       onOk: async () => {
         try {
           await api.delete(`/attachments/${item.id}`);
-          message.success("任务反馈附件已删除");
+          message.success(`${categoryLabel}已删除`);
           if (communication) await loadTaskFeedback(communication);
         } catch (error: any) {
-          message.error(error?.response?.data?.detail || "删除任务反馈附件失败");
+          message.error(error?.response?.data?.detail || `删除${categoryLabel}失败`);
           throw error;
         }
       },
     });
+  };
+  const uploadTaskMaterials = async () => {
+    if (!communication || !taskMaterialFiles.length) {
+      message.warning("请先选择任务资料附件");
+      return;
+    }
+    if (!beginTaskAction()) return;
+    try {
+      const body = new FormData();
+      for (const file of taskMaterialFiles) {
+        if (file.originFileObj) body.append("files", file.originFileObj);
+      }
+      const { data } = await api.post(`/tasks/${communication.id}/materials`, body);
+      message.success(`已上传 ${(data.attachments || []).length} 个任务资料附件`);
+      setTaskMaterialFiles([]);
+      await loadTaskFeedback(communication);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "任务资料附件上传失败");
+    } finally {
+      endTaskAction();
+    }
   };
   const markHistoryUnread = async (item: HistoryItem) => {
     if (!communication || !beginTaskAction()) return;
@@ -1539,6 +1596,19 @@ export default function TaskCenterPage({
           <Form.Item label="任务说明" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
+          <Form.Item label="任务资料附件（可多选，单个不超过 20MB）">
+            <Upload
+              multiple
+              fileList={createMaterialFiles}
+              beforeUpload={(file) => {
+                setCreateMaterialFiles((items) => [...items, file]);
+                return false;
+              }}
+              onRemove={(file) => setCreateMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}
+            >
+              <Button icon={<UploadOutlined />}>选择任务资料附件</Button>
+            </Upload>
+          </Form.Item>
         </Form>
       </Modal>
       <Modal
@@ -1677,8 +1747,8 @@ export default function TaskCenterPage({
         width={760}
         open={Boolean(communication)}
         title="案件任务"
-        footer={<Button onClick={() => setCommunication(null)}>关闭</Button>}
-        onCancel={() => setCommunication(null)}
+        footer={<Button onClick={closeCommunication}>关闭</Button>}
+        onCancel={closeCommunication}
       >
         <div className="task-detail-flow" aria-label="任务流程">
           {[
@@ -1757,6 +1827,46 @@ export default function TaskCenterPage({
               </List.Item>
             )}
           />
+          <div className="task-detail-section-title">任务资料附件</div>
+          <Table
+            size="small"
+            rowKey="id"
+            pagination={false}
+            locale={{ emptyText: "暂无任务资料附件" }}
+            dataSource={taskMaterialAttachments}
+            columns={[
+              { title: "文件名", dataIndex: "original_name", ellipsis: true },
+              { title: "上传人", dataIndex: "uploader", width: 110 },
+              { title: "上传时间", dataIndex: "created_at", width: 168, render: (value: string) => formatTaskDateTime(value) },
+              {
+                title: "操作",
+                width: 150,
+                render: (_: unknown, item: TaskFeedbackAttachment) => (
+                  <Space size={0}>
+                    <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadTaskAttachment(item)}>下载</Button>
+                    {(profile.role === "admin" || item.uploader === profile.username) && (
+                      <Button danger type="link" icon={<DeleteOutlined />} onClick={() => deleteTaskAttachment(item, "任务资料附件")}>删除</Button>
+                    )}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+          <Upload
+            multiple
+            fileList={taskMaterialFiles}
+            beforeUpload={(file) => {
+              setTaskMaterialFiles((items) => [...items, file]);
+              return false;
+            }}
+            onRemove={(file) => setTaskMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}
+            style={{ marginTop: 12 }}
+          >
+            <Button icon={<UploadOutlined />}>选择任务资料附件</Button>
+          </Upload>
+          <Button type="primary" loading={actionSubmitting} disabled={!taskMaterialFiles.length} onClick={() => void uploadTaskMaterials()} style={{ marginLeft: 8 }}>
+            上传任务资料
+          </Button>
           <div className="task-detail-section-title">任务反馈附件</div>
           <Table
             size="small"
@@ -1773,9 +1883,9 @@ export default function TaskCenterPage({
                 width: 150,
                 render: (_: unknown, item: TaskFeedbackAttachment) => (
                   <Space size={0}>
-                    <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadFeedbackAttachment(item)}>下载</Button>
+                    <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadTaskAttachment(item)}>下载</Button>
                     {(profile.role === "admin" || item.uploader === profile.username) && (
-                      <Button danger type="link" icon={<DeleteOutlined />} onClick={() => deleteFeedbackAttachment(item)}>删除</Button>
+                      <Button danger type="link" icon={<DeleteOutlined />} onClick={() => deleteTaskAttachment(item, "任务反馈附件")}>删除</Button>
                     )}
                   </Space>
                 ),

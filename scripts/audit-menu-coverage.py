@@ -2153,6 +2153,7 @@ def main() -> None:
     print("TASK_SIDEBAR_PARITY_OK: original task menu has only my/department/company groups; internal task-reminders route is hidden from fallback and configured navigation")
     for token in (
         '@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/feedback"',
+        '@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/materials"',
         'async def _ensure_attachment_record_visible',
         'if not (record and record.module == "task"):',
         'is_same_department_manager',
@@ -2161,14 +2162,16 @@ def main() -> None:
         assert token in MAIN, f"task feedback/exception-review server guard missing: {token}"
     for token in (
         'api.post(`/tasks/${communication.id}/feedback`, body)',
+        'api.post(`/tasks/${communication.id}/materials`, body)',
         'Promise.allSettled([',
         '任务反馈附件加载失败，请稍后重试',
-        'deleteFeedbackAttachment',
+        'deleteTaskAttachment',
         'canReviewTaskException(selected)',
     ):
         assert token in TASK, f"task feedback/exception-review client guard missing: {token}"
     for token in (
         'multipart_upload_many(',
+        "/tasks/{department_collab_task['id']}/materials",
         '纯协作者提交文字和多附件反馈',
         '跨部门经理不得审批',
         '同部门经理审批',

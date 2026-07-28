@@ -1812,6 +1812,23 @@ def main():
             call("DELETE", f"/attachments/{feedback_ids[0]}", expected=(204,))
             attachments.remove(feedback_ids[0])
             assert feedback_ids[0] not in {item["id"] for item in call("GET", f"/attachments?{task_feedback_query}")["items"]}
+            task_materials = multipart_upload_many(
+                f"/tasks/{department_collab_task['id']}/materials",
+                {"remark": "纯协作者上传任务资料"},
+                [
+                    (f"smoke-task-material-a-{suffix}.txt", b"collaborator material a"),
+                    (f"smoke-task-material-b-{suffix}.txt", b"collaborator material b"),
+                ],
+            )
+            task_material_ids = [item["id"] for item in task_materials["attachments"]]
+            attachments.extend(task_material_ids)
+            task_material_query = urllib.parse.urlencode({"record_id": department_collab_task["id"], "category": "任务资料附件"})
+            task_material_items = call("GET", f"/attachments?{task_material_query}")["items"]
+            assert set(task_material_ids).issubset({item["id"] for item in task_material_items})
+            assert call("GET", f"/attachments/{task_material_ids[0]}/download", raw=True)[0] == 200
+            call("DELETE", f"/attachments/{task_material_ids[0]}", expected=(204,))
+            attachments.remove(task_material_ids[0])
+            assert task_material_ids[0] not in {item["id"] for item in call("GET", f"/attachments?{task_material_query}")["items"]}
         finally:
             TOKEN = admin_token
         # 部门经理拥有部门列表读取权，但不能借部门身份替代真正负责人执行任务生命周期，
@@ -1852,6 +1869,12 @@ def main():
             call("GET", f"/attachments?{task_feedback_query}", expected=(403, 404))
             call("GET", f"/attachments/{task_feedback_attachment['id']}/download", expected=(403, 404))
             multipart_upload("/attachments", {"record_id": department_collab_task["id"], "category": "任务反馈附件", "remark": "非参与人不得上传任务反馈"}, f"task-feedback-denied-{suffix}.txt", b"forbidden", expected=(403, 404))
+            multipart_upload_many(
+                f"/tasks/{department_collab_task['id']}/materials",
+                {"remark": "非参与人不得上传任务资料"},
+                [(f"task-material-denied-{suffix}.txt", b"forbidden")],
+                expected=(403, 404),
+            )
             call("POST", "/tasks/batch-update", {"task_ids": [department_collab_task["id"]], "owner": peer_manager_name, "comment": "部门协作读取权不得替换负责人"}, expected=(403,))
             call("POST", f"/investigations/{department_collab_task['id']}/assign", {"investigator": peer_manager_name, "comment": "部门协作读取权不得绕过负责人权限"}, expected=(404,))
             call("PATCH", f"/records/{department_collab_task['id']}", {"owner": peer_manager_name}, expected=(404,))
