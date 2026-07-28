@@ -11922,6 +11922,11 @@ async def delete_smoke_record(record_id: int, identity: dict = Depends(current_i
         record.serial_no.startswith("SMOKE-")
         or "SMOKE" in record.title.upper()
         or "冒烟" in record.title
+        # UI-driven cross-role acceptance records use this exact, deliberately
+        # narrow marker.  It keeps cleanup available for terminal task flows
+        # which have no business-page delete action, without admitting normal
+        # records that merely contain a generic "验收" label.
+        or "UI任务流转验收-" in record.title
         or "SMOKE" in (record.customer or "").upper()
         or "冒烟" in (record.customer or "")
         or record.owner.lower().startswith("smoke_")
