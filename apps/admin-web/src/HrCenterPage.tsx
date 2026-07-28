@@ -5,6 +5,7 @@ import type {ReactNode} from 'react'
 import dayjs from 'dayjs'
 import {DownloadOutlined, EditOutlined, PlusOutlined, UploadOutlined} from '@ant-design/icons'
 import {api} from './api'
+import {consumeBusinessRecordDetailTarget} from './businessRecordDetailNavigation'
 import {formatRequiredDate} from './formSafety'
 import './hr-center.css'
 
@@ -65,6 +66,7 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   }catch{message.error('员工数据加载失败')}finally{setLoading(false)}}
   useEffect(()=>{void load();Promise.all([api.get('/hr/departments',{params:{active_only:true}}),api.get('/hr/job-roles',{params:{active_only:true}})]).then(([ds,rs])=>{setDepartments(ds.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})));setPositions(rs.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})))}).catch(()=>message.error('部门与职务加载失败'))},[])
   useEffect(()=>{setTopTab(isNew?'new':'list')},[isNew])
+  useEffect(()=>{const target=consumeBusinessRecordDetailTarget('hr');if(!target)return;void (async()=>{try{const {data}=await api.get(`/records/${target.id}`);if(data.module!=='hr')throw new Error('关联记录不是员工档案');setViewing(data)}catch(error:any){message.error(error?.response?.data?.detail||error?.message||'员工详情加载失败')}})()},[])
   const resetNewEmployee=()=>{setCurrentEmployeeId(undefined);form.resetFields();form.setFieldsValue({serial_no:employeeNo(),company:companyName,data_level:'公司',is_active:true,account_type:'员工账号',role:undefined,joined_at:dayjs()})}
   useEffect(()=>{if(isNew)resetNewEmployee()},[isNew])
 

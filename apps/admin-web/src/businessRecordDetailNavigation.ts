@@ -1,4 +1,4 @@
-export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse";
+export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse" | "hr";
 
 export type BusinessRecordDetailNavigationContext = {
   id: number;

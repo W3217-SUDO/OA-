@@ -69,7 +69,7 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (route: strin
     if (item.module === "customer") rememberCustomerDetailTarget({ id: item.id, serial_no: item.serial_no, title: item.title });
     if (item.module === "task") rememberTaskDetailTarget({ id: item.id, serial_no: item.serial_no });
     if (["clue", "notary", "evidence"].includes(item.module)) rememberInvestigationDetailTarget({ id: item.id, serial_no: item.serial_no, module: item.module });
-    if (["finance", "seal", "document", "warehouse"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" });
+    if (["finance", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" | "hr" });
     onNavigate(item.route);
     setOpen(false);
   };

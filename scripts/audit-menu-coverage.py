@@ -871,19 +871,20 @@ def main() -> None:
     ):
         assert token in AUDIT_LOG, f"audit log detail navigation must retain the authoritative record id: {token}"
     for token in (
-        'export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse";',
+        'export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse" | "hr";',
         'const STORAGE_KEY = "sunhold:business-record-detail-context";',
         'if (!parsed || !parsed.id || parsed.module !== module) return null;',
-        'if (["finance", "seal", "document", "warehouse"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" });',
+        'if (["finance", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" | "hr" });',
         'if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });',
         '"sunhold:business-record-detail-context",',
         'consumeBusinessRecordDetailTarget("finance")',
         'consumeBusinessRecordDetailTarget(\'seal\')',
         'consumeBusinessRecordDetailTarget("document")',
         'consumeBusinessRecordDetailTarget(\'warehouse\')',
+        'consumeBusinessRecordDetailTarget(\'hr\')',
         'api.get(`/records/${target.id}`)',
     ):
-        combined = "\n".join((BUSINESS_RECORD_NAVIGATION, GLOBAL_SEARCH, NOTIFICATION, APP, FINANCE_PAGE, SEAL_PAGE, DOCUMENT_PAGE, WAREHOUSE_PAGE))
+        combined = "\n".join((BUSINESS_RECORD_NAVIGATION, GLOBAL_SEARCH, NOTIFICATION, APP, FINANCE_PAGE, SEAL_PAGE, DOCUMENT_PAGE, WAREHOUSE_PAGE, HR))
         assert token in combined, f"exact business-record detail navigation contract missing: {token}"
     for token in (
         'constisReminder=initialView==="task-reminders";',
@@ -1996,6 +1997,13 @@ def main() -> None:
         "openLinkedNotary(undefined,String(value))",
     ):
         assert token in INVESTIGATION, f"investigation notary/clue relation link missing: {token}"
+    for token in (
+        "const openLinkedInvestigation=async(serialNo:string,module:'investigation'|'clue'|'task')",
+        "api.get('/records',{params:{module,keyword:no,page_size:100}})",
+        "rememberInvestigationDetailTarget({id:target.id,serial_no:target.serial_no,module})",
+        "openLinkedInvestigation(String(r.data.source_task_no),'task')",
+    ):
+        assert token in INVESTIGATION, f"clue-to-investigation-task link must preflight its scoped detail: {token}"
     for token in (
         "const openLinkedCase=async(caseNo:string)",
         "if(!row){message.warning('未找到关联案件或当前账号无权查看');return}",
