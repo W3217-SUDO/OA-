@@ -10,6 +10,7 @@ import { rememberInvestigationDetailTarget } from "./investigationDetailNavigati
 
 type Log = {
   id: number;
+  record_id: number;
   module: string;
   serial_no: string;
   title: string;
@@ -59,21 +60,21 @@ export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: stri
   useEffect(() => { void load(1); }, []);
 
   const openBusiness = (row: Log) => {
-    if (!row.serial_no) return;
+    if (!row.record_id || !row.serial_no) return;
     if (row.module === "case") {
-      rememberCaseDetailTarget({ serial_no: row.serial_no });
+      rememberCaseDetailTarget({ id: row.record_id, serial_no: row.serial_no });
       onNavigate?.("case-company");
     } else if (row.module === "contract") {
-      rememberContractDetailTarget({ serial_no: row.serial_no });
+      rememberContractDetailTarget({ id: row.record_id, serial_no: row.serial_no });
       onNavigate?.("contract-company");
     } else if (row.module === "customer") {
-      rememberCustomerDetailTarget({ serial_no: row.serial_no, title: row.title });
+      rememberCustomerDetailTarget({ id: row.record_id, serial_no: row.serial_no, title: row.title });
       onNavigate?.("customer-company");
     } else if (row.module === "task") {
-      rememberTaskDetailTarget({ serial_no: row.serial_no });
+      rememberTaskDetailTarget({ id: row.record_id, serial_no: row.serial_no });
       onNavigate?.("task-company-accepted");
     } else if (["clue", "notary", "evidence"].includes(row.module)) {
-      rememberInvestigationDetailTarget({ serial_no: row.serial_no, module: row.module });
+      rememberInvestigationDetailTarget({ id: row.record_id, serial_no: row.serial_no, module: row.module });
       onNavigate?.(row.module);
     }
   };

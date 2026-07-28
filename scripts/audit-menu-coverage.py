@@ -30,6 +30,7 @@ INVESTIGATION = (ROOT / "apps/admin-web/src/InvestigationCenterPage.tsx").read_t
 TASK = (ROOT / "apps/admin-web/src/TaskCenterPage.tsx").read_text(encoding="utf-8")
 NORMALIZED_TASK = re.sub(r"\s+", "", TASK)
 NOTIFICATION = (ROOT / "apps/admin-web/src/NotificationCenter.tsx").read_text(encoding="utf-8")
+AUDIT_LOG = (ROOT / "apps/admin-web/src/AuditLogPage.tsx").read_text(encoding="utf-8")
 SMOKE = (ROOT / "scripts/smoke-api.py").read_text(encoding="utf-8")
 NORMALIZED_SMOKE = re.sub(r"\s+", "", SMOKE)
 DOCUMENT = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
@@ -854,6 +855,15 @@ def main() -> None:
     assert '{ key: "task-reminders", label: "任务提醒" }' not in APP, "original sidebar must not invent a visible task-reminders fallback leaf"
     assert 'item.key !== "task-reminders"' in APP, "configured backend menus must not re-expose the internal task-reminders route in the sidebar"
     assert "task:'task-reminders'" in NOTIFICATION, "task notifications must retain their internal reminder route"
+    for token in (
+        'record_id: number;',
+        'rememberCaseDetailTarget({ id: row.record_id, serial_no: row.serial_no })',
+        'rememberContractDetailTarget({ id: row.record_id, serial_no: row.serial_no })',
+        'rememberCustomerDetailTarget({ id: row.record_id, serial_no: row.serial_no, title: row.title })',
+        'rememberTaskDetailTarget({ id: row.record_id, serial_no: row.serial_no })',
+        'rememberInvestigationDetailTarget({ id: row.record_id, serial_no: row.serial_no, module: row.module })',
+    ):
+        assert token in AUDIT_LOG, f"audit log detail navigation must retain the authoritative record id: {token}"
     for token in (
         'constisReminder=initialView==="task-reminders";',
         'reminder_only:isReminder||undefined,',

@@ -3174,7 +3174,9 @@ def main():
         assert published["status"] == "已发布"
         assert call("GET", f"/reports/{report['id']}/download", raw=True)[1].startswith(b"\xef\xbb\xbf")
         assert call("GET", f"/search?q={urllib.parse.quote('冒烟')}")["total"] >= 1
-        assert call("GET", f"/audit/events?keyword={urllib.parse.quote(suffix)}")["total"] >= 1
+        audit_events = call("GET", f"/audit/events?keyword={urllib.parse.quote(suffix)}")
+        assert audit_events["total"] >= 1
+        assert any(item["record_id"] == report["id"] and item["module"] == "report" for item in audit_events["items"])
         passed("经营报表、全局搜索和审计日志")
 
         active_department = next(item for item in call("GET", "/hr/departments?active_only=true")["items"] if item["is_active"])
