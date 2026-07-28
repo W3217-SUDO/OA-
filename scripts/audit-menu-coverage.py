@@ -870,6 +870,17 @@ def main() -> None:
     assert 'module.in_(["investigation", "clue", "task"])' in MAIN, "investigation cleanup must use the protected batch-delete endpoint"
     assert 'else {"待分配"}' in MAIN, "investigation cleanup must be limited to not-started records"
     print("INVESTIGATION_TASK_CREATE_OK: dedicated task dialog, required authorization dates and client-side date-order guard")
+    for token in (
+        "新增子任务:()=>requireSingleRow('新增子任务',row=>void openTasks(row,true))",
+        'const openTasks=async(row:Row,createSubtask=false)',
+        'const hasParent=existingTasks.length>0',
+        'parent_task_id:createSubtask&&hasParent?existingTasks[0].id:undefined',
+        'setCreatingSubtask(createSubtask&&hasParent)',
+        '先创建首个调查任务；后续“新增子任务”将自动关联该任务',
+        "rules={creatingSubtask?[{required:true,message:'请选择父任务'}]:[]}",
+    ):
+        assert token in INVESTIGATION, f"investigation subtask parent-link contract missing: {token}"
+    print("INVESTIGATION_SUBTASK_PARENT_OK: subtask entry preselects and requires a same-investigation parent task")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"
     assert '("case-new-civil", "case-new", "民事争议", "", 1)' in MAIN, "civil case creation must be available from the case menu"
