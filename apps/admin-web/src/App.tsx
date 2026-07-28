@@ -578,6 +578,7 @@ function replaceWithRootRoute() {
 }
 const routePageLabels: Record<string, string> = {
   "system-users": "员工管理",
+  "system-audit": "操作日志",
   "documents-agent": "AI 智能文档",
   "notary-import-info": "公证信息导入",
   "notary-import-storage": "取证信息文件导入",
