@@ -252,6 +252,7 @@ export default function CaseCenterPage({
   const [counselDetailHistory, setCounselDetailHistory] = useState<any[]>([]);
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
+  const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
   const [counselDetailCapabilities, setCounselDetailCapabilities] = useState<CaseDetailCapabilities>(noCaseDetailWriteCapability);
@@ -297,6 +298,7 @@ export default function CaseCenterPage({
   const [refundCompleteForm] = Form.useForm();
   const [reminderForm] = Form.useForm();
   const [caseLogForm] = Form.useForm();
+  const [attachmentRenameForm] = Form.useForm();
   const [batchUpdateForm] = Form.useForm();
   const [batchFeeForm] = Form.useForm();
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
@@ -1022,6 +1024,23 @@ export default function CaseCenterPage({
         const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number)});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
       }catch(error:any){message.error(error?.response?.data?.detail||"案件文件删除失败");}
     }});
+  };
+  const openCounselAttachmentRename = (item: AttachmentRow) => {
+    attachmentRenameForm.setFieldsValue({ original_name: item.original_name });
+    setRenamingCounselAttachment(item);
+  };
+  const renameCounselAttachment = async () => {
+    if (!renamingCounselAttachment || !viewingCounselCase) return;
+    const values = await attachmentRenameForm.validateFields();
+    try {
+      await api.put(`/cases/attachments/${renamingCounselAttachment.id}/rename`, { original_name: values.original_name.trim() });
+      message.success("案件文件已重命名");
+      setRenamingCounselAttachment(null);
+      attachmentRenameForm.resetFields();
+      await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文件重命名失败");
+    }
   };
   const selectCounselDocCategory = (category: string) => {
     setActiveCounselDocCategory(category);
@@ -2329,7 +2348,7 @@ export default function CaseCenterPage({
                   {title:"分类",dataIndex:"category",width:150,ellipsis:true},
                   {title:"上传人",dataIndex:"uploader",width:110},
                   {title:"上传时间",dataIndex:"created_at",width:170},
-                  {title:"操作",key:"actions",width:160,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button></Space>},
+                  {title:"操作",key:"actions",width:210,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}</Space>},
                 ]}/>
               </>},
               {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
@@ -2356,6 +2375,12 @@ export default function CaseCenterPage({
           </div>
         </div>}
       </Drawer>
+      <Modal open={Boolean(renamingCounselAttachment)} title={`重命名案件文件：${renamingCounselAttachment?.original_name || ""}`} okText="保存" cancelText="取消" onOk={renameCounselAttachment} onCancel={()=>{setRenamingCounselAttachment(null);attachmentRenameForm.resetFields();}}>
+        <Form form={attachmentRenameForm} layout="vertical">
+          <Form.Item label="文件名称" name="original_name" rules={[{required:true,message:"请输入文件名称"},{max:255,message:"文件名称不能超过 255 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\\\/]/.test(name))throw new Error("文件名不能为空且不能包含路径");const currentSuffix=renamingCounselAttachment?.original_name.slice(renamingCounselAttachment.original_name.lastIndexOf("."))||"";const nextSuffix=name.slice(name.lastIndexOf("."));if(currentSuffix.toLowerCase()!==nextSuffix.toLowerCase())throw new Error("不能修改文件扩展名");}}]}><Input autoFocus /></Form.Item>
+          <Alert type="info" showIcon title="仅修改展示和下载文件名，不会移动或改写原文件内容；保存后会写入案件审计日志。"/>
+        </Form>
+      </Modal>
       <Modal open={reminderOpen} title={`新增案件提醒：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselReminder} onCancel={()=>setReminderOpen(false)}>
         <Form form={reminderForm} layout="vertical">
           <div className="form-grid"><Form.Item label="提醒日期" name="reminder_date" rules={[{required:true,message:"请选择提醒日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item><Form.Item label="截止日期" name="deadline" rules={[{required:true,message:"请选择截止日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item></div>

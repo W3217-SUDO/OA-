@@ -928,6 +928,10 @@ class AttachmentBatchInput(BaseModel):
     attachment_ids: list[int] = Field(min_length=1, max_length=100)
 
 
+class CaseAttachmentRenameInput(BaseModel):
+    original_name: str = Field(min_length=1, max_length=255)
+
+
 class CaseProgressInput(BaseModel):
     first_instance_court: str = ""
     first_instance_case_no: str = ""
@@ -11444,6 +11448,33 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
             path.unlink()
     return {"deleted": len(prepared)}
+
+
+@app.put(f"{settings.api_prefix}/cases/attachments/{{attachment_id}}/rename")
+async def rename_case_attachment(attachment_id: int, body: CaseAttachmentRenameInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Rename only the display/download name of one case attachment; never move its stored file."""
+    item = await db.get(FileAttachment, attachment_id)
+    if not item or not item.record_id:
+        raise HTTPException(status_code=404, detail="案件文件不存在")
+    case_record = await _ensure_record_module(item.record_id, "case", identity, db)
+    await _require_case_detail_write_access(case_record, identity, db)
+    requested_name = body.original_name.strip()
+    if not requested_name or "/" in requested_name or "\\" in requested_name or Path(requested_name).name != requested_name or requested_name in {".", ".."}:
+        raise HTTPException(status_code=422, detail="文件名不能为空，且不能包含路径")
+    if Path(requested_name).suffix.lower() != Path(item.original_name).suffix.lower():
+        raise HTTPException(status_code=422, detail="重命名不能修改文件扩展名")
+    previous_name = item.original_name
+    if requested_name == previous_name:
+        return _attachment_dict(item, case_record)
+    item.original_name = requested_name
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="重命名案件文件", from_status=case_record.status,
+        to_status=case_record.status, operator=identity["username"],
+        comment=f"{item.category}：{previous_name} → {requested_name}",
+    ))
+    await db.commit()
+    await db.refresh(item)
+    return _attachment_dict(item, case_record)
 
 
 @app.post(f"{settings.api_prefix}/documents/official/upload", status_code=status.HTTP_201_CREATED)
