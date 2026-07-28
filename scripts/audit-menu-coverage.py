@@ -900,6 +900,14 @@ def main() -> None:
     assert 'else {"待分配"}' in MAIN, "investigation cleanup must be limited to not-started records"
     print("INVESTIGATION_TASK_CREATE_OK: dedicated task dialog, required authorization dates and client-side date-order guard")
     for token in (
+        'const createTask=async()=>{if(!taskTarget)return;try{const v=await taskForm.validateFields();await api.post(`/investigations/${taskTarget.id}/tasks`',
+        'const labels:Record<string,string>={title:',
+        'taskForm.scrollToField(error.errorFields[0].name);',
+        "message.warning(`请填写${labels[name]||'必填信息'}后再创建任务`);",
+    ):
+        assert token in INVESTIGATION, "investigation task validation must focus and explain the first missing field before suppressing POST"
+    print("INVESTIGATION_TASK_VALIDATION_FEEDBACK_OK: missing task fields focus the first error and give an explicit message before POST")
+    for token in (
         "新增子任务:()=>requireSingleRow('新增子任务',row=>void openTasks(row,true))",
         'const openTasks=async(row:Row,createSubtask=false)',
         'const hasParent=existingTasks.length>0',
