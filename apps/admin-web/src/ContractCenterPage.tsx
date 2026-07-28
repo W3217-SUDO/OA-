@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react";
 import {
   Alert,
@@ -153,6 +153,9 @@ export default function ContractCenterPage({
     [changes, setChanges] = useState<Change[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
+  const [viewingAttachmentsLoading, setViewingAttachmentsLoading] = useState(false);
+  const viewingAttachmentRequest = useRef(0);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
@@ -176,6 +179,32 @@ export default function ContractCenterPage({
     [changeForm] = Form.useForm(),
     [queryForm] = Form.useForm(),
     [approvalUserForm] = Form.useForm();
+  const closeViewing = () => {
+    viewingAttachmentRequest.current += 1;
+    setViewing(null);
+    setViewingAttachments([]);
+    setViewingAttachmentsLoading(false);
+  };
+  const openViewing = async (contract: Contract) => {
+    const requestId = ++viewingAttachmentRequest.current;
+    setViewing(contract);
+    setViewingAttachments([]);
+    setViewingAttachmentsLoading(true);
+    try {
+      const { data } = await api.get("/attachments", { params: { record_id: contract.id } });
+      if (requestId === viewingAttachmentRequest.current) {
+        setViewingAttachments(data.items || []);
+      }
+    } catch (error: any) {
+      if (requestId === viewingAttachmentRequest.current) {
+        message.error(error?.response?.data?.detail || "合同附件加载失败，请稍后重试");
+      }
+    } finally {
+      if (requestId === viewingAttachmentRequest.current) {
+        setViewingAttachmentsLoading(false);
+      }
+    }
+  };
   const load = async () => {
     setLoading(true);
     try {
@@ -204,7 +233,7 @@ export default function ContractCenterPage({
           (target.id && item.id === target.id) ||
           (target.serial_no && item.serial_no === target.serial_no)
         );
-        if (targetRow) setViewing(targetRow);
+        if (targetRow) void openViewing(targetRow);
         else message.warning("未找到关联合同或当前账号无权查看");
         onDetailTargetHandled?.();
       }
@@ -946,7 +975,7 @@ export default function ContractCenterPage({
           <Button
             type="link"
             className="contract-cell-link"
-          onClick={() => setViewing(r)}
+          onClick={() => void openViewing(r)}
           >
             {v}
           </Button>
@@ -1146,7 +1175,7 @@ export default function ContractCenterPage({
         />
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
           <Button onClick={exportCsv}>导出CSV</Button>
-          <Button onClick={()=>needSelected(()=>setViewing(selected!))}>合同查看</Button>
+          <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
           <Button onClick={()=>needSelected(()=>openContractPayment(selected!))}>合同付款</Button>
@@ -1365,8 +1394,8 @@ export default function ContractCenterPage({
         width={860}
         open={Boolean(viewing)}
         title={`合同查看：${viewing?.serial_no || ""}`}
-        footer={<Button onClick={() => setViewing(null)}>关闭</Button>}
-        onCancel={() => setViewing(null)}
+        footer={<Button onClick={closeViewing}>关闭</Button>}
+        onCancel={closeViewing}
       >
         <Descriptions
           bordered
@@ -1389,6 +1418,20 @@ export default function ContractCenterPage({
             {key:"description",label:"合同说明",children:viewing.description||"—",span:2},
           ] : []}
         />
+        <Divider>合同附件</Divider>
+        {viewingAttachmentsLoading ? (
+          <span>正在加载合同附件…</span>
+        ) : viewingAttachments.length ? (
+          <Space direction="vertical" size={2}>
+            {viewingAttachments.map((item) => (
+              <Button key={item.id} type="link" onClick={() => downloadAttachment(item)}>
+                {item.original_name}
+              </Button>
+            ))}
+          </Space>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />
+        )}
       </Modal>
       <Modal
         width={820}
