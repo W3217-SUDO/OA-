@@ -1502,10 +1502,19 @@ def main():
         clue = create_record("clue", "调查中", f"SMOKE调查线索-{suffix}", {"platform": "淘宝", "product": "测试侵权商品"})
         assert clue["status"] == "草稿"
         call("POST", f"/records/{clue['id']}/transition", {"to_status": "调查中", "comment": "禁止绕过审批"}, expected=(409,))
+        call("PATCH", f"/records/{clue['id']}", {"title": "不应通过通用入口修改"}, expected=(409,))
+        draft_edited_clue = call("PATCH", f"/investigations/records/{clue['id']}", {"title": f"SMOKE调查线索已补材料-{suffix}", "data": {"platform": "淘宝", "product": "测试侵权商品", "region": "上海"}})
+        assert draft_edited_clue["title"].endswith(suffix) and draft_edited_clue["data"]["region"] == "上海"
         submitted_clue = call("POST", f"/investigations/clues/{clue['id']}/submit", {"comment": "提交调查线索审批"})
         assert submitted_clue["status"] == "待审批"
-        approved_clue = call("POST", f"/investigations/clues/{clue['id']}/review", {"approved": True, "comment": "线索信息完整，同意调查"})
-        assert approved_clue["status"] == "待取证"
+        rejected_clue = call("POST", f"/investigations/clues/{clue['id']}/review", {"approved": False, "comment": "请补充调查区域后重新提交"})
+        assert rejected_clue["status"] == "已驳回"
+        retried_clue = call("PATCH", f"/investigations/records/{clue['id']}", {"title": f"SMOKE调查线索驳回后重提-{suffix}", "data": {"region": "上海浦东新区"}})
+        assert retried_clue["title"].endswith(suffix) and retried_clue["status"] == "已驳回" and retried_clue["data"]["region"] == "上海浦东新区"
+        resubmitted_clue = call("POST", f"/investigations/clues/{clue['id']}/submit", {"comment": "补充调查区域后重新提交审批"})
+        assert resubmitted_clue["status"] == "待审批"
+        approved_after_retry = call("POST", f"/investigations/clues/{clue['id']}/review", {"approved": True, "comment": "补正后审批通过"})
+        assert approved_after_retry["status"] == "待取证"
         premature_cases = call("POST", "/investigations/clues/batch-cases", {"clue_ids": [clue["id"]], "contract_record_id": contract["id"]}, expected=(201,))
         assert premature_cases["created"] == 0 and premature_cases["failed"] == 1
         collected_clue = call("POST", f"/investigations/clues/{clue['id']}/collect", {"collected_at": str(date.today()), "notary_institution": "上海市测试公证处", "comment": "当日完成取证"})

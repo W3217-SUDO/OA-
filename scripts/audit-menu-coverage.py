@@ -902,6 +902,14 @@ def main() -> None:
     ):
         assert token in INVESTIGATION, "investigation route changes must clear stale filters and selected records"
     print("INVESTIGATION_ROUTE_STATE_RESET_OK: investigation route changes cannot carry hidden filters or selections")
+    for token in (
+        'api.patch(`/investigations/records/${editTarget.id}`',
+        '负责人/调查员（请通过分配入口变更）',
+        '<Input disabled/>',
+    ):
+        assert token in INVESTIGATION, "investigation edit dialog must use the dedicated endpoint and not offer an invalid owner edit"
+    assert '@app.patch(f"{settings.api_prefix}/investigations/records/{{record_id}}")' in MAIN, "dedicated investigation edit endpoint must remain available"
+    print("INVESTIGATION_EDIT_ENTRY_OK: edit dialog uses the protected investigation endpoint and directs owner changes to assignment")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"
     assert '("case-new-civil", "case-new", "民事争议", "", 1)' in MAIN, "civil case creation must be available from the case menu"
