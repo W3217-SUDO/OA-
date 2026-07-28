@@ -94,6 +94,7 @@ type TaskRow = {
   priority: string;
   source: string;
   case_no: string;
+  collaborators?: string[];
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;created_at:string;size:number;remark?:string};
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
@@ -795,12 +796,21 @@ export default function CaseCenterPage({
     rememberContractDetailTarget({ id: contractId, serial_no: serialNo || undefined });
     onNavigate?.("contract-company");
   };
-  const openRelatedTask = (task: Pick<TaskRow, "id" | "serial_no">) => {
+  const openRelatedTask = (task: TaskRow) => {
     if (!rememberTaskDetailTarget({ id: task.id, serial_no: task.serial_no })) {
       message.warning("当前案件任务未生成可查看编号");
       return;
     }
-    onNavigate?.("task-company-accepted");
+    const route = task.initiator === profile.username
+      ? "task-my-created"
+      : task.owner === profile.username
+        ? "task-my-accepted"
+        : task.collaborators?.includes(profile.username)
+          ? "task-my-collaborating"
+          : profile.role === "admin"
+            ? "task-company-accepted"
+            : "task-my-accepted";
+    onNavigate?.(route);
   };
   const openRelatedClue = (target: { id?: number; serial_no?: unknown }) => {
     const id = Number(target.id || 0) || undefined;
