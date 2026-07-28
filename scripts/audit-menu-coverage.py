@@ -310,6 +310,8 @@ def main() -> None:
     assert all(token in MAIN for token in ('"job_permissions": job_permissions', '"can_approve_contract": item.role == "admin"', '_user_has_job_permission(approver_user, "合同审批", db)', 'async def _user_permission_payload(user: User, db: AsyncSession)', 'if can_approve_contract and "contract" not in menu_keys:')), "user directory, login permissions, and contract submission must resolve contract approval from job-role permissions"
     assert 'permission = await _permission_payload(user.role, db)\n    can_approve_contract = await _user_has_job_permission(user, "合同审批", db)' in MAIN and 'permission = await _user_permission_payload(user, db)\n    return {"access_token": create_token' in MAIN, "contract approver menu access must be built from the role payload and returned by login"
     assert '>新增审批人</Button>' in CONTRACT and 'role: "auditor"' in CONTRACT and 'profile: { position: values.position, staff_role: values.position }' in CONTRACT and 'must_change_password: true' in CONTRACT, "contract workflow must let administrators create a first-login-protected contract approver"
+    assert '事项记录' in CONTRACT and 'openContractEvent' in CONTRACT and '/contracts/${contract.id}/events' in CONTRACT and 'class ContractEvent(Base):' in MAIN and '/contracts/{contract_id}/events' in MAIN, "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
+    print("CONTRACT_EVENT_RECORD_OK: independent contract matter records are scoped, writable only through the contract flow and audited")
     assert '合同审批只能选择一名具有合同审批权限的人员' in MAIN and '合同发起人不能审批自己提交的合同' in MAIN and '管理员也不能代替指定审批人操作' in MAIN, "contract API must enforce one role-authorized approver and separation of duties"
     assert 'approvers: values.approvers ? [values.approvers] : []' in CONTRACT and 'name="approvers"' in CONTRACT and 'placeholder="请选择具有合同审批权限的人员"' in CONTRACT, "contract approval UI must submit exactly one role-authorized approver"
     assert 'value:customer.id' in normalized_contract and 'customer.id===Number(v.customer_id)' in normalized_contract, "contract customer selection must persist a unique customer id instead of an ambiguous duplicate name"
@@ -2023,6 +2025,8 @@ def main() -> None:
         assert token in MAIN, f"seal draft cleanup endpoint missing: {token}"
     for token in ('constremoveDraft=', "api.delete(`/seals/applications/${row.id}`)", '>删除</Button>'):
         assert token in SEAL.replace(" ", ""), f"seal draft cleanup action missing: {token}"
+    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column)}', "dataSource={assets}"):
+        assert token in SEAL, f"seal asset ledger must render its own searchable, maintainable table: {token}"
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
         assert token in (MAIN + CASE), f"case create reference/locking contract missing: {token}"
     assert '>登记证物</Button>' in WAREHOUSE and 'rowSelection={{columnWidth:42}}' not in WAREHOUSE, "warehouse must expose evidence registration without a dead selection column"
