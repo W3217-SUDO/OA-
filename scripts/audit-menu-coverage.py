@@ -260,6 +260,16 @@ def main() -> None:
     ):
         assert token in route_labels_source, f"workspace deep-route label recovery missing: {token}"
     print("WORKSPACE_ROUTE_LABELS_OK: stored deep-route tabs recover human-readable labels instead of internal keys")
+    for token in (
+        'const resetWorkspaceForSession = () => {',
+        'localStorage.removeItem("sunhold:open-pages")',
+        'setOpenPages(dashboard)',
+        'resetWorkspaceForSession();\n      message.warning("登录状态已过期',
+        'setSessionUser(null);\n    resetWorkspaceForSession();',
+        'setSessionUser(user);\n          resetWorkspaceForSession();\n          setLoggedIn(true);',
+    ):
+        assert token in APP, f"workspace session isolation missing: {token}"
+    print("WORKSPACE_SESSION_ISOLATION_OK: logout, expiry and next login clear inherited workspace tabs")
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"

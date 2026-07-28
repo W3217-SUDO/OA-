@@ -996,6 +996,14 @@ export default function App() {
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+  const resetWorkspaceForSession = () => {
+    const dashboard = [{ key: "dashboard", label: "控制台" }];
+    localStorage.removeItem("sunhold:open-pages");
+    setContractDetailTarget(null);
+    setOpenMenuKeys([]);
+    setOpenPages(dashboard);
+    setActive("dashboard");
+  };
   useEffect(() => {
     const restoreRouteFromHistory = () => {
       setActive(routeFromLocation());
@@ -1028,7 +1036,7 @@ export default function App() {
     const expired = () => {
       setLoggedIn(false);
       setSessionUser(null);
-      setActive("dashboard");
+      resetWorkspaceForSession();
       message.warning("登录状态已过期，请重新登录");
     };
     const profileUpdated = () => setSessionUser(readStoredUser());
@@ -1125,7 +1133,7 @@ export default function App() {
     localStorage.removeItem("user");
     setLoggedIn(false);
     setSessionUser(null);
-    setActive("dashboard");
+    resetWorkspaceForSession();
   };
   if (new URLSearchParams(window.location.search).get("page") === "customer-portal")
     return <PageLoadBoundary><Suspense fallback={<div className="page-loading">加载客户服务端…</div>}><CustomerPortalPage /></Suspense></PageLoadBoundary>;
@@ -1134,6 +1142,7 @@ export default function App() {
       <Login
         onSuccess={(user) => {
           setSessionUser(user);
+          resetWorkspaceForSession();
           setLoggedIn(true);
         }}
       />
