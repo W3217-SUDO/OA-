@@ -115,6 +115,37 @@ def multipart_upload(path: str, fields: dict[str, object], filename: str, conten
     return json.loads(payload.decode("utf-8")) if payload else None
 
 
+def multipart_upload_many(path: str, fields: dict[str, object], files: list[tuple[str, bytes]], *, expected=(201,)):
+    """Submit one multipart request with repeated ``files`` fields."""
+    boundary = f"----SunholdSmoke{uuid.uuid4().hex}"
+    chunks: list[bytes] = []
+    for key, value in fields.items():
+        chunks.extend([
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode(),
+            str(value).encode("utf-8"), b"\r\n",
+        ])
+    for filename, content in files:
+        chunks.extend([
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode(),
+            b"Content-Type: text/plain\r\n\r\n", content, b"\r\n",
+        ])
+    chunks.append(f"--{boundary}--\r\n".encode())
+    request = urllib.request.Request(
+        f"{API}{path}", data=b"".join(chunks),
+        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            status_code, payload = response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        status_code, payload = exc.code, exc.read()
+    if status_code not in expected:
+        raise AssertionError(f"multi upload expected {expected}, got {status_code}: {payload!r}")
+    return json.loads(payload.decode("utf-8")) if payload else None
+
+
 def set_task_test_data(task_id: int, updates: dict[str, object]):
     """仅在本地冒烟数据库中回拨任务日期，不向生产 API 增加测试后门。"""
     payload = json.dumps(updates, ensure_ascii=False).replace("'", "''")
@@ -1715,6 +1746,48 @@ def main():
         assert any(item["id"] == task_feedback_attachment["id"] for item in call("GET", f"/attachments?{task_feedback_query}")["items"])
         assert call("GET", f"/attachments/{task_feedback_attachment['id']}/download", raw=True)[0] == 200
         multipart_upload("/attachments", {"record_id": department_collab_task["id"], "category": "普通附件", "remark": "任务附件分类不得绕过"}, f"task-feedback-category-{suffix}.txt", b"invalid category", expected=(422,))
+        # A cross-department pure collaborator has task-feedback access even
+        # though generic record scope does not include the task owner.  The
+        # feedback endpoint commits comment and all selected files together.
+        try:
+            TOKEN = login(department_peer_name, "SmokePass2026!")["access_token"]
+            feedback_history_before = call("GET", f"/tasks/{department_collab_task['id']}/history")["items"]
+            feedback = multipart_upload_many(
+                f"/tasks/{department_collab_task['id']}/feedback",
+                {"comment": "纯协作者提交文字和多附件反馈"},
+                [
+                    (f"smoke-task-feedback-a-{suffix}.txt", b"collaborator feedback a"),
+                    (f"smoke-task-feedback-b-{suffix}.txt", b"collaborator feedback b"),
+                ],
+            )
+            assert len(feedback["attachments"]) == 2 and feedback["comment"] == "纯协作者提交文字和多附件反馈"
+            feedback_ids = [item["id"] for item in feedback["attachments"]]
+            attachments.extend(feedback_ids)
+            feedback_items = call("GET", f"/attachments?{task_feedback_query}")["items"]
+            assert set(feedback_ids).issubset({item["id"] for item in feedback_items})
+            assert call("GET", f"/attachments/{feedback_ids[0]}/download", raw=True)[0] == 200
+            feedback_history_after = call("GET", f"/tasks/{department_collab_task['id']}/history")["items"]
+            assert len(feedback_history_after) == len(feedback_history_before) + 3
+            # Validation occurs before any event/file persistence: a rejected
+            # second file cannot leave a duplicate text feedback behind.
+            multipart_upload_many(
+                f"/tasks/{department_collab_task['id']}/feedback",
+                {"comment": "不得留下半截反馈"},
+                [(f"smoke-task-feedback-valid-{suffix}.txt", b"valid"), (f"smoke-task-feedback-invalid-{suffix}.exe", b"invalid")],
+                expected=(422,),
+            )
+            assert len(call("GET", f"/tasks/{department_collab_task['id']}/history")["items"]) == len(feedback_history_after)
+            direct_collaborator_attachment = multipart_upload(
+                "/attachments",
+                {"record_id": department_collab_task["id"], "category": "任务反馈附件", "remark": "参与人通用附件入口"},
+                f"smoke-task-feedback-direct-{suffix}.txt", b"direct collaborator feedback",
+            )
+            attachments.append(direct_collaborator_attachment["id"])
+            call("DELETE", f"/attachments/{feedback_ids[0]}", expected=(204,))
+            attachments.remove(feedback_ids[0])
+            assert feedback_ids[0] not in {item["id"] for item in call("GET", f"/attachments?{task_feedback_query}")["items"]}
+        finally:
+            TOKEN = admin_token
         # 部门经理拥有部门列表读取权，但不能借部门身份替代真正负责人执行任务生命周期，
         # 也不能先通过调查分配/批量修改旁路把负责人改成自己再执行。
         peer_manager_token = login(peer_manager_name, "SmokePass2026!")["access_token"]
@@ -1766,6 +1839,32 @@ def main():
         assert unchanged_outside_task["owner"] == manager_name and unchanged_outside_task["status"] == "待接收"
         unchanged_department_collab_task = call("GET", f"/records/{department_collab_task['id']}")
         assert unchanged_department_collab_task["owner"] == outsider_name and unchanged_department_collab_task["status"] == "待接收"
+        # Special handling review is neither a whole-firm manager privilege nor
+        # an ID-guessing bypass: an out-of-department manager is denied, while a
+        # manager in the task's department can review a non-self request.
+        cross_department_exception_task = call("POST", "/tasks", {"title": "SMOKE跨部门特殊处理审批", "owner": outsider_name, "deadline": str(date.today() + timedelta(days=8)), "priority": "普通", "source": "日常任务"}, expected=(201,))
+        records.append(cross_department_exception_task["id"])
+        call("POST", f"/tasks/{cross_department_exception_task['id']}/accept", {"comment": "管理员接收跨部门审批测试任务"})
+        call("POST", f"/tasks/{cross_department_exception_task['id']}/exception-request", {"action": "挂起", "reason": "等待外部材料"})
+        try:
+            TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
+            call("POST", f"/tasks/{cross_department_exception_task['id']}/exception-review", {"approved": True, "comment": "跨部门经理不得审批"}, expected=(403,))
+        finally:
+            TOKEN = admin_token
+        try:
+            TOKEN = login(department_peer_name, "SmokePass2026!")["access_token"]
+            same_department_exception_task = call("POST", "/tasks", {"title": "SMOKE同部门特殊处理审批", "owner": department_peer_name, "deadline": str(date.today() + timedelta(days=8)), "priority": "普通", "source": "日常任务"}, expected=(201,))
+            records.append(same_department_exception_task["id"])
+            call("POST", f"/tasks/{same_department_exception_task['id']}/accept", {"comment": "发起人接收同部门审批测试任务"})
+            call("POST", f"/tasks/{same_department_exception_task['id']}/exception-request", {"action": "挂起", "reason": "等待同部门补充材料"})
+        finally:
+            TOKEN = admin_token
+        try:
+            TOKEN = login(peer_manager_name, "SmokePass2026!")["access_token"]
+            same_department_reviewed = call("POST", f"/tasks/{same_department_exception_task['id']}/exception-review", {"approved": True, "comment": "同部门经理审批"})
+            assert same_department_reviewed["workflow_status"] == "已停止" and same_department_reviewed["exception_request"]["reviewed_by"] == peer_manager_name
+        finally:
+            TOKEN = admin_token
         try:
             TOKEN = login(department_peer_name, "SmokePass2026!")["access_token"]
             department_peer_task = call("POST", "/tasks", {"title": "SMOKE同部门成员发起任务", "owner": outsider_name, "deadline": str(date.today() + timedelta(days=8)), "priority": "普通", "source": "日常任务"}, expected=(201,))

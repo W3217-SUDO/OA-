@@ -20,6 +20,7 @@ import {
 } from "antd";
 import {
   CommentOutlined,
+  DeleteOutlined,
   DownloadOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -288,18 +289,37 @@ export default function TaskCenterPage({
         (profile.role === "admin" || row.initiator === profile.username) &&
         ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status),
     );
+  const canReviewTaskException = (row?: TaskRow | null) =>
+    Boolean(
+      row &&
+        (profile.role === "admin" ||
+          row.initiator === profile.username ||
+          (profile.role === "manager" && profile.department === row.department)),
+    );
   const loadTaskFeedback = async (row: TaskRow) => {
     if (!isTaskParticipant(row)) {
       setHistory([]);
       setFeedbackAttachments([]);
       return;
     }
-    const [historyRes, attachmentRes] = await Promise.all([
+    const [historyResult, attachmentResult] = await Promise.allSettled([
       api.get(`/tasks/${row.id}/history`),
       api.get("/attachments", { params: { record_id: row.id, category: "任务反馈附件" } }),
     ]);
-    setHistory(historyRes.data.items || []);
-    setFeedbackAttachments(attachmentRes.data.items || []);
+    if (historyResult.status === "fulfilled") {
+      setHistory(historyResult.value.data.items || []);
+    } else {
+      setHistory([]);
+      const error: any = historyResult.reason;
+      message.error(error?.response?.data?.detail || "沟通记录加载失败，请稍后重试");
+    }
+    if (attachmentResult.status === "fulfilled") {
+      setFeedbackAttachments(attachmentResult.value.data.items || []);
+    } else {
+      setFeedbackAttachments([]);
+      const error: any = attachmentResult.reason;
+      message.error(error?.response?.data?.detail || "任务反馈附件加载失败，请稍后重试");
+    }
   };
 
   const load = async (
@@ -640,12 +660,7 @@ export default function TaskCenterPage({
         message.error(error?.response?.data?.detail || "未读消息标记已读失败");
       }
     }
-    try {
-      await loadTaskFeedback(row);
-    } catch {
-      setHistory([]);
-      setFeedbackAttachments([]);
-    }
+    await loadTaskFeedback(row);
   };
   const resolveLinkedCase = async (row: TaskRow) => {
     if (!row.case_no) {
@@ -702,20 +717,16 @@ export default function TaskCenterPage({
     const values = await commentForm.validateFields();
     if (!beginTaskAction()) return;
     try {
-      await api.post(`/tasks/${communication.id}/comments`, values);
-      const uploaded: TaskFeedbackAttachment[] = [];
+      const body = new FormData();
+      body.append("comment", values.comment.trim());
       for (const file of feedbackFiles) {
         const originFile = file.originFileObj;
         if (!originFile) continue;
-        const body = new FormData();
-        body.append("file", originFile);
-        body.append("record_id", String(communication.id));
-        body.append("category", "任务反馈附件");
-        body.append("remark", values.comment.trim());
-        const { data } = await api.post("/attachments", body);
-        uploaded.push(data);
+        body.append("files", originFile);
       }
-      message.success(uploaded.length ? `反馈已保存，已上传 ${uploaded.length} 个附件` : "反馈已保存");
+      const { data } = await api.post(`/tasks/${communication.id}/feedback`, body);
+      const uploaded = (data.attachments || []) as TaskFeedbackAttachment[];
+      message.success(uploaded.length ? `反馈和 ${uploaded.length} 个附件已一起保存` : "反馈已保存");
       commentForm.resetFields();
       setFeedbackFiles([]);
       await loadTaskFeedback(communication);
@@ -737,6 +748,25 @@ export default function TaskCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "附件下载失败");
     }
+  };
+  const deleteFeedbackAttachment = (item: TaskFeedbackAttachment) => {
+    Modal.confirm({
+      title: "删除任务反馈附件",
+      content: `确定删除“${item.original_name}”吗？此操作不可恢复。`,
+      okText: "删除",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.delete(`/attachments/${item.id}`);
+          message.success("任务反馈附件已删除");
+          if (communication) await loadTaskFeedback(communication);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "删除任务反馈附件失败");
+          throw error;
+        }
+      },
+    });
   };
   const markHistoryUnread = async (item: HistoryItem) => {
     if (!communication || !beginTaskAction()) return;
@@ -1300,7 +1330,7 @@ export default function TaskCenterPage({
                 </Dropdown>
               )}
               {(canManageAcceptedTask || canManageCompanyCreatedTask) && selected?.workflow_status === "已停止" && selected?.exception_request?.action === "挂起" && <Button onClick={() => void simpleAction(selected, "restart")}>恢复挂起任务</Button>}
-              {selected?.exception_request?.status === "待审批" && (selected?.initiator === profile.username || ["admin","manager"].includes(profile.role)) && <><Button onClick={() => void reviewTaskException(selected, true)}>通过特殊处理</Button><Button danger onClick={() => void reviewTaskException(selected, false)}>驳回特殊处理</Button></>}
+              {selected?.exception_request?.status === "待审批" && canReviewTaskException(selected) && <><Button onClick={() => void reviewTaskException(selected, true)}>通过特殊处理</Button><Button danger onClick={() => void reviewTaskException(selected, false)}>驳回特殊处理</Button></>}
               {selected?.performance_impact?.overdue && <Tag color="red">超期 {selected.performance_impact.overdue_days} 天，绩效影响 {selected.performance_impact.penalty_points} 分</Tag>}
               {canManageCompanyCreatedTask && (selected?.workflow_status || selected?.status) === "处理中" && (
                 <>
@@ -1733,7 +1763,18 @@ export default function TaskCenterPage({
               { title: "文件名", dataIndex: "original_name", ellipsis: true },
               { title: "上传人", dataIndex: "uploader", width: 110 },
               { title: "上传时间", dataIndex: "created_at", width: 168, render: (value: string) => formatTaskDateTime(value) },
-              { title: "操作", width: 90, render: (_: unknown, item: TaskFeedbackAttachment) => <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadFeedbackAttachment(item)}>下载</Button> },
+              {
+                title: "操作",
+                width: 150,
+                render: (_: unknown, item: TaskFeedbackAttachment) => (
+                  <Space size={0}>
+                    <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadFeedbackAttachment(item)}>下载</Button>
+                    {(profile.role === "admin" || item.uploader === profile.username) && (
+                      <Button danger type="link" icon={<DeleteOutlined />} onClick={() => deleteFeedbackAttachment(item)}>删除</Button>
+                    )}
+                  </Space>
+                ),
+              },
             ]}
           />
           <Form form={commentForm} layout="vertical" style={{ marginTop: 16 }}>

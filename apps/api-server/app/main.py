@@ -2240,6 +2240,22 @@ async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSessio
     return record
 
 
+async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """Resolve attachment parent visibility without losing task-participant access.
+
+    Task collaborators and initiators deliberately have a narrower record scope than
+    ordinary owners, but they are still first-class participants for task feedback.
+    Attachments must therefore use the task participation rule before the generic
+    business-record scope rule.
+    """
+    record = await db.get(BusinessRecord, record_id)
+    if record and record.module == "task":
+        if not _is_task_participant(record, identity):
+            raise HTTPException(status_code=403, detail="只有任务参与人可以访问任务反馈附件")
+        return record
+    return await _ensure_record_visible(record_id, identity, db)
+
+
 async def _ensure_record_module(record_id: int, module: str, identity: dict, db: AsyncSession) -> BusinessRecord:
     record = await _ensure_record_visible(record_id, identity, db)
     if record.module != module:
@@ -6176,6 +6192,85 @@ async def add_task_comment(task_id: int, body: TaskActionInput, identity: dict =
     return {"id": event.id, "operator": event.operator, "comment": event.comment, "created_at": event.created_at}
 
 
+@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/feedback", status_code=status.HTTP_201_CREATED)
+async def create_task_feedback(
+    task_id: int,
+    comment: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create one task feedback message and all selected attachments atomically."""
+    task = await _task_or_404(task_id, db)
+    if not _is_task_participant(task, identity):
+        raise HTTPException(status_code=403, detail="只有任务参与人可以提交反馈")
+    normalized_comment = comment.strip()
+    if not normalized_comment:
+        raise HTTPException(status_code=422, detail="反馈内容不能为空")
+    if len(normalized_comment) > 1000:
+        raise HTTPException(status_code=422, detail="反馈内容不能超过 1000 个字符")
+    if len(files) > 20:
+        raise HTTPException(status_code=422, detail="一次最多上传 20 个反馈附件")
+
+    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    prepared_files: list[tuple[str, str, bytes]] = []
+    for file in files:
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in allowed:
+            raise HTTPException(status_code=422, detail="不支持的文件格式")
+        content = await file.read()
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
+        prepared_files.append((Path(file.filename or f"task-feedback{suffix}").name, file.content_type or "application/octet-stream", content))
+
+    written_paths: list[Path] = []
+    attachments: list[FileAttachment] = []
+    try:
+        await _add_task_message_notifications(
+            task,
+            WorkflowEvent(
+                record_id=task.id, action="任务沟通", from_status=task.status,
+                to_status=task.status, operator=identity["username"], comment=normalized_comment,
+            ),
+            db,
+            content=normalized_comment,
+        )
+        for original_name, content_type, content in prepared_files:
+            suffix = Path(original_name).suffix.lower()
+            target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+            target.write_bytes(content)
+            written_paths.append(target)
+            attachment = FileAttachment(
+                record_id=task.id, category="任务反馈附件", original_name=original_name,
+                stored_name=target.name, content_type=content_type, size=len(content),
+                path=str(target), uploader=identity["username"], remark=normalized_comment,
+            )
+            db.add(attachment)
+            attachments.append(attachment)
+            await _add_task_message_notifications(
+                task,
+                WorkflowEvent(
+                    record_id=task.id, action="上传任务反馈附件", from_status=task.status,
+                    to_status=task.status, operator=identity["username"],
+                    comment=f"任务反馈附件：{original_name}",
+                ),
+                db,
+                content=f"已上传任务反馈附件：{original_name}",
+            )
+        await db.commit()
+        for attachment in attachments:
+            await db.refresh(attachment)
+    except Exception:
+        await db.rollback()
+        for path in written_paths:
+            path.unlink(missing_ok=True)
+        raise
+    return {
+        "comment": normalized_comment,
+        "attachments": [_attachment_dict(attachment, task) for attachment in attachments],
+    }
+
+
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/history")
 async def task_history(task_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     task = await _task_or_404(task_id, db)
@@ -6309,7 +6404,11 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
         raise HTTPException(status_code=409, detail="该任务没有待审批的特殊处理申请")
     if identity.get("role") != "admin" and pending.get("requested_by") == identity["username"]:
         raise HTTPException(status_code=403, detail="申请人不能审批自己的任务挂起或取消申请")
-    if identity.get("role") not in {"admin", "manager"} and data.get("initiator") != identity["username"]:
+    reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
+    is_same_department_manager = bool(
+        identity.get("role") == "manager" and reviewer and reviewer.department == task.department
+    )
+    if identity.get("role") != "admin" and data.get("initiator") != identity["username"] and not is_same_department_manager:
         raise HTTPException(status_code=403, detail="只有任务发起人、部门负责人或管理员可以审批")
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="驳回时必须填写原因")
@@ -11043,10 +11142,9 @@ async def delete_template(template_id: int, identity: dict = Depends(current_ide
 
 @app.get(f"{settings.api_prefix}/attachments")
 async def list_attachments(record_id: int | None = None, finance_transaction_id: int | None = None, category: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = None
     if record_id is not None:
-        record = await _ensure_record_visible(record_id, identity, db)
-        if record.module == "task" and not _is_task_participant(record, identity):
-            raise HTTPException(status_code=403, detail="只有任务参与人可以查看任务反馈附件")
+        record = await _ensure_attachment_record_visible(record_id, identity, db)
     conditions = []
     if record_id is not None:
         conditions.append(FileAttachment.record_id == record_id)
@@ -11055,7 +11153,8 @@ async def list_attachments(record_id: int | None = None, finance_transaction_id:
     if category:
         conditions.append(FileAttachment.category == category)
     items = (await db.scalars(select(FileAttachment).where(*conditions).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all()
-    items = await _filter_visible_attachments(items, identity, db)
+    if not (record and record.module == "task"):
+        items = await _filter_visible_attachments(items, identity, db)
     record_ids = {item.record_id for item in items if item.record_id}
     records = {record.id: record for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(record_ids)))).all()} if record_ids else {}
     return {"items": [_attachment_dict(item, records.get(item.record_id)) for item in items], "total": len(items), "required_archive_categories": sorted(ARCHIVE_REQUIRED_CATEGORIES)}
@@ -11194,7 +11293,7 @@ async def upload_attachment(
         if category not in FINANCE_VOUCHER_CATEGORIES:
             raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
-        record = await _ensure_record_visible(record_id, identity, db)
+        record = await _ensure_attachment_record_visible(record_id, identity, db)
         if record.module == "case":
             await _require_case_detail_write_access(record, identity, db)
         if record.module == "task":
@@ -11263,9 +11362,7 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        record = await _ensure_record_visible(item.record_id, identity, db)
-        if record.module == "task" and not _is_task_participant(record, identity):
-            raise HTTPException(status_code=403, detail="只有任务参与人可以下载任务反馈附件")
+        record = await _ensure_attachment_record_visible(item.record_id, identity, db)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     path = Path(item.path)
@@ -11282,6 +11379,14 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
     may_manage_customer_document = False
     may_manage_case_document = False
+    may_manage_task_feedback = False
+    if record and record.module == "task":
+        record = await _ensure_attachment_record_visible(record.id, identity, db)
+        if item.category != "任务反馈附件":
+            raise HTTPException(status_code=422, detail="任务附件只能作为任务反馈附件管理")
+        if identity.get("role") != "admin" and item.uploader != identity["username"]:
+            raise HTTPException(status_code=403, detail="任务参与人只能删除自己上传的任务反馈附件")
+        may_manage_task_feedback = True
     if record and record.module == "case":
         record = await _ensure_record_module(record.id, "case", identity, db)
         await _require_case_detail_write_access(record, identity, db)
@@ -11291,7 +11396,7 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         await _require_record_owner_or_manager(record, identity, db)
         may_manage_customer_document = True
     may_manage_hr_document = identity.get("role") == "manager" and record and record.module == "hr" and item.category == "员工档案"
-    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document:
+    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_feedback:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
     path = Path(item.path)
     await db.delete(item)
@@ -11310,6 +11415,13 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
             db.add(WorkflowEvent(record_id=record.id, action="撤回公证书审核", from_status="待审核", to_status="等待材料", operator=identity["username"], comment="公证书扫描件已删除"))
     elif record and record.module == "customer":
         db.add(WorkflowEvent(record_id=record.id, action="删除客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
+    elif record and record.module == "task":
+        await _add_task_message_notifications(
+            record,
+            WorkflowEvent(record_id=record.id, action="删除任务反馈附件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"),
+            db,
+            content=f"已删除任务反馈附件：{item.original_name}",
+        )
     elif record and item.finance_transaction_id:
         db.add(WorkflowEvent(record_id=record.id, action="删除财务凭证", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"流水 #{item.finance_transaction_id}｜{item.category}：{item.original_name}"))
     await db.commit()
