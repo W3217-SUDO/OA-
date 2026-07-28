@@ -110,6 +110,7 @@ type ReceiptRow = RecordRow & {
     document_date?: string;
     uploaded_at?: string;
     import_status?: string;
+    business_process_status?: string;
     uploader?: string;
     hearing_lawyer?: string;
     assistant?: string;
@@ -742,6 +743,7 @@ export default function DocumentCenterPage({
               uploaded_at: d.data.uploaded_at || d.data.registered_at || "",
               uploader: d.data.uploader || d.owner,
               import_status: d.data.import_status || "已导入",
+              business_process_status: d.data.business_process_status || "未处理",
               hearing_lawyer: d.data.hearing_lawyer || d.owner,
               assistant: d.data.assistant || "—",
               brand_manager: d.data.brand_manager || "—",
@@ -782,6 +784,8 @@ export default function DocumentCenterPage({
           contains(d.assistant, "assistant") &&
           contains(r.title, "document_name") &&
           (!q.import_status || d.import_status === q.import_status) &&
+          (!q.business_process_status ||
+            (d.business_process_status || "未处理") === q.business_process_status) &&
           (!ur ||
             (ud >= ur[0].format("YYYY-MM-DD") &&
               ud <= ur[1].format("YYYY-MM-DD"))) &&
@@ -851,6 +855,15 @@ export default function DocumentCenterPage({
           {r.data.import_status || "已导入"}
         </span>
       ),
+    },
+    {
+      title: "业务处理",
+      key: "business_process_status",
+      width: 96,
+      render: (_: unknown, r: ReceiptRow) => {
+        const processed = (r.data.business_process_status || "未处理") === "已处理";
+        return <Tag color={processed ? "green" : "orange"}>{processed ? "已处理" : "未处理"}</Tag>;
+      },
     },
   ];
   const receivedColumns = [
@@ -995,6 +1008,23 @@ export default function DocumentCenterPage({
       message.error(error?.response?.data?.detail || "修改收文日期失败");
     }
   };
+  const updateOfficialProcessStatus = async (processed: boolean) => {
+    if (!selectedFormalReceipts.length) {
+      message.warning("请选择需要标记的官文收文记录");
+      return;
+    }
+    try {
+      const { data } = await api.post("/documents/official/process", {
+        record_ids: selectedFormalReceipts.map((row) => row.id),
+        processed,
+      });
+      message.success(`已标记 ${data.processed} 条官文为${processed ? "已处理" : "未处理"}`);
+      setSelectedReceiptKeys([]);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "更新官文业务处理状态失败");
+    }
+  };
   const receiptPanel = isReceiptView ? (
     <Card
       className="panel receipt-original-panel"
@@ -1024,6 +1054,16 @@ export default function DocumentCenterPage({
                 allowClear
                 placeholder="请选择"
                 options={["未导入", "已导入"].map((value) => ({
+                  value,
+                  label: value,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item label="业务处理状态" name="business_process_status">
+              <Select
+                allowClear
+                placeholder="请选择"
+                options={["未处理", "已处理"].map((value) => ({
                   value,
                   label: value,
                 }))}
@@ -1130,6 +1170,20 @@ export default function DocumentCenterPage({
               onClick={openReceiptDateEditor}
             >
               修改收文日期
+            </Button>
+            <Button
+              size="small"
+              disabled={!selectedFormalReceipts.length}
+              onClick={() => void updateOfficialProcessStatus(true)}
+            >
+              标记已处理
+            </Button>
+            <Button
+              size="small"
+              disabled={!selectedFormalReceipts.length}
+              onClick={() => void updateOfficialProcessStatus(false)}
+            >
+              标记未处理
             </Button>
             <Button
               size="small"

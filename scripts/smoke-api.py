@@ -3071,6 +3071,11 @@ def main():
         records.append(official_upload["record"]["id"]); attachments.append(official_upload["attachment"]["id"])
         assert official_upload["record"]["module"] == "document" and official_upload["record"]["data"]["direction"] == "收文"
         assert official_upload["record"]["data"]["import_status"] == "已导入" and official_upload["attachment"]["record_id"] == official_upload["record"]["id"]
+        processed_official = call("POST", "/documents/official/process", {"record_ids": [official_upload["record"]["id"]], "processed": True, "comment": "官文批量已处理冒烟"})
+        assert processed_official["processed"] == 1 and processed_official["items"][0]["status"] == official_upload["record"]["status"] and processed_official["items"][0]["data"]["business_process_status"] == "已处理"
+        unprocessed_official = call("POST", "/documents/official/process", {"record_ids": [official_upload["record"]["id"]], "processed": False, "comment": "官文批量未处理冒烟"})
+        assert unprocessed_official["processed"] == 1 and unprocessed_official["items"][0]["status"] == official_upload["record"]["status"] and unprocessed_official["items"][0]["data"]["business_process_status"] == "未处理"
+        assert any(item["action"] == "标记官文已处理" for item in call("GET", f"/records/{official_upload['record']['id']}/history")["items"])
         call("PATCH", f"/records/{document['id']}", {"status": "已归档"}, expected=(409,))
         call("POST", f"/records/{document['id']}/transition", {"to_status": "待签收", "comment": "绕过专用入口"}, expected=(409,))
         call("POST", f"/documents/{document['id']}/transition", {"to_status": "已签收", "action_date": str(date.today()), "handler": USERNAME}, expected=(409,))

@@ -1921,6 +1921,34 @@ def main() -> None:
     assert 'owner: profile.username || "admin"' in DOCUMENT, "document creation must default to the signed-in account"
     assert '"/documents/official/upload"' in DOCUMENT and '/documents/official/upload' in MAIN, "official receipt upload must atomically create a document record and attachment"
     for token in (
+        'business_process_status?: string;',
+        'name="business_process_status"',
+        'title: "业务处理"',
+        'updateOfficialProcessStatus(true)',
+        'updateOfficialProcessStatus(false)',
+        '"/documents/official/process"',
+    ):
+        assert token in DOCUMENT, f"official receipt business-process UI contract missing: {token}"
+    for token in (
+        'class OfficialDocumentProcessInput(BaseModel):',
+        '@app.post(f"{settings.api_prefix}/documents/official/process")',
+        'if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":',
+        'await _require_record_owner_or_manager(item, identity, db)',
+        '"business_process_status": target_status',
+        'action = "标记官文已处理" if body.processed else "标记官文未处理"',
+        '# Do not change item.status: document registration/sign/archive has its',
+    ):
+        assert token in MAIN, f"official receipt business-process API contract missing: {token}"
+    for token in (
+        'processed_official = call("POST", "/documents/official/process"',
+        'unprocessed_official = call("POST", "/documents/official/process"',
+        '"business_process_status"] == "已处理"',
+        '"business_process_status"] == "未处理"',
+        '"action"] == "标记官文已处理"',
+    ):
+        assert token in SMOKE, f"official receipt business-process smoke coverage missing: {token}"
+    print("OFFICIAL_RECEIPT_PROCESS_OK: dedicated batch processed/unprocessed state with scoped permission, audit and independent document lifecycle")
+    for token in (
         'import { rememberCustomerDetailTarget } from "./customerDetailNavigation";',
         'const openCustomerDetail = async (customerName: unknown) =>',
         'params: { module: "customer", keyword: title, page_size: 100 }',
