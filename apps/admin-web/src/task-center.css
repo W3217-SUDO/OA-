@@ -186,6 +186,12 @@
   font-size: 12px;
 }
 .task-cell-link.ant-btn-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
   height: auto;
   padding: 0;
   color: #087bc1;
@@ -308,7 +314,7 @@
   .task-original-table
   .ant-table-content
   > table {
-  min-width: 1800px !important;
+  min-width: 2040px !important;
 }
 .task-original-standard
   .task-original-table

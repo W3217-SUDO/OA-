@@ -4231,6 +4231,64 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
     return permission_name in permissions or permission_name in set().union(*(implied_permissions.get(item, set()) for item in permissions))
 
 
+@app.get(f"{settings.api_prefix}/investigations/action-capabilities")
+async def investigation_action_capabilities(
+    record_ids: str = Query(default="", max_length=1200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Return the current user's real investigation actions for visible records.
+
+    The investigation workbench must not infer approval authority from a display
+    role.  In particular, clue review is a job-role permission, customer review
+    belongs to the relevant customer manager, and certificate registration also
+    requires authority over the notary record itself.
+    """
+    try:
+        requested_ids = list(dict.fromkeys(int(value) for value in record_ids.split(",") if value.strip()))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="记录编号格式无效")
+    if not requested_ids:
+        return {"items": {}}
+    if len(requested_ids) > 100:
+        raise HTTPException(status_code=422, detail="一次最多查询 100 条调查记录的操作权限")
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(requested_ids),
+        BusinessRecord.module.in_({"clue", "notary"}),
+        *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    can_review_clue = bool(user and await _user_has_job_permission(user, "线索审批", db))
+    can_review_notary = bool(user and await _user_has_job_permission(user, "公证审核", db))
+    can_register_certificate = bool(user and await _user_has_job_permission(user, "公证书号码登记", db))
+    customer_names = {record.customer.strip() for record in records if record.module == "clue" and record.customer.strip()}
+    customer_managers: dict[str, set[str]] = {}
+    if customer_names:
+        customers = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "customer", BusinessRecord.title.in_(customer_names),
+        ))).all())
+        customer_managers = {
+            customer.title.strip(): set((customer.data or {}).get("customer_managers") or [customer.owner])
+            for customer in customers
+        }
+    items: dict[str, dict[str, bool]] = {}
+    for record in records:
+        can_manage_record = (
+            identity.get("role") == "admin"
+            or record.owner == identity["username"]
+            or (identity.get("role") == "manager" and user and record.department == user.department)
+        )
+        items[str(record.id)] = {
+            "review_clue": record.module == "clue" and can_review_clue,
+            "review_customer_clue": record.module == "clue" and (
+                identity.get("role") == "admin"
+                or identity["username"] in customer_managers.get(record.customer.strip(), set())
+            ),
+            "review_notary": record.module == "notary" and can_review_notary,
+            "register_notary_certificate": record.module == "notary" and can_register_certificate and can_manage_record,
+        }
+    return {"items": items}
+
+
 async def _ensure_contract_approval_access(contract_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     contract = await db.get(BusinessRecord, contract_id)
     if not contract or contract.module != "contract":
@@ -10655,7 +10713,9 @@ async def delete_template(template_id: int, identity: dict = Depends(current_ide
 @app.get(f"{settings.api_prefix}/attachments")
 async def list_attachments(record_id: int | None = None, finance_transaction_id: int | None = None, category: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if record_id is not None:
-        await _ensure_record_visible(record_id, identity, db)
+        record = await _ensure_record_visible(record_id, identity, db)
+        if record.module == "task" and not _is_task_participant(record, identity):
+            raise HTTPException(status_code=403, detail="只有任务参与人可以查看任务反馈附件")
     conditions = []
     if record_id is not None:
         conditions.append(FileAttachment.record_id == record_id)
@@ -10806,6 +10866,11 @@ async def upload_attachment(
             raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_record_visible(record_id, identity, db)
+        if record.module == "task":
+            if not _is_task_participant(record, identity):
+                raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")
+            if category != "任务反馈附件":
+                raise HTTPException(status_code=422, detail="任务附件必须作为任务反馈附件上传")
         if record.module == "customer":
             await _require_record_owner_or_manager(record, identity, db)
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES:
@@ -10843,6 +10908,17 @@ async def upload_attachment(
             db.add(WorkflowEvent(record_id=record.id, action="提交公证书审核", from_status=previous_notary_status, to_status="待审核", operator=identity["username"], comment=f"扫描件 {item.original_name}；审核期限 30 日"))
     elif record and record.module == "customer":
         db.add(WorkflowEvent(record_id=record.id, action="上传客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
+    elif record and record.module == "task":
+        await _add_task_message_notifications(
+            record,
+            WorkflowEvent(
+                record_id=record.id, action="上传任务反馈附件",
+                from_status=record.status, to_status=record.status,
+                operator=identity["username"], comment=f"{category}：{item.original_name}",
+            ),
+            db,
+            content=f"已上传任务反馈附件：{item.original_name}",
+        )
     elif record and transaction:
         db.add(WorkflowEvent(record_id=record.id, action="上传财务凭证", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{transaction.transaction_type}流水 #{transaction.id}｜{category}：{item.original_name}"))
     await db.commit()
@@ -10856,7 +10932,9 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        await _ensure_record_visible(item.record_id, identity, db)
+        record = await _ensure_record_visible(item.record_id, identity, db)
+        if record.module == "task" and not _is_task_participant(record, identity):
+            raise HTTPException(status_code=403, detail="只有任务参与人可以下载任务反馈附件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     path = Path(item.path)

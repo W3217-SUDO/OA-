@@ -16,10 +16,14 @@ import {
   Space,
   Table,
   Tag,
+  Upload,
 } from "antd";
 import {
   CommentOutlined,
+  DownloadOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
+import type { UploadFile } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -83,6 +87,15 @@ type HistoryItem = {
   to_status: string;
   created_at: string;
   unread?: boolean;
+};
+type TaskFeedbackAttachment = {
+  id: number;
+  original_name: string;
+  category: string;
+  uploader: string;
+  created_at: string;
+  size: number;
+  remark?: string;
 };
 type TaskSort = {
   field: "created_at" | "deadline" | "days_remaining" | "updated_at";
@@ -211,6 +224,8 @@ export default function TaskCenterPage({
   } | null>(null);
   const [communication, setCommunication] = useState<TaskRow | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [feedbackAttachments, setFeedbackAttachments] = useState<TaskFeedbackAttachment[]>([]);
+  const [feedbackFiles, setFeedbackFiles] = useState<UploadFile[]>([]);
   const [caseContext, setCaseContext] = useState<{ mode: "tasks" | "logs"; record: CaseRecord } | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
   const [caseHistory, setCaseHistory] = useState<HistoryItem[]>([]);
@@ -261,6 +276,22 @@ export default function TaskCenterPage({
       initialView === "task-company-created" ||
       initialView === "task-company-accepted");
   const tabs = isCreated ? createdTabs : isCollaborating ? collaboratingTabs : receivedTabs;
+  const isTaskParticipant = (row: TaskRow) =>
+    profile.role === "admin" ||
+    [row.owner, row.initiator, ...(row.collaborators || [])].includes(profile.username);
+  const loadTaskFeedback = async (row: TaskRow) => {
+    if (!isTaskParticipant(row)) {
+      setHistory([]);
+      setFeedbackAttachments([]);
+      return;
+    }
+    const [historyRes, attachmentRes] = await Promise.all([
+      api.get(`/tasks/${row.id}/history`),
+      api.get("/attachments", { params: { record_id: row.id, category: "任务反馈附件" } }),
+    ]);
+    setHistory(historyRes.data.items || []);
+    setFeedbackAttachments(attachmentRes.data.items || []);
+  };
 
   const load = async (
     nextQuery: TaskQuery = query,
@@ -335,8 +366,8 @@ export default function TaskCenterPage({
           if (targetRow) {
             setCommunication(targetRow);
             commentForm.resetFields();
-            const historyRes = await api.get(`/tasks/${targetRow.id}/history`);
-            setHistory(historyRes.data.items || []);
+            setFeedbackFiles([]);
+            await loadTaskFeedback(targetRow);
           } else {
             message.warning("未找到关联任务或当前账号无权查看");
           }
@@ -560,7 +591,8 @@ export default function TaskCenterPage({
   const openCommunication = async (row: TaskRow) => {
     setCommunication(row);
     commentForm.resetFields();
-    if (isUnread) {
+    setFeedbackFiles([]);
+    if (isUnread && isTaskParticipant(row)) {
       try {
         await api.post(`/tasks/${row.id}/messages/read`);
         window.dispatchEvent(new Event("sunhold:notifications-updated"));
@@ -571,10 +603,10 @@ export default function TaskCenterPage({
       }
     }
     try {
-      const { data } = await api.get(`/tasks/${row.id}/history`);
-      setHistory(data.items);
+      await loadTaskFeedback(row);
     } catch {
       setHistory([]);
+      setFeedbackAttachments([]);
     }
   };
   const resolveLinkedCase = async (row: TaskRow) => {
@@ -622,18 +654,47 @@ export default function TaskCenterPage({
   };
   const addComment = async () => {
     if (!communication) return;
+    if (!isTaskParticipant(communication)) {
+      message.warning("只有任务参与人可以提交反馈");
+      return;
+    }
     const values = await commentForm.validateFields();
     if (!beginTaskAction()) return;
     try {
       await api.post(`/tasks/${communication.id}/comments`, values);
-      message.success("沟通记录已保存");
+      const uploaded: TaskFeedbackAttachment[] = [];
+      for (const file of feedbackFiles) {
+        const originFile = file.originFileObj;
+        if (!originFile) continue;
+        const body = new FormData();
+        body.append("file", originFile);
+        body.append("record_id", String(communication.id));
+        body.append("category", "任务反馈附件");
+        body.append("remark", values.comment.trim());
+        const { data } = await api.post("/attachments", body);
+        uploaded.push(data);
+      }
+      message.success(uploaded.length ? `反馈已保存，已上传 ${uploaded.length} 个附件` : "反馈已保存");
       commentForm.resetFields();
-      const { data } = await api.get(`/tasks/${communication.id}/history`);
-      setHistory(data.items);
+      setFeedbackFiles([]);
+      await loadTaskFeedback(communication);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "沟通记录保存失败");
     } finally {
       endTaskAction();
+    }
+  };
+  const downloadFeedbackAttachment = async (item: TaskFeedbackAttachment) => {
+    try {
+      const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = item.original_name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "附件下载失败");
     }
   };
   const markHistoryUnread = async (item: HistoryItem) => {
@@ -680,6 +741,7 @@ export default function TaskCenterPage({
       title: "任务编号",
       dataIndex: "serial_no",
       width: 178,
+      ellipsis: true,
       render: (value: string, row: TaskRow) => (
         <Button
           className="task-cell-link"
@@ -694,6 +756,7 @@ export default function TaskCenterPage({
       title: "案号编号",
       dataIndex: "case_no",
       width: 140,
+      ellipsis: true,
       render: (value: string, row: TaskRow) =>
         value ? (
           <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(row)}>
@@ -1062,7 +1125,7 @@ export default function TaskCenterPage({
           bordered
           columns={columns}
           dataSource={filteredTasks}
-          scroll={{ x: 1800 }}
+          scroll={{ x: 2040 }}
           rowSelection={
             {
               selectedRowKeys: selectedKeys,
@@ -1484,70 +1547,73 @@ export default function TaskCenterPage({
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
           <span><b>当前协作人：</b>{communication?.collaborators?.join(",") || "-"}</span>
         </div>
-        <div className="task-detail-section-title">沟通记录</div>
-        <List
-          className="task-history"
-          dataSource={[...history].reverse()}
-          locale={{ emptyText: "暂无沟通或流转记录" }}
-          renderItem={(item) => (
-            <List.Item
-              actions={[
-                <Button
-                  key="mark-unread"
-                  type="link"
-                  size="small"
-                  disabled={actionSubmitting || item.unread}
-                  onClick={() => void markHistoryUnread(item)}
-                >
-                  {item.unread ? "已标记未读" : "标记未读"}
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta
-                title={
-                  <Space>
-                    <Tag
-                      color={item.action === "任务沟通" ? "blue" : "default"}
-                    >
-                      {item.action}
-                    </Tag>
-                    <b>{item.operator}</b>
-                    <span>
-                      {new Date(item.created_at).toLocaleString("zh-CN")}
-                    </span>
-                  </Space>
-                }
-                description={
-                  <>
-                    <div>
-                      {item.from_status &&
-                        item.to_status &&
-                        `${item.from_status} → ${item.to_status}`}
-                    </div>
-                    <p>{item.comment || "-"}</p>
-                  </>
-                }
-              />
-            </List.Item>
-          )}
-        />
-        <Form form={commentForm} layout="vertical">
-          <Form.Item
-            label="新增沟通记录"
-            name="comment"
-            rules={[{ required: true, message: "请输入沟通内容" }]}
-          >
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Button
-            type="primary"
-            icon={<CommentOutlined />}
-            loading={actionSubmitting}
-            onClick={addComment}
-          >
-            保存沟通记录
-          </Button>
-        </Form>
+        {communication && isTaskParticipant(communication) ? <>
+          <div className="task-detail-section-title">沟通记录</div>
+          <List
+            className="task-history"
+            dataSource={[...history].reverse()}
+            locale={{ emptyText: "暂无沟通或流转记录" }}
+            renderItem={(item) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="mark-unread"
+                    type="link"
+                    size="small"
+                    disabled={actionSubmitting || item.unread}
+                    onClick={() => void markHistoryUnread(item)}
+                  >
+                    {item.unread ? "已标记未读" : "标记未读"}
+                  </Button>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <Space>
+                      <Tag color={item.action === "任务沟通" ? "blue" : "default"}>{item.action}</Tag>
+                      <b>{item.operator}</b>
+                      <span>{new Date(item.created_at).toLocaleString("zh-CN")}</span>
+                    </Space>
+                  }
+                  description={<><div>{item.from_status && item.to_status && `${item.from_status} → ${item.to_status}`}</div><p>{item.comment || "-"}</p></>}
+                />
+              </List.Item>
+            )}
+          />
+          <div className="task-detail-section-title">任务反馈附件</div>
+          <Table
+            size="small"
+            rowKey="id"
+            pagination={false}
+            locale={{ emptyText: "暂无任务反馈附件" }}
+            dataSource={feedbackAttachments}
+            columns={[
+              { title: "文件名", dataIndex: "original_name", ellipsis: true },
+              { title: "上传人", dataIndex: "uploader", width: 110 },
+              { title: "上传时间", dataIndex: "created_at", width: 168, render: (value: string) => formatTaskDateTime(value) },
+              { title: "操作", width: 90, render: (_: unknown, item: TaskFeedbackAttachment) => <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadFeedbackAttachment(item)}>下载</Button> },
+            ]}
+          />
+          <Form form={commentForm} layout="vertical" style={{ marginTop: 16 }}>
+            <Form.Item label="反馈内容" name="comment" rules={[{ required: true, message: "请输入反馈内容" }]}>
+              <Input.TextArea rows={3} />
+            </Form.Item>
+            <Form.Item label="反馈附件（可多选，单个不超过 20MB）">
+              <Upload
+                multiple
+                fileList={feedbackFiles}
+                beforeUpload={(file) => {
+                  setFeedbackFiles((items) => [...items, file]);
+                  return false;
+                }}
+                onRemove={(file) => setFeedbackFiles((items) => items.filter((item) => item.uid !== file.uid))}
+              >
+                <Button icon={<UploadOutlined />}>选择反馈附件</Button>
+              </Upload>
+            </Form.Item>
+            <Button type="primary" icon={<CommentOutlined />} loading={actionSubmitting} onClick={addComment}>提交反馈</Button>
+          </Form>
+        </> : <Alert type="info" showIcon message="当前任务仅供查看" description="只有发起人、负责人、协作人和管理员可以查看沟通记录、提交反馈或标记未读。" />}
       </Modal>
     </>
   );

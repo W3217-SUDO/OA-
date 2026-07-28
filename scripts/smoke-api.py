@@ -252,6 +252,12 @@ def main():
             for stale_item in stale:
                 # 搜索会命中关联字段中的 SMOKE；清理接口仍应拒绝没有明确测试标识的记录。
                 call("DELETE", f"/testing/records/{stale_item['id']}", expected=(204, 403, 404))
+        # A killed smoke process can leave its generated accounts behind even
+        # after record cleanup.  Remove only the explicit smoke namespace
+        # before creating users with fixed display-name test fixtures.
+        for stale_user in call("GET", "/system/users?keyword=smoke")["items"]:
+            if str(stale_user.get("username") or "").lower().startswith(("smoke_", "xsmoke_")):
+                call("DELETE", f"/system/users/{stale_user['id']}", expected=(204, 404))
         profile = call("GET", "/auth/me")
         assert profile["username"] == USERNAME and profile["is_active"] is True
         assert all(key in profile for key in ["email", "office_phone", "mobile", "menu_auto_collapse"])
@@ -1647,6 +1653,12 @@ def main():
         records.append(company_collab_admin_task["id"])
         department_collab_task = call("POST", "/tasks", {"title": "SMOKE部门协作范围任务", "owner": outsider_name, "collaborators": [department_peer_name], "deadline": str(date.today() + timedelta(days=8)), "priority": "普通", "source": "日常任务"}, expected=(201,))
         records.append(department_collab_task["id"])
+        task_feedback_attachment = multipart_upload("/attachments", {"record_id": department_collab_task["id"], "category": "任务反馈附件", "remark": "任务反馈附件权限验收"}, f"task-feedback-{suffix}.txt", b"task feedback attachment")
+        attachments.append(task_feedback_attachment["id"])
+        task_feedback_query = urllib.parse.urlencode({"record_id": department_collab_task["id"], "category": "任务反馈附件"})
+        assert any(item["id"] == task_feedback_attachment["id"] for item in call("GET", f"/attachments?{task_feedback_query}")["items"])
+        assert call("GET", f"/attachments/{task_feedback_attachment['id']}/download", raw=True)[0] == 200
+        multipart_upload("/attachments", {"record_id": department_collab_task["id"], "category": "普通附件", "remark": "任务附件分类不得绕过"}, f"task-feedback-category-{suffix}.txt", b"invalid category", expected=(422,))
         # 部门经理拥有部门列表读取权，但不能借部门身份替代真正负责人执行任务生命周期，
         # 也不能先通过调查分配/批量修改旁路把负责人改成自己再执行。
         peer_manager_token = login(peer_manager_name, "SmokePass2026!")["access_token"]
@@ -1678,6 +1690,13 @@ def main():
             call("POST", f"/tasks/{department_collab_task['id']}/handoff", {"recipient": peer_manager_name, "comment": "旁观经理不得代交接部门协作任务"}, expected=(403,))
             call("POST", f"/tasks/{department_collab_task['id']}/comments", {"comment": "部门列表读取权不得冒充参与人"}, expected=(403,))
             call("GET", f"/tasks/{department_collab_task['id']}/history", expected=(403,))
+            # A department observer may not discover task feedback attachment
+            # existence.  The generic attachment gateway can therefore return
+            # either an explicit participant denial or its standard no-access
+            # 404 before the task-specific guard is reached.
+            call("GET", f"/attachments?{task_feedback_query}", expected=(403, 404))
+            call("GET", f"/attachments/{task_feedback_attachment['id']}/download", expected=(403, 404))
+            multipart_upload("/attachments", {"record_id": department_collab_task["id"], "category": "任务反馈附件", "remark": "非参与人不得上传任务反馈"}, f"task-feedback-denied-{suffix}.txt", b"forbidden", expected=(403, 404))
             call("POST", "/tasks/batch-update", {"task_ids": [department_collab_task["id"]], "owner": peer_manager_name, "comment": "部门协作读取权不得替换负责人"}, expected=(403,))
             call("POST", f"/investigations/{department_collab_task['id']}/assign", {"investigator": peer_manager_name, "comment": "部门协作读取权不得绕过负责人权限"}, expected=(404,))
             call("PATCH", f"/records/{department_collab_task['id']}", {"owner": peer_manager_name}, expected=(404,))

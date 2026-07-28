@@ -245,4 +245,9 @@
   .customer-bottom-actions { margin-top: 8px; }
   .customer-create-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
   .customer-control-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+  .customer-view-fields-four, .customer-view-fields-five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .customer-view-fields-four, .customer-view-fields-five { grid-template-columns: minmax(0, 1fr); }
 }

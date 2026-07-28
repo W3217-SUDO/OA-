@@ -223,6 +223,7 @@ export default function CaseCenterPage({
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
+  const [counselUploadCategory, setCounselUploadCategory] = useState("案件文档");
   const [reminderOpen, setReminderOpen] = useState(false);
   const [caseLogOpen, setCaseLogOpen] = useState(false);
   const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
@@ -235,6 +236,7 @@ export default function CaseCenterPage({
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
   const [caseUploadCategory, setCaseUploadCategory] = useState("案件文件");
   const caseUploadRef = useRef<HTMLInputElement>(null);
+  const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const [createForm] = Form.useForm();
   const createCustomer = Form.useWatch("customer", createForm);
   const createContractId = Form.useWatch("contract_record_id", createForm);
@@ -819,6 +821,59 @@ export default function CaseCenterPage({
       const url=URL.createObjectURL(response.data),link=document.createElement("a");link.href=url;link.download="案件文件.zip";link.click();URL.revokeObjectURL(url);
     }catch(error:any){message.error(error?.response?.data?.detail||"案件文件下载失败");}
   };
+  const uploadCounselDetailAttachment = async (file?: File) => {
+    if (!file || !viewingCounselCase) return message.warning("请先打开案件详情再上传文件");
+    const data = new FormData();
+    data.append("file", file);
+    data.append("record_id", String(viewingCounselCase.id));
+    data.append("category", counselUploadCategory || "案件文档");
+    data.append("remark", `案件详情文档：${counselUploadCategory || "案件文档"}`);
+    try {
+      await api.post("/attachments", data);
+      message.success("案件文件已上传");
+      await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文件上传失败");
+    } finally {
+      if (counselDetailUploadRef.current) counselDetailUploadRef.current.value = "";
+    }
+  };
+  const downloadCounselDetailAttachment = async (item: AttachmentRow) => {
+    try {
+      const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = item.original_name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文件下载失败");
+    }
+  };
+  const previewCounselDetailAttachment = async (item: AttachmentRow) => {
+    const previewWindow = window.open("", "_blank");
+    if (!previewWindow) {
+      message.warning("浏览器拦截了预览窗口，请允许弹出窗口后重试");
+      return;
+    }
+    try {
+      const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+      const contentType = String(response.headers["content-type"] || response.data.type || "").toLowerCase();
+      if (!contentType.includes("pdf") && !contentType.startsWith("image/")) {
+        previewWindow.close();
+        message.info("当前文件格式不支持在线预览，已开始下载");
+        await downloadCounselDetailAttachment(item);
+        return;
+      }
+      const url = URL.createObjectURL(response.data);
+      previewWindow.location.href = url;
+      previewWindow.addEventListener("beforeunload", () => URL.revokeObjectURL(url), { once: true });
+    } catch (error: any) {
+      previewWindow.close();
+      message.error(error?.response?.data?.detail || "案件文件预览失败");
+    }
+  };
   const deleteCounselAttachments = () => {
     if(!viewingCounselCase||!selectedCounselAttachmentKeys.length)return message.warning("请选择需要删除的案件文件");
     Modal.confirm({title:"批量删除案件文件",content:`确认删除选中的 ${selectedCounselAttachmentKeys.length} 个文件吗？该操作会记录审计日志。`,okText:"删除",okButtonProps:{danger:true},onOk:async()=>{
@@ -829,6 +884,7 @@ export default function CaseCenterPage({
   };
   const selectCounselDocCategory = (category: string) => {
     setActiveCounselDocCategory(category);
+    setCounselUploadCategory(category || "案件文档");
     setSelectedCounselAttachmentKeys([]);
   };
   const openCounselEdit = (row: CaseRow) => {
@@ -1945,7 +2001,23 @@ export default function CaseCenterPage({
             <div className="case-detail-tab-area">
           <Tabs
             items={[
-              {key:"documents",label:"文档信息",children:<><Space style={{marginBottom:10}}><Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button><Button danger disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={deleteCounselAttachments}>删除选中</Button>{activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[{title:"文件名称",dataIndex:"original_name"},{title:"分类",dataIndex:"category",width:130},{title:"上传人",dataIndex:"uploader",width:110},{title:"上传时间",dataIndex:"created_at",width:170}]}/></>},
+              {key:"documents",label:"文档信息",children:<>
+                <input ref={counselDetailUploadRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
+                <Space wrap style={{marginBottom:10}}>
+                  <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={Array.from(new Set(["案件文档",...counselDocTree.map(item=>item.category)])).map(value=>({value,label:value}))}/>
+                  <Button type="primary" disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>
+                  <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
+                  <Button danger disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={deleteCounselAttachments}>删除选中</Button>
+                  {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}
+                </Space>
+                <Table rowKey="id" size="small" pagination={false} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
+                  {title:"文件名称",dataIndex:"original_name",width:280,ellipsis:true},
+                  {title:"分类",dataIndex:"category",width:150,ellipsis:true},
+                  {title:"上传人",dataIndex:"uploader",width:110},
+                  {title:"上传时间",dataIndex:"created_at",width:170},
+                  {title:"操作",key:"actions",width:160,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button></Space>},
+                ]}/>
+              </>},
               {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"platform-fees",label:"平台费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("平台"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"internal-fees",label:"内部结算",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},

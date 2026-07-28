@@ -1018,21 +1018,21 @@ export default function CustomerCenterPage({
               {
                 key: "contacts",
                 label: "联系人",
-                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.contacts || []} locale={{emptyText:"没有查询到联系人"}} columns={[
+                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.contacts || []} scroll={{ x: 1180 }} locale={{emptyText:"没有查询到联系人"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"操作",render:()=>null},
                 ]} />,
               },
               {
                 key: "notes",
                 label: "事项记录",
-                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} locale={{emptyText: initialView === "customer-shared" ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
+                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: initialView === "customer-shared" ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator"},{title:"操作日期",dataIndex:"created_at"},{title:"操作",render:()=>null},
                 ]} />,
               },
               {
                 key: "documents",
                 label: "客户文档",
-                children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} locale={{emptyText: initialView === "customer-shared" ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
+                children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: initialView === "customer-shared" ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",dataIndex:"created_at"},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
                 ]} />,
               },
@@ -1083,7 +1083,7 @@ export default function CustomerCenterPage({
             selectedRowKeys,
             onChange: setSelectedRowKeys,
           }}
-          scroll={{ x: 1888 }}
+          scroll={{ x: 2100 }}
           pagination={isOriginalCustomerList ? false : {
             pageSize: 15,
             showSizeChanger: true,
@@ -1225,7 +1225,7 @@ export default function CustomerCenterPage({
                 key:"contacts",
                 label:"联系人",
                 children:<>
-                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.contacts || []} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
+                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.contacts || []} scroll={{ x: 1180 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
                     {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
                     {title:"操作",render:(_:unknown,row:Contact)=><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
@@ -1237,7 +1237,7 @@ export default function CustomerCenterPage({
                 key:"notes",
                 label:"事项记录",
                 children:<>
-                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.notes || []} locale={{emptyText:<span>没有查询到事项记录，可以去 <Button type="link" onClick={()=>openNewEditor("note")}>新建</Button></span>}} columns={[
+                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.notes || []} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到事项记录，可以去 <Button type="link" onClick={()=>openNewEditor("note")}>新建</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator",width:110},{title:"操作日期",dataIndex:"created_at",width:170},
                     {title:"操作",render:(_:unknown,row:Note)=><Popconfirm title="删除这条记录？" onConfirm={()=>deleteNote(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
                   ]} />
@@ -1248,7 +1248,7 @@ export default function CustomerCenterPage({
                 key:"documents",
                 label:"客户文档",
                 children:<>
-                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
+                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",dataIndex:"created_at",width:170},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},
                     {title:"操作",render:(_:unknown,row:Attachment)=><Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
                   ]} />
@@ -1521,6 +1521,7 @@ export default function CustomerCenterPage({
                     size="small"
                     pagination={false}
                     dataSource={contacts?.data.contacts || []}
+                    scroll={{ x: 980 }}
                     columns={[
                       {
                         title: "姓名",
@@ -1615,6 +1616,7 @@ export default function CustomerCenterPage({
                     size="small"
                     pagination={false}
                     dataSource={contacts?.data.notes || []}
+                    scroll={{ x: 720 }}
                     columns={[
                       {
                         title: "类型",
@@ -1693,6 +1695,7 @@ export default function CustomerCenterPage({
                     size="small"
                     pagination={false}
                     dataSource={attachments}
+                    scroll={{ x: 720 }}
                     columns={[
                       {
                         title: "类别",
