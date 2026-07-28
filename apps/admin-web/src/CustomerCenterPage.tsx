@@ -1057,7 +1057,7 @@ export default function CustomerCenterPage({
               {
                 key: "contacts",
                 label: "联系人",
-                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.contacts || []} scroll={{ x: 1180 }} locale={{emptyText:"没有查询到联系人"}} columns={[
+                children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={false} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>:null},
                 ]} />,
               },
@@ -1264,7 +1264,7 @@ export default function CustomerCenterPage({
                 key:"contacts",
                 label:"联系人",
                 children:<>
-                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.contacts || []} scroll={{ x: 1180 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
+                  <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={false} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
                     {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
                     {title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
@@ -1574,11 +1574,13 @@ export default function CustomerCenterPage({
               children: (
                 <>
                   <Table
+                    className="customer-contact-drawer-table"
                     rowKey="id"
                     size="small"
+                    tableLayout="fixed"
                     pagination={false}
                     dataSource={contacts?.data.contacts || []}
-                    scroll={{ x: 980 }}
+                    scroll={{ x: 1170 }}
                     columns={[
                       {
                         title: "姓名",

@@ -329,8 +329,8 @@ export default function CaseCenterPage({
           api.get("/records",{params:{module:"refund",page_size:100}}),
           api.get("/attachments"),
           api.get("/cases/reference-options"),
-          api.get("/records", { params: { module: "customer", page_size: 200 } }),
-          api.get("/records", { params: { module: "clue", page_size: 200 } }),
+          api.get("/records", { params: { module: "customer", page_size: 100 } }),
+          api.get("/records", { params: { module: "clue", page_size: 100 } }),
         ]);
       setCases(caseRes.data.items);
       void loadCaseCapabilities(caseRes.data.items as CaseRow[]);
@@ -1813,7 +1813,9 @@ export default function CaseCenterPage({
                     <Select options={clientPositionOptions.map((value) => ({ value, label: value }))} />
                   </Form.Item>}
                   <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}>
-                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={contracts.map((row) => ({ value: row.id, label: `${row.serial_no}｜${row.customer}｜${row.title}` }))} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:selected?.data?.source_person||selected?.owner||"",title:selected?`${selected.title}案件`:undefined})}} />
+                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:selected?.data?.source_person||selected?.owner||"",title:selected?`${selected.title}案件`:undefined})}}>
+                      {contracts.map((row) => <Select.Option key={row.id} value={row.id} label={`${row.serial_no}｜${row.customer}｜${row.title}`}>{row.serial_no}｜{row.customer}｜{row.title}</Select.Option>)}
+                    </Select>
                   </Form.Item>
                   <Form.Item label="案源人" name="source_person"><Input disabled value={selectedCreateContract?.data?.source_person||selectedCreateContract?.owner||""} placeholder="由关联合同自动带入" /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
