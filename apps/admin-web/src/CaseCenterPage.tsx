@@ -103,11 +103,22 @@ type CaseDetailCapabilities = {
   can_create_reminder: boolean;
   can_delete_reminder: boolean;
   can_create_log: boolean;
+  can_update_progress: boolean;
+  can_manage_hearing: boolean;
+  can_assign_team: boolean;
+  can_edit_basic: boolean;
+  can_close_case: boolean;
+  can_archive: boolean;
+  can_create_finance: boolean;
+  team_role: "manager" | "handling_lawyer" | "assistant" | "none";
   reason: string;
 };
 const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_write: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
+  can_update_progress: false, can_manage_hearing: false, can_assign_team: false,
+  can_edit_basic: false, can_close_case: false, can_archive: false,
+  can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
 };
 const caseStatuses = [
@@ -1990,9 +2001,23 @@ export default function CaseCenterPage({
         open={Boolean(viewingCounselCase)}
         title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
         onClose={() => setViewingCounselCase(null)}
-        extra={viewingCounselCase&&<Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
+        extra={viewingCounselCase&&<Space wrap>
+          {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
+          {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>{setHearingOpen(true);hearingForm.setFieldsValue({case_record_id:viewingCounselCase.id,court:viewingCounselCase.data.court||"",hearing_lawyer:viewingCounselCase.data.hearing_lawyer||""})}}>开庭排期</Button>}
+          {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
+          {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
+        </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
+          <Alert
+            type={counselDetailCapabilities.can_write ? "info" : "warning"}
+            showIcon
+            style={{marginBottom:12}}
+            title={`当前办理权限：${({manager:"负责人/管理权限",handling_lawyer:"受派经办律师",assistant:"律师助理",none:"只读"} as const)[counselDetailCapabilities.team_role]}`}
+            description={counselDetailCapabilities.can_write
+              ? `附件、提醒、日志：可办理；进展、排期：${counselDetailCapabilities.can_update_progress?"可办理":"不可办理"}；人员分配、基本信息、办结归档、案件费用：${counselDetailCapabilities.can_assign_team?"可办理":"不可办理"}。`
+              : counselDetailCapabilities.reason || "当前账号仅可查看案件详情。"}
+          />
           <Card size="small" title="基本信息" className="case-counsel-detail-card">
             <div className="form-grid">
               <p><strong>案件编号：</strong>{viewingCounselCase.serial_no}</p>

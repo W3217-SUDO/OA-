@@ -2110,6 +2110,91 @@ async def _resolve_active_customer_managers(values: list[object], db: AsyncSessi
     return resolved
 
 
+async def _resolve_active_case_people(values: list[object], db: AsyncSession, *, field_name: str) -> tuple[list[str], list[str]]:
+    """Resolve case-team inputs once and persist usernames alongside display values.
+
+    The UI remains compatible with the old name-based forms, but access control
+    never depends on a mutable/duplicate display name after a case is saved.
+    """
+    labels = list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
+    if not labels:
+        return [], []
+    users = list((await db.scalars(select(User).where(
+        User.is_active.is_(True),
+        or_(User.username.in_(labels), User.display_name.in_(labels)),
+    ))).all())
+    by_username = {user.username: user for user in users}
+    by_display: dict[str, list[User]] = {}
+    for user in users:
+        by_display.setdefault(user.display_name, []).append(user)
+    resolved_labels: list[str] = []
+    resolved_usernames: list[str] = []
+    invalid: list[str] = []
+    for label in labels:
+        user = by_username.get(label)
+        if not user:
+            matches = by_display.get(label, [])
+            user = matches[0] if len(matches) == 1 else None
+        if not user:
+            invalid.append(label)
+            continue
+        # Preserve the UI's submitted label for backward-compatible display;
+        # the parallel username list below is the authoritative ACL identity.
+        resolved_labels.append(label)
+        if user.username not in resolved_usernames:
+            resolved_usernames.append(user.username)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"{field_name}不存在、已停用或姓名不唯一：{'、'.join(invalid)}")
+    return resolved_labels, resolved_usernames
+
+
+def _case_team_payload(
+    case_data: dict, handling_lawyers: list[str], handling_usernames: list[str], assistant: str, assistant_username: str,
+) -> dict:
+    """Keep legacy display fields and the stable access-control projection in sync."""
+    return {
+        **case_data,
+        "handling_lawyers": handling_lawyers,
+        "assistant": assistant,
+        "handling_lawyer_usernames": handling_usernames,
+        "assistant_username": assistant_username,
+        "case_team_usernames": list(dict.fromkeys([*handling_usernames, *([assistant_username] if assistant_username else [])])),
+    }
+
+
+async def _case_team_role(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> str:
+    """Return manager/handling_lawyer/assistant/none for a visible case.
+
+    New writes use stable usernames.  The narrowly-scoped legacy fallback keeps
+    old rows usable only where the current user's display name is unique.
+    """
+    if identity.get("role") == "admin" or case_record.owner == identity["username"]:
+        return "manager"
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if identity.get("role") == "manager" and user and case_record.department == user.department:
+        return "manager"
+    data = case_record.data or {}
+    username = identity["username"]
+    handling_usernames = {str(value or "").strip() for value in data.get("handling_lawyer_usernames", [])}
+    assistant_username = str(data.get("assistant_username") or "").strip()
+    if username in handling_usernames:
+        return "handling_lawyer"
+    if username and username == assistant_username:
+        return "assistant"
+    if data.get("case_team_usernames"):
+        return "none"
+    # Legacy-only fallback.  Display names may be used only when unique.
+    display_name = str(user.display_name or "").strip() if user else ""
+    display_is_unique = bool(display_name) and (await db.scalar(select(func.count(User.id)).where(User.is_active.is_(True), User.display_name == display_name)) == 1)
+    handler_labels = {str(value or "").strip() for value in data.get("handling_lawyers", [])}
+    assistant_label = str(data.get("assistant") or "").strip()
+    if username in handler_labels or (display_is_unique and display_name in handler_labels):
+        return "handling_lawyer"
+    if username == assistant_label or (display_is_unique and display_name == assistant_label):
+        return "assistant"
+    return "none"
+
+
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if identity.get("role") == "admin":
         return []
@@ -2131,11 +2216,16 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     shared_with_text = BusinessRecord.data["shared_with"].as_string()
     shared_customer = and_(BusinessRecord.module == "customer", shared_with_text.contains(exact_username_token))
     exact_shared_to = shared_to_text.contains(exact_username_token)
+    # A case team member must be able to find the assigned case even if their
+    # ordinary role has only "own data" scope.  This is deliberately limited to
+    # case records and stable username projections; it does not widen financial,
+    # archive or team-management authority.
+    case_team = and_(BusinessRecord.module == "case", BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token))
     if scope == "本部门数据":
-        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to)]
+        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team)]
     if scope == "授权审批数据":
-        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, and_(BusinessRecord.module.in_(["contract", "finance", "invoice", "refund", "seal", "clue", "notary"]), BusinessRecord.status.in_(["待审批", "审批中", "待审核"])))]
-    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to)]
+        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, and_(BusinessRecord.module.in_(["contract", "finance", "invoice", "refund", "seal", "clue", "notary"]), BusinessRecord.status.in_(["待审批", "审批中", "待审核"])))]
+    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team)]
 
 
 async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
@@ -9740,6 +9830,18 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
         raise HTTPException(status_code=422, detail="请至少选择一个案件 ID 或案号")
     if len(case_ids) + len(case_nos) > 100:
         raise HTTPException(status_code=422, detail="单次最多批量修改 100 个案件")
+    handling_lawyers: list[str] | None = None
+    handling_usernames: list[str] | None = None
+    assistant_value: str | None = None
+    assistant_username: str | None = None
+    if body.handling_lawyers is not None:
+        handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
+        if not handling_lawyers:
+            raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
+    if body.assistant is not None:
+        assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant] if body.assistant.strip() else [], db, field_name="律师助理")
+        assistant_value = assistant_values[0] if assistant_values else ""
+        assistant_username = assistant_usernames[0] if assistant_usernames else ""
     requested = []
     if case_ids: requested.append(BusinessRecord.id.in_(case_ids))
     if case_nos: requested.append(BusinessRecord.serial_no.in_(case_nos))
@@ -9767,12 +9869,11 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
             changes.append(f"开庭律师：{data.get('hearing_lawyer', '')} → {body.hearing_lawyer.strip()}")
             data["hearing_lawyer"] = body.hearing_lawyer.strip()
         if body.handling_lawyers is not None:
-            lawyers = list(dict.fromkeys(item.strip() for item in body.handling_lawyers if item.strip()))
-            changes.append(f"经办律师：{','.join(data.get('handling_lawyers') or [])} → {','.join(lawyers)}")
-            data["handling_lawyers"] = lawyers
+            changes.append(f"经办律师：{','.join(data.get('handling_lawyers') or [])} → {','.join(handling_lawyers or [])}")
+            data = _case_team_payload(data, handling_lawyers or [], handling_usernames or [], data.get("assistant", ""), str(data.get("assistant_username") or ""))
         if body.assistant is not None:
-            changes.append(f"律师助理：{data.get('assistant', '')} → {body.assistant.strip()}")
-            data["assistant"] = body.assistant.strip()
+            changes.append(f"律师助理：{data.get('assistant', '')} → {assistant_value or ''}")
+            data = _case_team_payload(data, list(data.get("handling_lawyers") or []), list(data.get("handling_lawyer_usernames") or []), assistant_value or "", assistant_username or "")
         if body.case_stage is not None:
             changes.append(f"案件阶段：{data.get('case_stage') or case.status} → {body.case_stage.strip()}")
             data["case_stage"] = body.case_stage.strip()
@@ -10201,21 +10302,10 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     assistant = body.assistant.strip()
     if len(assistant) > 128:
         raise HTTPException(status_code=422, detail="律师助理姓名过长")
-    people = [*handling_lawyers, *([assistant] if assistant else [])]
-    active_people = list((await db.scalars(select(User).where(
-        User.is_active.is_(True),
-        or_(User.username.in_(people), User.display_name.in_(people)),
-    ))).all())
-    active_usernames = {item.username for item in active_people}
-    active_display_counts: dict[str, int] = {}
-    for item in active_people:
-        active_display_counts[item.display_name] = active_display_counts.get(item.display_name, 0) + 1
-    invalid_people = [
-        item for item in people
-        if item not in active_usernames and active_display_counts.get(item, 0) != 1
-    ]
-    if invalid_people:
-        raise HTTPException(status_code=422, detail=f"经办律师或律师助理不存在、已停用或姓名不唯一：{'、'.join(dict.fromkeys(invalid_people))}")
+    handling_lawyers, handling_usernames = await _resolve_active_case_people(handling_lawyers, db, field_name="经办律师")
+    assistant_values, assistant_usernames = await _resolve_active_case_people([assistant] if assistant else [], db, field_name="律师助理")
+    assistant = assistant_values[0] if assistant_values else ""
+    assistant_username = assistant_usernames[0] if assistant_usernames else ""
     permission_key = CASE_CREATE_PERMISSION_BY_TYPE[case_type]
     if identity.get("role") != "admin":
         permission = await _permission_payload(identity.get("role", "user"), db)
@@ -10259,8 +10349,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
             "counsel_type": counsel_type,
             "counsel_start": str(body.counsel_start) if body.counsel_start else "",
             "counsel_end": str(body.counsel_end) if body.counsel_end else "",
-            "handling_lawyers": handling_lawyers,
-            "assistant": assistant,
+            **_case_team_payload({}, handling_lawyers, handling_usernames, assistant, assistant_username),
             "case_creation_step": "basic",
             "case_creation_approval_status": "未提交",
             "business_stage": "立案",
@@ -10393,28 +10482,20 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
         raise HTTPException(status_code=422, detail="顾问结束日期不能早于开始日期")
     handling_lawyers = list(dict.fromkeys(str(item or "").strip() for item in body.handling_lawyers if str(item or "").strip()))
     assistant = body.assistant.strip()
-    people = [*handling_lawyers, *([assistant] if assistant else [])]
-    active_people = list((await db.scalars(select(User).where(
-        User.is_active.is_(True),
-        or_(User.username.in_(people), User.display_name.in_(people)),
-    ))).all())
-    active_usernames = {item.username for item in active_people}
-    active_display_counts: dict[str, int] = {}
-    for item in active_people:
-        active_display_counts[item.display_name] = active_display_counts.get(item.display_name, 0) + 1
-    invalid_people = [item for item in people if item not in active_usernames and active_display_counts.get(item, 0) != 1]
-    if not handling_lawyers or invalid_people:
-        raise HTTPException(status_code=422, detail="经办律师或律师助理不存在、已停用或姓名不唯一")
+    handling_lawyers, handling_usernames = await _resolve_active_case_people(handling_lawyers, db, field_name="经办律师")
+    assistant_values, assistant_usernames = await _resolve_active_case_people([assistant] if assistant else [], db, field_name="律师助理")
+    assistant = assistant_values[0] if assistant_values else ""
+    assistant_username = assistant_usernames[0] if assistant_usernames else ""
+    if not handling_lawyers:
+        raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
     old_summary = f"{case_record.title}｜{case_data.get('counsel_type', '')}｜{case_data.get('counsel_start', '')}至{case_data.get('counsel_end', '')}"
     case_record.title = title
-    case_record.data = {
+    case_record.data = _case_team_payload({
         **case_data,
         "counsel_type": counsel_type,
         "counsel_start": str(body.counsel_start),
         "counsel_end": str(body.counsel_end),
-        "handling_lawyers": handling_lawyers,
-        "assistant": assistant,
-    }
+    }, handling_lawyers, handling_usernames, assistant, assistant_username)
     db.add(WorkflowEvent(
         record_id=case_record.id,
         action="修改法律顾问案件基本信息",
@@ -10542,26 +10623,45 @@ def _require_case_creation_completed(case_record: BusinessRecord) -> None:
 
 async def _require_case_detail_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Apply one non-bypassable gate to every mutable case-detail feature."""
-    await _require_record_owner_or_manager(case_record, identity, db)
+    if await _case_team_role(case_record, identity, db) == "none":
+        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以办理案件详情")
     _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "已归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
 
 
+async def _require_case_progress_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Only a responsible/manager user or assigned handling lawyer may advance a case."""
+    role = await _case_team_role(case_record, identity, db)
+    if role not in {"manager", "handling_lawyer"}:
+        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以维护案件进展和开庭排期")
+    _require_case_creation_completed(case_record)
+    if case_record.status in {"待归档审核", "已归档"}:
+        raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
+
+
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    role = await _case_team_role(case_record, identity, db)
+    base = {
+        "can_write": False, "can_upload_attachment": False,
+        "can_delete_attachment": False, "can_create_reminder": False,
+        "can_delete_reminder": False, "can_create_log": False,
+        "can_update_progress": False, "can_manage_hearing": False,
+        "can_assign_team": role == "manager", "can_edit_basic": role == "manager",
+        "can_close_case": role == "manager", "can_archive": role == "manager",
+        "can_create_finance": role == "manager", "team_role": role, "reason": "",
+    }
     try:
         await _require_case_detail_write_access(case_record, identity, db)
     except HTTPException as exc:
-        return {
-            "can_write": False, "can_upload_attachment": False,
-            "can_delete_attachment": False, "can_create_reminder": False,
-            "can_delete_reminder": False, "can_create_log": False,
-            "reason": str(exc.detail),
-        }
+        return {**base, "reason": str(exc.detail)}
+    can_progress = role in {"manager", "handling_lawyer"}
     return {
+        **base,
         "can_write": True, "can_upload_attachment": True,
         "can_delete_attachment": True, "can_create_reminder": True,
-        "can_delete_reminder": True, "can_create_log": True, "reason": "",
+        "can_delete_reminder": True, "can_create_log": True,
+        "can_update_progress": can_progress, "can_manage_hearing": can_progress,
     }
 
 
@@ -10577,16 +10677,27 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
     await _require_record_owner_or_manager(case_record, identity, db)
     _require_case_creation_completed(case_record)
     previous = case_record.status
-    case_data = {**(case_record.data or {}), "customer_manager": body.customer_manager, "hearing_lawyer": body.hearing_lawyer, "handling_lawyers": body.handling_lawyers, "assistant": body.assistant}
+    handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
+    if not handling_lawyers:
+        raise HTTPException(status_code=422, detail="请至少分配一名有效经办律师")
+    assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant] if body.assistant.strip() else [], db, field_name="律师助理")
+    hearing_values, _ = await _resolve_active_case_people([body.hearing_lawyer], db, field_name="开庭律师")
+    manager_values, _ = await _resolve_active_case_people([body.customer_manager] if body.customer_manager.strip() else [], db, field_name="客户管理人")
+    assistant = assistant_values[0] if assistant_values else ""
+    assistant_username = assistant_usernames[0] if assistant_usernames else ""
+    case_data = _case_team_payload({
+        **(case_record.data or {}), "customer_manager": manager_values[0] if manager_values else "",
+        "hearing_lawyer": hearing_values[0],
+    }, handling_lawyers, handling_usernames, assistant, assistant_username)
     case_record.data = case_data
     if case_record.status == "新案待分配":
         case_record.status = "文书准备"
-    db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{body.hearing_lawyer}；经办律师：{','.join(body.handling_lawyers)}；助理：{body.assistant}。{body.comment}"))
+    db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{case_data['hearing_lawyer']}；经办律师：{','.join(handling_lawyers)}；助理：{assistant}。{body.comment}"))
     notary_id = int(case_data.get("notary_id") or 0)
     if notary_id and not case_data.get("notary_handoff_task_id"):
         notary = await db.get(BusinessRecord, notary_id)
         if notary:
-            notary_data = notary.data or {}; scanner = str(notary_data.get("scan_uploaded_by") or notary.owner or identity["username"]).strip(); recipient = (body.assistant.strip() or next((name.strip() for name in body.handling_lawyers if name.strip()), "") or body.hearing_lawyer.strip())
+            notary_data = notary.data or {}; scanner = str(notary_data.get("scan_uploaded_by") or notary.owner or identity["username"]).strip(); recipient = (assistant_username or next(iter(handling_usernames), "") or case_data["hearing_lawyer"])
             task = BusinessRecord(module="task", serial_no=f"RW{datetime.now():%Y%m%d%H%M%S%f}", title=f"公证书及公证费发票原件交接—{case_record.serial_no}", customer=case_record.customer, status="待接收", owner=scanner, department=case_record.department, description=f"扫描文员向案件文书人员 {recipient} 交接公证书及公证费发票原件", data={"deadline": str(date.today() + timedelta(days=5)), "priority": "紧急", "source": "自动任务", "initiator": recipient, "collaborators": [recipient] if recipient != scanner else [], "case_no": case_record.serial_no, "case_id": case_record.id, "notary_id": notary.id, "notary_no": notary.serial_no, "auto_task_type": "notary_original_handoff", "handoff_recipient": recipient, "system_created_by": identity["username"]})
             db.add(task); await db.flush(); case_record.data = {**case_record.data, "notary_handoff_task_id": task.id}; notary.data = {**notary_data, "handoff_task_id": task.id, "handoff_recipient": recipient}
             await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="系统生成原件交接任务", to_status="待接收", operator="system", comment=f"扫描文员 {scanner} 向 {recipient} 交接；来源案件 {case_record.serial_no}"), db, content="任务已分派.")
@@ -10606,8 +10717,7 @@ async def list_case_tasks(case_id: int, identity: dict = Depends(current_identit
 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/progress")
 async def update_case_progress(case_id: int, body: CaseProgressInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    case_record = await _ensure_record_module(case_id, "case", identity, db); await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
+    case_record = await _ensure_record_module(case_id, "case", identity, db); await _require_case_progress_write_access(case_record, identity, db)
     if case_record.status in {"等待公证书", "等待审核公证书", "待归档审核", "已归档"}: raise HTTPException(status_code=409, detail="当前案件阶段不能登记诉讼进展")
     values = body.model_dump(); values["judgment_date"] = str(body.judgment_date) if body.judgment_date else ""
     if not any(values.get(key) for key in ["first_instance_court", "first_instance_case_no", "courtroom", "judge", "clerk", "judgment_date", "judgment_document_no", "second_instance_court", "second_instance_case_no"]): raise HTTPException(status_code=422, detail="请至少填写一项案件进展信息")
@@ -10643,8 +10753,7 @@ async def list_hearings(
 @app.post(f"{settings.api_prefix}/hearings", status_code=status.HTTP_201_CREATED)
 async def create_hearing(body: HearingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(body.case_record_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
+    await _require_case_progress_write_access(case_record, identity, db)
     item = HearingSchedule(**body.model_dump(), status="已排期")
     db.add(item)
     await db.flush()
@@ -11153,15 +11262,17 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         raise HTTPException(status_code=404, detail="附件不存在")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
     may_manage_customer_document = False
+    may_manage_case_document = False
     if record and record.module == "case":
         record = await _ensure_record_module(record.id, "case", identity, db)
         await _require_case_detail_write_access(record, identity, db)
+        may_manage_case_document = True
     if record and record.module == "customer":
         record = await _ensure_record_module(record.id, "customer", identity, db)
         await _require_record_owner_or_manager(record, identity, db)
         may_manage_customer_document = True
     may_manage_hr_document = identity.get("role") == "manager" and record and record.module == "hr" and item.category == "员工档案"
-    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document:
+    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
     path = Path(item.path)
     await db.delete(item)

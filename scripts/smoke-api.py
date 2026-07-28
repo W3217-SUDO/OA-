@@ -1251,6 +1251,47 @@ def main():
         call("PUT", f"/cases/{civil_case['id']}/judicial", {"first_court_enabled": True, "first_court_name": "上海市民事测试人民法院", "first_court_case_no": serial("CIVIL-JUDICIAL")})
         civil_case = call("POST", f"/cases/{civil_case['id']}/creation/review", {"approved": True, "comment": "民事案件主管审核通过"})
         assert civil_case["status"] == "新案待分配" and civil_case["data"]["case_creation_approval_status"] == "已通过"
+        team_assigned_case = call("POST", f"/cases/{civil_case['id']}/assign", {
+            "customer_manager": member_name,
+            "hearing_lawyer": member_name,
+            "handling_lawyers": [member_name],
+            "assistant": department_peer_name,
+            "comment": "案件团队稳定用户名与分层权限验收",
+        })
+        assert team_assigned_case["data"]["handling_lawyer_usernames"] == [member_name]
+        assert team_assigned_case["data"]["assistant_username"] == department_peer_name
+        assert set(team_assigned_case["data"]["case_team_usernames"]) == {member_name, department_peer_name}
+        call("POST", f"/cases/{civil_case['id']}/assign", {
+            "customer_manager": member_name, "hearing_lawyer": member_name,
+            "handling_lawyers": ["missing-case-team-user"], "assistant": department_peer_name,
+        }, expected=(422,))
+        TOKEN = login(member_name, "SmokePass2026!")["access_token"]
+        assert call("GET", f"/records/{civil_case['id']}")["id"] == civil_case["id"]
+        handling_capabilities = call("GET", f"/cases/{civil_case['id']}/action-capabilities")
+        assert handling_capabilities["team_role"] == "handling_lawyer"
+        assert all(handling_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log", "can_update_progress", "can_manage_hearing"])
+        assert all(handling_capabilities[key] is False for key in ["can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
+        member_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": "案件文档", "remark": "团队律师附件权限验收"}, f"smoke-case-team-{suffix}.txt", b"case team permission")
+        call("DELETE", f"/attachments/{member_attachment['id']}", expected=(204,))
+        member_progress = call("POST", f"/cases/{civil_case['id']}/progress", {"first_instance_court": "上海市团队权限测试法院", "first_instance_case_no": serial("TEAM-PROGRESS"), "comment": "受派经办律师登记进展"})
+        assert member_progress["data"]["first_instance_case_no"]
+        member_hearing = call("POST", "/hearings", {"case_record_id": civil_case["id"], "hearing_date": str(date.today() + timedelta(days=10)), "hearing_time": "10:00", "court": "上海市团队权限测试法院", "courtroom": "第一法庭", "hearing_type": "一审开庭", "hearing_lawyer": member_name}, expected=(201,))
+        assert member_hearing["case_record_id"] == civil_case["id"]
+        call("POST", f"/cases/{civil_case['id']}/assign", {"customer_manager": member_name, "hearing_lawyer": member_name, "handling_lawyers": [member_name]}, expected=(403,))
+        TOKEN = login(department_peer_name, "SmokePass2026!")["access_token"]
+        assert call("GET", f"/records/{civil_case['id']}")["id"] == civil_case["id"]
+        assistant_capabilities = call("GET", f"/cases/{civil_case['id']}/action-capabilities")
+        assert assistant_capabilities["team_role"] == "assistant"
+        assert all(assistant_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log"])
+        assert all(assistant_capabilities[key] is False for key in ["can_update_progress", "can_manage_hearing", "can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
+        assistant_reminder = call("POST", f"/cases/{civil_case['id']}/reminders", {"reminder_date": str(date.today()), "deadline": str(date.today() + timedelta(days=2)), "content": f"SMOKE-案件助理提醒-{suffix}"}, expected=(201,)); records.append(assistant_reminder["id"])
+        call("POST", f"/cases/{civil_case['id']}/logs", {"content": f"SMOKE-案件助理日志-{suffix}"}, expected=(201,))
+        call("POST", f"/cases/{civil_case['id']}/progress", {"first_instance_case_no": serial("ASSISTANT-BLOCK")}, expected=(403,))
+        call("POST", "/hearings", {"case_record_id": civil_case["id"], "hearing_date": str(date.today() + timedelta(days=11)), "hearing_time": "10:00", "court": "上海市团队权限测试法院", "courtroom": "第二法庭", "hearing_type": "一审开庭", "hearing_lawyer": member_name}, expected=(403,))
+        TOKEN = login(outsider_name, "SmokePass2026!")["access_token"]
+        call("GET", f"/records/{civil_case['id']}", expected=(404,))
+        TOKEN = admin_token
+        passed("案件团队稳定用户名、经办律师可见/进展/排期/附件、助理详情办理限制与无关人员隔离")
         call("POST", "/cases", {**case_payload, "status": "执行"}, expected=(422,))
         call("POST", "/cases", {**case_payload, "owner": "不存在的案件负责人"}, expected=(422,))
         call("POST", "/cases", {**case_payload, "client_position": "原告"}, expected=(422,))
@@ -1269,7 +1310,7 @@ def main():
         assert case["status"] == "新案待分配" and case["department"] == contract["department"]
         assert case["data"]["case_creation_step"] == "basic" and "court" not in case["data"]
         call("POST", "/cases", case_payload, expected=(409,))
-        assignment_payload = {"customer_manager": USERNAME, "hearing_lawyer": USERNAME, "handling_lawyers": [USERNAME], "assistant": "测试助理", "comment": "分配"}
+        assignment_payload = {"customer_manager": USERNAME, "hearing_lawyer": USERNAME, "handling_lawyers": [USERNAME], "assistant": USERNAME, "comment": "分配"}
         call("POST", f"/cases/{case['id']}/assign", assignment_payload, expected=(409,))
         call("PUT", f"/cases/{case['id']}/judicial", {"court": "上海市测试人民法院"}, expected=(409,))
         call("PUT", f"/cases/{case['id']}/litigants", {"defendants": ["过长" * 200]}, expected=(422,))
@@ -1635,15 +1676,15 @@ def main():
         unknown_case_nos = [serial("MISSING-CASE-A"), serial("MISSING-CASE-B")]
         missing_case_result = call("POST", "/cases/batch-update", {"case_nos": unknown_case_nos, "assistant": USERNAME}, expected=(404,))
         assert all(case_no in missing_case_result["detail"] for case_no in unknown_case_nos)
-        batch_modified_by_no = call("POST", "/cases/batch-update", {"case_nos": [batch_case["serial_no"], batch_case["serial_no"]], "assistant": "案号批量助理", "comment": "按案号批量修改验收"})
-        assert batch_modified_by_no["updated"] == 1 and batch_modified_by_no["items"][0]["data"]["assistant"] == "案号批量助理"
+        batch_modified_by_no = call("POST", "/cases/batch-update", {"case_nos": [batch_case["serial_no"], batch_case["serial_no"]], "assistant": USERNAME, "comment": "按案号批量修改验收"})
+        assert batch_modified_by_no["updated"] == 1 and batch_modified_by_no["items"][0]["data"]["assistant"] == USERNAME
         try:
             TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
             call("POST", "/cases/batch-update", {"case_nos": [batch_case["serial_no"]], "assistant": manager_name}, expected=(404,))
         finally:
             TOKEN = admin_token
-        batch_modified_case = call("POST", "/cases/batch-update", {"case_ids": [batch_case["id"]], "hearing_lawyer": USERNAME, "handling_lawyers": [USERNAME, "复核律师"], "assistant": USERNAME, "case_stage": "一审准备开庭", "comment": "待结算页批量修改案件验收"})
-        assert batch_modified_case["updated"] == 1 and batch_modified_case["items"][0]["data"]["handling_lawyers"] == [USERNAME, "复核律师"] and batch_modified_case["items"][0]["data"]["case_stage"] == "一审准备开庭"
+        batch_modified_case = call("POST", "/cases/batch-update", {"case_ids": [batch_case["id"]], "hearing_lawyer": USERNAME, "handling_lawyers": [USERNAME, member_name], "assistant": USERNAME, "case_stage": "一审准备开庭", "comment": "待结算页批量修改案件验收"})
+        assert batch_modified_case["updated"] == 1 and batch_modified_case["items"][0]["data"]["handling_lawyers"] == [USERNAME, member_name] and batch_modified_case["items"][0]["data"]["case_stage"] == "一审准备开庭"
         assert any(item["action"] == "批量修改案件" for item in call("GET", f"/records/{batch_case['id']}/history")["items"])
         duplicate_batch = call("POST", "/investigations/clues/batch-cases", {"clue_ids": [clue["id"]], "contract_record_id": contract["id"]}, expected=(201,))
         assert duplicate_batch["created"] == 0 and duplicate_batch["failed"] == 1
