@@ -888,6 +888,8 @@ def main() -> None:
     ):
         assert token in INVESTIGATION, f"investigation subtask parent-link contract missing: {token}"
     print("INVESTIGATION_SUBTASK_PARENT_OK: subtask entry preselects and requires a same-investigation parent task")
+    assert "if(initialTab.includes('-my-')&&profile.role!=='admin')" in INVESTIGATION, "administrator must retain full-firm investigation data scope in personal investigation routes"
+    print("INVESTIGATION_ADMIN_SCOPE_OK: administrator personal investigation routes retain full-firm records")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"
     assert '("case-new-civil", "case-new", "民事争议", "", 1)' in MAIN, "civil case creation must be available from the case menu"

@@ -65,7 +65,7 @@ export default function InvestigationCenterPage({initialTab,onNavigate}:{initial
     if(initialTab==='investigation-task-sub-mine'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
     if(initialTab==='investigation-task-overdue')result=result.filter(row=>Boolean(row.data.authorized_to)&&dayjs(String(row.data.authorized_to)).isBefore(dayjs(),'day')&&!['已完成','已取消'].includes(row.status))
     if(initialTab==='investigation-task-unassigned')result=result.filter(row=>row.status==='待分配'||!row.owner)
-    if(initialTab.includes('-my-')){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
+    if(initialTab.includes('-my-')&&profile.role!=='admin'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
     if(initialTab.endsWith('-no-fee'))result=result.filter(row=>!row.data.fee_application_id&&!row.data.fee_no)
     else if(initialTab.endsWith('-fee'))result=result.filter(row=>Boolean(row.data.fee_application_id||row.data.fee_no))
     const d=(row:Row)=>row.data||{},contains=(value:unknown,key:string)=>!listQuery[key]||String(value||'').toLocaleLowerCase().includes(String(listQuery[key]).trim().toLocaleLowerCase())
