@@ -96,6 +96,20 @@ type TaskRow = {
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;created_at:string;size:number;remark?:string};
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
 type CaseLogRow = {id:number;content:string;operator:string;created_at:string};
+type CaseDetailCapabilities = {
+  can_write: boolean;
+  can_upload_attachment: boolean;
+  can_delete_attachment: boolean;
+  can_create_reminder: boolean;
+  can_delete_reminder: boolean;
+  can_create_log: boolean;
+  reason: string;
+};
+const noCaseDetailWriteCapability: CaseDetailCapabilities = {
+  can_write: false, can_upload_attachment: false, can_delete_attachment: false,
+  can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
+  reason: "当前账号没有案件详情办理权限",
+};
 const caseStatuses = [
   "等待公证书",
   "等待审核公证书",
@@ -221,6 +235,7 @@ export default function CaseCenterPage({
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
+  const [counselDetailCapabilities, setCounselDetailCapabilities] = useState<CaseDetailCapabilities>(noCaseDetailWriteCapability);
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
   const [counselUploadCategory, setCounselUploadCategory] = useState("案件文档");
@@ -707,13 +722,14 @@ export default function CaseCenterPage({
   };
   const openCounselDetail = async (row: CaseRow) => {
     try {
-      const [recordRes, historyRes, taskRes, attachmentRes, reminderRes, logRes] = await Promise.all([
+      const [recordRes, historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes] = await Promise.all([
         api.get(`/records/${row.id}`),
         api.get(`/records/${row.id}/history`),
         api.get(`/cases/${row.id}/tasks`),
         api.get("/attachments", { params: { record_id: row.id } }),
         api.get(`/cases/${row.id}/reminders`),
         api.get(`/cases/${row.id}/logs`),
+        api.get(`/cases/${row.id}/action-capabilities`),
       ]);
       setViewingCounselCase(recordRes.data);
       setCounselDetailHistory(historyRes.data.items || []);
@@ -721,9 +737,11 @@ export default function CaseCenterPage({
       setCounselDetailAttachments(attachmentRes.data.items || []);
       setCounselReminders(reminderRes.data.items || []);
       setCounselLogs(logRes.data.items || []);
+      setCounselDetailCapabilities(capabilityRes.data || noCaseDetailWriteCapability);
       setSelectedCounselAttachmentKeys([]);
       setActiveCounselDocCategory("");
     } catch (error: any) {
+      setCounselDetailCapabilities(noCaseDetailWriteCapability);
       message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
   };
@@ -2005,9 +2023,9 @@ export default function CaseCenterPage({
                 <input ref={counselDetailUploadRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
                 <Space wrap style={{marginBottom:10}}>
                   <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={Array.from(new Set(["案件文档",...counselDocTree.map(item=>item.category)])).map(value=>({value,label:value}))}/>
-                  <Button type="primary" disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>
+                  {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
-                  <Button danger disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={deleteCounselAttachments}>删除选中</Button>
+                  {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}
                 </Space>
                 <Table rowKey="id" size="small" pagination={false} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
@@ -2021,8 +2039,8 @@ export default function CaseCenterPage({
               {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"platform-fees",label:"平台费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("平台"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"internal-fees",label:"内部结算",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
-              {key:"reminders",label:"案件提醒",children:<><Button type="primary" disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button><Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",dataIndex:"owner",width:110},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=><Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>}]}/></>},
-              {key:"case-logs",label:"案件日志",children:<><Button type="primary" style={{marginBottom:10}} onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button><Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",dataIndex:"operator",width:110}]}/></>},
+              {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",dataIndex:"owner",width:110},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
+              {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Button type="primary" style={{marginBottom:10}} onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",dataIndex:"operator",width:110}]}/></>},
               {key:"logs",label:"系统日志",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",dataIndex:"operator",width:110},{title:"说明",dataIndex:"comment"}]}/>},
               {key:"tasks",label:"案件任务",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailTasks.filter(row=>row.source!=="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175},{title:"任务名称",dataIndex:"title"},{title:"负责人",dataIndex:"owner",width:110},{title:"截止日",dataIndex:"deadline",width:120},{title:"状态",dataIndex:"status",width:100}]}/>},
               {key:"customer-tasks",label:"客户任务",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175},{title:"任务名称",dataIndex:"title"},{title:"负责人",dataIndex:"owner",width:110},{title:"截止日",dataIndex:"deadline",width:120},{title:"状态",dataIndex:"status",width:100}]}/>},
@@ -2031,11 +2049,11 @@ export default function CaseCenterPage({
             </div>
             <aside className="case-detail-side-panel">
               <section>
-                <div className="case-detail-side-title"><span>案件提醒</span><Button type="link" size="small" disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增</Button></div>
+                <div className="case-detail-side-title"><span>案件提醒</span>{counselDetailCapabilities.can_create_reminder && <Button type="link" size="small" onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增</Button>}</div>
                 {counselReminders.length?counselReminders.slice(0,5).map((item)=><p key={item.id}>{item.data.reminder_date || item.data.deadline}　{item.description}</p>):<p className="case-detail-empty">暂无提醒</p>}
               </section>
               <section>
-                <div className="case-detail-side-title"><span>案件日志</span><Button type="link" size="small" onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button></div>
+                <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Button type="link" size="small" onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button>}</div>
                 {counselLogs.length?counselLogs.slice(0,5).map((item)=><p key={item.id}>{item.created_at}　{item.content}</p>):<p className="case-detail-empty">暂无日志</p>}
               </section>
             </aside>

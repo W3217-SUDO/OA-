@@ -477,6 +477,11 @@
   font-size: 11px;
   line-height: 18px;
 }
+.task-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
 .task-detail-section-title {
   position: relative;
   height: 30px;

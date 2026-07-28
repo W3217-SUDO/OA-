@@ -1196,6 +1196,9 @@ def main():
         contract_investigation_task = call("POST", f"/investigations/{contract_investigation['id']}/tasks", {"title": "合同调查子任务", "owner": USERNAME, "deadline": str(date.today() + timedelta(days=10)), "priority": "普通", "description": "调查区域走访"}, expected=(201,))
         records.append(contract_investigation_task["id"])
         assert contract_investigation_task["investigation_record_id"] == contract_investigation["id"] and contract_investigation_task["investigation_module"] == "investigation"
+        reloaded_subtasks = call("GET", f"/records?module=task&keyword={urllib.parse.quote(contract_investigation_task['serial_no'])}&page_size=100")["items"]
+        reloaded_subtask = next(item for item in reloaded_subtasks if item["id"] == contract_investigation_task["id"])
+        assert reloaded_subtask["data"]["investigation_record_id"] == contract_investigation["id"] and reloaded_subtask["data"]["investigation_module"] == "investigation"
         call("POST", f"/tasks/{contract_investigation_task['id']}/accept", {"comment": "执行合同调查子任务"})
         call("POST", f"/tasks/{contract_investigation_task['id']}/complete", {"comment": "调查区域走访完成"})
         call("POST", f"/tasks/{contract_investigation_task['id']}/confirm", {"comment": "调查主管验收通过"})
@@ -1385,6 +1388,8 @@ def main():
         call("PUT", f"/cases/{counsel_case_b['id']}/litigants", {})
         call("PUT", f"/cases/{counsel_case_b['id']}/complete-creation", {"comment": "分页查询第二条法律顾问案件"})
         call("POST", f"/cases/{counsel_case_b['id']}/creation/review", {"approved": True, "comment": "第二条法律顾问立案审批通过"})
+        counsel_capabilities = call("GET", f"/cases/{counsel_case['id']}/action-capabilities")
+        assert all(counsel_capabilities[key] is True for key in ["can_upload_attachment", "can_delete_attachment", "can_create_reminder", "can_delete_reminder", "can_create_log"])
         counsel_attachment = multipart_upload("/attachments", {"record_id": counsel_case["id"], "category": "案件文件", "remark": "法律顾问文档筛选"}, f"counsel-filter-{suffix}.txt", b"counsel document")
         attachments.append(counsel_attachment["id"])
         counsel_search = {
@@ -1494,6 +1499,10 @@ def main():
             attachments.append(archive_file["id"])
         pending_archive = call("POST", f"/cases/{archive_case['id']}/archive", archive_payload)
         assert pending_archive["record"]["status"] == "待归档审核"
+        archived_capabilities = call("GET", f"/cases/{archive_case['id']}/action-capabilities")
+        assert all(archived_capabilities[key] is False for key in ["can_upload_attachment", "can_delete_attachment", "can_create_reminder", "can_delete_reminder", "can_create_log"])
+        call("POST", f"/cases/{archive_case['id']}/logs", {"content": "归档中案件不得新增日志"}, expected=(409,))
+        multipart_upload("/attachments", {"record_id": archive_case["id"], "category": "案件文档", "remark": "归档中案件不得上传"}, f"archive-write-denied-{suffix}.txt", b"denied", expected=(409,))
         rejected_archive = call("POST", f"/cases/{archive_case['id']}/archive/review", {"approved": False, "comment": "缺少纸质签收页，请补齐"})
         assert rejected_archive["status"] == "一审准备开庭" and rejected_archive["data"]["archive_reject_reason"]
         pending_archive = call("POST", f"/cases/{archive_case['id']}/archive", archive_payload)
@@ -2130,6 +2139,35 @@ def main():
         finally:
             TOKEN = admin_token
         assert len(call("GET", f"/tasks/{task['id']}/history")["items"]) >= 7
+        # 任务撤回必须走专用闭环：普通发起人可撤回待接收任务，管理员可撤回处理中任务；
+        # 负责人、通用流转和重复操作均不能绕过状态与权限限制。
+        try:
+            TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
+            initiator_withdraw_task = call("POST", "/tasks", {"title": "SMOKE发起人撤回任务", "owner": member_name, "deadline": str(date.today() + timedelta(days=3))}, expected=(201,))
+            records.append(initiator_withdraw_task["id"])
+            TOKEN = login(member_name, "SmokePass2026!")["access_token"]
+            call("POST", f"/tasks/{initiator_withdraw_task['id']}/withdraw", {"comment": "负责人不能撤回发起人任务"}, expected=(403,))
+            TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
+            call("POST", f"/tasks/{initiator_withdraw_task['id']}/withdraw", {"comment": ""}, expected=(422,))
+            withdrawn_by_initiator = call("POST", f"/tasks/{initiator_withdraw_task['id']}/withdraw", {"comment": "工作安排取消"})
+            initiated_withdrawn_page = call("GET", f"/tasks?{urllib.parse.urlencode({'scope': 'mine', 'relation': 'initiated', 'serial_no': initiator_withdraw_task['serial_no'], 'statuses': '已撤回', 'page_size': 10})}")
+        finally:
+            TOKEN = admin_token
+        assert withdrawn_by_initiator["status"] == "已撤回" and withdrawn_by_initiator["workflow_status"] == "已撤回"
+        assert initiated_withdrawn_page["total"] == 1 and initiated_withdrawn_page["items"][0]["id"] == initiator_withdraw_task["id"]
+        initiator_withdraw_history = call("GET", f"/tasks/{initiator_withdraw_task['id']}/history")["items"]
+        assert any(item["action"] == "撤回任务" and item["to_status"] == "已撤回" and item["comment"] == "工作安排取消" for item in initiator_withdraw_history)
+        admin_withdraw_task = call("POST", "/tasks", {"title": "SMOKE管理员撤回处理中任务", "owner": member_name, "deadline": str(date.today() + timedelta(days=3))}, expected=(201,))
+        records.append(admin_withdraw_task["id"])
+        try:
+            TOKEN = login(member_name, "SmokePass2026!")["access_token"]
+            call("POST", f"/tasks/{admin_withdraw_task['id']}/accept", {"comment": "先进入处理中验证管理员撤回"})
+        finally:
+            TOKEN = admin_token
+        withdrawn_by_admin = call("POST", f"/tasks/{admin_withdraw_task['id']}/withdraw", {"comment": "管理员终止当前安排"})
+        assert withdrawn_by_admin["status"] == "已撤回" and withdrawn_by_admin["workflow_status"] == "已撤回"
+        call("POST", f"/tasks/{admin_withdraw_task['id']}/withdraw", {"comment": "重复撤回"}, expected=(409,))
+        call("POST", f"/records/{admin_withdraw_task['id']}/transition", {"to_status": "处理中", "comment": "通用流转不得绕过任务撤回"}, expected=(409,))
         rejected_task = call("POST", "/tasks", {"title": "冒烟拒绝任务", "owner": manager_name, "deadline": str(date.today() + timedelta(days=3))}, expected=(201,)); records.append(rejected_task["id"])
         try:
             TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
@@ -2142,7 +2180,43 @@ def main():
         call("POST", f"/tasks/{rejected_task['id']}/resend", {"recipient": f"missing-{suffix}", "comment": "无效新负责人"}, expected=(422,))
         resent = call("POST", f"/tasks/{rejected_task['id']}/resend", {"recipient": member_name, "comment": "重新派发"})
         assert resent["status"] == "待接收" and resent["owner"] == member_name and resent["handoff_auto_complete_at"] == str(date.today() + timedelta(days=5))
-        passed("任务管理员全所关系、纯协作隔离/权限、稳定排序、分页状态计数、真实用户及CSV校验、五日自动完成/重启阻止、历史标记未读、提醒级别、终态保护和通用接口防绕过")
+        # 批量生命周期必须逐条校验、整批原子：接收、交接、完成、撤回均走专用接口，
+        # 不能通过批量字段修改或通用 records 流转替代。
+        batch_lifecycle_tasks = [
+            call("POST", "/tasks", {"title": f"SMOKE批量生命周期{i}", "owner": member_name, "deadline": str(date.today() + timedelta(days=3))}, expected=(201,))
+            for i in (1, 2)
+        ]
+        records.extend(item["id"] for item in batch_lifecycle_tasks)
+        try:
+            TOKEN = login(member_name, "SmokePass2026!")["access_token"]
+            batch_accepted = call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_lifecycle_tasks], "action": "accept", "comment": "批量接收验收"})
+            assert batch_accepted["updated"] == 2 and all(item["status"] == "处理中" for item in batch_accepted["items"])
+            call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_lifecycle_tasks], "action": "accept"}, expected=(409,))
+            batch_handed = call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_lifecycle_tasks], "action": "handoff", "recipient": manager_name, "comment": "批量交接验收"})
+            assert all(item["status"] == "待接收" and item["owner"] == manager_name and item["handoff_auto_complete_at"] == str(date.today() + timedelta(days=5)) for item in batch_handed["items"])
+            TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
+            batch_reaccepted = call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_lifecycle_tasks], "action": "accept"})
+            assert all(item["status"] == "处理中" for item in batch_reaccepted["items"])
+            batch_completed = call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_lifecycle_tasks], "action": "complete", "comment": "批量成果已提交"})
+            assert all(item["status"] == "已完成" and item["completion_auto_confirm_at"] for item in batch_completed["items"])
+        finally:
+            TOKEN = admin_token
+        batch_withdraw_tasks = [
+            call("POST", "/tasks", {"title": f"SMOKE批量撤回{i}", "owner": member_name, "deadline": str(date.today() + timedelta(days=3))}, expected=(201,))
+            for i in (1, 2)
+        ]
+        records.extend(item["id"] for item in batch_withdraw_tasks)
+        try:
+            TOKEN = login(member_name, "SmokePass2026!")["access_token"]
+            call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_withdraw_tasks], "action": "withdraw", "comment": "负责人不可批量撤回"}, expected=(403,))
+        finally:
+            TOKEN = admin_token
+        call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_withdraw_tasks], "action": "withdraw", "comment": ""}, expected=(422,))
+        batch_withdrawn = call("POST", "/tasks/batch-lifecycle", {"task_ids": [item["id"] for item in batch_withdraw_tasks], "action": "withdraw", "comment": "批量撤回验收"})
+        assert all(item["status"] == "已撤回" for item in batch_withdrawn["items"])
+        batch_withdraw_history = call("GET", f"/tasks/{batch_withdraw_tasks[0]['id']}/history")["items"]
+        assert any(item["action"] == "批量撤回任务" and item["comment"] == "批量撤回验收" for item in batch_withdraw_history)
+        passed("任务管理员全所关系、纯协作隔离/权限、稳定排序、分页状态计数、发起人/管理员专用撤回、真实用户及CSV校验、五日自动完成/重启阻止、历史标记未读、提醒级别、终态保护和通用接口防绕过")
 
         imported_reference = serial("BANK-IMPORT")
         imported_csv = ("\ufeff对方户名,银行流水号,到账日期,到账金额,摘要\n" + f"冒烟导入付款方,{imported_reference},{date.today()},123.45,银行流水导入验收\n").encode("utf-8")

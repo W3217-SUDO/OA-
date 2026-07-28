@@ -1150,6 +1150,13 @@ class TaskBatchUpdateInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+class TaskBatchLifecycleInput(BaseModel):
+    task_ids: list[int] = Field(min_length=1, max_length=100)
+    action: str = Field(pattern="^(accept|complete|handoff|withdraw)$")
+    recipient: str = Field(default="", max_length=128)
+    comment: str = Field(default="", max_length=1000)
+
+
 class TemplateInput(BaseModel):
     name: str
     category: str
@@ -5827,6 +5834,135 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
     return {"updated": len(tasks), "items": [_task_dict(task) for task in tasks]}
 
 
+@app.post(f"{settings.api_prefix}/tasks/batch-lifecycle")
+async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Apply one dedicated task lifecycle action atomically to selected tasks.
+
+    This deliberately does not reuse ``batch-update`` or the generic record
+    transition endpoint: task state transitions have different participants,
+    automatic deadlines and audit semantics.
+    """
+    task_ids = list(dict.fromkeys(body.task_ids))
+    tasks = (await db.scalars(
+        select(BusinessRecord).where(BusinessRecord.module == "task", BusinessRecord.id.in_(task_ids))
+    )).all()
+    if len(tasks) != len(task_ids):
+        raise HTTPException(status_code=404, detail="部分任务不存在")
+    tasks_by_id = {task.id: task for task in tasks}
+    ordered_tasks = [tasks_by_id[task_id] for task_id in task_ids]
+    comment = body.comment.strip()
+    recipient = ""
+    if body.action == "handoff":
+        recipient = await _active_task_username(body.recipient, db, field_name="接收人")
+    if body.action == "withdraw" and not comment:
+        raise HTTPException(status_code=422, detail="批量撤回任务必须填写撤回原因")
+
+    # Validate the full selection before changing any record, so a mixed
+    # selection never creates a partial lifecycle result.
+    for task in ordered_tasks:
+        data = task.data or {}
+        if body.action == "accept":
+            if identity.get("role") != "admin" and task.owner != identity["username"]:
+                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可接收")
+            if task.status not in {"待接收", "待处理"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能接收")
+        elif body.action == "complete":
+            if identity.get("role") != "admin" and task.owner != identity["username"]:
+                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可提交完成")
+            if task.status != "处理中":
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 仅处理中可提交完成")
+        elif body.action == "handoff":
+            if identity.get("role") != "admin" and task.owner != identity["username"]:
+                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅当前负责人可交接")
+            if task.status in {"已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已结束，不能交接")
+            if recipient == task.owner:
+                raise HTTPException(status_code=422, detail=f"任务 {task.serial_no} 不能交接给当前负责人")
+        else:  # withdraw
+            if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
+                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅发起人可撤回")
+            if task.status not in {"待接收", "待处理", "处理中"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能撤回")
+
+    auto_at = date.today() + timedelta(days=5)
+    action_labels = {
+        "accept": "批量接收任务",
+        "complete": "批量提交任务完成",
+        "handoff": "批量任务交接",
+        "withdraw": "批量撤回任务",
+    }
+    content_labels = {
+        "accept": "任务已批量接收.",
+        "complete": "任务已批量提交完成，等待确认.",
+        "handoff": "任务已批量交接.",
+        "withdraw": "任务已批量撤回.",
+    }
+    for task in ordered_tasks:
+        previous = task.status
+        data = dict(task.data or {})
+        if body.action == "accept":
+            task.status = "处理中"
+            task.data = {
+                **data,
+                "accepted_at": datetime.now().isoformat(timespec="seconds"),
+                "handoff_restarted": True,
+                "rejected_reason": "",
+            }
+        elif body.action == "complete":
+            task.status = "已完成"
+            task.data = {
+                **data,
+                "completion_submitted_at": datetime.now().isoformat(timespec="seconds"),
+                "completion_auto_confirm_at": str(auto_at),
+                "completion_comment": comment,
+            }
+        elif body.action == "handoff":
+            previous_owner = task.owner
+            task.owner = recipient
+            task.status = "待接收"
+            task.data = {
+                **data,
+                "handoff_from": previous_owner,
+                "handoff_recipient": recipient,
+                "handed_off_at": str(date.today()),
+                "handoff_auto_complete_at": str(auto_at),
+                "handoff_restarted": False,
+            }
+        else:
+            task.status = "已撤回"
+            task.data = {
+                **data,
+                "withdrawn_by": identity["username"],
+                "withdrawn_at": datetime.now().isoformat(timespec="seconds"),
+                "withdraw_comment": comment,
+                "handoff_auto_complete_at": "",
+                "completion_auto_confirm_at": "",
+                "exception_request": {},
+            }
+        event_comment = comment
+        if body.action == "handoff":
+            event_comment = f"{previous_owner} 交接给 {recipient}；未重新开始将于 {auto_at} 自动完成。{comment}"
+        elif body.action == "complete":
+            event_comment = f"发起人应在 {auto_at} 前验收或退回重启。{comment}"
+        await _add_task_message_notifications(
+            task,
+            WorkflowEvent(
+                record_id=task.id,
+                action=action_labels[body.action],
+                from_status=previous,
+                to_status=task.status,
+                operator=identity["username"],
+                comment=event_comment,
+            ),
+            db,
+            content=content_labels[body.action],
+        )
+    await db.commit()
+    for task in ordered_tasks:
+        await db.refresh(task)
+    return {"updated": len(ordered_tasks), "action": body.action, "items": [_task_dict(task) for task in ordered_tasks]}
+
+
 async def _task_or_404(task_id: int, db: AsyncSession) -> BusinessRecord:
     task = await db.get(BusinessRecord, task_id)
     if not task or task.module != "task":
@@ -5864,6 +6000,46 @@ async def reject_task(task_id: int, body: TaskActionInput, identity: dict = Depe
     previous = task.status; task.status = "已拒绝"
     task.data = {**(task.data or {}), "rejected_reason": body.comment.strip(), "rejected_at": datetime.now().isoformat(timespec="seconds"), "handoff_auto_complete_at": ""}
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="拒绝任务", from_status=previous, to_status="已拒绝", operator=identity["username"], comment=body.comment), db, content="任务已拒绝.")
+    await db.commit(); await db.refresh(task); return _task_dict(task)
+
+
+@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/withdraw")
+async def withdraw_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Withdraw a live task through its dedicated lifecycle, never generic transition."""
+    task = await _task_or_404(task_id, db)
+    data = task.data or {}
+    if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
+        raise HTTPException(status_code=403, detail="只有任务发起人或系统管理员可以撤回任务")
+    # ``待处理`` is retained for historical imported tasks and has the same pre-accept semantics.
+    if task.status not in {"待接收", "待处理", "处理中"}:
+        raise HTTPException(status_code=409, detail="只有待接收或处理中的任务可以撤回")
+    comment = body.comment.strip()
+    if not comment:
+        raise HTTPException(status_code=422, detail="撤回任务必须填写撤回原因")
+    previous = task.status
+    task.status = "已撤回"
+    task.data = {
+        **data,
+        "withdrawn_by": identity["username"],
+        "withdrawn_at": datetime.now().isoformat(timespec="seconds"),
+        "withdraw_comment": comment,
+        "handoff_auto_complete_at": "",
+        "completion_auto_confirm_at": "",
+        "exception_request": {},
+    }
+    await _add_task_message_notifications(
+        task,
+        WorkflowEvent(
+            record_id=task.id,
+            action="撤回任务",
+            from_status=previous,
+            to_status="已撤回",
+            operator=identity["username"],
+            comment=comment,
+        ),
+        db,
+        content="任务已撤回。",
+    )
     await db.commit(); await db.refresh(task); return _task_dict(task)
 
 
@@ -9621,10 +9797,7 @@ async def list_case_reminders(case_id: int, identity: dict = Depends(current_ide
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/reminders", status_code=status.HTTP_201_CREATED)
 async def create_case_reminder(case_id: int, body: CaseReminderInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
-    if case_record.status in {"待归档审核", "已归档"}:
-        raise HTTPException(status_code=409, detail="案件进入归档流程后不能新增提醒")
+    await _require_case_detail_write_access(case_record, identity, db)
     if body.reminder_date > body.deadline:
         raise HTTPException(status_code=422, detail="提醒日期不能晚于截止日期")
     content = body.content.strip()
@@ -9652,7 +9825,7 @@ async def create_case_reminder(case_id: int, body: CaseReminderInput, identity: 
 @app.delete(f"{settings.api_prefix}/cases/{{case_id}}/reminders/{{reminder_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_case_reminder(case_id: int, reminder_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
+    await _require_case_detail_write_access(case_record, identity, db)
     item = await db.get(BusinessRecord, reminder_id)
     if not item or item.module != "case_reminder" or int((item.data or {}).get("case_id") or 0) != case_id:
         raise HTTPException(status_code=404, detail="案件提醒不存在")
@@ -9678,8 +9851,7 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/logs", status_code=status.HTTP_201_CREATED)
 async def create_case_log(case_id: int, body: CaseLogInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
+    await _require_case_detail_write_access(case_record, identity, db)
     content = body.content.strip()
     if not content:
         raise HTTPException(status_code=422, detail="请输入日志内容")
@@ -10368,6 +10540,37 @@ def _require_case_creation_completed(case_record: BusinessRecord) -> None:
         raise HTTPException(status_code=409, detail="案件创建尚未通过案件主管审批")
 
 
+async def _require_case_detail_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Apply one non-bypassable gate to every mutable case-detail feature."""
+    await _require_record_owner_or_manager(case_record, identity, db)
+    _require_case_creation_completed(case_record)
+    if case_record.status in {"待归档审核", "已归档"}:
+        raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
+
+
+async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    try:
+        await _require_case_detail_write_access(case_record, identity, db)
+    except HTTPException as exc:
+        return {
+            "can_write": False, "can_upload_attachment": False,
+            "can_delete_attachment": False, "can_create_reminder": False,
+            "can_delete_reminder": False, "can_create_log": False,
+            "reason": str(exc.detail),
+        }
+    return {
+        "can_write": True, "can_upload_attachment": True,
+        "can_delete_attachment": True, "can_create_reminder": True,
+        "can_delete_reminder": True, "can_create_log": True, "reason": "",
+    }
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/action-capabilities")
+async def case_detail_action_capabilities(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    return {"case_id": case_record.id, **(await _case_detail_action_capabilities(case_record, identity, db))}
+
+
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")
 async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
@@ -10773,9 +10976,7 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
         if not item.record_id:
             raise HTTPException(status_code=422, detail="所选文件不是案件文件")
         record = await _ensure_record_module(item.record_id, "case", identity, db)
-        await _require_record_owner_or_manager(record, identity, db)
-        if record.status in {"待归档审核", "已归档"}:
-            raise HTTPException(status_code=409, detail=f"案件 {record.serial_no} 已进入归档流程，不能删除文件")
+        await _require_case_detail_write_access(record, identity, db)
         prepared.append((item, record, Path(item.path)))
     affected_cases: dict[int, BusinessRecord] = {}
     for item, record, path in prepared:
@@ -10866,6 +11067,8 @@ async def upload_attachment(
             raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_record_visible(record_id, identity, db)
+        if record.module == "case":
+            await _require_case_detail_write_access(record, identity, db)
         if record.module == "task":
             if not _is_task_participant(record, identity):
                 raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")
@@ -10950,6 +11153,9 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         raise HTTPException(status_code=404, detail="附件不存在")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
     may_manage_customer_document = False
+    if record and record.module == "case":
+        record = await _ensure_record_module(record.id, "case", identity, db)
+        await _require_case_detail_write_access(record, identity, db)
     if record and record.module == "customer":
         record = await _ensure_record_module(record.id, "customer", identity, db)
         await _require_record_owner_or_manager(record, identity, db)
@@ -12189,6 +12395,8 @@ async def writeback_agent_document(document_id: int, identity: dict = Depends(cu
     item, record = await _ensure_agent_document_access(document_id, identity, db, write=True)
     if not item.record_id: raise HTTPException(status_code=409, detail="文档未关联业务记录，不能回写")
     if not record: raise HTTPException(status_code=404, detail="关联业务记录已不存在")
+    if record.module == "case":
+        await _require_case_detail_write_access(record, identity, db)
     if item.status != "已人工确认" or not item.confirmed_by or not item.confirmed_at:
         raise HTTPException(status_code=409, detail="智能文档必须先由人工审核确认，才能回写业务附件")
     if item.confirmed_content_hash != _agent_content_hash(item.content):

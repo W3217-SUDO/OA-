@@ -903,6 +903,16 @@ def main() -> None:
         assert token in INVESTIGATION, "investigation route changes must clear stale filters and selected records"
     print("INVESTIGATION_ROUTE_STATE_RESET_OK: investigation route changes cannot carry hidden filters or selections")
     for token in (
+        "const openSubtaskAction=(row:Row,action:SubtaskLifecycleAction)",
+        "api.post(`/tasks/${row.id}/${action}`",
+        "调查子任务已接收，进入办理中",
+        "调查子任务已提交完成，等待发起人验收",
+        "接收任务</Button>",
+        "提交完成</Button>",
+    ):
+        assert token in INVESTIGATION, "investigation subtask lifecycle must use the real dedicated task endpoints"
+    print("INVESTIGATION_SUBTASK_LIFECYCLE_OK: subtask reload list exposes real accept and completion actions")
+    for token in (
         'api.patch(`/investigations/records/${editTarget.id}`',
         '负责人/调查员（请通过分配入口变更）',
         '<Input disabled/>',
@@ -1150,6 +1160,15 @@ def main() -> None:
     task_more_match = re.search(r"<Dropdown\s+trigger=\{\[\"click\"\]\}(.*?)<Button>更多操作</Button>", TASK, re.S)
     assert task_more_match, "my-created task more-actions menu not found"
     task_more_keys = re.findall(r'key:\s*"([^"]+)"', task_more_match.group(1))
+    # The same action footer now has a preceding lifecycle dropdown for a
+    # multi-selection. It is intentionally outside the evidenced "more"
+    # menu, so assert it separately and remove only its four fixed keys before
+    # preserving the old 11-action contract.
+    assert 'type TaskBatchLifecycleAction = "accept" | "complete" | "handoff" | "withdraw";' in TASK, "task batch lifecycle action type missing"
+    assert 'api.post("/tasks/batch-lifecycle"' in TASK, "task batch lifecycle must use its dedicated API"
+    for key in ("accept", "complete", "handoff", "withdraw"):
+        assert key in task_more_keys, f"task batch lifecycle menu missing {key}"
+    task_more_keys = [key for key in task_more_keys if key not in {"accept", "complete", "handoff", "withdraw"}]
     assert task_more_keys == [
         "lawFee", "platformFee", "internalFee", "batch", "authorization", "lawFirmLetter",
         "identity", "settlement", "caseTasks", "logs", "export",

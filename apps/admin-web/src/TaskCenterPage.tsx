@@ -113,6 +113,7 @@ type DialogAction = "reject" | "resend";
 type FeeAction = "lawFee" | "platformFee" | "internalFee";
 type FeeSubtype = "官费" | "第三方费用" | "代理费" | "其他费用" | "内部费用";
 type CaseBatchAction = "hearing_lawyer" | "handling_lawyers" | "assistant" | "case_stage";
+type TaskBatchLifecycleAction = "accept" | "complete" | "handoff" | "withdraw";
 type TaskQuery = {
   priority?: string;
   serial_no?: string;
@@ -238,8 +239,10 @@ export default function TaskCenterPage({
   const [feeSubtype, setFeeSubtype] = useState<FeeSubtype | null>(null);
   const [documentAction, setDocumentAction] = useState<"authorization" | "lawFirmLetter" | "identity" | "settlement" | null>(null);
   const [caseBatchAction, setCaseBatchAction] = useState<CaseBatchAction | null>(null);
+  const [taskBatchAction, setTaskBatchAction] = useState<TaskBatchLifecycleAction | null>(null);
   const [feeForm] = Form.useForm();
   const [batchForm] = Form.useForm();
+  const [taskBatchForm] = Form.useForm();
   const [documentForm] = Form.useForm();
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const taskActionLockRef = useRef(false);
@@ -279,6 +282,12 @@ export default function TaskCenterPage({
   const isTaskParticipant = (row: TaskRow) =>
     profile.role === "admin" ||
     [row.owner, row.initiator, ...(row.collaborators || [])].includes(profile.username);
+  const canWithdrawTask = (row?: TaskRow | null) =>
+    Boolean(
+      row &&
+        (profile.role === "admin" || row.initiator === profile.username) &&
+        ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status),
+    );
   const loadTaskFeedback = async (row: TaskRow) => {
     if (!isTaskParticipant(row)) {
       setHistory([]);
@@ -528,6 +537,35 @@ export default function TaskCenterPage({
       endTaskAction();
     }
   };
+  const requestTaskWithdrawal = (row: TaskRow) => {
+    let reason = "";
+    Modal.confirm({
+      title: `撤回任务：${row.serial_no}`,
+      content: <Input.TextArea rows={4} placeholder="请填写撤回原因" onChange={(event) => { reason = event.target.value; }} />,
+      okText: "确认撤回",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        if (!reason.trim()) {
+          message.warning("请填写撤回原因");
+          throw new Error("撤回原因不能为空");
+        }
+        if (!beginTaskAction()) return;
+        try {
+          await api.post(`/tasks/${row.id}/withdraw`, { comment: reason.trim() });
+          message.success("任务已撤回");
+          setSelectedKeys([]);
+          if (communication?.id === row.id) setCommunication(null);
+          await load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "撤回任务失败");
+          throw error;
+        } finally {
+          endTaskAction();
+        }
+      },
+    });
+  };
   const requestTaskException = (row: TaskRow, action: "挂起" | "取消") => {
     let reason = "";
     Modal.confirm({
@@ -734,6 +772,41 @@ export default function TaskCenterPage({
       return;
     }
     void simpleAction(selected, selected.handoff_auto_complete_at ? "restart" : "accept");
+  };
+  const taskBatchLabels: Record<TaskBatchLifecycleAction, string> = {
+    accept: "批量接收任务",
+    complete: "批量提交完成",
+    handoff: "批量交接任务",
+    withdraw: "批量撤回任务",
+  };
+  const openTaskBatchLifecycle = (action: TaskBatchLifecycleAction) => {
+    if (!selectedRows.length) {
+      message.warning("请先勾选需要处理的任务");
+      return;
+    }
+    taskBatchForm.resetFields();
+    setTaskBatchAction(action);
+  };
+  const submitTaskBatchLifecycle = async () => {
+    if (!taskBatchAction || !selectedRows.length) return;
+    const values = await taskBatchForm.validateFields();
+    if (!beginTaskAction()) return;
+    try {
+      const { data } = await api.post("/tasks/batch-lifecycle", {
+        task_ids: selectedRows.map((row) => row.id),
+        action: taskBatchAction,
+        recipient: values.recipient || "",
+        comment: values.comment || "",
+      });
+      message.success(`${taskBatchLabels[taskBatchAction]}成功：${data.updated} 条`);
+      setTaskBatchAction(null);
+      setSelectedKeys([]);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || `${taskBatchLabels[taskBatchAction]}失败`);
+    } finally {
+      endTaskAction();
+    }
   };
 
   const standardColumns: any[] = [
@@ -1172,6 +1245,7 @@ export default function TaskCenterPage({
           <div className="task-bottom-actions">
             <Space size={5} wrap>
               {canManageInitiatedTask && <Button onClick={openCreateTask}>新增任务</Button>}
+              {canWithdrawTask(selected) && <Button danger onClick={() => selected && requestTaskWithdrawal(selected)}>撤回任务</Button>}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && selected?.status === "已拒绝" && (
                 <Button onClick={() => openDialog(selected, "resend")}>重新派发</Button>
               )}
@@ -1201,6 +1275,26 @@ export default function TaskCenterPage({
                     转交任务
                   </Button>
                 </>
+              )}
+              {selectedRows.length > 1 && (canManageAcceptedTask || canManageInitiatedTask || canManageCompanyCreatedTask) && (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      ...(canManageAcceptedTask ? [
+                        { key: "accept", label: "批量接收任务" },
+                        { key: "complete", label: "批量提交完成" },
+                        { key: "handoff", label: "批量交接任务" },
+                      ] : []),
+                      ...((canManageInitiatedTask || canManageCompanyCreatedTask) ? [
+                        { key: "withdraw", label: "批量撤回任务", danger: true },
+                      ] : []),
+                    ],
+                    onClick: ({ key }) => openTaskBatchLifecycle(key as TaskBatchLifecycleAction),
+                  }}
+                >
+                  <Button>批量任务流转</Button>
+                </Dropdown>
               )}
               {(canManageAcceptedTask || canManageCompanyCreatedTask) && selected?.workflow_status === "已停止" && selected?.exception_request?.action === "挂起" && <Button onClick={() => void simpleAction(selected, "restart")}>恢复挂起任务</Button>}
               {selected?.exception_request?.status === "待审批" && (selected?.initiator === profile.username || ["admin","manager"].includes(profile.role)) && <><Button onClick={() => void reviewTaskException(selected, true)}>通过特殊处理</Button><Button danger onClick={() => void reviewTaskException(selected, false)}>驳回特殊处理</Button></>}
@@ -1463,6 +1557,41 @@ export default function TaskCenterPage({
         </Form>
       </Modal>
       <Modal
+        open={Boolean(taskBatchAction)}
+        title={`${taskBatchAction ? taskBatchLabels[taskBatchAction] : "批量任务流转"}（已选 ${selectedRows.length} 条）`}
+        okText="确认执行"
+        cancelText="取消"
+        confirmLoading={actionSubmitting}
+        onOk={() => void submitTaskBatchLifecycle()}
+        onCancel={() => setTaskBatchAction(null)}
+        destroyOnHidden
+      >
+        <Alert
+          type={taskBatchAction === "withdraw" ? "warning" : "info"}
+          showIcon
+          message={taskBatchAction === "handoff"
+            ? "所有任务将转交给同一接收人；交接后 5 天内未重新开始会自动完成。"
+            : taskBatchAction === "withdraw"
+              ? "仅任务发起人或管理员可撤回；任一任务不符合条件时整批不会提交。"
+              : "系统将逐条核验负责人、状态和权限；任一任务不符合条件时整批不会提交。"}
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={taskBatchForm} layout="vertical">
+          {taskBatchAction === "handoff" && (
+            <Form.Item label="接收人" name="recipient" rules={[{ required: true, message: "请输入接收人" }]}>
+              <Input />
+            </Form.Item>
+          )}
+          <Form.Item
+            label={taskBatchAction === "withdraw" ? "撤回原因" : "操作说明"}
+            name="comment"
+            rules={taskBatchAction === "withdraw" ? [{ required: true, message: "请填写撤回原因" }] : []}
+          >
+            <Input.TextArea rows={4} placeholder={taskBatchAction === "withdraw" ? "请填写撤回原因" : "可选，写入每条任务的流转记录"} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
         width={900}
         open={Boolean(caseContext)}
         title={`${caseContext?.mode === "tasks" ? "案件任务" : "案件日志"}：${caseContext?.record.serial_no || ""}`}
@@ -1547,6 +1676,11 @@ export default function TaskCenterPage({
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
           <span><b>当前协作人：</b>{communication?.collaborators?.join(",") || "-"}</span>
         </div>
+        {communication && canWithdrawTask(communication) && (
+          <div className="task-detail-actions">
+            <Button danger onClick={() => requestTaskWithdrawal(communication)}>撤回任务</Button>
+          </div>
+        )}
         {communication && isTaskParticipant(communication) ? <>
           <div className="task-detail-section-title">沟通记录</div>
           <List
