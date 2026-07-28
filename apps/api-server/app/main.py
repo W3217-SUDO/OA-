@@ -4222,7 +4222,13 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
     if not job_role_name:
         return False
     job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
-    return bool(job_role and permission_name in set(job_role.permissions or []))
+    permissions = set(job_role.permissions or []) if job_role else set()
+    # 旧的人事岗位“调查专员”已经使用“调查取证”描述其工作范围；
+    # 调查线索提交和现场材料扫描是该范围内不可拆分的专用动作。
+    implied_permissions = {
+        "调查取证": {"线索提交", "扫描上传"},
+    }
+    return permission_name in permissions or permission_name in set().union(*(implied_permissions.get(item, set()) for item in permissions))
 
 
 async def _ensure_contract_approval_access(contract_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
@@ -4920,7 +4926,9 @@ async def submit_investigation_clue(clue_id: int, body: TaskActionInput, identit
 
 @app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/review")
 async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有线索审批权限")
+    reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db):
+        raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
     clue = await _ensure_record_module(clue_id, "clue", identity, db)
     if clue.status != "待审批": raise HTTPException(status_code=409, detail="只有待审批线索可以审核")
     next_status = "待客户审核" if body.approved and bool((clue.data or {}).get("customer_review")) else "待取证" if body.approved else "已驳回"
@@ -4931,11 +4939,14 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
 
 @app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/customer-review")
 async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity.get("role") not in {"admin", "manager", "auditor"}:
-        raise HTTPException(status_code=403, detail="当前角色没有客户审核确认权限")
     clue = await _ensure_record_module(clue_id, "clue", identity, db)
     if clue.status != "待客户审核":
         raise HTTPException(status_code=409, detail="只有待客户审核线索可以确认客户审核结果")
+    if identity.get("role") != "admin":
+        customer = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.title == clue.customer))
+        customer_managers = set((customer.data or {}).get("customer_managers") or ([customer.owner] if customer else []))
+        if identity["username"] not in customer_managers:
+            raise HTTPException(status_code=403, detail="仅该客户的客户管理人可以代录客户审核结果")
     clue.status = "待取证" if body.approved else "已驳回"
     clue.data = {**(clue.data or {}), "customer_reviewer": identity["username"], "customer_reviewed_at": datetime.now().isoformat(timespec="seconds"), "customer_review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment}
     db.add(WorkflowEvent(record_id=clue.id, action="客户审核通过" if body.approved else "客户审核驳回", from_status="待客户审核", to_status=clue.status, operator=identity["username"], comment=body.comment))
@@ -4997,6 +5008,9 @@ async def lookup_notary_by_certificate(certificate_no: str = Query(min_length=2,
 @app.post(f"{settings.api_prefix}/notaries/{{notary_id}}/certificate")
 async def register_notary_certificate(notary_id: int, body: NotaryCertificateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     notary = await _ensure_record_module(notary_id, "notary", identity, db); await _require_record_owner_or_manager(notary, identity, db)
+    operator = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not operator or not await _user_has_job_permission(operator, "公证书号码登记", db):
+        raise HTTPException(status_code=403, detail="当前账号没有公证书号码登记岗位权限")
     if notary.status not in {"等待材料", "待审核", "审核驳回", "审核通过"}: raise HTTPException(status_code=409, detail="当前公证记录不能登记公证书信息")
     duplicate = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "notary", BusinessRecord.id != notary.id, BusinessRecord.data["certificate_no"].as_string() == body.certificate_no.strip()))
     if duplicate: raise HTTPException(status_code=409, detail="公证书编号已经登记")
@@ -5020,7 +5034,7 @@ async def assign_investigation_record(record_id: int, body: InvestigationAssignm
     if record.module == "investigation" and record.status in {"已完成", "已取消"}:
         raise HTTPException(status_code=409, detail="已结束调查授权不能更换调查员")
     previous_owner = record.owner
-    record.owner = await _active_task_username(body.investigator, db, field_name="调查员") if record.module == "task" else body.investigator.strip()
+    record.owner = await _active_task_username(body.investigator, db, field_name="调查员")
     record.data = {**(record.data or {}), "investigator": record.owner, "assigner": identity["username"], "assigned_at": datetime.now().isoformat(timespec="seconds"), "assigned_by": identity["username"]}
     if record.module == "investigation" and record.status == "待分配": record.status = "进行中"
     assignment_event = WorkflowEvent(record_id=record.id, action="分配调查员", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{previous_owner} → {record.owner}。{body.comment}")
@@ -5283,6 +5297,9 @@ async def _apply_notary_auto_conversion(db: AsyncSession) -> bool:
 
 @app.post(f"{settings.api_prefix}/notaries/{{notary_id}}/review")
 async def review_notary(notary_id: int, body: NotaryReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not reviewer or not await _user_has_job_permission(reviewer, "公证审核", db):
+        raise HTTPException(status_code=403, detail="当前账号没有公证审核岗位权限")
     notary = await _ensure_record_module(notary_id, "notary", identity, db)
     if notary.status != "待审核":
         raise HTTPException(status_code=409, detail="该公证记录已完成审核")
@@ -10791,6 +10808,12 @@ async def upload_attachment(
         record = await _ensure_record_visible(record_id, identity, db)
         if record.module == "customer":
             await _require_record_owner_or_manager(record, identity, db)
+        if record.module in INVESTIGATION_MATERIAL_CATEGORIES:
+            await _require_record_owner_or_manager(record, identity, db)
+            if category == "公证书扫描件":
+                operator = await db.scalar(select(User).where(User.username == identity["username"]))
+                if not operator or not await _user_has_job_permission(operator, "扫描上传", db):
+                    raise HTTPException(status_code=403, detail="当前账号没有公证书扫描上传岗位权限")
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES and category != "普通附件" and category not in INVESTIGATION_MATERIAL_CATEGORIES[record.module]:
             raise HTTPException(status_code=422, detail="材料类型与当前调查业务不匹配")
     suffix = Path(file.filename or "").suffix.lower()
