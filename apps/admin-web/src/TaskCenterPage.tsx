@@ -846,12 +846,13 @@ export default function TaskCenterPage({
     {
       title: "任务编号",
       dataIndex: "serial_no",
-      width: 178,
+      width: 200,
       ellipsis: true,
       render: (value: string, row: TaskRow) => (
         <Button
-          className="task-cell-link"
+          className="task-cell-link task-table-identifier"
           type="link"
+          title={value || ""}
           onClick={() => openCommunication(row)}
         >
           {value}
@@ -861,11 +862,11 @@ export default function TaskCenterPage({
     {
       title: "案号编号",
       dataIndex: "case_no",
-      width: 140,
+      width: 180,
       ellipsis: true,
       render: (value: string, row: TaskRow) =>
         value ? (
-          <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(row)}>
+          <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>
             {value}
           </Button>
         ) : "",
@@ -973,8 +974,8 @@ export default function TaskCenterPage({
     },
   ];
   const unreadColumns: any[] = [
-    { title: "任务编号", dataIndex: "serial_no", width: 178, render: (value: string, row: TaskRow) => <Button className="task-cell-link" type="link" onClick={() => openCommunication(row)}>{`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}</Button> },
-    { title: "案号编号", dataIndex: "case_no", width: 140, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(row)}>{value}</Button> : "" },
+    { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true, render: (value: string, row: TaskRow) => { const label = `(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`; return <Button className="task-cell-link task-table-identifier" type="link" title={label} onClick={() => openCommunication(row)}>{label}</Button> } },
+    { title: "案号编号", dataIndex: "case_no", width: 180, ellipsis: true, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>{value}</Button> : "" },
     { title: "原告", dataIndex: "plaintiff", width: 160, ellipsis: true, render: (value: string) => value || "" },
     { title: "被告", dataIndex: "defendant", width: 160, ellipsis: true, render: (value: string) => value || "" },
     { title: "案件阶段", dataIndex: "case_stage", width: 105, render: (value: string) => value || "" },
@@ -1231,7 +1232,8 @@ export default function TaskCenterPage({
           bordered
           columns={columns}
           dataSource={filteredTasks}
-          scroll={{ x: 2040 }}
+          tableLayout="fixed"
+          scroll={{ x: 1900 }}
           rowSelection={
             {
               selectedRowKeys: selectedKeys,
@@ -1639,14 +1641,17 @@ export default function TaskCenterPage({
       >
         {caseContext?.mode === "tasks" ? (
           <Table<TaskRow>
+            className="task-case-context-table"
             rowKey="id"
             size="small"
             pagination={false}
+            tableLayout="fixed"
+            scroll={{ x: 820 }}
             dataSource={caseTasks}
             locale={{ emptyText: "当前案件暂无任务" }}
             columns={[
-              { title: "任务编号", dataIndex: "serial_no", width: 175 },
-              { title: "任务名称", dataIndex: "title" },
+              { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true },
+              { title: "任务名称", dataIndex: "title", width: 280, ellipsis: true },
               { title: "负责人", dataIndex: "owner", width: 100 },
               { title: "截止日期", dataIndex: "deadline", width: 115 },
               { title: "状态", dataIndex: "status", width: 95, render: (value: string) => <Tag color={statusColors[value] || "blue"}>{value}</Tag> },

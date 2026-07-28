@@ -198,6 +198,25 @@
   font-size: 12px;
 }
 
+/* Identifier cells are actionable links. Force their hit area to stay inside the
+   declared table column, otherwise a long task/case number can paint into the
+   adjacent column before the horizontal scrollbar is used. */
+.task-original-table .task-table-identifier.ant-btn-link {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-case-context-table .ant-table-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-bottom-actions {
   min-height: 35px;
   padding: 3px 0 2px 28px;
@@ -314,7 +333,7 @@
   .task-original-table
   .ant-table-content
   > table {
-  min-width: 2040px !important;
+  min-width: 1900px !important;
 }
 .task-original-standard
   .task-original-table
