@@ -3087,11 +3087,14 @@ def main():
         assert any(item["id"] == hr_archive["id"] for item in call("GET", f"/attachments?record_id={hr['id']}")["items"])
         call("PATCH", f"/records/{hr['id']}", {"status": "在职"}, expected=(409,))
         call("POST", f"/records/{hr['id']}/transition", {"to_status": "在职", "comment": "绕过人事入口"}, expected=(409,))
+        call("PATCH", f"/hr/employees/{hr['id']}", {"username": member_name, "display_name": "冒烟员工已修改", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": False, "email": "hr-smoke@example.com", "mobile": "13900000000", "office_phone": "021-12340000", "joined_at": str(date.today()), "left_at": None, "data": {"account_type": "员工账号", "staff_role": "授薪律师"}})
         regularized = call("POST", f"/hr/{hr['id']}/transition", {"to_status": "在职", "effective_date": str(date.today()), "reason": "试用考核通过", "comment": "正式转正"})
-        assert regularized["status"] == "在职" and regularized["data"]["regularized_at"] == str(date.today())
+        assert regularized["status"] == "在职" and regularized["data"]["regularized_at"] == str(date.today()) and regularized["data"]["is_active"] is True
+        assert call("GET", f"/system/users?keyword={member_name}")["items"][0]["is_active"] is True
         call("POST", f"/hr/{hr['id']}/transition", {"to_status": "离职", "effective_date": str(date.today()), "reason": ""}, expected=(422,))
         offboarded = call("POST", f"/hr/{hr['id']}/transition", {"to_status": "离职", "effective_date": str(date.today()), "reason": "员工主动离职", "handover_to": "交接同事", "comment": "工作已交接"})
-        assert offboarded["status"] == "离职" and offboarded["data"]["handover_to"] == "交接同事"
+        assert offboarded["status"] == "离职" and offboarded["data"]["handover_to"] == "交接同事" and offboarded["data"]["is_active"] is False
+        login(member_name, "SmokePass2026!", expected=(401,))
         warehouse = create_record("warehouse", "报废", "冒烟物品", {"category": "办公用品", "quantity": 1, "unit": "件", "location": "冒烟仓库"})
         assert warehouse["status"] == "在库" and warehouse["data"]["borrower"] == ""
         call("PATCH", f"/records/{warehouse['id']}", {"data": {**warehouse["data"], "borrower": "绕过借出"}}, expected=(409,))
