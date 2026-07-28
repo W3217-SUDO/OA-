@@ -234,6 +234,8 @@ def main() -> None:
     assert 'width: 235' in CUSTOMER[CUSTOMER.index('title: "客户编号"'):CUSTOMER.index('title: "客户名称"')], "customer number column must be wide enough to display the generated identifier"
     assert 'tableLayout="fixed"' in CUSTOMER and '<button' in CUSTOMER[CUSTOMER.index('title: "客户编号"'):CUSTOMER.index('title: "客户名称"')], "customer table must use fixed columns and a cell-contained number action"
     assert all(token in CUSTOMER_CSS for token in ('.customer-original-table .ant-table-cell', 'overflow: hidden !important;', '.customer-cell-link > span', 'text-overflow: ellipsis;')), "customer number text must be clipped inside its own cell"
+    assert 'error?.response?.data?.detail || "客户数据加载失败"' in CUSTOMER, "customer permission failures must surface the server reason instead of a generic load error"
+    print("CUSTOMER_PERMISSION_ERROR_OK: customer list permission failures show the server denial reason")
     normalized_app = re.sub(r"\s+", "", APP)
     normalized_hr = re.sub(r"\s+", "", HR)
     normalized_contract = re.sub(r"\s+", "", CONTRACT)

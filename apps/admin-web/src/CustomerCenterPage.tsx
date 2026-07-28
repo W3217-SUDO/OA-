@@ -289,8 +289,8 @@ export default function CustomerCenterPage({
         if (targetRow) void openDetail(targetRow);
         else message.warning("未找到关联客户或当前账号无权查看");
       }
-    } catch {
-      message.error("客户数据加载失败");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "客户数据加载失败");
     } finally {
       setLoading(false);
     }
