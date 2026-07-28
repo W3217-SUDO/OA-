@@ -1,6 +1,6 @@
-import {useEffect, useMemo, useState} from 'react'
-import {Button, Card, DatePicker, Descriptions, Dropdown, Empty, Form, Input, message, Modal, Select, Space, Table, Tag, Timeline} from 'antd'
-import type {MenuProps, TableColumnsType} from 'antd'
+import {useEffect, useMemo, useState, type Key} from 'react'
+import {Button, Card, DatePicker, Descriptions, Dropdown, Empty, Form, Input, message, Modal, Select, Space, Table, Tag, Timeline, Tree} from 'antd'
+import type {MenuProps, TableColumnsType, TreeDataNode} from 'antd'
 import {EllipsisOutlined} from '@ant-design/icons'
 import dayjs, {type Dayjs} from 'dayjs'
 import {api} from './api'
@@ -50,6 +50,22 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
     const evidenceDate=String(d.evidence_date||d.collected_at||'')
     return (!warehouse||String(d.warehouse||row.department)===warehouse)&&contains(d.location,location)&&contains(d.rights_holder||row.customer,rightsHolder)&&(!status||statusOf(row)===status)&&contains(d.case_no,caseNo)&&contains(d.shop_name||row.title,shop)&&contains(d.investigator||row.owner,investigator)&&contains(d.notary_no,notaryNo)&&(!dates?.[0]||evidenceDate>=dates[0].format('YYYY-MM-DD'))&&(!dates?.[1]||evidenceDate<=dates[1].format('YYYY-MM-DD'))
   }),[allRows,warehouse,location,rightsHolder,status,caseNo,shop,investigator,notaryNo,dates])
+  const warehouseOptions=useMemo(()=>[...new Set([...warehouses,...allRows.map(row=>String(row.data?.warehouse||row.department||'').trim()).filter(Boolean)])].sort(),[allRows])
+  const storageTreeData=useMemo<TreeDataNode[]>(()=>{
+    const grouped=new Map<string,Map<string,number>>()
+    allRows.forEach(row=>{
+      const data=row.data||{}
+      const warehouseName=String(data.warehouse||row.department||'未设置仓库').trim()||'未设置仓库'
+      const locationName=String(data.location||'未设置库位').trim()||'未设置库位'
+      const locations=grouped.get(warehouseName)||new Map<string,number>()
+      locations.set(locationName,(locations.get(locationName)||0)+1)
+      grouped.set(warehouseName,locations)
+    })
+    return [...grouped.entries()].sort(([left],[right])=>left.localeCompare(right,'zh-CN')).map(([warehouseName,locations])=>{
+      const total=[...locations.values()].reduce((sum,count)=>sum+count,0)
+      return {key:`warehouse:${warehouseName}`,title:`${warehouseName}（${total}）`,children:[...locations.entries()].sort(([left],[right])=>left.localeCompare(right,'zh-CN')).map(([locationName,count])=>({key:`location:${warehouseName}\u0000${locationName}`,title:`${locationName}（${count}）`}))}
+    })
+  },[allRows])
 
   const openEditor=(row?:Item)=>{
     setEditing(row||null)
@@ -92,11 +108,23 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
   ]
 
   const actionTitle=action?({"check-in":'证物入库',"check-out":'证物出库',"recheck-in":'证物重新入库',destroy:'销毁证物'}[action.kind]):''
+  const selectStorageLocation=(keys:Key[])=>{
+    const key=String(keys[0]||'')
+    if(key.startsWith('warehouse:')){setWarehouse(key.slice('warehouse:'.length));setLocation('');return}
+    if(key.startsWith('location:')){const [warehouseName,locationName]=key.slice('location:'.length).split('\u0000');setWarehouse(warehouseName);setLocation(locationName)}
+  }
+
   return <Card className="panel warehouse-location" title="仓库库位">
-    <section className="warehouse-list-panel">
+    <div className="warehouse-layout">
+      <aside className="warehouse-storage-tree" aria-label="仓库库位汇总">
+        <div className="warehouse-storage-title"><span>仓库库位</span><Button type="link" size="small" onClick={()=>{setWarehouse('');setLocation('')}}>全部</Button></div>
+        <Tree blockNode defaultExpandAll virtual={false} selectedKeys={[location?`location:${warehouse}\u0000${location}`:warehouse?`warehouse:${warehouse}`:'']} onSelect={selectStorageLocation} treeData={storageTreeData}/>
+        {!storageTreeData.length&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无证物库位"/>}
+      </aside>
+      <section className="warehouse-list-panel">
       <div className="warehouse-list-title"><span>货物列表</span></div>
       <div className="warehouse-query">
-        <label><span>仓库</span><Select value={warehouse} onChange={setWarehouse} options={[{value:'',label:'请选择'},...warehouses.map(value=>({value,label:value}))]}/></label>
+        <label><span>仓库</span><Select value={warehouse} onChange={value=>{setWarehouse(value);setLocation('')}} options={[{value:'',label:'请选择'},...warehouseOptions.map(value=>({value,label:value}))]}/></label>
         <label><span>库位</span><Input value={location} onChange={e=>setLocation(e.target.value)} allowClear/></label>
         <label><span>权利人</span><Input value={rightsHolder} onChange={e=>setRightsHolder(e.target.value)} allowClear/></label>
         <label><span>证物状态</span><Select value={status} onChange={setStatus} options={[{value:'',label:'请选择'},...evidenceStatuses.map(value=>({value,label:value}))]}/></label>
@@ -111,7 +139,8 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
         </Space>
       </div>
       <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有查询到符合条件的记录 。"/>}} pagination={{pageSize:20,showTotal:total=>`共 ${total} 条`}} scroll={{x:1500}}/>
-    </section>
+      </section>
+    </div>
 
     <Modal width={760} title={editing?'编辑证物资料':'登记证物'} open={editorOpen} confirmLoading={saving} onCancel={()=>setEditorOpen(false)} onOk={()=>void saveEvidence()} okText="保存" cancelText="取消" destroyOnHidden>
       <Form form={form} layout="vertical" className="warehouse-evidence-form">

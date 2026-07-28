@@ -302,6 +302,7 @@ def main() -> None:
         assert token in APP, f"cross-tab logout synchronization missing: {token}"
     print("WORKSPACE_LOGOUT_SYNC_OK: logout clears business navigation context, returns to root and synchronizes other tabs")
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
+    assert 'reset-password' in SYSTEM and '重置密码' in SYSTEM and 'must_change_password = True' in MAIN, "system user list must provide a separate secure password reset action that forces the next-login change"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
     assert 'sessionStorage.getItem("sunhold:contract-customer")' in CONTRACT, "contract creation must consume customer context from the customer page"
@@ -2034,6 +2035,15 @@ def main() -> None:
     ):
         assert token in WAREHOUSE, f"warehouse evidence relation link missing: {token}"
     print("WAREHOUSE_RELATION_LINKS_OK: evidence list and lifecycle dialogs link clue, notary, case and rights-holder details")
+    for token in (
+        'const storageTreeData=useMemo<TreeDataNode[]>',
+        'warehouse-storage-tree',
+        'const selectStorageLocation=(keys:Key[])',
+        "setWarehouse(warehouseName);setLocation(locationName)",
+        'title:`${warehouseName}（${total}）`',
+    ):
+        assert token in WAREHOUSE, f"warehouse storage-location navigation contract missing: {token}"
+    print("WAREHOUSE_STORAGE_TREE_OK: real warehouse/location counts provide a clickable list filter without fabricated inventory")
     assert "sunhold:company-bank-address" not in SYSTEM and '"bank_address"' in MAIN, "company bank address must persist through the backend config"
     assert "api.post('/hr/employees'" in HR and '/hr/employees"' in MAIN and 'account_type == "员工账号"' in MAIN and 'role="user"' in MAIN, "employee-account HR saves must atomically create/sync a least-privileged login account"
     assert '不能通过员工档案覆盖管理员账号' in MAIN and '关联可登录账号，不能直接删除' in MAIN and 'user.is_active = body.is_active' in MAIN, "HR account edit, deletion and disable boundaries must stay synchronized"
