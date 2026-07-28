@@ -2804,6 +2804,8 @@ def main():
         fee = call("POST", "/finance/fees", {"title": "冒烟官方费用", "customer": "冒烟客户", "amount": 1000, "fee_type": "官方费用", "case_no": case["serial_no"], "case_record_id": case["id"], "contract_record_id": contract["id"], "handler": USERNAME, "court": "上海市测试人民法院", "document_no": "SMOKE-NOTICE", "payee": "测试法院"}, expected=(201,))
         records.append(fee["id"])
         assert fee["data"]["case_id"] == case["id"] and fee["data"]["contract_id"] == contract["id"] and fee["data"]["contract_no"] == contract["serial_no"]
+        fee_detail_target = call("GET", f"/records/{fee['id']}")
+        assert fee_detail_target["module"] == "finance" and fee_detail_target["serial_no"] == fee["serial_no"]
         assert call("GET", f"/finance/fees/{fee['id']}/readiness")["ready"] is True
         call("POST", f"/finance/fees/{fee['id']}/submit", {"comment": "提交"})
         call("POST", f"/finance/fees/{fee['id']}/approve", {"comment": "通过"})

@@ -1247,9 +1247,14 @@ def main() -> None:
         'viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no',
         'viewingCounselCase.data.original_case_no||viewingCounselCase.data.origin_case_no||viewingCounselCase.data.source_case_no',
         'onClick={()=>openRelatedTask(row)}',
+        'constopenRelatedFee=async(fee:CaseRow)=>',
+        'rememberBusinessRecordDetailTarget({id:data.id,module:"finance"})',
+        'onNavigate?.("finance-fee-query")',
+        'row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no',
+        'onClick={()=>voidopenRelatedFee(row)}',
     ):
         assert token in normalized_case, f"case cross-module relation guard missing: {token}"
-    print("CASE_CROSS_MODULE_RELATIONS_OK: case contract, customer, clue, original-case and task references navigate to their real detail contexts")
+    print("CASE_CROSS_MODULE_RELATIONS_OK: case contract, customer, clue, original-case, task and fee references navigate to their real detail contexts")
     for token in (
         '"can_create_case_task":False',
         '"can_create_case_task":can_progress',

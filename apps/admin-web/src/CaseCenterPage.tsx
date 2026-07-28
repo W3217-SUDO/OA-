@@ -38,11 +38,13 @@ import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
+import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import "./case-center.css";
 
 type CaseRow = {
   id: number;
+  module?: string;
   serial_no: string;
   title: string;
   customer: string;
@@ -819,6 +821,23 @@ export default function CaseCenterPage({
             ? "task-company-accepted"
             : "task-my-accepted";
     onNavigate?.(route);
+  };
+  const openRelatedFee = async (fee: CaseRow) => {
+    if (!fee.id) {
+      message.warning("当前费用记录不存在或无权查看");
+      return;
+    }
+    try {
+      const { data } = await api.get(`/records/${fee.id}`);
+      if (data.module !== "finance") throw new Error("关联记录不是费用申请");
+      if (!rememberBusinessRecordDetailTarget({ id: data.id, module: "finance" })) {
+        message.warning("当前费用记录不存在或无权查看");
+        return;
+      }
+      onNavigate?.("finance-fee-query");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || error?.message || "费用记录不存在或无权查看");
+    }
   };
   const openRelatedClue = (target: { id?: number; serial_no?: unknown }) => {
     const id = Number(target.id || 0) || undefined;
@@ -2280,9 +2299,9 @@ export default function CaseCenterPage({
                   {title:"操作",key:"actions",width:160,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button></Space>},
                 ]}/>
               </>},
-              {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
-              {key:"platform-fees",label:"平台费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("平台"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
-              {key:"internal-fees",label:"内部结算",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no"},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
+              {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
+              {key:"platform-fees",label:"平台费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("平台"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
+              {key:"internal-fees",label:"内部结算",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
               {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",dataIndex:"owner",width:110},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Button type="primary" style={{marginBottom:10}} onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",dataIndex:"operator",width:110}]}/></>},
               {key:"logs",label:"系统日志",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",dataIndex:"operator",width:110},{title:"说明",dataIndex:"comment"}]}/>},
