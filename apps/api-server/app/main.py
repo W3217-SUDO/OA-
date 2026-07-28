@@ -12431,38 +12431,53 @@ def _agent_content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def _agent_document_dict(item: AgentDocument, template: DocumentTemplate | None = None, record: BusinessRecord | None = None) -> dict:
-    return {"id": item.id, "job_no": item.job_no, "template_id": item.template_id, "template_name": template.name if template else "", "record_id": item.record_id, "record_no": record.serial_no if record else "", "record_title": record.title if record else "", "title": item.title, "instruction": item.instruction, "content": item.content, "status": item.status, "content_version": item.content_version, "confirmed_by": item.confirmed_by, "confirmed_at": item.confirmed_at, "conversation_id": item.conversation_id, "dify_message_id": item.dify_message_id, "error": item.error, "creator": item.creator, "created_at": item.created_at, "updated_at": item.updated_at}
+def _agent_document_dict(item: AgentDocument, template: DocumentTemplate | None = None, record: BusinessRecord | None = None, capabilities: dict | None = None) -> dict:
+    return {"id": item.id, "job_no": item.job_no, "template_id": item.template_id, "template_name": template.name if template else "", "record_id": item.record_id, "record_no": record.serial_no if record else "", "record_title": record.title if record else "", "title": item.title, "instruction": item.instruction, "content": item.content, "status": item.status, "content_version": item.content_version, "confirmed_by": item.confirmed_by, "confirmed_at": item.confirmed_at, "conversation_id": item.conversation_id, "dify_message_id": item.dify_message_id, "error": item.error, "creator": item.creator, "created_at": item.created_at, "updated_at": item.updated_at, "capabilities": capabilities or {}}
 
 
 async def _ensure_agent_document_access(document_id: int, identity: dict, db: AsyncSession, *, write: bool = False) -> tuple[AgentDocument, BusinessRecord | None]:
     item = await db.get(AgentDocument, document_id)
     if not item:
         raise HTTPException(status_code=404, detail="智能文档任务不存在")
-    record = None
     linked_record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
-    if linked_record and linked_record.module == "customer":
-        # Customer-linked generated documents may contain a complete historic
-        # snapshot and can write attachments/events back to the customer.  A
-        # share recipient is therefore limited to the customer detail and
-        # existing attachment downloads; creator status never bypasses a
-        # later ownership revocation.
-        record = await _ensure_record_module(linked_record.id, "customer", identity, db)
-        await _require_record_owner_or_manager(record, identity, db)
-        return item, record
     if item.record_id:
-        try:
-            record = await _ensure_record_visible(item.record_id, identity, db)
-        except HTTPException:
-            record = None
+        # A generated document contains a snapshot of the related business
+        # record.  Its creator must never retain access after that record is
+        # transferred, hidden, or otherwise revoked.  Current record scope is
+        # therefore checked before creator status for every module.
+        if not linked_record:
+            raise HTTPException(status_code=404, detail="关联业务记录不存在或无权访问")
+        record = await _ensure_record_visible(item.record_id, identity, db)
+        if write:
+            await _require_record_owner_or_manager(record, identity, db)
+        return item, record
     if identity.get("role") == "admin" or item.creator == identity["username"]:
-        return item, record
-    if record and not write:
-        return item, record
-    if record and write:
-        await _require_record_owner_or_manager(record, identity, db)
-        return item, record
+        return item, None
     raise HTTPException(status_code=404, detail="智能文档任务不存在或无权访问")
+
+
+async def _agent_document_capabilities(item: AgentDocument, identity: dict, db: AsyncSession, record: BusinessRecord | None) -> dict:
+    """Return UI capabilities after the same checks used by protected APIs."""
+    is_creator_or_admin = identity.get("role") == "admin" or item.creator == identity["username"]
+    can_write = is_creator_or_admin
+    if record:
+        try:
+            await _require_record_owner_or_manager(record, identity, db)
+        except HTTPException:
+            can_write = False
+        else:
+            can_write = True
+    can_writeback = bool(can_write and record and item.status == "已人工确认")
+    if can_writeback and record and record.module == "case":
+        try:
+            await _require_case_detail_write_access(record, identity, db)
+        except HTTPException:
+            can_writeback = False
+    has_written_attachment = False
+    if record:
+        has_written_attachment = bool(await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, FileAttachment.remark == f"Dify任务 {item.job_no}")))
+    can_delete = bool(can_write and is_creator_or_admin and not item.confirmed_by and not item.confirmed_at and not has_written_attachment)
+    return {"can_download": True, "can_edit": can_write, "can_retry": can_write, "can_confirm": can_write, "can_writeback": can_writeback, "can_delete": can_delete}
 
 
 def _docx_bytes(title: str, content: str) -> bytes:
@@ -12497,19 +12512,22 @@ async def _run_document_agent(item: AgentDocument) -> None:
 @app.get(f"{settings.api_prefix}/agent/documents")
 async def list_agent_documents(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     items = (await db.scalars(select(AgentDocument).order_by(AgentDocument.created_at.desc()).limit(100))).all()
-    if identity.get("role") != "admin":
-        allowed_items: list[AgentDocument] = []
-        for item in items:
-            try:
-                await _ensure_agent_document_access(item.id, identity, db)
-            except HTTPException:
-                continue
-            allowed_items.append(item)
-        items = allowed_items
-    template_ids = {x.template_id for x in items}; record_ids = {x.record_id for x in items if x.record_id}
+    accessible_items: list[tuple[AgentDocument, BusinessRecord | None]] = []
+    for item in items:
+        try:
+            _, record = await _ensure_agent_document_access(item.id, identity, db)
+        except HTTPException:
+            continue
+        accessible_items.append((item, record))
+    template_ids = {item.template_id for item, _ in accessible_items}; record_ids = {item.record_id for item, _ in accessible_items if item.record_id}
     templates = {x.id: x for x in (await db.scalars(select(DocumentTemplate).where(DocumentTemplate.id.in_(template_ids)))).all()} if template_ids else {}
     records = {x.id: x for x in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(record_ids)))).all()} if record_ids else {}
-    return {"items": [_agent_document_dict(x, templates.get(x.template_id), records.get(x.record_id)) for x in items], "dify_configured": bool(settings.dify_base_url and settings.dify_api_key)}
+    result = []
+    for item, visible_record in accessible_items:
+        record = visible_record or records.get(item.record_id)
+        capabilities = await _agent_document_capabilities(item, identity, db, record)
+        result.append(_agent_document_dict(item, templates.get(item.template_id), record, capabilities))
+    return {"items": result, "dify_configured": bool(settings.dify_base_url and settings.dify_api_key)}
 
 
 @app.post(f"{settings.api_prefix}/agent/documents", status_code=status.HTTP_201_CREATED)
@@ -12598,20 +12616,15 @@ async def writeback_agent_document(document_id: int, identity: dict = Depends(cu
 
 @app.delete(f"{settings.api_prefix}/agent/documents/{{document_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent_document(document_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item = await db.get(AgentDocument, document_id)
-    if not item: raise HTTPException(status_code=404, detail="智能文档任务不存在")
-    linked_record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
-    if linked_record and linked_record.module == "customer":
-        await _ensure_agent_document_access(document_id, identity, db, write=True)
+    item, record = await _ensure_agent_document_access(document_id, identity, db, write=True)
     if identity.get("role") != "admin" and item.creator != identity["username"]: raise HTTPException(status_code=403, detail="只能删除本人创建的智能文档任务")
-    if item.record_id:
-        await db.execute(
-            delete(WorkflowEvent).where(
-                WorkflowEvent.record_id == item.record_id,
-                WorkflowEvent.action == "创建智能文档",
-                WorkflowEvent.comment.like(f"{item.job_no}|%"),
-            )
-        )
+    if item.confirmed_by or item.confirmed_at or item.status == "已人工确认":
+        raise HTTPException(status_code=409, detail="已人工确认的智能文档不得删除，请保留审核与回写审计记录")
+    if record:
+        written_attachment = await db.scalar(select(FileAttachment).where(FileAttachment.record_id == record.id, FileAttachment.remark == f"Dify任务 {item.job_no}"))
+        if written_attachment:
+            raise HTTPException(status_code=409, detail="已回写业务附件的智能文档不得删除，请保留附件与审计记录")
+        db.add(WorkflowEvent(record_id=record.id, action="删除智能文档任务", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.job_no}｜{item.title}"))
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

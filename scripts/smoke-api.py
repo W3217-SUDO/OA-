@@ -2918,6 +2918,21 @@ def main():
         call("POST", f"/agent/documents/{revoked_agent['id']}/writeback", expected=(403,))
         call("DELETE", f"/agent/documents/{revoked_agent['id']}", expected=(403,))
         TOKEN = admin_token
+        revoked_evidence = create_record("evidence", "待收集", "冒烟证物撤权智能文档", {"evidence_type": "电子数据"}, owner=outsider_name)
+        TOKEN = login(outsider_name, "SmokePass2026!")["access_token"]
+        revoked_evidence_agent = call("POST", "/agent/documents", {"template_id": template["id"], "record_id": revoked_evidence["id"], "title": "冒烟非客户撤权智能文档", "instruction": "验证所有关联业务撤权后创建人不能保留智能文档访问权"}, expected=(201,))
+        agents.append(revoked_evidence_agent["id"])
+        TOKEN = admin_token
+        call("PATCH", f"/records/{revoked_evidence['id']}", {"owner": manager_name})
+        TOKEN = login(outsider_name, "SmokePass2026!")["access_token"]
+        assert all(item["id"] != revoked_evidence_agent["id"] for item in call("GET", "/agent/documents")["items"])
+        call("GET", f"/agent/documents/{revoked_evidence_agent['id']}/download", expected=(404,))
+        call("POST", f"/agent/documents/{revoked_evidence_agent['id']}/retry", expected=(404,))
+        call("PATCH", f"/agent/documents/{revoked_evidence_agent['id']}", {"content": "撤权创建人不得修改关联证物文档"}, expected=(404,))
+        call("POST", f"/agent/documents/{revoked_evidence_agent['id']}/confirm", {"comment": "撤权创建人不得确认"}, expected=(404,))
+        call("POST", f"/agent/documents/{revoked_evidence_agent['id']}/writeback", expected=(404,))
+        call("DELETE", f"/agent/documents/{revoked_evidence_agent['id']}", expected=(404,))
+        TOKEN = admin_token
         document = create_record("document", "已归档", "冒烟收文", {"direction": "收文", "document_date": str(date.today()), "case_no": case["serial_no"], "sender": "上海市测试人民法院"})
         assert document["status"] == "待登记"
         file_item = multipart_upload("/attachments", {"record_id": document["id"], "category": "收文附件", "remark": "冒烟附件"}, "smoke-document.txt", b"sunhold document attachment")
@@ -2945,6 +2960,7 @@ def main():
         call("POST", f"/agent/documents/{agent['id']}/writeback", expected=(409,))
         confirmed = call("POST", f"/agent/documents/{agent['id']}/confirm", {"comment": "律师已逐项核对"})
         assert confirmed["status"] == "已人工确认" and confirmed["confirmed_by"] == USERNAME
+        call("DELETE", f"/agent/documents/{agent['id']}", expected=(409,))
         edited_again = call("PATCH", f"/agent/documents/{agent['id']}", {"content": "# 冒烟文档\n人工修订后的自动验收内容"})
         assert edited_again["status"] == "已编辑" and not edited_again["confirmed_by"]
         call("POST", f"/agent/documents/{agent['id']}/writeback", expected=(409,))

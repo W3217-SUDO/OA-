@@ -1965,6 +1965,30 @@ def main() -> None:
     print("CUSTOMER_COMPANY_RECYCLE_OK: /6001010 full-firm recycle scope, editable manager filter, comma-separated managers, exact totals/empty-state hiding, read-only view, protected restore/public actions and complete paging")
     print("CUSTOMER_CONFLICT_OK: /6001011 exact-name first step, exact miss text, eight-field read-only enterprise second step, stale/race-safe requests and no invented result actions")
     print("TASK_SIDEBAR_PARITY_OK: original task menu has only my/department/company groups; internal task-reminders route is hidden from fallback and configured navigation")
+    for token in (
+        '@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/feedback"',
+        'async def _ensure_attachment_record_visible',
+        'if not (record and record.module == "task"):',
+        'is_same_department_manager',
+        'reviewer.department == task.department',
+    ):
+        assert token in MAIN, f"task feedback/exception-review server guard missing: {token}"
+    for token in (
+        'api.post(`/tasks/${communication.id}/feedback`, body)',
+        'Promise.allSettled([',
+        '任务反馈附件加载失败，请稍后重试',
+        'deleteFeedbackAttachment',
+        'canReviewTaskException(selected)',
+    ):
+        assert token in TASK, f"task feedback/exception-review client guard missing: {token}"
+    for token in (
+        'multipart_upload_many(',
+        '纯协作者提交文字和多附件反馈',
+        '跨部门经理不得审批',
+        '同部门经理审批',
+    ):
+        assert token in SMOKE, f"task feedback/exception-review smoke evidence missing: {token}"
+    print("TASK_FEEDBACK_AND_EXCEPTION_AUTH_OK: participant feedback attachments use one transactional submit with explicit load errors; special-review scope is admin/initiator/same-department manager")
     print(f"FINANCE_LAYOUT_OK: {len(finance_routes)} configured original-layout routes")
     print("TASK_MY_CREATED_OK: /9001001010 six tabs, 12 filters, selectable 14-column list, 15-row/six-size paging, 11 more-actions, four-stage detail and protected task APIs")
     print("TASK_MY_ACCEPTED_OK: /9001001020 four tabs, 12 filters, selectable/sortable 14-column list, 15-row/six-size paging, accept + 11 more-actions, four-stage detail and protected owned-task APIs")
