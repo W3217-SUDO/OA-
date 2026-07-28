@@ -253,6 +253,7 @@ def main() -> None:
     for token in (
         '"agent-document": "documents-agent"',
         '"documents-agent": "AI 智能文档"',
+        '"system-users": "员工管理"',
         'const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route',
         '"notary-import-info": "公证信息导入"',
         'const labelFor = (key: string, fallback?: string)',
@@ -888,8 +889,19 @@ def main() -> None:
     ):
         assert token in INVESTIGATION, f"investigation subtask parent-link contract missing: {token}"
     print("INVESTIGATION_SUBTASK_PARENT_OK: subtask entry preselects and requires a same-investigation parent task")
-    assert "if(initialTab.includes('-my-')&&profile.role!=='admin')" in INVESTIGATION, "administrator must retain full-firm investigation data scope in personal investigation routes"
+    for token in (
+        "if(initialTab.includes('-my-')&&profile.role!=='admin')",
+        "if(initialTab==='investigation-task-sub-published'&&profile.role!=='admin')",
+        "if(initialTab==='investigation-task-sub-mine'&&profile.role!=='admin')",
+    ):
+        assert token in INVESTIGATION, "administrator must retain full-firm investigation data scope in personal investigation routes"
     print("INVESTIGATION_ADMIN_SCOPE_OK: administrator personal investigation routes retain full-firm records")
+    for token in (
+        "setListQuery({});setSelectedClues([])",
+        '<Form key={initialTab} className="investigation-query"',
+    ):
+        assert token in INVESTIGATION, "investigation route changes must clear stale filters and selected records"
+    print("INVESTIGATION_ROUTE_STATE_RESET_OK: investigation route changes cannot carry hidden filters or selections")
     for token in ('initialView==="case-files-receipt"', 'initialView==="case-files-invoice"', 'endsWith("-stage")', 'endsWith("-no-refund")'):
         assert token in CASE, f"missing dedicated case-page behavior token {token}"
     assert '("case-new-civil", "case-new", "民事争议", "", 1)' in MAIN, "civil case creation must be available from the case menu"
@@ -1221,6 +1233,7 @@ def main() -> None:
     for token in (
         '? "owned"',
         'selected?.workflow_status || selected?.status',
+        '(canManageAcceptedTask || canManageCompanyCreatedTask) && selected?.workflow_status === "已停止"',
         'type: "accept" | "restart" | "complete" | "confirm"',
         'api.post(`/tasks/${row.id}/${type}`',
         'type DialogAction = "reject" | "resend"',
@@ -1521,7 +1534,7 @@ def main() -> None:
         'if(!isPersonalView)returntasks;',
         'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
-        '{canManageInitiatedTask&&selected?.status==="已拒绝"&&(',
+        '{(canManageInitiatedTask||canManageCompanyCreatedTask)&&selected?.status==="已拒绝"&&(',
         '{(canManageInitiatedTask||canManageCompanyCreatedTask)&&["已完成","待确认"].includes(',
         '{canManageCompanyCreatedTask&&(',
         'requireOne((row)=>voidsimpleAction(row,"complete"))',

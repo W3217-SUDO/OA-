@@ -1109,7 +1109,7 @@ export default function TaskCenterPage({
           <div className="task-bottom-actions">
             <Space size={5}>
               {canManageInitiatedTask && <Button onClick={openCreateTask}>新增任务</Button>}
-              {canManageInitiatedTask && selected?.status === "已拒绝" && (
+              {(canManageInitiatedTask || canManageCompanyCreatedTask) && selected?.status === "已拒绝" && (
                 <Button onClick={() => openDialog(selected, "resend")}>重新派发</Button>
               )}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && ["已完成", "待确认"].includes(selected?.workflow_status || selected?.status || "") && (
@@ -1139,7 +1139,7 @@ export default function TaskCenterPage({
                   </Button>
                 </>
               )}
-              {selected?.workflow_status === "已停止" && selected?.exception_request?.action === "挂起" && <Button onClick={() => void simpleAction(selected, "restart")}>恢复挂起任务</Button>}
+              {(canManageAcceptedTask || canManageCompanyCreatedTask) && selected?.workflow_status === "已停止" && selected?.exception_request?.action === "挂起" && <Button onClick={() => void simpleAction(selected, "restart")}>恢复挂起任务</Button>}
               {selected?.exception_request?.status === "待审批" && (selected?.initiator === profile.username || ["admin","manager"].includes(profile.role)) && <><Button onClick={() => void reviewTaskException(selected, true)}>通过特殊处理</Button><Button danger onClick={() => void reviewTaskException(selected, false)}>驳回特殊处理</Button></>}
               {selected?.performance_impact?.overdue && <Tag color="red">超期 {selected.performance_impact.overdue_days} 天，绩效影响 {selected.performance_impact.penalty_points} 分</Tag>}
               {canManageCompanyCreatedTask && (selected?.workflow_status || selected?.status) === "处理中" && (
