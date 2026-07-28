@@ -31,6 +31,12 @@ TASK = (ROOT / "apps/admin-web/src/TaskCenterPage.tsx").read_text(encoding="utf-
 NORMALIZED_TASK = re.sub(r"\s+", "", TASK)
 NOTIFICATION = (ROOT / "apps/admin-web/src/NotificationCenter.tsx").read_text(encoding="utf-8")
 AUDIT_LOG = (ROOT / "apps/admin-web/src/AuditLogPage.tsx").read_text(encoding="utf-8")
+GLOBAL_SEARCH = (ROOT / "apps/admin-web/src/GlobalSearch.tsx").read_text(encoding="utf-8")
+FINANCE_PAGE = (ROOT / "apps/admin-web/src/FinanceCenterPage.tsx").read_text(encoding="utf-8")
+SEAL_PAGE = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")
+DOCUMENT_PAGE = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
+WAREHOUSE_PAGE = (ROOT / "apps/admin-web/src/WarehousePage.tsx").read_text(encoding="utf-8")
+BUSINESS_RECORD_NAVIGATION = (ROOT / "apps/admin-web/src/businessRecordDetailNavigation.ts").read_text(encoding="utf-8")
 SMOKE = (ROOT / "scripts/smoke-api.py").read_text(encoding="utf-8")
 NORMALIZED_SMOKE = re.sub(r"\s+", "", SMOKE)
 DOCUMENT = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
@@ -864,6 +870,21 @@ def main() -> None:
         'rememberInvestigationDetailTarget({ id: row.record_id, serial_no: row.serial_no, module: row.module })',
     ):
         assert token in AUDIT_LOG, f"audit log detail navigation must retain the authoritative record id: {token}"
+    for token in (
+        'export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse";',
+        'const STORAGE_KEY = "sunhold:business-record-detail-context";',
+        'if (!parsed || !parsed.id || parsed.module !== module) return null;',
+        'if (["finance", "seal", "document", "warehouse"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" });',
+        'if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });',
+        '"sunhold:business-record-detail-context",',
+        'consumeBusinessRecordDetailTarget("finance")',
+        'consumeBusinessRecordDetailTarget(\'seal\')',
+        'consumeBusinessRecordDetailTarget("document")',
+        'consumeBusinessRecordDetailTarget(\'warehouse\')',
+        'api.get(`/records/${target.id}`)',
+    ):
+        combined = "\n".join((BUSINESS_RECORD_NAVIGATION, GLOBAL_SEARCH, NOTIFICATION, APP, FINANCE_PAGE, SEAL_PAGE, DOCUMENT_PAGE, WAREHOUSE_PAGE))
+        assert token in combined, f"exact business-record detail navigation contract missing: {token}"
     for token in (
         'constisReminder=initialView==="task-reminders";',
         'reminder_only:isReminder||undefined,',

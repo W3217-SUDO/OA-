@@ -8,6 +8,7 @@ import {rememberCaseDetailTarget} from './caseDetailNavigation'
 import {rememberCustomerDetailTarget} from './customerDetailNavigation'
 import {formatRequiredDate} from './formSafety'
 import {rememberInvestigationDetailTarget} from './investigationDetailNavigation'
+import {consumeBusinessRecordDetailTarget} from './businessRecordDetailNavigation'
 import './warehouse.css'
 
 type EvidenceData=Record<string, string|number>
@@ -61,6 +62,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
   const openAction=(kind:ActionKind,row:Item)=>{setAction({kind,row});actionForm.resetFields();const d=row.data||{};if(kind==='check-in'||kind==='recheck-in')actionForm.setFieldsValue({warehouse:d.warehouse||'',location:d.location||'',condition:'完好'});setTimeout(()=>actionForm.getFieldInstance(kind==='destroy'?'reason':kind==='check-out'?'recipient':'warehouse')?.focus?.(),0)}
   const submitAction=async()=>{if(!action)return;try{const values=await actionForm.validateFields();setSaving(true);await api.post(`/warehouse/evidence/${action.row.id}/${action.kind}`,values);message.success({"check-in":'证物已入库',"check-out":'证物已出库',"recheck-in":'证物已重新入库',destroy:'证物已销毁'}[action.kind]);setAction(null);await load()}catch(error:any){if(error?.errorFields)return;message.error(error?.response?.data?.detail||'业务办理失败')}finally{setSaving(false)}}
   const openHistory=async(row:Item)=>{setHistoryRow(row);setHistory([]);try{const {data}=await api.get(`/records/${row.id}/history`);setHistory(data.items||[])}catch{message.error('流程记录加载失败')}}
+  useEffect(()=>{const target=consumeBusinessRecordDetailTarget('warehouse');if(!target)return;void (async()=>{try{const {data}=await api.get(`/records/${target.id}`);if(data.module!=='warehouse')throw new Error('关联记录不是证物');await openHistory(data)}catch(error:any){message.error(error?.response?.data?.detail||error?.message||'证物详情加载失败')}})()},[])
 
   const openCaseDetail=(caseNo:unknown)=>{const serialNo=String(caseNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联案件');return}rememberCaseDetailTarget({serial_no:serialNo});onNavigate?.('case-company')}
   const openClueDetail=(clueNo:unknown)=>{const serialNo=String(clueNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联线索');return}rememberInvestigationDetailTarget({serial_no:serialNo,module:'clue'});onNavigate?.('clue-company-draft')}

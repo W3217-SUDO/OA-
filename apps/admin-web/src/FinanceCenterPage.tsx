@@ -43,6 +43,7 @@ import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import { ReceiptCreatePage } from "./PlatformFinancePage";
@@ -409,6 +410,19 @@ export default function FinanceCenterPage({
   const [settlementActionLoading, setSettlementActionLoading] = useState(false);
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
+  useEffect(() => {
+    const target = consumeBusinessRecordDetailTarget("finance");
+    if (!target) return;
+    void (async () => {
+      try {
+        const { data } = await api.get(`/records/${target.id}`);
+        if (data.module !== "finance") throw new Error("关联记录不是费用申请");
+        setFeeDetail(data);
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || error?.message || "费用详情加载失败");
+      }
+    })();
+  }, []);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);

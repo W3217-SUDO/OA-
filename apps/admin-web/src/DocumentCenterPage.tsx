@@ -40,6 +40,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./document-center.css";
@@ -382,6 +383,19 @@ export default function DocumentCenterPage({
       message.error("流程记录加载失败");
     }
   };
+  useEffect(() => {
+    const target = consumeBusinessRecordDetailTarget("document");
+    if (!target) return;
+    void (async () => {
+      try {
+        const { data } = await api.get(`/records/${target.id}`);
+        if (data.module !== "document") throw new Error("关联记录不是收发文");
+        await openDocument(data);
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || error?.message || "收发文详情加载失败");
+      }
+    })();
+  }, []);
   const startAction = (row: RecordRow, toStatus: string) => {
     setViewing(row);
     setActionStatus(toStatus);

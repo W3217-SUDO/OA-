@@ -6,6 +6,7 @@ import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
+import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 
 type Notice = {
   id: number;
@@ -57,6 +58,7 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
     if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
     if (item.source_type === "task" && item.source_id) rememberTaskDetailTarget({ id: item.source_id });
     if (["clue", "notary", "evidence"].includes(item.source_type) && item.source_id) rememberInvestigationDetailTarget({ id: item.source_id, module: item.source_type });
+    if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });
     const route = routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
     if (route) {
       onNavigate(route);
