@@ -1806,7 +1806,8 @@ def main() -> None:
         assert token in WAREHOUSE, f"warehouse evidence relation link missing: {token}"
     print("WAREHOUSE_RELATION_LINKS_OK: evidence list and lifecycle dialogs link clue, notary, case and rights-holder details")
     assert "sunhold:company-bank-address" not in SYSTEM and '"bank_address"' in MAIN, "company bank address must persist through the backend config"
-    assert "api.post('/hr/employees'" in HR and '/hr/employees"' in MAIN, "employee account and HR record creation must use one atomic endpoint"
+    assert "api.post('/hr/employees'" in HR and '/hr/employees"' in MAIN and 'account_type == "员工账号"' in MAIN and 'role="user"' in MAIN, "employee-account HR saves must atomically create/sync a least-privileged login account"
+    assert '不能通过员工档案覆盖管理员账号' in MAIN and '关联可登录账号，不能直接删除' in MAIN and 'user.is_active = body.is_active' in MAIN, "HR account edit, deletion and disable boundaries must stay synchronized"
     assert "const rawCellValue" in FINANCE and 'spec.control === "date"' in FINANCE and 'spec.control === "money"' in FINANCE, "finance route queries must apply typed field filters"
     for field in ("project_role", "office_phone", "im_account", "contact_status", "is_valid"):
         assert field in CUSTOMER, f"new-customer contact tab is missing {field}"
