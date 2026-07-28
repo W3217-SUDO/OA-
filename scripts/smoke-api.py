@@ -1553,7 +1553,11 @@ def main():
         hearing = call("POST", "/hearings", {"case_record_id": case["id"], "hearing_date": str(date.today() + timedelta(days=20)), "hearing_time": "09:30:00", "court": "上海市测试人民法院", "hearing_lawyer": USERNAME}, expected=(201,))
         hearings.append(hearing["id"])
         assert call("GET", f"/records/{case['id']}")["status"] == "一审准备开庭"
-        assert call("GET", "/hearings")["total"] >= 1
+        hearings_payload = call("GET", "/hearings")
+        listed_hearing = next(item for item in hearings_payload["items"] if item["id"] == hearing["id"])
+        assert listed_hearing["case_record_id"] == case["id"] and listed_hearing["case_no"] == case["serial_no"]
+        assert call("GET", f"/records/{listed_hearing['case_record_id']}")["id"] == case["id"]
+        assert hearings_payload["total"] >= 1
         call("DELETE", f"/hearings/{hearing['id']}", expected=(204,)); hearings.remove(hearing["id"])
         judgment = call("POST", f"/cases/{case['id']}/progress", {"judgment_date": str(date.today()), "judgment_document_no": serial("JUDGMENT"), "comment": "收到一审裁判文书"})
         assert judgment["status"] == "待上诉"

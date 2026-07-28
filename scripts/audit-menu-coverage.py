@@ -1164,11 +1164,29 @@ def main() -> None:
         'selectedCaseCapability.can_manage_hearing',
         'selectedCaseCapability.can_archive',
         'getCaseCapability(row).can_update_progress?<Button',
-        'specialMode==="schedule"&&<ButtononClick={()=>selectedCase?openHearing(selectedCase)',
+        'specialMode==="schedule"&&<ButtononClick={()=>voidopenSelectedScheduleHearing()}',
         'if(!getCaseCapability(row).can_archive)returnmessage.warning(',
     ):
         assert token in normalized_case, f"case list/bottom action capability guard missing: {token}"
     print("CASE_TEAM_ACTION_CAPABILITY_UI_OK: row actions, upload controls and bottom more-actions are capability-gated before API invocation")
+    for token in (
+        'constresolveVisibleCase=async(row:{case?:CaseRow;case_record_id?:number;serial_no?:string;case_no?:string})=>',
+        'constcaseRecordId=Number(row.case_record_id||0);',
+        'api.get(`/records/${caseRecordId}`)',
+        'if(data.module!=="case")thrownewError("关联记录不是案件")',
+        'onClick={()=>voidopenSpecialCaseDetail({case_record_id:row.case_record_id,case_no:value})}',
+        'constopenSelectedScheduleHearing=async()=>',
+        'case_record_id:selectedSpecialRow.case_record_id,case_no:selectedSpecialRow.case_no',
+        'elseif(selectedSpecialRow)voidopenSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no})',
+    ):
+        assert token in normalized_case, f"hearing/case relation resolver guard missing: {token}"
+    for token in (
+        'listed_hearing=next(itemforiteminhearings_payload["items"]ifitem["id"]==hearing["id"])',
+        'listed_hearing["case_record_id"]==case["id"]',
+        'call("GET",f"/records/{listed_hearing[\'case_record_id\']}")["id"]==case["id"]',
+    ):
+        assert token in NORMALIZED_SMOKE, f"hearing stable case-id smoke missing: {token}"
+    print("CASE_HEARING_CASE_RESOLVER_OK: hearings resolve the scoped case record id instead of the hearing id or a truncated case list")
     for token in (
         '"can_create_case_task":False',
         '"can_create_case_task":can_progress',

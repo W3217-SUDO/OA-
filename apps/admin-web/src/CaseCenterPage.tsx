@@ -792,15 +792,39 @@ export default function CaseCenterPage({
     rememberContractDetailTarget({ serial_no: serialNo });
     onNavigate?.("contract-company");
   };
-  const openSpecialCaseDetail = (row: { case?: CaseRow; case_record_id?: number; serial_no?: string; case_no?: string }) => {
-    const target =
-      row.case ||
-      cases.find((item) => item.id === row.case_record_id || (row.serial_no && item.serial_no === row.serial_no) || (row.case_no && item.serial_no === row.case_no));
+  const resolveVisibleCase = async (row: { case?: CaseRow; case_record_id?: number; serial_no?: string; case_no?: string }) => {
+    if (row.case?.id) return row.case;
+    const caseRecordId = Number(row.case_record_id || 0);
+    try {
+      if (caseRecordId > 0) {
+        const { data } = await api.get(`/records/${caseRecordId}`);
+        if (data.module !== "case") throw new Error("关联记录不是案件");
+        return data as CaseRow;
+      }
+      const caseNo = String(row.case_no || row.serial_no || "").trim();
+      if (!caseNo) return null;
+      const cached = cases.find((item) => item.serial_no === caseNo);
+      if (cached) return cached;
+      const { data } = await api.get("/records", { params: { module: "case", keyword: caseNo, page_size: 100 } });
+      return (data.items as CaseRow[]).find((item) => item.serial_no === caseNo) || null;
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      message.warning(detail || "关联案件不存在或当前账号无权查看");
+      return null;
+    }
+  };
+  const openSpecialCaseDetail = async (row: { case?: CaseRow; case_record_id?: number; serial_no?: string; case_no?: string }) => {
+    const target = await resolveVisibleCase(row);
     if (!target) {
-      message.warning("当前记录未找到关联案件");
+      if (!row.case_record_id && !row.case_no && !row.serial_no) message.warning("当前记录未关联案件");
       return;
     }
-    void openCounselDetail(target);
+    await openCounselDetail(target);
+  };
+  const openSpecialCaseTasks = async (row: { case?: CaseRow; case_record_id?: number; serial_no?: string; case_no?: string }) => {
+    const target = await resolveVisibleCase(row);
+    if (!target) return;
+    await openCaseTasks(target);
   };
   const createCounselReminder = async () => {
     if (!viewingCounselCase) return;
@@ -1187,9 +1211,8 @@ export default function CaseCenterPage({
       dataIndex: "case_no",
       width: 145,
       render: (value: string, row: Hearing) => {
-        const target = cases.find((item) => item.id === row.case_record_id || item.serial_no === value);
         return value ? (
-          <Button type="link" className="case-cell-link" onClick={() => target ? void openCounselDetail(target) : message.warning("当前记录未找到关联案件")}>
+          <Button type="link" className="case-cell-link" onClick={() => void openSpecialCaseDetail({ case_record_id: row.case_record_id, case_no: value })}>
             {value}
           </Button>
         ) : "—";
@@ -1510,6 +1533,11 @@ export default function CaseCenterPage({
   const invoiceRows=attachments.filter(row=>row.category.includes("发票")||row.category.includes("票据"));
   const specialRows:any[]=specialMode==="schedule"?scheduleRows:specialMode==="execution"?specialCases.filter(row=>row.status==="执行"):specialMode==="unclaimed"?specialCases.filter(row=>!row.data.commission_applied):specialMode==="stage"?phaseRows:specialMode==="refund"?financeRows.filter(row=>String(row.data.fee_type||row.title).includes("退费")&&caseMatches(row)):specialMode==="receipt"?receiptRows:specialMode==="invoice"?invoiceRows:[];
   const selectedSpecialRow:any=specialRows.find(row=>selectedCaseKeys.includes(row.id));
+  const openSelectedScheduleHearing = async () => {
+    if (!selectedSpecialRow) return message.warning("请先选择案件");
+    const target = await resolveVisibleCase({ case: selectedSpecialRow.case, case_record_id: selectedSpecialRow.case_record_id, case_no: selectedSpecialRow.case_no });
+    if (target) openHearing(target);
+  };
   const markCommissionPaid=()=>{
     if(!selectedSpecialRow)return message.warning("请先选择一条到账案件");
     Modal.confirm({title:"标识提成已发",content:`确认将 ${selectedSpecialRow.serial_no} 标识为提成已发？`,onOk:async()=>{
@@ -1693,11 +1721,11 @@ export default function CaseCenterPage({
         {specialMode!=="invoice"&&specialMode!=="stage"&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}
           {specialMode==="refund"&&<Button onClick={()=>void exportSpecialRecords("refund","退费查询.csv")}>导出</Button>}
-          {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")void exportCases();else{const linked=cases.find(row=>row.serial_no===selectedSpecialRow?.data?.case_no);linked?openCaseTasks(linked):message.warning("当前退费记录未关联可查看案件")}}}}><Button>更多操作</Button></Dropdown>}
+          {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")void exportCases();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
           {specialMode==="refund"&&<Button onClick={operateRefund}>退费操作</Button>}
           {specialMode==="receipt"&&<Button onClick={()=>selectedCase?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}
           {specialMode==="unclaimed"&&<Button onClick={markCommissionPaid}>标识提成已发</Button>}
-          {specialMode==="schedule"&&<Button onClick={()=>selectedCase?openHearing(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
+          {specialMode==="schedule"&&<Button onClick={()=>void openSelectedScheduleHearing()}>更多操作</Button>}
           {specialMode==="execution"&&<Button onClick={()=>selectedCase?openProgress(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
           {specialMode==="unclaimed"&&<Button onClick={()=>selectedCase?openCaseTasks(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
         </Space></div>}
