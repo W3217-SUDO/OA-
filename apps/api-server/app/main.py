@@ -12746,6 +12746,23 @@ async def delete_agent_document(document_id: int, identity: dict = Depends(curre
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.delete(f"{settings.api_prefix}/testing/agent-documents/{{document_id}}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+async def delete_smoke_agent_document(document_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Remove explicit smoke-only AI jobs when normal audit retention blocks deletion."""
+    if settings.app_env.strip().lower() in {"production", "prod"}:
+        raise HTTPException(status_code=404, detail="接口不存在")
+    if identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可清理本地冒烟智能文档")
+    item = await db.get(AgentDocument, document_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="智能文档任务不存在")
+    if "SMOKE" not in item.title.upper() and "冒烟" not in item.title:
+        raise HTTPException(status_code=403, detail="只能清理带明确测试标识的本地智能文档")
+    await db.delete(item)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post(f"{settings.api_prefix}/agent/chat")
 async def agent_chat(body: DifyRequest, identity: dict = Depends(current_identity)):
     if not settings.dify_base_url or not settings.dify_api_key:

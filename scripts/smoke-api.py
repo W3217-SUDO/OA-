@@ -276,6 +276,15 @@ def main():
         login(USERNAME, "wrong-password", expected=(401,))
         TOKEN = login(USERNAME, PASSWORD)["access_token"]
         admin_token = TOKEN
+        # A previous interrupted smoke run can leave confirmed AI jobs, which
+        # deliberately cannot be removed through the normal business endpoint.
+        # Remove only explicit local smoke jobs first, then their templates.
+        for stale_agent in call("GET", "/agent/documents")["items"]:
+            if str(stale_agent.get("title") or "").upper().startswith("SMOKE") or "冒烟" in str(stale_agent.get("title") or ""):
+                call("DELETE", f"/testing/agent-documents/{stale_agent['id']}", expected=(204, 404))
+        for stale_template in call("GET", "/templates")["items"]:
+            if str(stale_template.get("name") or "").upper().startswith("SMOKE-"):
+                call("DELETE", f"/templates/{stale_template['id']}", expected=(204, 404, 409))
         # 清理因上一次进程中断而留下的、带明确 SMOKE 标识的本地测试记录。
         # 生产环境不存在 testing cleanup 路由，普通业务数据也不会命中此条件。
         for smoke_module in ["customer", "contract", "case", "task", "finance", "finance_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
@@ -3021,20 +3030,23 @@ def main():
         call("POST", f"/agent/documents/{revoked_agent['id']}/writeback", expected=(403,))
         call("DELETE", f"/agent/documents/{revoked_agent['id']}", expected=(403,))
         TOKEN = admin_token
-        revoked_evidence = create_record("evidence", "待收集", "冒烟证物撤权智能文档", {"evidence_type": "电子数据"}, owner=outsider_name)
+        revoked_investigation_task = call("POST", f"/investigations/{clue['id']}/tasks", {"title": "冒烟调查任务撤权智能文档", "owner": outsider_name, "deadline": str(date.today() + timedelta(days=5)), "priority": "普通", "description": "通过调查中心专用入口创建，用于验证关联智能文档撤权"}, expected=(201,))
+        records.append(revoked_investigation_task["id"])
+        assert revoked_investigation_task["data"]["investigation_record_id"] == clue["id"] and revoked_investigation_task["owner"] == outsider_name
         TOKEN = login(outsider_name, "SmokePass2026!")["access_token"]
-        revoked_evidence_agent = call("POST", "/agent/documents", {"template_id": template["id"], "record_id": revoked_evidence["id"], "title": "冒烟非客户撤权智能文档", "instruction": "验证所有关联业务撤权后创建人不能保留智能文档访问权"}, expected=(201,))
-        agents.append(revoked_evidence_agent["id"])
+        revoked_investigation_agent = call("POST", "/agent/documents", {"template_id": template["id"], "record_id": revoked_investigation_task["id"], "title": "冒烟非客户撤权智能文档", "instruction": "验证所有关联业务撤权后创建人不能保留智能文档访问权"}, expected=(201,))
+        agents.append(revoked_investigation_agent["id"])
         TOKEN = admin_token
-        call("PATCH", f"/records/{revoked_evidence['id']}", {"owner": manager_name})
+        reassigned_investigation_task = call("POST", f"/investigations/{revoked_investigation_task['id']}/assign", {"investigator": manager_name, "comment": "撤销原调查任务负责人的智能文档访问范围"})
+        assert reassigned_investigation_task["owner"] == manager_name
         TOKEN = login(outsider_name, "SmokePass2026!")["access_token"]
-        assert all(item["id"] != revoked_evidence_agent["id"] for item in call("GET", "/agent/documents")["items"])
-        call("GET", f"/agent/documents/{revoked_evidence_agent['id']}/download", expected=(404,))
-        call("POST", f"/agent/documents/{revoked_evidence_agent['id']}/retry", expected=(404,))
-        call("PATCH", f"/agent/documents/{revoked_evidence_agent['id']}", {"content": "撤权创建人不得修改关联证物文档"}, expected=(404,))
-        call("POST", f"/agent/documents/{revoked_evidence_agent['id']}/confirm", {"comment": "撤权创建人不得确认"}, expected=(404,))
-        call("POST", f"/agent/documents/{revoked_evidence_agent['id']}/writeback", expected=(404,))
-        call("DELETE", f"/agent/documents/{revoked_evidence_agent['id']}", expected=(404,))
+        assert all(item["id"] != revoked_investigation_agent["id"] for item in call("GET", "/agent/documents")["items"])
+        call("GET", f"/agent/documents/{revoked_investigation_agent['id']}/download", expected=(404,))
+        call("POST", f"/agent/documents/{revoked_investigation_agent['id']}/retry", expected=(404,))
+        call("PATCH", f"/agent/documents/{revoked_investigation_agent['id']}", {"content": "撤权创建人不得修改关联调查任务文档"}, expected=(404,))
+        call("POST", f"/agent/documents/{revoked_investigation_agent['id']}/confirm", {"comment": "撤权创建人不得确认"}, expected=(404,))
+        call("POST", f"/agent/documents/{revoked_investigation_agent['id']}/writeback", expected=(404,))
+        call("DELETE", f"/agent/documents/{revoked_investigation_agent['id']}", expected=(404,))
         TOKEN = admin_token
         document = create_record("document", "已归档", "冒烟收文", {"direction": "收文", "document_date": str(date.today()), "case_no": case["serial_no"], "sender": "上海市测试人民法院"})
         assert document["status"] == "待登记"
@@ -3281,7 +3293,10 @@ def main():
             try: call("DELETE", f"/system/menus/{item_id}", expected=(204, 404))
             except Exception: pass
         for item_id in reversed(agents):
-            try: call("DELETE", f"/agent/documents/{item_id}", expected=(204, 404))
+            try:
+                delete_status, _, _ = call("DELETE", f"/agent/documents/{item_id}", expected=(204, 404, 409), raw=True)
+                if delete_status == 409:
+                    call("DELETE", f"/testing/agent-documents/{item_id}", expected=(204, 404))
             except Exception: pass
         for item_id in reversed(communications):
             try: call("DELETE", f"/communications/{item_id}", expected=(204, 404))

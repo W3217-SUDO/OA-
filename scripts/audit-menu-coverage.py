@@ -1861,6 +1861,8 @@ def main() -> None:
         'if write:\n            await _require_record_owner_or_manager(record, identity, db)',
         '已人工确认的智能文档不得删除',
         '删除智能文档任务',
+        '@app.delete(f"{settings.api_prefix}/testing/agent-documents/{{document_id}}"',
+        '只能清理带明确测试标识的本地智能文档',
         'capabilities = await _agent_document_capabilities(item, identity, db, record)',
         'can_delete = bool(can_write and is_creator_or_admin',
     ):
@@ -1874,8 +1876,11 @@ def main() -> None:
     ):
         assert token in AGENT_DOCUMENT, f"agent document UI capability/layout protection missing: {token}"
     for token in (
-        'revoked_evidence_agent',
-        '撤权创建人不得修改关联证物文档',
+        'revoked_investigation_agent',
+        '撤权创建人不得修改关联调查任务文档',
+        'reassigned_investigation_task',
+        'for stale_agent in call("GET", "/agent/documents")["items"]:',
+        '/testing/agent-documents/{stale_agent[\'id\']}',
         "call(\"DELETE\", f\"/agent/documents/{agent['id']}\", expected=(409,))",
     ):
         assert token in SMOKE, f"agent document smoke coverage missing: {token}"
