@@ -12560,6 +12560,12 @@ async def _ensure_agent_document_access(document_id: int, identity: dict, db: As
         if not linked_record:
             raise HTTPException(status_code=404, detail="关联业务记录不存在或无权访问")
         record = await _ensure_record_visible(item.record_id, identity, db)
+        # Customer documents may contain a complete historic customer snapshot.
+        # A shared read-only recipient can view the customer record itself, but
+        # must not gain access to the generated document or its prompt/content.
+        if record.module == "customer":
+            await _require_record_owner_or_manager(record, identity, db)
+            return item, record
         if write:
             await _require_record_owner_or_manager(record, identity, db)
         return item, record
