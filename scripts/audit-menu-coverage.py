@@ -1133,6 +1133,7 @@ def main() -> None:
     ):
         assert token in normalized_case, f"legal counsel list/detail contract missing: {token}"
     assert 'onClick={()=>voidopenCounselDetail(row)}' in normalized_case, "case number action must open the case detail drawer rather than the task-creation flow"
+    assert 'counselDetailCapabilities.can_edit_basic&&viewingCounselCase.data.case_type==="法律顾问"&&<Button' in normalized_case, "the counsel-only basic-information endpoint must not be exposed as a generic case edit button"
     normalized_main = re.sub(r"\s+", "", MAIN)
     assert 'asyncdef_next_case_serial(case_type:str,db:AsyncSession)->str:' in normalized_main and 'prefix=f"SH{type_code}{datetime.now():%y}"' in normalized_main and 'returnf"{prefix}{sequence:05d}"' in normalized_main, "case creation must generate the compact recognizable SH/type/year/sequence identifier"
     for token in (
