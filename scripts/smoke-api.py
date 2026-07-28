@@ -1269,7 +1269,7 @@ def main():
         assert call("GET", f"/records/{civil_case['id']}")["id"] == civil_case["id"]
         handling_capabilities = call("GET", f"/cases/{civil_case['id']}/action-capabilities")
         assert handling_capabilities["team_role"] == "handling_lawyer"
-        assert all(handling_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log", "can_update_progress", "can_manage_hearing"])
+        assert all(handling_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log", "can_update_progress", "can_manage_hearing", "can_create_case_task"])
         assert all(handling_capabilities[key] is False for key in ["can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
         member_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": "案件文档", "remark": "团队律师附件权限验收"}, f"smoke-case-team-{suffix}.txt", b"case team permission")
         call("DELETE", f"/attachments/{member_attachment['id']}", expected=(204,))
@@ -1277,19 +1277,25 @@ def main():
         assert member_progress["data"]["first_instance_case_no"]
         member_hearing = call("POST", "/hearings", {"case_record_id": civil_case["id"], "hearing_date": str(date.today() + timedelta(days=10)), "hearing_time": "10:00", "court": "上海市团队权限测试法院", "courtroom": "第一法庭", "hearing_type": "一审开庭", "hearing_lawyer": member_name}, expected=(201,))
         assert member_hearing["case_record_id"] == civil_case["id"]
+        handling_case_task = call("POST", "/tasks", {"title": f"SMOKE案件主办任务-{suffix}", "customer": "伪造客户不应保存", "owner": member_name, "deadline": str(date.today() + timedelta(days=7)), "source": "案件任务", "case_no": civil_case["serial_no"]}, expected=(201,))
+        records.append(handling_case_task["id"])
+        assert handling_case_task["customer"] == civil_case["customer"] and handling_case_task["data"]["case_no"] == civil_case["serial_no"] and handling_case_task["data"]["case_record_id"] == civil_case["id"]
+        call("POST", "/tasks", {"title": f"SMOKE不存在案件任务-{suffix}", "owner": member_name, "deadline": str(date.today() + timedelta(days=7)), "source": "案件任务", "case_no": serial("MISSING-CASE-TASK")}, expected=(404,))
         call("POST", f"/cases/{civil_case['id']}/assign", {"customer_manager": member_name, "hearing_lawyer": member_name, "handling_lawyers": [member_name]}, expected=(403,))
         TOKEN = login(department_peer_name, "SmokePass2026!")["access_token"]
         assert call("GET", f"/records/{civil_case['id']}")["id"] == civil_case["id"]
         assistant_capabilities = call("GET", f"/cases/{civil_case['id']}/action-capabilities")
         assert assistant_capabilities["team_role"] == "assistant"
         assert all(assistant_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log"])
-        assert all(assistant_capabilities[key] is False for key in ["can_update_progress", "can_manage_hearing", "can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
+        assert all(assistant_capabilities[key] is False for key in ["can_update_progress", "can_manage_hearing", "can_create_case_task", "can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
         assistant_reminder = call("POST", f"/cases/{civil_case['id']}/reminders", {"reminder_date": str(date.today()), "deadline": str(date.today() + timedelta(days=2)), "content": f"SMOKE-案件助理提醒-{suffix}"}, expected=(201,)); records.append(assistant_reminder["id"])
         call("POST", f"/cases/{civil_case['id']}/logs", {"content": f"SMOKE-案件助理日志-{suffix}"}, expected=(201,))
         call("POST", f"/cases/{civil_case['id']}/progress", {"first_instance_case_no": serial("ASSISTANT-BLOCK")}, expected=(403,))
         call("POST", "/hearings", {"case_record_id": civil_case["id"], "hearing_date": str(date.today() + timedelta(days=11)), "hearing_time": "10:00", "court": "上海市团队权限测试法院", "courtroom": "第二法庭", "hearing_type": "一审开庭", "hearing_lawyer": member_name}, expected=(403,))
+        call("POST", "/tasks", {"title": f"SMOKE助理越权案件任务-{suffix}", "owner": department_peer_name, "deadline": str(date.today() + timedelta(days=7)), "source": "案件任务", "case_no": civil_case["serial_no"]}, expected=(403,))
         TOKEN = login(outsider_name, "SmokePass2026!")["access_token"]
         call("GET", f"/records/{civil_case['id']}", expected=(404,))
+        call("POST", "/tasks", {"title": f"SMOKE无关人员越权案件任务-{suffix}", "owner": outsider_name, "deadline": str(date.today() + timedelta(days=7)), "source": "案件任务", "case_no": civil_case["serial_no"]}, expected=(404,))
         TOKEN = admin_token
         passed("案件团队稳定用户名、经办律师可见/进展/排期/附件、助理详情办理限制与无关人员隔离")
         call("POST", "/cases", {**case_payload, "status": "执行"}, expected=(422,))

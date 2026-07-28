@@ -105,6 +105,7 @@ type CaseDetailCapabilities = {
   can_create_log: boolean;
   can_update_progress: boolean;
   can_manage_hearing: boolean;
+  can_create_case_task: boolean;
   can_assign_team: boolean;
   can_edit_basic: boolean;
   can_close_case: boolean;
@@ -116,7 +117,7 @@ type CaseDetailCapabilities = {
 const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_write: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
-  can_update_progress: false, can_manage_hearing: false, can_assign_team: false,
+  can_update_progress: false, can_manage_hearing: false, can_create_case_task: false, can_assign_team: false,
   can_edit_basic: false, can_close_case: false, can_archive: false,
   can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
@@ -971,6 +972,7 @@ export default function CaseCenterPage({
   };
   const createCaseTask = async () => {
     if (!taskCase) return;
+    if (!getCaseCapability(taskCase).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
     const v = await taskForm.validateFields();
     try {
       await api.post("/tasks", {
@@ -2268,7 +2270,7 @@ export default function CaseCenterPage({
             },
           ]}
         />
-        <Card size="small" title="新建案件任务" style={{ marginTop: 16 }}>
+        {taskCase && getCaseCapability(taskCase).can_create_case_task && <Card size="small" title="新建案件任务" style={{ marginTop: 16 }}>
           <Form form={taskForm} layout="vertical">
             <Form.Item
               label="任务名称"
@@ -2315,7 +2317,7 @@ export default function CaseCenterPage({
               创建案件任务
             </Button>
           </Form>
-        </Card>
+        </Card>}
       </Drawer>
       <Modal
         width={620}

@@ -5872,6 +5872,19 @@ def _validate_task_deadline(deadline: date) -> None:
 @app.post(f"{settings.api_prefix}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(body: TaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _validate_task_deadline(body.deadline)
+    case_no = body.case_no.strip()
+    source = body.source.strip() or "日常任务"
+    if source == "案件任务" and not case_no:
+        raise HTTPException(status_code=422, detail="案件任务必须关联有效案件")
+    case_record = None
+    if case_no:
+        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == case_no))
+        if not case_record:
+            raise HTTPException(status_code=404, detail="关联案件不存在")
+        case_record = await _ensure_record_module(case_record.id, "case", identity, db)
+        capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+        if not capabilities["can_create_case_task"]:
+            raise HTTPException(status_code=403, detail="当前账号没有创建该案件任务的权限")
     serial = f"RW{datetime.now():%Y%m%d%H%M%S%f}"
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     owner = await _active_task_username(body.owner, db, field_name="负责人")
@@ -5880,7 +5893,7 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
         collaborator = await _active_task_username(value, db, field_name="协作人")
         if collaborator != owner and collaborator not in collaborators:
             collaborators.append(collaborator)
-    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=body.customer, status="待接收", owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "priority": body.priority, "source": body.source, "initiator": identity["username"], "collaborators": collaborators, "case_no": body.case_no.strip()})
+    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status="待接收", owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "priority": body.priority, "source": source, "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_record_id": case_record.id if case_record else None})
     db.add(task)
     await db.flush()
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="发起任务", to_status="待接收", operator=identity["username"], comment=f"负责人：{owner}；截止日期：{body.deadline}"), db, content="任务已分派.")
@@ -10651,6 +10664,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_manage_hearing": False,
+        "can_create_case_task": False,
         "can_assign_team": role == "manager", "can_edit_basic": role == "manager",
         "can_close_case": role == "manager", "can_archive": role == "manager",
         "can_create_finance": role == "manager", "team_role": role, "reason": "",
@@ -10666,6 +10680,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_delete_attachment": True, "can_create_reminder": True,
         "can_delete_reminder": True, "can_create_log": True,
         "can_update_progress": can_progress, "can_manage_hearing": can_progress,
+        "can_create_case_task": can_progress,
     }
 
 
