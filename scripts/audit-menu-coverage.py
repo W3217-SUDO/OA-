@@ -1188,6 +1188,26 @@ def main() -> None:
         assert token in NORMALIZED_SMOKE, f"hearing stable case-id smoke missing: {token}"
     print("CASE_HEARING_CASE_RESOLVER_OK: hearings resolve the scoped case record id instead of the hearing id or a truncated case list")
     for token in (
+        'import{consumeCaseDetailTarget,rememberCaseDetailTarget}from"./caseDetailNavigation";',
+        'import{rememberInvestigationDetailTarget}from"./investigationDetailNavigation";',
+        'import{rememberTaskDetailTarget}from"./taskDetailNavigation";',
+        'constopenRelatedTask=(task:Pick<TaskRow,"id"|"serial_no">)=>',
+        'rememberTaskDetailTarget({id:task.id,serial_no:task.serial_no})',
+        'onNavigate?.("task-company-accepted")',
+        'constopenRelatedClue=(target:{id?:number;serial_no?:unknown})=>',
+        'rememberInvestigationDetailTarget({id,serial_no:serialNo||undefined,module:"clue"})',
+        'constopenRelatedOriginalCase=(target:{id?:number;serial_no?:unknown})=>',
+        'onNavigate?.("clue-company-draft")',
+        'onNavigate?.("case-company")',
+        'openRelatedContract({id:Number(r.data.contract_record_id)||undefined,serial_no:r.data.contract_no})',
+        'openRelatedCustomer({id:Number(r.data.customer_id)||undefined,serial_no:r.data.customer_no,title:value})',
+        'viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no',
+        'viewingCounselCase.data.original_case_no||viewingCounselCase.data.origin_case_no||viewingCounselCase.data.source_case_no',
+        'onClick={()=>openRelatedTask(row)}',
+    ):
+        assert token in normalized_case, f"case cross-module relation guard missing: {token}"
+    print("CASE_CROSS_MODULE_RELATIONS_OK: case contract, customer, clue, original-case and task references navigate to their real detail contexts")
+    for token in (
         '"can_create_case_task":False',
         '"can_create_case_task":can_progress',
         'ifsource=="案件任务"andnotcase_no:',
