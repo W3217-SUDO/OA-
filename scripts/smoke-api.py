@@ -3098,7 +3098,10 @@ def main():
         assert processed_official["processed"] == 1 and processed_official["items"][0]["status"] == official_upload["record"]["status"] and processed_official["items"][0]["data"]["business_process_status"] == "已处理"
         unprocessed_official = call("POST", "/documents/official/process", {"record_ids": [official_upload["record"]["id"]], "processed": False, "comment": "官文批量未处理冒烟"})
         assert unprocessed_official["processed"] == 1 and unprocessed_official["items"][0]["status"] == official_upload["record"]["status"] and unprocessed_official["items"][0]["data"]["business_process_status"] == "未处理"
+        official_receipt_date = call("POST", "/documents/official/receipt-date", {"record_ids": [official_upload["record"]["id"]], "document_date": "2026-07-01", "comment": "官文收文日期冒烟"})
+        assert official_receipt_date["updated"] == 1 and official_receipt_date["items"][0]["status"] == official_upload["record"]["status"] and official_receipt_date["items"][0]["data"]["document_date"] == "2026-07-01"
         assert any(item["action"] == "标记官文已处理" for item in call("GET", f"/records/{official_upload['record']['id']}/history")["items"])
+        assert any(item["action"] == "修改官文收文日期" for item in call("GET", f"/records/{official_upload['record']['id']}/history")["items"])
         call("PATCH", f"/records/{document['id']}", {"status": "已归档"}, expected=(409,))
         call("POST", f"/records/{document['id']}/transition", {"to_status": "待签收", "comment": "绕过专用入口"}, expected=(409,))
         call("POST", f"/documents/{document['id']}/transition", {"to_status": "已签收", "action_date": str(date.today()), "handler": USERNAME}, expected=(409,))

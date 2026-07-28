@@ -692,6 +692,13 @@ class OfficialDocumentProcessInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+class OfficialDocumentReceiptDateInput(BaseModel):
+    """Dedicated command for the legacy official-receipt date correction."""
+    record_ids: list[int] = Field(min_length=1, max_length=100)
+    document_date: date
+    comment: str = Field(default="", max_length=1000)
+
+
 class HrTransitionInput(BaseModel):
     to_status: str
     effective_date: date = Field(default_factory=date.today)
@@ -11482,6 +11489,46 @@ async def process_official_documents(body: OfficialDocumentProcessInput, identit
     for item in changed:
         await db.refresh(item)
     return {"processed": len(changed), "business_process_status": target_status, "items": [_record_dict(item, await _allowed_field_keys(identity, db)) for item in changed]}
+
+
+@app.post(f"{settings.api_prefix}/documents/official/receipt-date")
+async def update_official_receipt_date(body: OfficialDocumentReceiptDateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Correct the incoming-document date without using the generic record API.
+
+    Legacy FIO supported this as a selected-row batch action.  It is metadata,
+    not a document lifecycle transition, so registration/sign/archive status is
+    deliberately left unchanged while every corrected document receives an
+    independent audit event.
+    """
+    record_ids = list(dict.fromkeys(body.record_ids))
+    if not record_ids:
+        raise HTTPException(status_code=422, detail="请选择至少一条官文收文记录")
+    changed: list[BusinessRecord] = []
+    for record_id in record_ids:
+        item = await _ensure_record_visible(record_id, identity, db)
+        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+            raise HTTPException(status_code=422, detail="所选记录不是官文收文")
+        await _require_record_owner_or_manager(item, identity, db)
+        data = dict(item.data or {})
+        previous_date = str(data.get("document_date") or data.get("received_at") or "")
+        target_date = str(body.document_date)
+        if previous_date == target_date:
+            continue
+        data.update({"document_date": target_date, "received_at": target_date})
+        item.data = data
+        db.add(WorkflowEvent(
+            record_id=item.id,
+            action="修改官文收文日期",
+            from_status=item.status,
+            to_status=item.status,
+            operator=identity["username"],
+            comment=body.comment.strip() or f"{previous_date or '未填写'} → {target_date}",
+        ))
+        changed.append(item)
+    await db.commit()
+    for item in changed:
+        await db.refresh(item)
+    return {"updated": len(changed), "document_date": str(body.document_date), "items": [_record_dict(item, await _allowed_field_keys(identity, db)) for item in changed]}
 
 
 @app.get(f"{settings.api_prefix}/templates")

@@ -977,8 +977,8 @@ export default function DocumentCenterPage({
     }
   };
   const openReceiptDateEditor = () => {
-    if (selectedFormalReceipts.length !== 1) {
-      message.warning("请选择一条正式收文记录修改收文日期");
+    if (!selectedFormalReceipts.length) {
+      message.warning("请选择至少一条正式收文记录修改收文日期");
       return;
     }
     const current = selectedFormalReceipts[0].data.document_date;
@@ -986,21 +986,17 @@ export default function DocumentCenterPage({
     setReceiptDateOpen(true);
   };
   const saveReceiptDate = async () => {
-    const target = selectedFormalReceipts[0];
-    if (!target || !receiptDate) {
+    if (!selectedFormalReceipts.length || !receiptDate) {
       message.warning("请选择收文日期");
       return;
     }
     const date = receiptDate.format("YYYY-MM-DD");
     try {
-      await api.patch(`/records/${target.id}`, {
-        data: {
-          ...target.data,
-          document_date: date,
-          received_at: date,
-        },
+      const { data } = await api.post("/documents/official/receipt-date", {
+        record_ids: selectedFormalReceipts.map((row) => row.id),
+        document_date: date,
       });
-      message.success("收文日期已修改");
+      message.success(`已修改 ${data.updated} 条收文日期`);
       setReceiptDateOpen(false);
       setSelectedReceiptKeys([]);
       await load();
@@ -1195,7 +1191,7 @@ export default function DocumentCenterPage({
             </Button>
           </>
         ) : (<>
-          <Button size="small" icon={<EditOutlined />} disabled={selectedReceiptKeys.length!==1} onClick={openReceiptDateEditor}>修改收文日期</Button>
+          <Button size="small" icon={<EditOutlined />} disabled={!selectedReceiptKeys.length} onClick={openReceiptDateEditor}>修改收文日期</Button>
           <Button size="small" disabled={selectedReceiptKeys.length!==1} onClick={()=>{const row=receiptRows.find(item=>selectedReceiptKeys.includes(item.id));if(row)showReceipt(row)}}>更多操作</Button>
         </>)}
       </div>
@@ -1347,7 +1343,7 @@ export default function DocumentCenterPage({
       )}
       <Modal
         open={receiptDateOpen}
-        title={`修改收文日期：${selectedFormalReceipts[0]?.serial_no || ""}`}
+        title={`修改收文日期（已选 ${selectedFormalReceipts.length} 条）`}
         okText="保存"
         cancelText="取消"
         onOk={saveReceiptDate}

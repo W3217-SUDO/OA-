@@ -1949,6 +1949,17 @@ def main() -> None:
         assert token in SMOKE, f"official receipt business-process smoke coverage missing: {token}"
     print("OFFICIAL_RECEIPT_PROCESS_OK: dedicated batch processed/unprocessed state with scoped permission, audit and independent document lifecycle")
     for token in (
+        '"/documents/official/receipt-date"',
+        'record_ids: selectedFormalReceipts.map((row) => row.id)',
+        'class OfficialDocumentReceiptDateInput(BaseModel):',
+        '@app.post(f"{settings.api_prefix}/documents/official/receipt-date")',
+        'action="修改官文收文日期"',
+        'data.update({"document_date": target_date, "received_at": target_date})',
+    ):
+        source = DOCUMENT if token.startswith('"/') or token.startswith('record_ids:') else MAIN
+        assert token in source, f"official receipt-date dedicated command missing: {token}"
+    print("OFFICIAL_RECEIPT_DATE_OK: legacy batch receipt-date correction is scoped, audited and cannot use generic record update")
+    for token in (
         'import { rememberCustomerDetailTarget } from "./customerDetailNavigation";',
         'const openCustomerDetail = async (customerName: unknown) =>',
         'params: { module: "customer", keyword: title, page_size: 100 }',
