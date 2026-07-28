@@ -830,6 +830,8 @@ export default function CustomerCenterPage({
     directory.find((user) => user.username === username)?.display_name || username;
   const canManageCurrentCustomer = Boolean(contacts && (
     profile.role === "admin" ||
+    // admin 是不可降级的最高权限账号；历史账号资料的角色展示不应遮蔽其客户办理能力。
+    profile.username === "admin" ||
     contacts.owner === profile.username ||
     (contacts.data.customer_managers || []).includes(profile.username) ||
     (profile.role === "manager" && contacts.department === profile.department)
