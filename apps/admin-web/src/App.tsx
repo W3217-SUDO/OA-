@@ -554,6 +554,27 @@ const legacyRouteAliases: Record<string, string> = {
   "agent-document": "documents-agent",
 };
 const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route;
+const businessNavigationSessionKeys = [
+  "sunhold:case-detail-context",
+  "sunhold:contract-detail-context",
+  "sunhold:customer-detail-context",
+  "sunhold:customer-relation-context",
+  "sunhold:investigation-detail-context",
+  "sunhold:task-detail-context",
+  "sunhold:contract-customer",
+  "sunhold:case-contract-context",
+];
+
+function clearClientSessionStorage() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user");
+  localStorage.removeItem("sunhold:open-pages");
+  businessNavigationSessionKeys.forEach((key) => sessionStorage.removeItem(key));
+}
+
+function replaceWithRootRoute() {
+  window.history.replaceState(null, "", window.location.pathname);
+}
 const routePageLabels: Record<string, string> = {
   "system-users": "员工管理",
   "documents-agent": "AI 智能文档",
@@ -999,11 +1020,18 @@ export default function App() {
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const resetWorkspaceForSession = () => {
     const dashboard = [{ key: "dashboard", label: "控制台" }];
-    localStorage.removeItem("sunhold:open-pages");
     setContractDetailTarget(null);
     setOpenMenuKeys([]);
     setOpenPages(dashboard);
     setActive("dashboard");
+  };
+  const endClientSession = () => {
+    clearClientSessionStorage();
+    clearContractDetailTarget();
+    setLoggedIn(false);
+    setSessionUser(null);
+    resetWorkspaceForSession();
+    replaceWithRootRoute();
   };
   useEffect(() => {
     const restoreRouteFromHistory = () => {
@@ -1035,10 +1063,13 @@ export default function App() {
   }, [active]);
   useEffect(() => {
     const expired = () => {
-      setLoggedIn(false);
-      setSessionUser(null);
-      resetWorkspaceForSession();
+      endClientSession();
       message.warning("登录状态已过期，请重新登录");
+    };
+    const synchronizeLogout = (event: StorageEvent) => {
+      if (event.storageArea === localStorage && event.key === "access_token" && !event.newValue) {
+        endClientSession();
+      }
     };
     const profileUpdated = () => setSessionUser(readStoredUser());
     const preferencesUpdated = (event: Event) => {
@@ -1046,10 +1077,12 @@ export default function App() {
       if (detail?.auto_collapse) setCollapsed(detail.auto_collapse === "yes");
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, expired);
+    window.addEventListener("storage", synchronizeLogout);
     window.addEventListener("sunhold:profile-updated", profileUpdated);
     window.addEventListener("sunhold:preferences-updated", preferencesUpdated);
     return () => {
       window.removeEventListener(AUTH_EXPIRED_EVENT, expired);
+      window.removeEventListener("storage", synchronizeLogout);
       window.removeEventListener("sunhold:profile-updated", profileUpdated);
       window.removeEventListener(
         "sunhold:preferences-updated",
@@ -1130,11 +1163,7 @@ export default function App() {
     setOpenMenuKeys((current) => Array.from(new Set([...current, ...ancestors])));
   }, [active, effectiveMenuItems]);
   const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
-    setLoggedIn(false);
-    setSessionUser(null);
-    resetWorkspaceForSession();
+    endClientSession();
   };
   if (new URLSearchParams(window.location.search).get("page") === "customer-portal")
     return <PageLoadBoundary><Suspense fallback={<div className="page-loading">加载客户服务端…</div>}><CustomerPortalPage /></Suspense></PageLoadBoundary>;

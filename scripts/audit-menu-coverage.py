@@ -267,12 +267,26 @@ def main() -> None:
         'const resetWorkspaceForSession = () => {',
         'localStorage.removeItem("sunhold:open-pages")',
         'setOpenPages(dashboard)',
-        'resetWorkspaceForSession();\n      message.warning("登录状态已过期',
+        'endClientSession();\n      message.warning("登录状态已过期',
         'setSessionUser(null);\n    resetWorkspaceForSession();',
         'setSessionUser(user);\n          resetWorkspaceForSession();\n          setLoggedIn(true);',
     ):
         assert token in APP, f"workspace session isolation missing: {token}"
     print("WORKSPACE_SESSION_ISOLATION_OK: logout, expiry and next login clear inherited workspace tabs")
+    for token in (
+        'const businessNavigationSessionKeys = [',
+        '"sunhold:task-detail-context"',
+        'function clearClientSessionStorage() {',
+        'localStorage.removeItem("access_token")',
+        'window.history.replaceState(null, "", window.location.pathname)',
+        'const synchronizeLogout = (event: StorageEvent) => {',
+        'event.storageArea === localStorage && event.key === "access_token" && !event.newValue',
+        'window.addEventListener("storage", synchronizeLogout)',
+        'window.removeEventListener("storage", synchronizeLogout)',
+        'const logout = () => {\n    endClientSession();',
+    ):
+        assert token in APP, f"cross-tab logout synchronization missing: {token}"
+    print("WORKSPACE_LOGOUT_SYNC_OK: logout clears business navigation context, returns to root and synchronizes other tabs")
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
