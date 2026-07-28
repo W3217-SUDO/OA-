@@ -1125,6 +1125,21 @@ def main() -> None:
         assert token in NORMALIZED_SMOKE, f"legal counsel server paging/export smoke missing: {token}"
     print("CASE_COUNSEL_LIST_DETAIL_OK: evidenced counsel filters/columns, case detail tabs and protected basic-information editing")
     print("CASE_COUNSEL_SERVER_LIST_OK: role-scoped server paging/filter/sort plus selected/all CSV export with anti-bypass checks")
+    for token in (
+        'const[caseActionCapabilities,setCaseActionCapabilities]=useState<Record<number,CaseDetailCapabilities>>({})',
+        'constloadCaseCapabilities=async(rows:CaseRow[])=>',
+        'selectedCaseCapability.can_upload_attachment',
+        'selectedCaseCapability.can_create_finance',
+        'selectedCaseCapability.can_assign_team',
+        'selectedCaseCapability.can_update_progress',
+        'selectedCaseCapability.can_manage_hearing',
+        'selectedCaseCapability.can_archive',
+        'getCaseCapability(row).can_update_progress?<Button',
+        'specialMode==="schedule"&&<ButtononClick={()=>selectedCase?openHearing(selectedCase)',
+        'if(!getCaseCapability(row).can_archive)returnmessage.warning(',
+    ):
+        assert token in normalized_case, f"case list/bottom action capability guard missing: {token}"
+    print("CASE_TEAM_ACTION_CAPABILITY_UI_OK: row actions, upload controls and bottom more-actions are capability-gated before API invocation")
 
     # Original /9001001010 (my-created tasks) evidence contract.
     created_tabs_match = re.search(r"const createdTabs: StatusTab\[\] = \[(.*?)\n\];", TASK, re.S)
@@ -1817,6 +1832,24 @@ def main() -> None:
         "openLinkedNotary(undefined,String(value))",
     ):
         assert token in INVESTIGATION, f"investigation notary/clue relation link missing: {token}"
+    for token in (
+        "const openLinkedCase=async(caseNo:string)",
+        "if(!row){message.warning('未找到关联案件或当前账号无权查看');return}",
+        "children:investigationDetail.customer?<Button className=\"business-relation-link\"",
+        "...(investigationDetail.data.case_no||investigationDetail.data.converted_case_no?",
+        "<Button className=\"business-relation-link\" type=\"link\" onClick={()=>void openLinkedCase(String(r.data.converted_case_no))}",
+    ):
+        assert token in INVESTIGATION, f"investigation relation preflight/detail link missing: {token}"
+    for token in (
+        "const resolveLinkedCase = async (row: TaskRow)",
+        "const openCaseDetail = async (row: TaskRow)",
+        "message.warning(\"未找到关联案件或当前账号无权查看\")",
+        "关联任务：{selected ? <Button className=\"business-relation-link\"",
+    ):
+        assert token in TASK, f"task relation preflight/detail link missing: {token}"
+    assert "render: (value: string, r: Customer) => (\n        <button type=\"button\" className=\"customer-cell-link\"" in CUSTOMER, "customer name must open the same real detail as its number"
+    assert ".business-relation-link.ant-btn-link" in STYLES and "text-overflow: ellipsis;" in STYLES, "relation links must retain a stable clipped hit area"
+    print("RELATION_PREFLIGHT_AND_DETAIL_LINKS_OK: task/investigation links preflight scoped cases; details and customer name remain reachable")
     assert '@app.get(f"{settings.api_prefix}/notaries/lookup")' in MAIN, "certificate number must resolve to a scoped notary record before opening detail"
     print("INVESTIGATION_RELATION_LINKS_OK: clue, notary, evidence and certificate-file relation fields open real scoped details")
     assert ".seal-stats,.seal-original-tabs{display:none!important}" in SEAL_CSS, "legacy seal statistics/tabs must stay hidden in original-layout views"

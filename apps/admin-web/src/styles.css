@@ -288,6 +288,19 @@ body {
 .business-panel .ant-card-body {
   padding: 14px;
 }
+.business-relation-link.ant-btn-link {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  overflow: hidden;
+  color: #087bc1;
+  font-size: 12px;
+  line-height: inherit;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
 .filter-bar {
   display: flex;
   gap: 8px;

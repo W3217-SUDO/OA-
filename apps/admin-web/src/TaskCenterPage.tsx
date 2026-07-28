@@ -652,21 +652,24 @@ export default function TaskCenterPage({
       message.warning("当前任务未关联案件");
       return null;
     }
-    const { data } = await api.get("/records", {
-      params: { module: "case", keyword: row.case_no, page_size: 100 },
-    });
-    const record = (data.items as CaseRecord[]).find(
-      (item) => item.serial_no === row.case_no,
-    );
-    if (!record) message.warning("未找到关联案件或当前账号无权查看");
-    return record || null;
-  };
-  const openCaseDetail = (row: TaskRow) => {
-    if (!row.case_no) {
-      message.warning("当前任务未关联案件");
-      return;
+    try {
+      const { data } = await api.get("/records", {
+        params: { module: "case", keyword: row.case_no, page_size: 100 },
+      });
+      const record = (data.items as CaseRecord[]).find(
+        (item) => item.serial_no === row.case_no,
+      );
+      if (!record) message.warning("未找到关联案件或当前账号无权查看");
+      return record || null;
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联案件加载失败");
+      return null;
     }
-    rememberCaseDetailTarget({ serial_no: row.case_no });
+  };
+  const openCaseDetail = async (row: TaskRow) => {
+    const record = await resolveLinkedCase(row);
+    if (!record) return;
+    rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
     onNavigate?.("case-company");
   };
   const openCaseContext = async (row: TaskRow, mode: "tasks" | "logs") => {
@@ -832,7 +835,7 @@ export default function TaskCenterPage({
       ellipsis: true,
       render: (value: string, row: TaskRow) =>
         value ? (
-          <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(row)}>
+          <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(row)}>
             {value}
           </Button>
         ) : "",
@@ -941,7 +944,7 @@ export default function TaskCenterPage({
   ];
   const unreadColumns: any[] = [
     { title: "任务编号", dataIndex: "serial_no", width: 178, render: (value: string, row: TaskRow) => <Button className="task-cell-link" type="link" onClick={() => openCommunication(row)}>{`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}</Button> },
-    { title: "案号编号", dataIndex: "case_no", width: 140, render: (value: string, row: TaskRow) => value ? <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(row)}>{value}</Button> : "" },
+    { title: "案号编号", dataIndex: "case_no", width: 140, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(row)}>{value}</Button> : "" },
     { title: "原告", dataIndex: "plaintiff", width: 160, ellipsis: true, render: (value: string) => value || "" },
     { title: "被告", dataIndex: "defendant", width: 160, ellipsis: true, render: (value: string) => value || "" },
     { title: "案件阶段", dataIndex: "case_stage", width: 105, render: (value: string) => value || "" },
@@ -1379,7 +1382,12 @@ export default function TaskCenterPage({
         onCancel={() => { setFeeAction(null); setFeeSubtype(null); }}
         destroyOnHidden
       >
-        <Alert type="info" showIcon message={`关联任务：${selected?.serial_no || "-"}；关联案件：${selected?.case_no || "-"}`} style={{ marginBottom: 16 }} />
+        <Alert
+          type="info"
+          showIcon
+          message={<Space size={4}>关联任务：{selected ? <Button className="business-relation-link" type="link" onClick={() => void openCommunication(selected)}>{selected.serial_no}</Button> : "-"}；关联案件：{selected?.case_no ? <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(selected)}>{selected.case_no}</Button> : "-"}</Space>}
+          style={{ marginBottom: 16 }}
+        />
         <Form form={feeForm} layout="vertical">
           <div className="form-grid">
             <Form.Item label="费用金额" name="amount" rules={[{ required: true, message: "请输入费用金额" }]}>
@@ -1671,7 +1679,7 @@ export default function TaskCenterPage({
           <span><b>任务编号：</b>{communication?.serial_no?.replace(/^\([^)]*\)/, "") || "-"}</span>
           <span><b>当前负责人：</b>{communication?.owner || "-"}</span>
           <span><b>发布人：</b>{communication?.initiator || "-"}</span>
-          <span><b>关联案号：</b>{communication?.case_no ? <Button className="task-cell-link" type="link" onClick={() => openCaseDetail(communication)}>{communication.case_no}</Button> : "-"}</span>
+          <span><b>关联案号：</b>{communication?.case_no ? <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(communication)}>{communication.case_no}</Button> : "-"}</span>
           <span><b>截止日期：</b>{communication?.deadline || "-"}</span>
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
           <span><b>当前协作人：</b>{communication?.collaborators?.join(",") || "-"}</span>

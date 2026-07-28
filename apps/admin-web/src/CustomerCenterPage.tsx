@@ -826,7 +826,18 @@ export default function CustomerCenterPage({
         </button>
       ),
     },
-    { title: "客户名称", dataIndex: "title", width: 294, align: "center" as const, ellipsis: true },
+    {
+      title: "客户名称",
+      dataIndex: "title",
+      width: 294,
+      align: "center" as const,
+      ellipsis: true,
+      render: (value: string, r: Customer) => (
+        <button type="button" className="customer-cell-link" title={value} onClick={() => openDetail(r)}>
+          <span>{value}</span>
+        </button>
+      ),
+    },
     {
       title: "案源人",
       key: "source",

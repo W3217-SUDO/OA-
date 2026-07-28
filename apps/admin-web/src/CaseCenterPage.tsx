@@ -247,6 +247,7 @@ export default function CaseCenterPage({
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
   const [counselDetailCapabilities, setCounselDetailCapabilities] = useState<CaseDetailCapabilities>(noCaseDetailWriteCapability);
+  const [caseActionCapabilities, setCaseActionCapabilities] = useState<Record<number, CaseDetailCapabilities>>({});
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
   const [counselUploadCategory, setCounselUploadCategory] = useState("案件文档");
@@ -285,6 +286,19 @@ export default function CaseCenterPage({
   const [batchUpdateForm] = Form.useForm();
   const [batchFeeForm] = Form.useForm();
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
+  const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
+  const loadCaseCapabilities = async (rows: CaseRow[]) => {
+    const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
+    const results = await Promise.all(uniqueRows.map(async (row) => {
+      try {
+        const { data } = await api.get(`/cases/${row.id}/action-capabilities`);
+        return [row.id, data as CaseDetailCapabilities] as const;
+      } catch {
+        return [row.id, noCaseDetailWriteCapability] as const;
+      }
+    }));
+    setCaseActionCapabilities((previous) => ({ ...previous, ...Object.fromEntries(results) }));
+  };
   const load = async () => {
     setLoading(true);
     try {
@@ -301,6 +315,7 @@ export default function CaseCenterPage({
           api.get("/cases/reference-options"),
         ]);
       setCases(caseRes.data.items);
+      void loadCaseCapabilities(caseRes.data.items as CaseRow[]);
       setContracts(contractRes.data.items);
       setHearings(hearingRes.data.items);
       setSummary(summaryRes.data);
@@ -358,6 +373,7 @@ export default function CaseCenterPage({
     try {
       const { data } = await api.post("/cases/counsel/search", counselSearchPayload(values,page,pageSize));
       setCounselCases(data.items || []);
+      void loadCaseCapabilities(data.items || []);
       setCounselTotal(data.total || 0);
       setCounselPage(data.page || page);
       setCounselPageSize(data.page_size || pageSize);
@@ -613,6 +629,7 @@ export default function CaseCenterPage({
     }
   };
   const openArchive = async (row: CaseRow) => {
+    if (!getCaseCapability(row).can_archive) return message.warning("当前账号没有案件归档权限");
     try {
       const { data } = await api.get(`/cases/${row.id}/archive-readiness`);
       archiveForm.setFieldsValue({
@@ -707,6 +724,7 @@ export default function CaseCenterPage({
     }
   };
   const openAssign = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_assign_team) return message.warning("当前账号没有案件人员分配权限");
     setAssigning(row);
     assignForm.setFieldsValue({
       customer_manager: row.data.customer_manager || "",
@@ -917,6 +935,7 @@ export default function CaseCenterPage({
     setSelectedCounselAttachmentKeys([]);
   };
   const openCounselEdit = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
     counselEditForm.setFieldsValue({
       title: row.title,
       customer: row.customer,
@@ -972,6 +991,7 @@ export default function CaseCenterPage({
     }
   };
   const openCaseFee = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
     feeForm.resetFields();
     feeForm.setFieldsValue({
       title: `${row.title}案件费用`,
@@ -1003,6 +1023,7 @@ export default function CaseCenterPage({
     }
   };
   const openProgress = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_update_progress) return message.warning("当前账号没有案件进展维护权限");
     progressForm.resetFields();
     progressForm.setFieldsValue({
       ...row.data,
@@ -1011,6 +1032,11 @@ export default function CaseCenterPage({
         : undefined,
     });
     setProgressEditing(row);
+  };
+  const openHearing = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_manage_hearing) return message.warning("当前账号没有开庭排期权限");
+    setHearingOpen(true);
+    hearingForm.setFieldsValue({ case_record_id: row.id, court: row.data.court || "", hearing_lawyer: row.data.hearing_lawyer || "" });
   };
   const saveProgress = async () => {
     if (!progressEditing) return;
@@ -1092,17 +1118,19 @@ export default function CaseCenterPage({
         key: "actions",
         fixed: "right" as const,
         width: 400,
-        render: (_: unknown, r: CaseRow) => (
+        render: (_: unknown, r: CaseRow) => {
+          const capability = getCaseCapability(r);
+          return (
           <Space size={0}>
-            <Button
+            {capability.can_assign_team && <Button
               type="link"
               icon={<TeamOutlined />}
               disabled={["待归档审核", "已归档"].includes(r.status)}
               onClick={() => openAssign(r)}
             >
               分配
-            </Button>
-            <Button
+            </Button>}
+            {capability.can_update_progress && <Button
               type="link"
               icon={<EditOutlined />}
               disabled={[
@@ -1114,7 +1142,7 @@ export default function CaseCenterPage({
               onClick={() => openProgress(r)}
             >
               进展
-            </Button>
+            </Button>}
             <Button
               type="link"
               icon={<FileTextOutlined />}
@@ -1122,35 +1150,29 @@ export default function CaseCenterPage({
             >
               任务
             </Button>
-            <Button type="link" onClick={() => openCaseFee(r)}>费用</Button>
-            <Button
+            {capability.can_create_finance && <Button type="link" onClick={() => openCaseFee(r)}>费用</Button>}
+            {capability.can_manage_hearing && <Button
               type="link"
               icon={<CalendarOutlined />}
               disabled={["待归档审核", "已归档"].includes(r.status)}
-              onClick={() => {
-                setHearingOpen(true);
-                hearingForm.setFieldsValue({
-                  case_record_id: r.id,
-                  court: r.data.court || "",
-                  hearing_lawyer: r.data.hearing_lawyer || "",
-                });
-              }}
+              onClick={() => openHearing(r)}
             >
               排期
-            </Button>
-            <Button
+            </Button>}
+            {capability.can_archive && <Button
               type="link"
               icon={<CheckSquareOutlined />}
               disabled={["待归档审核", "已归档"].includes(r.status)}
               onClick={() => openArchive(r)}
             >
               归档
-            </Button>
+            </Button>}
           </Space>
-        ),
+          );
+        },
       },
     ],
-    [cases],
+    [caseActionCapabilities, cases],
   );
   const hearingColumns = [
     { title: "星期", dataIndex: "weekday", width: 75 },
@@ -1258,11 +1280,11 @@ export default function CaseCenterPage({
           </Space>
         ) : r.status === "已归档" ? (
           <Tag color="green">已归档</Tag>
-        ) : (
+        ) : getCaseCapability(r).can_archive ? (
           <Button type="link" onClick={() => openArchive(r)}>
             归档检查
           </Button>
-        ),
+        ) : null,
     },
   ];
   const scopedCases =
@@ -1347,6 +1369,10 @@ export default function CaseCenterPage({
     return list;
   }, [scopedCases, initialView, caseQuery, attachments]);
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeys.includes(row.id));
+  const selectedCaseCapability = getCaseCapability(selectedCase);
+  const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeys.includes(row.id));
+  const canCreateSelectedCaseFees = selectedCases.length > 0 && selectedCases.every((row) => getCaseCapability(row).can_create_finance);
+  const isArchiveManager = ["admin", "manager"].includes(profile.role || "");
   const exportCases = async () => {
     try {
       const res = await api.get("/records/export", {params:{module:"case"},responseType:"blob"});
@@ -1435,7 +1461,7 @@ export default function CaseCenterPage({
     {title:"律师助理",key:"assistant",width:120,render:(_:unknown,row:CaseRow)=>row.data.assistant||"—"},
     {title:"案源人",key:"source_person",width:120,render:(_:unknown,row:CaseRow)=>row.data.source_person||row.owner||"—"},
     {title:"剩余时间",key:"remaining_days",width:105,render:(_:unknown,row:CaseRow)=>{const end=dayjs(String(row.data.counsel_end||""));const days=end.isValid()?Math.max(0,end.startOf("day").diff(dayjs().startOf("day"),"day")):0;return <span style={{color:days<10?"red":"green"}}>{days} 天</span>;}},
-    {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button><Button type="link" disabled={["待归档审核","已归档"].includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button></Space>},
+    {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={["待归档审核","已归档"].includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
   ];
   const phaseLabels=["等待公证书","审核公证书","待主体披露","新案待分配","文书准备","客户盖章","等待立案","补充取证","提交立案","一审阶段","二审阶段","再审阶段","执行阶段","归档阶段"];
   const phaseItems=phaseLabels.map(label=>[label,scopedCases.filter(row=>row.status===label).length] as const);
@@ -1535,7 +1561,7 @@ export default function CaseCenterPage({
       {title:"经办律师",render:(_:unknown,row:any)=>(row.case?.data.handling_lawyers||[]).join(",")},
       {title:"律师助理",render:(_:unknown,row:any)=>row.case?.data.assistant||""},
     ],
-    execution:[{title:"基本信息",render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button></p><p>阶段:{row.status}</p></>},{title:"当事人信息",render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},{title:"法院信息",render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>案号:{row.data.court_case_no||""}</p></>},{title:"法官信息",render:(_:unknown,row:CaseRow)=>row.data.judge||""},{title:"委托律师",render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join(",")},{title:"判决信息",render:(_:unknown,row:CaseRow)=>row.data.judgment_result||""},{title:"进度时长",render:(_:unknown,row:CaseRow)=>row.data.execution_days??0},{title:"操作",render:(_:unknown,row:CaseRow)=><Button type="link" onClick={()=>openProgress(row)}>修改进度</Button>}],
+    execution:[{title:"基本信息",render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button></p><p>阶段:{row.status}</p></>},{title:"当事人信息",render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},{title:"法院信息",render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>案号:{row.data.court_case_no||""}</p></>},{title:"法官信息",render:(_:unknown,row:CaseRow)=>row.data.judge||""},{title:"委托律师",render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join(",")},{title:"判决信息",render:(_:unknown,row:CaseRow)=>row.data.judgment_result||""},{title:"进度时长",render:(_:unknown,row:CaseRow)=>row.data.execution_days??0},{title:"操作",render:(_:unknown,row:CaseRow)=>getCaseCapability(row).can_update_progress?<Button type="link" onClick={()=>openProgress(row)}>修改进度</Button>:null}],
     unclaimed:["案号","原告","被告","金额","回款单位","到账金额","到账时间","结算状态","案件阶段","案源人","开庭律师","律师助理","调查员","品管"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.amount,row.data.payer,row.data.received_amount,row.data.received_at,row.data.settlement_status,row.status,row.data.source_person,row.data.hearing_lawyer,row.data.assistant,row.data.investigator,row.data.quality_manager][i-1]||""})),
     stage:[{title:"姓名",dataIndex:"name"},{title:"日期",dataIndex:"date"},{title:"立案进度",dataIndex:"filing"},{title:"退费进度",dataIndex:"refund"},{title:"执行进度",dataIndex:"execution"},{title:"线索进度",dataIndex:"clue"}],
     refund:["案号","原告","被告","案件阶段","律师助理","开庭律师","费用类型","金额","退费金额","新建时间","法院名称","退费进度","进度时长","操作"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail({case_no:row.data.case_no||row.serial_no})}>{row.data.case_no||row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.case_stage||row.status,row.data.assistant,row.data.hearing_lawyer,row.data.fee_type,row.data.amount,row.data.refund_amount,row.data.created_at||"",row.data.court,row.data.refund_status,row.data.progress_days,"查看"][i-1]||""})),
@@ -1669,7 +1695,7 @@ export default function CaseCenterPage({
           {specialMode==="refund"&&<Button onClick={operateRefund}>退费操作</Button>}
           {specialMode==="receipt"&&<Button onClick={()=>selectedCase?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}
           {specialMode==="unclaimed"&&<Button onClick={markCommissionPaid}>标识提成已发</Button>}
-          {specialMode==="schedule"&&<Button onClick={()=>setHearingOpen(true)}>更多操作</Button>}
+          {specialMode==="schedule"&&<Button onClick={()=>selectedCase?openHearing(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
           {specialMode==="execution"&&<Button onClick={()=>selectedCase?openProgress(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
           {specialMode==="unclaimed"&&<Button onClick={()=>selectedCase?openCaseTasks(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
         </Space></div>}
@@ -1681,7 +1707,48 @@ export default function CaseCenterPage({
           <Form.Item className="case-archive-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>重置</Button></Space></Form.Item>
         </Form>
         <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={{pageSize:20,showTotal:total=>`共有${total}条`}} />
-        <div className="case-bottom-actions"><Space wrap><Button onClick={exportCases}>导出</Button><Dropdown menu={{items:[{key:"tasks",label:"案件任务"},{key:"archive",label:"归档检查"},{key:"approve",label:"通过归档审核"},{key:"reject",label:"驳回归档审核"},{key:"unarchive-request",label:"申请解档"},{key:"unarchive-approve",label:"通过解档审批"},{key:"unarchive-reject",label:"驳回解档审批"}],onClick:({key})=>{if(!selectedCase)return message.warning("请先选择一条案件");if(key==="tasks")openCaseTasks(selectedCase);if(key==="archive")openArchive(selectedCase);if(key==="approve"||key==="reject"){if(selectedCase.status!=="待归档审核")return message.warning("只有待归档审核案件可执行审核");reviewForm.resetFields();setReviewing({row:selectedCase,approved:key==="approve"})}if(key==="unarchive-request")requestUnarchive(selectedCase);if(key==="unarchive-approve"||key==="unarchive-reject"){if(selectedCase.data.unarchive_request?.status!=="待审批")return message.warning("该案件没有待审批的解档申请");void reviewUnarchive(selectedCase,key==="unarchive-approve")}}}}><Button>更多操作</Button></Dropdown>{!archiveDone&&!archiveRefused&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择一条案件");reviewForm.resetFields();setReviewing({row:selectedCase,approved:true})}}>归档审核</Button>}{archiveDone&&<Button onClick={()=>selectedCase?requestUnarchive(selectedCase):message.warning("请先选择一条案件")}>申请解档</Button>}{archiveDone&&["admin","manager"].includes(profile.role||"")&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择一条案件");if(selectedCase.data.unarchive_request?.status!=="待审批")return message.warning("该案件没有待审批的解档申请");void reviewUnarchive(selectedCase,true)}}>解档审批</Button>}</Space></div>
+        <div className="case-bottom-actions"><Space wrap>
+          <Button onClick={exportCases}>导出</Button>
+          <Dropdown
+            menu={{
+              items: selectedCase ? [
+                { key: "tasks", label: "案件任务" },
+                ...(selectedCaseCapability.can_archive ? [{ key: "archive", label: "归档检查" }] : []),
+                ...(!archiveDone && !archiveRefused && isArchiveManager ? [{ key: "approve", label: "通过归档审核" }, { key: "reject", label: "驳回归档审核" }] : []),
+                ...(archiveDone && selectedCaseCapability.can_edit_basic ? [{ key: "unarchive-request", label: "申请解档" }] : []),
+                ...(archiveDone && isArchiveManager ? [{ key: "unarchive-approve", label: "通过解档审批" }, { key: "unarchive-reject", label: "驳回解档审批" }] : []),
+              ] : [{ key: "select", label: "请先选择一条案件", disabled: true }],
+              onClick: ({ key }) => {
+                if (!selectedCase) return message.warning("请先选择一条案件");
+                if (key === "tasks") openCaseTasks(selectedCase);
+                if (key === "archive") void openArchive(selectedCase);
+                if (key === "approve" || key === "reject") {
+                  if (!isArchiveManager) return message.warning("当前账号没有归档审核权限");
+                  if (selectedCase.status !== "待归档审核") return message.warning("只有待归档审核案件可执行审核");
+                  reviewForm.resetFields();
+                  setReviewing({ row: selectedCase, approved: key === "approve" });
+                }
+                if (key === "unarchive-request") void requestUnarchive(selectedCase);
+                if (key === "unarchive-approve" || key === "unarchive-reject") {
+                  if (!isArchiveManager) return message.warning("当前账号没有解档审批权限");
+                  if (selectedCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
+                  void reviewUnarchive(selectedCase, key === "unarchive-approve");
+                }
+              },
+            }}
+          ><Button>更多操作</Button></Dropdown>
+          {!archiveDone && !archiveRefused && isArchiveManager && <Button onClick={() => {
+            if (!selectedCase) return message.warning("请先选择一条案件");
+            reviewForm.resetFields();
+            setReviewing({ row: selectedCase, approved: true });
+          }}>归档审核</Button>}
+          {archiveDone && selectedCaseCapability.can_edit_basic && <Button onClick={() => selectedCase ? void requestUnarchive(selectedCase) : message.warning("请先选择一条案件")}>申请解档</Button>}
+          {archiveDone && isArchiveManager && <Button onClick={() => {
+            if (!selectedCase) return message.warning("请先选择一条案件");
+            if (selectedCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
+            void reviewUnarchive(selectedCase, true);
+          }}>解档审批</Button>}
+        </Space></div>
       </Card> : originalListMode && <div className="case-original-layout">
         <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(([label,count])=><button key={label} type="button" onClick={()=>{caseQueryForm.setFieldValue("status",label);setCaseQuery({...caseQuery,status:String(label)})}}>📁 {label}【{count}】</button>)}</aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
@@ -1702,22 +1769,45 @@ export default function CaseCenterPage({
           <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{pageSize:10,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode)return;const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           <div className="case-bottom-actions"><Space size={5} wrap>
             {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<Button onClick={exportCases}>导出全部（CSV）</Button>}
-            <Select
+            {selectedCaseCapability.can_upload_attachment && <Select
               aria-label="上传材料分类"
               value={caseUploadCategory}
               onChange={setCaseUploadCategory}
               style={{ width: 150 }}
               options={["案件文件", "委托材料", "证据材料", "诉讼文书", "裁判文书"].map((value) => ({ value, label: value }))}
-            />
-            <Button onClick={()=>selectedCase?caseUploadRef.current?.click():message.warning("请先选择案件")}>上传文件</Button>
+            />}
+            {selectedCaseCapability.can_upload_attachment && <Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button>}
             {["admin","manager"].includes(profile.role||"")&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,true)}}>立案审批通过</Button>}
             {["admin","manager"].includes(profile.role||"")&&<Button danger onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,false)}}>立案审批驳回</Button>}
             {counselListMode&&<>
               <Button onClick={()=>selectedCase?void openCounselDetail(selectedCase):message.warning("请先选择案件")}>查看详情</Button>
               {(["admin","manager"].includes(profile.role||""))&&<Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要修改的案件");batchUpdateForm.resetFields();setBatchUpdateOpen(true);}}>批量修改</Button>}
-              <Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要新增费用的案件");batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",expense_subtype:"官费",handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>
+              {canCreateSelectedCaseFees&&<Button onClick={()=>{batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",expense_subtype:"官费",handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>}
             </>}
-            <Dropdown trigger={["click"]} menu={{items:counselListMode?[{key:"edit",label:"修改基本信息"},{key:"view",label:"案件任务"},{key:"fee",label:"新增案件费用"},{key:"assign",label:"人员分配"},{key:"archive",label:"案件归档"}]:[{key:"view",label:"案件任务"},{key:"fee",label:"新增案件费用"},{key:"assign",label:"人员分配"},{key:"progress",label:"登记进展"},{key:"hearing",label:"开庭排期"},{key:"archive",label:"案件归档"}],onClick:({key})=>{if(!selectedCase)return message.warning("请先选择案件");if(key==="edit")openCounselEdit(selectedCase);if(key==="view")openCaseTasks(selectedCase);if(key==="fee")openCaseFee(selectedCase);if(key==="assign")openAssign(selectedCase);if(key==="progress")openProgress(selectedCase);if(key==="hearing"){setHearingOpen(true);hearingForm.setFieldsValue({case_record_id:selectedCase.id,court:selectedCase.data.court||'',hearing_lawyer:selectedCase.data.hearing_lawyer||''})}if(key==="archive")openArchive(selectedCase)}}}><Button>更多操作 ▾</Button></Dropdown>
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                items: selectedCase ? [
+                  ...(counselListMode && selectedCaseCapability.can_edit_basic ? [{ key: "edit", label: "修改基本信息" }] : []),
+                  { key: "view", label: "案件任务" },
+                  ...(selectedCaseCapability.can_create_finance ? [{ key: "fee", label: "新增案件费用" }] : []),
+                  ...(selectedCaseCapability.can_assign_team ? [{ key: "assign", label: "人员分配" }] : []),
+                  ...(!counselListMode && selectedCaseCapability.can_update_progress ? [{ key: "progress", label: "登记进展" }] : []),
+                  ...(!counselListMode && selectedCaseCapability.can_manage_hearing ? [{ key: "hearing", label: "开庭排期" }] : []),
+                  ...(selectedCaseCapability.can_archive ? [{ key: "archive", label: "案件归档" }] : []),
+                ] : [{ key: "select", label: "请先选择案件", disabled: true }],
+                onClick: ({ key }) => {
+                  if (!selectedCase) return message.warning("请先选择案件");
+                  if (key === "edit") openCounselEdit(selectedCase);
+                  if (key === "view") openCaseTasks(selectedCase);
+                  if (key === "fee") openCaseFee(selectedCase);
+                  if (key === "assign") openAssign(selectedCase);
+                  if (key === "progress") openProgress(selectedCase);
+                  if (key === "hearing") openHearing(selectedCase);
+                  if (key === "archive") void openArchive(selectedCase);
+                },
+              }}
+            ><Button>更多操作 ▾</Button></Dropdown>
           </Space></div>
         </Card>
       </div>}
@@ -2003,7 +2093,7 @@ export default function CaseCenterPage({
         onClose={() => setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
           {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
-          {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>{setHearingOpen(true);hearingForm.setFieldsValue({case_record_id:viewingCounselCase.id,court:viewingCounselCase.data.court||"",hearing_lawyer:viewingCounselCase.data.hearing_lawyer||""})}}>开庭排期</Button>}
+          {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
           {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
           {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
         </Space>}
