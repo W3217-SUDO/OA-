@@ -348,14 +348,22 @@ def main():
         login(username, "SmokePass2026!", expected=(423,))
         unlocked = call("POST", f"/system/users/{user['id']}/unlock")
         assert unlocked["failed_login_attempts"] == 0 and unlocked["locked_until"] is None
-        user_token = login(username, "SmokePass2026!")["access_token"]
+        reset = call("POST", f"/system/users/{user['id']}/reset-password", {"new_password": "ResetPass2026!"})
+        assert reset["must_change_password"] is True and reset["failed_login_attempts"] == 0 and reset["locked_until"] is None
+        reset_login = login(username, "ResetPass2026!")
+        assert reset_login["must_change_password"] is True
+        TOKEN = reset_login["access_token"]
+        call("GET", "/dashboard", expected=(428,))
+        changed_reset = call("PATCH", "/auth/me", {"current_password": "ResetPass2026!", "new_password": "ChangedResetPass2026!"})
+        assert changed_reset["must_change_password"] is False
+        user_token = login(username, "ChangedResetPass2026!")["access_token"]
         TOKEN = user_token
         assert call("GET", "/auth/me")["role"] == "user"
         call("POST", "/system/users", {"username": f"smoke_forbidden_{suffix}".lower(), "display_name": "普通用户不得创建审批人", "password": "SmokePass2026!", "role": "auditor"}, expected=(403,))
         TOKEN = admin_token
         updated = call("PATCH", f"/system/users/{user['id']}", {"display_name": "冒烟用户已更新", "is_active": False, "profile": {"office_phone": "021-12345678"}})
         assert updated["is_active"] is False and updated["office_phone"] == "021-12345678"
-        login(username, "SmokePass2026!", expected=(401,))
+        login(username, "ChangedResetPass2026!", expected=(401,))
         TOKEN = user_token
         call("GET", "/dashboard", expected=(401,))
         TOKEN = admin_token

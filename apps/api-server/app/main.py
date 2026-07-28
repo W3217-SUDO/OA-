@@ -1487,6 +1487,12 @@ class SystemUserUpdate(BaseModel):
     profile: dict | None = None
 
 
+class SystemUserPasswordResetInput(BaseModel):
+    """Administrator-issued one-time password for an existing account."""
+
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class HrEmployeeUpdateInput(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     display_name: str = Field(min_length=1, max_length=64)
@@ -2594,6 +2600,32 @@ async def delete_system_user(user_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
     await db.delete(user); await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(f"{settings.api_prefix}/system/users/{{user_id}}/reset-password")
+async def reset_system_user_password(user_id: int, body: SystemUserPasswordResetInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Reset a password as a distinct security action, not a profile edit.
+
+    The recipient must change this administrator-issued password before using
+    business APIs.  A reset also removes any stale login lock, which is the
+    practical equivalent of the old system's separate "reset password" action.
+    """
+    _require_admin(identity)
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    policy = await _security_policy(db)
+    if len(body.new_password) < policy.min_password_length:
+        raise HTTPException(status_code=422, detail=f"新密码至少需要 {policy.min_password_length} 位")
+    if verify_password(body.new_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="新密码不能与当前密码相同")
+    user.password_hash = hash_password(body.new_password)
+    user.password_changed_at = None
+    user.must_change_password = True
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    await db.commit(); await db.refresh(user)
+    return _system_user_dict(user)
 
 
 @app.post(f"{settings.api_prefix}/system/users/{{user_id}}/unlock")
