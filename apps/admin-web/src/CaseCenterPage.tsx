@@ -1723,7 +1723,7 @@ export default function CaseCenterPage({
             size="small"
             columns={caseColumns}
             dataSource={visibleCases}
-            scroll={{ x: 1500 }}
+            scroll={{ x: 1900 }}
             pagination={{ pageSize: 20 }}
           />
         )}

@@ -923,18 +923,7 @@ export default function ContractCenterPage({
       rows.reduce((sum, row) => sum + Number(row.data[key] || 0), 0),
     ]),
   ) as Record<(typeof moneyKeys)[number], number>;
-  const totalRow: Contract = {
-    id: -1,
-    serial_no: "",
-    title: "",
-    customer: "",
-    status: "",
-    owner: "",
-    department: "",
-    description: "",
-    data: { amount: 0, signed_at: "", type: "", ...totals },
-  };
-  const textCell = (value: string, r: Contract) => (r.id < 0 ? "" : value);
+  const textCell = (value: string) => value;
   const moneyColumn = (title: string, key: (typeof moneyKeys)[number]) => ({
     title: (
       <span>
@@ -946,18 +935,14 @@ export default function ContractCenterPage({
     key,
     width: 76,
     align: "right" as const,
-    render: (_: unknown, r: Contract) =>
-      r.id < 0 ? amount(totals[key]) : String(r.data[key] ?? 0),
+    render: (_: unknown, r: Contract) => String(r.data[key] ?? 0),
   });
   const columns = [
     {
       title: "合同号",
       dataIndex: "serial_no",
       width: 105,
-      render: (v: string, r: Contract) =>
-        r.id < 0 ? (
-          ""
-        ) : (
+      render: (v: string, r: Contract) => (
           <Button
             type="link"
             className="contract-cell-link"
@@ -978,16 +963,14 @@ export default function ContractCenterPage({
       title: "合同主体",
       key: "body",
       width: 74,
-      render: (_: unknown, r: Contract) =>
-        r.id < 0 ? "" : r.data.contract_body || "律所",
+      render: (_: unknown, r: Contract) => r.data.contract_body || "律所",
     },
     { title: "合同状态", dataIndex: "status", width: 74, render: textCell },
     {
       title: "案源人",
       key: "source",
       width: 74,
-      render: (_: unknown, r: Contract) =>
-        r.id < 0 ? "" : r.data.source_person || r.owner,
+      render: (_: unknown, r: Contract) => r.data.source_person || r.owner,
     },
     moneyColumn("官费|支付金额", "official_paid"),
     moneyColumn("官费|到账金额", "official_received"),
@@ -1040,14 +1023,14 @@ export default function ContractCenterPage({
       key: "customerNo",
       width: 105,
       render: (_: unknown, r: Contract) =>
-        r.id < 0 ? "" : (r.data.customer_no ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{r.data.customer_no}</Button> : "—"),
+        r.data.customer_no ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{r.data.customer_no}</Button> : "—",
     },
     {
       title: "客户名称",
       dataIndex: "customer",
       width: 180,
       ellipsis: true,
-      render: (value: string, r: Contract) => r.id < 0 ? "" : value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{value}</Button> : "—",
+      render: (value: string, r: Contract) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{value}</Button> : "—",
     },
   ];
   const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
@@ -1152,12 +1135,10 @@ export default function ContractCenterPage({
           size="small"
           loading={loading}
           columns={isAuditView ? auditColumns : columns}
-          dataSource={isAuditView ? rows : [totalRow, ...rows]}
-          rowClassName={(record) => record.id < 0 ? "contract-total-row" : ""}
+          dataSource={rows}
           rowSelection={{
             selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys.filter((key) => Number(key) > 0)),
-            getCheckboxProps: (record) => ({ disabled: record.id < 0 }),
+            onChange: (keys) => setSelectedRowKeys(keys),
           }}
           scroll={{ x: isAuditView ? 1450 : 1480 }}
           pagination={{pageSize:15,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:()=>`共有${rows.length}条`}}

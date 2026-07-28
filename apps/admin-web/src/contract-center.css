@@ -85,7 +85,7 @@
 }
 .contract-original-table .ant-table-row-selected > td { background: #e6f7f2 !important; }
 .contract-cell-link.ant-btn-link { height: auto; padding: 0; color: #136fae; font-size: 12px; }
-.contract-bottom-actions { margin-top: -34px; min-height: 34px; padding-left: 27px; }
+.contract-bottom-actions { min-height: 34px; margin-top: 8px; padding-left: 0; overflow-x: auto; }
 .contract-bottom-actions .ant-btn { height: 30px; padding: 0 12px; border-radius: 0; font-size: 12px; }
 
 .contract-create-steps { margin: 2px 0 22px; padding: 12px 18px; background: #f6f8f9; border: 1px solid #e1e5e8; }
@@ -152,7 +152,7 @@
   padding: 24px 0 10px;
   border: 1px solid #ddd;
 }
-.contract-page-form .ant-form-item { max-width: 890px; margin-bottom: 14px; }
+.contract-page-form .ant-form-item { width: min(100%, 1000px); max-width: 1000px; margin-right: auto; margin-bottom: 14px; margin-left: auto; }
 .contract-page-form .ant-form-item-label { flex: 0 0 315px; padding-right: 14px; }
 .contract-page-form .ant-form-item-label > label { height: 30px; color: #555; font-size: 12px; }
 .contract-page-form .ant-form-item-control { max-width: 790px; }
@@ -161,7 +161,7 @@
 .contract-page-form textarea.ant-input { min-height: 92px !important; }
 .contract-upload-tip { margin-top: 5px; color: #999; font-size: 12px; }
 .contract-page-stage { min-height: 480px; padding: 22px 30px; border: 1px solid #ddd; }
-.contract-page-actions { margin-top: -62px; padding: 14px 0 22px 315px; }
+.contract-page-actions { margin-top: 16px; padding: 14px 0 22px 315px; }
 .contract-page-actions .ant-btn { min-width: 70px; height: 32px; border-radius: 0; font-size: 12px; }
 
 @media (max-width: 1150px) {

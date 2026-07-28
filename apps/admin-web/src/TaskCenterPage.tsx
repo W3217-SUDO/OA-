@@ -1107,7 +1107,7 @@ export default function TaskCenterPage({
 
         {!hideTaskFooter && (
           <div className="task-bottom-actions">
-            <Space size={5}>
+            <Space size={5} wrap>
               {canManageInitiatedTask && <Button onClick={openCreateTask}>新增任务</Button>}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && selected?.status === "已拒绝" && (
                 <Button onClick={() => openDialog(selected, "resend")}>重新派发</Button>
