@@ -887,6 +887,34 @@ def main() -> None:
         combined = "\n".join((BUSINESS_RECORD_NAVIGATION, GLOBAL_SEARCH, NOTIFICATION, APP, FINANCE_PAGE, SEAL_PAGE, DOCUMENT_PAGE, WAREHOUSE_PAGE, HR))
         assert token in combined, f"exact business-record detail navigation contract missing: {token}"
     for token in (
+        '"customer": "customer-company"',
+        '"contract": "contract-mine"',
+        '"case": "case-company"',
+        '"task": "task-company"',
+        '"clue": "clue"',
+        '"notary": "notary"',
+        '"evidence": "evidence"',
+        '"seal": "seal-my"',
+        '"finance": "finance-fee-query"',
+        '"document": "documents-register"',
+        '"hr": "hr-all"',
+        '"warehouse": "warehouse"',
+    ):
+        assert token in MAIN, f"search business-record route declaration missing: {token}"
+    for token in (
+        'source_type="task", source_id=task.id',
+        'source_type": "finance", "source_id": fee.id',
+        'source_type": "contract", "source_id": contract.id',
+        'source_type": "case", "source_id": case_record.id',
+        "task:'task-reminders'",
+        "finance:'finance-audit'",
+        "contract:'contract-audit'",
+        "case:'case-schedule'",
+    ):
+        assert token in MAIN or token in NOTIFICATION, f"notification source/detail route contract missing: {token}"
+    assert '"attachment", "route": "documents-files"' in MAIN and '"template", "route": "documents-template"' in MAIN, "attachment/template search routes must remain explicit until a real detail consumer exists"
+    print("SEARCH_NOTIFICATION_DETAIL_AUDIT_OK: all non-report business-record search and notification source types have exact detail contexts; attachment/template remain list-only pending real details")
+    for token in (
         'constisReminder=initialView==="task-reminders";',
         'reminder_only:isReminder||undefined,',
         'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||',
