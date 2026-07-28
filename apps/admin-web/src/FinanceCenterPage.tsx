@@ -1743,6 +1743,31 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "删除失败");
     }
   };
+  const rollbackFinanceTransaction = (row: Transaction) => {
+    Modal.confirm({
+      title: "回退财务流水",
+      content:
+        row.transaction_type === "付款"
+          ? "回退后会删除本笔付款流水及其凭证，并按剩余付款金额恢复关联请款单状态。确定继续吗？"
+          : "回退后会删除本笔财务流水及其凭证。确定继续吗？",
+      okText: "确认回退",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.delete(`/finance/transactions/${row.id}`);
+          if (voucherTarget?.id === row.id) {
+            setVoucherOpen(false);
+            setVoucherTarget(null);
+          }
+          message.success("财务流水已回退");
+          load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "财务流水回退失败");
+        }
+      },
+    });
+  };
   const createReconciliation = async () => {
     const v = await reconcileForm.validateFields();
     const { period, ...fields } = v;
@@ -2205,6 +2230,25 @@ export default function FinanceCenterPage({
     { title: "对方单位", dataIndex: "counterparty", width: 190 },
     { title: "登记人", dataIndex: "operator", width: 90 },
     { title: "备注", dataIndex: "remark" },
+    ...(role === "admin"
+      ? [
+          {
+            title: "操作",
+            key: "action",
+            fixed: "right" as const,
+            width: 96,
+            render: (_: unknown, r: Transaction) => (
+              <Button
+                danger
+                type="link"
+                onClick={() => rollbackFinanceTransaction(r)}
+              >
+                回退
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
   const reconcileColumns = [
     {
