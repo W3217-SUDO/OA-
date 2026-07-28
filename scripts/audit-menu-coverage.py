@@ -2935,7 +2935,7 @@ def main() -> None:
         '办理状态',
         '办理人事状态：',
         '账号启停请使用列表中的“办理状态”',
-        'api.post(`/hr/employees/${transitioningEmployee.id}/transition`',
+        'api.post(`/hr/${transitioningEmployee.id}/transition`',
     ):
         assert token in HR, f"HR lifecycle UI contract missing: {token}"
     for token in (
