@@ -99,6 +99,7 @@ type ApprovalRole = { id: number; name: string; permissions: string[]; is_active
 type LinkedCustomerContext = { id: number; name: string; serial_no?: string; at?: number };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
+type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string };
 type SealAsset = { id: number; code: string; name: string; seal_type: string; status: string };
 type CustomerRef = { id: number; serial_no: string; title: string; owner: string; data: { customer_managers?: string[] } };
 const colors: Record<string, string> = {
@@ -150,7 +151,9 @@ export default function ContractCenterPage({
     [paymentTarget, setPaymentTarget] = useState<Contract | null>(null),
     [invoiceTarget, setInvoiceTarget] = useState<Contract | null>(null),
     [viewing, setViewing] = useState<Contract | null>(null),
-    [changes, setChanges] = useState<Change[]>([]);
+    [changes, setChanges] = useState<Change[]>([]),
+    [contractEvents, setContractEvents] = useState<ContractEvent[]>([]),
+    [eventTarget, setEventTarget] = useState<Contract | null>(null);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
@@ -178,11 +181,13 @@ export default function ContractCenterPage({
     [invoiceForm] = Form.useForm(),
     [changeForm] = Form.useForm(),
     [queryForm] = Form.useForm(),
-    [approvalUserForm] = Form.useForm();
+    [approvalUserForm] = Form.useForm(),
+    [eventForm] = Form.useForm();
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
     setViewing(null);
     setViewingAttachments([]);
+    setContractEvents([]);
     setViewingAttachmentsLoading(false);
   };
   const openViewing = async (contract: Contract) => {
@@ -191,9 +196,13 @@ export default function ContractCenterPage({
     setViewingAttachments([]);
     setViewingAttachmentsLoading(true);
     try {
-      const { data } = await api.get("/attachments", { params: { record_id: contract.id } });
+      const [attachmentRes, eventRes] = await Promise.all([
+        api.get("/attachments", { params: { record_id: contract.id } }),
+        api.get(`/contracts/${contract.id}/events`),
+      ]);
       if (requestId === viewingAttachmentRequest.current) {
-        setViewingAttachments(data.items || []);
+        setViewingAttachments(attachmentRes.data.items || []);
+        setContractEvents(eventRes.data.items || []);
       }
     } catch (error: any) {
       if (requestId === viewingAttachmentRequest.current) {
@@ -776,6 +785,23 @@ export default function ContractCenterPage({
       setChangeHistory(r);
     } catch {
       message.error("变更记录加载失败");
+    }
+  };
+  const openContractEvent = (contract: Contract) => {
+    eventForm.resetFields();
+    setEventTarget(contract);
+  };
+  const createContractEvent = async () => {
+    if (!eventTarget) return;
+    try {
+      const values = await eventForm.validateFields();
+      await api.post(`/contracts/${eventTarget.id}/events`, { content: values.content });
+      message.success("合同事项已记录");
+      setEventTarget(null);
+      eventForm.resetFields();
+      if (viewing?.id === eventTarget.id) await openViewing(eventTarget);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同事项记录失败");
     }
   };
   const archive = async (r: Contract) => {
@@ -1394,7 +1420,7 @@ export default function ContractCenterPage({
         width={860}
         open={Boolean(viewing)}
         title={`合同查看：${viewing?.serial_no || ""}`}
-        footer={<Button onClick={closeViewing}>关闭</Button>}
+        footer={<Space><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={closeViewing}>关闭</Button></Space>}
         onCancel={closeViewing}
       >
         <Descriptions
@@ -1432,6 +1458,27 @@ export default function ContractCenterPage({
         ) : (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />
         )}
+        <Divider>事项记录</Divider>
+        {contractEvents.length ? (
+          <Timeline items={contractEvents.map((event) => ({
+            children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,
+          }))} />
+        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
+      </Modal>
+      <Modal
+        open={Boolean(eventTarget)}
+        title={`新增合同事项：${eventTarget?.serial_no || ""}`}
+        okText="保存"
+        cancelText="取消"
+        onOk={() => void createContractEvent()}
+        onCancel={() => { setEventTarget(null); eventForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Form form={eventForm} layout="vertical">
+          <Form.Item label="事项内容" name="content" rules={[{ required: true, whitespace: true, max: 1000, message: "请填写不超过 1000 字的事项内容" }]}>
+            <Input.TextArea rows={5} maxLength={1000} showCount placeholder="记录合同履行、沟通或需要跟进的事项" />
+          </Form.Item>
+        </Form>
       </Modal>
       <Modal
         width={820}

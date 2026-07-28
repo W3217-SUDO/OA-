@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, JobRole, Notification, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
+from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, JobRole, Notification, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, verify_password
 
 
@@ -1801,6 +1801,10 @@ class ContractChangeInput(BaseModel):
 class ContractChangeReviewInput(BaseModel):
     approved: bool
     comment: str = Field(default="", max_length=1000)
+
+
+class ContractEventInput(BaseModel):
+    content: str = Field(min_length=1, max_length=1000)
 
 
 class SealApplicationInput(BaseModel):
@@ -4831,6 +4835,53 @@ async def archive_contract(contract_id: int, identity: dict = Depends(current_id
     db.add(WorkflowEvent(record_id=contract.id, action="合同归档", from_status=previous, to_status="已归档", operator=identity["username"], comment="合同列表批量操作归档"))
     await db.commit(); await db.refresh(contract)
     return await _record_dict_for_identity(contract, identity, db)
+
+
+def _contract_event_dict(event: ContractEvent) -> dict:
+    return {
+        "id": event.id,
+        "contract_record_id": event.contract_record_id,
+        "content": event.content,
+        "operator": event.operator,
+        "created_at": event.created_at,
+    }
+
+
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/events")
+async def list_contract_events(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_visible(contract_id, identity, db)
+    if contract.module != "contract":
+        raise HTTPException(status_code=404, detail="合同不存在")
+    events = (await db.scalars(
+        select(ContractEvent)
+        .where(ContractEvent.contract_record_id == contract.id)
+        .order_by(ContractEvent.created_at.desc(), ContractEvent.id.desc())
+    )).all()
+    return {"items": [_contract_event_dict(event) for event in events], "total": len(events)}
+
+
+@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/events", status_code=status.HTTP_201_CREATED)
+async def create_contract_event(contract_id: int, body: ContractEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _require_record_owner_or_manager(contract, identity, db)
+    if contract.status == "已归档":
+        raise HTTPException(status_code=409, detail="已归档合同不可新增事项记录")
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="事项内容不能为空")
+    event = ContractEvent(contract_record_id=contract.id, content=content, operator=identity["username"])
+    db.add(event)
+    db.add(WorkflowEvent(
+        record_id=contract.id,
+        action="新增合同事项",
+        from_status=contract.status,
+        to_status=contract.status,
+        operator=identity["username"],
+        comment=content,
+    ))
+    await db.commit()
+    await db.refresh(event)
+    return _contract_event_dict(event)
 
 
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/changes")

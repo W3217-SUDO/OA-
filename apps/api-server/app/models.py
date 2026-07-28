@@ -311,6 +311,18 @@ class ContractApprovalStep(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ContractEvent(Base):
+    """合同办理过程中的独立事项记录，不与审批/状态流水混用。"""
+
+    __tablename__ = "contract_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    operator: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

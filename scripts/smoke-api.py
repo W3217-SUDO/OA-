@@ -1222,6 +1222,10 @@ def main():
         assert [item["status"] for item in approval_state["items"]] == ["待审批"]
         assert approval_state["current_step"]["approver"] == manager_name
         assert any(item["id"] == contract_attachment["id"] for item in call("GET", f"/attachments?record_id={contract['id']}")["items"])
+        assert call("GET", f"/contracts/{contract['id']}/events")["items"] == []
+        contract_event = call("POST", f"/contracts/{contract['id']}/events", {"content": "合同事项记录接口验收"}, expected=(201,))
+        assert contract_event["contract_record_id"] == contract["id"] and contract_event["content"] == "合同事项记录接口验收"
+        assert any(item["id"] == contract_event["id"] for item in call("GET", f"/contracts/{contract['id']}/events")["items"])
         sync_assets = call("GET", "/seals/assets")["items"]
         sync_asset = next(item for item in sync_assets if item["status"] == "可用")
         sync_linked_seal = call("POST", f"/contracts/{contract['id']}/seal-application", {"seal_asset_id": sync_asset["id"], "copies": 1, "purpose": "合同审批同步用印验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "冒烟合同附件", "description": "合同审批完成后自动提交用印", "submit": False}, expected=(201,))
