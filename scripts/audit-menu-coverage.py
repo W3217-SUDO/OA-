@@ -1832,10 +1832,34 @@ def main() -> None:
         "api.get(`/records/${row.record_id}`)",
         "rememberInvestigationDetailTarget({id:record?.id,serial_no:row.record_no,module})",
         "onNavigate?.(module)",
-        "scroll={{x:1500}}",
+        "scroll={{x:1760}}",
     ):
         assert token in normalized_agent_document, f"agent document related-record contract missing: {token}"
     print("AGENT_DOCUMENT_RELATION_OK: all six business modules, record-id fallback and read-only investigation navigation")
+    for token in (
+        'record = await _ensure_record_visible(item.record_id, identity, db)',
+        'if write:\n            await _require_record_owner_or_manager(record, identity, db)',
+        '已人工确认的智能文档不得删除',
+        '删除智能文档任务',
+        'capabilities = await _agent_document_capabilities(item, identity, db, record)',
+        'can_delete = bool(can_write and is_creator_or_admin',
+    ):
+        assert token in MAIN, f"agent document scope/audit protection missing: {token}"
+    for token in (
+        'type JobCapabilities=',
+        "can(r,'can_edit')",
+        "can(r,'can_delete')",
+        "fixed:'right' as const",
+        'scroll={{x:1760}}',
+    ):
+        assert token in AGENT_DOCUMENT, f"agent document UI capability/layout protection missing: {token}"
+    for token in (
+        'revoked_evidence_agent',
+        '撤权创建人不得修改关联证物文档',
+        "call(\"DELETE\", f\"/agent/documents/{agent['id']}\", expected=(409,))",
+    ):
+        assert token in SMOKE, f"agent document smoke coverage missing: {token}"
+    print("AGENT_DOCUMENT_SCOPE_AUDIT_OK: current record scope, immutable confirmation audit, capability UI and revocation smoke are protected")
     assert "['草稿','待审批']" in SEAL, "the pending seal page must keep drafts reachable for submission"
     assert 'is_admin_global_view = identity.get("role") == "admin"' in MAIN, "task views must not shrink the administrator's full-firm data scope"
     assert 'BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"})' in MAIN, "seal audit history views must receive approved and rejected applications"
