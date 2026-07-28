@@ -256,12 +256,19 @@ def main() -> None:
         '"system-users": "员工管理"',
         'const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route',
         '"notary-import-info": "公证信息导入"',
-        'const labelFor = (key: string, fallback?: string)',
-        'routePageLabels[key] || fallback || key',
+        'function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {',
+        'const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;',
+        'return menuLabel || routePageLabels[normalizedKey] || "业务页面";',
         'const key = normalizeWorkspaceRoute(item.key)',
-        'return [key, { key, label: labelFor(key, item.label) }]',
+        'return [key, { key, label: resolveWorkspacePageLabel(key) }]',
     ):
         assert token in route_labels_source, f"workspace deep-route label recovery missing: {token}"
+    assert all(token in APP for token in (
+        'const normalized = Array.from(new Map(current.map((entry) => {',
+        'return [key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }];',
+        'const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);',
+        '<span>首页 / {currentPageLabel}</span>',
+    )), "workspace must normalize every restored tab and reuse the same label for the page heading"
     print("WORKSPACE_ROUTE_LABELS_OK: stored deep-route tabs recover human-readable labels instead of internal keys")
     for token in (
         'const resetWorkspaceForSession = () => {',
@@ -1154,6 +1161,30 @@ def main() -> None:
     ):
         assert token in normalized_case, f"case list/bottom action capability guard missing: {token}"
     print("CASE_TEAM_ACTION_CAPABILITY_UI_OK: row actions, upload controls and bottom more-actions are capability-gated before API invocation")
+    for token in (
+        '"can_create_case_task":False',
+        '"can_create_case_task":can_progress',
+        'ifsource=="案件任务"andnotcase_no:',
+        'case_record=awaitdb.scalar(select(BusinessRecord).where(BusinessRecord.module=="case",BusinessRecord.serial_no==case_no))',
+        'case_record=await_ensure_record_module(case_record.id,"case",identity,db)',
+        'ifnotcapabilities["can_create_case_task"]:',
+        '"case_record_id":case_record.idifcase_recordelseNone',
+    ):
+        assert token in normalized_main, f"case-task server authorization guard missing: {token}"
+    for token in (
+        'can_create_case_task:boolean;',
+        'if(!getCaseCapability(taskCase).can_create_case_task)returnmessage.warning(',
+        'taskCase&&getCaseCapability(taskCase).can_create_case_task&&<Card',
+    ):
+        assert token in normalized_case, f"case-task frontend capability guard missing: {token}"
+    for token in (
+        '"can_create_case_task"]',
+        '"SMOKE助理越权案件任务-{suffix}"',
+        '"SMOKE无关人员越权案件任务-{suffix}"',
+        '"SMOKE不存在案件任务-{suffix}"',
+    ):
+        assert token in NORMALIZED_SMOKE, f"case-task authorization smoke missing: {token}"
+    print("CASE_TASK_AUTHORIZATION_OK: case task creation resolves a visible case and requires the team capability")
 
     # Original /9001001010 (my-created tasks) evidence contract.
     created_tabs_match = re.search(r"const createdTabs: StatusTab\[\] = \[(.*?)\n\];", TASK, re.S)
@@ -1808,6 +1839,7 @@ def main() -> None:
     assert "sunhold:company-bank-address" not in SYSTEM and '"bank_address"' in MAIN, "company bank address must persist through the backend config"
     assert "api.post('/hr/employees'" in HR and '/hr/employees"' in MAIN and 'account_type == "员工账号"' in MAIN and 'role="user"' in MAIN, "employee-account HR saves must atomically create/sync a least-privileged login account"
     assert '不能通过员工档案覆盖管理员账号' in MAIN and '关联可登录账号，不能直接删除' in MAIN and 'user.is_active = body.is_active' in MAIN, "HR account edit, deletion and disable boundaries must stay synchronized"
+    assert 'linked_user.role == "user"' in MAIN and 'login_enabled = body.to_status == "在职"' in MAIN and 'linked_user.is_active = login_enabled' in MAIN, "HR lifecycle transitions must only synchronize linked ordinary-user login status and must not touch admin"
     assert "const rawCellValue" in FINANCE and 'spec.control === "date"' in FINANCE and 'spec.control === "money"' in FINANCE, "finance route queries must apply typed field filters"
     for field in ("project_role", "office_phone", "im_account", "contact_status", "is_valid"):
         assert field in CUSTOMER, f"new-customer contact tab is missing {field}"

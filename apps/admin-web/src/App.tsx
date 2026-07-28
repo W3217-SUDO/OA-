@@ -585,9 +585,15 @@ const routePageLabels: Record<string, string> = {
   "notary-query-files": "公证书文件列表",
 };
 
+function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {
+  const normalizedKey = normalizeWorkspaceRoute(key);
+  if (normalizedKey === "dashboard") return "控制台";
+  if (normalizedKey.startsWith("case-new-")) return "新建案件";
+  const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
+  return menuLabel || routePageLabels[normalizedKey] || "业务页面";
+}
+
 function readOpenPages(active: string): OpenPage[] {
-  const labelFor = (key: string, fallback?: string) =>
-    key === "dashboard" ? "控制台" : routePageLabels[key] || fallback || key;
   try {
     const stored = JSON.parse(localStorage.getItem("sunhold:open-pages") || "[]") as OpenPage[];
     const valid = Array.from(new Map(
@@ -595,13 +601,13 @@ function readOpenPages(active: string): OpenPage[] {
         .filter((item) => item?.key && item?.label)
         .map((item) => {
           const key = normalizeWorkspaceRoute(item.key);
-          return [key, { key, label: labelFor(key, item.label) }];
+          return [key, { key, label: resolveWorkspacePageLabel(key) }];
         }),
     ).values());
     if (valid.some((item) => item.key === active)) return valid;
-    return [...valid, { key: active, label: labelFor(active) }];
+    return [...valid, { key: active, label: resolveWorkspacePageLabel(active) }];
   } catch {
-    return [{ key: active, label: labelFor(active) }];
+    return [{ key: active, label: resolveWorkspacePageLabel(active) }];
   }
 }
 
@@ -1136,13 +1142,19 @@ export default function App() {
     setActive(normalizedRoute);
   };
   useEffect(() => {
-    const item = flattenMenu(effectiveMenuItems).find((entry) => entry.key === active);
-    const label = active.startsWith("case-new-") ? "新建案件" : item?.label || active;
-    const effectiveLabel = routePageLabels[active] || label;
+    const effectiveLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
     setOpenPages((current) => {
-      const next = current.some((entry) => entry.key === active)
-        ? current.map((entry) => entry.key === active ? { ...entry, label: effectiveLabel } : entry)
-        : [...current, { key: active, label: effectiveLabel }];
+      const normalized = Array.from(new Map(current.map((entry) => {
+        const key = normalizeWorkspaceRoute(entry.key);
+        return [key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }];
+      })).values());
+      const next = normalized.some((entry) => entry.key === active)
+        ? normalized
+        : [...normalized, { key: active, label: effectiveLabel }];
+      if (
+        next.length === current.length &&
+        next.every((entry, index) => entry.key === current[index]?.key && entry.label === current[index]?.label)
+      ) return current;
       localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
       return next;
     });
@@ -1177,9 +1189,7 @@ export default function App() {
         }}
       />
     );
-  const selected = flattenMenu(effectiveMenuItems).find(
-    (i) => i.key === active,
-  );
+  const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
   const allowedRoots = new Set(
     sessionUser?.role === "admin"
       ? effectiveMenuItems.map((item) => item.key)
@@ -1381,10 +1391,10 @@ export default function App() {
           <div className="page-head">
             <div>
               <h1>
-                {active.startsWith("case-new-") ? "新建案件" : selected?.label || "控制台"}
+                {currentPageLabel}
                 {active === "dashboard" && <sup className="dashboard-hot">hot</sup>}
               </h1>
-              <span>首页 / {active.startsWith("case-new-") ? "新建案件" : selected?.label || "控制台"}</span>
+              <span>首页 / {currentPageLabel}</span>
             </div>
           </div>
           <Tabs
