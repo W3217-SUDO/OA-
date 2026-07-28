@@ -1291,6 +1291,18 @@ def main():
         call("PUT", f"/cases/{civil_case['id']}/judicial", {"first_court_enabled": True, "first_court_name": "上海市民事测试人民法院", "first_court_case_no": serial("CIVIL-JUDICIAL")})
         civil_case = call("POST", f"/cases/{civil_case['id']}/creation/review", {"approved": True, "comment": "民事案件主管审核通过"})
         assert civil_case["status"] == "新案待分配" and civil_case["data"]["case_creation_approval_status"] == "已通过"
+        normal_basic_payload = {
+            "customer_record_id": customer["id"], "title": "冒烟民事案件（基本信息已修改）", "case_phase": "文书准备",
+            "cause_or_charge": "侵害商标权纠纷（修改）", "handling_lawyers": [USERNAME], "assistant": USERNAME,
+            "business_owner": USERNAME, "investigator": USERNAME, "investigation_clue_ids": [], "right_type": "", "comment": "验证普通案件基本信息修改闭环",
+        }
+        call("PUT", f"/cases/{civil_case['id']}/counsel-basic", {"title": "不应走顾问接口", "counsel_type": "不应保存", "counsel_start": str(date.today()), "counsel_end": str(date.today() + timedelta(days=1)), "handling_lawyers": [USERNAME]}, expected=(409,))
+        call("PUT", f"/cases/{civil_case['id']}/normal-basic", {**normal_basic_payload, "case_phase": "已归档"}, expected=(422,))
+        edited_civil = call("PUT", f"/cases/{civil_case['id']}/normal-basic", normal_basic_payload)
+        civil_case = edited_civil
+        assert edited_civil["customer"] == customer["title"] and edited_civil["title"] == normal_basic_payload["title"] and edited_civil["status"] == "文书准备"
+        assert edited_civil["data"]["customer_record_id"] == customer["id"] and edited_civil["data"]["investigator"] == USERNAME
+        assert "修改普通案件基本信息" in {item["action"] for item in call("GET", f"/records/{civil_case['id']}/history")["items"]}
         team_assigned_case = call("POST", f"/cases/{civil_case['id']}/assign", {
             "customer_manager": member_name,
             "hearing_lawyer": member_name,
@@ -1311,6 +1323,7 @@ def main():
         assert handling_capabilities["team_role"] == "handling_lawyer"
         assert all(handling_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log", "can_update_progress", "can_manage_hearing", "can_create_case_task"])
         assert all(handling_capabilities[key] is False for key in ["can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
+        call("PUT", f"/cases/{civil_case['id']}/normal-basic", normal_basic_payload, expected=(403,))
         member_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": "案件文档", "remark": "团队律师附件权限验收"}, f"smoke-case-team-{suffix}.txt", b"case team permission")
         call("DELETE", f"/attachments/{member_attachment['id']}", expected=(204,))
         member_progress = call("POST", f"/cases/{civil_case['id']}/progress", {"first_instance_court": "上海市团队权限测试法院", "first_instance_case_no": serial("TEAM-PROGRESS"), "comment": "受派经办律师登记进展"})
