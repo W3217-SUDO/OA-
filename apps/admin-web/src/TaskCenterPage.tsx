@@ -1052,19 +1052,12 @@ export default function TaskCenterPage({
   ];
   const unreadColumns: any[] = [
     { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true, render: (value: string, row: TaskRow) => { const label = `(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`; return <Button className="task-cell-link task-table-identifier" type="link" title={label} onClick={() => openCommunication(row)}>{label}</Button> } },
-    { title: "案号编号", dataIndex: "case_no", width: 180, ellipsis: true, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>{value}</Button> : "" },
-    { title: "原告", dataIndex: "plaintiff", width: 160, ellipsis: true, render: (value: string) => value || "" },
-    { title: "被告", dataIndex: "defendant", width: 160, ellipsis: true, render: (value: string) => value || "" },
-    { title: "案件阶段", dataIndex: "case_stage", width: 105, render: (value: string) => value || "" },
-    { title: "状态", dataIndex: "status", width: 90, ellipsis: true, render: (_value: string, row: TaskRow) => row.latest_unread_message || "" },
-    { title: "优先级", dataIndex: "priority", width: 78, ellipsis: true, render: (_value: string, row: TaskRow) => row.latest_unread_sender || "" },
-    { title: "标题", dataIndex: "title", width: 220, ellipsis: true, render: (_value: string, row: TaskRow) => row.latest_unread_at ? formatTaskDateTime(row.latest_unread_at) : "" },
-    { title: "发起时间", dataIndex: "created_at", width: 142, sorter: true, sortOrder: taskSort?.field === "created_at" ? taskSort.order : null, render: () => "" },
-    { title: "截止时间", dataIndex: "deadline", width: 110, sorter: true, sortOrder: taskSort?.field === "deadline" ? taskSort.order : null, render: () => "" },
-    { title: "剩余天数", dataIndex: "days_remaining", width: 82, sorter: true, sortOrder: taskSort?.field === "days_remaining" ? taskSort.order : null, render: () => "" },
-    { title: "最后更新时间", dataIndex: "updated_at", width: 142, sorter: true, sortOrder: taskSort?.field === "updated_at" ? taskSort.order : null, render: () => "" },
-    { title: "发起人", dataIndex: "initiator", width: 95, render: () => "" },
-    { title: "负责人", dataIndex: "owner", width: 95, render: () => "" },
+    { title: "关联案号", dataIndex: "case_no", width: 180, ellipsis: true, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>{value}</Button> : "—" },
+    { title: "未读内容", dataIndex: "latest_unread_message", width: 360, ellipsis: true, render: (value: string) => value || "—" },
+    { title: "发送人", dataIndex: "latest_unread_sender", width: 140, ellipsis: true, render: (value: string) => value || "—" },
+    { title: "发送时间", dataIndex: "latest_unread_at", width: 165, sorter: true, sortOrder: taskSort?.field === "updated_at" ? taskSort.order : null, render: (value: string) => value ? formatTaskDateTime(value) : "—" },
+    { title: "任务状态", dataIndex: "status", width: 105, ellipsis: true, render: (value: string) => value || "—" },
+    { title: "负责人", dataIndex: "owner", width: 120, ellipsis: true, render: (value: string) => value || "—" },
   ];
   const columns = isUnread ? unreadColumns : standardColumns;
   const openCreateTask = () => {
@@ -1310,7 +1303,7 @@ export default function TaskCenterPage({
           columns={columns}
           dataSource={filteredTasks}
           tableLayout="fixed"
-          scroll={{ x: 1900 }}
+          scroll={{ x: isUnread ? 1270 : 1900 }}
           rowSelection={
             {
               selectedRowKeys: selectedKeys,

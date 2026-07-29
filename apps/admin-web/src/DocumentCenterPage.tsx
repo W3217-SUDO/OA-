@@ -39,7 +39,10 @@ import {
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { rememberTaskDetailTarget } from "./taskDetailNavigation";
+import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
@@ -210,6 +213,45 @@ export default function DocumentCenterPage({
       onNavigate?.("customer-company");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "关联客户加载失败");
+    }
+  };
+  const openAttachmentRecord = async (attachment: Attachment) => {
+    if (!attachment.record_id) {
+      message.warning("该文件未关联业务记录");
+      return;
+    }
+    try {
+      const { data: record } = await api.get(`/records/${attachment.record_id}`);
+      switch (record.module) {
+        case "case":
+          rememberCaseDetailTarget({ serial_no: record.serial_no });
+          onNavigate?.("case-company");
+          return;
+        case "contract":
+          rememberContractDetailTarget({ serial_no: record.serial_no });
+          onNavigate?.("contract-company");
+          return;
+        case "customer":
+          rememberCustomerDetailTarget({ id: record.id, serial_no: record.serial_no, title: record.title });
+          onNavigate?.("customer-company");
+          return;
+        case "task":
+          rememberTaskDetailTarget({ id: record.id, serial_no: record.serial_no });
+          onNavigate?.("task-my-created");
+          return;
+        case "clue":
+        case "investigation":
+          rememberInvestigationDetailTarget({ id: record.id, serial_no: record.serial_no });
+          onNavigate?.("clue-my-collect");
+          return;
+        case "document":
+          openDocument(record as RecordRow);
+          return;
+        default:
+          message.info("该关联业务暂不支持详情查看");
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联业务不存在或当前账号无权查看");
     }
   };
   const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>({});
@@ -558,13 +600,16 @@ export default function DocumentCenterPage({
       title: "关联编号",
       dataIndex: "record_no",
       width: 160,
-      render: (v: string) => v || "公共文件",
+      render: (v: string, r: Attachment) =>
+        r.record_id ? <Button type="link" onClick={() => openAttachmentRecord(r)}>{v || "查看关联业务"}</Button> : "公共文件",
     },
     {
       title: "关联业务",
       dataIndex: "record_title",
       width: 220,
       ellipsis: true,
+      render: (v: string, r: Attachment) =>
+        r.record_id ? <Button type="link" onClick={() => openAttachmentRecord(r)}>{v || r.record_no || "查看关联业务"}</Button> : "—",
     },
     { title: "大小", dataIndex: "size", width: 90, render: fileSize },
     { title: "上传人", dataIndex: "uploader", width: 90 },

@@ -1542,8 +1542,8 @@ def main() -> None:
         assert token in NORMALIZED_SMOKE, f"my-collaborating smoke evidence missing: {token}"
 
     # Original /9001001040/TP/Task/TaskList (tasks with unread new messages).
-    # This page deliberately reuses the common 12-filter/14-column shell while
-    # projecting NewestUnReadMessage/sender/time into status/priority/title.
+    # This route retains the original filter shell, but its grid is a compact
+    # unread-message worklist. Do not restore ordinary-task columns as blanks.
     assert 'const isUnread = initialView === "task-my-unread"' in TASK, "my-unread task route detection is missing"
     assert 'title="任务列表"' in TASK, "my-unread task page must use the original 任务列表 title"
     assert '{!isUnread && <div className="task-status-tabs">' in TASK, "original my-unread page must not render task status tabs"
@@ -1556,21 +1556,18 @@ def main() -> None:
     unread_columns = unread_columns_match.group(1)
     unread_column_fields = re.findall(r'dataIndex:\s*"([^"]+)"', unread_columns)
     assert unread_column_fields == [
-        "serial_no", "case_no", "plaintiff", "defendant", "case_stage", "status", "priority",
-        "title", "created_at", "deadline", "days_remaining", "updated_at", "initiator", "owner",
-    ], f"my-unread task page must keep checkbox plus 14 common columns, got {unread_column_fields}"
+        "serial_no", "case_no", "latest_unread_message", "latest_unread_sender",
+        "latest_unread_at", "status", "owner",
+    ], f"my-unread task page must render the real unread-message columns, got {unread_column_fields}"
     for token in (
-        'row.latest_unread_message || ""',
-        'row.latest_unread_sender || ""',
-        'row.latest_unread_at ? formatTaskDateTime(row.latest_unread_at) : ""',
+        'value || "—"',
+        'value ? formatTaskDateTime(value) : "—"',
         'onClick={() => openCommunication(row)}',
     ):
         assert token in unread_columns, f"my-unread NewestUnReadMessage projection is missing: {token}"
-    assert unread_columns.count('render: () => ""') == 6, "the final six common cells on original unread rows must stay blank"
-    unread_column_chunks = re.split(r"\n    (?=\{)", unread_columns)
-    for field in ("created_at", "deadline", "days_remaining", "updated_at"):
-        field_chunk = next((chunk for chunk in unread_column_chunks if f'dataIndex: "{field}"' in chunk), "")
-        assert field_chunk and "sorter:" in field_chunk, f"my-unread common column {field} must retain original sorting"
+    assert 'render: () => ""' not in unread_columns, "unread task rows must not retain blank placeholder columns"
+    unread_time_chunk = next((chunk for chunk in re.split(r"\n    (?=\{)", unread_columns) if 'dataIndex: "latest_unread_at"' in chunk), "")
+    assert unread_time_chunk and "sorter:" in unread_time_chunk, "unread sent-time column must remain sortable"
     assert 'locale={{ emptyText: "没有查询到符合条件的记录 。" }}' in TASK, "my-unread empty text must preserve the original spacing and punctuation"
     for token in (
         'api.get(isUnread?"/tasks/unread-messages":"/tasks"',
