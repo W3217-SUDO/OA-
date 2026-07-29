@@ -218,33 +218,65 @@ export default function FinanceCenterPage({
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
   const [cases, setCases] = useState<Fee[]>([]);
-  const openCaseDetail = (caseNo: unknown) => {
+  const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
       message.warning("当前记录未关联案件");
       return;
     }
-    rememberCaseDetailTarget({ serial_no: serialNo });
-    onNavigate?.("case-company");
+    try {
+      const { data } = await api.get("/records", { params: { module: "case", keyword: serialNo, page_size: 100 } });
+      const record = (data.items as Fee[]).find((item) => item.serial_no === serialNo);
+      if (!record) {
+        message.warning("未找到关联案件或当前账号无权查看");
+        return;
+      }
+      rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("case-company");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联案件加载失败");
+    }
   };
-  const openContractDetail = (contractNo: unknown) => {
+  const openContractDetail = async (contractNo: unknown) => {
     const serialNo = String(contractNo || "").trim();
     if (!serialNo || serialNo === "—") {
       message.warning("当前记录未关联合同");
       return;
     }
-    rememberContractDetailTarget({ serial_no: serialNo });
-    onNavigate?.("contract-company");
+    try {
+      const { data } = await api.get("/records", { params: { module: "contract", keyword: serialNo, page_size: 100 } });
+      const record = (data.items as Fee[]).find((item) => item.serial_no === serialNo);
+      if (!record) {
+        message.warning("未找到关联合同或当前账号无权查看");
+        return;
+      }
+      rememberContractDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("contract-company");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联合同加载失败");
+    }
   };
-  const openCustomerDetail = (customer: unknown, customerNo?: unknown) => {
+  const openCustomerDetail = async (customer: unknown, customerNo?: unknown) => {
     const title = String(customer || "").trim();
     const serialNo = String(customerNo || "").trim();
     if (!title && !serialNo) {
       message.warning("当前记录未关联客户");
       return;
     }
-    rememberCustomerDetailTarget({ title, serial_no: serialNo });
-    onNavigate?.("customer-company");
+    try {
+      const { data } = await api.get("/records", { params: { module: "customer", keyword: serialNo || title, page_size: 100 } });
+      const record = (data.items as Fee[]).find((item) =>
+        (serialNo && item.serial_no === serialNo) || (title && (item.title === title || item.customer === title)),
+      );
+      if (!record) {
+        message.warning("未找到关联客户或当前账号无权查看");
+        return;
+      }
+      rememberCustomerDetailTarget({ id: record.id, title: record.title, serial_no: record.serial_no });
+      onNavigate?.("customer-company");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联客户加载失败");
+    }
   };
   const openCaseTaskCreate = (source: any) => {
     const caseNo = String(source?.case_no || source?.data?.case_no || "").trim();
