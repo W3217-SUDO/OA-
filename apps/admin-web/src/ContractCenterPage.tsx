@@ -26,7 +26,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { consumeContractDetailTarget, type ContractDetailNavigationContext } from "./contractDetailNavigation";
-import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { formatRequiredDate } from "./formSafety";
 import "./contract-center.css";
@@ -1181,11 +1181,18 @@ export default function ContractCenterPage({
     value: user.username,
     label: `${user.display_name || user.username}（${user.position || user.staff_role || "合同审批角色"}｜${user.department || "未分部门"}）`,
   }));
-  const openRelatedCustomer = (contract: Contract) => {
-    if (!rememberCustomerDetailTarget({ id: Number(contract.data.customer_id) || undefined, serial_no: contract.data.customer_no, title: contract.customer })) {
+  const openRelatedCustomer = async (contract: Contract) => {
+    const source = { id: Number(contract.data.customer_id) || undefined, serial_no: contract.data.customer_no, title: contract.customer };
+    if (!source.id && !source.serial_no && !source.title) {
       message.warning("当前合同未关联客户");
       return;
     }
+    const customer = await resolveCustomerDetailTarget(source);
+    if (!customer) {
+      message.warning("未找到关联客户或当前账号无权查看");
+      return;
+    }
+    rememberCustomerDetailTarget(customer);
     onNavigate?.("customer-company");
   };
   const openRelatedCase = (caseNo: unknown) => {

@@ -34,7 +34,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
-import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
@@ -801,12 +801,18 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
   };
-  const openRelatedCustomer = (target: { id?: number; serial_no?: string; title?: string; customer?: string }) => {
+  const openRelatedCustomer = async (target: { id?: number; serial_no?: string; title?: string; customer?: string }) => {
     const title = String(target.title || target.customer || "").trim();
-    if (!rememberCustomerDetailTarget({ id: target.id, serial_no: target.serial_no, title })) {
+    if (!title && !target.id && !target.serial_no) {
       message.warning("当前记录未关联客户");
       return;
     }
+    const customer = await resolveCustomerDetailTarget({ id: target.id, serial_no: target.serial_no, title });
+    if (!customer) {
+      message.warning("未找到关联客户或当前账号无权查看");
+      return;
+    }
+    rememberCustomerDetailTarget(customer);
     onNavigate?.("customer-company");
   };
   const openRelatedContract = (target: { id?: number; serial_no?: unknown } | unknown) => {

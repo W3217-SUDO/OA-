@@ -26,6 +26,7 @@ CUSTOMER_CSS = (ROOT / "apps/admin-web/src/customer-center.css").read_text(encod
 CUSTOMER_CONFLICT = (ROOT / "apps/admin-web/src/CustomerConflictPage.tsx").read_text(encoding="utf-8")
 CUSTOMER_CONFLICT_CSS = (ROOT / "apps/admin-web/src/customer-conflict.css").read_text(encoding="utf-8")
 CONTRACT = (ROOT / "apps/admin-web/src/ContractCenterPage.tsx").read_text(encoding="utf-8")
+CUSTOMER_DETAIL_NAVIGATION = (ROOT / "apps/admin-web/src/customerDetailNavigation.ts").read_text(encoding="utf-8")
 INVESTIGATION = (ROOT / "apps/admin-web/src/InvestigationCenterPage.tsx").read_text(encoding="utf-8")
 TASK = (ROOT / "apps/admin-web/src/TaskCenterPage.tsx").read_text(encoding="utf-8")
 NORMALIZED_TASK = re.sub(r"\s+", "", TASK)
@@ -260,6 +261,16 @@ def main() -> None:
     ):
         assert token in CONTRACT, f"contract audit customer relation detail entry missing: {token}"
     print("CONTRACT_AUDIT_CUSTOMER_RELATION_OK: audit customer number and name open the real read-only customer detail")
+    for source, source_name in ((CASE, "case"), (CONTRACT, "contract")):
+        assert "resolveCustomerDetailTarget" in source, f"{source_name} customer detail entry must preflight the protected customer target"
+        assert 'message.warning("未找到关联客户或当前账号无权查看")' in source, f"{source_name} must explain missing or inaccessible customer relations in place"
+    for token in (
+        'api.get(`/records/${targetId}`)',
+        'params: { module: "customer", keyword, page_size: 100 }',
+        'return null;',
+    ):
+        assert token in CUSTOMER_DETAIL_NAVIGATION, f"customer relation preflight missing: {token}"
+    print("CASE_CONTRACT_CUSTOMER_PREFLIGHT_OK: case and contract customer links resolve protected targets before navigation")
     assert 'className="workspace-tabs"' in APP and 'sunhold:open-pages' in APP and 'closeOpenPage' in APP, "workspace must retain independently closeable accumulated page tabs"
     route_labels_source = APP[APP.index("const legacyRouteAliases"):APP.index("function readStoredUser")]
     for token in (
