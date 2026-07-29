@@ -463,6 +463,7 @@ function makeReceiptNo() {
 
 export function ReceiptCreatePage() {
   const [form] = Form.useForm<ReceiptCreateValues>();
+  const selectedCustomer = Form.useWatch("customer", form);
   const [receiptNo, setReceiptNo] = useState(makeReceiptNo);
   const [customers, setCustomers] = useState<string[]>([]);
   const [contracts, setContracts] = useState<{ serial_no: string; customer: string; title: string }[]>([]);
@@ -550,6 +551,19 @@ export function ReceiptCreatePage() {
             allowClear
             showSearch
             placeholder="请选择客户"
+            onChange={(customer) => {
+              const currentContract = form.getFieldValue("contractNo");
+              if (
+                currentContract &&
+                !contracts.some(
+                  (item) =>
+                    item.serial_no === currentContract &&
+                    (!customer || item.customer === customer),
+                )
+              ) {
+                form.setFieldValue("contractNo", undefined);
+              }
+            }}
             options={customers.map((value) => ({ value, label: value }))}
           />
         </Form.Item>
@@ -566,7 +580,17 @@ export function ReceiptCreatePage() {
           <Input />
         </Form.Item>
         <Form.Item label="合同编号" name="contractNo">
-          <Select allowClear showSearch placeholder="请选择已签约合同" options={contracts.filter((item) => !form.getFieldValue("customer") || item.customer === form.getFieldValue("customer")).map((item) => ({ value: item.serial_no, label: `${item.serial_no}｜${item.customer}｜${item.title}` }))} />
+          <Select
+            allowClear
+            showSearch
+            placeholder="请选择已签约合同"
+            options={contracts
+              .filter((item) => !selectedCustomer || item.customer === selectedCustomer)
+              .map((item) => ({
+                value: item.serial_no,
+                label: `${item.serial_no}｜${item.customer}｜${item.title}`,
+              }))}
+          />
         </Form.Item>
         <Form.Item label="备注" name="remark">
           <Input.TextArea rows={3} />

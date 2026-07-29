@@ -38,6 +38,7 @@ import { api, AUTH_EXPIRED_EVENT } from "./api";
 import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import {
   CONTRACT_DETAIL_TARGET_EVENT,
   clearContractDetailTarget,
@@ -869,6 +870,10 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
     rememberCaseDetailTarget({ serial_no: caseNo });
     onNavigate("case-company");
   };
+  const openDashboardCustomer = (customer: string) => {
+    rememberCustomerDetailTarget({ title: customer });
+    onNavigate("customer-company");
+  };
   const hearingCols = useMemo(
     () => [
       { title: "星期", dataIndex: "weekday", width: 80 },
@@ -883,7 +888,13 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
           <a onClick={() => openDashboardCase(v)}>{v}</a>
         ),
       },
-      { title: "客户", dataIndex: "client", ellipsis: true },
+      {
+        title: "客户",
+        dataIndex: "client",
+        ellipsis: true,
+        render: (value: string) =>
+          value ? <a onClick={() => openDashboardCustomer(value)}>{value}</a> : "—",
+      },
       {
         title: "开庭律师",
         dataIndex: "lawyer",
