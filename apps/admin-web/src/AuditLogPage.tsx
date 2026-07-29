@@ -7,6 +7,7 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
+import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 
 type Log = {
   id: number;
@@ -76,8 +77,14 @@ export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: stri
     } else if (["clue", "notary", "evidence"].includes(row.module)) {
       rememberInvestigationDetailTarget({ id: row.record_id, serial_no: row.serial_no, module: row.module });
       onNavigate?.(row.module);
+    } else if (["finance", "seal", "document", "warehouse", "hr"].includes(row.module)) {
+      if (rememberBusinessRecordDetailTarget({ id: row.record_id, module: row.module as "finance" | "seal" | "document" | "warehouse" | "hr" })) {
+        const routes: Record<string, string> = { finance: "finance-fee-query", seal: "seal-my", document: "documents-register", warehouse: "warehouse", hr: "hr-all" };
+        onNavigate?.(routes[row.module]);
+      }
     }
   };
+  const canOpenBusiness = (row: Log) => Boolean(row.record_id && row.serial_no && ["case", "contract", "customer", "task", "clue", "notary", "evidence", "finance", "seal", "document", "warehouse", "hr"].includes(row.module));
 
   const columns = [
     { title: "时间", dataIndex: "created_at", width: 165, render: (v: string) => new Date(v).toLocaleString("zh-CN") },
@@ -86,7 +93,7 @@ export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: stri
       title: "业务编号",
       dataIndex: "serial_no",
       width: 175,
-      render: (value: string, row: Log) => value ? <Button type="link" onClick={() => openBusiness(row)}>{value}</Button> : "—",
+      render: (value: string, row: Log) => value ? (canOpenBusiness(row) ? <Button type="link" onClick={() => openBusiness(row)}>{value}</Button> : value) : "—",
     },
     { title: "业务标题", dataIndex: "title", width: 220, ellipsis: true },
     { title: "操作", dataIndex: "action", width: 130, render: (v: string) => <b>{v}</b> },
