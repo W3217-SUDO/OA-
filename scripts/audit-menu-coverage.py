@@ -321,6 +321,19 @@ def main() -> None:
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert 'reset-password' in SYSTEM and '重置密码' in SYSTEM and 'must_change_password = True' in MAIN, "system user list must provide a separate secure password reset action that forces the next-login change"
     assert 'row.username===currentUsername' in SYSTEM, "The current administrator must not be offered a self password-reset action"
+    for token in (
+        'async def _ensure_system_user_lifecycle_safe',
+        '账号正在审批合同',
+        '账号已关联员工档案',
+        'await _ensure_system_user_lifecycle_safe(user, db, action="停用")',
+        'await _ensure_system_user_lifecycle_safe(user, db, action="删除")',
+    ):
+        assert token in MAIN, f"system-user lifecycle dependency guard missing: {token}"
+    for token in (
+        'call("PATCH", f"/system/users/{manager[\'id\']}", {"is_active": False}, expected=(409,))',
+        'call("DELETE", f"/system/users/{atomic_employee[\'user\'][\'id\']}", expected=(409,))',
+    ):
+        assert token in SMOKE, f"system-user lifecycle dependency smoke coverage missing: {token}"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
     assert 'sessionStorage.getItem("sunhold:contract-customer")' in CONTRACT, "contract creation must consume customer context from the customer page"

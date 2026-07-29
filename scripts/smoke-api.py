@@ -1275,6 +1275,8 @@ def main():
         approval_state = call("GET", f"/contracts/{contract['id']}/approvals")
         assert [item["status"] for item in approval_state["items"]] == ["待审批"]
         assert approval_state["current_step"]["approver"] == manager_name
+        call("PATCH", f"/system/users/{manager['id']}", {"is_active": False}, expected=(409,))
+        call("DELETE", f"/system/users/{manager['id']}", expected=(409,))
         assert any(item["id"] == contract_attachment["id"] for item in call("GET", f"/attachments?record_id={contract['id']}")["items"])
         assert call("GET", f"/contracts/{contract['id']}/events")["items"] == []
         contract_event = call("POST", f"/contracts/{contract['id']}/events", {"content": "合同事项记录接口验收"}, expected=(201,))
@@ -3324,6 +3326,8 @@ def main():
         atomic_employee = call("POST", "/hr/employees", {"username": atomic_employee_name, "display_name": "原子新建员工", "employee_no": serial("HR-ATOMIC"), "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "manager", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号", "joined_at": str(date.today()), "mobile": "13800000001"}}, expected=(201,))
         users.append(atomic_employee["user"]["id"]); records.append(atomic_employee["employee"]["id"])
         assert atomic_employee["employee"]["owner"] == atomic_employee_name and atomic_employee["user"]["username"] == atomic_employee_name and atomic_employee["user"]["role"] == "user"
+        call("PATCH", f"/system/users/{atomic_employee['user']['id']}", {"is_active": False}, expected=(409,))
+        call("DELETE", f"/system/users/{atomic_employee['user']['id']}", expected=(409,))
         call("POST", "/hr/employees", {"username": atomic_employee_name, "display_name": "重复员工", "employee_no": serial("HR-ATOMIC-2"), "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "user", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号"}}, expected=(409,))
         call("POST", "/hr/employees", {"username": "admin", "display_name": "禁止覆盖管理员", "employee_no": serial("HR-ADMIN"), "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "user", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号"}}, expected=(409,))
         call("DELETE", f"/records/{atomic_employee['employee']['id']}", expected=(409,))

@@ -2728,6 +2728,35 @@ async def _rename_system_username(user: User, requested_username: str, identity:
     return new_username
 
 
+async def _ensure_system_user_lifecycle_safe(user: User, db: AsyncSession, *, action: str) -> None:
+    """Keep account administration from orphaning HR records or approval nodes."""
+    pending_contract = await db.scalar(
+        select(BusinessRecord.serial_no)
+        .join(ContractApprovalStep, ContractApprovalStep.contract_record_id == BusinessRecord.id)
+        .where(
+            BusinessRecord.module == "contract",
+            BusinessRecord.status == "审批中",
+            ContractApprovalStep.status == "待审批",
+            ContractApprovalStep.approver == user.username,
+        )
+        .order_by(BusinessRecord.id)
+        .limit(1)
+    )
+    if pending_contract:
+        raise HTTPException(status_code=409, detail=f"账号正在审批合同 {pending_contract}，请先完成、改派或撤回该合同审批后再{action}")
+    employee_no = await db.scalar(
+        select(BusinessRecord.serial_no)
+        .where(
+            BusinessRecord.module == "hr",
+            or_(BusinessRecord.owner == user.username, BusinessRecord.data["username"].as_string() == user.username),
+        )
+        .order_by(BusinessRecord.id)
+        .limit(1)
+    )
+    if employee_no:
+        raise HTTPException(status_code=409, detail=f"账号已关联员工档案 {employee_no}，请通过人事办理状态同步账号，不能直接{action}")
+
+
 @app.patch(f"{settings.api_prefix}/system/users/{{user_id}}")
 async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
@@ -2745,6 +2774,8 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
     if body.is_active is not None:
         if user.username == identity["username"] and not body.is_active:
             raise HTTPException(status_code=409, detail="不能停用当前登录账号")
+        if not body.is_active and user.is_active:
+            await _ensure_system_user_lifecycle_safe(user, db, action="停用")
         user.is_active = body.is_active
     if body.display_name is not None:
         user.display_name = body.display_name.strip()
@@ -2771,6 +2802,7 @@ async def delete_system_user(user_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
     if user.role == "admin":
         raise HTTPException(status_code=409, detail="不能删除系统管理员账号")
+    await _ensure_system_user_lifecycle_safe(user, db, action="删除")
     await db.delete(user); await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
