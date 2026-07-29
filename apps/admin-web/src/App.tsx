@@ -1214,6 +1214,10 @@ export default function App() {
   const pageAllowed =
     sessionUser?.role === "admin" ||
     route === "dashboard" ||
+    // Leaf menus are independently grantable.  A canonical route can collapse
+    // a leaf such as task-my-accepted to its container task-my for component
+    // selection, but that must not discard the explicit leaf grant.
+    grantedMenuKeys.has(active) ||
     grantedMenuKeys.has(route);
   const requestedPage =
     route === "dashboard" ? (

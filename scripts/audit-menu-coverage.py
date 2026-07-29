@@ -785,7 +785,8 @@ def main() -> None:
         'constchildren=filterMenuByGrantedKeys(item.children||[],grantedKeys);',
         'if(item.key!=="dashboard"&&!grantedKeys.has(item.key)&&!children.length)return[];',
         'constroute=canonicalRoute(active);',
-        'route==="dashboard"||grantedMenuKeys.has(route);',
+        'grantedMenuKeys.has(active)',
+        'grantedMenuKeys.has(route);',
     ):
         assert token in normalized_app, f"leaf menu permission UI guard missing: {token}"
     normalized_conflict = re.sub(r"\s+", "", CUSTOMER_CONFLICT)
@@ -879,7 +880,7 @@ def main() -> None:
     assert 'new URLSearchParams(window.location.search).get("page") || "dashboard"' in APP, "page query deep-link initialization is missing"
     assert 'window.addEventListener("popstate", restoreRouteFromHistory)' in APP, "browser history must restore the selected deep route"
     assert 'window.history.pushState(' in APP and 'params.set("page", active)' in APP, "menu navigation must keep the page query synchronized"
-    assert 'const grantedMenuKeys = new Set(' in APP and 'route === "dashboard" ||\n    grantedMenuKeys.has(route);' in APP, "deep routes must require their exact granted menu key"
+    assert 'const grantedMenuKeys = new Set(' in APP and 'grantedMenuKeys.has(active)' in APP and 'grantedMenuKeys.has(route);' in APP, "deep routes must accept an explicitly granted leaf before falling back to its canonical container"
     for token in (
         'MENU_KEYS = [key for key, *_ in DEFAULT_SYSTEM_MENUS if key != "dashboard"]',
         'def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:',
