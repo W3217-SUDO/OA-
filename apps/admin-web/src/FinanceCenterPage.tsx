@@ -1914,12 +1914,12 @@ export default function FinanceCenterPage({
         <b>{r.data.amount == null ? "无权限" : money(r.data.amount)}</b>
       ),
     },
-    { title: "客户", dataIndex: "customer", width: 180 },
+    { title: "客户", dataIndex: "customer", width: 180, render: (value: string, r: Fee) => value ? <Button type="link" onClick={() => openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
     {
       title: "案号",
       key: "case",
       width: 145,
-      render: (_: unknown, r: Fee) => r.data.case_no || "—",
+      render: (_: unknown, r: Fee) => r.data.case_no ? <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
     },
     {
       title: "法院/机构",
@@ -1985,12 +1985,12 @@ export default function FinanceCenterPage({
   ];
   const invoiceColumns = [
     { title: "申请编号", dataIndex: "serial_no", width: 180 },
-    { title: "客户", dataIndex: "customer", width: 190 },
+    { title: "客户", dataIndex: "customer", width: 190, render: (value: string, r: FinanceFlow) => value ? <Button type="link" onClick={() => openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
     {
       title: "案号",
       key: "case_no",
       width: 150,
-      render: (_: unknown, r: FinanceFlow) => r.data.case_no || "—",
+      render: (_: unknown, r: FinanceFlow) => r.data.case_no ? <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
     },
     {
       title: "发票抬头",
@@ -2100,9 +2100,9 @@ export default function FinanceCenterPage({
       title: "案号",
       key: "case_no",
       width: 150,
-      render: (_: unknown, r: FinanceFlow) => r.data.case_no,
+      render: (_: unknown, r: FinanceFlow) => r.data.case_no ? <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
     },
-    { title: "客户", dataIndex: "customer", width: 180 },
+    { title: "客户", dataIndex: "customer", width: 180, render: (value: string, r: FinanceFlow) => value ? <Button type="link" onClick={() => openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
     {
       title: "法院",
       key: "court",
@@ -6871,7 +6871,7 @@ export default function FinanceCenterPage({
                                   { title: <span className="finance-stacked-header"><span>本笔</span><span>分配日期</span></span>, dataIndex: "allocated_at", width: 173, render: (value) => String(value || "").replace("T", " ") || "—" },
                                   { title: <span className="finance-stacked-header"><span>本笔</span><span>结算金额</span></span>, dataIndex: "settlement_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
                                   { title: <span className="finance-stacked-header"><span>本笔</span><span>归档费</span></span>, dataIndex: "archive_fee", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-                                  { title: "客户", dataIndex: "customer", width: 216 },
+                                  { title: "客户", dataIndex: "customer", width: 216, render: (value, detail: any) => value ? <Button type="link" onClick={() => openCustomerDetail(value, detail.customer_no)}>{value}</Button> : "—" },
                                   { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 115 },
                                   { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 115 },
                                   { title: "合同号", dataIndex: "contract_no", width: 144, render: (value) => <Button type="link" onClick={() => openContractDetail(value)}>{value || "—"}</Button> },
@@ -8354,7 +8354,7 @@ export default function FinanceCenterPage({
               title: "案号",
               dataIndex: "case_no",
               width: 88,
-              render: (value) => value || "—",
+              render: (value) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—",
             },
             {
               title: (
