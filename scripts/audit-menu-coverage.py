@@ -325,6 +325,7 @@ def main() -> None:
         'async def _ensure_system_user_lifecycle_safe',
         '账号正在审批合同',
         '账号已关联员工档案',
+        '页面验收临时员工',
         'await _ensure_system_user_lifecycle_safe(user, db, action="停用")',
         'await _ensure_system_user_lifecycle_safe(user, db, action="删除")',
     ):

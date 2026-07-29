@@ -13535,6 +13535,10 @@ async def delete_smoke_record(record_id: int, identity: dict = Depends(current_i
         or "UI任务流转验收-" in record.title
         # Contact-edit page evidence uses this equally narrow, fixed UI marker.
         or "UI临时联系人验收-" in record.title
+        # Employee-account lifecycle page evidence has no normal physical-delete
+        # action: the account must first be offboarded through HR, then this
+        # exact local-only marker permits precise acceptance cleanup.
+        or "页面验收临时员工" in record.title
         or "SMOKE" in (record.customer or "").upper()
         or "冒烟" in (record.customer or "")
         or record.owner.lower().startswith("smoke_")
