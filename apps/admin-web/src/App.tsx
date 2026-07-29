@@ -428,15 +428,15 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
 function flattenMenu(items: NavItem[]): NavItem[] {
   return items.flatMap((item) => [item, ...flattenMenu(item.children || [])]);
 }
-function rootMenuKey(items: NavItem[], target: string): string | undefined {
-  for (const item of items) {
-    if (item.key === target) return item.key;
-    if (
-      item.children &&
-      flattenMenu(item.children).some((child) => child.key === target)
-    )
-      return item.key;
-  }
+function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>): NavItem[] {
+  return items.flatMap((item) => {
+    const children = filterMenuByGrantedKeys(item.children || [], grantedKeys);
+    // A parent is retained only as a container for an authorized descendant.
+    // It does not grant its own route unless the server returned that key in
+    // the user's effective menu permissions.
+    if (item.key !== "dashboard" && !grantedKeys.has(item.key) && !children.length) return [];
+    return [{ ...item, ...(item.children ? { children } : {}) }];
+  });
 }
 function ancestorMenuKeys(
   items: NavItem[],
@@ -1190,39 +1190,19 @@ export default function App() {
           setLoggedIn(true);
         }}
       />
-    );
+  );
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
-  const allowedRoots = new Set(
+  const grantedMenuKeys = new Set(
     sessionUser?.role === "admin"
-      ? effectiveMenuItems.map((item) => item.key)
+      ? flattenMenu(effectiveMenuItems).map((item) => item.key)
       : sessionUser?.menu_keys || ["user-center"],
   );
-  const canUseCustomerConflict =
-    sessionUser?.role === "admin" ||
-    Boolean(sessionUser?.menu_keys?.includes("customer-conflict"));
-  const sideMenuItems = effectiveMenuItems
-    .filter((item) => item.key === "dashboard" || allowedRoots.has(item.key))
-    .map((item) =>
-      item.key === "customer" && item.children
-        ? {
-            ...item,
-            children: item.children.filter(
-              (child) =>
-                child.key !== "customer-conflict" || canUseCustomerConflict,
-            ),
-          }
-        : item,
-    );
+  const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
   const route = canonicalRoute(active);
-  const activeRoot =
-    route === "dashboard"
-      ? "dashboard"
-      : rootMenuKey(effectiveMenuItems, route);
   const pageAllowed =
     sessionUser?.role === "admin" ||
-    activeRoot === "dashboard" ||
-    (Boolean(activeRoot && allowedRoots.has(activeRoot)) &&
-      (route !== "customer-conflict" || canUseCustomerConflict));
+    route === "dashboard" ||
+    grantedMenuKeys.has(route);
   const requestedPage =
     route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />

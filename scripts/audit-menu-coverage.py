@@ -765,11 +765,13 @@ def main() -> None:
     assert 'route === "customer-conflict" ? (' in APP and '<CustomerConflictPage />' in APP
     normalized_app = re.sub(r"\s+", "", APP)
     for token in (
-        'constcanUseCustomerConflict=sessionUser?.role==="admin"||Boolean(sessionUser?.menu_keys?.includes("customer-conflict"));',
-        'child.key!=="customer-conflict"||canUseCustomerConflict',
-        '(route!=="customer-conflict"||canUseCustomerConflict)',
+        'functionfilterMenuByGrantedKeys(items:NavItem[],grantedKeys:Set<string>):NavItem[]',
+        'constchildren=filterMenuByGrantedKeys(item.children||[],grantedKeys);',
+        'if(item.key!=="dashboard"&&!grantedKeys.has(item.key)&&!children.length)return[];',
+        'constroute=canonicalRoute(active);',
+        'route==="dashboard"||grantedMenuKeys.has(route);',
     ):
-        assert token in normalized_app, f"customer-conflict leaf permission UI guard missing: {token}"
+        assert token in normalized_app, f"leaf menu permission UI guard missing: {token}"
     normalized_conflict = re.sub(r"\s+", "", CUSTOMER_CONFLICT)
     normalized_conflict_css = re.sub(r"\s+", "", CUSTOMER_CONFLICT_CSS)
     for token in (
@@ -861,7 +863,15 @@ def main() -> None:
     assert 'new URLSearchParams(window.location.search).get("page") || "dashboard"' in APP, "page query deep-link initialization is missing"
     assert 'window.addEventListener("popstate", restoreRouteFromHistory)' in APP, "browser history must restore the selected deep route"
     assert 'window.history.pushState(' in APP and 'params.set("page", active)' in APP, "menu navigation must keep the page query synchronized"
-    assert 'const route = canonicalRoute(active);\n  const activeRoot =\n    route === "dashboard"\n      ? "dashboard"\n      : rootMenuKey(effectiveMenuItems, route);' in APP, "deep routes must resolve authorization from their canonical menu parent"
+    assert 'const grantedMenuKeys = new Set(' in APP and 'route === "dashboard" ||\n    grantedMenuKeys.has(route);' in APP, "deep routes must require their exact granted menu key"
+    for token in (
+        'MENU_KEYS = [key for key, *_ in DEFAULT_SYSTEM_MENUS if key != "dashboard"]',
+        'def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:',
+        'for child_key in MENU_CHILDREN_BY_KEY.get(current, []):',
+        'async def navigation_menus(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):',
+        'visible_keys = {"dashboard", *permission["menu_keys"]}',
+    ):
+        assert token in MAIN, f"backend leaf menu permission contract missing: {token}"
     assert 'const ancestors = ancestorMenuKeys(effectiveMenuItems, active)' in APP, "deep routes must expand their parent menus"
     assert '<TaskCenterPage initialView={active}' in APP, "task routes must preserve the unread leaf key when rendering"
     assert '{ key: "task-reminders", label: "任务提醒" }' not in APP, "original sidebar must not invent a visible task-reminders fallback leaf"

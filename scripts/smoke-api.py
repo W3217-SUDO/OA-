@@ -516,6 +516,24 @@ def main():
             })
             TOKEN = login(member_name, "SmokePass2026!")["access_token"]
             call("GET", f"/customers/conflicts?name={urllib.parse.quote('任意完整企业名称')}", expected=(403,))
+            member_navigation = call("GET", "/system/menus/navigation")["items"]
+            assert any(item["key"] == "dashboard" for item in member_navigation)
+            assert all(item["key"] != "customer-conflict" for item in member_navigation)
+            # Existing parent grants remain backward compatible: a saved
+            # ``case`` permission still exposes its configured descendants.
+            assert any(item["key"] == "case-mine-civil" for item in member_navigation)
+            TOKEN = admin_token
+            call("PATCH", "/system/role-permissions/user", {
+                "data_scope": current_user_permission["data_scope"],
+                "menu_keys": ["user-center"],
+                "field_keys": current_user_permission["field_keys"],
+            })
+            TOKEN = login(member_name, "SmokePass2026!")["access_token"]
+            leaf_only_navigation = call("GET", "/system/menus/navigation")["items"]
+            assert {item["key"] for item in leaf_only_navigation} == {
+                "dashboard", "user-center", "user-messages", "user-communications", "user-account",
+            }
+            call("GET", f"/customers/conflicts?name={urllib.parse.quote('任意完整企业名称')}", expected=(403,))
         finally:
             TOKEN = admin_token
             call("PATCH", "/system/role-permissions/user", {

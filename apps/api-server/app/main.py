@@ -72,7 +72,6 @@ COURT_JUDICIAL_KEYS = {
     "second_court_name", "second_court_case_no", "second_court_courtroom", "second_court_judge", "second_court_clerk", "second_court_filing_date", "second_court_hearing_date",
     "retrial_court_name", "retrial_court_case_no", "retrial_court_courtroom", "retrial_court_judge", "retrial_court_clerk", "retrial_court_filing_date", "retrial_court_hearing_date",
 }
-MENU_KEYS = ["task", "seal", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "platform-finance", "user-center", "hr", "system", "warehouse", "reports"]
 DEFAULT_SYSTEM_MENUS = [
     ("dashboard", "", "控制台", "dashboard", 0),
     ("seal", "", "用印中心", "file-text", 10), ("seal-my", "seal", "我的用印申请", "", 11), ("seal-audit", "seal", "用印审核", "", 12), ("seal-admin", "seal", "行政用印", "", 13),
@@ -142,6 +141,16 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-management-config", "system-management", "系统配置", "", 3),
 ]
 SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
+# Each configured menu item is independently grantable.  Existing role records
+# used parent keys only, so _expand_menu_permission_keys below deliberately
+# keeps the historical meaning of a selected parent: it grants its descendants.
+# Administrators can now instead select individual leaves to make a narrow role.
+MENU_KEYS = [key for key, *_ in DEFAULT_SYSTEM_MENUS if key != "dashboard"]
+MENU_PARENT_BY_KEY = {key: parent_key for key, parent_key, *_ in DEFAULT_SYSTEM_MENUS}
+MENU_CHILDREN_BY_KEY: dict[str, list[str]] = {}
+for _menu_key, _menu_parent_key in MENU_PARENT_BY_KEY.items():
+    if _menu_parent_key:
+        MENU_CHILDREN_BY_KEY.setdefault(_menu_parent_key, []).append(_menu_key)
 LEGACY_FINANCE_MENU_KEYS = {
     "finance-fees", "finance-audit", "finance-refund", "finance-transactions", "finance-reconcile",
     "platform-finance-reconcile",
@@ -306,6 +315,21 @@ def _upgrade_schema(connection) -> None:
                 role = str(role_row["role"]).replace("'", "''")
                 connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('case_create_leaf_capabilities_v1')"))
+    leaf_menu_permissions_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'role_menu_leaf_permissions_v1'"
+    )).first()
+    if not leaf_menu_permissions_migrated:
+        role_rows = connection.execute(text("SELECT role, menu_keys FROM role_permissions")).mappings().all()
+        for role_row in role_rows:
+            if role_row["role"] == "admin":
+                continue
+            raw_keys = role_row["menu_keys"]
+            keys = list(raw_keys if isinstance(raw_keys, list) else json.loads(raw_keys or "[]"))
+            migrated_keys = _stored_menu_permission_keys(keys)
+            encoded_keys = json.dumps(migrated_keys, ensure_ascii=False).replace("'", "''")
+            role = str(role_row["role"]).replace("'", "''")
+            connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('role_menu_leaf_permissions_v1')"))
     # Remove the short-lived internal marker used by an earlier development
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
@@ -370,7 +394,10 @@ async def lifespan(_: FastAPI):
         existing_roles = set((await db.scalars(select(RolePermission.role))).all())
         for role, config in DEFAULT_ROLE_PERMISSIONS.items():
             if role not in existing_roles:
-                db.add(RolePermission(role=role, **config))
+                role_config = dict(config)
+                if role != "admin":
+                    role_config["menu_keys"] = _stored_menu_permission_keys(config["menu_keys"])
+                db.add(RolePermission(role=role, **role_config))
         admin_permission = await db.scalar(select(RolePermission).where(RolePermission.role == "admin"))
         if admin_permission:
             admin_config = DEFAULT_ROLE_PERMISSIONS["admin"]
@@ -2140,6 +2167,36 @@ async def health():
     return {"status": "ok"}
 
 
+def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:
+    """Return effective grants while preserving legacy parent-menu grants.
+
+    Role settings created before leaf-level permissions stored only a top-level
+    key such as ``case``.  A parent key therefore still grants every descendant;
+    a role configured with only a leaf receives that leaf and its actual route
+    only.  The result is ordered for stable API responses and tests.
+    """
+    granted = {key for key in menu_keys if key in SYSTEM_MENU_ROUTE_KEYS}
+    pending = list(granted)
+    while pending:
+        current = pending.pop()
+        for child_key in MENU_CHILDREN_BY_KEY.get(current, []):
+            if child_key not in granted:
+                granted.add(child_key)
+                pending.append(child_key)
+    return [key for key in MENU_KEYS if key in granted]
+
+
+def _stored_menu_permission_keys(menu_keys: list[str]) -> list[str]:
+    """Convert legacy parent grants to independently revocable leaf grants."""
+    effective_keys = _expand_menu_permission_keys(menu_keys)
+    result = [key for key in effective_keys if not MENU_CHILDREN_BY_KEY.get(key)]
+    # User center is mandatory and also has child routes.  Keep its explicit
+    # key so the existing base-permission validation remains meaningful.
+    if "user-center" in effective_keys:
+        result.append("user-center")
+    return list(dict.fromkeys(result))
+
+
 async def _permission_payload(role: str, db: AsyncSession) -> dict:
     permission = await db.scalar(select(RolePermission).where(RolePermission.role == role))
     config = DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"])
@@ -2150,7 +2207,7 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
             "field_keys": list(FIELD_KEYS),
         }
     return {
-        "menu_keys": list(permission.menu_keys if permission else config["menu_keys"]),
+        "menu_keys": _expand_menu_permission_keys(list(permission.menu_keys if permission else config["menu_keys"])),
         "data_scope": permission.data_scope if permission else config["data_scope"],
         "field_keys": list(permission.field_keys if permission else config["field_keys"]),
     }
@@ -2163,7 +2220,7 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     menu_keys = list(permission["menu_keys"])
     if can_approve_contract and "contract" not in menu_keys:
         menu_keys.append("contract")
-    return {**permission, "menu_keys": menu_keys, "can_approve_contract": can_approve_contract}
+    return {**permission, "menu_keys": _expand_menu_permission_keys(menu_keys), "can_approve_contract": can_approve_contract}
 
 
 async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
@@ -2804,20 +2861,25 @@ def _system_menu_dict(item: SystemMenu) -> dict:
 
 
 @app.get(f"{settings.api_prefix}/system/menus/navigation")
-async def navigation_menus(_: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def navigation_menus(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     items = [
         item for item in (await db.scalars(
             select(SystemMenu).where(SystemMenu.is_active.is_(True), SystemMenu.is_visible.is_(True)).order_by(SystemMenu.sort_order, SystemMenu.id)
         )).all()
         if item.key in SYSTEM_MENU_ROUTE_KEYS
     ]
-    visible_keys = {item.key for item in items if not item.parent_key}
-    changed = True
-    while changed:
-        changed = False
-        for item in items:
-            if item.key not in visible_keys and item.parent_key in visible_keys:
-                visible_keys.add(item.key); changed = True
+    if identity.get("role") == "admin":
+        visible_keys = {item.key for item in items}
+    else:
+        permission = await _permission_payload(identity.get("role", "user"), db)
+        visible_keys = {"dashboard", *permission["menu_keys"]}
+        # Parent containers must remain visible for an authorized child, but
+        # they are not themselves added as route grants.
+        for key in list(visible_keys):
+            parent_key = MENU_PARENT_BY_KEY.get(key, "")
+            while parent_key:
+                visible_keys.add(parent_key)
+                parent_key = MENU_PARENT_BY_KEY.get(parent_key, "")
     return {"items": [_system_menu_dict(item) for item in items if item.key in visible_keys]}
 
 
