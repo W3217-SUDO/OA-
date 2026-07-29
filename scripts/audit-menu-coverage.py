@@ -2045,6 +2045,32 @@ def main() -> None:
         assert token in normalized_agent_document, f"agent document related-record contract missing: {token}"
     print("AGENT_DOCUMENT_RELATION_OK: all six business modules, record-id fallback and read-only investigation navigation")
     for token in (
+        'const createActionLabel=configured?',
+        "data.operation_result==='outline_created'",
+        '已创建可编辑提纲（待配置 Dify，尚未生成正式文书）',
+        "v==='待配置'?'待配置（可编辑提纲）':v",
+        "configured?'生成文档':'创建可编辑提纲'",
+        "okText={createActionLabel}",
+        "Dify 尚未配置：仅创建可编辑提纲",
+        "将创建可编辑字段提纲；Dify 未配置，不会生成正式文书。",
+    ):
+        assert token in AGENT_DOCUMENT, f"agent document Dify-unconfigured wording missing: {token}"
+    for token in (
+        'def _agent_document_operation_result(',
+        '"provider_configured": provider_configured',
+        '"generation_mode": "dify" if provider_configured else "outline"',
+        '"operation_result": "outline_created"',
+        'return _agent_document_operation_result(item, template, record)',
+    ):
+        assert token in MAIN, f"agent document operation result contract missing: {token}"
+    for token in (
+        'agent["generation_mode"] in {"dify", "outline"}',
+        'agent["provider_configured"] is (agent["generation_mode"] == "dify")',
+        'agent["operation_result"] == "outline_created"',
+    ):
+        assert token in SMOKE, f"agent document Dify-unconfigured smoke coverage missing: {token}"
+    print("AGENT_DOCUMENT_PROVIDER_SEMANTICS_OK: unconfigured provider creates an editable outline, while configured generation remains explicitly identified")
+    for token in (
         'record = await _ensure_record_visible(item.record_id, identity, db)',
         'if write:\n            await _require_record_owner_or_manager(record, identity, db)',
         '已人工确认的智能文档不得删除',

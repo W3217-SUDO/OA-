@@ -13379,6 +13379,22 @@ def _agent_document_dict(item: AgentDocument, template: DocumentTemplate | None 
     return {"id": item.id, "job_no": item.job_no, "template_id": item.template_id, "template_name": template.name if template else "", "record_id": item.record_id, "record_no": record.serial_no if record else "", "record_title": record.title if record else "", "title": item.title, "instruction": item.instruction, "content": item.content, "status": item.status, "content_version": item.content_version, "confirmed_by": item.confirmed_by, "confirmed_at": item.confirmed_at, "conversation_id": item.conversation_id, "dify_message_id": item.dify_message_id, "error": item.error, "creator": item.creator, "created_at": item.created_at, "updated_at": item.updated_at, "capabilities": capabilities or {}}
 
 
+def _agent_document_operation_result(item: AgentDocument, template: DocumentTemplate | None = None, record: BusinessRecord | None = None) -> dict:
+    """Expose whether this operation made an editable outline or a provider result.
+
+    The status alone is intentionally retained for workflow compatibility, while these
+    fields let clients avoid describing a local outline as an AI-generated document.
+    """
+    provider_configured = bool(settings.dify_base_url and settings.dify_api_key)
+    result = _agent_document_dict(item, template, record)
+    result.update({
+        "provider_configured": provider_configured,
+        "generation_mode": "dify" if provider_configured else "outline",
+        "operation_result": "outline_created" if item.status == "待配置" else "document_generated" if item.status == "已生成" else "generation_failed" if item.status == "生成失败" else "generation_pending",
+    })
+    return result
+
+
 async def _ensure_agent_document_access(document_id: int, identity: dict, db: AsyncSession, *, write: bool = False) -> tuple[AgentDocument, BusinessRecord | None]:
     item = await db.get(AgentDocument, document_id)
     if not item:
@@ -13496,7 +13512,7 @@ async def create_agent_document(body: AgentDocumentInput, identity: dict = Depen
     item = AgentDocument(job_no=f"AI{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid4().hex[:4].upper()}", template_id=template.id, record_id=record.id if record else None, title=body.title.strip(), instruction=body.instruction.strip(), prompt=prompt, content=outline, status="等待生成", creator=identity["username"])
     db.add(item); await db.flush(); await _run_document_agent(item); await db.commit(); await db.refresh(item)
     if record: db.add(WorkflowEvent(record_id=record.id, action="创建智能文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.job_no}｜{template.name}")); await db.commit()
-    return _agent_document_dict(item, template, record)
+    return _agent_document_operation_result(item, template, record)
 
 
 @app.post(f"{settings.api_prefix}/agent/documents/{{document_id}}/retry")
@@ -13506,7 +13522,7 @@ async def retry_agent_document(document_id: int, identity: dict = Depends(curren
     item.confirmed_by = ""; item.confirmed_at = None; item.confirmed_content_hash = ""
     item.content_version = int(item.content_version or 1) + 1
     await _run_document_agent(item); await db.commit(); await db.refresh(item)
-    return _agent_document_dict(item)
+    return _agent_document_operation_result(item)
 
 
 @app.patch(f"{settings.api_prefix}/agent/documents/{{document_id}}")

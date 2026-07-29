@@ -3154,6 +3154,11 @@ def main():
         assert len(call("GET", f"/records/{document['id']}/history")["items"]) >= 4
         agent = call("POST", "/agent/documents", {"template_id": template["id"], "record_id": document["id"], "title": "冒烟智能文档", "instruction": "生成测试提纲"}, expected=(201,))
         agents.append(agent["id"])
+        assert agent["generation_mode"] in {"dify", "outline"}
+        assert agent["provider_configured"] is (agent["generation_mode"] == "dify")
+        if agent["generation_mode"] == "outline":
+            assert agent["operation_result"] == "outline_created" and agent["status"] == "待配置"
+            assert "Dify 尚未配置" in agent["error"]
         edited = call("PATCH", f"/agent/documents/{agent['id']}", {"content": "# 冒烟文档\n自动验收内容"})
         assert edited["status"] == "已编辑"
         call("POST", f"/agent/documents/{agent['id']}/writeback", expected=(409,))
