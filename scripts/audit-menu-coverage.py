@@ -1251,6 +1251,10 @@ def main() -> None:
     ):
         assert token in normalized_case, f"legal counsel list/detail contract missing: {token}"
     assert 'onClick={()=>voidopenCounselDetail(row)}' in normalized_case, "case number action must open the case detail drawer rather than the task-creation flow"
+    assert 'constrecordRes=awaitapi.get(`/records/${row.id}`);setViewingCounselCase(recordRes.data);' in normalized_case, "case relation navigation must open the core record before loading supplementary panels"
+    assert 'awaitPromise.allSettled([api.get(`/records/${row.id}/history`)' in normalized_case, "case supplementary detail panels must degrade independently of the core record"
+    assert 'tableLayout="fixed"scroll={{x:735}}dataSource={counselDetailTasks.filter' in normalized_case, "case detail task tables must keep their identifier columns readable in narrow detail panes"
+    assert 'display:block;width:100%;min-width:0;' in normalized_case_css, "case identifier links must stay within their table cell rather than overlap adjacent columns"
     assert 'counselDetailCapabilities.can_edit_basic&&viewingCounselCase.data.case_type==="法律顾问"&&<Button' in normalized_case, "the counsel-only basic-information endpoint must not be exposed as a generic case edit button"
     normalized_main = re.sub(r"\s+", "", MAIN)
     assert 'asyncdef_next_case_serial(case_type:str,db:AsyncSession)->str:' in normalized_main and 'prefix=f"SH{type_code}{datetime.now():%y}"' in normalized_main and 'returnf"{prefix}{sequence:05d}"' in normalized_main, "case creation must generate the compact recognizable SH/type/year/sequence identifier"
@@ -2148,6 +2152,29 @@ def main() -> None:
         "调查详情：${investigationDetail?.serial_no||''}",
     ):
         assert token in INVESTIGATION, f"investigation identifier/customer link detail entry missing: {token}"
+    for token in (
+        "const resolveCustomerDetailTarget = async",
+        "const recordsRes = await recordsRequest;",
+        "await resolveCustomerDetailTarget(target)",
+        "Promise.allSettled([",
+    ):
+        assert token in CUSTOMER, f"customer cross-page detail must not depend on optional identity/directory requests: {token}"
+    for token in (
+        "const resolveContractDetailTarget = async",
+        "const recordsRes = await recordsRequest;",
+        "const targetRow = await targetRequest;",
+        "const approvalRes = await api.get(`/contracts/${contractId}/approvals`);",
+        "await Promise.allSettled([",
+    ):
+        assert token in CONTRACT, f"contract detail and wizard core data must not depend on optional panels: {token}"
+    for token in (
+        "const target=consumeInvestigationDetailTarget();if(target)",
+        "api.get(`/records/${target.id}`)",
+        "if(capabilityRows.length)void api.get('/investigations/action-capabilities'",
+        "详情仍可查看",
+    ):
+        assert token in INVESTIGATION, f"investigation detail target must resolve before isolated capability loading: {token}"
+    print("CROSS_PAGE_DETAIL_RESILIENCE_OK: case, contract, customer and investigation targets resolve before optional panels and recover by scoped ID or stable identifiers")
     for token in (
         "unclaimed:[\"案号\"",
         "onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>",

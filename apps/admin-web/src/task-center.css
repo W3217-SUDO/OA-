@@ -336,6 +336,12 @@
   min-width: 1900px !important;
 }
 .task-original-standard
+  .task-original-table.task-unread-table
+  .ant-table-content
+  > table {
+  min-width: 1306px !important;
+}
+.task-original-standard
   .task-original-table
   col.ant-table-selection-col,
 .task-original-standard

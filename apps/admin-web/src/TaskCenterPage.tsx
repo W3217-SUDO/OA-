@@ -1318,7 +1318,7 @@ export default function TaskCenterPage({
           </div>
         </Form>
         <Table<TaskRow>
-          className="task-original-table"
+          className={`task-original-table${isUnread ? " task-unread-table" : ""}`}
           rowKey="id"
           loading={loading}
           size="small"

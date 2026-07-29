@@ -236,6 +236,39 @@ export default function CustomerCenterPage({
     [keyChangeForm] = Form.useForm(),
     [documentForm] = Form.useForm();
   const documentFileRef = useRef<HTMLInputElement>(null);
+  const resolveCustomerDetailTarget = async (target: {
+    id?: number;
+    serial_no?: string;
+    title?: string;
+  }): Promise<Customer | null> => {
+    const targetId = Number(target.id || 0);
+    if (targetId) {
+      try {
+        const { data } = await api.get(`/records/${targetId}`);
+        if (data.module === "customer") return data as Customer;
+      } catch {
+        // A scoped record lookup gives the authoritative result; fall back to
+        // the stable customer number/name only when the caller has no access.
+      }
+    }
+    const serialNo = String(target.serial_no || "").trim();
+    const title = String(target.title || "").trim();
+    for (const keyword of [...new Set([serialNo, title].filter(Boolean))]) {
+      try {
+        const { data } = await api.get("/records", {
+          params: { module: "customer", keyword, page_size: 100 },
+        });
+        const row = (data.items || []).find((item: Customer) =>
+          (serialNo && item.serial_no === serialNo) ||
+          (title && item.title === title),
+        );
+        if (row) return row;
+      } catch {
+        // Continue to the remaining stable identifier before reporting a miss.
+      }
+    }
+    return null;
+  };
   const load = async () => {
     setLoading(true);
     try {
@@ -253,11 +286,10 @@ export default function CustomerCenterPage({
         : api.get("/records", {
             params: { module: "customer", keyword, page_size: 100 },
           });
-      const [recordsRes, profileRes, directoryRes] = await Promise.all([
-        recordsRequest,
-        api.get("/auth/me"),
-        api.get("/users/directory"),
-      ]);
+      // The customer list and an incoming detail target are core content.  Do
+      // not make them disappear when the optional identity/directory panels
+      // are temporarily unavailable.
+      const recordsRes = await recordsRequest;
       const responseItems = recordsRes.data.items || [];
       const responseTotal = Number(recordsRes.data.total || responseItems.length);
       const responseLastPage = Math.max(1, Math.ceil(responseTotal / pageSize));
@@ -278,19 +310,26 @@ export default function CustomerCenterPage({
         agency_fee_due: 0,
         official_fee_unreceived: 0,
       });
-      setProfile(profileRes.data);
-      setDirectory(directoryRes.data.items || []);
       const target = consumeCustomerDetailTarget();
       if (target) {
         const normalizedTitle = String(target.title || "").trim();
-        const targetRow = responseItems.find((item: Customer) =>
+        let targetRow = responseItems.find((item: Customer) =>
           (target.id && item.id === target.id) ||
           (target.serial_no && item.serial_no === target.serial_no) ||
           (normalizedTitle && item.title === normalizedTitle)
         );
+        if (!targetRow) targetRow = await resolveCustomerDetailTarget(target) || undefined;
         if (targetRow) void openDetail(targetRow);
         else message.warning("未找到关联客户或当前账号无权查看");
       }
+      const [profileResult, directoryResult] = await Promise.allSettled([
+        api.get("/auth/me"),
+        api.get("/users/directory"),
+      ]);
+      if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
+      else message.warning("当前登录身份加载失败，已保留客户列表和详情入口");
+      if (directoryResult.status === "fulfilled") setDirectory(directoryResult.value.data.items || []);
+      else message.warning("客户人员目录加载失败，稍后可刷新重试");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "客户数据加载失败");
     } finally {

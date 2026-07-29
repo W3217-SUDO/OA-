@@ -198,13 +198,16 @@ export default function ContractCenterPage({
     setViewingAttachments([]);
     setViewingAttachmentsLoading(true);
     try {
-      const [attachmentRes, eventRes] = await Promise.all([
+      const [attachmentResult, eventResult] = await Promise.allSettled([
         api.get("/attachments", { params: { record_id: contract.id } }),
         api.get(`/contracts/${contract.id}/events`),
       ]);
       if (requestId === viewingAttachmentRequest.current) {
-        setViewingAttachments(attachmentRes.data.items || []);
-        setContractEvents(eventRes.data.items || []);
+        setViewingAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
+        setContractEvents(eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : []);
+        if (attachmentResult.status === "rejected" || eventResult.status === "rejected") {
+          message.warning("合同基础信息已打开，部分附件或事项暂时加载失败");
+        }
       }
     } catch (error: any) {
       if (requestId === viewingAttachmentRequest.current) {
@@ -216,43 +219,68 @@ export default function ContractCenterPage({
       }
     }
   };
+  const resolveContractDetailTarget = async (target: ContractDetailNavigationContext): Promise<Contract | null> => {
+    if (target.id) {
+      try {
+        const response = await api.get(`/records/${target.id}`);
+        if (response.data?.module === "contract") return response.data as Contract;
+      } catch {
+        // A deleted, out-of-scope, or stale id may still have a usable serial-number fallback below.
+      }
+    }
+    const serialNo = String(target.serial_no || "").trim();
+    if (!serialNo) return null;
+    try {
+      const response = await api.get("/records", {
+        params: { module: "contract", keyword: serialNo, page: 1, page_size: 100 },
+      });
+      return (response.data.items || []).find((item: Contract) => item.serial_no === serialNo) || null;
+    } catch {
+      return null;
+    }
+  };
   const load = async () => {
     setLoading(true);
+    const target = detailTarget || consumeContractDetailTarget();
+    const recordsRequest = api.get("/records", { params: { module: "contract", page_size: 100 } });
+    const targetRequest = target ? resolveContractDetailTarget(target) : null;
+    const auxiliaryRequests = Promise.allSettled([
+      api.get("/auth/me"),
+      api.get("/users/directory"),
+      api.get("/seals/assets"),
+      api.get("/customers", { params: { scope: "mine", customer_type: "客户", page: 1, page_size: 200 } }),
+      api.get("/hr/job-roles", { params: { active_only: true } }),
+    ]);
     try {
-      const [recordsRes, profileRes, directoryRes, sealRes, customerRes, roleRes] = await Promise.all([
-        api.get("/records", { params: { module: "contract", page_size: 100 } }),
-        api.get("/auth/me"),
-        api.get("/users/directory"),
-        api.get("/seals/assets"),
-        api.get("/customers", { params: { scope: "mine", customer_type: "客户", page: 1, page_size: 200 } }),
-        api.get("/hr/job-roles", { params: { active_only: true } }),
-      ]);
+      const recordsRes = await recordsRequest;
       setAllRows(recordsRes.data.items);
-      setProfile(profileRes.data);
-      setDirectory((directoryRes.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
-      setSealAssets((sealRes.data.items || []).filter((item: SealAsset) => item.status === "可用"));
-      setCustomers(customerRes.data.items || []);
       const relationTarget = consumeCustomerRelationTarget();
       if (relationTarget?.target === "contracts") {
         const customerKeyword = relationTarget.title || relationTarget.serial_no || "";
         queryForm.setFieldsValue({ customer: customerKeyword });
         setQuery((value) => ({ ...value, customer: customerKeyword }));
       }
-      const target = detailTarget || consumeContractDetailTarget();
-      if (target) {
-        const targetRow = (recordsRes.data.items || []).find((item: Contract) =>
-          (target.id && item.id === target.id) ||
-          (target.serial_no && item.serial_no === target.serial_no)
-        );
-        if (targetRow) void openViewing(targetRow);
-        else message.warning("未找到关联合同或当前账号无权查看");
-        onDetailTargetHandled?.();
-      }
-      setApprovalRoles((roleRes.data.items || []).filter((item: ApprovalRole) => item.is_active !== false && (item.permissions || []).includes("合同审批")));
     } catch {
       message.error("合同数据加载失败");
     } finally {
       setLoading(false);
+    }
+    // Detail navigation is intentionally independent from the paged list and all auxiliary context.
+    // A failed list/profile/directory request must never turn a valid related-contract click into a blank list.
+    if (target) {
+      const targetRow = await targetRequest;
+      if (targetRow) void openViewing(targetRow);
+      else message.warning("未找到关联合同或当前账号无权查看");
+      onDetailTargetHandled?.();
+    }
+    const [profileResult, directoryResult, sealResult, customerResult, roleResult] = await auxiliaryRequests;
+    if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
+    if (directoryResult.status === "fulfilled") setDirectory((directoryResult.value.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
+    if (sealResult.status === "fulfilled") setSealAssets((sealResult.value.data.items || []).filter((item: SealAsset) => item.status === "可用"));
+    if (customerResult.status === "fulfilled") setCustomers(customerResult.value.data.items || []);
+    if (roleResult.status === "fulfilled") setApprovalRoles((roleResult.value.data.items || []).filter((item: ApprovalRole) => item.is_active !== false && (item.permissions || []).includes("合同审批")));
+    if ([profileResult, directoryResult, sealResult, customerResult, roleResult].some((result) => result.status === "rejected")) {
+      message.warning("合同基础列表已加载，部分辅助数据暂时不可用");
     }
   };
   useEffect(() => {
@@ -408,21 +436,24 @@ export default function ContractCenterPage({
     });
   };
   const loadWizardContext = async (contractId: number) => {
-    const [approvalRes, attachmentRes, historyRes] = await Promise.all([
-      api.get(`/contracts/${contractId}/approvals`),
-      api.get("/attachments", { params: { record_id: contractId } }),
-      api.get(`/records/${contractId}/history`),
-    ]);
+    const approvalRes = await api.get(`/contracts/${contractId}/approvals`);
     const contract = approvalRes.data.contract as Contract;
     setWizardDraft(contract);
     setSteps(approvalRes.data.items || []);
-    setAttachments(attachmentRes.data.items || []);
-    setHistory(historyRes.data.items || []);
     submitForm.setFieldsValue({
       approvers: (approvalRes.data.items || [])[0]?.approver,
       comment: contract.data.submit_comment || "",
     });
     populateDraftForm(contract);
+    const [attachmentResult, historyResult] = await Promise.allSettled([
+      api.get("/attachments", { params: { record_id: contractId } }),
+      api.get(`/records/${contractId}/history`),
+    ]);
+    setAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
+    setHistory(historyResult.status === "fulfilled" ? historyResult.value.data.items || [] : []);
+    if (attachmentResult.status === "rejected" || historyResult.status === "rejected") {
+      message.warning("合同主体已加载，部分附件或历史记录暂时不可用");
+    }
     return contract;
   };
   const recoverWizard = async (contractId: number) => {
