@@ -49,6 +49,7 @@ SEAL = re.sub(r"\s+", "", (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_
 WAREHOUSE = (ROOT / "apps/admin-web/src/WarehousePage.tsx").read_text(encoding="utf-8")
 SYSTEM = (ROOT / "apps/admin-web/src/SystemCenterPage.tsx").read_text(encoding="utf-8")
 HR = (ROOT / "apps/admin-web/src/HrCenterPage.tsx").read_text(encoding="utf-8")
+HR_CSS = (ROOT / "apps/admin-web/src/hr-center.css").read_text(encoding="utf-8")
 ORGANIZATION = (ROOT / "apps/admin-web/src/OrganizationCenterPage.tsx").read_text(encoding="utf-8")
 REPORT = (ROOT / "apps/admin-web/src/ReportCenterPage.tsx").read_text(encoding="utf-8")
 SEAL_CSS = (ROOT / "apps/admin-web/src/seal-center.css").read_text(encoding="utf-8")
@@ -3274,6 +3275,14 @@ def main() -> None:
         assert token in SMOKE, f"HR lifecycle smoke coverage missing: {token}"
     assert 'linked_user and linked_user.role != "admin"' in MAIN, "HR offboarding must synchronize manager and auditor employee accounts while preserving the protected administrator account"
     print("HR_ACCOUNT_LIFECYCLE_OK: dedicated employee status flow controls ordinary and elevated employee access and blocks profile-edit bypass")
+    for token in (
+        'grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))',
+        '.hr-query label .ant-input-affix-wrapper',
+        '.employee-list-table .ant-table-container{min-width:1590px}',
+        '.employee-list-table .ant-table-cell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    ):
+        assert token in HR_CSS, f"HR narrow-workspace layout contract missing: {token}"
+    print("HR_NARROW_LAYOUT_OK: filters keep usable widths and the complete employee table stays horizontally scrollable without text overlap")
     for token in (
         'must_change_password: data.must_change_password',
         'localStorage.removeItem("access_token")',
