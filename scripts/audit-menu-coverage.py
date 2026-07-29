@@ -2110,6 +2110,10 @@ def main() -> None:
     assert '不能通过员工档案覆盖管理员账号' in MAIN and '关联可登录账号，不能直接删除' in MAIN and 'user.is_active = body.is_active' in MAIN, "HR account edit, deletion and disable boundaries must stay synchronized"
     assert 'linked_user.role == "user"' in MAIN and 'login_enabled = body.to_status == "在职"' in MAIN and 'linked_user.is_active = login_enabled' in MAIN, "HR lifecycle transitions must only synchronize linked ordinary-user login status and must not touch admin"
     assert "const rawCellValue" in FINANCE and 'spec.control === "date"' in FINANCE and 'spec.control === "money"' in FINANCE, "finance route queries must apply typed field filters"
+    receipt_route_index = FINANCE.index('"finance-receipts-manage"', FINANCE.index("const routeConfigs"))
+    receipt_route_section = FINANCE[receipt_route_index:receipt_route_index + 1800]
+    assert '"合同编号"' in receipt_route_section, "receipt management lists must expose the persisted contract number"
+    assert '合同编号: row.contract_no || data.contract_no' in FINANCE and 'openContractDetail(cellValue(row, header))' in FINANCE, "receipt contract numbers must resolve to the real contract detail"
     for field in ("project_role", "office_phone", "im_account", "contact_status", "is_valid"):
         assert field in CUSTOMER, f"new-customer contact tab is missing {field}"
     assert "<Steps" in CONTRACT and "wizardStep" in CONTRACT, "contract creation must keep the four-step workflow"

@@ -127,6 +127,7 @@ type IncomingPayment = {
   claimant: string;
   allocated_amount: number | null;
   remaining_amount: number | null;
+  contract_no: string;
   allocations: any[];
   operator: string;
   remark: string;
@@ -3773,6 +3774,7 @@ export default function FinanceCenterPage({
             "已分代理费",
             "已分其他费用",
             "回款方式",
+            "合同编号",
             "备注",
           ],
         },
@@ -4792,7 +4794,8 @@ export default function FinanceCenterPage({
       支付时间: data.settlement_paid_at,
       实际结算金额: data.actual_settlement_amount,
       回款方式: data.payment_method,
-      合同号: data.contract_no,
+      合同号: row.contract_no || data.contract_no,
+      合同编号: row.contract_no || data.contract_no,
       发票编号: data.invoice_no,
       发票号码: data.invoice_no,
       开票金额: isInvoiceUnissuedRoute
