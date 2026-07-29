@@ -301,7 +301,7 @@ def main():
                 call("DELETE", f"/templates/{stale_template['id']}", expected=(204, 404, 409))
         # 清理因上一次进程中断而留下的、带明确 SMOKE 标识的本地测试记录。
         # 生产环境不存在 testing cleanup 路由，普通业务数据也不会命中此条件。
-        for smoke_module in ["customer", "contract", "case", "task", "finance", "finance_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+        for smoke_module in ["customer", "contract", "case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
             stale = call("GET", f"/records?module={smoke_module}&keyword=SMOKE&page_size=100")["items"]
             for stale_item in stale:
                 # 搜索会命中关联字段中的 SMOKE；清理接口仍应拒绝没有明确测试标识的记录。
@@ -3493,7 +3493,7 @@ def main():
             except Exception: pass
 
     record_remnants = []
-    for module in ["customer", "contract", "case", "task", "finance", "finance_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+    for module in ["customer", "contract", "case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
         record_remnants.extend(call("GET", f"/records?module={module}&keyword=SMOKE&page_size=100")["items"])
     user_remnants = call("GET", "/system/users?keyword=smoke")["items"]
     template_remnants = [item for item in call("GET", "/templates")["items"] if item["name"].startswith("SMOKE-")]

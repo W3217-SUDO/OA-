@@ -75,7 +75,7 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (route: strin
     if (item.module === "customer") rememberCustomerDetailTarget({ id: item.id, serial_no: item.serial_no, title: item.title });
     if (item.module === "task") rememberTaskDetailTarget({ id: item.id, serial_no: item.serial_no });
     if (["clue", "notary", "evidence"].includes(item.module)) rememberInvestigationDetailTarget({ id: item.id, serial_no: item.serial_no, module: item.module });
-    if (["finance", "invoice", "refund", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr" });
+    if (["finance", "invoice", "refund", "finance_package", "finance_settlement", "finance_archive_settlement", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "invoice" | "refund" | "finance_package" | "finance_settlement" | "finance_archive_settlement" | "seal" | "document" | "warehouse" | "hr" });
     if (["attachment", "template"].includes(item.module)) rememberDocumentSearchDetailTarget({ id: item.id, kind: item.module as "attachment" | "template" });
     if (item.module === "sms" && item.related_id) rememberCaseDetailTarget({ id: item.related_id, serial_no: item.related_serial_no });
     onNavigate(item.route);

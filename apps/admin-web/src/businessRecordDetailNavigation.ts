@@ -1,4 +1,4 @@
-export type BusinessRecordDetailModule = "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr";
+export type BusinessRecordDetailModule = "finance" | "invoice" | "refund" | "finance_package" | "finance_settlement" | "finance_archive_settlement" | "seal" | "document" | "warehouse" | "hr";
 
 export type BusinessRecordDetailNavigationContext = {
   id: number;

@@ -458,12 +458,12 @@ export default function FinanceCenterPage({
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
   useEffect(() => {
-    const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund"]);
+    const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund", "finance_package", "finance_settlement", "finance_archive_settlement"]);
     if (!target) return;
     void (async () => {
       try {
         const { data } = await api.get(`/records/${target.id}`);
-        if (data.module === "finance") {
+        if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(data.module)) {
           setFeeDetail(data);
         } else if (data.module === "invoice") {
           setInvoiceDetail(data);

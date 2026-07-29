@@ -20,7 +20,7 @@ type Notice = {
 };
 
 const colors: Record<string, string> = { error: "red", warning: "orange", info: "blue" };
-const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',contract:'contract-audit',case:'case-schedule',message:'user-messages'};
+const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',finance_package:'finance-fee-query',finance_settlement:'finance-fee-query',finance_archive_settlement:'finance-fee-query',contract:'contract-audit',case:'case-schedule',message:'user-messages'};
 
 export default function NotificationCenter({ onNavigate }: { onNavigate: (key: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -58,7 +58,7 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
     if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
     if (item.source_type === "task" && item.source_id) rememberTaskDetailTarget({ id: item.source_id });
     if (["clue", "notary", "evidence"].includes(item.source_type) && item.source_id) rememberInvestigationDetailTarget({ id: item.source_id, module: item.source_type });
-    if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });
+    if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(item.source_type) && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: item.source_type as "finance" | "finance_package" | "finance_settlement" | "finance_archive_settlement" });
     const route = routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
     if (route) {
       onNavigate(route);

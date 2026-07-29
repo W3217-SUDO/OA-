@@ -260,6 +260,9 @@ export default function DocumentCenterPage({
         case "finance":
         case "invoice":
         case "refund":
+        case "finance_package":
+        case "finance_settlement":
+        case "finance_archive_settlement":
         case "seal":
         case "warehouse":
         case "hr": {
@@ -271,6 +274,9 @@ export default function DocumentCenterPage({
             finance: "finance-fee-query",
             invoice: "finance-invoice-mine",
             refund: "finance-refund",
+            finance_package: "finance-fee-query",
+            finance_settlement: "finance-fee-query",
+            finance_archive_settlement: "finance-fee-query",
             seal: "seal-my",
             warehouse: "warehouse",
             hr: "hr-all",
