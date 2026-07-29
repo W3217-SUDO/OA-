@@ -2756,6 +2756,8 @@ async def delete_system_user(user_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=404, detail="用户不存在")
     if user.username == identity["username"]:
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
+    if user.role == "admin":
+        raise HTTPException(status_code=409, detail="不能删除系统管理员账号")
     await db.delete(user); await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

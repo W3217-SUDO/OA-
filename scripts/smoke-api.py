@@ -2008,6 +2008,7 @@ def main():
         # 晋升后立即获得 admin 全所范围，降回经理后同一会话立即失去该范围。
         call("PATCH", f"/system/users/{peer_manager['id']}", {"role": "admin"})
         try:
+            call("DELETE", f"/system/users/{peer_manager['id']}", expected=(409,))
             TOKEN = peer_manager_token
             assert call("GET", "/auth/me")["role"] == "admin"
             promoted_company_ids = {x["id"] for x in call("GET", "/tasks?scope=company&relation=initiated&page_size=200")["items"]}
