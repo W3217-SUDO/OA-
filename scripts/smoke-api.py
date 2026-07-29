@@ -3165,14 +3165,14 @@ def main():
         linked_contract = call("GET", f"/records/{contract['id']}")
         assert linked_contract["data"]["seal_application_id"] == linked_seal["id"] and linked_contract["data"]["seal_application_no"] == linked_seal["serial_no"]
         call("POST", f"/contracts/{contract['id']}/seal-application", {"seal_asset_id": asset["id"], "copies": 1, "purpose": "重复用印", "use_date": str(date.today() + timedelta(days=1))}, expected=(409,))
-        seal = call("POST", "/seals/applications", {"title": "冒烟用印", "customer": "冒烟客户", "case_no": case["serial_no"], "contract_no": contract["serial_no"], "use_type": "案件用印", "seal_asset_id": asset["id"], "copies": 2, "purpose": "接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "测试文件"}, expected=(201,))
+        seal = call("POST", "/seals/applications", {"title": "冒烟用印", "customer": case["customer"], "case_no": case["serial_no"], "contract_no": contract["serial_no"], "use_type": "案件用印", "seal_asset_id": asset["id"], "copies": 2, "purpose": "接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "测试文件"}, expected=(201,))
         records.append(seal["id"])
         assert seal["data"]["contract_no"] == contract["serial_no"] and seal["data"]["use_type"] == "案件用印"
         seal_query = urllib.parse.urlencode({"view": "all", "record_status": "草稿", "contract_no": contract["serial_no"]})
         queried_seals = call("GET", f"/seals/applications?{seal_query}")["items"]
         assert any(item["id"] == seal["id"] for item in queried_seals)
         call("POST", f"/seals/applications/{seal['id']}/submit", {"comment": "无附件不能提交"}, expected=(409,))
-        deletable_seal = call("POST", "/seals/applications", {"title": "冒烟可删除用印草稿", "customer": "冒烟客户", "contract_no": contract["serial_no"], "use_type": "合同用印", "seal_asset_id": asset["id"], "copies": 1, "purpose": "草稿删除验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印"}, expected=(201,))
+        deletable_seal = call("POST", "/seals/applications", {"title": "冒烟可删除用印草稿", "customer": case["customer"], "contract_no": contract["serial_no"], "use_type": "合同用印", "seal_asset_id": asset["id"], "copies": 1, "purpose": "草稿删除验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印"}, expected=(201,))
         call("DELETE", f"/seals/applications/{deletable_seal['id']}", expected=(204,))
         call("GET", f"/records/{deletable_seal['id']}", expected=(404,))
         call("PATCH", f"/records/{seal['id']}", {"status": "已用印"}, expected=(409,))
@@ -3191,7 +3191,7 @@ def main():
         assert stamped["status"] == "已用印"
         archived = call("POST", f"/seals/applications/{seal['id']}/archive", {"comment": "归档"})
         assert archived["status"] == "已归档"
-        withdrawn_seal = call("POST", "/seals/applications", {"title": "冒烟撤回用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "撤回接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "撤回测试文件"}, expected=(201,))
+        withdrawn_seal = call("POST", "/seals/applications", {"title": "冒烟撤回用印", "customer": case["customer"], "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "撤回接口验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "撤回测试文件"}, expected=(201,))
         records.append(withdrawn_seal["id"])
         withdrawn_attachment = multipart_upload("/attachments", {"record_id": withdrawn_seal["id"], "category": "用印文件", "remark": "撤回用印附件"}, f"smoke-seal-withdraw-{suffix}.txt", b"seal withdrawal attachment")
         attachments.append(withdrawn_attachment["id"])
@@ -3204,7 +3204,7 @@ def main():
         call("POST", f"/seals/applications/{withdrawn_seal['id']}/withdraw", {"comment": "重复撤回"}, expected=(409,))
         seal_history = call("GET", f"/records/{withdrawn_seal['id']}/history")["items"]
         assert any(event["action"] == "撤回用印申请" and event["to_status"] == "已撤回" for event in seal_history)
-        approved_withdrawal = call("POST", "/seals/applications", {"title": "冒烟已审撤回用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "已审待用印撤回验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "已审撤回测试文件"}, expected=(201,))
+        approved_withdrawal = call("POST", "/seals/applications", {"title": "冒烟已审撤回用印", "customer": case["customer"], "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "已审待用印撤回验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "已审撤回测试文件"}, expected=(201,))
         records.append(approved_withdrawal["id"])
         approved_withdrawal_attachment = multipart_upload("/attachments", {"record_id": approved_withdrawal["id"], "category": "用印文件", "remark": "已审撤回附件"}, f"smoke-seal-approved-withdraw-{suffix}.txt", b"seal approved withdrawal attachment")
         attachments.append(approved_withdrawal_attachment["id"])
@@ -3213,7 +3213,7 @@ def main():
         assert approved_withdrawal["status"] == "待用印"
         approved_withdrawal = call("POST", f"/seals/applications/{approved_withdrawal['id']}/withdraw", {"comment": "用印前撤回"})
         assert approved_withdrawal["status"] == "已撤回"
-        refused_seal = call("POST", "/seals/applications", {"title": "冒烟拒绝用印", "customer": "冒烟客户", "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "拒绝流转验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "拒绝测试文件"}, expected=(201,))
+        refused_seal = call("POST", "/seals/applications", {"title": "冒烟拒绝用印", "customer": case["customer"], "case_no": case["serial_no"], "seal_asset_id": asset["id"], "copies": 1, "purpose": "拒绝流转验收", "use_date": str(date.today() + timedelta(days=1)), "delivery_method": "现场用印", "document_names": "拒绝测试文件"}, expected=(201,))
         records.append(refused_seal["id"])
         refused_attachment = multipart_upload("/attachments", {"record_id": refused_seal["id"], "category": "用印文件", "remark": "拒绝用印附件"}, f"smoke-seal-refused-{suffix}.txt", b"seal refused attachment")
         attachments.append(refused_attachment["id"])
