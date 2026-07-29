@@ -348,6 +348,8 @@ def main():
         login(username, "SmokePass2026!", expected=(423,))
         unlocked = call("POST", f"/system/users/{user['id']}/unlock")
         assert unlocked["failed_login_attempts"] == 0 and unlocked["locked_until"] is None
+        admin_user = next(item for item in call("GET", "/system/users")["items"] if item["username"] == USERNAME)
+        call("POST", f"/system/users/{admin_user['id']}/reset-password", {"new_password": "ResetPass2026!"}, expected=(409,))
         reset = call("POST", f"/system/users/{user['id']}/reset-password", {"new_password": "ResetPass2026!"})
         assert reset["must_change_password"] is True and reset["failed_login_attempts"] == 0 and reset["locked_until"] is None
         reset_login = login(username, "ResetPass2026!")

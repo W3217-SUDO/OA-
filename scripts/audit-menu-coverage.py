@@ -3272,6 +3272,23 @@ def main() -> None:
     ):
         assert token in SMOKE, f"HR lifecycle smoke coverage missing: {token}"
     print("HR_ACCOUNT_LIFECYCLE_OK: dedicated employee status flow controls linked account access and blocks profile-edit bypass")
+    for token in (
+        'must_change_password: data.must_change_password',
+        'localStorage.removeItem("access_token")',
+        'if(!editingUser)payload.must_change_password=true',
+        'password_changed_at = None; user.must_change_password = True',
+        'cannot reset current',
+    ):
+        if token == 'cannot reset current':
+            assert '不能重置当前登录账号密码' in MAIN, "Current-admin password reset protection is missing"
+        elif token.startswith('if(!editingUser)'):
+            assert token in SYSTEM, "System account creation must require first-login password change"
+        elif token.startswith('must_change_password:') or token.startswith('localStorage'):
+            assert token in APP, "Forced-password-change session recovery is missing"
+        else:
+            assert token in MAIN, "Administrator-issued password must require first-login password change"
+    assert 'reset-password", {"new_password": "ResetPass2026!"}, expected=(409,)' in SMOKE, "Self-reset smoke coverage is missing"
+    print("FORCED_PASSWORD_CHANGE_RECOVERY_OK: session hydration, system/HR issuance, self-reset protection and smoke coverage")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")
 
 

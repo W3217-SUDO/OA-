@@ -2741,7 +2741,7 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
         policy = await _security_policy(db)
         if len(body.password) < policy.min_password_length: raise HTTPException(status_code=422, detail=f"密码至少需要 {policy.min_password_length} 位")
         user.password_hash = hash_password(body.password)
-        user.password_changed_at = datetime.now(); user.failed_login_attempts = 0; user.locked_until = None
+        user.password_changed_at = None; user.must_change_password = True; user.failed_login_attempts = 0; user.locked_until = None
     if body.profile is not None:
         user.profile = {**(user.profile or {}), **body.profile}
     await db.commit(); await db.refresh(user)
@@ -2774,6 +2774,8 @@ async def reset_system_user_password(user_id: int, body: SystemUserPasswordReset
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+    if user.username == identity["username"]:
+        raise HTTPException(status_code=409, detail="不能重置当前登录账号密码，请在个人设置中修改")
     policy = await _security_policy(db)
     if len(body.new_password) < policy.min_password_length:
         raise HTTPException(status_code=422, detail=f"新密码至少需要 {policy.min_password_length} 位")
@@ -12679,7 +12681,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
                 # Job position controls investigation capability.  A new HR
                 # account always starts as the least-privileged system user.
                 role="user", profile=profile, password_hash=hash_password(body.password),
-                is_active=body.is_active, password_changed_at=datetime.now(),
+                is_active=body.is_active, password_changed_at=None, must_change_password=True,
             )
     employee = BusinessRecord(
         module="hr", serial_no=employee_no, title=body.display_name.strip(), customer=body.company.strip(),

@@ -1122,9 +1122,16 @@ export default function App() {
           role: data.role,
           menu_keys: data.menu_keys,
           data_scope: data.data_scope,
+          must_change_password: data.must_change_password,
         };
-        setSessionUser(user);
         localStorage.setItem("user", JSON.stringify(user));
+        if (data.must_change_password) {
+          localStorage.removeItem("access_token");
+          setSessionUser(null);
+          message.warning("请重新登录并修改一次性初始密码后再进入系统");
+          return;
+        }
+        setSessionUser(user);
         if (data.menu_auto_collapse === "yes" || data.menu_auto_collapse === "no") {
           localStorage.setItem(
             "sunhold:sidebar-auto-collapse",
