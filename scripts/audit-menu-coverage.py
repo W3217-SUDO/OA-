@@ -2148,6 +2148,8 @@ def main() -> None:
         '只能清理带明确测试标识的本地智能文档',
         'capabilities = await _agent_document_capabilities(item, identity, db, record)',
         'can_delete = bool(can_write and is_creator_or_admin',
+        'can_download = bool(item.status == "已人工确认" and item.confirmed_by and item.confirmed_at)',
+        '智能文档必须先经人工核对确认，才能下载正式 DOCX',
     ):
         assert token in MAIN, f"agent document scope/audit protection missing: {token}"
     for token in (
@@ -2165,6 +2167,7 @@ def main() -> None:
         'for stale_agent in call("GET", "/agent/documents")["items"]:',
         '/testing/agent-documents/{stale_agent[\'id\']}',
         "call(\"DELETE\", f\"/agent/documents/{agent['id']}\", expected=(409,))",
+        'call("GET", f"/agent/documents/{agent[\'id\']}/download", expected=(409,))',
     ):
         assert token in SMOKE, f"agent document smoke coverage missing: {token}"
     print("AGENT_DOCUMENT_SCOPE_AUDIT_OK: current record scope, immutable confirmation audit, capability UI and revocation smoke are protected")

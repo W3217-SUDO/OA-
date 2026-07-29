@@ -13641,7 +13641,10 @@ async def _agent_document_capabilities(item: AgentDocument, identity: dict, db: 
     if record:
         has_written_attachment = bool(await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, FileAttachment.remark == f"Dify任务 {item.job_no}")))
     can_delete = bool(can_write and is_creator_or_admin and not item.confirmed_by and not item.confirmed_at and not has_written_attachment)
-    return {"can_download": True, "can_edit": can_write, "can_retry": can_write, "can_confirm": can_write, "can_writeback": can_writeback, "can_delete": can_delete}
+    # Exported DOCX is a formal work product. It must not escape the review
+    # gate just because it has not yet been written back as a business file.
+    can_download = bool(item.status == "已人工确认" and item.confirmed_by and item.confirmed_at)
+    return {"can_download": can_download, "can_edit": can_write, "can_retry": can_write, "can_confirm": can_write, "can_writeback": can_writeback, "can_delete": can_delete}
 
 
 def _docx_bytes(title: str, content: str) -> bytes:
@@ -13754,6 +13757,10 @@ async def confirm_agent_document(document_id: int, body: AgentDocumentConfirmInp
 @app.get(f"{settings.api_prefix}/agent/documents/{{document_id}}/download")
 async def download_agent_document(document_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item, _ = await _ensure_agent_document_access(document_id, identity, db)
+    if item.status != "已人工确认" or not item.confirmed_by or not item.confirmed_at:
+        raise HTTPException(status_code=409, detail="智能文档必须先经人工核对确认，才能下载正式 DOCX")
+    if item.confirmed_content_hash != _agent_content_hash(item.content):
+        raise HTTPException(status_code=409, detail="文档内容在确认后已变化，请重新人工确认后再下载")
     content = _docx_bytes(item.title, item.content)
     return StreamingResponse(io.BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{item.job_no}.docx"'})
 

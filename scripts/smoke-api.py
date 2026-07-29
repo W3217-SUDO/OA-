@@ -3203,6 +3203,7 @@ def main():
             assert "Dify 尚未配置" in agent["error"]
         edited = call("PATCH", f"/agent/documents/{agent['id']}", {"content": "# 冒烟文档\n自动验收内容"})
         assert edited["status"] == "已编辑"
+        call("GET", f"/agent/documents/{agent['id']}/download", expected=(409,))
         call("POST", f"/agent/documents/{agent['id']}/writeback", expected=(409,))
         confirmed = call("POST", f"/agent/documents/{agent['id']}/confirm", {"comment": "律师已逐项核对"})
         assert confirmed["status"] == "已人工确认" and confirmed["confirmed_by"] == USERNAME
