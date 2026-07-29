@@ -2009,7 +2009,22 @@ def main() -> None:
         'onClick={() => void openCustomerDetail(viewing.customer)}',
     ):
         assert token in DOCUMENT, f"document customer relation detail entry missing: {token}"
-    print("DOCUMENT_CUSTOMER_RELATION_OK: document list and drawer customers open scoped read-only customer details")
+    document_relation_source = (ROOT / "apps" / "admin-web" / "src" / "DocumentCenterPage.tsx").read_text(encoding="utf-8")
+    for token in (
+        'rememberBusinessRecordDetailTarget',
+        'case "notary":',
+        'case "evidence":',
+        'case "finance":',
+        'case "seal":',
+        'case "warehouse":',
+        'case "hr":',
+        'finance: "finance-fee-query"',
+        'seal: "seal-my"',
+        'warehouse: "warehouse"',
+        'hr: "hr-all"',
+    ):
+        assert token in document_relation_source, f"document attachment relation missing: {token}"
+    print("DOCUMENT_CUSTOMER_RELATION_OK: document list and drawer customers open scoped read-only customer details; attachment relations route all supported business modules to real details")
     normalized_agent_document = re.sub(r"\s+", "", AGENT_DOCUMENT)
     for token in (
         "['case','contract','customer','clue','notary','evidence']",

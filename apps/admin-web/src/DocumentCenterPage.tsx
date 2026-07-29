@@ -43,7 +43,7 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
-import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { consumeBusinessRecordDetailTarget, rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./document-center.css";
@@ -241,12 +241,31 @@ export default function DocumentCenterPage({
           return;
         case "clue":
         case "investigation":
-          rememberInvestigationDetailTarget({ id: record.id, serial_no: record.serial_no });
+        case "notary":
+        case "evidence":
+          rememberInvestigationDetailTarget({ id: record.id, serial_no: record.serial_no, module: record.module });
           onNavigate?.("clue-my-collect");
           return;
         case "document":
           openDocument(record as RecordRow);
           return;
+        case "finance":
+        case "seal":
+        case "warehouse":
+        case "hr": {
+          if (!rememberBusinessRecordDetailTarget({ id: record.id, module: record.module })) {
+            message.warning("关联业务不存在或当前账号无权查看");
+            return;
+          }
+          const routes: Record<string, string> = {
+            finance: "finance-fee-query",
+            seal: "seal-my",
+            warehouse: "warehouse",
+            hr: "hr-all",
+          };
+          onNavigate?.(routes[record.module]);
+          return;
+        }
         default:
           message.info("该关联业务暂不支持详情查看");
       }
