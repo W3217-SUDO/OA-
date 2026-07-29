@@ -1251,6 +1251,15 @@ def main():
         passed("PDF 蓝图客户分级/关键字段审批、合同多外部编号、签约客户服务端、文档下载、客户需求任务、挂起审批及超期绩效闭环")
 
         call("POST", "/records", {"module": "contract", "serial_no": serial("CONTRACT-BYPASS"), "title": "绕过合同专用入口", "customer": "冒烟测试客户"}, expected=(422,))
+        revocable_contract = create_record("contract", "草稿", "可撤销合同草稿", {"amount": 0})
+        call("DELETE", f"/records/{revocable_contract['id']}", expected=(409,))
+        revocable_attachment = multipart_upload("/attachments", {"record_id": revocable_contract["id"], "category": "合同附件", "remark": "合同草稿专用撤销附件验收"}, f"smoke-revocable-contract-{suffix}.txt", b"revocable contract wizard attachment")
+        attachments.append(revocable_attachment["id"])
+        revocable_event = call("POST", f"/contracts/{revocable_contract['id']}/events", {"content": "合同草稿撤销前的事项记录验收"}, expected=(201,))
+        assert revocable_event["contract_record_id"] == revocable_contract["id"]
+        call("DELETE", f"/contracts/{revocable_contract['id']}/draft", expected=(204,))
+        records.remove(revocable_contract["id"]); attachments.remove(revocable_attachment["id"])
+        call("GET", f"/records/{revocable_contract['id']}", expected=(404,))
         contract = create_record("contract", "草稿", "冒烟合同", {"amount": 1000, "external_contract_no": f"EXT-{suffix}"})
         call("PATCH", f"/records/{contract['id']}", {"status": "已通过", "title": "绕过合同审批"}, expected=(409,))
         call("POST", f"/records/{contract['id']}/transition", {"to_status": "审批中", "comment": "绕过合同专用审批"}, expected=(409,))
@@ -1261,6 +1270,7 @@ def main():
         call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name, peer_manager_name], "comment": "合同不得选择多个审批人"}, expected=(422,))
         submitted = call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name], "comment": "提交审核说明"})
         assert submitted["data"]["submitted_by"] == USERNAME and submitted["data"]["submit_comment"] == "提交审核说明"
+        call("DELETE", f"/contracts/{contract['id']}/draft", expected=(409,))
         call("POST", f"/contracts/{contract['id']}/archive", expected=(409,))
         approval_state = call("GET", f"/contracts/{contract['id']}/approvals")
         assert [item["status"] for item in approval_state["items"]] == ["待审批"]

@@ -4810,6 +4810,48 @@ async def update_contract_draft(contract_id: int, body: ContractDraftInput, iden
     return await _record_dict_for_identity(item, identity, db)
 
 
+@app.delete(f"{settings.api_prefix}/contracts/{{contract_id}}/draft", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_contract_draft(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Withdraw an unsubmitted contract draft through its business-specific flow.
+
+    This deliberately does not reuse the generic record delete endpoint.  A draft
+    can be withdrawn only before it has approval, receivables, incoming payments,
+    or downstream records; otherwise the related workflow is the source of truth.
+    """
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _require_record_owner_or_manager(contract, identity, db)
+    if contract.status != "草稿":
+        raise HTTPException(status_code=409, detail="仅草稿合同可以撤销；已提交或已处理合同请按对应业务流程办理")
+    approval_count = int(await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)) or 0)
+    receivable_count = int(await db.scalar(select(func.count()).select_from(ReceivablePlan).where(ReceivablePlan.contract_record_id == contract.id)) or 0)
+    incoming_payment_count = int(await db.scalar(select(func.count()).select_from(IncomingPayment).where(IncomingPayment.contract_record_id == contract.id)) or 0)
+    related_record = await db.scalar(select(BusinessRecord.serial_no).where(
+        BusinessRecord.id != contract.id,
+        or_(
+            BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_id"].as_integer() == contract.id,
+        ),
+    ).limit(1))
+    if approval_count or receivable_count or incoming_payment_count or related_record:
+        raise HTTPException(
+            status_code=409,
+            detail="合同已有审批、收款或下游案件/用印/财务关联，不能撤销草稿；请按对应业务流程处理",
+        )
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == contract.id))).all())
+    attachment_paths = [Path(item.path) for item in attachments]
+    for attachment in attachments:
+        await db.delete(attachment)
+    await db.execute(delete(ContractEvent).where(ContractEvent.contract_record_id == contract.id))
+    await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id))
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == contract.id))
+    await db.delete(contract)
+    await db.commit()
+    for path in attachment_paths:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/approvals")
 async def contract_approvals(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_contract_approval_access(contract_id, identity, db)

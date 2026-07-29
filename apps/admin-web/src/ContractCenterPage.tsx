@@ -837,6 +837,28 @@ export default function ContractCenterPage({
       message.error(error?.response?.data?.detail || "合同事项记录失败");
     }
   };
+  const revokeDraft = (contract: Contract) => {
+    Modal.confirm({
+      title: "撤销合同草稿",
+      content: "将删除该草稿及其附件、事项记录，且无法恢复。仅未提交、未产生后续业务的草稿可以撤销。",
+      okText: "确认撤销",
+      okButtonProps: { danger: true },
+      cancelText: "保留草稿",
+      onOk: async () => {
+        try {
+          await api.delete(`/contracts/${contract.id}/draft`);
+          if (wizardDraft?.id === contract.id) startCreate();
+          if (viewing?.id === contract.id) closeViewing();
+          setEventTarget((current) => current?.id === contract.id ? null : current);
+          message.success("合同草稿已撤销，附件和事项记录已一并清理");
+          await load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "合同草稿撤销失败");
+          throw error;
+        }
+      },
+    });
+  };
   const archive = async (r: Contract) => {
     try {
       await api.post(`/contracts/${r.id}/archive`);
@@ -1338,6 +1360,7 @@ export default function ContractCenterPage({
           <div className="contract-page-actions"><Space>
             {wizardStep > 0 && wizardStep < 3 && (wizardStep !== 1 || ["草稿", "已拒绝"].includes(wizardDraft?.status || "")) && <Button onClick={() => setWizardStep((step) => Math.max(0, step - 1))}>上一步</Button>}
             {wizardStep === 0 && <Button type="primary" loading={savingContract} onClick={save}>下一步</Button>}
+            {wizardStep === 1 && wizardDraft?.status === "草稿" && <Button danger onClick={() => revokeDraft(wizardDraft)}>撤销草稿</Button>}
             {wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") && <Button type="primary" loading={submittingWizard} onClick={submitWizard}>提交审核</Button>}
             {wizardStep === 1 && wizardDraft?.status === "审批中" && <Button type="primary" onClick={() => setWizardStep(2)}>返回审批进度</Button>}
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
@@ -1453,7 +1476,7 @@ export default function ContractCenterPage({
         width={860}
         open={Boolean(viewing)}
         title={`合同查看：${viewing?.serial_no || ""}`}
-        footer={<Space><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={closeViewing}>关闭</Button></Space>}
+        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={closeViewing}>关闭</Button></Space>}
         onCancel={closeViewing}
       >
         <Descriptions
@@ -1525,6 +1548,7 @@ export default function ContractCenterPage({
             wizardStep > 0 && wizardStep < 3 && (wizardStep !== 1 || ["草稿", "已拒绝"].includes(wizardDraft?.status || "")) ? <Button key="back" onClick={() => setWizardStep((step) => Math.max(0, step - 1))}>上一步</Button> : null,
             <Button key="close" onClick={() => setOpen(false)}>{wizardStep === 0 ? "取消" : "关闭"}</Button>,
             wizardStep === 0 ? <Button key="next" type="primary" loading={savingContract} onClick={save}>下一步</Button> : null,
+            wizardStep === 1 && wizardDraft?.status === "草稿" ? <Button key="revoke" danger onClick={() => revokeDraft(wizardDraft)}>撤销草稿</Button> : null,
             wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") ? <Button key="submit" type="primary" loading={submittingWizard} onClick={submitWizard}>提交审核</Button> : null,
             wizardStep === 1 && wizardDraft?.status === "审批中" ? <Button key="approval" type="primary" onClick={() => setWizardStep(2)}>返回审批进度</Button> : null,
             wizardStep === 2 ? <Button key="refresh" type="primary" onClick={refreshWizard}>刷新审批状态</Button> : null,
