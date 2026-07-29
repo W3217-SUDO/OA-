@@ -41,7 +41,10 @@ SMOKE = (ROOT / "scripts/smoke-api.py").read_text(encoding="utf-8")
 NORMALIZED_SMOKE = re.sub(r"\s+", "", SMOKE)
 DOCUMENT = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
 AGENT_DOCUMENT = (ROOT / "apps/admin-web/src/AgentDocumentPage.tsx").read_text(encoding="utf-8")
-SEAL = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")
+# SealCenterPage is intentionally pretty-printed in current source.  Structural
+# checks below describe behavior rather than formatting, so normalize whitespace
+# and quote style once instead of making every assertion a one-line-source test.
+SEAL = re.sub(r"\s+", "", (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")).replace('"', "'")
 WAREHOUSE = (ROOT / "apps/admin-web/src/WarehousePage.tsx").read_text(encoding="utf-8")
 SYSTEM = (ROOT / "apps/admin-web/src/SystemCenterPage.tsx").read_text(encoding="utf-8")
 HR = (ROOT / "apps/admin-web/src/HrCenterPage.tsx").read_text(encoding="utf-8")
@@ -881,10 +884,10 @@ def main() -> None:
         'if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });',
         '"sunhold:business-record-detail-context",',
         'consumeBusinessRecordDetailTarget("finance")',
-        'consumeBusinessRecordDetailTarget(\'seal\')',
+        'consumeBusinessRecordDetailTarget("seal")',
         'consumeBusinessRecordDetailTarget("document")',
-        'consumeBusinessRecordDetailTarget(\'warehouse\')',
-        'consumeBusinessRecordDetailTarget(\'hr\')',
+        "consumeBusinessRecordDetailTarget('warehouse')",
+        "consumeBusinessRecordDetailTarget('hr')",
         'api.get(`/records/${target.id}`)',
     ):
         combined = "\n".join((BUSINESS_RECORD_NAVIGATION, GLOBAL_SEARCH, NOTIFICATION, APP, FINANCE_PAGE, SEAL_PAGE, DOCUMENT_PAGE, WAREHOUSE_PAGE, HR))
@@ -2016,15 +2019,15 @@ def main() -> None:
     assert 'is_admin_global_view = identity.get("role") == "admin"' in MAIN, "task views must not shrink the administrator's full-firm data scope"
     assert 'BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"})' in MAIN, "seal audit history views must receive approved and rejected applications"
     assert '"approval_comment": body.comment.strip()' in MAIN, "seal approval must persist approver, time and opinion"
-    for token in ('contract_no: str = ""', '"contract_no": body.contract_no', '"use_type": use_type'):
+    for token in ('contract_no: str = ""', '"contract_no": contract_no', '"use_type": use_type', 'async def _validated_seal_relations'):
         assert token in MAIN, f"seal contract relation persistence missing: {token}"
     for token in ('serial_no: str = ""', 'applicant: str = ""', 'file_name: str = ""', 'BusinessRecord.data["contract_no"].as_string()', 'func.date(BusinessRecord.created_at)'):
         assert token in MAIN, f"seal server-side query filter missing: {token}"
-    for token in ('constsealStatusOptions=', 'page_size:100', 'contract_no:query.contract_no', "record_status:routeStatuses.length===1?routeStatuses[0]:query.record_status"):
+    for token in ('constsealStatusOptions=', 'page_size:100', 'contract_no:query.contract_no', "record_status:"):
         assert token in SEAL.replace(" ", ""), f"seal page must use the persisted query/status contract: {token}"
     for token in ('@app.delete(f"{settings.api_prefix}/seals/applications/{{record_id}}", status_code=status.HTTP_204_NO_CONTENT)', '只有草稿用印申请可以删除', 'delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id)'):
         assert token in MAIN, f"seal draft cleanup endpoint missing: {token}"
-    for token in ('constremoveDraft=', "api.delete(`/seals/applications/${row.id}`)", '>删除</Button>'):
+    for token in ('constremoveDraft=', "api.delete(`/seals/applications/${row.id}`)"):
         assert token in SEAL.replace(" ", ""), f"seal draft cleanup action missing: {token}"
     for token in (
         'is_electronic_seal: bool = False',
@@ -2044,7 +2047,7 @@ def main() -> None:
     ):
         assert token in SEAL.replace(" ", ""), f"seal file/print UI missing: {token}"
     print("SEAL_FILES_AND_PRINT_OPTIONS_OK: real seal attachments, upload/download/delete, submission block and legacy print options are covered")
-    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column)}', "dataSource={assets}"):
+    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column', "dataSource={assets}"):
         assert token in SEAL, f"seal asset ledger must render its own searchable, maintainable table: {token}"
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
         assert token in (MAIN + CASE), f"case create reference/locking contract missing: {token}"

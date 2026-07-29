@@ -12119,6 +12119,36 @@ async def _seal_record_dict(record: BusinessRecord, db: AsyncSession) -> dict:
     return result
 
 
+async def _validated_seal_relations(body: SealApplicationInput, identity: dict, db: AsyncSession) -> tuple[str, str, str, str]:
+    """Return canonical, visible seal references and prevent dangling business links."""
+    case_no, contract_no, customer = body.case_no.strip(), body.contract_no.strip(), body.customer.strip()
+    use_type = body.use_type.strip() or ("案件用印" if case_no else "合同用印" if contract_no else "行政用印")
+    scope = await _record_scope_conditions(identity, db)
+
+    async def visible(module: str, serial_no: str, label: str) -> BusinessRecord:
+        row = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == module, BusinessRecord.serial_no == serial_no, *scope))
+        if not row:
+            raise HTTPException(status_code=422, detail=f"关联{label}不存在或当前账号无权使用")
+        return row
+
+    if use_type == "案件用印" and not case_no:
+        raise HTTPException(status_code=422, detail="案件用印必须选择关联案件")
+    if use_type == "合同用印" and not contract_no:
+        raise HTTPException(status_code=422, detail="合同用印必须选择关联合同")
+    case = await visible("case", case_no, "案件") if case_no else None
+    contract = await visible("contract", contract_no, "合同") if contract_no else None
+    if customer:
+        customer_row = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", or_(BusinessRecord.title == customer, BusinessRecord.customer == customer, BusinessRecord.serial_no == customer), *scope))
+        if not customer_row:
+            raise HTTPException(status_code=422, detail="关联客户不存在或当前账号无权使用")
+        customer = customer_row.title or customer_row.customer
+    elif case:
+        customer = case.customer
+    elif contract:
+        customer = contract.customer
+    return case_no, contract_no, customer, use_type
+
+
 @app.get(f"{settings.api_prefix}/seals/applications")
 async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", serial_no: str = "", applicant: str = "", date_from: date | None = None, date_to: date | None = None, case_no: str = "", contract_no: str = "", customer: str = "", use_type: str = "", file_name: str = "", page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if view not in {"my", "audit", "all"}: raise HTTPException(status_code=422, detail="无效的用印视图")
@@ -12192,9 +12222,9 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     asset = await db.get(SealAsset, body.seal_asset_id)
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
+    case_no, contract_no, customer, use_type = await _validated_seal_relations(body, identity, db)
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
-    use_type = body.use_type.strip() or ("案件用印" if body.case_no.strip() else "合同用印" if body.contract_no.strip() else "行政用印")
-    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
+    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
@@ -12209,10 +12239,10 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     asset = await db.get(SealAsset, body.seal_asset_id)
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
-    item.title = body.title.strip(); item.customer = body.customer.strip(); item.description = body.description.strip()
-    use_type = body.use_type.strip() or ("案件用印" if body.case_no.strip() else "合同用印" if body.contract_no.strip() else "行政用印")
+    case_no, contract_no, customer, use_type = await _validated_seal_relations(body, identity, db)
+    item.title = body.title.strip(); item.customer = customer; item.description = body.description.strip()
     existing_names = str((item.data or {}).get("document_names") or "")
-    item.data = {"case_no": body.case_no, "contract_no": body.contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
+    item.data = {"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
     db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
     return await _seal_record_dict(item, db)
