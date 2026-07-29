@@ -19,6 +19,8 @@ type Result = {
   subtitle: string;
   status: string;
   updated_at: string;
+  related_id?: number | null;
+  related_serial_no?: string;
 };
 
 const moduleNames: Record<string, string> = {
@@ -31,6 +33,9 @@ const moduleNames: Record<string, string> = {
   evidence: "证据",
   seal: "用印",
   finance: "财务",
+  invoice: "开票",
+  refund: "退费",
+  sms: "开庭短信",
   document: "收发文",
   hr: "人事",
   warehouse: "仓库",
@@ -69,7 +74,8 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (route: strin
     if (item.module === "customer") rememberCustomerDetailTarget({ id: item.id, serial_no: item.serial_no, title: item.title });
     if (item.module === "task") rememberTaskDetailTarget({ id: item.id, serial_no: item.serial_no });
     if (["clue", "notary", "evidence"].includes(item.module)) rememberInvestigationDetailTarget({ id: item.id, serial_no: item.serial_no, module: item.module });
-    if (["finance", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" | "hr" });
+    if (["finance", "invoice", "refund", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr" });
+    if (item.module === "sms" && item.related_id) rememberCaseDetailTarget({ id: item.related_id, serial_no: item.related_serial_no });
     onNavigate(item.route);
     setOpen(false);
   };

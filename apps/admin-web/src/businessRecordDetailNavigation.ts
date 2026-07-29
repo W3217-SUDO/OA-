@@ -1,4 +1,4 @@
-export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse" | "hr";
+export type BusinessRecordDetailModule = "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr";
 
 export type BusinessRecordDetailNavigationContext = {
   id: number;
@@ -19,13 +19,14 @@ export const rememberBusinessRecordDetailTarget = (target: {
   return true;
 };
 
-export const consumeBusinessRecordDetailTarget = (module: BusinessRecordDetailModule): BusinessRecordDetailNavigationContext | null => {
+export const consumeBusinessRecordDetailTarget = (module: BusinessRecordDetailModule | BusinessRecordDetailModule[]): BusinessRecordDetailNavigationContext | null => {
   const raw = sessionStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   sessionStorage.removeItem(STORAGE_KEY);
   try {
     const parsed = JSON.parse(raw) as BusinessRecordDetailNavigationContext;
-    if (!parsed || !parsed.id || parsed.module !== module) return null;
+    const modules = Array.isArray(module) ? module : [module];
+    if (!parsed || !parsed.id || !modules.includes(parsed.module)) return null;
     if (parsed.at && Date.now() - Number(parsed.at) > MAX_AGE_MS) return null;
     return parsed;
   } catch {

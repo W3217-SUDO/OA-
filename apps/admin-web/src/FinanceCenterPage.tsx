@@ -387,6 +387,7 @@ export default function FinanceCenterPage({
   const [feeQueryExportLoading, setFeeQueryExportLoading] = useState(false);
   const [invoiceExportLoading, setInvoiceExportLoading] = useState(false);
   const [invoiceDetail, setInvoiceDetail] = useState<FinanceFlow | null>(null);
+  const [refundDetail, setRefundDetail] = useState<FinanceFlow | null>(null);
   const [invoiceProcess, setInvoiceProcess] = useState<FinanceFlow | null>(null);
   const [invoiceCancel, setInvoiceCancel] = useState<FinanceFlow | null>(null);
   const [invoiceCancelReason, setInvoiceCancelReason] = useState("");
@@ -425,13 +426,20 @@ export default function FinanceCenterPage({
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
   useEffect(() => {
-    const target = consumeBusinessRecordDetailTarget("finance");
+    const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund"]);
     if (!target) return;
     void (async () => {
       try {
         const { data } = await api.get(`/records/${target.id}`);
-        if (data.module !== "finance") throw new Error("关联记录不是费用申请");
-        setFeeDetail(data);
+        if (data.module === "finance") {
+          setFeeDetail(data);
+        } else if (data.module === "invoice") {
+          setInvoiceDetail(data);
+        } else if (data.module === "refund") {
+          setRefundDetail(data);
+        } else {
+          throw new Error("关联记录不是可查看的财务业务");
+        }
       } catch (error: any) {
         message.error(error?.response?.data?.detail || error?.message || "费用详情加载失败");
       }
@@ -8888,6 +8896,30 @@ export default function FinanceCenterPage({
             <Descriptions.Item label="说明" span={2}>
               {feeDetail.data.description || "—"}
             </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+      <Modal
+        width={760}
+        open={Boolean(refundDetail)}
+        title={`退款申请详情：${refundDetail?.serial_no || ""}`}
+        footer={null}
+        onCancel={() => setRefundDetail(null)}
+      >
+        {refundDetail && (
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="退款申请号">{refundDetail.serial_no || "—"}</Descriptions.Item>
+            <Descriptions.Item label="状态"><Tag color={statusColors[refundDetail.status] || "default"}>{refundDetail.status || "—"}</Tag></Descriptions.Item>
+            <Descriptions.Item label="关联案号">{refundDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(refundDetail.data.case_no)}>{refundDetail.data.case_no}</Button> : "—"}</Descriptions.Item>
+            <Descriptions.Item label="客户">{refundDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(refundDetail.customer, refundDetail.data.customer_no)}>{refundDetail.customer}</Button> : "—"}</Descriptions.Item>
+            <Descriptions.Item label="退款金额">{refundDetail.data.amount == null ? "—" : money(refundDetail.data.amount)}</Descriptions.Item>
+            <Descriptions.Item label="预计到账">{refundDetail.data.expected_date || "—"}</Descriptions.Item>
+            <Descriptions.Item label="原缴费票号">{refundDetail.data.original_payment_no || "—"}</Descriptions.Item>
+            <Descriptions.Item label="退款账户">{refundDetail.data.refund_account_name || "—"}</Descriptions.Item>
+            <Descriptions.Item label="实际到账">{refundDetail.data.actual_date || "—"}</Descriptions.Item>
+            <Descriptions.Item label="退款凭证号">{refundDetail.data.voucher_no || "—"}</Descriptions.Item>
+            <Descriptions.Item label="申请人">{refundDetail.data.applicant || refundDetail.owner || "—"}</Descriptions.Item>
+            <Descriptions.Item label="说明" span={2}>{refundDetail.description || refundDetail.data.remark || "—"}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

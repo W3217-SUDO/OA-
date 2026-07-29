@@ -887,13 +887,14 @@ def main() -> None:
     ):
         assert token in AUDIT_LOG, f"audit log detail navigation must retain the authoritative record id: {token}"
     for token in (
-        'export type BusinessRecordDetailModule = "finance" | "seal" | "document" | "warehouse" | "hr";',
+        'export type BusinessRecordDetailModule = "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr";',
         'const STORAGE_KEY = "sunhold:business-record-detail-context";',
-        'if (!parsed || !parsed.id || parsed.module !== module) return null;',
-        'if (["finance", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "seal" | "document" | "warehouse" | "hr" });',
+        'if (!parsed || !parsed.id || !modules.includes(parsed.module)) return null;',
+        'if (["finance", "invoice", "refund", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr" });',
+        'if (item.module === "sms" && item.related_id) rememberCaseDetailTarget({ id: item.related_id, serial_no: item.related_serial_no });',
         'if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });',
         '"sunhold:business-record-detail-context",',
-        'consumeBusinessRecordDetailTarget("finance")',
+        'consumeBusinessRecordDetailTarget(["finance", "invoice", "refund"])',
         'consumeBusinessRecordDetailTarget("seal")',
         'consumeBusinessRecordDetailTarget("document")',
         "consumeBusinessRecordDetailTarget('warehouse')",
@@ -912,6 +913,9 @@ def main() -> None:
         '"evidence": "evidence"',
         '"seal": "seal-my"',
         '"finance": "finance-fee-query"',
+        '"invoice": "finance-invoice-mine"',
+        '"refund": "finance-refund"',
+        '"sms": "case-company"',
         '"document": "documents-register"',
         '"hr": "hr-all"',
         '"warehouse": "warehouse"',
