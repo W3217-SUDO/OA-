@@ -11,6 +11,7 @@ import {
   InputNumber,
   message,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Statistic,
@@ -21,6 +22,7 @@ import {
   Upload,
 } from "antd";
 import {
+  DeleteOutlined,
   DownloadOutlined,
   FileDoneOutlined,
   PlusOutlined,
@@ -544,6 +546,15 @@ export default function SealCenterPage({
       message.error(error?.response?.data?.detail || "印章保存失败");
     }
   };
+  const removeAsset = async (item: SealAsset) => {
+    try {
+      await api.delete(`/seals/assets/${item.id}`);
+      message.success("印章资产已删除");
+      void load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "印章资产删除失败");
+    }
+  };
   const openAsset = (item?: SealAsset) => {
     setEditAsset(item || null);
     assetForm.setFieldsValue(
@@ -727,12 +738,23 @@ export default function SealCenterPage({
     },
     {
       title: "操作",
-      width: 90,
+      width: 150,
       fixed: "right" as const,
       render: (_: unknown, r: SealAsset) => (
-        <Button type="link" onClick={() => openAsset(r)}>
-          维护
-        </Button>
+        <Space size={0}>
+          <Button type="link" onClick={() => openAsset(r)}>
+            维护
+          </Button>
+          <Popconfirm
+            title="确认删除这枚未被用印申请引用的印章？"
+            description="已被任何用印申请引用的印章将被系统阻断删除。"
+            okText="确认删除"
+            cancelText="取消"
+            onConfirm={() => void removeAsset(r)}
+          >
+            <Button danger type="link" icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

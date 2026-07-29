@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, JobRole, Notification, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
+from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, JobRole, Notification, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, verify_password
 
 
@@ -12499,6 +12499,29 @@ async def update_seal_asset(asset_id: int, body: SealAssetUpdate, identity: dict
     if changes.get("seal_type") not in {None, *REQUIRED_SEAL_TYPES}: raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
     for key, value in changes.items(): setattr(item, key, value)
     await db.commit(); await db.refresh(item); return _seal_asset_dict(item)
+
+
+@app.delete(f"{settings.api_prefix}/seals/assets/{{asset_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_seal_asset(asset_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity["role"] != "admin": raise HTTPException(status_code=403, detail="仅管理员可删除未使用印章")
+    item = await db.get(SealAsset, asset_id)
+    if not item: raise HTTPException(status_code=404, detail="印章不存在")
+    referenced = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+        BusinessRecord.module == "seal",
+        BusinessRecord.data["seal_asset_id"].as_integer() == item.id,
+    )) or 0)
+    if referenced:
+        raise HTTPException(status_code=409, detail=f"该印章已被 {referenced} 条用印申请引用，不能删除；请维护为停用、维修或遗失")
+    db.add(SealAssetAudit(
+        asset_id=item.id,
+        asset_code=item.code,
+        asset_name=item.name,
+        action="删除印章资产",
+        operator=identity["username"],
+        comment="管理员删除未被用印申请引用的印章资产",
+    ))
+    await db.delete(item)
+    await db.commit()
 
 
 def _department_dict(item: Department) -> dict:

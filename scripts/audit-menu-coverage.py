@@ -2105,8 +2105,11 @@ def main() -> None:
     ):
         assert token in SEAL.replace(" ", ""), f"seal file/print UI missing: {token}"
     print("SEAL_FILES_AND_PRINT_OPTIONS_OK: real seal attachments, upload/download/delete, submission block and legacy print options are covered")
-    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column', "dataSource={assets}"):
+    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column', "dataSource={assets}", 'constremoveAsset=async', 'api.delete(`/seals/assets/${item.id}`)', '已被任何用印申请引用的印章将被系统阻断删除'):
         assert token in SEAL, f"seal asset ledger must render its own searchable, maintainable table: {token}"
+    for token in ('@app.delete(f"{settings.api_prefix}/seals/assets/{{asset_id}}", status_code=status.HTTP_204_NO_CONTENT)', '仅管理员可删除未使用印章', 'BusinessRecord.data["seal_asset_id"].as_integer() == item.id', '该印章已被 {referenced} 条用印申请引用，不能删除', 'SealAssetAudit(', 'action="删除印章资产"'):
+        assert token in MAIN, f"seal asset safe deletion/audit protection missing: {token}"
+    print("SEAL_ASSET_DELETE_OK: unused assets can be administrator-deleted with a persistent audit snapshot; referenced assets are blocked")
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
         assert token in (MAIN + CASE), f"case create reference/locking contract missing: {token}"
     assert '>登记证物</Button>' in WAREHOUSE and 'rowSelection={{columnWidth:42}}' not in WAREHOUSE, "warehouse must expose evidence registration without a dead selection column"

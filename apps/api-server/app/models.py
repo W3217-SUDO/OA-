@@ -402,3 +402,18 @@ class SealAsset(Base):
     remark: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SealAssetAudit(Base):
+    """保留印章资产删除等不可逆台账操作的审计快照。"""
+
+    __tablename__ = "seal_asset_audits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(Integer, index=True)
+    asset_code: Mapped[str] = mapped_column(String(64), index=True)
+    asset_name: Mapped[str] = mapped_column(String(128), default="")
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    operator: Mapped[str] = mapped_column(String(64), index=True)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
