@@ -296,7 +296,7 @@ def main() -> None:
         '"sunhold:task-detail-context"',
         '"sunhold:document-search-detail-context"',
         'function clearClientSessionStorage() {',
-        'localStorage.removeItem("access_token")',
+        'clearClientSessionStorage();\n          setLoggedIn(false);',
         'window.history.replaceState(null, "", window.location.pathname)',
         'const synchronizeLogout = (event: StorageEvent) => {',
         'event.storageArea === localStorage && event.key === "access_token" && !event.newValue',

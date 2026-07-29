@@ -1126,8 +1126,14 @@ export default function App() {
         };
         localStorage.setItem("user", JSON.stringify(user));
         if (data.must_change_password) {
-          localStorage.removeItem("access_token");
+          // A page refresh must never leave the already-mounted workspace
+          // visible after the API reports that this account is still using an
+          // administrator-issued one-time password.
+          clearClientSessionStorage();
+          setLoggedIn(false);
           setSessionUser(null);
+          resetWorkspaceForSession();
+          replaceWithRootRoute();
           message.warning("请重新登录并修改一次性初始密码后再进入系统");
           return;
         }
