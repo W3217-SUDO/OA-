@@ -1064,6 +1064,29 @@ export default function TaskCenterPage({
     createForm.setFieldsValue({ owner: profile.username || "admin", priority: "普通", source: "人工", collaborators: [], deadline: dayjs().add(7, "day") });
     setCreateOpen(true);
   };
+  useEffect(() => {
+    const raw = window.sessionStorage.getItem("sunhold:task-create-context");
+    if (!raw) return;
+    try {
+      const context = JSON.parse(raw) as { case_no?: string; customer?: string; title?: string };
+      if (!context.case_no) return;
+      createForm.setFieldsValue({
+        title: context.title || `案件任务—${context.case_no}`,
+        owner: profile.username || "admin",
+        priority: "普通",
+        source: "案件任务",
+        collaborators: [],
+        deadline: dayjs().add(7, "day"),
+        case_no: context.case_no,
+        customer: context.customer || "",
+      });
+      setCreateOpen(true);
+    } catch {
+      // A malformed transient workspace context must not prevent task access.
+    } finally {
+      window.sessionStorage.removeItem("sunhold:task-create-context");
+    }
+  }, [createForm, initialView, profile.username]);
   const feeLabels = { lawFee: "新增律所费用", platformFee: "新增平台费用", internalFee: "新增内部费用" } as const;
   const documentLabels = { authorization: "授权委托书", lawFirmLetter: "律所函", identity: "身份证明", settlement: "结算提成表" } as const;
   const openFee = (key: FeeAction, subtype: FeeSubtype) => requireOne((row) => {

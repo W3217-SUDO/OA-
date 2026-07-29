@@ -245,6 +245,19 @@ export default function FinanceCenterPage({
     rememberCustomerDetailTarget({ title, serial_no: serialNo });
     onNavigate?.("customer-company");
   };
+  const openCaseTaskCreate = (source: any) => {
+    const caseNo = String(source?.case_no || source?.data?.case_no || "").trim();
+    if (!caseNo) {
+      message.warning("当前费用未关联案件，无法新建案件任务");
+      return;
+    }
+    window.sessionStorage.setItem("sunhold:task-create-context", JSON.stringify({
+      case_no: caseNo,
+      customer: String(source?.customer || source?.data?.customer || "").trim(),
+      title: `案件费用跟进—${caseNo}`,
+    }));
+    onNavigate?.("task-my-created");
+  };
   const [customers, setCustomers] = useState<Fee[]>([]);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [incoming, setIncoming] = useState<IncomingPayment[]>([]);
@@ -3036,7 +3049,7 @@ export default function FinanceCenterPage({
             type="link"
             title="新建任务"
             aria-label="新建任务"
-            onClick={() => onNavigate?.("task-my")}
+            onClick={() => openCaseTaskCreate(row)}
           >
             ✉
           </Button>
@@ -6843,7 +6856,7 @@ export default function FinanceCenterPage({
                                     width: 115,
                                     render: (_v, detail: any) => (
                                       <Space size={0}>
-                                        <Button type="link" title="新建任务" onClick={() => onNavigate?.("task-my")}>✉</Button>
+                                        <Button type="link" title="新建案件任务" onClick={() => openCaseTaskCreate(detail)}>✉</Button>
                                         <Button type="link" title="导出结算清单" onClick={() => void exportGeneralSettlement("settlement", [row.id])}>▣</Button>
                                         <Button type="link" title="导出结算列表" onClick={() => void exportGeneralSettlement("case", [row.id])}>▦</Button>
                                       </Space>
