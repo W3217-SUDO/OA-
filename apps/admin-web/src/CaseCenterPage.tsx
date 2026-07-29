@@ -318,33 +318,11 @@ export default function CaseCenterPage({
   const load = async () => {
     setLoading(true);
     try {
-      const [caseRes, contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes] =
-        await Promise.all([
-          api.get("/records", { params: { module: "case", page_size: 100 } }),
-          api.get("/cases/eligible-contracts"),
-          api.get("/hearings"),
-          api.get("/cases/summary"),
-          api.get("/auth/me"),
-          api.get("/records",{params:{module:"finance",page_size:100}}),
-          api.get("/records",{params:{module:"refund",page_size:100}}),
-          api.get("/attachments"),
-          api.get("/cases/reference-options"),
-          api.get("/records", { params: { module: "customer", page_size: 100 } }),
-          api.get("/records", { params: { module: "clue", page_size: 100 } }),
-        ]);
+      // 关联详情不能依赖合同、排期、附件等旁路数据全部成功；否则案号跳转会
+      // 只进入案件列表而没有打开目标详情。
+      const caseRes = await api.get("/records", { params: { module: "case", page_size: 100 } });
       setCases(caseRes.data.items);
       void loadCaseCapabilities(caseRes.data.items as CaseRow[]);
-      setContracts(contractRes.data.items);
-      setHearings(hearingRes.data.items);
-      setSummary(summaryRes.data);
-      setProfile(profileRes.data);
-      setFinanceRows([...financeRes.data.items,...refundRes.data.items]);
-      setAttachments(attachmentRes.data.items);
-      setCaseTypeOptions(referenceRes.data.case_types || []);
-      setCauseOptions(referenceRes.data.causes || []);
-      setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
-      setCaseCustomers(customerRes.data.items || []);
-      setCaseClues(clueRes.data.items || []);
       const detailTarget = consumeCaseDetailTarget();
       if (detailTarget && !isCreateView) {
         let linkedCase = (caseRes.data.items as CaseRow[]).find((row) =>
@@ -360,6 +338,30 @@ export default function CaseCenterPage({
         if (linkedCase) void openCounselDetail(linkedCase);
         else message.warning("未找到关联案件或当前账号无权查看");
       }
+      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes] =
+        await Promise.all([
+          api.get("/cases/eligible-contracts"),
+          api.get("/hearings"),
+          api.get("/cases/summary"),
+          api.get("/auth/me"),
+          api.get("/records",{params:{module:"finance",page_size:100}}),
+          api.get("/records",{params:{module:"refund",page_size:100}}),
+          api.get("/attachments"),
+          api.get("/cases/reference-options"),
+          api.get("/records", { params: { module: "customer", page_size: 100 } }),
+          api.get("/records", { params: { module: "clue", page_size: 100 } }),
+        ]);
+      setContracts(contractRes.data.items);
+      setHearings(hearingRes.data.items);
+      setSummary(summaryRes.data);
+      setProfile(profileRes.data);
+      setFinanceRows([...financeRes.data.items,...refundRes.data.items]);
+      setAttachments(attachmentRes.data.items);
+      setCaseTypeOptions(referenceRes.data.case_types || []);
+      setCauseOptions(referenceRes.data.causes || []);
+      setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
+      setCaseCustomers(customerRes.data.items || []);
+      setCaseClues(clueRes.data.items || []);
       if (isCreateView && contractPrefill?.id) {
         const selected = contractRes.data.items.find((row:ContractRow) => row.id === contractPrefill.id);
         if (selected) createForm.setFieldsValue({customer:selected.customer,source_person:selected.data?.source_person||selected.owner});
