@@ -1056,21 +1056,22 @@ class CriminalPublicSecurityMaintenanceInput(BaseModel):
     public_security_name: str = Field(default="", max_length=256)
     public_security_case_no: str = Field(default="", max_length=128)
     public_security_address: str = Field(default="", max_length=500)
+    public_security_phone: str = Field(default="", max_length=64)
     public_security_operator: str = Field(default="", max_length=128)
     comment: str = Field(default="", max_length=500)
 
 
 class CriminalProcuratorateMaintenanceInput(BaseModel):
-    first_procuratorate_name: str = Field(default="", max_length=256); first_procuratorate_case_no: str = Field(default="", max_length=128); first_procuratorate_operator: str = Field(default="", max_length=128)
-    second_procuratorate_name: str = Field(default="", max_length=256); second_procuratorate_case_no: str = Field(default="", max_length=128); second_procuratorate_operator: str = Field(default="", max_length=128)
-    retrial_procuratorate_name: str = Field(default="", max_length=256); retrial_procuratorate_case_no: str = Field(default="", max_length=128); retrial_procuratorate_operator: str = Field(default="", max_length=128)
+    first_procuratorate_name: str = Field(default="", max_length=256); first_procuratorate_case_no: str = Field(default="", max_length=128); first_procuratorate_address: str = Field(default="", max_length=500); first_procuratorate_phone: str = Field(default="", max_length=64); first_procuratorate_operator: str = Field(default="", max_length=128)
+    second_procuratorate_name: str = Field(default="", max_length=256); second_procuratorate_case_no: str = Field(default="", max_length=128); second_procuratorate_address: str = Field(default="", max_length=500); second_procuratorate_phone: str = Field(default="", max_length=64); second_procuratorate_operator: str = Field(default="", max_length=128)
+    retrial_procuratorate_name: str = Field(default="", max_length=256); retrial_procuratorate_case_no: str = Field(default="", max_length=128); retrial_procuratorate_address: str = Field(default="", max_length=500); retrial_procuratorate_phone: str = Field(default="", max_length=64); retrial_procuratorate_operator: str = Field(default="", max_length=128)
     comment: str = Field(default="", max_length=500)
 
 
 class CriminalCourtMaintenanceInput(BaseModel):
-    first_court_name: str = Field(default="", max_length=256); first_court_case_no: str = Field(default="", max_length=128); first_court_courtroom: str = Field(default="", max_length=128); first_court_judge: str = Field(default="", max_length=128); first_court_clerk: str = Field(default="", max_length=128)
-    second_court_name: str = Field(default="", max_length=256); second_court_case_no: str = Field(default="", max_length=128); second_court_courtroom: str = Field(default="", max_length=128); second_court_judge: str = Field(default="", max_length=128); second_court_clerk: str = Field(default="", max_length=128)
-    retrial_court_name: str = Field(default="", max_length=256); retrial_court_case_no: str = Field(default="", max_length=128); retrial_court_courtroom: str = Field(default="", max_length=128); retrial_court_judge: str = Field(default="", max_length=128); retrial_court_clerk: str = Field(default="", max_length=128)
+    first_court_enabled: bool = False; first_court_name: str = Field(default="", max_length=256); first_court_case_no: str = Field(default="", max_length=128); first_court_courtroom: str = Field(default="", max_length=128); first_court_judge: str = Field(default="", max_length=128); first_court_clerk: str = Field(default="", max_length=128); first_court_filing_date: date | None = None; first_court_hearing_date: date | None = None
+    second_court_enabled: bool = False; second_court_name: str = Field(default="", max_length=256); second_court_case_no: str = Field(default="", max_length=128); second_court_courtroom: str = Field(default="", max_length=128); second_court_judge: str = Field(default="", max_length=128); second_court_clerk: str = Field(default="", max_length=128); second_court_filing_date: date | None = None; second_court_hearing_date: date | None = None
+    retrial_court_enabled: bool = False; retrial_court_name: str = Field(default="", max_length=256); retrial_court_case_no: str = Field(default="", max_length=128); retrial_court_courtroom: str = Field(default="", max_length=128); retrial_court_judge: str = Field(default="", max_length=128); retrial_court_clerk: str = Field(default="", max_length=128); retrial_court_filing_date: date | None = None; retrial_court_hearing_date: date | None = None
     comment: str = Field(default="", max_length=500)
 
 
@@ -11089,6 +11090,19 @@ async def _save_criminal_detail(record: BusinessRecord, payload: dict, action: s
     await db.commit(); await db.refresh(record); return _record_dict(record)
 
 
+def _criminal_maintenance_payload(body: BaseModel) -> dict:
+    """Keep judicial booleans and dates typed when editing a completed case."""
+    payload: dict[str, object] = {}
+    for key, value in body.model_dump(exclude={"comment"}).items():
+        if isinstance(value, date):
+            payload[key] = str(value)
+        elif isinstance(value, bool) or value is None:
+            payload[key] = value
+        else:
+            payload[key] = str(value or "").strip()
+    return payload
+
+
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/litigants")
 async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _criminal_detail_maintenance_case(case_id, identity, db)
@@ -11100,19 +11114,19 @@ async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, id
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/public-security")
 async def maintain_criminal_public_security(case_id: int, body: CriminalPublicSecurityMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _criminal_detail_maintenance_case(case_id, identity, db)
-    return await _save_criminal_detail(record, {k: str(v or "").strip() for k,v in body.model_dump(exclude={"comment"}).items()}, "修改刑事案件公安机关信息", body.comment, identity, db)
+    return await _save_criminal_detail(record, _criminal_maintenance_payload(body), "修改刑事案件公安机关信息", body.comment, identity, db)
 
 
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/procuratorates")
 async def maintain_criminal_procuratorates(case_id: int, body: CriminalProcuratorateMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _criminal_detail_maintenance_case(case_id, identity, db)
-    return await _save_criminal_detail(record, {k: str(v or "").strip() for k,v in body.model_dump(exclude={"comment"}).items()}, "修改刑事案件检察院信息", body.comment, identity, db)
+    return await _save_criminal_detail(record, _criminal_maintenance_payload(body), "修改刑事案件检察院信息", body.comment, identity, db)
 
 
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/courts")
 async def maintain_criminal_courts(case_id: int, body: CriminalCourtMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _criminal_detail_maintenance_case(case_id, identity, db)
-    return await _save_criminal_detail(record, {k: str(v or "").strip() for k,v in body.model_dump(exclude={"comment"}).items()}, "修改刑事案件审级法院信息", body.comment, identity, db)
+    return await _save_criminal_detail(record, _criminal_maintenance_payload(body), "修改刑事案件审级法院信息", body.comment, identity, db)
 
 
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/judicial")

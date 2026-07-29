@@ -1142,6 +1142,14 @@ def main() -> None:
         '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/counsel-basic")',
         '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/normal-basic")',
         '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/arbitration-basic")',
+        '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/public-security")',
+        '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/procuratorates")',
+        '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/courts")',
+        'public_security_phone: str = Field(default="", max_length=64)',
+        'first_procuratorate_address: str = Field(default="", max_length=500)',
+        'first_procuratorate_phone: str = Field(default="", max_length=64)',
+        'first_court_filing_date: date | None = None',
+        'first_court_hearing_date: date | None = None',
         'class CaseArbitrationBasicInput(BaseModel):',
         'raise HTTPException(status_code=409, detail="该接口仅用于仲裁案件")',
         'raise HTTPException(status_code=409, detail="归档中的仲裁案件不能修改基本信息")',
@@ -1161,6 +1169,18 @@ def main() -> None:
     ):
         assert token in MAIN, f"criminal case backend guard missing: {token}"
     for token in (
+        'key:"public-security",label:"修改公安机关"',
+        'key:"procuratorates",label:"修改检察院"',
+        'key:"courts",label:"修改审级法院"',
+        '["public_security_phone","联系电话"]',
+        '`${level}_procuratorate_address`,`地址`',
+        '`${level}_procuratorate_phone`,`联系电话`',
+        '`${level}_court_filing_date`',
+        '`${level}_court_hearing_date`',
+        'api.put(`/cases/${criminalMaintenance.row.id}/criminal/${criminalMaintenance.kind}`,payload)',
+    ):
+        assert token in normalized_case, f"criminal case maintenance must retain full legacy judicial fields: {token}"
+    for token in (
         'def _record_links_to_case(record: BusinessRecord, case_record: BusinessRecord) -> bool:',
         'linked_case_id = int(record_data.get("case_id") or record_data.get("case_record_id") or 0)',
         'return linked_case_id == case_record.id',
@@ -1172,6 +1192,11 @@ def main() -> None:
         'call("PATCH",f"/records/{case[\'id\']}",{"status":"已归档"},expected=(409,))',
         'call("POST",f"/records/{case[\'id\']}/transition",{"to_status":"文书准备","comment":"禁止通用流转绕过"},expected=(409,))',
         'call("PUT",f"/cases/{case[\'id\']}/litigants",{',
+        'call("PUT",f"/cases/{case[\'id\']}/criminal/public-security",{',
+        'call("PUT",f"/cases/{case[\'id\']}/criminal/procuratorates",{',
+        'call("PUT",f"/cases/{case[\'id\']}/criminal/courts",{',
+        '"public_security_phone":"021-12345678"',
+        '"first_procuratorate_address":"上海市检察路1号"',
         '"plaintiff_agents":["公诉人甲"]',
         'call("DELETE",f"/records/{case[\'id\']}",expected=(409,))',
         'ifmodule=="case":call("GET",f"/records/import-template?module={module}",expected=(409,))',

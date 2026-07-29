@@ -1415,13 +1415,19 @@ def main():
         fixed_tasks = call("GET", f"/cases/{case['id']}/tasks")["items"]
         assert {item["data"]["fixed_task_key"] for item in fixed_tasks if item["data"].get("task_type") == "固定任务"} == {"filing-registration", "service-tracking"}
         assert judicial["description"] == "刑事案件案情说明" and judicial["data"]["first_court_enabled"] is True
+        maintained_security = call("PUT", f"/cases/{case['id']}/criminal/public-security", {"public_security_name": "上海市公安局维护分局", "public_security_case_no": serial("PS-MAINTAIN"), "public_security_address": "上海市维护路1号", "public_security_phone": "021-12345678", "public_security_operator": "维护侦查员", "comment": "刑事公安机关维护验收"})
+        assert maintained_security["data"]["public_security_phone"] == "021-12345678"
+        maintained_procuratorates = call("PUT", f"/cases/{case['id']}/criminal/procuratorates", {"first_procuratorate_name": "上海市维护检察院", "first_procuratorate_case_no": serial("PROC-MAINTAIN"), "first_procuratorate_address": "上海市检察路1号", "first_procuratorate_phone": "021-87654321", "first_procuratorate_operator": "维护检察官", "comment": "刑事检察院维护验收"})
+        assert maintained_procuratorates["data"]["first_procuratorate_address"] == "上海市检察路1号" and maintained_procuratorates["data"]["first_procuratorate_phone"] == "021-87654321"
+        maintained_courts = call("PUT", f"/cases/{case['id']}/criminal/courts", {"first_court_enabled": True, "first_court_name": "上海市维护人民法院", "first_court_case_no": serial("COURT-MAINTAIN"), "first_court_courtroom": "维护第一法庭", "first_court_judge": "维护法官", "first_court_clerk": "维护书记员", "first_court_filing_date": str(date.today()), "first_court_hearing_date": str(date.today() + timedelta(days=2)), "comment": "刑事审级法院维护验收"})
+        assert maintained_courts["data"]["first_court_enabled"] is True and maintained_courts["data"]["first_court_hearing_date"] == str(date.today() + timedelta(days=2))
         call("PUT", f"/cases/{case['id']}/litigants", {"defendants": ["完成后禁止回退"]}, expected=(409,))
         call("PUT", f"/cases/{case['id']}/judicial", {"court": "完成后禁止重复完成"}, expected=(409,))
         call("PATCH", f"/records/{case['id']}", {"status": "已归档"}, expected=(409,))
         call("POST", f"/records/{case['id']}/transition", {"to_status": "文书准备", "comment": "禁止通用流转绕过"}, expected=(409,))
         call("DELETE", f"/records/{case['id']}", expected=(409,))
         creation_actions = {item["action"] for item in call("GET", f"/records/{case['id']}/history")["items"]}
-        assert {"从合同新建案件", "维护当事人信息", "完成司法机关信息", "案件创建审批通过"}.issubset(creation_actions)
+        assert {"从合同新建案件", "维护当事人信息", "完成司法机关信息", "案件创建审批通过", "修改刑事案件公安机关信息", "修改刑事案件检察院信息", "修改刑事案件审级法院信息"}.issubset(creation_actions)
         admin_payload = {**case_payload, "serial_no": serial("ADMIN-CASE"), "title": "冒烟行政案件", "case_type": "行政案件及国家赔偿", "client_position": "原告/申请人", "cause_or_charge": "行政处罚撤销", "right_type": "行政诉讼"}
         call("POST", "/cases", {**admin_payload, "client_position": "被告人/犯罪嫌疑人"}, expected=(422,))
         admin_case = call("POST", "/cases", admin_payload, expected=(201,))
