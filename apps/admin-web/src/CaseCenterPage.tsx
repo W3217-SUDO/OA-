@@ -1381,7 +1381,7 @@ export default function CaseCenterPage({
         ) : "—";
       },
     },
-    { title: "客户", dataIndex: "customer", width: 190 },
+    { title: "客户", dataIndex: "customer", width: 190, render: (value: string) => value ? <Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ title: value })}>{value}</Button> : "—" },
     { title: "开庭类型", dataIndex: "hearing_type", width: 100 },
     { title: "开庭律师", dataIndex: "hearing_lawyer", width: 90 },
     {
@@ -2088,7 +2088,7 @@ export default function CaseCenterPage({
             size="small"
             columns={archiveColumns}
             dataSource={cases}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 1900 }}
             pagination={{ pageSize: 20 }}
           />
         ) : (
