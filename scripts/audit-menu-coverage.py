@@ -2587,7 +2587,13 @@ def main() -> None:
         (configured_finance_source, 'openFinanceCustomerDetail(row, header)'),
     ):
         assert token in source, f"original finance relation detail entry missing: {token}"
-    print("FINANCE_ORIGINAL_RELATION_LINKS_OK: payment audit, internal fee, fee-query and configured finance case/contract/customer fields open real details")
+    for token in (
+        'cellValue(row, header) ? <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}',
+        'cellValue(row, header) ? <Button type="link" onClick={() => openContractDetail(cellValue(row, header))}',
+        'cellValue(row, header) ? <Button\n          type="link"\n          onClick={() => openFinanceCustomerDetail(row, header)}',
+    ):
+        assert token in configured_finance_source, f"finance relation link must be value-guarded: {token}"
+    print("FINANCE_ORIGINAL_RELATION_LINKS_OK: payment audit, internal fee, fee-query and configured finance case/contract/customer fields open real details; empty relations stay non-clickable")
     print("FINANCE_INTERNAL_DETAIL_OK: personal/company scopes, 12 filters, 14 columns plus placeholder, totals, 15-row server paging, case links and real Excel export")
     invoice_mine_contract = [
         'const invoiceMineFields = [...invoiceBaseFields, f("案件编号")]',
