@@ -26,6 +26,10 @@ USERNAME = os.getenv("SMOKE_USERNAME", "admin")
 PASSWORD = os.getenv("SMOKE_PASSWORD", "")
 TOKEN = ""
 PASSED: list[str] = []
+# System-issued test accounts now always receive a one-time password.  Keep
+# later role/scope smoke scenarios focused on their own rule by completing
+# that mandatory first-login step once and reusing the changed credential.
+SMOKE_CHANGED_PASSWORDS: dict[str, tuple[str, str]] = {}
 
 
 def call(method: str, path: str, body=None, *, expected=(200,), raw=False, headers=None):
@@ -57,8 +61,11 @@ def call(method: str, path: str, body=None, *, expected=(200,), raw=False, heade
     return json.loads(payload.decode("utf-8"))
 
 
-def login(username: str, password: str, *, expected=(200,)):
-    data = urllib.parse.urlencode({"username": username, "password": password}).encode()
+def login(username: str, password: str, *, expected=(200,), complete_forced_change=True):
+    global TOKEN
+    remembered = SMOKE_CHANGED_PASSWORDS.get(username)
+    actual_password = remembered[1] if remembered and password == remembered[0] else password
+    data = urllib.parse.urlencode({"username": username, "password": actual_password}).encode()
     request = urllib.request.Request(
         f"{API}/auth/login",
         data=data,
@@ -72,7 +79,14 @@ def login(username: str, password: str, *, expected=(200,)):
         status, payload = exc.code, exc.read()
     if status not in expected:
         raise AssertionError(f"login expected {expected}, got {status}: {payload!r}")
-    return json.loads(payload.decode()) if payload else None
+    result = json.loads(payload.decode()) if payload else None
+    if status == 200 and complete_forced_change and result and result.get("must_change_password"):
+        changed_password = f"{actual_password}Changed"
+        TOKEN = result["access_token"]
+        call("PATCH", "/auth/me", {"current_password": actual_password, "new_password": changed_password})
+        SMOKE_CHANGED_PASSWORDS[username] = (password, changed_password)
+        return login(username, changed_password, complete_forced_change=False)
+    return result
 
 
 def multipart_upload(path: str, fields: dict[str, object], filename: str, content: bytes, *, expected=(201,)):
@@ -315,14 +329,15 @@ def main():
         passed("健康检查、登录鉴权、个人资料和控制台数据")
 
         username = f"smoke_{suffix}".lower()
-        user = call("POST", "/system/users", {"username": username, "display_name": "冒烟用户", "password": "SmokePass2026!", "role": "user", "profile": {"employee_no": f"E-{suffix}", "mobile": "13800000000"}}, expected=(201,))
+        user = call("POST", "/system/users", {"username": username, "display_name": "冒烟用户", "password": "SmokePass2026!", "role": "user", "must_change_password": False, "profile": {"employee_no": f"E-{suffix}", "mobile": "13800000000"}}, expected=(201,))
         assert user["profile"]["employee_no"] == f"E-{suffix}" and user["mobile"] == "13800000000"
+        assert user["must_change_password"] is True, "administrator-created accounts may not bypass first-login password change"
         users.append(user["id"])
         forced_name = f"smoke_first_login_{suffix}".lower()
         forced_user = call("POST", "/system/users", {"username": forced_name, "display_name": "首次改密用户", "password": "SmokePass2026!", "role": "user", "must_change_password": True}, expected=(201,))
         users.append(forced_user["id"])
         assert forced_user["must_change_password"] is True
-        forced_login = login(forced_name, "SmokePass2026!")
+        forced_login = login(forced_name, "SmokePass2026!", complete_forced_change=False)
         assert forced_login["must_change_password"] is True and forced_login["user"]["must_change_password"] is True
         TOKEN = forced_login["access_token"]
         call("GET", "/dashboard", expected=(428,))
@@ -352,7 +367,7 @@ def main():
         call("POST", f"/system/users/{admin_user['id']}/reset-password", {"new_password": "ResetPass2026!"}, expected=(409,))
         reset = call("POST", f"/system/users/{user['id']}/reset-password", {"new_password": "ResetPass2026!"})
         assert reset["must_change_password"] is True and reset["failed_login_attempts"] == 0 and reset["locked_until"] is None
-        reset_login = login(username, "ResetPass2026!")
+        reset_login = login(username, "ResetPass2026!", complete_forced_change=False)
         assert reset_login["must_change_password"] is True
         TOKEN = reset_login["access_token"]
         call("GET", "/dashboard", expected=(428,))
@@ -3316,6 +3331,9 @@ def main():
         assert call("GET", f"/system/users?keyword={renamed_atomic_name}")["items"][0]["is_active"] is True
         login(atomic_employee_name, "SmokePass2026!", expected=(401,))
         assert login(renamed_atomic_name, "SmokePass2026!")["access_token"]
+        # The preceding login proves the renamed employee can authenticate;
+        # subsequent HR lifecycle operations are administrator-only.
+        TOKEN = admin_token
         leave = call("POST", f"/hr/{hr['id']}/subrecords", {"kind": "leave", "data": {"start_date": str(date.today()), "end_date": str(date.today()), "hours": 8, "leave_type": "年假", "remark": "附属记录验收"}}, expected=(201,))
         assert leave["data"]["hours"] == 8 and leave["kind"] == "leave"
         call("POST", f"/hr/{hr['id']}/subrecords", {"kind": "leave", "data": {"start_date": str(date.today()), "end_date": str(date.today() - timedelta(days=1)), "hours": 8, "leave_type": "年假"}}, expected=(422,))

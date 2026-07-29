@@ -3278,7 +3278,7 @@ def main() -> None:
         'must_change_password: data.must_change_password',
         'localStorage.removeItem("access_token")',
         'if(!editingUser)payload.must_change_password=true',
-        'password_changed_at = None; user.must_change_password = True',
+        'password_changed_at=None,\n        must_change_password=True',
         'cannot reset current',
     ):
         if token == 'cannot reset current':
@@ -3288,7 +3288,7 @@ def main() -> None:
         elif token.startswith('must_change_password:') or token.startswith('localStorage'):
             assert token in APP, "Forced-password-change session recovery is missing"
         else:
-            assert token in MAIN, "Administrator-issued password must require first-login password change"
+            assert token in MAIN, "Administrator-created account must require first-login password change even when a legacy client sends false"
     assert 'reset-password", {"new_password": "ResetPass2026!"}, expected=(409,)' in SMOKE, "Self-reset smoke coverage is missing"
     print("FORCED_PASSWORD_CHANGE_RECOVERY_OK: session hydration, system/HR issuance, self-reset protection and smoke coverage")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")

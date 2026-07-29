@@ -1535,7 +1535,10 @@ class SystemUserInput(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     role: str = "user"
     is_active: bool = True
-    must_change_password: bool = False
+    # An administrator-issued password is always one-time.  Keep accepting
+    # this legacy request field for API compatibility, but never allow a
+    # caller to opt a newly created account out of the first-login change.
+    must_change_password: bool = True
     profile: dict = Field(default_factory=dict)
 
 
@@ -2651,7 +2654,17 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
         raise HTTPException(status_code=409, detail="登录账号已存在")
     policy = await _security_policy(db)
     if len(body.password) < policy.min_password_length: raise HTTPException(status_code=422, detail=f"密码至少需要 {policy.min_password_length} 位")
-    user = User(username=username, display_name=body.display_name.strip(), department=body.department.strip(), role=body.role, profile=body.profile, password_hash=hash_password(body.password), is_active=body.is_active, password_changed_at=None if body.must_change_password else datetime.now(), must_change_password=body.must_change_password)
+    user = User(
+        username=username,
+        display_name=body.display_name.strip(),
+        department=body.department.strip(),
+        role=body.role,
+        profile=body.profile,
+        password_hash=hash_password(body.password),
+        is_active=body.is_active,
+        password_changed_at=None,
+        must_change_password=True,
+    )
     db.add(user)
     await db.commit(); await db.refresh(user)
     return _system_user_dict(user)
