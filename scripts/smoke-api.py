@@ -3304,9 +3304,9 @@ def main():
         call("DELETE", f"/records/{atomic_employee['employee']['id']}", expected=(409,))
         hr = create_record("hr", "试用", "冒烟员工", {"username": member_name, "position": active_job_role["name"], "phone": "13800000000", "joined_at": str(date.today()), "employment_type": "全职"}, department=active_department["name"], owner=member_name)
         call("PATCH", f"/hr/employees/{hr['id']}", {"username": member_name, "display_name": "冒烟员工已修改", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": True, "email": "hr-smoke@example.com", "mobile": "13900000000", "office_phone": "021-12340000", "joined_at": str(date.today()), "left_at": str(date.today() - timedelta(days=1)), "data": {}}, expected=(422,))
-        updated_hr = call("PATCH", f"/hr/employees/{hr['id']}", {"username": member_name, "display_name": "冒烟员工已修改", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": True, "email": "hr-smoke@example.com", "mobile": "13900000000", "office_phone": "021-12340000", "joined_at": str(date.today()), "left_at": None, "data": {"employment_type": "全职", "staff_role": "授薪律师", "id_no": f"310101{suffix[-8:]}", "school": "华东政法大学", "lawyer_license_no": f"LAW-{suffix}", "annual_leave": 8}})
+        updated_hr = call("PATCH", f"/hr/employees/{hr['id']}", {"username": member_name, "display_name": "冒烟员工已修改", "department": active_department["name"], "role": "manager", "position": active_job_role["name"], "is_active": True, "email": "hr-smoke@example.com", "mobile": "13900000000", "office_phone": "021-12340000", "joined_at": str(date.today()), "left_at": None, "data": {"employment_type": "全职", "staff_role": "授薪律师", "id_no": f"310101{suffix[-8:]}", "school": "华东政法大学", "lawyer_license_no": f"LAW-{suffix}", "annual_leave": 8}})
         assert updated_hr["employee"]["data"]["school"] == "华东政法大学" and updated_hr["employee"]["data"]["lawyer_license_no"] == f"LAW-{suffix}" and updated_hr["employee"]["data"]["annual_leave"] == 8
-        assert updated_hr["employee"]["title"] == "冒烟员工已修改" and updated_hr["user"]["mobile"] == "13900000000"
+        assert updated_hr["employee"]["title"] == "冒烟员工已修改" and updated_hr["user"]["mobile"] == "13900000000" and updated_hr["user"]["role"] == "manager"
         assert any(item["action"] == "修改员工资料" for item in call("GET", f"/records/{hr['id']}/history")["items"])
         renamed_atomic_name = f"renamed_hr_{suffix}".lower()
         renamed_atomic = call("PATCH", f"/hr/employees/{atomic_employee['employee']['id']}", {"username": renamed_atomic_name, "display_name": "原子新建员工", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": True, "email": "", "mobile": "13800000001", "office_phone": "", "joined_at": str(date.today()), "left_at": None, "data": {"joined_at": str(date.today()), "mobile": "13800000001"}})
@@ -3339,6 +3339,7 @@ def main():
         call("POST", f"/hr/{hr['id']}/transition", {"to_status": "离职", "effective_date": str(date.today()), "reason": ""}, expected=(422,))
         offboarded = call("POST", f"/hr/{hr['id']}/transition", {"to_status": "离职", "effective_date": str(date.today()), "reason": "员工主动离职", "handover_to": "交接同事", "comment": "工作已交接"})
         assert offboarded["status"] == "离职" and offboarded["data"]["handover_to"] == "交接同事" and offboarded["data"]["is_active"] is False
+        assert call("GET", f"/system/users?keyword={member_name}")["items"][0]["role"] == "manager" and call("GET", f"/system/users?keyword={member_name}")["items"][0]["is_active"] is False
         login(member_name, "SmokePass2026!", expected=(401,))
         warehouse = create_record("warehouse", "报废", "冒烟物品", {"category": "办公用品", "quantity": 1, "unit": "件", "location": "冒烟仓库"})
         assert warehouse["status"] == "在库" and warehouse["data"]["borrower"] == ""

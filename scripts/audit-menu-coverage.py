@@ -308,6 +308,7 @@ def main() -> None:
     print("WORKSPACE_LOGOUT_SYNC_OK: logout clears business navigation context, returns to root and synchronizes other tabs")
     assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
     assert 'reset-password' in SYSTEM and '重置密码' in SYSTEM and 'must_change_password = True' in MAIN, "system user list must provide a separate secure password reset action that forces the next-login change"
+    assert 'row.username===currentUsername' in SYSTEM, "The current administrator must not be offered a self password-reset action"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
     assert 'sessionStorage.getItem("sunhold:contract-customer")' in CONTRACT, "contract creation must consume customer context from the customer page"
@@ -2198,7 +2199,7 @@ def main() -> None:
     assert "sunhold:company-bank-address" not in SYSTEM and '"bank_address"' in MAIN, "company bank address must persist through the backend config"
     assert "api.post('/hr/employees'" in HR and '/hr/employees"' in MAIN and 'account_type == "员工账号"' in MAIN and 'role="user"' in MAIN, "employee-account HR saves must atomically create/sync a least-privileged login account"
     assert '不能通过员工档案覆盖管理员账号' in MAIN and '关联可登录账号，不能直接删除' in MAIN and 'user.is_active = body.is_active' in MAIN, "HR account edit, deletion and disable boundaries must stay synchronized"
-    assert 'linked_user.role == "user"' in MAIN and 'login_enabled = body.to_status == "在职"' in MAIN and 'linked_user.is_active = login_enabled' in MAIN, "HR lifecycle transitions must only synchronize linked ordinary-user login status and must not touch admin"
+    assert 'linked_user.role != "admin"' in MAIN and 'login_enabled = body.to_status == "在职"' in MAIN and 'linked_user.is_active = login_enabled' in MAIN, "HR lifecycle transitions must synchronize every non-admin employee account without touching the protected administrator account"
     assert "const rawCellValue" in FINANCE and 'spec.control === "date"' in FINANCE and 'spec.control === "money"' in FINANCE, "finance route queries must apply typed field filters"
     receipt_route_index = FINANCE.index('"finance-receipts-manage"', FINANCE.index("const routeConfigs"))
     receipt_route_section = FINANCE[receipt_route_index:receipt_route_index + 1800]
@@ -3271,7 +3272,8 @@ def main() -> None:
         'offboarded = call("POST", f"/hr/{hr[\'id\']}/transition"',
     ):
         assert token in SMOKE, f"HR lifecycle smoke coverage missing: {token}"
-    print("HR_ACCOUNT_LIFECYCLE_OK: dedicated employee status flow controls linked account access and blocks profile-edit bypass")
+    assert 'linked_user and linked_user.role != "admin"' in MAIN, "HR offboarding must synchronize manager and auditor employee accounts while preserving the protected administrator account"
+    print("HR_ACCOUNT_LIFECYCLE_OK: dedicated employee status flow controls ordinary and elevated employee access and blocks profile-edit bypass")
     for token in (
         'must_change_password: data.must_change_password',
         'localStorage.removeItem("access_token")',

@@ -12948,12 +12948,12 @@ async def transition_employee(employee_id: int, body: HrTransitionInput, identit
     else:
         data.update({"disabled_at": str(body.effective_date), "disabled_reason": reason, "disabled_by": identity["username"]}); action = "停用员工"
     # The dedicated HR lifecycle is the authoritative employment switch for a
-    # linked employee login.  Only ordinary employee users are synchronized:
-    # an administrator (or a legacy elevated account) must never be altered by
-    # an HR status transition.
+    # linked employee login.  Every non-administrator employee account,
+    # including manager and auditor accounts, must be synchronized.  The
+    # separately protected administrator account is never altered here.
     linked_username = str(data.get("username") or item.owner or "").strip().lower()
     linked_user = await db.scalar(select(User).where(User.username == linked_username)) if linked_username else None
-    if linked_user and linked_user.role == "user":
+    if linked_user and linked_user.role != "admin":
         login_enabled = body.to_status == "在职"
         linked_user.is_active = login_enabled
         data["is_active"] = login_enabled
