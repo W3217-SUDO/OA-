@@ -8733,12 +8733,12 @@ export default function FinanceCenterPage({
             rowKey="transaction_id"
             dataSource={allocateTarget?.allocations || []}
             columns={[
-              { title: "已分配合同", dataIndex: "contract_no" },
+              { title: "已分配合同", dataIndex: "contract_no", render: (v: string) => v ? <Button type="link" onClick={() => openContractDetail(v)}>{v}</Button> : "—" },
               { title: "应收阶段", dataIndex: "phase" },
               {
                 title: "案件",
                 dataIndex: "case_no",
-                render: (v: string) => v || "—",
+                render: (v: string) => v ? <Button type="link" onClick={() => openCaseDetail(v)}>{v}</Button> : "—",
               },
               { title: "金额", dataIndex: "amount", render: money },
             ]}

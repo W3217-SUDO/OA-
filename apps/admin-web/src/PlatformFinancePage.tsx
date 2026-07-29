@@ -20,6 +20,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import "./platform-finance.css";
 
@@ -659,6 +660,13 @@ export default function PlatformFinancePage({
     rememberContractDetailTarget({ serial_no: serialNo });
     onNavigate?.("contract-company");
   };
+  const openCustomerDetail = (customer: unknown, customerNo?: unknown) => {
+    const title = String(customer || "").trim();
+    const serialNo = String(customerNo || "").trim();
+    if (!title && !serialNo) return message.warning("当前财务记录未关联客户");
+    rememberCustomerDetailTarget({ title, serial_no: serialNo });
+    onNavigate?.("customer-company");
+  };
   const tableRows = sourceRows
     .filter((item) => {
       if (config.kind === "settlement" && item.data?.fee_type !== "结算费用") return false;
@@ -743,6 +751,12 @@ export default function PlatformFinancePage({
       const value = row[item.title] || row._source?.data?.contract_no;
       return value && value !== "—" ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—";
     },
+  } : ["客户名称", "客户"].includes(String(item.title)) ? {
+    ...item,
+    render: (_: unknown, row: any) => {
+      const value = row[item.title] || row._source?.claimed_customer || row._source?.customer;
+      return value && value !== "—" ? <Button type="link" onClick={() => openCustomerDetail(value, row._source?.data?.customer_no)}>{value}</Button> : "—";
+    },
   } : item);
   const exportCsv = () => {
     const titles = renderedColumns.map((item: any) => String(item.title)).filter((title) => title !== "操作");
@@ -813,7 +827,7 @@ export default function PlatformFinancePage({
       <Drawer open={Boolean(detail)} width={620} title={`财务详情：${detail?.serial_no || detail?.receipt_no || ""}`} onClose={() => setDetail(null)}>
         {detail && <Descriptions bordered size="small" column={1} items={[
           { key: "status", label: "状态", children: <Tag>{detail.status}</Tag> },
-          { key: "customer", label: "客户", children: detail.claimed_customer || detail.customer || "—" },
+          { key: "customer", label: "客户", children: (detail.claimed_customer || detail.customer) ? <Button type="link" onClick={() => openCustomerDetail(detail.claimed_customer || detail.customer, detail.data?.customer_no)}>{detail.claimed_customer || detail.customer}</Button> : "—" },
           { key: "amount", label: "金额", children: money(detail.amount ?? detail.data?.amount) },
           { key: "case_no", label: "案件编号", children: detail.data?.case_no ? <Button type="link" onClick={() => openCaseDetail(detail.data.case_no)}>{detail.data.case_no}</Button> : "—" },
           { key: "contract_no", label: "合同编号", children: detail.data?.contract_no ? <Button type="link" onClick={() => openContractDetail(detail.data.contract_no)}>{detail.data.contract_no}</Button> : "—" },
