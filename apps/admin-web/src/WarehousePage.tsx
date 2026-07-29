@@ -9,6 +9,7 @@ import {rememberCustomerDetailTarget} from './customerDetailNavigation'
 import {formatRequiredDate} from './formSafety'
 import {rememberInvestigationDetailTarget} from './investigationDetailNavigation'
 import {consumeBusinessRecordDetailTarget} from './businessRecordDetailNavigation'
+import {resolveDetailRelation} from './detailRelationResolver'
 import './warehouse.css'
 
 type EvidenceData=Record<string, string|number>
@@ -80,7 +81,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
   const openHistory=async(row:Item)=>{setHistoryRow(row);setHistory([]);try{const {data}=await api.get(`/records/${row.id}/history`);setHistory(data.items||[])}catch{message.error('流程记录加载失败')}}
   useEffect(()=>{const target=consumeBusinessRecordDetailTarget('warehouse');if(!target)return;void (async()=>{try{const {data}=await api.get(`/records/${target.id}`);if(data.module!=='warehouse')throw new Error('关联记录不是证物');await openHistory(data)}catch(error:any){message.error(error?.response?.data?.detail||error?.message||'证物详情加载失败')}})()},[])
 
-  const openCaseDetail=(caseNo:unknown)=>{const serialNo=String(caseNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联案件');return}rememberCaseDetailTarget({serial_no:serialNo});onNavigate?.('case-company')}
+  const openCaseDetail=async(caseNo:unknown)=>{const serialNo=String(caseNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联案件');return}try{const record=await resolveDetailRelation('case',{serial_no:serialNo});if(!record){message.warning('未找到关联案件或当前账号无权查看');return}rememberCaseDetailTarget({id:record.id,serial_no:record.serial_no});onNavigate?.('case-company')}catch(error:any){message.error(error?.response?.data?.detail||'关联案件加载失败')}}
   const openClueDetail=(clueNo:unknown)=>{const serialNo=String(clueNo||'').trim();if(!serialNo||serialNo==='—'){message.warning('当前证物未关联线索');return}rememberInvestigationDetailTarget({serial_no:serialNo,module:'clue'});onNavigate?.('clue-company-draft')}
   const openNotaryDetail=async(certificateNo:unknown)=>{const certificate=String(certificateNo||'').trim();if(!certificate||certificate==='—'){message.warning('当前证物未关联公证信息');return}try{const {data}=await api.get('/notaries/lookup',{params:{certificate_no:certificate}});rememberInvestigationDetailTarget({id:data.id,serial_no:data.serial_no,module:'notary'});onNavigate?.('notary')}catch(error:any){message.error(error?.response?.data?.detail||'关联公证加载失败')}}
   const openCustomerDetail=async(customerName:unknown)=>{const title=String(customerName||'').trim();if(!title||title==='—'){message.warning('当前证物未关联权利人');return}try{const {data}=await api.get('/records',{params:{module:'customer',keyword:title,page_size:100}});const customer=(data.items as Item[]).find(item=>item.title===title||item.customer===title);if(!customer){message.warning('未找到关联权利人档案或当前账号无权查看');return}rememberCustomerDetailTarget({id:customer.id,serial_no:customer.serial_no,title:customer.title});onNavigate?.('customer-company')}catch(error:any){message.error(error?.response?.data?.detail||'关联权利人加载失败')}}

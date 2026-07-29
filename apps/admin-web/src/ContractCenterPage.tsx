@@ -25,6 +25,7 @@ import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { resolveDetailRelation } from "./detailRelationResolver";
 import { consumeContractDetailTarget, type ContractDetailNavigationContext } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
@@ -1195,14 +1196,23 @@ export default function ContractCenterPage({
     rememberCustomerDetailTarget(customer);
     onNavigate?.("customer-company");
   };
-  const openRelatedCase = (caseNo: unknown) => {
+  const openRelatedCase = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
       message.warning("当前合同未关联案件");
       return;
     }
-    rememberCaseDetailTarget({ serial_no: serialNo });
-    onNavigate?.("case-company");
+    try {
+      const record = await resolveDetailRelation("case", { serial_no: serialNo });
+      if (!record) {
+        message.warning("未找到关联案件或当前账号无权查看");
+        return;
+      }
+      rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("case-company");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联案件加载失败");
+    }
   };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());
   const customerOptions = uniqueCustomers.map((customer) => ({

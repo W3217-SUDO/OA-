@@ -5,6 +5,7 @@ import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { resolveDetailRelation } from "./detailRelationResolver";
 import { formatRequiredDate } from "./formSafety";
 import "./contract-center.css";
 
@@ -86,17 +87,25 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     rememberContractDetailTarget({ id: contract.id || contract.contract_record_id, serial_no: contract.serial_no || contract.contract_no });
     onNavigate?.("contract-my");
   };
-  const openCase = (serialNo: unknown) => {
+  const openCase = async (serialNo: unknown) => {
     const value = String(serialNo || "").trim();
     if (!value) return;
-    rememberCaseDetailTarget({ serial_no: value });
-    onNavigate?.("case-company");
+    try {
+      const record = await resolveDetailRelation("case", { serial_no: value });
+      if (!record) return message.warning("未找到关联案件或当前账号无权查看");
+      rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("case-company");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "关联案件加载失败"); }
   };
-  const openCustomer = (name: unknown) => {
+  const openCustomer = async (name: unknown) => {
     const title = String(name || "").trim();
     if (!title) return;
-    rememberCustomerDetailTarget({ title });
-    onNavigate?.("customer-management");
+    try {
+      const record = await resolveDetailRelation("customer", { title });
+      if (!record) return message.warning("未找到关联客户或当前账号无权查看");
+      rememberCustomerDetailTarget({ id: record.id, title: record.title, serial_no: record.serial_no });
+      onNavigate?.("customer-management");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "关联客户加载失败"); }
   };
   const detailRows = useMemo(() => receivables.filter((item) => {
     const contract = contractById.get(item.contract_record_id);

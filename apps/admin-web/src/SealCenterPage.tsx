@@ -36,6 +36,7 @@ import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { resolveDetailRelation } from "./detailRelationResolver";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
@@ -245,30 +246,42 @@ export default function SealCenterPage({
       setLoading(false);
     }
   };
-  const openCaseDetail = (caseNo: unknown) => {
+  const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
       message.warning("当前用印申请未关联案件");
       return;
     }
-    rememberCaseDetailTarget({ serial_no: serialNo });
-    onNavigate?.("case-company");
+    try {
+      const record = await resolveDetailRelation("case", { serial_no: serialNo });
+      if (!record) return message.warning("未找到关联案件或当前账号无权查看");
+      rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("case-company");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "关联案件加载失败"); }
   };
-  const openContractDetail = (contractNo: unknown) => {
+  const openContractDetail = async (contractNo: unknown) => {
     const serialNo = String(contractNo || "").trim();
     if (!serialNo || serialNo === "—") {
       message.warning("当前用印申请未关联合同");
       return;
     }
-    rememberContractDetailTarget({ serial_no: serialNo });
-    onNavigate?.("contract-company");
+    try {
+      const record = await resolveDetailRelation("contract", { serial_no: serialNo });
+      if (!record) return message.warning("未找到关联合同或当前账号无权查看");
+      rememberContractDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("contract-company");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "关联合同加载失败"); }
   };
-  const openCustomerDetail = (customer: unknown, customerNo?: unknown) => {
+  const openCustomerDetail = async (customer: unknown, customerNo?: unknown) => {
     const title = String(customer || "").trim();
     const serialNo = String(customerNo || "").trim();
     if (!title && !serialNo) return message.warning("当前申请未关联客户");
-    rememberCustomerDetailTarget({ title, serial_no: serialNo });
-    onNavigate?.("customer-company");
+    try {
+      const record = await resolveDetailRelation("customer", { title, serial_no: serialNo });
+      if (!record) return message.warning("未找到关联客户或当前账号无权查看");
+      rememberCustomerDetailTarget({ id: record.id, title: record.title, serial_no: record.serial_no });
+      onNavigate?.("customer-company");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "关联客户加载失败"); }
   };
   useEffect(() => {
     setTab(tabFromView(initialView));

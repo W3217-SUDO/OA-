@@ -41,6 +41,7 @@ import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { resolveDetailRelation } from "./detailRelationResolver";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { consumeBusinessRecordDetailTarget, rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
@@ -182,14 +183,18 @@ export default function DocumentCenterPage({
   const [templateForm] = Form.useForm();
   const [actionForm] = Form.useForm();
   const [receiptForm] = Form.useForm();
-  const openCaseDetail = (caseNo: unknown) => {
+  const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
       message.warning("当前文档未关联案件");
       return;
     }
-    rememberCaseDetailTarget({ serial_no: serialNo });
-    onNavigate?.("case-company");
+    try {
+      const record = await resolveDetailRelation("case", { serial_no: serialNo });
+      if (!record) return message.warning("未找到关联案件或当前账号无权查看");
+      rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("case-company");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "关联案件加载失败"); }
   };
   const openCustomerDetail = async (customerName: unknown) => {
     const title = String(customerName || "").trim();
