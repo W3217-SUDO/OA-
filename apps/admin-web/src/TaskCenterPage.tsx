@@ -79,6 +79,21 @@ type Summary = {
   overdue: number;
   reminders: number;
 };
+
+const appendSelectedUploadFiles = (body: FormData, files: UploadFile[]) => {
+  let appended = 0;
+  for (const file of files) {
+    // Ant Design passes an RcFile directly to beforeUpload, while a controlled
+    // Upload list may later wrap it as originFileObj. Support both shapes so a
+    // selected file can never become a text-only "successful" feedback.
+    const source = file.originFileObj || (file as unknown as File);
+    if (source && typeof (source as Blob).arrayBuffer === "function") {
+      body.append("files", source);
+      appended += 1;
+    }
+  }
+  return appended;
+};
 type HistoryItem = {
   id: number;
   action: string;
@@ -524,8 +539,8 @@ export default function TaskCenterPage({
       });
       if (createMaterialFiles.length) {
         const materialBody = new FormData();
-        for (const file of createMaterialFiles) {
-          if (file.originFileObj) materialBody.append("files", file.originFileObj);
+        if (!appendSelectedUploadFiles(materialBody, createMaterialFiles)) {
+          throw new Error("未读取到已选择的任务资料附件");
         }
         try {
           await api.post(`/tasks/${createdTask.id}/materials`, materialBody);
@@ -755,10 +770,8 @@ export default function TaskCenterPage({
     try {
       const body = new FormData();
       body.append("comment", values.comment.trim());
-      for (const file of feedbackFiles) {
-        const originFile = file.originFileObj;
-        if (!originFile) continue;
-        body.append("files", originFile);
+      if (feedbackFiles.length && !appendSelectedUploadFiles(body, feedbackFiles)) {
+        throw new Error("未读取到已选择的反馈附件");
       }
       const { data } = await api.post(`/tasks/${communication.id}/feedback`, body);
       const uploaded = (data.attachments || []) as TaskFeedbackAttachment[];
@@ -812,8 +825,8 @@ export default function TaskCenterPage({
     if (!beginTaskAction()) return;
     try {
       const body = new FormData();
-      for (const file of taskMaterialFiles) {
-        if (file.originFileObj) body.append("files", file.originFileObj);
+      if (!appendSelectedUploadFiles(body, taskMaterialFiles)) {
+        throw new Error("未读取到已选择的任务资料附件");
       }
       const { data } = await api.post(`/tasks/${communication.id}/materials`, body);
       message.success(`已上传 ${(data.attachments || []).length} 个任务资料附件`);

@@ -2388,6 +2388,15 @@ def main() -> None:
     ):
         assert token in TASK, f"task feedback/exception-review client guard missing: {token}"
     for token in (
+        'const appendSelectedUploadFiles = (body: FormData, files: UploadFile[]) =>',
+        'const source = file.originFileObj || (file as unknown as File);',
+        'if (!appendSelectedUploadFiles(materialBody, createMaterialFiles))',
+        'if (feedbackFiles.length && !appendSelectedUploadFiles(body, feedbackFiles))',
+        'if (!appendSelectedUploadFiles(body, taskMaterialFiles))',
+        '未读取到已选择的反馈附件',
+    ):
+        assert token in TASK, f"selected task upload file must not silently degrade to text-only submit: {token}"
+    for token in (
         'multipart_upload_many(',
         "/tasks/{department_collab_task['id']}/materials",
         '纯协作者提交文字和多附件反馈',
@@ -2396,6 +2405,7 @@ def main() -> None:
     ):
         assert token in SMOKE, f"task feedback/exception-review smoke evidence missing: {token}"
     print("TASK_FEEDBACK_AND_EXCEPTION_AUTH_OK: participant feedback attachments use one transactional submit with explicit load errors; special-review scope is admin/initiator/same-department manager")
+    print("TASK_SELECTED_UPLOAD_FILE_OK: controlled Upload accepts both raw RcFile and wrapped originFileObj, and blocks a selected-file text-only fallback")
     print(f"FINANCE_LAYOUT_OK: {len(finance_routes)} configured original-layout routes")
     print("TASK_MY_CREATED_OK: /9001001010 six tabs, 12 filters, selectable 14-column list, 15-row/six-size paging, 11 more-actions, four-stage detail and protected task APIs")
     print("TASK_MY_ACCEPTED_OK: /9001001020 four tabs, 12 filters, selectable/sortable 14-column list, 15-row/six-size paging, accept + 11 more-actions, four-stage detail and protected owned-task APIs")
