@@ -1011,9 +1011,12 @@ export default function DocumentCenterPage({
       return;
     }
     try {
-      await Promise.all(
-        selectedFormalReceipts.map((row) => api.delete(`/records/${row.id}`)),
-      );
+      const { data } = await api.post("/documents/official/delete", {
+        record_ids: selectedFormalReceipts.map((row) => row.id),
+      });
+      if (data.deleted !== selectedFormalReceipts.length) {
+        throw new Error("Official receipt removal was incomplete");
+      }
       message.success(`已删除 ${selectedFormalReceipts.length} 条正式收文记录`);
       setSelectedReceiptKeys([]);
       await load();

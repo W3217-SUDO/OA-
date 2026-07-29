@@ -735,6 +735,11 @@ class OfficialDocumentReceiptDateInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+class OfficialDocumentDeleteInput(BaseModel):
+    """Dedicated removal command for unprocessed official incoming documents."""
+    record_ids: list[int] = Field(min_length=1, max_length=100)
+
+
 class HrTransitionInput(BaseModel):
     to_status: str
     effective_date: date = Field(default_factory=date.today)
@@ -11758,6 +11763,37 @@ async def update_official_receipt_date(body: OfficialDocumentReceiptDateInput, i
     for item in changed:
         await db.refresh(item)
     return {"updated": len(changed), "document_date": str(body.document_date), "items": [_record_dict(item, await _allowed_field_keys(identity, db)) for item in changed]}
+
+
+@app.post(f"{settings.api_prefix}/documents/official/delete")
+async def delete_official_documents(body: OfficialDocumentDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Remove selected incoming documents only while they remain unprocessed.
+
+    This is intentionally separate from generic record deletion so the official
+    receipt lifecycle cannot be bypassed from a document list.
+    """
+    record_ids = list(dict.fromkeys(body.record_ids))
+    attachment_paths: list[Path] = []
+    deleted = 0
+    for record_id in record_ids:
+        item = await _ensure_record_visible(record_id, identity, db)
+        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+            raise HTTPException(status_code=422, detail="所选记录不是官文收文")
+        await _require_record_owner_or_manager(item, identity, db)
+        if (item.data or {}).get("business_process_status", "未处理") == "已处理":
+            raise HTTPException(status_code=409, detail="已处理的官文收文不能删除，请使用专用撤销或作废流程")
+        attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == item.id))).all()
+        attachment_paths.extend(Path(attachment.path) for attachment in attachments)
+        for attachment in attachments:
+            await db.delete(attachment)
+        await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id))
+        await db.delete(item)
+        deleted += 1
+    await db.commit()
+    for path in attachment_paths:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink(missing_ok=True)
+    return {"deleted": deleted}
 
 
 @app.get(f"{settings.api_prefix}/templates")
