@@ -342,6 +342,15 @@ def _upgrade_schema(connection) -> None:
     }.items():
         if column not in notification_columns: connection.execute(text(f"ALTER TABLE notifications ADD COLUMN {column} {definition}"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_sender ON notifications (sender)"))
+    incoming_columns = {item["name"] for item in inspect(connection).get_columns("incoming_payments")}
+    for column, definition in {
+        "contract_record_id": "INTEGER",
+        "contract_no": "VARCHAR(64) NOT NULL DEFAULT ''",
+    }.items():
+        if column not in incoming_columns:
+            connection.execute(text(f"ALTER TABLE incoming_payments ADD COLUMN {column} {definition}"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_contract_record_id ON incoming_payments (contract_record_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_contract_no ON incoming_payments (contract_no)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_notification_type ON notifications (notification_type)"))
     agent_document_columns = {item["name"] for item in inspect(connection).get_columns("agent_documents")}
     timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
@@ -1424,6 +1433,8 @@ class IncomingPaymentInput(BaseModel):
     amount: float = Field(gt=0)
     payer_name: str = Field(min_length=2, max_length=255)
     bank_reference: str = Field(min_length=2, max_length=128)
+    customer: str = Field(default="", max_length=255)
+    contract_no: str = Field(default="", max_length=64)
     remark: str = ""
 
 
@@ -2137,7 +2148,7 @@ def _finance_transaction_dict(item: FinanceTransaction, record: BusinessRecord |
 
 def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True) -> dict:
     amount = float(item.amount); allocated = float(item.allocated_amount or 0)
-    return {"id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "claimant": item.claimant, "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at}
+    return {"id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "contract_record_id": item.contract_record_id, "contract_no": item.contract_no, "claimant": item.claimant, "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 def _reconciliation_dict(item: ReconciliationBatch, *, show_amount: bool = True) -> dict:
@@ -8269,7 +8280,15 @@ async def list_incoming_payments(payment_status: str = "", keyword: str = "", id
 async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记银行到账")
     if await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == body.bank_reference.strip())): raise HTTPException(status_code=409, detail="银行流水号已经登记")
-    item = IncomingPayment(receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=body.bank_reference.strip(), status="待认领", operator=identity["username"], remark=body.remark)
+    contract_no = body.contract_no.strip()
+    customer = body.customer.strip()
+    contract = None
+    if contract_no:
+        contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "contract", BusinessRecord.serial_no == contract_no))
+        if not contract: raise HTTPException(status_code=422, detail="关联合同不存在")
+        if customer and contract.customer != customer: raise HTTPException(status_code=422, detail="关联合同与所选客户不一致")
+        customer = customer or contract.customer
+    item = IncomingPayment(receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=body.bank_reference.strip(), status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", operator=identity["username"], remark=body.remark)
     db.add(item); await db.commit(); await db.refresh(item); return _incoming_payment_dict(item)
 
 

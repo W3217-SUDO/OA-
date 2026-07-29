@@ -289,6 +289,8 @@ class IncomingPayment(Base):
     bank_reference: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     status: Mapped[str] = mapped_column(String(32), index=True, default="待认领")
     claimed_customer: Mapped[str] = mapped_column(String(255), default="", index=True)
+    contract_record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    contract_no: Mapped[str] = mapped_column(String(64), default="", index=True)
     claimant: Mapped[str] = mapped_column(String(64), default="")
     allocated_amount: Mapped[float] = mapped_column(Float, default=0)
     allocations: Mapped[list] = mapped_column(JSON, default=list)
