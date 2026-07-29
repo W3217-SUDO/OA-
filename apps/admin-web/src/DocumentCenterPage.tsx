@@ -44,6 +44,7 @@ import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { consumeBusinessRecordDetailTarget, rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { consumeDocumentSearchDetailTarget } from "./documentSearchDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./document-center.css";
@@ -172,6 +173,8 @@ export default function DocumentCenterPage({
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [actionStatus, setActionStatus] = useState("");
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [attachmentDetail, setAttachmentDetail] = useState<Attachment | null>(null);
+  const [templateDetail, setTemplateDetail] = useState<Template | null>(null);
   const [uploadTarget, setUploadTarget] = useState<RecordRow | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [documentForm] = Form.useForm();
@@ -250,6 +253,8 @@ export default function DocumentCenterPage({
           openDocument(record as RecordRow);
           return;
         case "finance":
+        case "invoice":
+        case "refund":
         case "seal":
         case "warehouse":
         case "hr": {
@@ -259,6 +264,8 @@ export default function DocumentCenterPage({
           }
           const routes: Record<string, string> = {
             finance: "finance-fee-query",
+            invoice: "finance-invoice-mine",
+            refund: "finance-refund",
             seal: "seal-my",
             warehouse: "warehouse",
             hr: "hr-all",
@@ -307,6 +314,25 @@ export default function DocumentCenterPage({
     setTab(first);
     load();
   }, [initialView]);
+  useEffect(() => {
+    const target = consumeDocumentSearchDetailTarget();
+    if (!target) return;
+    void (async () => {
+      try {
+        if (target.kind === "attachment") {
+          const { data } = await api.get(`/attachments/${target.id}`);
+          setTab("files");
+          setAttachmentDetail(data);
+        } else {
+          const { data } = await api.get(`/templates/${target.id}`);
+          setTab("templates");
+          setTemplateDetail(data);
+        }
+      } catch (error: any) {
+        message.warning(error?.response?.data?.detail || "关联附件或模板不存在，或当前账号无权查看");
+      }
+    })();
+  }, []);
   const createDocument = async () => {
     const v = await documentForm.validateFields();
     try {
@@ -664,7 +690,7 @@ export default function DocumentCenterPage({
     },
   ];
   const templateColumns = [
-    { title: "模板名称", dataIndex: "name", width: 220 },
+    { title: "模板名称", dataIndex: "name", width: 220, render: (value: string, row: Template) => <Button type="link" onClick={() => setTemplateDetail(row)}>{value}</Button> },
     {
       title: "分类",
       dataIndex: "category",
@@ -1778,6 +1804,39 @@ export default function DocumentCenterPage({
             </Card>
           </>
         )}
+      </Drawer>
+      <Drawer
+        size={560}
+        open={Boolean(attachmentDetail)}
+        title={`附件详情：${attachmentDetail?.original_name || ""}`}
+        onClose={() => setAttachmentDetail(null)}
+        extra={attachmentDetail && <Button type="primary" icon={<DownloadOutlined />} onClick={() => download(attachmentDetail)}>下载附件</Button>}
+      >
+        {attachmentDetail && <Descriptions bordered size="small" column={1}>
+          <Descriptions.Item label="文件名称">{attachmentDetail.original_name}</Descriptions.Item>
+          <Descriptions.Item label="分类">{attachmentDetail.category || "—"}</Descriptions.Item>
+          <Descriptions.Item label="关联编号">{attachmentDetail.record_no || "公共文件"}</Descriptions.Item>
+          <Descriptions.Item label="关联业务">{attachmentDetail.record_id ? <Button type="link" onClick={() => void openAttachmentRecord(attachmentDetail)}>{attachmentDetail.record_title || attachmentDetail.record_no || "查看关联业务"}</Button> : "公共文件"}</Descriptions.Item>
+          <Descriptions.Item label="大小">{fileSize(attachmentDetail.size)}</Descriptions.Item>
+          <Descriptions.Item label="上传人">{attachmentDetail.uploader || "—"}</Descriptions.Item>
+          <Descriptions.Item label="上传时间">{attachmentDetail.created_at ? new Date(attachmentDetail.created_at).toLocaleString() : "—"}</Descriptions.Item>
+          <Descriptions.Item label="备注">{attachmentDetail.remark || "—"}</Descriptions.Item>
+        </Descriptions>}
+      </Drawer>
+      <Drawer
+        size={560}
+        open={Boolean(templateDetail)}
+        title={`模板详情：${templateDetail?.name || ""}`}
+        onClose={() => setTemplateDetail(null)}
+      >
+        {templateDetail && <Descriptions bordered size="small" column={1}>
+          <Descriptions.Item label="模板名称">{templateDetail.name}</Descriptions.Item>
+          <Descriptions.Item label="分类">{templateDetail.category || "—"}</Descriptions.Item>
+          <Descriptions.Item label="版本">{templateDetail.version || "—"}</Descriptions.Item>
+          <Descriptions.Item label="状态"><Tag color={templateDetail.is_active ? "green" : "default"}>{templateDetail.is_active ? "启用" : "停用"}</Tag></Descriptions.Item>
+          <Descriptions.Item label="模板字段"><Space wrap>{(templateDetail.fields || []).map((field) => <Tag key={field}>{field}</Tag>) || "—"}</Space></Descriptions.Item>
+          <Descriptions.Item label="说明">{templateDetail.description || "—"}</Descriptions.Item>
+        </Descriptions>}
       </Drawer>
     </>
   );

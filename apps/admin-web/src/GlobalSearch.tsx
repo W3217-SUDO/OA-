@@ -8,6 +8,7 @@ import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { rememberDocumentSearchDetailTarget } from "./documentSearchDetailNavigation";
 
 type Result = {
   type: string;
@@ -75,6 +76,7 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (route: strin
     if (item.module === "task") rememberTaskDetailTarget({ id: item.id, serial_no: item.serial_no });
     if (["clue", "notary", "evidence"].includes(item.module)) rememberInvestigationDetailTarget({ id: item.id, serial_no: item.serial_no, module: item.module });
     if (["finance", "invoice", "refund", "seal", "document", "warehouse", "hr"].includes(item.module)) rememberBusinessRecordDetailTarget({ id: item.id, module: item.module as "finance" | "invoice" | "refund" | "seal" | "document" | "warehouse" | "hr" });
+    if (["attachment", "template"].includes(item.module)) rememberDocumentSearchDetailTarget({ id: item.id, kind: item.module as "attachment" | "template" });
     if (item.module === "sms" && item.related_id) rememberCaseDetailTarget({ id: item.related_id, serial_no: item.related_serial_no });
     onNavigate(item.route);
     setOpen(false);

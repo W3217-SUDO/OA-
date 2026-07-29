@@ -565,6 +565,7 @@ const businessNavigationSessionKeys = [
   "sunhold:contract-customer",
   "sunhold:case-contract-context",
   "sunhold:business-record-detail-context",
+  "sunhold:document-search-detail-context",
 ];
 
 function clearClientSessionStorage() {

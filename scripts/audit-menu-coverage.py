@@ -37,6 +37,7 @@ SEAL_PAGE = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding=
 DOCUMENT_PAGE = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
 WAREHOUSE_PAGE = (ROOT / "apps/admin-web/src/WarehousePage.tsx").read_text(encoding="utf-8")
 BUSINESS_RECORD_NAVIGATION = (ROOT / "apps/admin-web/src/businessRecordDetailNavigation.ts").read_text(encoding="utf-8")
+DOCUMENT_SEARCH_NAVIGATION = (ROOT / "apps/admin-web/src/documentSearchDetailNavigation.ts").read_text(encoding="utf-8")
 SMOKE = (ROOT / "scripts/smoke-api.py").read_text(encoding="utf-8")
 NORMALIZED_SMOKE = re.sub(r"\s+", "", SMOKE)
 DOCUMENT = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
@@ -293,6 +294,7 @@ def main() -> None:
     for token in (
         'const businessNavigationSessionKeys = [',
         '"sunhold:task-detail-context"',
+        '"sunhold:document-search-detail-context"',
         'function clearClientSessionStorage() {',
         'localStorage.removeItem("access_token")',
         'window.history.replaceState(null, "", window.location.pathname)',
@@ -312,6 +314,9 @@ def main() -> None:
     assert 'user.can_approve_contract' in CONTRACT and 'notFoundContent="没有可用审批人，请由管理员在角色管理中授予合同审批权限"' in CONTRACT, "contract approval selector must use configured job-role permission and explain an empty directory"
     assert all(token in MAIN for token in ('"job_permissions": job_permissions', '"can_approve_contract": item.role == "admin"', '_user_has_job_permission(approver_user, "合同审批", db)', 'async def _user_permission_payload(user: User, db: AsyncSession)', 'if can_approve_contract and "contract" not in menu_keys:')), "user directory, login permissions, and contract submission must resolve contract approval from job-role permissions"
     assert 'permission = await _permission_payload(user.role, db)\n    can_approve_contract = await _user_has_job_permission(user, "合同审批", db)' in MAIN and 'permission = await _user_permission_payload(user, db)\n    return {"access_token": create_token' in MAIN, "contract approver menu access must be built from the role payload and returned by login"
+    assert 'ROLE_DATA_SCOPES = frozenset({' in MAIN and 'if data_scope not in ROLE_DATA_SCOPES:' in MAIN and 'detail="数据范围无效"' in MAIN and 'if permission.data_scope not in ROLE_DATA_SCOPES:' in MAIN, "role-permission API must reject and repair data scopes outside the four UI-supported values"
+    assert '"data_scope": "无效数据范围"' in SMOKE and 'expected=(422,)' in SMOKE, "smoke coverage must reject an invalid role data scope"
+    print("ROLE_DATA_SCOPE_VALIDATION_OK: role data scopes are server-side constrained to the UI-supported values")
     assert '>新增审批人</Button>' in CONTRACT and 'role: "auditor"' in CONTRACT and 'profile: { position: values.position, staff_role: values.position }' in CONTRACT and 'must_change_password: true' in CONTRACT, "contract workflow must let administrators create a first-login-protected contract approver"
     assert '事项记录' in CONTRACT and 'openContractEvent' in CONTRACT and '/contracts/${contract.id}/events' in CONTRACT and 'ContractEvent,' in MAIN and '/contracts/{{contract_id}}/events' in MAIN, "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
     print("CONTRACT_EVENT_RECORD_OK: independent contract matter records are scoped, writable only through the contract flow and audited")
@@ -894,6 +899,7 @@ def main() -> None:
         'if (item.module === "sms" && item.related_id) rememberCaseDetailTarget({ id: item.related_id, serial_no: item.related_serial_no });',
         'if (item.source_type === "finance" && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: "finance" });',
         '"sunhold:business-record-detail-context",',
+        '"sunhold:document-search-detail-context",',
         'consumeBusinessRecordDetailTarget(["finance", "invoice", "refund"])',
         'consumeBusinessRecordDetailTarget("seal")',
         'consumeBusinessRecordDetailTarget("document")',
@@ -932,8 +938,24 @@ def main() -> None:
         "case:'case-schedule'",
     ):
         assert token in MAIN or token in NOTIFICATION, f"notification source/detail route contract missing: {token}"
-    assert '"attachment", "route": "documents-files"' in MAIN and '"template", "route": "documents-template"' in MAIN, "attachment/template search routes must remain explicit until a real detail consumer exists"
-    print("SEARCH_NOTIFICATION_DETAIL_AUDIT_OK: all non-report business-record search and notification source types have exact detail contexts; attachment/template remain list-only pending real details")
+    for token in (
+        'message:\'user-messages\'',
+        'rememberDocumentSearchDetailTarget',
+        'kind: item.module as "attachment" | "template"',
+        'const STORAGE_KEY = "sunhold:document-search-detail-context";',
+        'consumeDocumentSearchDetailTarget()',
+        'api.get(`/attachments/${target.id}`)',
+        'api.get(`/templates/${target.id}`)',
+        '@app.get(f"{settings.api_prefix}/attachments/{{attachment_id}}")',
+        '@app.get(f"{settings.api_prefix}/templates/{{template_id}}")',
+        'case "invoice":',
+        'case "refund":',
+        'invoice: "finance-invoice-mine"',
+        'refund: "finance-refund"',
+    ):
+        combined = "\n".join((MAIN, GLOBAL_SEARCH, NOTIFICATION, DOCUMENT_PAGE, DOCUMENT_SEARCH_NAVIGATION))
+        assert token in combined, f"search, notification or attachment relation exact-detail contract missing: {token}"
+    print("SEARCH_NOTIFICATION_DETAIL_AUDIT_OK: search attachments/templates and all supported notification/attachment relations have controlled exact-detail targets")
     for token in (
         'constisReminder=initialView==="task-reminders";',
         'reminder_only:isReminder||undefined,',
@@ -2023,10 +2045,14 @@ def main() -> None:
         'case "notary":',
         'case "evidence":',
         'case "finance":',
+        'case "invoice":',
+        'case "refund":',
         'case "seal":',
         'case "warehouse":',
         'case "hr":',
         'finance: "finance-fee-query"',
+        'invoice: "finance-invoice-mine"',
+        'refund: "finance-refund"',
         'seal: "seal-my"',
         'warehouse: "warehouse"',
         'hr: "hr-all"',

@@ -20,7 +20,7 @@ type Notice = {
 };
 
 const colors: Record<string, string> = { error: "red", warning: "orange", info: "blue" };
-const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',contract:'contract-audit',case:'case-schedule'};
+const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',contract:'contract-audit',case:'case-schedule',message:'user-messages'};
 
 export default function NotificationCenter({ onNavigate }: { onNavigate: (key: string) => void }) {
   const [open, setOpen] = useState(false);

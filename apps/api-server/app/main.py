@@ -180,6 +180,9 @@ DEFAULT_ROLE_PERMISSIONS = {
     "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
     "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
 }
+ROLE_DATA_SCOPES = frozenset({
+    "全所数据", "本部门数据", "授权审批数据", "本人及共享数据",
+})
 SYSTEM_PARAMETER_CATEGORIES = {
     "case_type": "案件类型",
     "fee_type": "费用类型",
@@ -414,6 +417,16 @@ async def lifespan(_: FastAPI):
             admin_permission.data_scope = admin_config["data_scope"]
             admin_permission.menu_keys = list(MENU_KEYS)
             admin_permission.field_keys = list(FIELD_KEYS)
+        # Versions before server-side validation could persist arbitrary data
+        # scopes.  Repair those legacy values deterministically at startup so
+        # they never continue through the implicit own/shared-data fallback.
+        role_permissions = (await db.scalars(select(RolePermission))).all()
+        for permission in role_permissions:
+            if permission.data_scope not in ROLE_DATA_SCOPES:
+                permission.data_scope = DEFAULT_ROLE_PERMISSIONS.get(
+                    permission.role,
+                    DEFAULT_ROLE_PERMISSIONS["user"],
+                )["data_scope"]
         if not await db.scalar(select(func.count()).select_from(SystemParameter)):
             db.add_all([
                 SystemParameter(category=category, code=code, name=name, extra=extra, sort_order=index, created_by="system", updated_by="system")
@@ -3002,6 +3015,9 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     _require_admin(identity)
     if role not in DEFAULT_ROLE_PERMISSIONS:
         raise HTTPException(status_code=404, detail="角色不存在")
+    data_scope = body.data_scope.strip()
+    if data_scope not in ROLE_DATA_SCOPES:
+        raise HTTPException(status_code=422, detail="数据范围无效")
     invalid = sorted(set(body.menu_keys) - set(MENU_KEYS))
     if invalid:
         raise HTTPException(status_code=422, detail=f"无效菜单权限：{', '.join(invalid)}")
@@ -3010,7 +3026,7 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
         raise HTTPException(status_code=422, detail="用户中心为基础权限，不能移除")
     if role == "admin" and set(menu_keys) != set(MENU_KEYS):
         raise HTTPException(status_code=422, detail="系统管理员必须保留全部菜单权限")
-    if role == "admin" and body.data_scope.strip() != DEFAULT_ROLE_PERMISSIONS["admin"]["data_scope"]:
+    if role == "admin" and data_scope != DEFAULT_ROLE_PERMISSIONS["admin"]["data_scope"]:
         raise HTTPException(status_code=422, detail="系统管理员必须保留全所数据权限")
     invalid_fields = sorted(set(body.field_keys) - set(FIELD_KEYS))
     if invalid_fields: raise HTTPException(status_code=422, detail=f"无效字段权限：{', '.join(invalid_fields)}")
@@ -3019,10 +3035,10 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     item = await db.scalar(select(RolePermission).where(RolePermission.role == role))
     if not item:
         config = DEFAULT_ROLE_PERMISSIONS[role]
-        item = RolePermission(role=role, display_name=config["display_name"], data_scope=body.data_scope, menu_keys=menu_keys, field_keys=field_keys)
+        item = RolePermission(role=role, display_name=config["display_name"], data_scope=data_scope, menu_keys=menu_keys, field_keys=field_keys)
         db.add(item)
     else:
-        item.data_scope = body.data_scope.strip()
+        item.data_scope = data_scope
         item.menu_keys = menu_keys
         item.field_keys = field_keys
     await db.commit(); await db.refresh(item)
@@ -11805,6 +11821,14 @@ async def list_templates(category: str = "", _: dict = Depends(current_identity)
     return {"items": [_template_dict(item) for item in items], "total": len(items)}
 
 
+@app.get(f"{settings.api_prefix}/templates/{{template_id}}")
+async def get_template(template_id: int, _: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await db.get(DocumentTemplate, template_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="模板不存在")
+    return _template_dict(item)
+
+
 @app.post(f"{settings.api_prefix}/templates", status_code=status.HTTP_201_CREATED)
 async def create_template(body: TemplateInput, _: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if await db.scalar(select(DocumentTemplate.id).where(DocumentTemplate.name == body.name)):
@@ -11865,6 +11889,19 @@ async def list_attachments(record_id: int | None = None, finance_transaction_id:
     record_ids = {item.record_id for item in items if item.record_id}
     records = {record.id: record for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(record_ids)))).all()} if record_ids else {}
     return {"items": [_attachment_dict(item, records.get(item.record_id)) for item in items], "total": len(items), "required_archive_categories": sorted(ARCHIVE_REQUIRED_CATEGORIES)}
+
+
+@app.get(f"{settings.api_prefix}/attachments/{{attachment_id}}")
+async def get_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await db.get(FileAttachment, attachment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    record = None
+    if item.record_id:
+        record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
+        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    return _attachment_dict(item, record)
 
 
 async def _sync_seal_document_names(record: BusinessRecord, db: AsyncSession) -> None:

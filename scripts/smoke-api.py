@@ -385,6 +385,7 @@ def main():
         call("PATCH", "/system/role-permissions/admin", {"data_scope": "本部门数据", "menu_keys": admin_permission["menu_keys"], "field_keys": admin_permission["field_keys"]}, expected=(422,))
         assert "user-center" in user_permission["menu_keys"] and "system" not in user_permission["menu_keys"]
         assert "customer-conflict" in user_permission["menu_keys"]
+        call("PATCH", "/system/role-permissions/user", {"data_scope": "无效数据范围", "menu_keys": user_permission["menu_keys"], "field_keys": user_permission["field_keys"]}, expected=(422,))
         saved_permission = call("PATCH", "/system/role-permissions/user", {"data_scope": user_permission["data_scope"], "menu_keys": user_permission["menu_keys"], "field_keys": user_permission["field_keys"]})
         assert saved_permission["menu_keys"] == user_permission["menu_keys"]
         call("PATCH", "/system/role-permissions/user", {"data_scope": "本人及共享数据", "menu_keys": ["task"], "field_keys": user_permission["field_keys"]}, expected=(422,))
@@ -3038,6 +3039,7 @@ def main():
         assert any(item["action"] == "修改发票日期" for item in invoice_history)
         invoice_scan = multipart_upload("/attachments", {"record_id": invoice["id"], "category": "发票扫描件", "remark": "发票扫描件验收"}, "invoice-scan.txt", b"invoice scan smoke")
         attachments.append(invoice_scan["id"])
+        assert call("GET", f"/attachments/{invoice_scan['id']}")["record_id"] == invoice["id"]
         voided = call("POST", f"/finance/invoices/{invoice['id']}/void", {"reason": "测试发票信息更正后重新开具"})
         assert voided["status"] == "已作废" and voided["data"]["void_reason"]
         after_void_unissued = call("GET", f"/finance/case-fees/invoice-status?{before_issue_query}")
@@ -3069,10 +3071,12 @@ def main():
         transactions.append(completed_refund["data"]["refund_transaction_id"])
         refund_voucher = multipart_upload("/attachments", {"record_id": refund["id"], "category": "退费凭证", "remark": "退款凭证验收"}, "refund-voucher.txt", b"refund voucher smoke")
         attachments.append(refund_voucher["id"])
+        assert call("GET", f"/attachments/{refund_voucher['id']}")["record_id"] == refund["id"]
         passed("发票申请审批/开票/扫描件/作废冲销、案件费用未开票/已开票查询导出和诉讼费退款审批/到账/凭证")
 
         template = call("POST", "/templates", {"name": serial("TPL"), "category": "诉讼文书", "version": "1.0", "description": "冒烟模板", "fields": ["当事人", "事实与理由"]}, expected=(201,))
         templates.append(template["id"])
+        assert call("GET", f"/templates/{template['id']}")["id"] == template["id"]
         updated_template = call("PATCH", f"/templates/{template['id']}", {"version": "1.1", "description": "冒烟模板已编辑", "is_active": False})
         assert updated_template["version"] == "1.1" and updated_template["is_active"] is False
         call("POST", "/agent/documents", {"template_id": template["id"], "title": "停用模板不可生成"}, expected=(404,))
