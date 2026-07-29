@@ -2242,6 +2242,66 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
     }
 
 
+RECORD_MODULE_MENU_ROOTS: dict[str, tuple[str, ...]] = {
+    "customer": ("customer",),
+    "contract": ("contract",),
+    "case": ("case",),
+    "task": ("task",),
+    "investigation": ("investigation",),
+    "clue": ("investigation",),
+    "notary": ("investigation",),
+    "evidence": ("investigation",),
+    "document": ("documents",),
+    "seal": ("seal",),
+    "hr": ("hr",),
+    "warehouse": ("warehouse",),
+    "report": ("reports",),
+    "system": ("system",),
+    # Financial records are shared by firm finance and platform finance workbenches.
+    "finance": ("finance", "platform-finance"),
+    "invoice": ("finance", "platform-finance"),
+    "refund": ("finance", "platform-finance"),
+    "finance_package": ("finance", "platform-finance"),
+    "finance_settlement": ("finance", "platform-finance"),
+    "finance_archive_settlement": ("finance", "platform-finance"),
+}
+
+
+def _menu_root(menu_key: str) -> str:
+    """Return the configured top-level menu for a grantable menu key."""
+    current = menu_key
+    seen: set[str] = set()
+    while MENU_PARENT_BY_KEY.get(current) and current not in seen:
+        seen.add(current)
+        current = MENU_PARENT_BY_KEY[current]
+    return current
+
+
+def _record_module_menu_roots(module: str) -> tuple[str, ...]:
+    """Map generic-record modules to their owning business menu families.
+
+    This is deliberately used only for direct generic operations.  Cross-module
+    selectors retain their narrow, scoped lookup paths instead of receiving a
+    broad record-list grant merely because a form needs to reference a customer
+    or case.
+    """
+    roots = RECORD_MODULE_MENU_ROOTS.get(module)
+    if not roots:
+        raise HTTPException(status_code=422, detail="该业务模块不支持通用操作")
+    return roots
+
+
+async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:
+    """Prevent generic write/export endpoints from bypassing menu authorization."""
+    if identity.get("role") == "admin":
+        return
+    roots = set(_record_module_menu_roots(module))
+    permission = await _permission_payload(str(identity.get("role") or "user"), db)
+    granted_roots = {_menu_root(key) for key in permission["menu_keys"]}
+    if not roots.intersection(granted_roots):
+        raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的菜单权限")
+
+
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     """Expose the contract approval workbench to users assigned that job permission."""
     permission = await _permission_payload(user.role, db)
@@ -3557,6 +3617,7 @@ async def list_audit_events(module: str = "", keyword: str = "", page: int = Que
 
 @app.get(f"{settings.api_prefix}/records/export")
 async def export_records(module: str = Query(min_length=1, max_length=32), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu(module, identity, db, action="导出")
     conditions = [BusinessRecord.module == module, *(await _record_scope_conditions(identity, db))]
     records = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.created_at))).all()
     allowed_fields = await _allowed_field_keys(identity, db)
@@ -3694,7 +3755,8 @@ RECORD_IMPORT_SAMPLES = {
 
 
 @app.get(f"{settings.api_prefix}/records/import-template")
-async def records_import_template(module: str = Query(min_length=1, max_length=32), _: dict = Depends(current_identity)):
+async def records_import_template(module: str = Query(min_length=1, max_length=32), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu(module, identity, db, action="下载导入模板")
     if module == "case": raise HTTPException(status_code=409, detail="案件必须使用分阶段专用入口创建，不能使用通用导入模板")
     columns = RECORD_IMPORT_COLUMNS.get(module)
     if not columns: raise HTTPException(status_code=422, detail="该业务模块不支持批量导入")
@@ -3717,6 +3779,7 @@ def _csv_date(value: str, label: str, *, required: bool = True) -> str:
 
 @app.post(f"{settings.api_prefix}/records/import")
 async def import_business_records(module: str = Query(min_length=1, max_length=32), file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu(module, identity, db, action="批量导入")
     if module not in RECORD_IMPORT_COLUMNS: raise HTTPException(status_code=422, detail="该业务模块不支持批量导入")
     if module == "case": raise HTTPException(status_code=409, detail="案件必须使用分阶段专用入口创建，不能通过通用导入绕过")
     if module in {"hr", "warehouse"} and identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="当前角色不能批量导入该模块")
@@ -13096,6 +13159,7 @@ async def scrap_warehouse_item(item_id: int, body: WarehouseScrapInput, identity
 
 @app.post(f"{settings.api_prefix}/records", status_code=status.HTTP_201_CREATED)
 async def create_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu(body.module, identity, db, action="新建")
     if body.module in INVESTIGATION_RECORD_MODULES:
         raise HTTPException(status_code=422, detail="调查、公证和证据记录必须使用调查中心专用入口创建")
     if body.module == "customer":
@@ -13180,6 +13244,7 @@ async def record_history(record_id: int, identity: dict = Depends(current_identi
 @app.patch(f"{settings.api_prefix}/records/{{record_id}}")
 async def update_record(record_id: int, body: RecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_record_visible(record_id, identity, db)
+    await _require_record_module_menu(record.module, identity, db, action="编辑")
     await _require_record_owner_or_manager(record, identity, db)
     changes = body.model_dump(exclude_unset=True)
     if record.module not in GENERIC_RECORD_EDITABLE_MODULES:
@@ -13258,6 +13323,7 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
 @app.post(f"{settings.api_prefix}/records/{{record_id}}/transition")
 async def transition_record(record_id: int, body: TransitionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_record_visible(record_id, identity, db)
+    await _require_record_module_menu(record.module, identity, db, action="流转")
     if record.module not in GENERIC_RECORD_TRANSITION_MODULES:
         raise HTTPException(status_code=409, detail="该业务必须使用专用审批或办理入口变更状态")
     approval_access = identity.get("role") == "auditor" and record.module in {"contract", "finance", "invoice", "refund", "seal", "clue", "notary"} and record.status in {"待审批", "审批中", "待审核"}

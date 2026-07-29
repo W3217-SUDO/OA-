@@ -317,6 +317,17 @@ def main() -> None:
     assert 'ROLE_DATA_SCOPES = frozenset({' in MAIN and 'if data_scope not in ROLE_DATA_SCOPES:' in MAIN and 'detail="数据范围无效"' in MAIN and 'if permission.data_scope not in ROLE_DATA_SCOPES:' in MAIN, "role-permission API must reject and repair data scopes outside the four UI-supported values"
     assert '"data_scope": "无效数据范围"' in SMOKE and 'expected=(422,)' in SMOKE, "smoke coverage must reject an invalid role data scope"
     print("ROLE_DATA_SCOPE_VALIDATION_OK: role data scopes are server-side constrained to the UI-supported values")
+    assert all(token in MAIN for token in (
+        'RECORD_MODULE_MENU_ROOTS: dict[str, tuple[str, ...]] = {',
+        'async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:',
+        'await _require_record_module_menu(module, identity, db, action="导出")',
+        'await _require_record_module_menu(module, identity, db, action="批量导入")',
+        'await _require_record_module_menu(body.module, identity, db, action="新建")',
+        'await _require_record_module_menu(record.module, identity, db, action="编辑")',
+        'await _require_record_module_menu(record.module, identity, db, action="流转")',
+    )), "generic record writes/imports/exports must enforce their owning business menu family"
+    assert '"module": "warehouse", "serial_no": serial("MENU-WH")' in SMOKE and '"/records/export?module=warehouse", expected=(403,)' in SMOKE, "smoke coverage must prove a hidden warehouse menu cannot bypass generic create/export APIs"
+    print("GENERIC_RECORD_MENU_BOUNDARY_OK: direct generic writes/imports/exports require the owning business menu")
     assert '>新增审批人</Button>' in CONTRACT and 'role: "auditor"' in CONTRACT and 'profile: { position: values.position, staff_role: values.position }' in CONTRACT and 'must_change_password: true' in CONTRACT, "contract workflow must let administrators create a first-login-protected contract approver"
     assert '事项记录' in CONTRACT and 'openContractEvent' in CONTRACT and '/contracts/${contract.id}/events' in CONTRACT and 'ContractEvent,' in MAIN and '/contracts/{{contract_id}}/events' in MAIN, "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
     print("CONTRACT_EVENT_RECORD_OK: independent contract matter records are scoped, writable only through the contract flow and audited")

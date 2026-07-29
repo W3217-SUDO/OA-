@@ -360,6 +360,14 @@ def main():
         TOKEN = user_token
         assert call("GET", "/auth/me")["role"] == "user"
         call("POST", "/system/users", {"username": f"smoke_forbidden_{suffix}".lower(), "display_name": "普通用户不得创建审批人", "password": "SmokePass2026!", "role": "auditor"}, expected=(403,))
+        # A hidden menu must also deny direct generic-record writes/exports;
+        # this verifies the API boundary rather than relying on the sidebar.
+        call("POST", "/records", {
+            "module": "warehouse", "serial_no": serial("MENU-WH"), "title": "菜单权限绕过验证",
+            "customer": "", "status": "在库", "owner": username, "department": "上海分所",
+            "description": "", "data": {"category": "办公用品", "quantity": 1, "location": "菜单权限仓库"},
+        }, expected=(403,))
+        call("GET", "/records/export?module=warehouse", expected=(403,))
         TOKEN = admin_token
         updated = call("PATCH", f"/system/users/{user['id']}", {"display_name": "冒烟用户已更新", "is_active": False, "profile": {"office_phone": "021-12345678"}})
         assert updated["is_active"] is False and updated["office_phone"] == "021-12345678"
