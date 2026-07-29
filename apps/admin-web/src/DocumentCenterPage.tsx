@@ -725,9 +725,9 @@ export default function DocumentCenterPage({
     [cases, attachments],
   );
   const archiveColumns = [
-    { title: "案号", dataIndex: "serial_no", width: 155 },
+    { title: "案号", dataIndex: "serial_no", width: 155, render: (value: string, r: RecordRow) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—" },
     { title: "案件名称", dataIndex: "title", width: 250 },
-    { title: "客户", dataIndex: "customer", width: 190 },
+    { title: "客户", dataIndex: "customer", width: 190, render: (value: string) => value ? <Button type="link" onClick={() => void openCustomerDetail(value)}>{value}</Button> : "—" },
     {
       title: "归档材料",
       key: "materials",
@@ -1353,7 +1353,7 @@ export default function DocumentCenterPage({
                 size="small"
                 columns={documentColumns}
                 dataSource={documents}
-                scroll={{ x: 1400 }}
+                scroll={{ x: 1700 }}
               />
             ) : tab === "files" ? (
               <Table

@@ -33,6 +33,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
@@ -259,6 +260,13 @@ export default function SealCenterPage({
     }
     rememberContractDetailTarget({ serial_no: serialNo });
     onNavigate?.("contract-company");
+  };
+  const openCustomerDetail = (customer: unknown, customerNo?: unknown) => {
+    const title = String(customer || "").trim();
+    const serialNo = String(customerNo || "").trim();
+    if (!title && !serialNo) return message.warning("当前申请未关联客户");
+    rememberCustomerDetailTarget({ title, serial_no: serialNo });
+    onNavigate?.("customer-company");
   };
   useEffect(() => {
     setTab(tabFromView(initialView));
@@ -620,7 +628,7 @@ export default function SealCenterPage({
           "—"
         ),
     },
-    { title: "客户", dataIndex: "customer", width: 190, ellipsis: true },
+    { title: "客户", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string, r: SealRow) => value ? <Button type="link" onClick={() => openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
     {
       title: "审核人",
       width: 90,
@@ -1238,7 +1246,7 @@ export default function SealCenterPage({
                 {
                   key: "customer",
                   label: "客户",
-                  children: detail.customer || "—",
+                  children: detail.customer ? <Button type="link" onClick={() => openCustomerDetail(detail.customer, detail.data.customer_no)}>{detail.customer}</Button> : "—",
                 },
                 {
                   key: "case",
