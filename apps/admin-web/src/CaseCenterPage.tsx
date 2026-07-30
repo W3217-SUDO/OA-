@@ -822,6 +822,7 @@ export default function CaseCenterPage({
       // 阻断案号关联、搜索或通知进入详情。
       const recordRes = await api.get(`/records/${row.id}`);
       setViewingCounselCase(recordRes.data);
+      document.querySelector<HTMLElement>(".content")?.scrollTo({top:0,left:0});
       setSelectedCounselAttachmentKeys([]);
       setActiveCounselDocCategory("");
       const [historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes] = await Promise.allSettled([
