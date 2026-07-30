@@ -616,6 +616,17 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
   const normalizedKey = normalizeWorkspaceRoute(key);
   if (normalizedKey === "dashboard") return "控制台";
   if (normalizedKey.startsWith("case-new-")) return "新建案件";
+  if (normalizedKey.startsWith("case-detail-")) {
+    const match = normalizedKey.match(/^case-detail-\d+-(.+)$/);
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+    return "案件详情";
+  }
   const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
   return menuLabel || routePageLabels[normalizedKey] || "业务页面";
 }
@@ -1250,6 +1261,13 @@ export default function App() {
   const pageAllowed =
     sessionUser?.role === "admin" ||
     route === "dashboard" ||
+    (active.startsWith("case-detail-") &&
+      Array.from(grantedMenuKeys).some((key) =>
+        key.startsWith("case-mine") ||
+        key.startsWith("case-dept") ||
+        key.startsWith("case-company") ||
+        key.startsWith("case-archive")
+      )) ||
     // Leaf menus are independently grantable.  A canonical route can collapse
     // a leaf such as task-my-accepted to its container task-my for component
     // selection, but that must not discard the explicit leaf grant.

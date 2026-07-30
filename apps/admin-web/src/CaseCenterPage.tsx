@@ -176,6 +176,9 @@ export default function CaseCenterPage({
   onNavigate?: (route: string) => void;
 }) {
   const isCreateView = initialView === "case-new" || initialView.startsWith("case-new-");
+  const isCaseDetailView = initialView.startsWith("case-detail-");
+  const detailRouteMatch = initialView.match(/^case-detail-(\d+)-(.+)$/);
+  const detailRouteId = Number(detailRouteMatch?.[1] || 0);
   const createRouteType = initialView.endsWith("criminal") ? "刑事案件"
     : initialView.endsWith("administrative") ? "行政案件及国家赔偿"
       : initialView.endsWith("counsel") ? "法律顾问"
@@ -373,6 +376,18 @@ export default function CaseCenterPage({
             params: { module: "case", keyword: detailTarget.serial_no, page_size: 100 },
           });
           linkedCase = (data.items as CaseRow[]).find((row) => row.serial_no === detailTarget.serial_no);
+        }
+        if (linkedCase) void openCounselDetail(linkedCase);
+        else message.warning("未找到关联案件或当前账号无权查看");
+      } else if (isCaseDetailView && detailRouteId > 0) {
+        let linkedCase = (caseRes.data.items as CaseRow[]).find((row) => row.id === detailRouteId);
+        if (!linkedCase) {
+          try {
+            const { data } = await api.get(`/records/${detailRouteId}`);
+            if (data.module === "case") linkedCase = data as CaseRow;
+          } catch {
+            // The common detail loader below provides the user-facing error.
+          }
         }
         if (linkedCase) void openCounselDetail(linkedCase);
         else message.warning("未找到关联案件或当前账号无权查看");
@@ -819,6 +834,12 @@ export default function CaseCenterPage({
     }
   };
   const openCounselDetail = async (row: CaseRow) => {
+    if (!isCaseDetailView) {
+      const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
+      rememberCaseDetailTarget({ id: row.id, serial_no: serialNo });
+      onNavigate?.(`case-detail-${row.id}-${encodeURIComponent(serialNo)}`);
+      return;
+    }
     try {
       // 基础案件详情必须先打开；历史、附件、提醒等附加面板不能因为单点失败
       // 阻断案号关联、搜索或通知进入详情。
