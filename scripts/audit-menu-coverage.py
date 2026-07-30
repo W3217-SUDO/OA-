@@ -416,6 +416,7 @@ def main() -> None:
     assert '_ensure_unique_customer_name' in MAIN and '客户名称已存在，不能创建或改为同名客户' in MAIN, "customer API must block exact duplicate names on create and rename"
     assert 'employeeEditFields' in HR and '员工完整资料修改' in HR and '保存全部修改' in HR and 'lawyer_license_no' in HR and 'school' in HR and 'editableData' in HR, "employee edit must expose and save the full employee profile"
     assert 'name="username" label="用户名"' in HR and 'username:value.username' in normalized_hr and '_rename_system_username' in MAIN, "administrator employee edit must rename the login account and migrate exact username references"
+    assert '登录账号已存在' in MAIN and "name:'username',errors:['用户名已存在，请使用未登记的用户名']" in normalized_hr, "new employee usernames must be unique and surface the duplicate error on the username field"
     assert 'dayjs.isDayjs(v.signed_at)' in CONTRACT and 'loading={savingContract}' in CONTRACT, "contract creation must safely default hidden fields and expose the real save-in-progress state"
     assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>开始新建合同</Button>' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and '是否同步办理合同用印？' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another from every sealing state, and ask for synchronous sealing"
     assert 'sunhold:route-reselect' in CONTRACT and 'sunhold:route-reselect' in APP, "reselecting the active contract-new menu must reset the wizard instead of keeping the completed contract"

@@ -14547,21 +14547,17 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
         if user:
             if user.role == "admin":
                 raise HTTPException(status_code=409, detail="不能通过员工档案覆盖管理员账号")
-            # Existing, independently-created accounts are linked rather than
-            # duplicated.  Do not reset their password or elevate their role.
-            user.display_name = body.display_name.strip(); user.department = body.department.strip()
-            user.is_active = body.is_active; user.profile = {**(user.profile or {}), **profile}
-        else:
-            policy = await _security_policy(db)
-            if len(body.password) < policy.min_password_length:
-                raise HTTPException(status_code=422, detail=f"员工账号密码至少需要 {policy.min_password_length} 位")
-            user = User(
-                username=username, display_name=body.display_name.strip(), department=body.department.strip(),
-                # Job position controls investigation capability.  A new HR
-                # account always starts as the least-privileged system user.
-                role="user", profile=profile, password_hash=hash_password(body.password),
-                is_active=body.is_active, password_changed_at=None, must_change_password=True,
-            )
+            raise HTTPException(status_code=409, detail="登录账号已存在")
+        policy = await _security_policy(db)
+        if len(body.password) < policy.min_password_length:
+            raise HTTPException(status_code=422, detail=f"员工账号密码至少需要 {policy.min_password_length} 位")
+        user = User(
+            username=username, display_name=body.display_name.strip(), department=body.department.strip(),
+            # Job position controls investigation capability.  A new HR
+            # account always starts as the least-privileged system user.
+            role="user", profile=profile, password_hash=hash_password(body.password),
+            is_active=body.is_active, password_changed_at=None, must_change_password=True,
+        )
     employee = BusinessRecord(
         module="hr", serial_no=employee_no, title=body.display_name.strip(), customer=body.company.strip(),
         status="在职" if body.is_active else "停用", owner=username if user else identity["username"], department=body.department.strip(), description="",
