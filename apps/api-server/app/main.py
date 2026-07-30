@@ -12015,6 +12015,11 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     court_officers = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "court_officer", SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    serialized_case_file_types = [{"value": item.name, "label": item.name, "code": item.code, "parent_code": (item.extra or {}).get("parent_code", "")} for item in case_file_types]
+    # 普通案件的通用上传接口接受“普通附件”作为合法兜底；向客户端公开它，
+    # 防止旧租户尚未配置案件文件类型时页面提交无效的静态分类。
+    if not any(item["value"] == "普通附件" for item in serialized_case_file_types):
+        serialized_case_file_types.append({"value": "普通附件", "label": "普通附件", "code": "COMMON", "parent_code": ""})
     return {
         "case_types": [
             {"value": "民事案件", "label": "民事争议"},
@@ -12024,7 +12029,7 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
             {"value": "仲裁", "label": "仲裁"},
         ],
         "causes": [{"value": item.name, "label": item.name, "code": item.code} for item in causes],
-        "case_file_types": [{"value": item.name, "label": item.name, "code": item.code, "parent_code": (item.extra or {}).get("parent_code", "")} for item in case_file_types],
+        "case_file_types": serialized_case_file_types,
         "courts": [{"value": item.name, "label": item.name, "code": item.code} for item in courts],
         "court_officers": [{"value": item.name, "label": item.name, "code": item.code, "court_code": (item.extra or {}).get("court_code", ""), "role": (item.extra or {}).get("role", ""), "phone": (item.extra or {}).get("phone", "")} for item in court_officers],
         "right_types": ["商标权", "专利权", "著作权", "不正当竞争", "商业秘密", "其他"],

@@ -138,6 +138,9 @@ const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
 };
+// 普通附件是普通案件上传接口始终接受的兜底分类。主数据尚未配置时，
+// 页面不能再提交一个接口无法识别的静态分类。
+const DEFAULT_CASE_ATTACHMENT_CATEGORY = "普通附件";
 const caseStatuses = [
   "等待公证书",
   "等待审核公证书",
@@ -275,7 +278,7 @@ export default function CaseCenterPage({
   const [caseActionCapabilities, setCaseActionCapabilities] = useState<Record<number, CaseDetailCapabilities>>({});
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
-  const [counselUploadCategory, setCounselUploadCategory] = useState("案件文档");
+  const [counselUploadCategory, setCounselUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [caseLogOpen, setCaseLogOpen] = useState(false);
   const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
@@ -290,8 +293,8 @@ export default function CaseCenterPage({
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
   const [selectedCaseKeys, setSelectedCaseKeys] = useState<Key[]>([]);
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
-  const [caseUploadCategory, setCaseUploadCategory] = useState("案件文件");
-  const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<{value:string;label:string}[]>([{value:"案件文件",label:"案件文件"}]);
+  const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
+  const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<{value:string;label:string}[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
   const [courtOptions, setCourtOptions] = useState<{value:string;label:string;code?:string}[]>([]);
   const [courtOfficerOptions, setCourtOfficerOptions] = useState<{value:string;label:string;court_code?:string;role?:string;phone?:string}[]>([]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
@@ -393,7 +396,12 @@ export default function CaseCenterPage({
       setAttachments(attachmentRes.data.items);
       setCaseTypeOptions(referenceRes.data.case_types || []);
       setCauseOptions(referenceRes.data.causes || []);
-      if ((referenceRes.data.case_file_types || []).length) setCaseFileTypeOptions(referenceRes.data.case_file_types);
+      if ((referenceRes.data.case_file_types || []).length) {
+        const nextFileTypes = referenceRes.data.case_file_types;
+        setCaseFileTypeOptions(nextFileTypes);
+        setCaseUploadCategory((current) => nextFileTypes.some((item:{value:string}) => item.value === current) ? current : nextFileTypes[0].value);
+        setCounselUploadCategory((current) => nextFileTypes.some((item:{value:string}) => item.value === current) ? current : nextFileTypes[0].value);
+      }
       setCourtOptions(referenceRes.data.courts || []);
       setCourtOfficerOptions(referenceRes.data.court_officers || []);
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
@@ -1107,8 +1115,8 @@ export default function CaseCenterPage({
     const data = new FormData();
     data.append("file", file);
     data.append("record_id", String(viewingCounselCase.id));
-    data.append("category", counselUploadCategory || "案件文档");
-    data.append("remark", `案件详情文档：${counselUploadCategory || "案件文档"}`);
+    data.append("category", counselUploadCategory || DEFAULT_CASE_ATTACHMENT_CATEGORY);
+    data.append("remark", `案件详情文档：${counselUploadCategory || DEFAULT_CASE_ATTACHMENT_CATEGORY}`);
     try {
       await api.post("/attachments", data);
       message.success("案件文件已上传");
@@ -1182,7 +1190,7 @@ export default function CaseCenterPage({
   };
   const selectCounselDocCategory = (category: string) => {
     setActiveCounselDocCategory(category);
-    setCounselUploadCategory(category || "案件文档");
+    setCounselUploadCategory(caseFileTypeOptions.some((item) => item.value === category) ? category : DEFAULT_CASE_ATTACHMENT_CATEGORY);
     setSelectedCounselAttachmentKeys([]);
   };
   const openCounselEdit = (row: CaseRow) => {
@@ -1946,7 +1954,7 @@ export default function CaseCenterPage({
     {label:"鉴别资料",category:"鉴别资料",type:"child"},
     {label:"调查文档",category:"调查文档",type:"child"},
     {label:"取证文档",category:"取证文档",type:"child"},
-    {label:"案件文档",category:"案件文档",type:"folder-open"},
+    {label:"案件文档",category:"案件文件",type:"folder-open"},
     {label:"主体及委托资料",category:"主体及委托资料",type:"child"},
     {label:"起诉材料及证据",category:"起诉材料及证据",type:"child"},
     {label:"答辩材料及证据",category:"答辩材料及证据",type:"child"},
@@ -2577,7 +2585,7 @@ export default function CaseCenterPage({
               {key:"documents",label:"文档信息",children:<>
                 <input ref={counselDetailUploadRef} hidden type="file" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
                 <Space wrap style={{marginBottom:10}}>
-                  <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={Array.from(new Set(["案件文档",...counselDocTree.map(item=>item.category)])).map(value=>({value,label:value}))}/>
+                  <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={caseFileTypeOptions}/>
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
                   {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
