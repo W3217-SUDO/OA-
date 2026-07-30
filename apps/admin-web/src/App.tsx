@@ -1448,7 +1448,7 @@ export default function App() {
           )}
         </Sider>
         <Content
-          className={`content ${active === "dashboard" ? "dashboard-content" : ""}`}
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") ? "case-detail-content" : ""}`}
         >
           <div className="page-head">
             <div>

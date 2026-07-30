@@ -143,6 +143,12 @@ body {
 .workspace-tabs {
   margin: -2px 0 10px;
 }
+.case-detail-content .page-head {
+  display: none;
+}
+.case-detail-content .workspace-tabs {
+  margin-top: 0;
+}
 .workspace-tabs > .ant-tabs-nav {
   margin: 0;
 }

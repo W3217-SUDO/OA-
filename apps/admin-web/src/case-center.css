@@ -38,3 +38,32 @@
 @media(max-width:1280px){.case-detail-body-grid{grid-template-columns:220px minmax(0,1fr)}.case-detail-side-panel{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid #dce2e8;border-left:0}.case-detail-side-panel section{border-right:1px solid #dce2e8}}
 @media(max-width:960px){.case-detail-body-grid{grid-template-columns:1fr}.case-detail-doc-tree{border-right:0;border-bottom:1px solid #dce2e8}.case-detail-side-panel{grid-template-columns:1fr}.case-detail-side-panel section{border-right:0}.case-create-actions{margin-top:16px;padding-left:0}}
 .case-create-actions{margin:16px auto 18px}.case-counsel-detail-card .form-grid p{overflow:visible;white-space:normal;overflow-wrap:anywhere}.case-detail-tab-area{overflow:auto}
+
+/* 案件详情按旧系统工作台布局：紧凑头部、四列基本信息、文档/业务/提醒三栏。 */
+.case-center-page{min-height:calc(100vh - 88px)}
+.case-detail-drawer .ant-drawer-content{background:#fff}
+.case-detail-drawer .ant-drawer-header{min-height:31px;padding:4px 8px;overflow:hidden}
+.case-detail-drawer .ant-drawer-title{white-space:nowrap}
+.case-detail-drawer .ant-drawer-extra{max-width:calc(100% - 245px);overflow-x:auto;overflow-y:hidden;white-space:nowrap}
+.case-detail-drawer .ant-drawer-extra .ant-space{flex-wrap:nowrap!important}
+.case-detail-drawer .ant-drawer-extra .ant-btn{height:27px;padding:0 12px;font-size:12px}
+.case-detail-workbench{min-height:calc(100vh - 120px)}
+.case-counsel-detail-card>.ant-card-head{min-height:27px;padding:0 8px}
+.case-counsel-detail-card>.ant-card-head .ant-card-head-title{padding:5px 0;font-size:12px}
+.case-counsel-detail-card>.ant-card-body{padding:0}
+.case-counsel-detail-card .form-grid{grid-template-columns:repeat(4,minmax(150px,1fr))}
+.case-counsel-detail-card .form-grid p{padding:2px 6px;line-height:16px}
+.case-detail-body-grid{grid-template-columns:210px minmax(420px,1fr) 230px;min-height:calc(100vh - 238px)}
+.case-detail-doc-tree{padding:6px 8px}
+.case-doc-all{padding-left:8px}
+.case-detail-tab-area .ant-tabs-nav{margin-bottom:6px}
+.case-detail-tab-area .ant-tabs-tab{padding:7px 0}
+@media(max-width:1280px) and (min-width:901px){
+  .case-detail-body-grid{grid-template-columns:210px minmax(420px,1fr) 230px}
+  .case-detail-side-panel{grid-column:auto;display:block;border-top:0;border-left:1px solid #dce2e8}
+  .case-detail-side-panel section{border-right:0}
+}
+@media(max-width:900px){
+  .case-detail-body-grid{grid-template-columns:180px minmax(0,1fr)}
+  .case-counsel-detail-card .form-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}
+}

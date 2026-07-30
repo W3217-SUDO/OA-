@@ -2552,7 +2552,7 @@ export default function CaseCenterPage({
         className="case-detail-drawer"
         getContainer={false}
         mask={false}
-        rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 150px)"}}
+        rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 88px)"}}
         open={Boolean(viewingCounselCase)}
         title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
         onClose={() => setViewingCounselCase(null)}
@@ -2572,15 +2572,6 @@ export default function CaseCenterPage({
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
-          <Alert
-            type={counselDetailCapabilities.can_write ? "info" : "warning"}
-            showIcon
-            style={{marginBottom:12}}
-            title={`当前办理权限：${({manager:"负责人/管理权限",handling_lawyer:"受派经办律师",assistant:"律师助理",none:"只读"} as const)[counselDetailCapabilities.team_role]}`}
-            description={counselDetailCapabilities.can_write
-              ? `附件、提醒、日志：可办理；进展、排期：${counselDetailCapabilities.can_update_progress?"可办理":"不可办理"}；人员分配、基本信息、办结归档、案件费用：${counselDetailCapabilities.can_assign_team?"可办理":"不可办理"}。`
-              : counselDetailCapabilities.reason || "当前账号仅可查看案件详情。"}
-          />
           <Card size="small" title="基本信息" className="case-counsel-detail-card">
             <div className="form-grid">
               <p><strong>案件编号：</strong>{viewingCounselCase.serial_no}</p>
