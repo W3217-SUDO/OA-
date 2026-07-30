@@ -1437,6 +1437,10 @@ def main():
         call("PUT", f"/cases/{civil_case['id']}/normal-basic", normal_basic_payload, expected=(403,))
         member_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": valid_case_file_type, "remark": "团队律师附件权限验收"}, f"smoke-case-team-{suffix}.txt", b"case team permission")
         call("DELETE", f"/attachments/{member_attachment['id']}", expected=(204,))
+        # 普通案件与旧系统一致，不用扩展名白名单拒收法院专用资料；知识产权案件
+        # 仍由其专用文件接口校验格式，不能借此通用入口绕过。
+        member_custom_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": valid_case_file_type, "remark": "普通案件任意格式附件验收"}, f"smoke-case-team-{suffix}.courtbin", b"case custom binary permission")
+        call("DELETE", f"/attachments/{member_custom_attachment['id']}", expected=(204,))
         member_progress = call("POST", f"/cases/{civil_case['id']}/progress", {"first_instance_court": "上海市团队权限测试法院", "first_instance_case_no": serial("TEAM-PROGRESS"), "comment": "受派经办律师登记进展"})
         assert member_progress["data"]["first_instance_case_no"]
         member_hearing = call("POST", "/hearings", {"case_record_id": civil_case["id"], "hearing_date": str(date.today() + timedelta(days=10)), "hearing_time": "10:00", "court": "上海市团队权限测试法院", "courtroom": "第一法庭", "hearing_type": "一审开庭", "hearing_lawyer": member_name}, expected=(201,))

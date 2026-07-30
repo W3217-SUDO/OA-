@@ -13941,8 +13941,11 @@ async def upload_attachment(
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES and category != "普通附件" and category not in INVESTIGATION_MATERIAL_CATEGORIES[record.module]:
             raise HTTPException(status_code=422, detail="材料类型与当前调查业务不匹配")
     suffix = Path(file.filename or "").suffix.lower()
+    # 旧普通案件文件库不按扩展名拒收：案件资料常含法院专用格式、加密包和
+    # 其他业务文件。文件仍受大小、案件权限、分类和受控下载约束；知识产权
+    # 案件继续走自己的专用格式校验接口。
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
-    if suffix not in allowed:
+    if (not record or record.module != "case") and suffix not in allowed:
         raise HTTPException(status_code=422, detail="不支持的文件格式")
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:

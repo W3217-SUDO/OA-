@@ -1372,7 +1372,15 @@ def main() -> None:
     assert 'onClick={()=>voidopenCounselDetail(row)}' in normalized_case, "case number action must open the case detail drawer rather than the task-creation flow"
     assert 'constrecordRes=awaitapi.get(`/records/${row.id}`);setViewingCounselCase(recordRes.data);' in normalized_case, "case relation navigation must open the core record before loading supplementary panels"
     assert 'awaitPromise.allSettled([api.get(`/records/${row.id}/history`)' in normalized_case, "case supplementary detail panels must degrade independently of the core record"
-    assert 'tableLayout="fixed"scroll={{x:735}}dataSource={counselDetailTasks.filter' in normalized_case, "case detail task tables must keep their identifier columns readable in narrow detail panes"
+    assert 'tableLayout="fixed"scroll={{x:1130}}dataSource={counselDetailTasks.filter' in normalized_case, "case detail task tables must keep their identifier columns readable in narrow detail panes"
+    for token in (
+        'constopenCaseTaskCreator=(row:CaseRow)=>',
+        'title={`发布案件任务：${caseTaskCreateCase?.serial_no||""}`}',
+        '>发布案件任务</Button>',
+        'title:"剩余时间"', 'title:"发起人"',
+        '>新增律所费用</Button>', '>新增平台费用</Button>', '>新增内部结算</Button>',
+    ):
+        assert token in normalized_case, f"case detail tab action/legacy task field missing: {token}"
     assert 'display:block;width:100%;min-width:0;' in normalized_case_css, "case identifier links must stay within their table cell rather than overlap adjacent columns"
     assert 'counselDetailCapabilities.can_edit_basic&&viewingCounselCase.data.case_type==="法律顾问"&&<Button' in normalized_case, "the counsel-only basic-information endpoint must not be exposed as a generic case edit button"
     normalized_main = re.sub(r"\s+", "", MAIN)
@@ -1475,7 +1483,8 @@ def main() -> None:
         assert token in normalized_main, f"case-task server authorization guard missing: {token}"
     for token in (
         'can_create_case_task:boolean;',
-        'if(!getCaseCapability(taskCase).can_create_case_task)returnmessage.warning(',
+        'if(!getCaseCapability(targetCase).can_create_case_task)returnmessage.warning(',
+        'constopenCaseTaskCreator=(row:CaseRow)=>',
         'taskCase&&getCaseCapability(taskCase).can_create_case_task&&<Card',
     ):
         assert token in normalized_case, f"case-task frontend capability guard missing: {token}"
