@@ -18,18 +18,20 @@ from xml.sax.saxutils import escape as xml_escape
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, status
 from docx import Document
+from docx.shared import Inches
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, false, func, inspect, or_, select, text, update
+import qrcode
+from sqlalchemy import String, and_, delete, false, func, inspect, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, JobRole, Notification, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
+from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, verify_password
 
 
@@ -79,8 +81,9 @@ DEFAULT_SYSTEM_MENUS = [
     ("customer", "", "客户管理", "team", 30), ("customer-new", "customer", "新建客户", "", 31), ("customer-mine", "customer", "我的客户", "", 32), ("customer-recycle", "customer", "个人回收站", "", 33), ("customer-dept", "customer", "部门客户", "", 34), ("customer-dept-recycle", "customer", "部门回收站", "", 35), ("customer-company", "customer", "公司客户", "", 36), ("customer-public", "customer", "公海客户", "", 37), ("customer-shared", "customer", "我的共享客户", "", 38), ("customer-recent-contact", "customer", "最近联系的客户", "", 39), ("customer-recent-update", "customer", "最近更新的客户", "", 40), ("customer-company-recycle", "customer", "公司回收站", "", 41), ("customer-conflict", "customer", "客户利益检索", "", 42),
     ("contract", "", "合同中心", "file-text", 50), ("contract-new", "contract", "合同新建", "", 51), ("contract-mine", "contract", "我的合同", "", 52), ("contract-audit", "contract", "合同审批", "", 53), ("contract-dept", "contract", "部门合同", "", 54), ("contract-company", "contract", "公司合同", "", 55), ("contract-receivable", "contract", "应收款", "", 56),
     ("case", "", "案件中心", "file-text", 60), ("case-new", "case", "新建案件", "", 61), ("case-mine", "case", "我的案件", "", 62), ("case-dept", "case", "部门案件", "", 63), ("case-company", "case", "公司案件", "", 64), ("case-files", "case", "案件文件", "", 65), ("case-archive", "case", "案件归档审核", "", 66),
+    ("ipr", "", "知识产权中心", "file-text", 67), ("ipr-patent", "ipr", "专利案件", "", 1), ("ipr-trademark", "ipr", "商标案件", "", 2), ("ipr-review", "ipr", "知识产权立案审核", "", 3), ("ipr-office-files", "ipr", "知识产权官文", "", 4), ("ipr-custom-file-import", "ipr", "案件自定义文件导入", "", 5),
     ("investigation", "", "调查大厅", "search", 70), ("clue", "investigation", "我的调查线索", "", 71), ("notary", "investigation", "公证管理", "", 72), ("evidence", "investigation", "证据管理", "", 73),
-    ("documents", "", "收发文台", "file-text", 80), ("documents-official", "documents", "官文收文", "", 1), ("documents-my", "documents", "我的收文", "", 2), ("documents-company", "documents", "公司收文", "", 3), ("documents-register", "documents", "收发文登记", "", 84), ("documents-files", "documents", "文件附件", "", 85), ("documents-template", "documents", "文书模板", "", 86), ("documents-agent", "documents", "AI 智能文档", "", 87), ("documents-archive", "documents", "归档材料", "", 88),
+    ("documents", "", "收发文台", "file-text", 80), ("documents-official", "documents", "官文收文", "", 1), ("documents-outgoing", "documents", "正式发文", "", 2), ("documents-my", "documents", "我的收文", "", 3), ("documents-company", "documents", "公司收文", "", 4), ("documents-register", "documents", "收发文登记", "", 84), ("documents-files", "documents", "文件附件", "", 85), ("documents-template", "documents", "文书模板", "", 86), ("documents-agent", "documents", "AI 智能文档", "", 87), ("documents-archive", "documents", "归档材料", "", 88),
     ("finance", "", "财务中心", "file-text", 90),
     ("platform-finance", "", "平台财务中心", "bank", 100),
     ("user-center", "", "用户中心", "user", 110), ("user-messages", "user-center", "消息通知", "", 111), ("user-communications", "user-center", "沟通日志", "", 112), ("user-account", "user-center", "账户管理", "", 113),
@@ -136,6 +139,12 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-parameters-cause", "system-parameters", "案由设置", "", 6),
     ("system-parameters-payment", "system-parameters", "付款类型", "", 7),
     ("system-parameters-company", "system-parameters", "公司设置", "", 8),
+    ("system-parameters-customer-type", "system-parameters", "客户类型", "", 9),
+    ("system-parameters-case-file-type", "system-parameters", "案件文件类型", "", 10),
+    ("system-parameters-ipr-case-file-type", "system-parameters", "知识产权案件文件类型", "", 11),
+    ("system-parameters-district", "system-parameters", "地区设置", "", 12),
+    ("system-parameters-court-officer", "system-parameters", "法院工作人员", "", 13),
+    ("system-law-firms", "system", "律所档案", "", 13),
     ("system-management-cache", "system-management", "缓存管理", "", 1),
     ("system-management-menu", "system-management", "菜单管理", "", 2),
     ("system-management-config", "system-management", "系统配置", "", 3),
@@ -191,11 +200,18 @@ SYSTEM_PARAMETER_CATEGORIES = {
     "notary_office": "公证处设置",
     "cause": "案由设置",
     "payment_type": "付款类型",
+    "customer_type": "客户类型",
+    "case_file_type": "案件文件类型",
+    "district": "地区设置",
+    "court_officer": "法院工作人员",
+    "ipr_case_file_type": "知识产权案件文件类型",
 }
 DEFAULT_SYSTEM_PARAMETERS = [
     ("case_type", "110", "民事争议", {"letter_code": "MS"}),
     ("case_type", "120", "刑事案件", {"letter_code": "XS"}),
     ("case_type", "130", "行政案件及国家赔偿", {"letter_code": "XZ"}),
+    ("ipr_case_file_type", "IPR-OTHER", "普通知识产权案件文档", {"case_kinds": ["专利", "商标"], "is_official": False, "requires_transmission": False, "allow_repeat": True, "hedging_file_type_codes": [], "hedging_fee_type_codes": []}),
+    ("ipr_case_file_type", "IPR-TRANSFER", "知识产权待转文", {"case_kinds": ["专利", "商标"], "is_official": False, "requires_transmission": True, "allow_repeat": True, "hedging_file_type_codes": [], "hedging_fee_type_codes": []}),
     ("case_type", "140", "法律顾问", {"letter_code": "GW"}),
     ("case_type", "150", "仲裁", {"letter_code": "ZC"}),
     ("fee_type", "OFFICIAL", "官方费用", {"group": "案件费用"}),
@@ -217,6 +233,26 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("cause", "IP-PATENT", "侵害专利权纠纷", {"parent_code": "知识产权纠纷"}),
     ("payment_type", "COURT", "法院费用", {"nature": "对公", "payee": "人民法院", "account": ""}),
     ("payment_type", "NOTARY", "公证费用", {"nature": "对公", "payee": "公证处", "account": ""}),
+    ("customer_type", "CUSTOMER", "客户", {}),
+    ("customer_type", "PARTY", "当事人", {}),
+    ("case_file_type", "CASE", "案件文件", {"parent_code": ""}),
+    ("case_file_type", "CLIENT", "客户文档", {"parent_code": ""}),
+    ("case_file_type", "CONTRACT", "合同文档", {"parent_code": ""}),
+    ("case_file_type", "MANDATE", "委托材料", {"parent_code": ""}),
+    ("case_file_type", "EVIDENCE", "证据材料", {"parent_code": ""}),
+    ("case_file_type", "LITIGATION", "诉讼文书", {"parent_code": ""}),
+    ("case_file_type", "JUDGMENT", "裁判文书", {"parent_code": ""}),
+    ("case_file_type", "INVESTIGATION", "调查文档", {"parent_code": ""}),
+    ("case_file_type", "IDENTIFICATION", "鉴别资料", {"parent_code": "INVESTIGATION"}),
+    ("case_file_type", "NOTARY", "取证文档", {"parent_code": "INVESTIGATION"}),
+    ("case_file_type", "SUBJECT", "主体及委托资料", {"parent_code": "CASE"}),
+    ("case_file_type", "COMPLAINT", "起诉材料及证据", {"parent_code": "CASE"}),
+    ("case_file_type", "DEFENSE", "答辩材料及证据", {"parent_code": "CASE"}),
+    ("case_file_type", "COURT", "法院诉讼文书", {"parent_code": "CASE"}),
+    ("case_file_type", "HEARING", "庭审及庭后文件", {"parent_code": "CASE"}),
+    ("district", "CN", "中国", {"parent_code": ""}),
+    ("district", "CN-SH", "上海市", {"parent_code": "CN"}),
+    ("court_officer", "SHBS-JUDGE-01", "示例法官", {"court_code": "SHBS", "role": "法官", "phone": ""}),
 ]
 DEFAULT_SYSTEM_CONFIGS = {
     "customer_share_policy": {
@@ -270,6 +306,29 @@ def _upgrade_schema(connection) -> None:
     if "finance_transaction_id" not in columns:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN finance_transaction_id INTEGER"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_finance_transaction_id ON file_attachments (finance_transaction_id)"))
+    if "law_firm_id" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN law_firm_id INTEGER"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_law_firm_id ON file_attachments (law_firm_id)"))
+    if "document_date" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN document_date DATE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_document_date ON file_attachments (document_date)"))
+    if "file_type_code" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN file_type_code VARCHAR(64) NOT NULL DEFAULT ''"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_file_type_code ON file_attachments (file_type_code)"))
+    if "requires_transmission" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN requires_transmission BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_requires_transmission ON file_attachments (requires_transmission)"))
+    if "is_transmitted" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN is_transmitted BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_is_transmitted ON file_attachments (is_transmitted)"))
+    if "transmitted_at" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN transmitted_at TIMESTAMP WITH TIME ZONE"))
+    if "transmitted_by" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN transmitted_by VARCHAR(64) NOT NULL DEFAULT ''"))
+    custom_import_batch_columns = {item["name"] for item in inspect(connection).get_columns("ipr_case_file_custom_import_batches")}
+    if "is_test" not in custom_import_batch_columns:
+        connection.execute(text("ALTER TABLE ipr_case_file_custom_import_batches ADD COLUMN is_test BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ipr_case_file_custom_import_batches_is_test ON ipr_case_file_custom_import_batches (is_test)"))
     user_columns = {item["name"] for item in inspect(connection).get_columns("users")}
     if "department" not in user_columns:
         connection.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(64) NOT NULL DEFAULT '上海分所'"))
@@ -427,11 +486,10 @@ async def lifespan(_: FastAPI):
                     permission.role,
                     DEFAULT_ROLE_PERMISSIONS["user"],
                 )["data_scope"]
-        if not await db.scalar(select(func.count()).select_from(SystemParameter)):
-            db.add_all([
-                SystemParameter(category=category, code=code, name=name, extra=extra, sort_order=index, created_by="system", updated_by="system")
-                for index, (category, code, name, extra) in enumerate(DEFAULT_SYSTEM_PARAMETERS, start=1)
-            ])
+        existing_parameters = set((await db.execute(select(SystemParameter.category, SystemParameter.code))).all())
+        for index, (category, code, name, extra) in enumerate(DEFAULT_SYSTEM_PARAMETERS, start=1):
+            if (category, code) not in existing_parameters:
+                db.add(SystemParameter(category=category, code=code, name=name, extra=extra, sort_order=index, created_by="system", updated_by="system"))
         existing_configs = {item.key: item for item in (await db.scalars(select(SystemConfig))).all()}
         for key, config in DEFAULT_SYSTEM_CONFIGS.items():
             if key not in existing_configs:
@@ -753,6 +811,48 @@ class OfficialDocumentDeleteInput(BaseModel):
     record_ids: list[int] = Field(min_length=1, max_length=100)
 
 
+class OfficialOutgoingCreateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    source_type: str = Field(pattern="^(contract|case)$")
+    source_record_id: int = Field(gt=0)
+    source_file_ids: list[int] = Field(default_factory=list, max_length=100)
+    need_audit: bool = True
+    seal_asset_id: int | None = Field(default=None, gt=0)
+    is_electronic_seal: bool = False
+    is_offline_print: bool = True
+    print_quantity: int = Field(default=1, ge=1, le=9999)
+    content: str = Field(default="", max_length=10000)
+    remark: str = Field(default="", max_length=2000)
+
+
+class OfficialOutgoingUpdateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    need_audit: bool = True
+    seal_asset_id: int = Field(gt=0)
+    is_electronic_seal: bool = False
+    is_offline_print: bool = True
+    print_quantity: int = Field(default=1, ge=1, le=9999)
+    content: str = Field(default="", max_length=10000)
+    remark: str = Field(default="", max_length=2000)
+
+
+class OfficialOutgoingReviewInput(BaseModel):
+    approved: bool
+    comment: str = Field(default="", max_length=1000)
+
+
+class OfficialOutgoingRollbackInput(BaseModel):
+    reason: str = Field(min_length=2, max_length=1000)
+
+
+class OfficialOutgoingSubmitInput(BaseModel):
+    comment: str = Field(default="", max_length=1000)
+
+
+class OfficialOutgoingBatchInput(BaseModel):
+    record_ids: list[int] = Field(min_length=1, max_length=100)
+
+
 class HrTransitionInput(BaseModel):
     to_status: str
     effective_date: date = Field(default_factory=date.today)
@@ -972,6 +1072,23 @@ class CaseBatchUpdateInput(BaseModel):
     comment: str = Field(default="", max_length=500)
 
 
+class CaseMergeInput(BaseModel):
+    source_case_no: str = Field(min_length=1, max_length=64)
+    comment: str = Field(default="", max_length=1000)
+
+
+class CaseNotaryInfoInput(BaseModel):
+    notary_nos: str = Field(min_length=1, max_length=1000)
+    deposit_address: str = Field(default="", max_length=500)
+    comment: str = Field(default="", max_length=1000)
+
+
+class CaseSettlementAmountInput(BaseModel):
+    litigation_amount: float = Field(ge=0, le=1000000000)
+    settlement_amount: float = Field(ge=0, le=1000000000)
+    comment: str = Field(default="", max_length=1000)
+
+
 class CaseReminderInput(BaseModel):
     reminder_date: date
     deadline: date
@@ -1048,6 +1165,161 @@ class CaseCreateInput(BaseModel):
     courtroom: str = ""
     judicial_remark: str = ""
     description: str = ""
+
+
+IPR_CASE_KINDS = {"专利", "商标"}
+IPR_CASE_DRAFT_STATUSES = {"草稿", "已驳回"}
+
+
+class IprCaseCreateInput(BaseModel):
+    case_kind: str = Field(min_length=2, max_length=8)
+    title: str = Field(min_length=1, max_length=255)
+    customer: str = Field(min_length=1, max_length=255)
+    application_no: str = Field(default="", max_length=128)
+    application_type: str = Field(default="", max_length=128)
+    applicant: str = Field(default="", max_length=255)
+    case_manager: str = Field(default="", max_length=128)
+    application_date: date | None = None
+    deadline: date | None = None
+    annual_fee_year: int | None = Field(default=None, ge=1, le=100)
+    rate: float | None = Field(default=None, ge=0, le=1)
+    description: str = Field(default="", max_length=2000)
+
+
+class IprCaseUpdateInput(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    application_no: str | None = Field(default=None, max_length=128)
+    application_type: str | None = Field(default=None, max_length=128)
+    applicant: str | None = Field(default=None, max_length=255)
+    case_manager: str | None = Field(default=None, max_length=128)
+    application_date: date | None = None
+    deadline: date | None = None
+    annual_fee_year: int | None = Field(default=None, ge=1, le=100)
+    rate: float | None = Field(default=None, ge=0, le=1)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class IprCaseMaintenanceInput(BaseModel):
+    deadline: date | None = None
+    annual_fee_year: int | None = Field(default=None, ge=1, le=100)
+    rate: float | None = Field(default=None, ge=0, le=1)
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseBatchMaintenanceInput(BaseModel):
+    case_ids: list[int] = Field(min_length=1, max_length=100)
+    case_manager: str | None = Field(default=None, max_length=128)
+    deadline: date | None = None
+    annual_fee_year: int | None = Field(default=None, ge=1, le=100)
+    rate: float | None = Field(default=None, ge=0, le=1)
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseAnnualFeeMonitoringInput(BaseModel):
+    """Legacy CaseAddInAFM / CaseRemoveAFM batch targets."""
+    case_ids: list[int] = Field(min_length=1, max_length=100)
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseLogInput(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class IprCaseReviewInput(BaseModel):
+    approved: bool
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseLifecycleInput(BaseModel):
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseLawFirmReplaceInput(BaseModel):
+    law_firm_ids: list[int] = Field(default_factory=list, max_length=100)
+
+
+class IprCaseCustomerReplaceInput(BaseModel):
+    customer_ids: list[int] = Field(min_length=1, max_length=100)
+    primary_customer_id: int = Field(gt=0)
+
+
+class IprCaseCustomerContactReplaceInput(BaseModel):
+    customer_id: int = Field(gt=0)
+    document_contact_ids: list[str] = Field(default_factory=list, max_length=100)
+    technology_contact_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class IprCaseAssistedFeeCreateInput(BaseModel):
+    assisted_type: str = Field(min_length=1, max_length=128)
+    remark: str = Field(default="", max_length=1000)
+
+
+class IprCaseReminderInput(BaseModel):
+    reminder_date: date
+    deadline: date
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class IprCaseReminderSuppressionInput(BaseModel):
+    event_type_ids: list[int] = Field(default_factory=list, max_length=24)
+
+
+class IprCaseFileTransmitInput(BaseModel):
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseFileBatchTransmitInput(IprCaseFileTransmitInput):
+    attachment_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class IprOfficialFileActionInput(BaseModel):
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprOfficialFileBatchActionInput(IprOfficialFileActionInput):
+    official_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class IprOfficialCandidateMatchInput(BaseModel):
+    ipr_case_id: int = Field(gt=0)
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprOfficialCandidateCorrectInput(BaseModel):
+    application_no: str | None = Field(default=None, max_length=128)
+    official_type: str | None = Field(default=None, max_length=255)
+    official_no: str | None = Field(default=None, max_length=128)
+    received_date: date | None = None
+    due_date: date | None = None
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprOfficialCandidateConfirmInput(BaseModel):
+    candidate_ids: list[int] = Field(min_length=1, max_length=100)
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprCaseFileCustomCandidateMatchInput(BaseModel):
+    ipr_case_id: int = Field(gt=0)
+
+
+class IprCaseFileCustomCandidateCorrectInput(BaseModel):
+    file_type: str | None = Field(default=None, max_length=255)
+    document_date: date | None = None
+    case_officer: str | None = Field(default=None, max_length=64)
+    fee_amount: float | None = Field(default=None, ge=0, le=999999999)
+    fee_type: str | None = Field(default=None, max_length=128)
+    fee_response_user: str | None = Field(default=None, max_length=64)
+
+
+class IprCaseFileCustomCandidateConfirmInput(BaseModel):
+    candidate_ids: list[int] = Field(min_length=1, max_length=100)
+    comment: str = Field(default="", max_length=1000)
+
+
+class IprOfficialDualStatusInput(BaseModel):
+    status: str = Field(min_length=2, max_length=16)
+    comment: str = Field(default="", max_length=1000)
 
 
 class CaseLitigantsInput(BaseModel):
@@ -1655,6 +1927,32 @@ class SystemConfigUpdate(BaseModel):
     value: dict
 
 
+class LawFirmInput(BaseModel):
+    code: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=2, max_length=255)
+    registered_address: str = Field(default="", max_length=255)
+    business_address: str = Field(default="", max_length=255)
+    detail_address: str = Field(default="", max_length=255)
+    postal_code: str = Field(default="", max_length=32)
+    phone: str = Field(default="", max_length=64)
+    fax: str = Field(default="", max_length=64)
+    email: str = Field(default="", max_length=128)
+    organization_code: str = Field(default="", max_length=64)
+    company_code: str = Field(default="", max_length=64)
+    country: str = Field(default="中国", max_length=64)
+    is_active: bool = True
+
+
+class LawFirmContactInput(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    address: str = Field(default="", max_length=255)
+    postal_code: str = Field(default="", max_length=32)
+    phone: str = Field(default="", max_length=64)
+    fax: str = Field(default="", max_length=64)
+    email: str = Field(default="", max_length=128)
+    is_active: bool = True
+
+
 class SystemMenuUpdate(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=128)
     icon: str | None = Field(default=None, max_length=64)
@@ -1870,6 +2168,38 @@ class ContractChangeReviewInput(BaseModel):
 
 class ContractEventInput(BaseModel):
     content: str = Field(min_length=1, max_length=1000)
+
+
+class ContractObjectInput(BaseModel):
+    case_record_id: int
+    fee_type: str = Field(min_length=1, max_length=64)
+    amount: float = Field(ge=0, le=999999999)
+    remark: str = Field(default="", max_length=2000)
+
+
+class ContractPaymentLineInput(BaseModel):
+    contract_object_id: int = Field(gt=0)
+    amount: float = Field(gt=0, le=999999999)
+
+
+class ContractPaymentApplicationInput(BaseModel):
+    payment_type: str = Field(min_length=1, max_length=64)
+    payee: str = Field(min_length=1, max_length=255)
+    account: str = Field(default="", max_length=128)
+    application_date: date
+    remark: str = Field(default="", max_length=2000)
+    lines: list[ContractPaymentLineInput] = Field(min_length=1, max_length=100)
+
+
+class ContractPaymentReviewInput(BaseModel):
+    approved: bool
+    comment: str = Field(default="", max_length=1000)
+
+
+class ContractPaymentPayInput(BaseModel):
+    paid_date: date
+    voucher_no: str = Field(min_length=1, max_length=128)
+    comment: str = Field(default="", max_length=1000)
 
 
 class SealApplicationInput(BaseModel):
@@ -2096,9 +2426,11 @@ def _attachment_dict(item: FileAttachment, record: BusinessRecord | None = None)
     return {
         "id": item.id, "record_id": item.record_id, "finance_transaction_id": item.finance_transaction_id,
         "record_no": record.serial_no if record else "",
-        "record_title": record.title if record else "", "category": item.category,
+        "record_title": record.title if record else "", "category": item.category, "file_type_code": item.file_type_code,
         "original_name": item.original_name, "content_type": item.content_type,
         "size": item.size, "uploader": item.uploader, "remark": item.remark,
+        "document_date": item.document_date, "requires_transmission": item.requires_transmission, "is_transmitted": item.is_transmitted,
+        "transmitted_at": item.transmitted_at, "transmitted_by": item.transmitted_by,
         "created_at": item.created_at, "download_url": f"{settings.api_prefix}/attachments/{item.id}/download",
     }
 
@@ -2249,6 +2581,8 @@ RECORD_MODULE_MENU_ROOTS: dict[str, tuple[str, ...]] = {
     "customer": ("customer",),
     "contract": ("contract",),
     "case": ("case",),
+    "ipr_case": ("ipr",),
+    "ipr_official_file": ("ipr",),
     "task": ("task",),
     "investigation": ("investigation",),
     "clue": ("investigation",),
@@ -2306,9 +2640,9 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
 
 
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
-    """Expose the contract approval workbench to users assigned that job permission."""
+    """Expose the contract workbench to explicitly configured contract auditors."""
     permission = await _permission_payload(user.role, db)
-    can_approve_contract = await _user_has_job_permission(user, "合同审批", db)
+    can_approve_contract = await _is_contract_approver(user, db)
     menu_keys = list(permission["menu_keys"])
     if can_approve_contract and "contract" not in menu_keys:
         menu_keys.append("contract")
@@ -2630,7 +2964,7 @@ def _require_admin(identity: dict) -> None:
 
 def _system_user_dict(user: User) -> dict:
     profile = user.profile or {}
-    return {"id": user.id, "username": user.username, "display_name": user.display_name, "department": user.department, "role": user.role, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "department": user.department, "role": user.role, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
 
 
 @app.get(f"{settings.api_prefix}/system/users")
@@ -2899,6 +3233,72 @@ async def list_system_parameters(category: str = "", keyword: str = "", identity
     return {"items": result, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": False}
 
 
+async def _validate_parameter_references(category: str, extra: dict, db: AsyncSession) -> None:
+    """Keep dependent master data from becoming orphaned through the generic parameter API."""
+    if category == "ipr_case_file_type":
+        case_kinds = (extra or {}).get("case_kinds") or []
+        if not isinstance(case_kinds, list) or any(value not in IPR_CASE_KINDS for value in case_kinds):
+            raise HTTPException(status_code=422, detail="知识产权案件文件类型的适用案件类型必须是专利或商标")
+        for key in {"is_official", "requires_transmission", "allow_repeat"}:
+            if key in (extra or {}) and not isinstance(extra[key], bool):
+                raise HTTPException(status_code=422, detail=f"知识产权案件文件类型的 {key} 必须为布尔值")
+        for key in {"hedging_file_type_codes", "hedging_fee_type_codes"}:
+            value = (extra or {}).get(key) or []
+            if not isinstance(value, list) or any(not isinstance(code, str) or not code.strip() for code in value):
+                raise HTTPException(status_code=422, detail=f"知识产权案件文件类型的 {key} 必须为代码数组")
+        return
+    if category != "court_officer":
+        return
+    court_code = str((extra or {}).get("court_code") or "").strip()
+    role = str((extra or {}).get("role") or "").strip()
+    if not court_code or not role:
+        raise HTTPException(status_code=422, detail="法院工作人员必须填写法院代码和职务")
+    court = await db.scalar(select(SystemParameter).where(
+        SystemParameter.category == "court", SystemParameter.code == court_code, SystemParameter.is_active.is_(True)
+    ))
+    if not court:
+        raise HTTPException(status_code=422, detail="关联法院不存在或已停用")
+
+
+PARAMETER_REFERENCE_FIELDS: dict[str, dict[str, set[str]]] = {
+    "customer_type": {"customer": {"customer_type"}},
+    "case_type": {"case": {"case_type"}},
+    "fee_type": {"finance": {"fee_type"}},
+    "court": {"case": {"court", "first_court_name", "second_court_name", "retrial_court_name"}},
+    "notary_office": {"clue": {"notary_institution"}, "notary": {"notary_institution"}},
+    "cause": {"case": {"cause", "cause_of_action", "reason"}},
+    "payment_type": {"finance": {"payment_type"}, "contract": {"payment_type"}},
+    "district": {"customer": {"province", "city", "district"}, "case": {"province", "city", "district"}},
+    "court_officer": {"case": {"judge", "clerk", "first_court_judge", "first_court_clerk", "second_court_judge", "second_court_clerk", "retrial_court_judge", "retrial_court_clerk"}},
+}
+
+
+async def _parameter_reference_examples(item: SystemParameter, db: AsyncSession) -> list[str]:
+    """Return a small, exact sample of business references before parameter deletion.
+
+    Parameters remain historical master data.  Deleting one that is already in a
+    customer, case or attachment would make existing records impossible to
+    interpret, so the generic maintenance endpoint must reject it instead.
+    """
+    if item.category == "case_file_type":
+        attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.category == item.name).limit(3))).all())
+        return [f"附件#{attachment.id}" for attachment in attachments]
+    if item.category == "case_phase":
+        records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.status == item.name).limit(3))).all())
+        return [record.serial_no for record in records]
+    fields_by_module = PARAMETER_REFERENCE_FIELDS.get(item.category, {})
+    examples: list[str] = []
+    for module, fields in fields_by_module.items():
+        records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == module))).all())
+        for record in records:
+            data = record.data or {}
+            if any(str(data.get(field) or "").strip() == item.name for field in fields):
+                examples.append(record.serial_no)
+                if len(examples) >= 3:
+                    return examples
+    return examples
+
+
 @app.post(f"{settings.api_prefix}/system/parameters", status_code=status.HTTP_201_CREATED)
 async def create_system_parameter(body: SystemParameterInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
@@ -2906,6 +3306,7 @@ async def create_system_parameter(body: SystemParameterInput, identity: dict = D
     code, name = body.code.strip(), body.name.strip()
     duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == body.category, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
+    await _validate_parameter_references(body.category, body.extra, db)
     item = SystemParameter(**body.model_dump(exclude={"code", "name"}), code=code, name=name, created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.commit(); await db.refresh(item); _clear_parameter_cache(body.category, identity["username"])
     return _system_parameter_dict(item)
@@ -2920,6 +3321,7 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
     name = body.name.strip() if body.name is not None else item.name
     duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
+    await _validate_parameter_references(item.category, body.extra if body.extra is not None else (item.extra or {}), db)
     for key, value in body.model_dump(exclude_unset=True).items(): setattr(item, key, value.strip() if key in {"code", "name"} else value)
     item.updated_by = identity["username"]
     await db.commit(); await db.refresh(item); _clear_parameter_cache(item.category, identity["username"])
@@ -2931,6 +3333,9 @@ async def delete_system_parameter(parameter_id: int, identity: dict = Depends(cu
     _require_admin(identity)
     item = await db.get(SystemParameter, parameter_id)
     if not item: raise HTTPException(status_code=404, detail="系统参数不存在")
+    references = await _parameter_reference_examples(item, db)
+    if references:
+        raise HTTPException(status_code=409, detail=f"参数“{item.name}”已被业务记录引用（{ '、'.join(references) }），不能删除；请停用以保留历史数据")
     category = item.category
     await db.delete(item); await db.commit(); _clear_parameter_cache(category, identity["username"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -2986,6 +3391,192 @@ async def clear_system_cache(cache_key: str, identity: dict = Depends(current_id
     if cache_key != "system-parameters": raise HTTPException(status_code=404, detail="缓存不存在")
     _clear_parameter_cache(operator=identity["username"])
     return {"key": cache_key, "cleared": True, **SYSTEM_CACHE_META[cache_key]}
+
+
+def _law_firm_contact_dict(item: LawFirmContact, *, is_default: bool = False) -> dict:
+    return {
+        "id": item.id, "law_firm_id": item.law_firm_id, "name": item.name,
+        "address": item.address, "postal_code": item.postal_code, "phone": item.phone,
+        "fax": item.fax, "email": item.email, "is_active": item.is_active,
+        "is_default": is_default, "created_by": item.created_by, "updated_by": item.updated_by,
+        "created_at": item.created_at, "updated_at": item.updated_at,
+    }
+
+
+def _law_firm_dict(item: LawFirm, license_attachment: FileAttachment | None = None) -> dict:
+    return {
+        "id": item.id, "code": item.code, "name": item.name,
+        "registered_address": item.registered_address, "business_address": item.business_address,
+        "detail_address": item.detail_address, "postal_code": item.postal_code, "phone": item.phone,
+        "fax": item.fax, "email": item.email, "organization_code": item.organization_code,
+        "company_code": item.company_code, "country": item.country, "is_active": item.is_active,
+        "default_contact_id": item.default_contact_id, "license_attachment_id": item.license_attachment_id,
+        "license": _attachment_dict(license_attachment) if license_attachment else None,
+        "created_by": item.created_by, "updated_by": item.updated_by,
+        "created_at": item.created_at, "updated_at": item.updated_at,
+    }
+
+
+async def _law_firm_or_404(law_firm_id: int, db: AsyncSession) -> LawFirm:
+    item = await db.get(LawFirm, law_firm_id)
+    if not item: raise HTTPException(status_code=404, detail="律所不存在")
+    return item
+
+
+async def _law_firm_license(item: LawFirm, db: AsyncSession) -> FileAttachment | None:
+    return await db.get(FileAttachment, item.license_attachment_id) if item.license_attachment_id else None
+
+
+@app.get(f"{settings.api_prefix}/law-firms")
+async def list_law_firms(keyword: str = "", include_inactive: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    statement = select(LawFirm).order_by(LawFirm.is_active.desc(), LawFirm.name, LawFirm.id)
+    if not include_inactive: statement = statement.where(LawFirm.is_active.is_(True))
+    if keyword.strip():
+        like = f"%{keyword.strip()}%"
+        statement = statement.where(or_(LawFirm.code.ilike(like), LawFirm.name.ilike(like), LawFirm.phone.ilike(like), LawFirm.email.ilike(like)))
+    items = (await db.scalars(statement)).all()
+    licenses = {item.id: await _law_firm_license(item, db) for item in items}
+    return {"items": [_law_firm_dict(item, licenses[item.id]) for item in items], "total": len(items)}
+
+
+@app.get(f"{settings.api_prefix}/law-firms/{{law_firm_id}}")
+async def get_law_firm(law_firm_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    item = await _law_firm_or_404(law_firm_id, db)
+    return _law_firm_dict(item, await _law_firm_license(item, db))
+
+
+@app.post(f"{settings.api_prefix}/law-firms", status_code=status.HTTP_201_CREATED)
+async def create_law_firm(body: LawFirmInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    code, name = body.code.strip().upper(), body.name.strip()
+    if await db.scalar(select(LawFirm.id).where(or_(LawFirm.code == code, LawFirm.name == name))):
+        raise HTTPException(status_code=409, detail="律所编号或名称已存在")
+    item = LawFirm(code=code, name=name, **body.model_dump(exclude={"code", "name"}), created_by=identity["username"], updated_by=identity["username"])
+    db.add(item); await db.flush()
+    db.add(LawFirmAudit(law_firm_id=item.id, action="新建律所档案", operator=identity["username"], detail={"code": code, "name": name}))
+    await db.commit(); await db.refresh(item)
+    return _law_firm_dict(item)
+
+
+@app.put(f"{settings.api_prefix}/law-firms/{{law_firm_id}}")
+async def update_law_firm(law_firm_id: int, body: LawFirmInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    item = await _law_firm_or_404(law_firm_id, db)
+    code, name = body.code.strip().upper(), body.name.strip()
+    duplicate = await db.scalar(select(LawFirm.id).where(LawFirm.id != item.id, or_(LawFirm.code == code, LawFirm.name == name)))
+    if duplicate: raise HTTPException(status_code=409, detail="律所编号或名称已被其他档案使用")
+    before = {key: getattr(item, key) for key in body.model_fields}
+    for key, value in body.model_dump().items(): setattr(item, key, code if key == "code" else name if key == "name" else value)
+    item.updated_by = identity["username"]
+    changed = {key: {"before": before[key], "after": getattr(item, key)} for key in before if before[key] != getattr(item, key)}
+    if changed: db.add(LawFirmAudit(law_firm_id=item.id, action="修改律所档案", operator=identity["username"], detail=changed))
+    await db.commit(); await db.refresh(item)
+    return _law_firm_dict(item, await _law_firm_license(item, db))
+
+
+@app.delete(f"{settings.api_prefix}/law-firms/{{law_firm_id}}")
+async def delete_law_firm(law_firm_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    item = await _law_firm_or_404(law_firm_id, db)
+    linked_case_count = await db.scalar(select(func.count(IprCaseLawFirm.id)).where(IprCaseLawFirm.law_firm_id == item.id)) or 0
+    if linked_case_count:
+        raise HTTPException(status_code=409, detail=f"该律所已关联 {linked_case_count} 个知识产权案件，解除关联后才能删除")
+    attachment = await _law_firm_license(item, db)
+    # 当前律所档案尚未允许被合同、用印、财务或文书引用；引用接入后必须先增加相应的删除阻断检查。
+    contacts = (await db.scalars(select(LawFirmContact).where(LawFirmContact.law_firm_id == item.id))).all()
+    db.add(LawFirmAudit(law_firm_id=item.id, action="删除律所档案", operator=identity["username"], detail={"code": item.code, "name": item.name, "contact_count": len(contacts), "license_attachment_id": attachment.id if attachment else None}))
+    await db.flush()
+    if attachment:
+        await db.delete(attachment)
+    for contact in contacts:
+        await db.delete(contact)
+    await db.delete(item)
+    await db.commit()
+    if attachment:
+        try:
+            Path(attachment.path).unlink(missing_ok=True)
+        except OSError:
+            pass
+    return {"deleted": True, "id": law_firm_id}
+
+
+@app.get(f"{settings.api_prefix}/law-firms/{{law_firm_id}}/contacts")
+async def list_law_firm_contacts(law_firm_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db)
+    items = (await db.scalars(select(LawFirmContact).where(LawFirmContact.law_firm_id == firm.id).order_by(LawFirmContact.is_active.desc(), LawFirmContact.name, LawFirmContact.id))).all()
+    return {"items": [_law_firm_contact_dict(item, is_default=item.id == firm.default_contact_id) for item in items], "total": len(items)}
+
+
+@app.post(f"{settings.api_prefix}/law-firms/{{law_firm_id}}/contacts", status_code=status.HTTP_201_CREATED)
+async def create_law_firm_contact(law_firm_id: int, body: LawFirmContactInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db)
+    item = LawFirmContact(law_firm_id=firm.id, **body.model_dump(), created_by=identity["username"], updated_by=identity["username"])
+    db.add(item); await db.flush()
+    if firm.default_contact_id is None and item.is_active: firm.default_contact_id = item.id
+    db.add(LawFirmAudit(law_firm_id=firm.id, action="新增律所联系人", operator=identity["username"], detail={"contact_id": item.id, "name": item.name}))
+    await db.commit(); await db.refresh(item); await db.refresh(firm)
+    return _law_firm_contact_dict(item, is_default=item.id == firm.default_contact_id)
+
+
+@app.put(f"{settings.api_prefix}/law-firms/{{law_firm_id}}/contacts/{{contact_id}}")
+async def update_law_firm_contact(law_firm_id: int, contact_id: int, body: LawFirmContactInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db)
+    item = await db.get(LawFirmContact, contact_id)
+    if not item or item.law_firm_id != firm.id: raise HTTPException(status_code=404, detail="律所联系人不存在")
+    if item.id == firm.default_contact_id and not body.is_active: raise HTTPException(status_code=409, detail="默认联系人不能直接停用，请先设置其他有效联系人为默认联系人")
+    before = {key: getattr(item, key) for key in body.model_fields}
+    for key, value in body.model_dump().items(): setattr(item, key, value)
+    item.updated_by = identity["username"]
+    db.add(LawFirmAudit(law_firm_id=firm.id, action="修改律所联系人", operator=identity["username"], detail={"contact_id": item.id, "before": before, "after": body.model_dump()}))
+    await db.commit(); await db.refresh(item)
+    return _law_firm_contact_dict(item, is_default=item.id == firm.default_contact_id)
+
+
+@app.post(f"{settings.api_prefix}/law-firms/{{law_firm_id}}/contacts/{{contact_id}}/default")
+async def set_law_firm_default_contact(law_firm_id: int, contact_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db)
+    item = await db.get(LawFirmContact, contact_id)
+    if not item or item.law_firm_id != firm.id: raise HTTPException(status_code=404, detail="律所联系人不存在")
+    if not item.is_active: raise HTTPException(status_code=409, detail="停用联系人不能设为默认联系人")
+    previous = firm.default_contact_id; firm.default_contact_id = item.id; firm.updated_by = identity["username"]
+    db.add(LawFirmAudit(law_firm_id=firm.id, action="设置默认联系人", operator=identity["username"], detail={"before_contact_id": previous, "after_contact_id": item.id}))
+    await db.commit(); await db.refresh(item)
+    return _law_firm_contact_dict(item, is_default=True)
+
+
+@app.post(f"{settings.api_prefix}/law-firms/{{law_firm_id}}/license", status_code=status.HTTP_201_CREATED)
+async def upload_law_firm_license(law_firm_id: int, file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db)
+    filename = Path(file.filename or "营业执照").name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".gif"}: raise HTTPException(status_code=422, detail="营业执照仅支持 JPG、PNG 或 GIF 图片")
+    content = await file.read()
+    if not content: raise HTTPException(status_code=422, detail="营业执照文件不能为空")
+    if len(content) > 20 * 1024 * 1024: raise HTTPException(status_code=422, detail="营业执照文件不能超过 20MB")
+    old_attachment = await _law_firm_license(firm, db)
+    target = UPLOAD_ROOT / f"law-firm-{firm.id}-{uuid4().hex}{suffix}"
+    target.write_bytes(content)
+    attachment = FileAttachment(law_firm_id=firm.id, category="律所营业执照", original_name=filename, stored_name=target.name, content_type=file.content_type or "image/*", size=len(content), path=str(target), uploader=identity["username"], remark=f"律所 {firm.code} 营业执照")
+    db.add(attachment); await db.flush()
+    firm.license_attachment_id = attachment.id; firm.updated_by = identity["username"]
+    db.add(LawFirmAudit(law_firm_id=firm.id, action="替换营业执照", operator=identity["username"], detail={"previous_attachment_id": old_attachment.id if old_attachment else None, "attachment_id": attachment.id, "name": filename}))
+    if old_attachment: await db.delete(old_attachment)
+    await db.commit(); await db.refresh(attachment)
+    if old_attachment:
+        old_path = Path(old_attachment.path)
+        if old_path.is_file() and UPLOAD_ROOT.resolve() in old_path.resolve().parents: old_path.unlink(missing_ok=True)
+    return _attachment_dict(attachment)
+
+
+@app.get(f"{settings.api_prefix}/law-firms/{{law_firm_id}}/license/download")
+async def download_law_firm_license(law_firm_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db); attachment = await _law_firm_license(firm, db)
+    if not attachment: raise HTTPException(status_code=404, detail="该律所尚未上传营业执照")
+    path = Path(attachment.path)
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents: raise HTTPException(status_code=404, detail="营业执照文件不存在")
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
 
 
 def _system_menu_dict(item: SystemMenu) -> dict:
@@ -3352,7 +3943,7 @@ async def user_directory(identity: dict = Depends(current_identity), db: AsyncSe
             "position": position,
             "staff_role": str((item.profile or {}).get("staff_role") or ""),
             "job_permissions": job_permissions,
-            "can_approve_contract": item.role == "admin" or "合同审批" in set(job_permissions),
+            "can_approve_contract": await _is_contract_approver(item, db),
         })
     return {"items": payload}
 
@@ -3705,6 +4296,114 @@ def _csv_response(filename: str, headers: list[str], rows: list[list[object]]) -
     return Response(content=content.encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": disposition})
 
 
+def _excel_response(filename: str, headers: list[str], rows: list[list[object]]) -> Response:
+    """Return a real SpreadsheetML workbook instead of renaming CSV to Excel."""
+    def cell(value: object) -> str:
+        return f'<Cell><Data ss:Type="String">{xml_escape(str(value if value is not None else ""))}</Data></Cell>'
+
+    table_rows = [f"<Row>{''.join(cell(header) for header in headers)}</Row>"]
+    table_rows.extend(f"<Row>{''.join(cell(value) for value in row)}</Row>" for row in rows)
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+        'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+        f'<Worksheet ss:Name="导出数据"><Table>{"".join(table_rows)}</Table></Worksheet></Workbook>'
+    )
+    disposition = f"attachment; filename=export.xls; filename*=UTF-8''{quote(filename)}"
+    return Response(content=content.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+
+
+async def _selected_ordinary_case_export_records(ids: str, identity: dict, db: AsyncSession) -> list[BusinessRecord]:
+    """Resolve only selected, visible ordinary cases; never broaden export scope."""
+    await _require_record_module_menu("case", identity, db, action="导出")
+    selected_ids = _export_ids(ids)
+    if not selected_ids:
+        raise HTTPException(status_code=422, detail="请至少选择一条案件记录")
+    records = await _scoped_export_records("case", ids, identity, db)
+    if len(records) != len(selected_ids):
+        raise HTTPException(status_code=404, detail="存在案件记录不存在或当前账号无权导出")
+    counsel_cases = [record for record in records if (record.data or {}).get("case_type") == "法律顾问"]
+    if counsel_cases:
+        raise HTTPException(status_code=422, detail="法律顾问案件请使用法律顾问专用导出")
+    return records
+
+
+def _ordinary_case_export_rows(records: list[BusinessRecord]) -> list[list[object]]:
+    rows: list[list[object]] = []
+    for record in records:
+        data = record.data or {}
+        handling_lawyers = data.get("handling_lawyers") or data.get("handling_lawyer") or ""
+        if isinstance(handling_lawyers, list):
+            handling_lawyers = "、".join(str(item) for item in handling_lawyers if str(item).strip())
+        rows.append([
+            record.serial_no, record.title, data.get("case_type", ""), record.status, record.customer,
+            data.get("contract_no", ""), data.get("cause_or_charge") or data.get("cause", ""), handling_lawyers,
+            data.get("assistant", ""), data.get("hearing_lawyer", ""), data.get("court") or data.get("first_court_name", ""),
+            data.get("filing_date", ""), record.created_at.strftime("%Y-%m-%d") if record.created_at else "",
+        ])
+    return rows
+
+
+@app.get(f"{settings.api_prefix}/cases/export/excel")
+async def export_selected_ordinary_cases_excel(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    records = await _selected_ordinary_case_export_records(ids, identity, db)
+    return _excel_response(
+        f"普通案件导出-{date.today()}.xls",
+        ["案号", "案件名称", "案件类型", "案件阶段", "客户", "合同编号", "案由/罪名", "经办律师", "律师助理", "开庭律师", "法院/机构", "立案日期", "创建日期"],
+        _ordinary_case_export_rows(records),
+    )
+
+
+@app.get(f"{settings.api_prefix}/cases/export/archive-manifest")
+async def export_selected_case_archive_manifest(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    records = await _selected_ordinary_case_export_records(ids, identity, db)
+    attachment_counts = dict((await db.execute(
+        select(FileAttachment.record_id, func.count(FileAttachment.id)).where(FileAttachment.record_id.in_([record.id for record in records])).group_by(FileAttachment.record_id)
+    )).all())
+    rows = []
+    for record in records:
+        data = record.data or {}
+        rows.append([
+            record.serial_no, record.title, record.customer, data.get("case_type", ""), record.status,
+            data.get("contract_no", ""), record.owner, attachment_counts.get(record.id, 0),
+            data.get("archive_no", ""), data.get("paper_archive_location", ""), data.get("paper_volume_count", ""),
+        ])
+    return _excel_response(
+        f"案件归档清单-{date.today()}.xls",
+        ["案号", "案件名称", "客户", "案件类型", "归档状态", "合同编号", "负责人", "附件数量", "归档号", "纸质卷宗位置", "纸质卷宗数量"],
+        rows,
+    )
+
+
+@app.get(f"{settings.api_prefix}/cases/export/qr-word")
+async def export_selected_case_qr_word(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    records = await _selected_ordinary_case_export_records(ids, identity, db)
+    document = Document()
+    document.add_heading("案件二维码清单", level=0)
+    document.add_paragraph(f"生成时间：{datetime.now():%Y-%m-%d %H:%M:%S}")
+    document.add_paragraph("二维码包含案件记录编号与案号，用于内部扫描核对；扫描后仍须按当前账号权限在系统内查看案件详情。")
+    for index, record in enumerate(records, 1):
+        if index > 1:
+            document.add_page_break()
+        data = record.data or {}
+        document.add_heading(f"{index}. {record.serial_no}", level=1)
+        qr_payload = json.dumps({"case_record_id": record.id, "case_no": record.serial_no}, ensure_ascii=False, separators=(",", ":"))
+        image = qrcode.make(qr_payload)
+        image_buffer = io.BytesIO()
+        image.save(image_buffer, format="PNG")
+        image_buffer.seek(0)
+        document.add_picture(image_buffer, width=Inches(1.5))
+        document.add_paragraph(f"案件名称：{record.title}")
+        document.add_paragraph(f"客户：{record.customer or '【待补充】'}")
+        document.add_paragraph(f"案件类型：{data.get('case_type') or '【待补充】'}")
+        document.add_paragraph(f"案件阶段：{record.status}")
+    content = io.BytesIO()
+    document.save(content)
+    filename = f"案件二维码清单-{date.today()}.docx"
+    disposition = f"attachment; filename=case-qr.docx; filename*=UTF-8''{quote(filename)}"
+    return Response(content=content.getvalue(), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": disposition})
+
+
 @app.get(f"{settings.api_prefix}/investigations/clues/export")
 async def export_investigation_clues(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     records = await _scoped_export_records("clue", ids, identity, db)
@@ -4002,7 +4701,11 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     data["shared_with"] = []
     data["is_shared"] = "否"
     customer_type = str(data.get("customer_type") or "客户").strip()
-    if customer_type not in {"客户", "当事人"}: raise HTTPException(status_code=422, detail="客户类型只能为客户或当事人")
+    active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
+        SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
+    ))).all())
+    if customer_type not in active_customer_types:
+        raise HTTPException(status_code=422, detail="客户类型不存在或已停用")
     level = str(data.get("level") or "立案客户").strip()
     if level not in CUSTOMER_LEVELS: raise HTTPException(status_code=422, detail="客户等级无效")
     data["customer_type"] = customer_type; data["level"] = level
@@ -4418,10 +5121,63 @@ async def update_customer_contact(customer_id: int, contact_id: str, body: Custo
 
 @app.delete(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_customer_contact(customer_id: int, contact_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    customer = await _customer_or_404(customer_id, identity, db); await _require_record_owner_or_manager(customer, identity, db); data = customer.data or {}; contacts = list(data.get("contacts", [])); remaining = [x for x in contacts if x.get("id") != contact_id]
+    customer = await _customer_or_404(customer_id, identity, db); await _require_record_owner_or_manager(customer, identity, db); data = customer.data or {}; contacts = list(data.get("contacts", [])); contact = next((x for x in contacts if x.get("id") == contact_id), None); remaining = [x for x in contacts if x.get("id") != contact_id]
     if len(remaining) == len(contacts): raise HTTPException(status_code=404, detail="联系人不存在")
-    customer.data = {**data, "contacts": remaining}; db.add(_customer_event(customer, "删除联系人", identity, "删除客户联系人")); await db.commit()
+    linked_case_count = await db.scalar(select(func.count(IprCaseCustomerContact.id)).where(IprCaseCustomerContact.customer_record_id == customer.id, IprCaseCustomerContact.contact_id == contact_id)) or 0
+    if linked_case_count:
+        raise HTTPException(status_code=409, detail=f"该联系人已关联 {linked_case_count} 个知识产权案件，请先解除案件联系人关联")
+    attachment = await db.get(FileAttachment, int(contact["photo_attachment_id"])) if contact and contact.get("photo_attachment_id") else None
+    customer.data = {**data, "contacts": remaining}; db.add(_customer_event(customer, "删除联系人", identity, f"删除客户联系人：{contact.get('name', '')}"));
+    if attachment: await db.delete(attachment)
+    await db.commit()
+    if attachment:
+        path = Path(attachment.path)
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents: path.unlink(missing_ok=True)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _customer_contact_or_404(customer_id: int, contact_id: str, identity: dict, db: AsyncSession) -> tuple[BusinessRecord, list[dict], int]:
+    customer = await _customer_or_404(customer_id, identity, db)
+    await _require_record_owner_or_manager(customer, identity, db)
+    contacts = list((customer.data or {}).get("contacts", []))
+    index = next((i for i, item in enumerate(contacts) if item.get("id") == contact_id), None)
+    if index is None: raise HTTPException(status_code=404, detail="联系人不存在")
+    return customer, contacts, index
+
+
+@app.post(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}/photo", status_code=status.HTTP_201_CREATED)
+async def upload_customer_contact_photo(customer_id: int, contact_id: str, file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer, contacts, index = await _customer_contact_or_404(customer_id, contact_id, identity, db)
+    filename = Path(file.filename or "联系人照片").name; suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}: raise HTTPException(status_code=422, detail="联系人照片仅支持 JPG、PNG、GIF 或 WEBP 图片")
+    content = await file.read()
+    if not content: raise HTTPException(status_code=422, detail="联系人照片文件不能为空")
+    if len(content) > 10 * 1024 * 1024: raise HTTPException(status_code=413, detail="联系人照片不能超过 10MB")
+    previous = contacts[index]; old_attachment = await db.get(FileAttachment, int(previous["photo_attachment_id"])) if previous.get("photo_attachment_id") else None
+    target = UPLOAD_ROOT / f"customer-contact-{customer.id}-{contact_id}-{uuid4().hex}{suffix}"; target.write_bytes(content)
+    attachment = FileAttachment(record_id=customer.id, category="客户联系人照片", original_name=filename, stored_name=target.name, content_type=file.content_type or "image/*", size=len(content), path=str(target), uploader=identity["username"], remark=f"联系人 {contact_id} 照片")
+    db.add(attachment); await db.flush()
+    contacts[index] = {**previous, "photo_attachment_id": attachment.id, "photo_original_name": filename}
+    customer.data = {**(customer.data or {}), "contacts": contacts}
+    db.add(_customer_event(customer, "上传联系人照片", identity, f"联系人：{previous.get('name', '')}；{'替换' if old_attachment else '上传'}照片：{filename}"))
+    if old_attachment: await db.delete(old_attachment)
+    await db.commit(); await db.refresh(attachment)
+    if old_attachment:
+        old_path = Path(old_attachment.path)
+        if old_path.is_file() and UPLOAD_ROOT.resolve() in old_path.resolve().parents: old_path.unlink(missing_ok=True)
+    return {"attachment_id": attachment.id, "original_name": filename, "size": attachment.size}
+
+
+@app.get(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}/photo/download")
+async def download_customer_contact_photo(customer_id: int, contact_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, contacts, index = await _customer_contact_or_404(customer_id, contact_id, identity, db)
+    attachment_id = contacts[index].get("photo_attachment_id")
+    if not attachment_id: raise HTTPException(status_code=404, detail="该联系人尚未上传照片")
+    attachment = await db.get(FileAttachment, int(attachment_id))
+    if not attachment: raise HTTPException(status_code=404, detail="联系人照片记录不存在")
+    path = Path(attachment.path)
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents: raise HTTPException(status_code=404, detail="联系人照片文件不存在")
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
 
 
 @app.put(f"{settings.api_prefix}/customers/{{customer_id}}/managers")
@@ -4721,6 +5477,23 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
     return permission_name in permissions or permission_name in set().union(*(implied_permissions.get(item, set()) for item in permissions))
 
 
+async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
+    """Legacy contract audit membership is an explicit assignment on an active employee."""
+    if not user.is_active or not bool((user.profile or {}).get("contract_approval_enabled")):
+        return False
+    employee_id = await db.scalar(
+        select(BusinessRecord.id).where(
+            BusinessRecord.module == "hr",
+            BusinessRecord.status.not_in({"离职", "停用"}),
+            or_(
+                BusinessRecord.owner == user.username,
+                BusinessRecord.data["username"].as_string() == user.username,
+            ),
+        ).limit(1)
+    )
+    return employee_id is not None
+
+
 @app.get(f"{settings.api_prefix}/investigations/action-capabilities")
 async def investigation_action_capabilities(
     record_ids: str = Query(default="", max_length=1200),
@@ -4896,13 +5669,17 @@ async def submit_contract(contract_id: int, body: ContractSubmitInput, identity:
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
     if contract.status not in {"草稿", "已拒绝"}: raise HTTPException(status_code=409, detail="只有草稿或已拒绝合同可以重新提交")
+    attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
+        FileAttachment.record_id == contract.id, FileAttachment.category == "合同附件",
+    )) or 0)
+    if attachment_count < 1:
+        raise HTTPException(status_code=422, detail="请先上传至少一份合同附件后再提交审批")
     approvers = [x.strip() for x in body.approvers if x.strip()]
-    if len(approvers) != 1: raise HTTPException(status_code=422, detail="合同审批只能选择一名具有合同审批权限的人员")
-    if approvers[0] == identity["username"]: raise HTTPException(status_code=422, detail="合同发起人不能审批自己提交的合同")
+    if len(approvers) != 1: raise HTTPException(status_code=422, detail="合同审批只能选择一名合同审批流程人员")
     approver_user = await db.scalar(select(User).where(User.username == approvers[0], User.is_active.is_(True)))
     if not approver_user: raise HTTPException(status_code=422, detail="审批人不存在或已停用")
-    if not await _user_has_job_permission(approver_user, "合同审批", db):
-        raise HTTPException(status_code=422, detail="所选人员的岗位角色没有合同审批权限")
+    if not await _is_contract_approver(approver_user, db):
+        raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id))
     for index, approver in enumerate(approvers, 1):
         db.add(ContractApprovalStep(contract_record_id=contract_id, step_order=index, approver=approver, status="待审批" if index == 1 else "等待中"))
@@ -4928,7 +5705,9 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
     steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
     current = next((x for x in steps if x.status == "待审批"), None)
     if not current: raise HTTPException(status_code=409, detail="合同没有待处理的审批节点")
-    if current.approver != identity["username"]: raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批，管理员也不能代替指定审批人操作")
+    admin_override = identity.get("role") == "admin" and current.approver != identity["username"]
+    if current.approver != identity["username"] and not admin_override:
+        raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批")
     current.comment = body.comment.strip(); current.acted_at = datetime.now(); old = contract.status
     if not body.approved:
         current.status = "已拒绝"; contract.status = "已拒绝"
@@ -4956,7 +5735,8 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
                     else:
                         contract.data = {**(contract.data or {}), "sync_seal_file_required": True}
                         db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后等待用印文件", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已通过；请在用印中心上传真实用印文件后提交审批"))
-    db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {current.approver}：{body.comment}")); await db.commit(); await db.refresh(contract)
+    approval_actor = f"管理员代办 {current.approver}" if admin_override else current.approver
+    db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {approval_actor}：{body.comment}")); await db.commit(); await db.refresh(contract)
     return await _record_dict_for_identity(contract, identity, db)
 
 
@@ -5147,6 +5927,273 @@ async def create_contract_event(contract_id: int, body: ContractEventInput, iden
     await db.commit()
     await db.refresh(event)
     return _contract_event_dict(event)
+
+
+async def _contract_object_payload(item: ContractObject, identity: dict, db: AsyncSession) -> dict:
+    case = await _ensure_record_visible(item.case_record_id, identity, db)
+    if case.module != "case":
+        raise HTTPException(status_code=409, detail="合同标的关联案件已失效")
+    data = case.data or {}
+    logs = (await db.scalars(select(ContractObjectLog).where(ContractObjectLog.contract_object_id == item.id).order_by(ContractObjectLog.created_at.desc(), ContractObjectLog.id.desc()))).all()
+    return {"id": item.id, "contract_record_id": item.contract_record_id, "case_record_id": case.id, "case_no": case.serial_no, "case_title": case.title, "case_type": data.get("case_type", ""), "case_phase": case.status, "customer_manager": data.get("customer_manager", case.owner), "fee_type": item.fee_type, "amount": item.amount, "remark": item.remark, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at, "logs": [{"id": log.id, "action": log.action, "before": log.before, "after": log.after, "operator": log.operator, "created_at": log.created_at} for log in logs]}
+
+
+async def _contract_object_writable(contract: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    await _require_record_owner_or_manager(contract, identity, db)
+    if contract.status == "已归档":
+        raise HTTPException(status_code=409, detail="已归档合同的合同标的只读")
+    if contract.status == "审批中":
+        raise HTTPException(status_code=409, detail="合同审批中不能修改合同标的；请先撤回或等待审批结果")
+    if contract.status not in {"草稿", "已拒绝", "已通过", "履行中", "已完成"}:
+        raise HTTPException(status_code=409, detail="当前合同状态不能维护合同标的")
+
+
+async def _ensure_contract_object_not_reserved(item: ContractObject, db: AsyncSession) -> None:
+    """Do not let a pending/paid payment line be detached from its subject."""
+    active_payment = await db.scalar(
+        select(BusinessRecord.id)
+        .join(ContractPaymentLine, ContractPaymentLine.payment_record_id == BusinessRecord.id)
+        .where(
+            ContractPaymentLine.contract_object_id == item.id,
+            BusinessRecord.module == "contract_payment",
+            BusinessRecord.status.in_(["待审批", "待付款", "已付款"]),
+        )
+        .limit(1)
+    )
+    if active_payment:
+        raise HTTPException(status_code=409, detail="该合同标的已有待审批、待付款或已付款申请，不能修改或删除")
+
+
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/objects")
+async def list_contract_objects(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_visible(contract_id, identity, db)
+    if contract.module != "contract":
+        raise HTTPException(status_code=404, detail="合同不存在")
+    objects = (await db.scalars(select(ContractObject).where(ContractObject.contract_record_id == contract.id).order_by(ContractObject.id))).all()
+    return {"items": [await _contract_object_payload(item, identity, db) for item in objects], "total": len(objects)}
+
+
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/object-cases")
+async def list_contract_object_cases(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return every visible case eligible to become a subject line of this contract.
+
+    This is deliberately not a paged generic-record lookup: a client with more
+    than 100 cases must not silently lose valid subject candidates in the
+    contract-object editor.
+    """
+    contract = await _ensure_record_visible(contract_id, identity, db)
+    if contract.module != "contract":
+        raise HTTPException(status_code=404, detail="合同不存在")
+    cases = (await db.scalars(
+        select(BusinessRecord)
+        .where(
+            BusinessRecord.module == "case",
+            BusinessRecord.customer == contract.customer,
+            *(await _record_scope_conditions(identity, db)),
+        )
+        .order_by(BusinessRecord.serial_no, BusinessRecord.id)
+    )).all()
+    return {
+        "items": [
+            {
+                "id": item.id,
+                "serial_no": item.serial_no,
+                "title": item.title,
+                "customer": item.customer,
+                "status": item.status,
+                "case_type": (item.data or {}).get("case_type", ""),
+            }
+            for item in cases
+        ],
+        "total": len(cases),
+    }
+
+
+@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/objects", status_code=status.HTTP_201_CREATED)
+async def create_contract_object(contract_id: int, body: ContractObjectInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _contract_object_writable(contract, identity, db)
+    case = await _ensure_record_visible(body.case_record_id, identity, db)
+    if case.module != "case" or case.customer != contract.customer:
+        raise HTTPException(status_code=422, detail="合同标的必须关联当前客户范围内的案件")
+    duplicate = await db.scalar(select(ContractObject.id).where(ContractObject.contract_record_id == contract.id, ContractObject.case_record_id == case.id, ContractObject.fee_type == body.fee_type.strip()))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="该案件和费用类型已存在合同标的")
+    item = ContractObject(contract_record_id=contract.id, case_record_id=case.id, fee_type=body.fee_type.strip(), amount=body.amount, remark=body.remark.strip(), created_by=identity["username"], updated_by=identity["username"])
+    db.add(item); await db.flush()
+    snapshot = {"case_no": case.serial_no, "fee_type": item.fee_type, "amount": item.amount, "remark": item.remark}
+    db.add(ContractObjectLog(contract_object_id=item.id, action="新增合同标的", before={}, after=snapshot, operator=identity["username"]))
+    db.add(WorkflowEvent(record_id=contract.id, action="新增合同标的", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{case.serial_no}｜{item.fee_type}｜{item.amount}"))
+    await db.commit(); await db.refresh(item)
+    return await _contract_object_payload(item, identity, db)
+
+
+@app.patch(f"{settings.api_prefix}/contracts/{{contract_id}}/objects/{{object_id}}")
+async def update_contract_object(contract_id: int, object_id: int, body: ContractObjectInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _contract_object_writable(contract, identity, db)
+    item = await db.scalar(select(ContractObject).where(ContractObject.id == object_id, ContractObject.contract_record_id == contract.id))
+    if not item: raise HTTPException(status_code=404, detail="合同标的不存在")
+    await _ensure_contract_object_not_reserved(item, db)
+    case = await _ensure_record_visible(body.case_record_id, identity, db)
+    if case.module != "case" or case.customer != contract.customer: raise HTTPException(status_code=422, detail="合同标的必须关联当前客户范围内的案件")
+    duplicate = await db.scalar(select(ContractObject.id).where(ContractObject.contract_record_id == contract.id, ContractObject.case_record_id == case.id, ContractObject.fee_type == body.fee_type.strip(), ContractObject.id != item.id))
+    if duplicate: raise HTTPException(status_code=409, detail="该案件和费用类型已存在合同标的")
+    before = {"case_record_id": item.case_record_id, "fee_type": item.fee_type, "amount": item.amount, "remark": item.remark}
+    item.case_record_id = case.id; item.fee_type = body.fee_type.strip(); item.amount = body.amount; item.remark = body.remark.strip(); item.updated_by = identity["username"]
+    after = {"case_record_id": item.case_record_id, "fee_type": item.fee_type, "amount": item.amount, "remark": item.remark}
+    db.add(ContractObjectLog(contract_object_id=item.id, action="修改合同标的", before=before, after=after, operator=identity["username"]))
+    db.add(WorkflowEvent(record_id=contract.id, action="修改合同标的", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"标的#{item.id}"))
+    await db.commit(); await db.refresh(item)
+    return await _contract_object_payload(item, identity, db)
+
+
+@app.delete(f"{settings.api_prefix}/contracts/{{contract_id}}/objects/{{object_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contract_object(contract_id: int, object_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _contract_object_writable(contract, identity, db)
+    item = await db.scalar(select(ContractObject).where(ContractObject.id == object_id, ContractObject.contract_record_id == contract.id))
+    if not item: raise HTTPException(status_code=404, detail="合同标的不存在")
+    await _ensure_contract_object_not_reserved(item, db)
+    db.add(WorkflowEvent(record_id=contract.id, action="删除合同标的", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"标的#{item.id}｜{item.fee_type}｜{item.amount}"))
+    await db.delete(item); await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: dict, db: AsyncSession) -> list[dict]:
+    """Return each visible contract subject with its remaining payable amount.
+
+    Pending, approved-for-payment and paid applications reserve the amount so
+    the same subject cannot be submitted twice while an earlier request is in
+    flight. Rejected requests deliberately release the amount.
+    """
+    objects = (await db.scalars(select(ContractObject).where(
+        ContractObject.contract_record_id == contract.id
+    ).order_by(ContractObject.id))).all()
+    object_ids = [item.id for item in objects]
+    used_by_object: dict[int, float] = {}
+    if object_ids:
+        active_payment_ids = select(BusinessRecord.id).where(
+            BusinessRecord.module == "contract_payment",
+            BusinessRecord.status.in_(["待审批", "待付款", "已付款"]),
+        )
+        lines = (await db.scalars(select(ContractPaymentLine).where(
+            ContractPaymentLine.contract_object_id.in_(object_ids),
+            ContractPaymentLine.payment_record_id.in_(active_payment_ids),
+        ))).all()
+        for line in lines:
+            used_by_object[line.contract_object_id] = _round_fee_amount(
+                used_by_object.get(line.contract_object_id, 0) + line.requested_amount
+            )
+    rows: list[dict] = []
+    for item in objects:
+        case = await _ensure_record_visible(item.case_record_id, identity, db)
+        if case.module != "case":
+            continue
+        used = used_by_object.get(item.id, 0)
+        rows.append({
+            "contract_object_id": item.id,
+            "case_record_id": case.id,
+            "case_no": case.serial_no,
+            "case_title": case.title,
+            "fee_type": item.fee_type,
+            "contract_amount": item.amount,
+            "reserved_amount": used,
+            "remaining_amount": max(_round_fee_amount(item.amount - used), 0),
+            "remark": item.remark,
+        })
+    return rows
+
+
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-candidates")
+async def contract_payment_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    payment_types = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "payment_type", SystemParameter.is_active.is_(True)
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    return {
+        "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer, "owner": contract.owner, "status": contract.status},
+        "payment_types": [{"value": item.name, "label": item.name, "payee": (item.extra or {}).get("payee", ""), "account": (item.extra or {}).get("account", "")} for item in payment_types],
+        "items": await _contract_payment_candidate_rows(contract, identity, db),
+    }
+
+
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications")
+async def list_contract_payment_applications(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    items = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract_payment",
+        BusinessRecord.data["contract_id"].as_integer() == contract.id,
+        *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.id.desc()))).all()
+    result = []
+    for item in items:
+        lines = (await db.scalars(select(ContractPaymentLine).where(ContractPaymentLine.payment_record_id == item.id).order_by(ContractPaymentLine.id))).all()
+        result.append({**await _record_dict_for_identity(item, identity, db), "lines": [{"id": line.id, "contract_object_id": line.contract_object_id, "case_record_id": line.case_record_id, "fee_type": line.fee_type, "requested_amount": line.requested_amount} for line in lines]})
+    return {"items": result, "total": len(result)}
+
+
+@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications", status_code=status.HTTP_201_CREATED)
+async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _require_record_owner_or_manager(contract, identity, db)
+    if contract.status in {"审批中", "已归档"}:
+        raise HTTPException(status_code=409, detail="审批中或已归档合同不能发起合同付款")
+    if contract.status not in {"已通过", "履行中", "已完成"}:
+        raise HTTPException(status_code=409, detail="仅已通过或履行中的合同可以发起合同付款")
+    payment_type = await db.scalar(select(SystemParameter).where(SystemParameter.category == "payment_type", SystemParameter.name == body.payment_type.strip(), SystemParameter.is_active.is_(True)))
+    if not payment_type:
+        raise HTTPException(status_code=422, detail="付款类型不存在或已停用")
+    line_inputs = list({line.contract_object_id: line for line in body.lines}.values())
+    if len(line_inputs) != len(body.lines):
+        raise HTTPException(status_code=422, detail="同一合同标的只能提交一次")
+    candidates = {item["contract_object_id"]: item for item in await _contract_payment_candidate_rows(contract, identity, db)}
+    invalid = [str(line.contract_object_id) for line in line_inputs if line.contract_object_id not in candidates]
+    if invalid:
+        raise HTTPException(status_code=404, detail="部分合同标的不存在或无权访问：" + "、".join(invalid))
+    normalized_lines: list[tuple[ContractPaymentLineInput, dict]] = []
+    for line in line_inputs:
+        candidate = candidates[line.contract_object_id]
+        amount = _round_fee_amount(line.amount)
+        if amount <= 0 or amount > float(candidate["remaining_amount"]) + 0.0001:
+            raise HTTPException(status_code=422, detail=f"案件 {candidate['case_no']} 的本次支付金额不能超过待付余额")
+        normalized_lines.append((line, candidate))
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
+    total = _round_fee_amount(sum(_round_fee_amount(line.amount) for line, _ in normalized_lines))
+    serial = f"CP{datetime.now():%Y%m%d%H%M%S%f}"
+    snapshot = [{"contract_object_id": item["contract_object_id"], "case_id": item["case_record_id"], "case_no": item["case_no"], "fee_type": item["fee_type"], "amount": _round_fee_amount(line.amount)} for line, item in normalized_lines]
+    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "payment_type": payment_type.name, "payee": body.payee.strip(), "account": body.account.strip(), "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
+    db.add(payment); await db.flush()
+    for line, candidate in normalized_lines:
+        db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=line.contract_object_id, case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))
+    db.add(WorkflowEvent(record_id=payment.id, action="提交合同付款申请", to_status="待审批", operator=identity["username"], comment=f"{body.payment_type}｜{total:.2f} 元"))
+    db.add(WorkflowEvent(record_id=contract.id, action="发起合同付款申请", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{serial}｜{total:.2f} 元"))
+    await db.commit(); await db.refresh(payment)
+    return await _record_dict_for_identity(payment, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/review")
+async def review_contract_payment_application(payment_id: int, body: ContractPaymentReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有合同付款审批权限")
+    payment = await _ensure_record_module(payment_id, "contract_payment", identity, db)
+    if payment.status != "待审批": raise HTTPException(status_code=409, detail="仅待审批合同付款可以审核")
+    target = "待付款" if body.approved else "已驳回"
+    payment.status = target
+    db.add(WorkflowEvent(record_id=payment.id, action="合同付款审批通过" if body.approved else "合同付款审批驳回", from_status="待审批", to_status=target, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(payment); return await _record_dict_for_identity(payment, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/pay")
+async def pay_contract_payment_application(payment_id: int, body: ContractPaymentPayInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有合同付款办理权限")
+    payment = await _ensure_record_module(payment_id, "contract_payment", identity, db)
+    if payment.status != "待付款": raise HTTPException(status_code=409, detail="仅待付款合同付款申请可以标记付款")
+    data = dict(payment.data or {}); total = _round_fee_amount(float(data.get("amount") or 0))
+    db.add(FinanceTransaction(finance_record_id=payment.id, transaction_type="合同付款", amount=total, transaction_date=body.paid_date, voucher_no=body.voucher_no.strip(), counterparty=str(data.get("payee") or ""), operator=identity["username"], remark=body.comment.strip()))
+    payment.status = "已付款"; payment.data = {**data, "paid_date": body.paid_date.isoformat(), "voucher_no": body.voucher_no.strip(), "paid_by": identity["username"]}
+    db.add(WorkflowEvent(record_id=payment.id, action="合同付款完成", from_status="待付款", to_status="已付款", operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(payment); return await _record_dict_for_identity(payment, identity, db)
 
 
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/changes")
@@ -7792,11 +8839,20 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     return await _record_dict_for_identity(item, identity, db)
 
 
+@app.get(f"{settings.api_prefix}/customers/reference-options")
+async def customer_reference_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return customer-facing dictionaries without granting system-parameter administration."""
+    customer_types = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    return {"customer_types": [{"value": item.name, "label": item.name, "code": item.code} for item in customer_types]}
+
+
 @app.get(f"{settings.api_prefix}/customers")
 async def list_customers(
     scope: str = Query("mine", pattern="^(mine|recycle|department|department_recycle|company|company_recycle|public|shared|recent_contact|recent_update)$"),
     customer_name: str = "",
-    customer_type: str = Query("客户", pattern="^(客户|当事人)$"),
+    customer_type: str = Query("客户", min_length=1, max_length=64),
     manager: str = "",
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=200),
@@ -7809,6 +8865,11 @@ async def list_customers(
     )
     if not current_user:
         raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
+    active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
+        SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
+    ))).all())
+    if customer_type not in active_customer_types:
+        raise HTTPException(status_code=422, detail="客户类型不存在或已停用")
     # Customer managers are stored as a JSON array.  Do not use a serialized
     # JSON ``contains`` predicate here: a user named ``ann`` would otherwise
     # match a manager named ``joann``.  Legacy rows may contain a display name
@@ -10881,6 +11942,15 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     causes = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "cause", SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    case_file_types = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "case_file_type", SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    courts = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "court", SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    court_officers = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "court_officer", SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     return {
         "case_types": [
             {"value": "民事案件", "label": "民事争议"},
@@ -10890,6 +11960,9 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
             {"value": "仲裁", "label": "仲裁"},
         ],
         "causes": [{"value": item.name, "label": item.name, "code": item.code} for item in causes],
+        "case_file_types": [{"value": item.name, "label": item.name, "code": item.code, "parent_code": (item.extra or {}).get("parent_code", "")} for item in case_file_types],
+        "courts": [{"value": item.name, "label": item.name, "code": item.code} for item in courts],
+        "court_officers": [{"value": item.name, "label": item.name, "code": item.code, "court_code": (item.extra or {}).get("court_code", ""), "role": (item.extra or {}).get("role", ""), "phone": (item.extra or {}).get("phone", "")} for item in court_officers],
         "right_types": ["商标权", "专利权", "著作权", "不正当竞争", "商业秘密", "其他"],
     }
 
@@ -10927,6 +12000,17 @@ async def _ensure_case_fixed_tasks(case_record: BusinessRecord, db: AsyncSession
     if created:
         case_record.data = {**(case_record.data or {}), "fixed_tasks_generated": True, "fixed_task_ids": [*list((case_record.data or {}).get("fixed_task_ids", [])), *[item.id for item in created]]}
     return [*existing, *created]
+
+
+async def _next_ipr_case_serial(case_kind: str, db: AsyncSession) -> str:
+    prefix = "ZL" if case_kind == "专利" else "SB"
+    # The legacy system distinguishes patent and trademark case ledgers.  Keep
+    # that distinction in the visible serial rather than reusing lawsuit IDs.
+    for _ in range(20):
+        serial = f"{prefix}{datetime.now():%y%m%d%H%M%S}{uuid4().hex[:4].upper()}"
+        if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial)):
+            return serial
+    raise HTTPException(status_code=503, detail="知识产权案件编号生成失败，请稍后重试")
 
 
 async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
@@ -11065,6 +12149,206 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     await db.commit()
     await db.refresh(record)
     return _record_dict(record)
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/duplicate", status_code=status.HTTP_201_CREATED)
+async def duplicate_case(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Copy only the case's basic business data into a new, unstarted case.
+
+    The legacy action preserves the source case number as the original case.
+    Never clone downstream facts (tasks, files, fees, reminders, schedules or
+    workflow history): those records describe work already performed and must
+    not be silently recreated under the new case.
+    """
+    source = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_record_owner_or_manager(source, identity, db)
+    source_data = dict(source.data or {})
+    case_type = str(source_data.get("case_type") or "").strip()
+    if case_type not in CASE_CREATABLE_TYPES:
+        raise HTTPException(status_code=409, detail="原案件类型不支持复制新建")
+    permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
+    if identity.get("role") != "admin" and permission_key:
+        permission = await _permission_payload(identity.get("role", "user"), db)
+        if permission_key not in set(permission.get("menu_keys", [])):
+            raise HTTPException(status_code=403, detail="当前角色没有该案件类型的新建权限")
+    contract_id = int(source_data.get("contract_id") or source_data.get("contract_record_id") or 0)
+    if not contract_id:
+        raise HTTPException(status_code=409, detail="原案件未保留关联合同，不能复制")
+    contract = await _ensure_record_visible(contract_id, identity, db)
+    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
+        raise HTTPException(status_code=409, detail="关联合同当前不满足复制新建案件条件")
+    serial_no = await _next_case_serial(case_type, db)
+    owner = source.owner if identity.get("role") == "admin" else identity["username"]
+    owner_user = await db.scalar(select(User).where(User.username == owner, User.is_active.is_(True)))
+    if not owner_user:
+        owner = identity["username"]
+    copied_data = dict(source_data)
+    for key in {
+        "fixed_tasks_generated", "fixed_task_ids", "case_reminder_ids", "task_ids", "schedule_ids",
+        "archived_at", "archived_by", "archive_comment", "submitted_at", "submitted_by",
+        "approval_comment", "approval_by", "approval_at", "progress_logs",
+    }:
+        copied_data.pop(key, None)
+    copied_data.update({
+        "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no,
+        "contract_title": contract.title, "external_contract_no": (contract.data or {}).get("external_contract_no", ""),
+        "external_contract_numbers": (contract.data or {}).get("external_contract_numbers", []),
+        "original_case_no": source.serial_no, "original_case_record_id": source.id,
+        "copied_from_case_id": source.id, "copied_at": datetime.now().isoformat(timespec="seconds"),
+        "copied_by": identity["username"], "case_creation_step": "basic",
+        "case_creation_approval_status": "未提交", "business_stage": "立案",
+    })
+    copied = BusinessRecord(
+        module="case", serial_no=serial_no, title=f"{source.title}（副本）", customer=contract.customer,
+        status="新案待分配", owner=owner, department=contract.department, description=source.description,
+        data=copied_data,
+    )
+    db.add(copied); await db.flush()
+    db.add(WorkflowEvent(
+        record_id=copied.id, action="复制案件", to_status=copied.status, operator=identity["username"],
+        comment=f"来源案件：{source.serial_no}；未复制任务、附件、费用、提醒、排期和历史记录。",
+    ))
+    db.add(WorkflowEvent(
+        record_id=source.id, action="案件被复制", from_status=source.status, to_status=source.status,
+        operator=identity["username"], comment=f"新案件：{copied.serial_no}",
+    ))
+    await db.commit(); await db.refresh(copied)
+    return _record_dict(copied, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/merge")
+async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Merge a same-customer source case into the current case with an audit trail.
+
+    Legacy behaviour moved case fees, internal fees and case documents then
+    deleted the entered case.  We retain the source row as ``已合并`` instead
+    of physically deleting it, so historic audit, notification and relation
+    evidence remains reviewable.  Tasks, reminders, hearings and workflow
+    history are deliberately not moved: they record work performed for the
+    original matter.
+    """
+    target = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_record_owner_or_manager(target, identity, db)
+    source_no = body.source_case_no.strip()
+    if source_no == target.serial_no:
+        raise HTTPException(status_code=422, detail="待合并案件不能与当前案件相同")
+    source = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "case", BusinessRecord.serial_no == source_no,
+        *(await _record_scope_conditions(identity, db)),
+    ))
+    if not source:
+        raise HTTPException(status_code=404, detail="未找到待合并案件，或当前账号无权查看")
+    await _require_record_owner_or_manager(source, identity, db)
+    blocked_statuses = {"待归档审核", "已归档", "已合并"}
+    if target.status in blocked_statuses or source.status in blocked_statuses:
+        raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能参与合并")
+    if source.customer != target.customer:
+        raise HTTPException(status_code=422, detail="待合并案件的客户与当前案件不一致，不允许操作")
+    source_type = str((source.data or {}).get("case_type") or "").strip()
+    target_type = str((target.data or {}).get("case_type") or "").strip()
+    if source_type != target_type:
+        raise HTTPException(status_code=422, detail="仅允许合并同一案件类型的案件")
+
+    finance_rows = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance"))).all())
+    moved_fees = 0
+    for fee in finance_rows:
+        if not _record_links_to_case(fee, source):
+            continue
+        fee_data = dict(fee.data or {})
+        fee.data = {
+            **fee_data,
+            "case_id": target.id,
+            "case_record_id": target.id,
+            "case_no": target.serial_no,
+            "merged_from_case_id": source.id,
+            "merged_from_case_no": source.serial_no,
+            "merged_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        db.add(WorkflowEvent(
+            record_id=fee.id, action="案件合并迁移费用", from_status=fee.status, to_status=fee.status,
+            operator=identity["username"], comment=f"{source.serial_no} → {target.serial_no}",
+        ))
+        moved_fees += 1
+
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == source.id))).all())
+    for attachment in attachments:
+        attachment.record_id = target.id
+        attachment.remark = f"{attachment.remark}｜案件合并迁移：{source.serial_no}→{target.serial_no}".strip("｜")
+
+    source_previous = source.status
+    source.status = "已合并"
+    source.data = {
+        **(source.data or {}), "merged_into_case_id": target.id,
+        "merged_into_case_no": target.serial_no, "merged_at": datetime.now().isoformat(timespec="seconds"),
+        "merged_by": identity["username"], "merge_comment": body.comment.strip(),
+    }
+    db.add_all([
+        WorkflowEvent(
+            record_id=target.id, action="合并案件", from_status=target.status, to_status=target.status,
+            operator=identity["username"],
+            comment=f"合并来源案件 {source.serial_no}；迁移费用 {moved_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
+        ),
+        WorkflowEvent(
+            record_id=source.id, action="案件已合并", from_status=source_previous, to_status=source.status,
+            operator=identity["username"],
+            comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
+        ),
+    ])
+    await db.commit(); await db.refresh(target); await db.refresh(source)
+    return {
+        "target": await _record_dict_for_identity(target, identity, db),
+        "source": await _record_dict_for_identity(source, identity, db),
+        "moved_fees": moved_fees, "moved_attachments": len(attachments),
+        "not_moved": ["tasks", "reminders", "hearings", "workflow_history"],
+    }
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/notary-info")
+async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    data = dict(case_record.data or {})
+    if str(data.get("case_type") or "") != "民事案件":
+        raise HTTPException(status_code=409, detail="仅民事案件可以维护公证信息")
+    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+        raise HTTPException(status_code=409, detail="当前案件状态不能维护公证信息")
+    previous_notary = str(data.get("notary_nos") or data.get("notary_no") or "")
+    previous_address = str(data.get("deposit_address") or "")
+    case_record.data = {
+        **data, "notary_nos": body.notary_nos.strip(), "notary_no": body.notary_nos.strip(),
+        "deposit_address": body.deposit_address.strip(),
+    }
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="修改案件公证信息", from_status=case_record.status, to_status=case_record.status,
+        operator=identity["username"],
+        comment=f"公证书号：{previous_notary or '空'} → {body.notary_nos.strip()}；存放位置：{previous_address or '空'} → {body.deposit_address.strip() or '空'}。{body.comment.strip()}",
+    ))
+    await db.commit(); await db.refresh(case_record)
+    return await _record_dict_for_identity(case_record, identity, db)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/settlement-amount")
+async def update_case_settlement_amount(case_id: int, body: CaseSettlementAmountInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    data = dict(case_record.data or {})
+    if str(data.get("case_type") or "") not in {"民事案件", "刑事案件", "行政案件及国家赔偿", "仲裁"}:
+        raise HTTPException(status_code=409, detail="当前案件类型不能维护诉讼或判决金额")
+    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+        raise HTTPException(status_code=409, detail="当前案件状态不能维护诉讼或判决金额")
+    previous_litigation = data.get("litigation_amount", 0)
+    previous_settlement = data.get("settlement_amount", 0)
+    case_record.data = {
+        **data, "litigation_amount": _round_fee_amount(body.litigation_amount),
+        "settlement_amount": _round_fee_amount(body.settlement_amount),
+    }
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="修改案件诉讼或判决金额", from_status=case_record.status, to_status=case_record.status,
+        operator=identity["username"],
+        comment=f"诉讼标的：{previous_litigation} → {_round_fee_amount(body.litigation_amount)}；判决金额：{previous_settlement} → {_round_fee_amount(body.settlement_amount)}。{body.comment.strip()}",
+    ))
+    await db.commit(); await db.refresh(case_record)
+    return await _record_dict_for_identity(case_record, identity, db)
 
 
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/litigants")
@@ -11412,6 +12696,31 @@ async def update_case_judicial(case_id: int, body: CaseJudicialInput, identity: 
             judicial_data[key] = str(value)
         else:
             judicial_data[key] = value
+    enabled_court_specs = (
+        ("first_court_enabled", "first_court_name", "first_court_judge", "first_court_clerk"),
+        ("second_court_enabled", "second_court_name", "second_court_judge", "second_court_clerk"),
+        ("retrial_court_enabled", "retrial_court_name", "retrial_court_judge", "retrial_court_clerk"),
+    )
+    enabled_court_names = [str(judicial_data.get(name_key) or "").strip() for enabled_key, name_key, _, _ in enabled_court_specs if judicial_data.get(enabled_key)]
+    if enabled_court_names:
+        courts = (await db.scalars(select(SystemParameter).where(SystemParameter.category == "court", SystemParameter.is_active.is_(True)))).all()
+        court_codes = {court.name: court.code for court in courts}
+        for enabled_key, name_key, judge_key, clerk_key in enabled_court_specs:
+            if not judicial_data.get(enabled_key):
+                continue
+            court_name = str(judicial_data.get(name_key) or "").strip()
+            if not court_name or court_name not in court_codes:
+                raise HTTPException(status_code=422, detail="启用的法院信息必须选择有效法院")
+            for officer_key, officer_role in ((judge_key, "法官"), (clerk_key, "书记员")):
+                officer_name = str(judicial_data.get(officer_key) or "").strip()
+                if not officer_name:
+                    continue
+                officer = await db.scalar(select(SystemParameter).where(
+                    SystemParameter.category == "court_officer", SystemParameter.name == officer_name,
+                    SystemParameter.is_active.is_(True)
+                ))
+                if not officer or str((officer.extra or {}).get("court_code") or "") != court_codes[court_name] or str((officer.extra or {}).get("role") or "") != officer_role:
+                    raise HTTPException(status_code=422, detail=f"{officer_role}必须属于所选法院且处于启用状态")
     case_record.description = str(judicial_data.pop("description", ""))
     if case_type == "行政案件及国家赔偿":
         enabled_court_names = [
@@ -11518,12 +12827,18 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
 
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
     role = await _case_team_role(case_record, identity, db)
+    case_type = str((case_record.data or {}).get("case_type") or "").strip()
+    can_create_same_type = identity.get("role") == "admin"
+    if not can_create_same_type and case_type in CASE_CREATE_PERMISSION_BY_TYPE:
+        permission = await _permission_payload(identity.get("role", "user"), db)
+        can_create_same_type = CASE_CREATE_PERMISSION_BY_TYPE[case_type] in set(permission.get("menu_keys", []))
     base = {
         "can_write": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_manage_hearing": False,
-        "can_create_case_task": False,
+        "can_create_case_task": False, "can_duplicate_case": role == "manager" and can_create_same_type,
+        "can_merge_case": role == "manager",
         "can_assign_team": role == "manager", "can_edit_basic": role == "manager",
         "can_close_case": role == "manager", "can_archive": role == "manager",
         "can_create_finance": role == "manager", "team_role": role, "reason": "",
@@ -11966,6 +13281,301 @@ async def delete_official_documents(body: OfficialDocumentDeleteInput, identity:
     return {"deleted": deleted}
 
 
+async def _official_outgoing_dict(item: OfficialOutgoingDocument, record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    source = await _ensure_record_visible(item.source_record_id, identity, db) if item.source_record_id else None
+    attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id).order_by(FileAttachment.id))).all()
+    latest_audit = await db.scalar(select(WorkflowEvent).where(
+        WorkflowEvent.record_id == record.id,
+        WorkflowEvent.action.in_(("正式发文审批通过", "正式发文审批拒绝")),
+    ).order_by(WorkflowEvent.id.desc()))
+    return {
+        **await _record_dict_for_identity(record, identity, db),
+        "official_no": item.official_no,
+        "need_audit": item.need_audit,
+        "source_type": item.source_type,
+        "source_record_id": item.source_record_id,
+        "source_serial_no": source.serial_no if source else "",
+        "source_file_ids": item.source_file_ids or [],
+        "stamp_attachment_id": item.stamp_attachment_id,
+        "attachments": [_attachment_dict(attachment, record) for attachment in attachments],
+        "seal_asset_id": (record.data or {}).get("seal_asset_id"),
+        "seal_type": (record.data or {}).get("seal_type", ""),
+        "seal_name": (record.data or {}).get("seal_name", ""),
+        "is_electronic_seal": bool((record.data or {}).get("is_electronic_seal")),
+        "is_offline_print": bool((record.data or {}).get("is_offline_print", True)),
+        "print_quantity": int((record.data or {}).get("print_quantity") or 1),
+        "content": (record.data or {}).get("content", ""),
+        "auditor": latest_audit.operator if latest_audit else "",
+        "audit_time": latest_audit.created_at.isoformat() if latest_audit else "",
+        "audit_remark": latest_audit.comment if latest_audit else "",
+    }
+
+
+@app.get(f"{settings.api_prefix}/official-outgoing")
+async def list_official_outgoing_documents(
+    status_value: str = "", official_no: str = "", owner: str = "", customer: str = "", case_no: str = "", contract_no: str = "", seal_type: str = "", file_name: str = "",
+    application_date_from: date | None = None, application_date_to: date | None = None,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    if application_date_from and application_date_to and application_date_from > application_date_to:
+        raise HTTPException(status_code=422, detail="申请起始日期不能晚于结束日期")
+    records = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "official_outgoing", *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.id.desc()))).all()
+    if status_value:
+        records = [item for item in records if item.status == status_value]
+    if official_no.strip():
+        needle = official_no.strip().lower(); records = [item for item in records if needle in item.serial_no.lower()]
+    if owner.strip():
+        needle = owner.strip().lower(); records = [item for item in records if needle in item.owner.lower()]
+    if customer.strip():
+        needle = customer.strip().lower(); records = [item for item in records if needle in item.customer.lower()]
+    if case_no.strip():
+        needle = case_no.strip().lower(); records = [item for item in records if (item.data or {}).get("source_type") == "case" and needle in str((item.data or {}).get("source_serial_no") or "").lower()]
+    if contract_no.strip():
+        needle = contract_no.strip().lower(); records = [item for item in records if (item.data or {}).get("source_type") == "contract" and needle in str((item.data or {}).get("source_serial_no") or "").lower()]
+    if seal_type.strip():
+        needle = seal_type.strip().lower(); records = [item for item in records if needle in str((item.data or {}).get("seal_type") or "").lower()]
+    if application_date_from:
+        records = [item for item in records if item.created_at.date() >= application_date_from]
+    if application_date_to:
+        records = [item for item in records if item.created_at.date() <= application_date_to]
+    if file_name.strip():
+        ids = [item.id for item in records]
+        matched_ids = set((await db.scalars(select(FileAttachment.record_id).where(FileAttachment.record_id.in_(ids), FileAttachment.original_name.ilike(f"%{file_name.strip()}%")))).all()) if ids else set()
+        records = [item for item in records if item.id in matched_ids]
+    details = (await db.scalars(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id.in_([item.id for item in records])))).all() if records else []
+    detail_by_record = {item.record_id: item for item in details}
+    return {"items": [await _official_outgoing_dict(detail_by_record[item.id], item, identity, db) for item in records if item.id in detail_by_record], "total": len(records)}
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing", status_code=status.HTTP_201_CREATED)
+async def create_official_outgoing_document(body: OfficialOutgoingCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    source = await _ensure_record_module(body.source_record_id, body.source_type, identity, db)
+    source_file_ids = list(dict.fromkeys(body.source_file_ids))
+    files: list[FileAttachment] = []
+    if source_file_ids:
+        files = (await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(source_file_ids), FileAttachment.record_id == source.id))).all()
+        if len(files) != len(source_file_ids):
+            raise HTTPException(status_code=422, detail="部分选中文件不属于来源合同或案件，不能发起正式发文")
+    elif body.source_type == "contract":
+        # 旧系统“由合同创建”未显式选择文件时会带入该合同全部文件；案件仍保持仅带入用户选中文件。
+        files = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == source.id).order_by(FileAttachment.id))).all()
+        source_file_ids = [item.id for item in files]
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
+    if not body.seal_asset_id:
+        raise HTTPException(status_code=422, detail="请先选择可用印章类型")
+    asset = await db.get(SealAsset, body.seal_asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="所选印章不存在")
+    if asset and asset.status != "可用":
+        raise HTTPException(status_code=409, detail="所选印章当前不可用")
+    official_no = f"FW{datetime.now():%Y%m%d%H%M%S%f}"
+    target_status = "草稿"
+    record = BusinessRecord(module="official_outgoing", serial_no=official_no, title=body.title.strip(), customer=source.customer, status=target_status, owner=identity["username"], department=user.department, description=body.remark.strip(), data={"content": body.content, "source_type": body.source_type, "source_record_id": source.id, "source_serial_no": source.serial_no, "source_file_ids": source_file_ids, "need_audit": body.need_audit, "seal_asset_id": asset.id if asset else None, "seal_type": asset.seal_type if asset else "", "seal_name": asset.name if asset else "", "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "print_quantity": body.print_quantity})
+    db.add(record); await db.flush()
+    detail = OfficialOutgoingDocument(record_id=record.id, official_no=official_no, source_type=body.source_type, source_record_id=source.id, source_file_ids=source_file_ids, need_audit=body.need_audit, created_by=identity["username"])
+    db.add(detail)
+    copied_paths: list[Path] = []
+    try:
+        for source_file in files:
+            source_path = Path(source_file.path)
+            if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
+                raise HTTPException(status_code=409, detail=f"来源附件不存在或不可读取：{source_file.original_name}")
+            target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
+            target.write_bytes(source_path.read_bytes())
+            copied_paths.append(target)
+            db.add(FileAttachment(
+                record_id=record.id, category="正式发文附件", original_name=source_file.original_name,
+                stored_name=target.name, content_type=source_file.content_type, size=target.stat().st_size,
+                path=str(target), uploader=identity["username"], remark=f"从{body.source_type} {source.serial_no}带入；来源附件ID {source_file.id}",
+            ))
+        db.add(WorkflowEvent(record_id=record.id, action="创建正式发文草稿", to_status=target_status, operator=identity["username"], comment=f"来源{body.source_type} {source.serial_no}；带入附件{len(files)}个"))
+        await db.commit(); await db.refresh(record); await db.refresh(detail)
+    except Exception:
+        await db.rollback()
+        for target in copied_paths:
+            target.unlink(missing_ok=True)
+        raise
+    return await _official_outgoing_dict(detail, record, identity, db)
+
+
+@app.get(f"{settings.api_prefix}/official-outgoing/{{record_id}}")
+async def get_official_outgoing_document(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(record_id, "official_outgoing", identity, db)
+    detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
+    if not detail: raise HTTPException(status_code=404, detail="正式发文详情不存在")
+    return await _official_outgoing_dict(detail, record, identity, db)
+
+
+@app.patch(f"{settings.api_prefix}/official-outgoing/{{record_id}}")
+async def update_official_outgoing_document(record_id: int, body: OfficialOutgoingUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Edit the mutable draft fields without breaking source-file provenance.
+
+    The legacy Edit action changes the outgoing document itself.  Source contract/case
+    and copied files remain immutable here; changing either would make the stored
+    attachment provenance and later stamp/audit history misleading.
+    """
+    record = await _ensure_record_module(record_id, "official_outgoing", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in {"草稿", "已拒绝", "已撤回"}:
+        raise HTTPException(status_code=409, detail="仅草稿、已拒绝或已撤回正式发文可以编辑")
+    detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
+    if not detail:
+        raise HTTPException(status_code=409, detail="正式发文详情已失效")
+    asset = await db.get(SealAsset, body.seal_asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="所选印章不存在")
+    if asset.status != "可用":
+        raise HTTPException(status_code=409, detail="所选印章当前不可用")
+    previous_data = dict(record.data or {})
+    before = {
+        "title": record.title, "need_audit": detail.need_audit,
+        "seal_asset_id": previous_data.get("seal_asset_id"),
+        "is_electronic_seal": bool(previous_data.get("is_electronic_seal")),
+        "is_offline_print": bool(previous_data.get("is_offline_print", True)),
+        "print_quantity": int(previous_data.get("print_quantity") or 1),
+        "content": previous_data.get("content", ""), "remark": record.description,
+    }
+    record.title = body.title.strip()
+    record.description = body.remark.strip()
+    record.data = {
+        **previous_data,
+        "need_audit": body.need_audit,
+        "seal_asset_id": asset.id,
+        "seal_type": asset.seal_type,
+        "seal_name": asset.name,
+        "is_electronic_seal": body.is_electronic_seal,
+        "is_offline_print": body.is_offline_print,
+        "print_quantity": body.print_quantity,
+        "content": body.content,
+    }
+    detail.need_audit = body.need_audit
+    after = {
+        "title": record.title, "need_audit": detail.need_audit,
+        "seal_asset_id": asset.id, "is_electronic_seal": body.is_electronic_seal,
+        "is_offline_print": body.is_offline_print, "print_quantity": body.print_quantity,
+        "content": body.content, "remark": record.description,
+    }
+    db.add(WorkflowEvent(
+        record_id=record.id, action="编辑正式发文", from_status=record.status,
+        to_status=record.status, operator=identity["username"],
+        comment=json.dumps({"before": before, "after": after}, ensure_ascii=False),
+    ))
+    await db.commit(); await db.refresh(record); await db.refresh(detail)
+    return await _official_outgoing_dict(detail, record, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing/{{record_id}}/submit")
+async def submit_official_outgoing_document(record_id: int, body: OfficialOutgoingSubmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(record_id, "official_outgoing", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in {"草稿", "已拒绝", "已撤回"}: raise HTTPException(status_code=409, detail="仅草稿、已拒绝或已撤回正式发文可以提交")
+    detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
+    if not detail: raise HTTPException(status_code=409, detail="正式发文详情已失效")
+    attachment_count = await db.scalar(select(func.count(FileAttachment.id)).where(FileAttachment.record_id == record.id)) or 0
+    if attachment_count <= 0: raise HTTPException(status_code=422, detail="请至少上传或带入一份正式发文文件后再提交")
+    asset_id = int((record.data or {}).get("seal_asset_id") or 0)
+    asset = await db.get(SealAsset, asset_id) if asset_id else None
+    if not asset: raise HTTPException(status_code=422, detail="请先选择可用印章类型")
+    if asset.status != "可用": raise HTTPException(status_code=409, detail="所选印章当前不可用，不能提交")
+    previous = record.status; need_audit = bool((record.data or {}).get("need_audit", True)); record.status = "待审批" if need_audit else "已通过"
+    db.add(WorkflowEvent(record_id=record.id, action="提交正式发文审批" if need_audit else "提交免审正式发文", from_status=previous, to_status=record.status, operator=identity["username"], comment=body.comment.strip() or f"附件{attachment_count}份；印章：{asset.seal_type}"))
+    await db.commit(); await db.refresh(record)
+    return await _official_outgoing_dict(detail, record, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing/{{record_id}}/stamp-file")
+async def upload_official_outgoing_stamp_file(record_id: int, file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(record_id, "official_outgoing", identity, db)
+    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有标记正式发文盖章权限")
+    if record.status != "已通过": raise HTTPException(status_code=409, detail="仅审批通过的正式发文可以上传盖章文件")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip"}: raise HTTPException(status_code=422, detail="不支持的盖章文件格式")
+    content = await file.read()
+    if not content: raise HTTPException(status_code=422, detail="请先选择盖章文件")
+    if len(content) > 20 * 1024 * 1024: raise HTTPException(status_code=413, detail="单个盖章文件不能超过 20MB")
+    detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
+    if not detail: raise HTTPException(status_code=409, detail="正式发文详情已失效")
+    target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"; target.write_bytes(content)
+    previous_file = await db.get(FileAttachment, detail.stamp_attachment_id) if detail.stamp_attachment_id else None
+    attachment = FileAttachment(record_id=record.id, category="正式发文盖章文件", original_name=Path(file.filename or target.name).name, stored_name=target.name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark="正式发文盖章后上传")
+    db.add(attachment); await db.flush(); previous = record.status; detail.stamp_attachment_id = attachment.id; record.status = "已盖章"
+    db.add(WorkflowEvent(record_id=record.id, action="上传正式发文盖章文件", from_status=previous, to_status="已盖章", operator=identity["username"], comment=attachment.original_name))
+    await db.commit(); await db.refresh(record); await db.refresh(detail)
+    if previous_file:
+        previous_path = Path(previous_file.path); await db.delete(previous_file); await db.commit()
+        if previous_path.is_file() and UPLOAD_ROOT.resolve() in previous_path.resolve().parents: previous_path.unlink(missing_ok=True)
+    return await _official_outgoing_dict(detail, record, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing/download")
+async def download_official_outgoing_documents(body: OfficialOutgoingBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record_ids = list(dict.fromkeys(body.record_ids)); records = [await _ensure_record_module(record_id, "official_outgoing", identity, db) for record_id in record_ids]
+    if any(record.status not in {"已通过", "已盖章"} for record in records): raise HTTPException(status_code=409, detail="仅审批通过或已盖章的正式发文可以打包下载")
+    attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(record_ids)).order_by(FileAttachment.id))).all()
+    output = io.BytesIO(); included = 0
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for attachment in attachments:
+            path = Path(attachment.path)
+            if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents: continue
+            record = next(item for item in records if item.id == attachment.record_id)
+            archive.writestr(f"{record.serial_no}/{attachment.id}-{Path(attachment.original_name).name}", path.read_bytes()); included += 1
+    if not included: raise HTTPException(status_code=404, detail="所选正式发文没有可下载的附件")
+    output.seek(0); filename = f"official-outgoing-{date.today():%Y%m%d}.zip"
+    return StreamingResponse(output, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing/mark-stamped")
+async def mark_official_outgoing_documents_stamped(body: OfficialOutgoingBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Mark approved outgoing documents as stamped without fabricating a file.
+
+    The legacy Print action records the seal completion itself and its optional
+    stamp-file upload is a separate action.  Keep the two commands independent
+    so a missing scan does not block the real seal-status lifecycle.
+    """
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有标记正式发文盖章权限")
+    record_ids = list(dict.fromkeys(body.record_ids))
+    records = [await _ensure_record_module(record_id, "official_outgoing", identity, db) for record_id in record_ids]
+    invalid = [record.serial_no for record in records if record.status != "已通过"]
+    if invalid:
+        raise HTTPException(status_code=409, detail=f"仅审批通过的正式发文可以标记已盖章：{'、'.join(invalid[:3])}")
+    for record in records:
+        record.status = "已盖章"
+        db.add(WorkflowEvent(record_id=record.id, action="标记正式发文已盖章", from_status="已通过", to_status="已盖章", operator=identity["username"], comment="未上传盖章文件；沿用旧系统标记用印操作"))
+    await db.commit()
+    return {"processed": len(records), "record_ids": record_ids, "status": "已盖章"}
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing/{{record_id}}/review")
+async def review_official_outgoing_document(record_id: int, body: OfficialOutgoingReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有正式发文审批权限")
+    record = await _ensure_record_module(record_id, "official_outgoing", identity, db)
+    if record.status != "待审批": raise HTTPException(status_code=409, detail="仅待审批正式发文可以审核")
+    detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
+    if not detail: raise HTTPException(status_code=409, detail="正式发文详情已失效")
+    comment = body.comment.strip()
+    if not body.approved and not comment:
+        raise HTTPException(status_code=422, detail="拒绝正式发文必须填写审核意见")
+    target = "已通过" if body.approved else "已拒绝"; previous = record.status; record.status = target
+    db.add(WorkflowEvent(record_id=record.id, action="正式发文审批通过" if body.approved else "正式发文审批拒绝", from_status=previous, to_status=target, operator=identity["username"], comment=comment))
+    await db.commit(); await db.refresh(record); return await _official_outgoing_dict(detail, record, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/official-outgoing/{{record_id}}/rollback")
+async def rollback_official_outgoing_document(record_id: int, body: OfficialOutgoingRollbackInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(record_id, "official_outgoing", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in {"待审批", "已拒绝"}: raise HTTPException(status_code=409, detail="仅待审批或已拒绝正式发文可以撤回")
+    previous = record.status; record.status = "已撤回"
+    db.add(WorkflowEvent(record_id=record.id, action="撤回正式发文", from_status=previous, to_status="已撤回", operator=identity["username"], comment=body.reason))
+    await db.commit(); await db.refresh(record)
+    detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
+    return await _official_outgoing_dict(detail, record, identity, db)
+
+
 @app.get(f"{settings.api_prefix}/templates")
 async def list_templates(category: str = "", _: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     query = select(DocumentTemplate).order_by(DocumentTemplate.category, DocumentTemplate.name)
@@ -12229,8 +13839,16 @@ async def upload_attachment(
             raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if record.module == "ipr_case":
+            raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
         if record.module == "case":
             await _require_case_detail_write_access(record, identity, db)
+            permitted_case_file_types = set((await db.scalars(select(SystemParameter.name).where(
+                SystemParameter.category == "case_file_type", SystemParameter.is_active.is_(True),
+            ))).all())
+            permitted_case_file_types.update({"案件票据文件", "案件发票文件", "普通附件"})
+            if category not in permitted_case_file_types:
+                raise HTTPException(status_code=422, detail="案件文件类型不存在或已停用")
         if record.module == "task":
             if not _is_task_participant(record, identity):
                 raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")
@@ -12244,6 +13862,12 @@ async def upload_attachment(
                 raise HTTPException(status_code=409, detail="只有草稿用印申请可以上传或替换用印文件")
             if category != "用印文件":
                 raise HTTPException(status_code=422, detail="用印申请附件类型必须为用印文件")
+        if record.module == "official_outgoing":
+            await _require_record_owner_or_manager(record, identity, db)
+            if record.status not in {"草稿", "已拒绝", "已撤回"}:
+                raise HTTPException(status_code=409, detail="仅草稿、已拒绝或已撤回正式发文可以上传或替换发文文件")
+            if category != "正式发文附件":
+                raise HTTPException(status_code=422, detail="正式发文附件类型必须为正式发文附件")
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES:
             await _require_record_owner_or_manager(record, identity, db)
             if category == "公证书扫描件":
@@ -12282,6 +13906,8 @@ async def upload_attachment(
     elif record and record.module == "seal":
         await _sync_seal_document_names(record, db)
         db.add(WorkflowEvent(record_id=record.id, action="上传用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
+    elif record and record.module == "official_outgoing":
+        db.add(WorkflowEvent(record_id=record.id, action="上传正式发文附件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
     elif record and record.module == "task":
         await _add_task_message_notifications(
             record,
@@ -12320,11 +13946,18 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     item = await db.get(FileAttachment, attachment_id)
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
+    # 联系人照片的附件 ID 保存在客户 contacts JSON 中。若允许通用附件接口删除，
+    # 会留下指向已删除文件的引用；必须从联系人维护入口替换或随联系人删除。
+    if item.category == "客户联系人照片":
+        raise HTTPException(status_code=409, detail="联系人照片请在客户联系人中维护")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
+    if record and record.module == "ipr_case":
+        raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口删除")
     may_manage_customer_document = False
     may_manage_case_document = False
     may_manage_task_attachment = False
     may_manage_seal_attachment = False
+    may_manage_official_outgoing_attachment = False
     if record and record.module == "task":
         record = await _ensure_attachment_record_visible(record.id, identity, db)
         if item.category not in {"任务反馈附件", "任务资料附件"}:
@@ -12348,8 +13981,16 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         if item.category != "用印文件":
             raise HTTPException(status_code=422, detail="用印申请附件类型无效")
         may_manage_seal_attachment = True
+    if record and record.module == "official_outgoing":
+        record = await _ensure_record_module(record.id, "official_outgoing", identity, db)
+        await _require_record_owner_or_manager(record, identity, db)
+        if record.status not in {"草稿", "已拒绝", "已撤回"}:
+            raise HTTPException(status_code=409, detail="仅草稿、已拒绝或已撤回正式发文可以删除发文文件")
+        if item.category != "正式发文附件":
+            raise HTTPException(status_code=422, detail="已提交正式发文的盖章文件不能通过普通附件删除")
+        may_manage_official_outgoing_attachment = True
     may_manage_hr_document = identity.get("role") == "manager" and record and record.module == "hr" and item.category == "员工档案"
-    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment:
+    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment and not may_manage_official_outgoing_attachment:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
     path = Path(item.path)
     await db.delete(item)
@@ -12371,6 +14012,8 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     elif record and record.module == "seal":
         await _sync_seal_document_names(record, db)
         db.add(WorkflowEvent(record_id=record.id, action="删除用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
+    elif record and record.module == "official_outgoing":
+        db.add(WorkflowEvent(record_id=record.id, action="删除正式发文附件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
     elif record and record.module == "task":
         await _add_task_message_notifications(
             record,
@@ -12839,6 +14482,44 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
 
 
+@app.delete(f"{settings.api_prefix}/hr/employees/{{employee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Old Staff/Delete parity: delete only an unreferenced employee and linked login atomically."""
+    _require_admin(identity)
+    employee = await db.get(BusinessRecord, employee_id)
+    if not employee or employee.module != "hr":
+        raise HTTPException(status_code=404, detail="员工档案不存在")
+    username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+    if username == identity["username"].lower() or username == "admin":
+        raise HTTPException(status_code=409, detail="不能删除当前登录或系统管理员员工档案")
+    related_subrecords = await db.scalar(select(func.count()).select_from(HrSubrecord).where(HrSubrecord.employee_id == employee.id))
+    related_attachments = await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == employee.id))
+    if (related_subrecords or 0) + (related_attachments or 0) > 0:
+        raise HTTPException(status_code=409, detail=f"员工仍有 {related_subrecords or 0} 条附属记录和 {related_attachments or 0} 个档案文件，请先逐项清理")
+    reference_terms = [value for value in {username, employee.title.strip()} if value]
+    reference_conditions = [BusinessRecord.owner == username] if username else []
+    for value in reference_terms:
+        reference_conditions.append(func.cast(BusinessRecord.data, String).ilike(f"%{value}%"))
+    referenced = []
+    if reference_conditions:
+        referenced = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id != employee.id,
+            BusinessRecord.module.in_({"case", "task", "investigation", "contract", "seal", "finance"}),
+            or_(*reference_conditions),
+        ).limit(10))).all())
+    if referenced:
+        raise HTTPException(status_code=409, detail="案件或业务中仍关联该员工，不允许删除：" + "、".join(item.serial_no for item in referenced))
+    user = await db.scalar(select(User).where(User.username == username)) if username else None
+    if user and user.role == "admin":
+        raise HTTPException(status_code=409, detail="不能删除系统管理员员工档案")
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))
+    await db.delete(employee)
+    if user:
+        await db.delete(user)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get(f"{settings.api_prefix}/hr/departments")
 async def list_departments(keyword: str = "", active_only: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     statement = select(Department)
@@ -12971,7 +14652,14 @@ def _validate_hr_subrecord(kind: str, raw: dict) -> dict:
             start = date.fromisoformat(start_date); end = date.fromisoformat(end_date) if end_date else None
         except ValueError as exc: raise HTTPException(status_code=422, detail="提成日期格式无效") from exc
         if end and end < start: raise HTTPException(status_code=422, detail="提成结束不能早于开始")
-        numeric = ["base_salary", "hearing_rate", "document_rate", "source_rate", "investigation_rate", "quality_rate"]
+        numeric = [
+            "base_salary",
+            "hearing_rate", "hearing_fixed",
+            "document_rate", "document_fixed",
+            "source_rate", "source_fixed",
+            "investigation_rate", "investigation_fixed",
+            "quality_rate", "quality_fixed",
+        ]
         for key in numeric:
             value = float(data.get(key) or 0)
             if value < 0: raise HTTPException(status_code=422, detail="提成或工资数值不能为负数")
@@ -12989,6 +14677,27 @@ async def list_hr_subrecords(employee_id: int, kind: str = "", identity: dict = 
         conditions.append(HrSubrecord.kind == kind)
     items = (await db.scalars(select(HrSubrecord).where(*conditions).order_by(HrSubrecord.created_at.desc(), HrSubrecord.id.desc()))).all()
     return {"items": [_hr_subrecord_dict(item) for item in items], "total": len(items)}
+
+
+@app.get(f"{settings.api_prefix}/hr/{{employee_id}}/performance-for-case/{{case_id}}")
+async def get_employee_performance_for_case(employee_id: int, case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Resolve the evidenced employee+case performance scheme by the case business date."""
+    await _ensure_record_module(employee_id, "hr", identity, db)
+    case = await _ensure_record_module(case_id, "case", identity, db)
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色无权查看员工案件绩效")
+    case_date = (case.created_at.date() if case.created_at else date.today())
+    rows = (await db.scalars(select(HrSubrecord).where(HrSubrecord.employee_id == employee_id, HrSubrecord.kind == "commission").order_by(HrSubrecord.created_at.desc(), HrSubrecord.id.desc()))).all()
+    matched: HrSubrecord | None = None
+    for item in rows:
+        data = item.data or {}
+        try:
+            start = date.fromisoformat(str(data.get("start_date") or "")); end = date.fromisoformat(str(data.get("end_date") or "")) if data.get("end_date") else None
+        except ValueError:
+            continue
+        if start <= case_date and (end is None or case_date <= end):
+            matched = item; break
+    return {"employee_id": employee_id, "case_id": case.id, "case_no": case.serial_no, "case_date": str(case_date), "matched": bool(matched), "performance": _hr_subrecord_dict(matched) if matched else None}
 
 
 @app.post(f"{settings.api_prefix}/hr/{{employee_id}}/subrecords", status_code=status.HTTP_201_CREATED)
@@ -13246,6 +14955,1906 @@ async def scrap_warehouse_item(item_id: int, body: WarehouseScrapInput, identity
     item.status = "报废"; item.data = {**(item.data or {}), "scrapped_at": str(date.today()), "scrap_reason": body.reason.strip(), "scrapped_by": identity["username"]}
     db.add(WorkflowEvent(record_id=item.id, action="物品报废", from_status="在库", to_status="报废", operator=identity["username"], comment=body.reason))
     await db.commit(); await db.refresh(item); return _record_dict(item)
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases")
+async def list_ipr_cases(
+    case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    conditions = [BusinessRecord.module == "ipr_case", *(await _record_scope_conditions(identity, db))]
+    if case_kind:
+        if case_kind not in IPR_CASE_KINDS: raise HTTPException(status_code=422, detail="知识产权案件类型无效")
+        conditions.append(BusinessRecord.data["case_kind"].as_string() == case_kind)
+    if record_status: conditions.append(BusinessRecord.status == record_status)
+    if annual_fee_monitoring is not None:
+        conditions.append(BusinessRecord.data["annual_fee_monitoring"].as_boolean().is_(annual_fee_monitoring))
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.data["application_no"].as_string().ilike(like)))
+    total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
+    return {"items": [_record_dict(row, await _allowed_field_keys(identity, db)) for row in rows], "total": total or 0, "page": page, "page_size": page_size}
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/export/excel")
+async def export_ipr_cases_excel(
+    case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Export the caller's visible IPR cases as a real SpreadsheetML workbook.
+
+    The legacy patent/trademark lists expose an Excel export.  Keep the export
+    scoped by the same record and menu rules as the visible list, rather than
+    exporting all firm records from a generic reporting endpoint.
+    """
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    conditions = [BusinessRecord.module == "ipr_case", *(await _record_scope_conditions(identity, db))]
+    if case_kind:
+        if case_kind not in IPR_CASE_KINDS:
+            raise HTTPException(status_code=422, detail="知识产权案件类型无效")
+        conditions.append(BusinessRecord.data["case_kind"].as_string() == case_kind)
+    if record_status:
+        conditions.append(BusinessRecord.status == record_status)
+    if annual_fee_monitoring is not None:
+        conditions.append(BusinessRecord.data["annual_fee_monitoring"].as_boolean().is_(annual_fee_monitoring))
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.data["application_no"].as_string().ilike(like)))
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()))).all()
+    headers = ["案件编号", "案件类型", "案件名称", "客户", "申请号/注册号", "申请类型", "申请人/权利人", "案件负责人", "申请日期", "办理期限", "年费年度", "年费监控", "费率", "状态"]
+    def cell(value: object, *, number: bool = False) -> str:
+        rendered = f"{float(value or 0):.2f}" if number else str(value or "")
+        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(rendered)}</Data></Cell>'
+    sheet_rows = ["<Row>" + "".join(cell(header) for header in headers) + "</Row>"]
+    for row in rows:
+        data = row.data or {}
+        values = [row.serial_no, data.get("case_kind"), row.title, row.customer, data.get("application_no"), data.get("application_type"), data.get("applicant"), data.get("case_manager"), data.get("application_date"), data.get("deadline"), data.get("annual_fee_year"), "是" if data.get("annual_fee_monitoring") else "否", data.get("rate"), row.status]
+        sheet_rows.append("<Row>" + "".join(cell(value, number=index == 12) for index, value in enumerate(values)) + "</Row>")
+    sheet_name = f"{case_kind or '知识产权'}案件"
+    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="' + sheet_name + '"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    filename = f"{sheet_name}清单-{date.today()}.xls"
+    return Response(
+        content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel",
+        headers={"Content-Disposition": f"attachment; filename=ipr-cases.xls; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}")
+async def get_ipr_case(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    return _record_dict(await _ensure_record_module(case_id, "ipr_case", identity, db), await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="新建")
+    case_kind = body.case_kind.strip()
+    if case_kind not in IPR_CASE_KINDS: raise HTTPException(status_code=422, detail="知识产权案件类型仅支持专利或商标")
+    customer = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.title == body.customer.strip(), *(await _record_scope_conditions(identity, db))))
+    if not customer: raise HTTPException(status_code=422, detail="客户不存在或当前账号无权选择")
+    serial_no = await _next_ipr_case_serial(case_kind, db)
+    data = {
+        "case_kind": case_kind, "application_no": body.application_no.strip(), "application_type": body.application_type.strip(),
+        "applicant": body.applicant.strip(), "case_manager": (body.case_manager or identity["username"]).strip(),
+        "application_date": str(body.application_date) if body.application_date else "", "deadline": str(body.deadline) if body.deadline else "",
+        "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": False, "rate": body.rate, "created_from": "ipr_case_center",
+    }
+    record = BusinessRecord(module="ipr_case", serial_no=serial_no, title=body.title.strip(), customer=customer.title, status="草稿", owner=identity["username"], department=customer.department, description=body.description.strip(), data=data)
+    db.add(record); await db.flush()
+    db.add(IprCaseCustomer(case_record_id=record.id, customer_record_id=customer.id, is_primary=True, created_by=identity["username"]))
+    db.add(WorkflowEvent(record_id=record.id, action="新建知识产权案件草稿", to_status=record.status, operator=identity["username"], comment=f"{case_kind}案件"))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+@app.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}")
+async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in IPR_CASE_DRAFT_STATUSES: raise HTTPException(status_code=409, detail="仅草稿或已驳回的知识产权案件可以修改")
+    before = record.status
+    data = dict(record.data or {})
+    values = body.model_dump(exclude_unset=True)
+    for key in {"application_no", "application_type", "applicant", "case_manager"}:
+        if key in values: data[key] = str(values.pop(key) or "").strip()
+    for key in {"application_date", "deadline"}:
+        if key in values: data[key] = str(values.pop(key) or "")
+    for key in {"annual_fee_year", "rate"}:
+        if key in values: data[key] = values.pop(key)
+    if "title" in values: record.title = str(values.pop("title")).strip()
+    if "description" in values: record.description = str(values.pop("description") or "").strip()
+    record.data = data
+    db.add(WorkflowEvent(record_id=record.id, action="修改知识产权案件草稿", from_status=before, to_status=record.status, operator=identity["username"], comment="更新案件基本信息"))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+def _ipr_law_firm_dict(link: IprCaseLawFirm, firm: LawFirm) -> dict:
+    return {
+        "id": link.id, "law_firm_id": firm.id, "code": firm.code, "name": firm.name,
+        "phone": firm.phone, "email": firm.email, "default_contact_id": firm.default_contact_id,
+        "created_by": link.created_by, "created_at": link.created_at,
+    }
+
+
+async def _ipr_case_customer_links(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> list[IprCaseCustomer]:
+    """Return explicit customer links, retaining a safe read-only fallback for pre-link records."""
+    links = list((await db.scalars(
+        select(IprCaseCustomer).where(IprCaseCustomer.case_record_id == case_record.id).order_by(IprCaseCustomer.is_primary.desc(), IprCaseCustomer.id)
+    )).all())
+    if links:
+        return links
+    if not case_record.customer.strip():
+        return []
+    fallback = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "customer", BusinessRecord.title == case_record.customer,
+        *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.id))
+    return [IprCaseCustomer(case_record_id=case_record.id, customer_record_id=fallback.id, is_primary=True, created_by="legacy-fallback")] if fallback else []
+
+
+def _ipr_case_customer_dict(link: IprCaseCustomer, customer: BusinessRecord) -> dict:
+    return {
+        "id": link.id if link.id else None, "customer_id": customer.id, "customer_no": customer.serial_no,
+        "name": customer.title, "status": customer.status, "is_primary": bool(link.is_primary),
+        "department": customer.department, "owner": customer.owner,
+    }
+
+
+async def _ensure_active_ipr_case_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in {"草稿", "已驳回", "在办"}:
+        raise HTTPException(status_code=409, detail="当前案件状态不能维护客户或案件联系人")
+    return record
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers")
+async def list_ipr_case_customers(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy CaseCustomer list equivalent; includes an explicit primary-customer fallback for historical records."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    links = await _ipr_case_customer_links(case_record, identity, db)
+    customer_ids = [item.customer_record_id for item in links]
+    customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(customer_ids), BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db)),
+    ))).all()) if customer_ids else []
+    by_id = {item.id: item for item in customers}
+    items = [_ipr_case_customer_dict(link, by_id[link.customer_record_id]) for link in links if link.customer_record_id in by_id]
+    return {"items": items, "total": len(items), "primary_customer_id": next((item["customer_id"] for item in items if item["is_primary"]), None)}
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers/candidates")
+async def list_ipr_case_customer_candidates(case_id: int, keyword: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy CaseCustomerSelected equivalent: visible non-recycled customers and selected ids."""
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    statement = select(BusinessRecord).where(
+        BusinessRecord.module == "customer", BusinessRecord.status.not_in(["已回收"]), *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.title, BusinessRecord.id)
+    if keyword.strip():
+        like = f"%{keyword.strip()}%"
+        statement = statement.where(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like)))
+    customers = list((await db.scalars(statement.limit(200))).all())
+    links = await _ipr_case_customer_links(case_record, identity, db)
+    selected_ids = [item.customer_record_id for item in links]
+    primary_customer_id = next((item.customer_record_id for item in links if item.is_primary), None)
+    return {"items": [{"id": item.id, "customer_no": item.serial_no, "name": item.title, "status": item.status, "selected": item.id in selected_ids} for item in customers], "selected_ids": selected_ids, "primary_customer_id": primary_customer_id}
+
+
+@app.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers")
+async def replace_ipr_case_customers(case_id: int, body: IprCaseCustomerReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Atomically replace an IPR case's customers and keep its shared primary customer field in sync."""
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    selected_ids = list(dict.fromkeys(body.customer_ids))
+    if body.primary_customer_id not in selected_ids or any(item <= 0 for item in selected_ids):
+        raise HTTPException(status_code=422, detail="请从已选客户中指定一个主客户")
+    customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(selected_ids), BusinessRecord.module == "customer", BusinessRecord.status.not_in(["已回收"]), *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    if len(customers) != len(selected_ids):
+        raise HTTPException(status_code=422, detail="所选客户不存在、已回收或无权访问")
+    by_id = {item.id: item for item in customers}
+    existing = list((await db.scalars(select(IprCaseCustomer).where(IprCaseCustomer.case_record_id == case_record.id))).all())
+    before_ids = {item.customer_record_id for item in existing}; after_ids = set(selected_ids)
+    for item in existing:
+        if item.customer_record_id not in after_ids:
+            await db.delete(item)
+    for customer_id in selected_ids:
+        link = next((item for item in existing if item.customer_record_id == customer_id), None)
+        if link:
+            link.is_primary = customer_id == body.primary_customer_id
+        else:
+            db.add(IprCaseCustomer(case_record_id=case_record.id, customer_record_id=customer_id, is_primary=customer_id == body.primary_customer_id, created_by=identity["username"]))
+    primary = by_id[body.primary_customer_id]
+    case_record.customer = primary.title
+    case_record.department = primary.department or case_record.department
+    data = dict(case_record.data or {}); data["primary_customer_id"] = primary.id; case_record.data = data
+    db.add(WorkflowEvent(record_id=case_record.id, action="维护知识产权案件客户", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"主客户：{primary.title}；客户数：{len(selected_ids)}；新增：{len(after_ids - before_ids)}；移除：{len(before_ids - after_ids)}"))
+    await db.commit()
+    return await list_ipr_case_customers(case_id, identity, db)
+
+
+async def _ipr_case_contact_candidates(case_record: BusinessRecord, customer_id: int, identity: dict, db: AsyncSession) -> tuple[BusinessRecord, list[dict]]:
+    links = await _ipr_case_customer_links(case_record, identity, db)
+    if customer_id not in {item.customer_record_id for item in links}:
+        raise HTTPException(status_code=422, detail="该客户尚未关联到当前知识产权案件")
+    customer = await _customer_or_404(customer_id, identity, db)
+    contacts = [item for item in list((customer.data or {}).get("contacts", [])) if item.get("id") and item.get("is_valid", True)]
+    return customer, contacts
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers/{{customer_id}}/contact-candidates")
+async def list_ipr_case_customer_contact_candidates(case_id: int, customer_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy CaseCustomerContactsSelected equivalent with the two selectable contact roles."""
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    customer, contacts = await _ipr_case_contact_candidates(case_record, customer_id, identity, db)
+    links = list((await db.scalars(select(IprCaseCustomerContact).where(
+        IprCaseCustomerContact.case_record_id == case_record.id, IprCaseCustomerContact.customer_record_id == customer.id,
+    ))).all())
+    document_ids = {item.contact_id for item in links if item.contact_role == "document"}
+    technology_ids = {item.contact_id for item in links if item.contact_role == "technology"}
+    return {"customer": _record_dict(customer, await _allowed_field_keys(identity, db)), "items": contacts, "document_contact_ids": sorted(document_ids), "technology_contact_ids": sorted(technology_ids)}
+
+
+@app.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customer-contacts")
+async def replace_ipr_case_customer_contacts(case_id: int, body: IprCaseCustomerContactReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Atomically save legacy document-contact and technology-contact selections for one linked customer."""
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    customer, contacts = await _ipr_case_contact_candidates(case_record, body.customer_id, identity, db)
+    valid_ids = {str(item["id"]) for item in contacts}
+    document_ids = set(dict.fromkeys(item.strip() for item in body.document_contact_ids if item.strip()))
+    technology_ids = set(dict.fromkeys(item.strip() for item in body.technology_contact_ids if item.strip()))
+    if not document_ids.issubset(valid_ids) or not technology_ids.issubset(valid_ids):
+        raise HTTPException(status_code=422, detail="所选联系人不存在、已失效或不属于该客户")
+    existing = list((await db.scalars(select(IprCaseCustomerContact).where(
+        IprCaseCustomerContact.case_record_id == case_record.id, IprCaseCustomerContact.customer_record_id == customer.id,
+    ))).all())
+    expected = {(contact_id, "document") for contact_id in document_ids} | {(contact_id, "technology") for contact_id in technology_ids}
+    current = {(item.contact_id, item.contact_role) for item in existing}
+    for item in existing:
+        if (item.contact_id, item.contact_role) not in expected:
+            await db.delete(item)
+    for contact_id, role in expected - current:
+        db.add(IprCaseCustomerContact(case_record_id=case_record.id, customer_record_id=customer.id, contact_id=contact_id, contact_role=role, created_by=identity["username"]))
+    db.add(WorkflowEvent(record_id=case_record.id, action="维护知识产权案件联系人", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"客户：{customer.title}；文书联系人 {len(document_ids)} 人；技术联系人 {len(technology_ids)} 人"))
+    await db.commit()
+    return await list_ipr_case_customer_contact_candidates(case_id, customer.id, identity, db)
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customer-contacts")
+async def list_ipr_case_customer_contacts(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """A read-only flattened case-contact view for the old CaseContactsList tab."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    links = list((await db.scalars(select(IprCaseCustomerContact).where(IprCaseCustomerContact.case_record_id == case_record.id).order_by(IprCaseCustomerContact.customer_record_id, IprCaseCustomerContact.id))).all())
+    customer_ids = list({item.customer_record_id for item in links})
+    customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(customer_ids), *(await _record_scope_conditions(identity, db))))).all()) if customer_ids else []
+    result: list[dict] = []
+    for customer in customers:
+        contacts = {str(item.get("id")): item for item in list((customer.data or {}).get("contacts", []))}
+        for link in [item for item in links if item.customer_record_id == customer.id]:
+            contact = contacts.get(link.contact_id)
+            if contact:
+                result.append({"id": link.id, "customer_id": customer.id, "customer_name": customer.title, "contact_id": link.contact_id, "contact_role": link.contact_role, "name": contact.get("name", ""), "phone": contact.get("phone", ""), "email": contact.get("email", ""), "position": contact.get("position", ""), "is_valid": bool(contact.get("is_valid", True))})
+    return {"items": result, "total": len(result)}
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/law-firms")
+async def list_ipr_case_law_firms(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return the legacy CaseLawFirmList equivalent for one visible IPR case."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    links = list((await db.scalars(select(IprCaseLawFirm).where(IprCaseLawFirm.case_record_id == case_record.id).order_by(IprCaseLawFirm.id))).all())
+    firm_ids = [item.law_firm_id for item in links]
+    firms = list((await db.scalars(select(LawFirm).where(LawFirm.id.in_(firm_ids)))).all()) if firm_ids else []
+    by_id = {item.id: item for item in firms}
+    return {"items": [_ipr_law_firm_dict(item, by_id[item.law_firm_id]) for item in links if item.law_firm_id in by_id], "total": len(links)}
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/law-firms/candidates")
+async def list_ipr_case_law_firm_candidates(case_id: int, keyword: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy CaseLawFirmListSelected equivalent: active master firms plus selected ids."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    statement = select(LawFirm).where(LawFirm.is_active.is_(True)).order_by(LawFirm.name, LawFirm.id)
+    if keyword.strip():
+        like = f"%{keyword.strip()}%"
+        statement = statement.where(or_(LawFirm.code.ilike(like), LawFirm.name.ilike(like)))
+    firms = list((await db.scalars(statement.limit(200))).all())
+    selected_ids = list((await db.scalars(select(IprCaseLawFirm.law_firm_id).where(IprCaseLawFirm.case_record_id == case_record.id))).all())
+    return {"items": [{"id": item.id, "code": item.code, "name": item.name, "phone": item.phone, "email": item.email, "selected": item.id in selected_ids} for item in firms], "selected_ids": selected_ids}
+
+
+@app.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/law-firms")
+async def replace_ipr_case_law_firms(case_id: int, body: IprCaseLawFirmReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Atomically replace collaboration-law-firm selections; it is never a generic record write."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    if case_record.status not in {"草稿", "已驳回", "在办"}:
+        raise HTTPException(status_code=409, detail="当前案件状态不能维护协作律所")
+    selected_ids = list(dict.fromkeys(body.law_firm_ids))
+    if any(item <= 0 for item in selected_ids):
+        raise HTTPException(status_code=422, detail="协作律所编号无效")
+    firms = list((await db.scalars(select(LawFirm).where(LawFirm.id.in_(selected_ids), LawFirm.is_active.is_(True)))).all()) if selected_ids else []
+    if len(firms) != len(selected_ids):
+        raise HTTPException(status_code=422, detail="选择的协作律所不存在或已停用")
+    existing = list((await db.scalars(select(IprCaseLawFirm).where(IprCaseLawFirm.case_record_id == case_record.id))).all())
+    before_ids = {item.law_firm_id for item in existing}; after_ids = set(selected_ids)
+    for item in existing:
+        if item.law_firm_id not in after_ids:
+            await db.delete(item)
+    for firm_id in selected_ids:
+        if firm_id not in before_ids:
+            db.add(IprCaseLawFirm(case_record_id=case_record.id, law_firm_id=firm_id, created_by=identity["username"]))
+    if before_ids != after_ids:
+        firm_names = {item.id: item.name for item in firms}
+        db.add(WorkflowEvent(record_id=case_record.id, action="维护知识产权案件协作律所", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"新增：{'、'.join(firm_names.get(item, str(item)) for item in sorted(after_ids - before_ids)) or '无'}；移除：{'、'.join(map(str, sorted(before_ids - after_ids))) or '无'}"))
+    await db.commit()
+    return await list_ipr_case_law_firms(case_id, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/maintenance")
+async def maintain_ipr_case(case_id: int, body: IprCaseMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Maintain active IPR deadline, annual-fee year and rate through a dedicated audited action."""
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status != "在办":
+        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护期限、年费和费率")
+    values = body.model_dump(exclude_unset=True, exclude={"comment"})
+    if not values:
+        raise HTTPException(status_code=422, detail="请至少填写一项期限、年费年度或费率")
+    data = dict(record.data or {})
+    changes: list[str] = []
+    if "deadline" in values:
+        new_value = str(values["deadline"] or "")
+        changes.append(f"办理期限：{data.get('deadline') or '—'} → {new_value or '—'}")
+        data["deadline"] = new_value
+    if "annual_fee_year" in values:
+        new_value = values["annual_fee_year"]
+        changes.append(f"年费年度：{data.get('annual_fee_year') or '—'} → {new_value or '—'}")
+        data["annual_fee_year"] = new_value
+    if "rate" in values:
+        new_value = values["rate"]
+        changes.append(f"费率：{data.get('rate') if data.get('rate') is not None else '—'} → {new_value if new_value is not None else '—'}")
+        data["rate"] = new_value
+    record.data = data
+    db.add(WorkflowEvent(
+        record_id=record.id, action="维护知识产权案件期限年费费率", from_status=record.status,
+        to_status=record.status, operator=identity["username"],
+        comment="；".join(changes) + (f"；{body.comment.strip()}" if body.comment.strip() else ""),
+    ))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/batch-maintenance")
+async def batch_maintain_ipr_cases(body: IprCaseBatchMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Apply the visible legacy batch-edit fields only after every target passes the same write checks."""
+    case_ids = list(dict.fromkeys(body.case_ids))
+    values = body.model_dump(exclude={"case_ids", "comment"}, exclude_unset=True)
+    if not values or all(value is None or value == "" for value in values.values()):
+        raise HTTPException(status_code=422, detail="请至少填写经办人、办理期限、首年缴费年度或减缓比例之一")
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(case_ids), BusinessRecord.module == "ipr_case", *(await _record_scope_conditions(identity, db)),
+    ).with_for_update())).all())
+    if len(records) != len(case_ids):
+        raise HTTPException(status_code=404, detail="存在知识产权案件不存在或无权访问")
+    by_id = {item.id: item for item in records}
+    ordered = [by_id[item] for item in case_ids]
+    for record in ordered:
+        await _require_record_owner_or_manager(record, identity, db)
+        if record.status != "在办":
+            raise HTTPException(status_code=409, detail=f"案件 {record.serial_no} 不在办理中，不能批量维护")
+    manager = str(values.get("case_manager") or "").strip() if "case_manager" in values else None
+    if manager:
+        active_user = await db.scalar(select(User).where(User.username == manager, User.is_active.is_(True)))
+        if not active_user:
+            raise HTTPException(status_code=422, detail="案件经办人不存在或已停用")
+    updated: list[dict] = []
+    for record in ordered:
+        data = dict(record.data or {})
+        changes: list[str] = []
+        if manager is not None and manager != data.get("case_manager", ""):
+            changes.append(f"经办人：{data.get('case_manager') or '—'} → {manager or '—'}")
+            data["case_manager"] = manager or ""
+        if "deadline" in values:
+            value = str(values["deadline"] or "")
+            if value != str(data.get("deadline") or ""):
+                changes.append(f"办理期限：{data.get('deadline') or '—'} → {value or '—'}")
+                data["deadline"] = value
+        if "annual_fee_year" in values and values["annual_fee_year"] != data.get("annual_fee_year"):
+            changes.append(f"首年缴费年度：{data.get('annual_fee_year') or '—'} → {values['annual_fee_year'] or '—'}")
+            data["annual_fee_year"] = values["annual_fee_year"]
+        if "rate" in values and values["rate"] != data.get("rate"):
+            changes.append(f"减缓比例：{data.get('rate') if data.get('rate') is not None else '—'} → {values['rate'] if values['rate'] is not None else '—'}")
+            data["rate"] = values["rate"]
+        if changes:
+            record.data = data
+            db.add(WorkflowEvent(record_id=record.id, action="批量维护知识产权案件", from_status=record.status, to_status=record.status, operator=identity["username"], comment="；".join(changes) + (f"；{body.comment.strip()}" if body.comment.strip() else "")))
+        updated.append({"id": record.id, "serial_no": record.serial_no, "changed": bool(changes)})
+    await db.commit()
+    return {"updated": sum(1 for item in updated if item["changed"]), "items": updated}
+
+
+async def _set_ipr_annual_fee_monitoring(
+    body: IprCaseAnnualFeeMonitoringInput, enabled: bool, identity: dict, db: AsyncSession,
+) -> dict:
+    """Atomically apply the legacy AFM batch action without treating annual year as monitoring consent."""
+    case_ids = list(dict.fromkeys(body.case_ids))
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(case_ids), BusinessRecord.module == "ipr_case", *(await _record_scope_conditions(identity, db)),
+    ).with_for_update())).all())
+    if len(records) != len(case_ids):
+        raise HTTPException(status_code=404, detail="存在知识产权案件不存在或无权访问")
+    by_id = {item.id: item for item in records}
+    ordered = [by_id[item] for item in case_ids]
+    for record in ordered:
+        await _require_record_owner_or_manager(record, identity, db)
+        if record.status != "在办":
+            raise HTTPException(status_code=409, detail=f"案件 {record.serial_no} 不在办理中，不能调整年费监控")
+    action = "加入年费监控" if enabled else "放弃年费监控"
+    updated: list[dict] = []
+    for record in ordered:
+        data = dict(record.data or {})
+        changed = bool(data.get("annual_fee_monitoring")) != enabled
+        if changed:
+            data["annual_fee_monitoring"] = enabled
+            data["annual_fee_monitoring_at"] = datetime.now().isoformat()
+            data["annual_fee_monitoring_by"] = identity["username"]
+            record.data = data
+            db.add(WorkflowEvent(
+                record_id=record.id, action=f"知识产权案件{action}", from_status=record.status,
+                to_status=record.status, operator=identity["username"],
+                comment=body.comment.strip(),
+            ))
+        updated.append({"id": record.id, "serial_no": record.serial_no, "changed": changed})
+    await db.commit()
+    return {"updated": sum(1 for item in updated if item["changed"]), "items": updated, "annual_fee_monitoring": enabled}
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/annual-fee-monitoring/add")
+async def add_ipr_cases_to_annual_fee_monitoring(body: IprCaseAnnualFeeMonitoringInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _set_ipr_annual_fee_monitoring(body, True, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/annual-fee-monitoring/remove")
+async def remove_ipr_cases_from_annual_fee_monitoring(body: IprCaseAnnualFeeMonitoringInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _set_ipr_annual_fee_monitoring(body, False, identity, db)
+
+
+def _ipr_case_log_dict(item: IprCaseLog) -> dict:
+    return {"id": item.id, "content": item.content, "created_by": item.created_by, "created_at": item.created_at}
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs")
+async def list_ipr_case_logs(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return legacy business logs and a read-only operation log projection from audited workflow events."""
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    business_logs = list((await db.scalars(select(IprCaseLog).where(IprCaseLog.case_record_id == record.id).order_by(IprCaseLog.created_at.desc(), IprCaseLog.id.desc()))).all())
+    operations = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
+    return {
+        "business_logs": [_ipr_case_log_dict(item) for item in business_logs],
+        "operation_logs": [{"id": item.id, "action": item.action, "operator": item.operator, "comment": item.comment, "from_status": item.from_status, "to_status": item.to_status, "created_at": item.created_at} for item in operations],
+    }
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case_log(case_id: int, body: IprCaseLogInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Create a user-authored business log without weakening the immutable workflow audit trail."""
+    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    item = IprCaseLog(case_record_id=record.id, content=body.content.strip(), created_by=identity["username"])
+    db.add(item); await db.flush()
+    db.add(WorkflowEvent(record_id=record.id, action="新增知识产权案件业务日志", from_status=record.status, to_status=record.status, operator=identity["username"], comment=item.content[:500]))
+    await db.commit(); await db.refresh(item)
+    return _ipr_case_log_dict(item)
+
+
+@app.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs/{{log_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_case_log(case_id: int, log_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Only the note author, the case manager, or an administrator can remove an authored business note."""
+    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    item = await db.scalar(select(IprCaseLog).where(IprCaseLog.id == log_id, IprCaseLog.case_record_id == record.id))
+    if not item:
+        raise HTTPException(status_code=404, detail="案件业务日志不存在")
+    if item.created_by != identity["username"] and identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="只有日志创建人或管理人员可以删除业务日志")
+    content = item.content
+    await db.delete(item)
+    db.add(WorkflowEvent(record_id=record.id, action="删除知识产权案件业务日志", from_status=record.status, to_status=record.status, operator=identity["username"], comment=content[:500]))
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _ipr_assisted_fee_dict(row: IprCaseAssistedFee, attachment: FileAttachment | None = None) -> dict:
+    return {
+        "id": row.id, "case_record_id": row.case_record_id, "assisted_type": row.assisted_type,
+        "status": row.status, "request_date": row.request_date, "request_user": row.request_user,
+        "response_date": row.response_date, "response_user": row.response_user, "remark": row.remark,
+        "receipt_attachment_id": row.receipt_attachment_id,
+        "receipt": _attachment_dict(attachment) if attachment else None,
+        "created_at": row.created_at, "updated_at": row.updated_at,
+    }
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees")
+async def list_ipr_case_assisted_fees(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """List one visible IPR case's assistance applications and receipt files."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    rows = list((await db.scalars(select(IprCaseAssistedFee).where(IprCaseAssistedFee.case_record_id == case_record.id).order_by(IprCaseAssistedFee.created_at.desc()))).all())
+    attachment_ids = [row.receipt_attachment_id for row in rows if row.receipt_attachment_id]
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all()) if attachment_ids else []
+    by_id = {item.id: item for item in attachments}
+    return {"items": [_ipr_assisted_fee_dict(row, by_id.get(row.receipt_attachment_id)) for row in rows], "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case_assisted_fee(case_id: int, body: IprCaseAssistedFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Create the legacy-equivalent IPR assistance application, not a finance record."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    if case_record.status != "在办":
+        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以新建资助费用")
+    row = IprCaseAssistedFee(case_record_id=case_record.id, assisted_type=body.assisted_type.strip(), request_user=identity["username"], remark=body.remark.strip())
+    db.add(row); await db.flush()
+    db.add(WorkflowEvent(record_id=case_record.id, action="新建知识产权案件资助费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"资助类别：{row.assisted_type}" + (f"；{row.remark}" if row.remark else "")))
+    await db.commit(); await db.refresh(row)
+    return _ipr_assisted_fee_dict(row)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}/transact")
+async def transact_ipr_case_assisted_fee(
+    case_id: int, assisted_fee_id: int, response_date: date = Form(...), receipt_file: UploadFile = File(..., alias="file"), remark: str = Form(""),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Complete an assistance application only with a dated, persisted receipt file."""
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    if case_record.status != "在办":
+        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以办理资助费用")
+    row = await db.scalar(select(IprCaseAssistedFee).where(IprCaseAssistedFee.id == assisted_fee_id, IprCaseAssistedFee.case_record_id == case_record.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="资助费用不存在或不属于当前案件")
+    if row.status != "待办理":
+        raise HTTPException(status_code=409, detail="该资助费用已办理，不能重复上传回执")
+    suffix = Path(receipt_file.filename or "").suffix.lower()
+    if suffix not in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".jpg", ".jpeg", ".png"}:
+        raise HTTPException(status_code=422, detail="不支持的资助回执文件格式")
+    content = await receipt_file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="资助回执文件不能为空")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="资助回执文件不能超过 20MB")
+    target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+    target.write_bytes(content)
+    attachment = FileAttachment(record_id=case_record.id, category="知识产权资助回执", original_name=Path(receipt_file.filename or target.name).name, stored_name=target.name, content_type=receipt_file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=f"资助费用 #{row.id} 回执")
+    db.add(attachment); await db.flush()
+    row.status = "已办理"; row.response_date = response_date; row.response_user = identity["username"]; row.receipt_attachment_id = attachment.id
+    if remark.strip(): row.remark = (row.remark + "\n" + remark.strip()).strip()
+    db.add(WorkflowEvent(record_id=case_record.id, action="办理知识产权案件资助费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"资助类别：{row.assisted_type}；办理日期：{response_date}；回执：{attachment.original_name}"))
+    await db.commit(); await db.refresh(row)
+    return _ipr_assisted_fee_dict(row, attachment)
+
+
+@app.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_case_assisted_fee(case_id: int, assisted_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(case_record, identity, db)
+    row = await db.scalar(select(IprCaseAssistedFee).where(IprCaseAssistedFee.id == assisted_fee_id, IprCaseAssistedFee.case_record_id == case_record.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="资助费用不存在或不属于当前案件")
+    if row.status != "待办理":
+        raise HTTPException(status_code=409, detail="已办理的资助费用必须保留回执和审计记录，不能删除")
+    db.add(WorkflowEvent(record_id=case_record.id, action="删除知识产权案件资助费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"资助类别：{row.assisted_type}"))
+    await db.delete(row); await db.commit()
+
+
+# These are the effective legacy CaseEventNotIn options.  IDs remain stable so
+# an existing suppression is never reinterpreted when the label is displayed.
+IPR_REMINDER_EVENT_TYPES: tuple[tuple[int, str], ...] = (
+    (1, "申请费"), (2, "提实质审查缴纳实质审查费"), (3, "缴纳登记、印刷费、印花税、首年年费"),
+    (4, "缴纳年费"), (5, "缴纳滞纳金及年费"), (6, "缴纳优先权费"), (7, "补充优先权证明文本"),
+    (8, "专利补正"), (9, "提出复审缴纳复审费"), (10, "缴纳著入项目变更费"),
+    (11, "专利补充证据材料"), (12, "商标提出复审"), (13, "商标补正"), (14, "商标补充证据材料"),
+    (15, "商标续展"), (16, "商标初审公布"), (17, "著作权补正"), (18, "缴纳无效申请费"),
+    (19, "答复审查意见"), (20, "第N次答复审查意见"), (23, "商标异议答辩"), (24, "办理专利资助"),
+)
+IPR_REMINDER_EVENT_TYPE_BY_ID = dict(IPR_REMINDER_EVENT_TYPES)
+
+
+def _ipr_case_reminder_dict(row: IprCaseReminder) -> dict:
+    return {
+        "id": row.id, "case_record_id": row.case_record_id, "event_type_id": row.event_type_id,
+        "event_type": row.event_type, "reminder_date": row.reminder_date, "deadline": row.deadline,
+        "content": row.content, "creator": row.creator, "created_at": row.created_at, "updated_at": row.updated_at,
+    }
+
+
+async def _ensure_active_ipr_case_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status != "在办":
+        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护提醒")
+    return record
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders")
+async def list_ipr_case_reminders(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    rows = list((await db.scalars(select(IprCaseReminder).where(IprCaseReminder.case_record_id == record.id).order_by(IprCaseReminder.reminder_date, IprCaseReminder.id))).all())
+    return {"items": [_ipr_case_reminder_dict(row) for row in rows], "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case_reminder(case_id: int, body: IprCaseReminderInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    if body.reminder_date > body.deadline:
+        raise HTTPException(status_code=422, detail="提醒日期不能晚于截止日期")
+    row = IprCaseReminder(case_record_id=record.id, reminder_date=body.reminder_date, deadline=body.deadline, content=body.content.strip(), creator=identity["username"])
+    db.add(row); await db.flush()
+    db.add(WorkflowEvent(record_id=record.id, action="新增知识产权案件提醒", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"提醒日期：{row.reminder_date}；截止日期：{row.deadline}；{row.content}"))
+    await db.commit(); await db.refresh(row)
+    return _ipr_case_reminder_dict(row)
+
+
+@app.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders/{{reminder_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_case_reminder(case_id: int, reminder_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    row = await db.scalar(select(IprCaseReminder).where(IprCaseReminder.id == reminder_id, IprCaseReminder.case_record_id == record.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="知识产权案件提醒不存在")
+    if identity.get("role") != "admin" and identity.get("role") != "manager" and row.creator != identity["username"]:
+        raise HTTPException(status_code=403, detail="只有提醒创建人、部门负责人或系统管理员可以删除")
+    db.add(WorkflowEvent(record_id=record.id, action="删除知识产权案件提醒", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"提醒日期：{row.reminder_date}；{row.content}"))
+    await db.delete(row); await db.commit()
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminder-suppressions")
+async def get_ipr_case_reminder_suppressions(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    rows = list((await db.scalars(select(IprCaseReminderSuppression).where(IprCaseReminderSuppression.case_record_id == record.id).order_by(IprCaseReminderSuppression.event_type_id))).all())
+    ids = [row.event_type_id for row in rows]
+    return {"event_types": [{"id": event_id, "name": name, "suppressed": event_id in ids} for event_id, name in IPR_REMINDER_EVENT_TYPES], "suppressed_ids": ids}
+
+
+@app.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminder-suppressions")
+async def replace_ipr_case_reminder_suppressions(case_id: int, body: IprCaseReminderSuppressionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    requested = set(body.event_type_ids)
+    invalid = requested - set(IPR_REMINDER_EVENT_TYPE_BY_ID)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"存在无效提醒类型：{', '.join(map(str, sorted(invalid)))}")
+    existing = list((await db.scalars(select(IprCaseReminderSuppression).where(IprCaseReminderSuppression.case_record_id == record.id))).all())
+    before = {row.event_type_id for row in existing}
+    for row in existing:
+        await db.delete(row)
+    for event_type_id in sorted(requested):
+        db.add(IprCaseReminderSuppression(case_record_id=record.id, event_type_id=event_type_id, event_type=IPR_REMINDER_EVENT_TYPE_BY_ID[event_type_id], operator=identity["username"]))
+    added = [IPR_REMINDER_EVENT_TYPE_BY_ID[item] for item in sorted(requested - before)]
+    removed = [IPR_REMINDER_EVENT_TYPE_BY_ID[item] for item in sorted(before - requested)]
+    db.add(WorkflowEvent(record_id=record.id, action="设置知识产权案件提醒不监控", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"新增不监控：{'、'.join(added) or '无'}；恢复监控：{'、'.join(removed) or '无'}"))
+    await db.commit()
+    return {"suppressed_ids": sorted(requested)}
+
+
+async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """Dedicated guard for IPR case files; generic attachment routes must not bypass it."""
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status != "在办":
+        raise HTTPException(status_code=409, detail="仅在办知识产权案件可以维护案件文档")
+    return record
+
+
+def _ipr_case_file_type_dict(item: SystemParameter) -> dict:
+    extra = item.extra or {}
+    return {
+        "id": item.id, "code": item.code, "name": item.name, "sort_order": item.sort_order,
+        "case_kinds": list(extra.get("case_kinds") or []), "is_official": bool(extra.get("is_official")),
+        "requires_transmission": bool(extra.get("requires_transmission")), "allow_repeat": bool(extra.get("allow_repeat", True)),
+        "hedging_file_type_codes": list(extra.get("hedging_file_type_codes") or []),
+        "hedging_fee_type_codes": list(extra.get("hedging_fee_type_codes") or []),
+    }
+
+
+async def _active_ipr_case_file_type(record: BusinessRecord, name: str, db: AsyncSession) -> SystemParameter:
+    item = await db.scalar(select(SystemParameter).where(
+        SystemParameter.category == "ipr_case_file_type", SystemParameter.name == name, SystemParameter.is_active.is_(True),
+    ))
+    if not item:
+        raise HTTPException(status_code=422, detail="案件文档类型不存在或已停用")
+    case_kinds = list((item.extra or {}).get("case_kinds") or [])
+    if case_kinds and str((record.data or {}).get("case_kind") or "") not in case_kinds:
+        raise HTTPException(status_code=422, detail="该文档类型不适用于当前知识产权案件类型")
+    return item
+
+
+async def _ipr_case_file_attachment(case_record: BusinessRecord, attachment_id: int, identity: dict, db: AsyncSession) -> FileAttachment:
+    attachment = await db.scalar(select(FileAttachment).where(FileAttachment.id == attachment_id, FileAttachment.record_id == case_record.id))
+    if not attachment:
+        raise HTTPException(status_code=404, detail="知识产权案件文档不存在或不属于当前案件")
+    return attachment
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files")
+async def list_ipr_case_files(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    items = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id).order_by(FileAttachment.document_date.desc().nullslast(), FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all())
+    return {"items": [_attachment_dict(item, record) for item in items], "total": len(items)}
+
+
+@app.get(f"{settings.api_prefix}/ipr/case-file-types")
+async def list_ipr_case_file_types(case_kind: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    if case_kind and case_kind not in IPR_CASE_KINDS:
+        raise HTTPException(status_code=422, detail="知识产权案件类型无效")
+    rows = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "ipr_case_file_type", SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
+    if case_kind:
+        rows = [item for item in rows if not (item.extra or {}).get("case_kinds") or case_kind in (item.extra or {}).get("case_kinds", [])]
+    return {"items": [_ipr_case_file_type_dict(item) for item in rows]}
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files", status_code=status.HTTP_201_CREATED)
+async def upload_ipr_case_file(
+    case_id: int, file: UploadFile = File(...), category: str = Form(...), document_date: date = Form(...),
+    requires_transmission: bool = Form(False), remark: str = Form(""),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Upload one typed IPR document with its business date and transfer requirement."""
+    record = await _ensure_ipr_case_file_write(case_id, identity, db)
+    normalized_category = category.strip()
+    if not normalized_category or len(normalized_category) > 64:
+        raise HTTPException(status_code=422, detail="文档类型不能为空且不能超过 64 个字符")
+    if len(remark.strip()) > 1000:
+        raise HTTPException(status_code=422, detail="文档说明不能超过 1000 个字符")
+    file_type = await _active_ipr_case_file_type(record, normalized_category, db)
+    type_extra = file_type.extra or {}
+    requires_transmission = bool(type_extra.get("requires_transmission"))
+    suffix = Path(file.filename or "").suffix.lower()
+    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    if suffix not in allowed:
+        raise HTTPException(status_code=422, detail="不支持的案件文档格式")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="案件文档不能为空")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="单个案件文档不能超过 20MB")
+    original_name = Path(file.filename or "document").name
+    if not bool(type_extra.get("allow_repeat", True)):
+        duplicate = await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, FileAttachment.category == normalized_category))
+        if duplicate:
+            raise HTTPException(status_code=409, detail="该案件已存在同类型文档，当前文件类型不允许重复上传")
+    stored_name = f"{uuid4().hex}{suffix}"
+    target = UPLOAD_ROOT / stored_name
+    target.write_bytes(content)
+    attachment = FileAttachment(
+        record_id=record.id, category=normalized_category, file_type_code=file_type.code, original_name=original_name, stored_name=stored_name,
+        content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target),
+        uploader=identity["username"], remark=remark.strip(), document_date=document_date,
+        requires_transmission=requires_transmission,
+    )
+    try:
+        db.add(attachment); await db.flush()
+        db.add(WorkflowEvent(record_id=record.id, action="上传知识产权案件文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{normalized_category}｜{original_name}｜文档日期 {document_date}" + ("｜待转文" if requires_transmission else "")))
+        await db.commit(); await db.refresh(attachment)
+    except Exception:
+        await db.rollback(); target.unlink(missing_ok=True); raise
+    return _attachment_dict(attachment, record)
+
+
+def _custom_ipr_filename_parts(filename: str) -> tuple[str, str] | None:
+    """Legacy rule: A(system-case-number)W(document-number).ext, case-insensitive."""
+    stem = Path(filename).stem.strip()
+    match = re.fullmatch(r"A(\d{1,16})W(\d{1,16})", stem, flags=re.IGNORECASE)
+    return (match.group(1), match.group(2)) if match else None
+
+
+def _legacy_case_number_values(record: BusinessRecord) -> set[str]:
+    data = record.data or {}
+    values = {record.serial_no, str(data.get("legacy_system_case_no") or ""), str(data.get("legacy_case_no") or ""), str(data.get("case_no") or "")}
+    return {value.lstrip("0") or "0" for value in values if value and value.isdigit()}
+
+
+async def _find_visible_ipr_case_by_legacy_no(parsed_case_no: str, identity: dict, db: AsyncSession) -> BusinessRecord | None:
+    rows = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "ipr_case", *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    expected = parsed_case_no.lstrip("0") or "0"
+    matched = [row for row in rows if expected in _legacy_case_number_values(row)]
+    return matched[0] if len(matched) == 1 else None
+
+
+async def _ensure_ipr_custom_import_batch_visible(batch_id: int, identity: dict, db: AsyncSession) -> IprCaseFileCustomImportBatch:
+    batch = await db.get(IprCaseFileCustomImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="案件自定义文件导入批次不存在")
+    if identity.get("role") == "admin" or batch.created_by == identity["username"]:
+        return batch
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if identity.get("role") == "manager" and user and user.department == batch.department:
+        return batch
+    raise HTTPException(status_code=404, detail="案件自定义文件导入批次不存在或当前账号无权查看")
+
+
+def _ipr_custom_candidate_dict(row: IprCaseFileCustomImportCandidate) -> dict:
+    return {
+        "id": row.id, "batch_id": row.batch_id, "ipr_case_id": row.ipr_case_id,
+        "custom_filename": row.custom_filename, "parsed_case_no": row.parsed_case_no,
+        "parsed_document_no": row.parsed_document_no, "case_kind": row.case_kind,
+        "application_no": row.application_no, "file_type": row.file_type,
+        "document_date": row.document_date, "case_officer": row.case_officer,
+        "fee_amount": row.fee_amount, "fee_type": row.fee_type,
+        "fee_response_user": row.fee_response_user, "errors": row.errors or [],
+        "status": row.status, "attachment_id": row.attachment_id,
+    }
+
+
+async def _refresh_ipr_custom_candidate(candidate: IprCaseFileCustomImportCandidate, identity: dict, db: AsyncSession) -> None:
+    errors: list[str] = []
+    if not candidate.parsed_case_no or not candidate.parsed_document_no:
+        errors.append("文件名必须符合 A(系统案号)W(文档号).扩展名，例如 A1411137W210403.pdf")
+    record = None
+    if candidate.ipr_case_id:
+        record = await _ensure_record_module(candidate.ipr_case_id, "ipr_case", identity, db)
+        if record.status != "在办":
+            errors.append("匹配案件不是在办状态")
+    else:
+        errors.append("未匹配到知识产权案件，请人工选择")
+    if not candidate.file_type.strip():
+        errors.append("缺少文档类型")
+    if record and candidate.file_type.strip():
+        try:
+            await _active_ipr_case_file_type(record, candidate.file_type.strip(), db)
+        except HTTPException as exc:
+            errors.append(str(exc.detail))
+    candidate.errors = list(dict.fromkeys(errors))
+    candidate.status = "待确认" if not candidate.errors else "待修正"
+
+
+@app.post(f"{settings.api_prefix}/ipr/case-files/custom-import-batches", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case_file_custom_import_batch(
+    file: UploadFile = File(...), test_only: bool = Form(False), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Parse one legacy-named document into a candidate. It never creates an attachment itself."""
+    await _require_record_module_menu("ipr_case", identity, db, action="导入")
+    source_name = Path(file.filename or "").name
+    suffix = Path(source_name).suffix.lower()
+    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    if suffix not in allowed:
+        raise HTTPException(status_code=422, detail="不支持的案件文档格式")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="自定义导入源文件不能为空")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="自定义导入源文件不能超过 20MB")
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    source_path = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+    source_path.write_bytes(content)
+    parts = _custom_ipr_filename_parts(source_name)
+    parsed_case_no, parsed_document_no = parts or ("", "")
+    errors: list[str] = []
+    record = await _find_visible_ipr_case_by_legacy_no(parsed_case_no, identity, db) if parts else None
+    if not parts:
+        errors.append("文件名必须符合 A(系统案号)W(文档号).扩展名，例如 A1411137W210403.pdf")
+    elif not record:
+        errors.append("未匹配到知识产权案件，请人工选择")
+    elif record.status != "在办":
+        errors.append("匹配案件不是在办状态")
+    default_type = "普通知识产权案件文档"
+    if record:
+        try:
+            await _active_ipr_case_file_type(record, default_type, db)
+        except HTTPException:
+            default_type = ""
+            errors.append("未配置可用的默认案件文档类型，请人工选择")
+    if test_only and (settings.app_env.lower() == "production" or identity.get("role") != "admin"):
+        source_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=403, detail="测试导入批次仅允许非生产环境的管理员创建")
+    batch = IprCaseFileCustomImportBatch(source_filename=source_name, source_path=str(source_path), source_size=len(content), is_test=test_only, created_by=identity["username"], department=user.department if user else "", total_count=1, error_count=1 if errors else 0)
+    db.add(batch); await db.flush()
+    data = record.data or {} if record else {}
+    candidate = IprCaseFileCustomImportCandidate(batch_id=batch.id, ipr_case_id=record.id if record and record.status == "在办" else None, custom_filename=source_name, parsed_case_no=parsed_case_no, parsed_document_no=parsed_document_no, case_kind=str(data.get("case_kind") or ""), application_no=str(data.get("application_no") or ""), file_type=default_type, document_date=date.today(), case_officer=record.owner if record else "", errors=errors, status="待修正" if errors else "待确认")
+    db.add(candidate); await db.commit(); await db.refresh(candidate)
+    return {"id": batch.id, "status": batch.status, "total_count": 1, "error_count": batch.error_count, "candidate": _ipr_custom_candidate_dict(candidate)}
+
+
+@app.get(f"{settings.api_prefix}/ipr/case-files/custom-import-batches")
+async def list_ipr_case_file_custom_import_batches(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    conditions = []
+    if identity.get("role") != "admin":
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        if identity.get("role") == "manager" and user:
+            conditions.append(or_(IprCaseFileCustomImportBatch.created_by == identity["username"], IprCaseFileCustomImportBatch.department == user.department))
+        else:
+            conditions.append(IprCaseFileCustomImportBatch.created_by == identity["username"])
+    rows = list((await db.scalars(select(IprCaseFileCustomImportBatch).where(*conditions).order_by(IprCaseFileCustomImportBatch.created_at.desc()).limit(100))).all())
+    return {"items": [{"id": row.id, "source_filename": row.source_filename, "source_size": row.source_size, "status": row.status, "total_count": row.total_count, "error_count": row.error_count, "imported_count": row.imported_count, "created_by": row.created_by, "department": row.department, "created_at": row.created_at} for row in rows]}
+
+
+@app.get(f"{settings.api_prefix}/ipr/case-files/custom-import-batches/{{batch_id}}/candidates")
+async def list_ipr_case_file_custom_import_candidates(batch_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    await _ensure_ipr_custom_import_batch_visible(batch_id, identity, db)
+    rows = list((await db.scalars(select(IprCaseFileCustomImportCandidate).where(IprCaseFileCustomImportCandidate.batch_id == batch_id).order_by(IprCaseFileCustomImportCandidate.id))).all())
+    return {"items": [_ipr_custom_candidate_dict(row) for row in rows], "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/case-files/custom-import-candidates/{{candidate_id}}/match")
+async def match_ipr_case_file_custom_import_candidate(candidate_id: int, body: IprCaseFileCustomCandidateMatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="导入")
+    candidate = await db.get(IprCaseFileCustomImportCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="案件自定义文件候选不存在")
+    await _ensure_ipr_custom_import_batch_visible(candidate.batch_id, identity, db)
+    if candidate.status == "已导入":
+        raise HTTPException(status_code=409, detail="已导入候选不能重新匹配案件")
+    record = await _ensure_record_module(body.ipr_case_id, "ipr_case", identity, db)
+    candidate.ipr_case_id = record.id; candidate.case_kind = str((record.data or {}).get("case_kind") or ""); candidate.application_no = str((record.data or {}).get("application_no") or ""); candidate.case_officer = candidate.case_officer or record.owner
+    await _refresh_ipr_custom_candidate(candidate, identity, db)
+    batch = await db.get(IprCaseFileCustomImportBatch, candidate.batch_id); batch.error_count = await db.scalar(select(func.count(IprCaseFileCustomImportCandidate.id)).where(IprCaseFileCustomImportCandidate.batch_id == batch.id, IprCaseFileCustomImportCandidate.status == "待修正")) or 0
+    await db.commit(); await db.refresh(candidate)
+    return _ipr_custom_candidate_dict(candidate)
+
+
+@app.patch(f"{settings.api_prefix}/ipr/case-files/custom-import-candidates/{{candidate_id}}")
+async def correct_ipr_case_file_custom_import_candidate(candidate_id: int, body: IprCaseFileCustomCandidateCorrectInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="导入")
+    candidate = await db.get(IprCaseFileCustomImportCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="案件自定义文件候选不存在")
+    await _ensure_ipr_custom_import_batch_visible(candidate.batch_id, identity, db)
+    if candidate.status == "已导入":
+        raise HTTPException(status_code=409, detail="已导入候选不能修改")
+    for key in {"file_type", "document_date", "case_officer", "fee_amount", "fee_type", "fee_response_user"}:
+        if key in body.model_fields_set:
+            setattr(candidate, key, getattr(body, key))
+    await _refresh_ipr_custom_candidate(candidate, identity, db)
+    batch = await db.get(IprCaseFileCustomImportBatch, candidate.batch_id); batch.error_count = await db.scalar(select(func.count(IprCaseFileCustomImportCandidate.id)).where(IprCaseFileCustomImportCandidate.batch_id == batch.id, IprCaseFileCustomImportCandidate.status == "待修正")) or 0
+    await db.commit(); await db.refresh(candidate)
+    return _ipr_custom_candidate_dict(candidate)
+
+
+@app.post(f"{settings.api_prefix}/ipr/case-files/custom-import-batches/{{batch_id}}/confirm")
+async def confirm_ipr_case_file_custom_import_candidates(batch_id: int, body: IprCaseFileCustomCandidateConfirmInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="导入")
+    batch = await _ensure_ipr_custom_import_batch_visible(batch_id, identity, db)
+    candidate_ids = list(dict.fromkeys(body.candidate_ids))
+    rows = list((await db.scalars(select(IprCaseFileCustomImportCandidate).where(IprCaseFileCustomImportCandidate.batch_id == batch.id, IprCaseFileCustomImportCandidate.id.in_(candidate_ids)))).all())
+    if len(rows) != len(candidate_ids):
+        raise HTTPException(status_code=404, detail="存在不属于当前批次的案件自定义文件候选")
+    ordered = {row.id: row for row in rows}
+    source_path = Path(batch.source_path)
+    if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
+        raise HTTPException(status_code=409, detail="自定义导入源文件不存在或不安全，不能确认导入")
+    content = source_path.read_bytes()
+    paths: list[Path] = []; attachments: list[FileAttachment] = []
+    try:
+        for candidate_id in candidate_ids:
+            candidate = ordered[candidate_id]
+            if candidate.status != "待确认" or candidate.errors:
+                raise HTTPException(status_code=409, detail=f"候选文件 {candidate.custom_filename} 仍有待修正内容，不能确认导入")
+            record = await _ensure_ipr_case_file_write(candidate.ipr_case_id or 0, identity, db)
+            file_type = await _active_ipr_case_file_type(record, candidate.file_type, db)
+            suffix = Path(candidate.custom_filename).suffix.lower(); stored_name = f"{uuid4().hex}{suffix}"; path = UPLOAD_ROOT / stored_name
+            path.write_bytes(content); paths.append(path)
+            attachment = FileAttachment(record_id=record.id, category=candidate.file_type, file_type_code=file_type.code, original_name=candidate.custom_filename, stored_name=stored_name, content_type="application/octet-stream", size=len(content), path=str(path), uploader=identity["username"], remark=body.comment.strip(), document_date=candidate.document_date, requires_transmission=bool((file_type.extra or {}).get("requires_transmission")))
+            db.add(attachment); await db.flush(); candidate.attachment_id = attachment.id; candidate.status = "已导入"; candidate.confirmed_by = identity["username"]; candidate.confirmed_at = datetime.now()
+            db.add(WorkflowEvent(record_id=record.id, action="确认导入知识产权案件自定义文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"来源文件 {candidate.custom_filename}；文档号 {candidate.parsed_document_no}"))
+            attachments.append(attachment)
+        batch.imported_count += len(attachments); batch.error_count = 0; batch.status = "已完成"
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        for path in paths: path.unlink(missing_ok=True)
+        raise
+    return {"created": len(attachments), "attachment_ids": [item.id for item in attachments], "batch_status": batch.status}
+
+
+@app.delete(f"{settings.api_prefix}/testing/ipr-case-file-custom-import-batches/{{batch_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_test_ipr_case_file_custom_import_batch(batch_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Precise cleanup for test batches only; never exposed through the production workflow."""
+    if identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可以清理测试导入批次")
+    batch = await db.get(IprCaseFileCustomImportBatch, batch_id)
+    if not batch or not batch.is_test:
+        raise HTTPException(status_code=404, detail="测试自定义导入批次不存在")
+    candidates = list((await db.scalars(select(IprCaseFileCustomImportCandidate).where(IprCaseFileCustomImportCandidate.batch_id == batch.id))).all())
+    attachment_ids = [row.attachment_id for row in candidates if row.attachment_id]
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all()) if attachment_ids else []
+    for attachment in attachments:
+        path = Path(attachment.path)
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink(missing_ok=True)
+        await db.delete(attachment)
+    source_path = Path(batch.source_path)
+    if source_path.is_file() and UPLOAD_ROOT.resolve() in source_path.resolve().parents:
+        source_path.unlink(missing_ok=True)
+    await db.delete(batch); await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/files/batch-upload", status_code=status.HTTP_201_CREATED)
+async def batch_upload_ipr_case_file(
+    file: UploadFile = File(...), case_ids: str = Form(...), category: str = Form(...), document_date: date = Form(...),
+    remark: str = Form(""), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """One source document to many IPR cases. Preflight every target before writing any row or file."""
+    try:
+        raw_ids = json.loads(case_ids)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="批量上传案件必须是案件 ID 数组")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise HTTPException(status_code=422, detail="请至少选择一个知识产权案件")
+    try:
+        target_ids = list(dict.fromkeys(int(value) for value in raw_ids))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="批量上传案件 ID 无效")
+    if len(target_ids) > 200:
+        raise HTTPException(status_code=422, detail="单次最多向 200 个案件批量上传")
+    normalized_category = category.strip()
+    if not normalized_category or len(normalized_category) > 64 or len(remark.strip()) > 1000:
+        raise HTTPException(status_code=422, detail="文件类型或说明不符合要求")
+    suffix = Path(file.filename or "").suffix.lower()
+    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    if suffix not in allowed:
+        raise HTTPException(status_code=422, detail="不支持的案件文档格式")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="案件文档不能为空")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="单个案件文档不能超过 20MB")
+    # Preflight all targets. No target can receive a file until every target is valid.
+    records: list[BusinessRecord] = []
+    type_by_record: dict[int, SystemParameter] = {}
+    for target_id in target_ids:
+        record = await _ensure_ipr_case_file_write(target_id, identity, db)
+        file_type = await _active_ipr_case_file_type(record, normalized_category, db)
+        if not bool((file_type.extra or {}).get("allow_repeat", True)):
+            existing = await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, FileAttachment.file_type_code == file_type.code))
+            if existing:
+                raise HTTPException(status_code=409, detail=f"案件 {record.serial_no} 已存在不允许重复的同类型文档；本批次未写入任何文件")
+        records.append(record); type_by_record[record.id] = file_type
+    original_name = Path(file.filename or "document").name
+    paths: list[Path] = []
+    attachments: list[FileAttachment] = []
+    try:
+        for record in records:
+            file_type = type_by_record[record.id]
+            stored_name = f"{uuid4().hex}{suffix}"; target = UPLOAD_ROOT / stored_name
+            target.write_bytes(content); paths.append(target)
+            attachment = FileAttachment(record_id=record.id, category=normalized_category, file_type_code=file_type.code, original_name=original_name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=remark.strip(), document_date=document_date, requires_transmission=bool((file_type.extra or {}).get("requires_transmission")))
+            attachments.append(attachment); db.add(attachment)
+            db.add(WorkflowEvent(record_id=record.id, action="批量上传知识产权案件文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"批量上传 {normalized_category}｜{original_name}｜文档日期 {document_date}"))
+        await db.commit()
+        for attachment in attachments: await db.refresh(attachment)
+    except Exception:
+        await db.rollback()
+        for path in paths: path.unlink(missing_ok=True)
+        raise
+    return {"created": len(attachments), "items": [_attachment_dict(item, next(record for record in records if record.id == item.record_id)) for item in attachments]}
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/{{attachment_id}}/mark-transmitted")
+async def mark_ipr_case_file_transmitted(case_id: int, attachment_id: int, body: IprCaseFileTransmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_case_file_write(case_id, identity, db)
+    attachment = await _ipr_case_file_attachment(record, attachment_id, identity, db)
+    if not attachment.requires_transmission:
+        raise HTTPException(status_code=409, detail="该文档未标记为待转文，不能执行标记已转")
+    if attachment.is_transmitted:
+        raise HTTPException(status_code=409, detail="该文档已标记为已转")
+    attachment.is_transmitted = True; attachment.transmitted_at = datetime.now(); attachment.transmitted_by = identity["username"]
+    db.add(WorkflowEvent(record_id=record.id, action="标记知识产权案件文档已转", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{attachment.category}｜{attachment.original_name}" + (f"｜{body.comment.strip()}" if body.comment.strip() else "")))
+    await db.commit(); await db.refresh(attachment)
+    return _attachment_dict(attachment, record)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/mark-transmitted")
+async def mark_ipr_case_files_transmitted(case_id: int, body: IprCaseFileBatchTransmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy TagTransformed equivalent: validate every selected pending transfer before any write."""
+    record = await _ensure_ipr_case_file_write(case_id, identity, db)
+    attachment_ids = list(dict.fromkeys(body.attachment_ids))
+    if any(item <= 0 for item in attachment_ids):
+        raise HTTPException(status_code=422, detail="待转文文件编号无效")
+    rows = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids), FileAttachment.record_id == record.id))).all())
+    if len(rows) != len(attachment_ids):
+        raise HTTPException(status_code=404, detail="存在不属于当前案件的待转文文件")
+    invalid = [item.original_name for item in rows if not item.requires_transmission or item.is_transmitted]
+    if invalid:
+        raise HTTPException(status_code=409, detail=f"所选文件中存在非待转文或已转文记录：{'、'.join(invalid)}")
+    now = datetime.now()
+    for item in rows:
+        item.is_transmitted = True
+        item.transmitted_at = now
+        item.transmitted_by = identity["username"]
+    db.add(WorkflowEvent(record_id=record.id, action="批量标记知识产权案件文档已转", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"文件数：{len(rows)}；{'、'.join(item.original_name for item in rows)}" + (f"；{body.comment.strip()}" if body.comment.strip() else "")))
+    await db.commit()
+    return {"updated": len(rows), "items": [_attachment_dict(item, record) for item in rows]}
+
+
+@app.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_case_file(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_case_file_write(case_id, identity, db)
+    attachment = await _ipr_case_file_attachment(record, attachment_id, identity, db)
+    path = Path(attachment.path)
+    db.add(WorkflowEvent(record_id=record.id, action="删除知识产权案件文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{attachment.category}｜{attachment.original_name}"))
+    await db.delete(attachment); await db.commit()
+    if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+        path.unlink(missing_ok=True)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/submit")
+async def submit_ipr_case(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in IPR_CASE_DRAFT_STATUSES: raise HTTPException(status_code=409, detail="当前状态不能提交知识产权立案审核")
+    data = record.data or {}
+    if not str(data.get("application_no") or "").strip(): raise HTTPException(status_code=422, detail="提交立案审核前必须填写申请号或注册号")
+    previous = record.status; record.status = "待立案审核"; record.data = {**data, "submitted_at": datetime.now().isoformat(timespec="seconds"), "submitted_by": identity["username"]}
+    db.add(WorkflowEvent(record_id=record.id, action="提交知识产权立案审核", from_status=previous, to_status=record.status, operator=identity["username"], comment=""))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/review")
+async def review_ipr_case(case_id: int, body: IprCaseReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="仅管理员或管理人员可以审核知识产权立案")
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    if record.status != "待立案审核": raise HTTPException(status_code=409, detail="该知识产权案件不在待立案审核状态")
+    if not body.approved and not body.comment.strip(): raise HTTPException(status_code=422, detail="驳回必须填写原因")
+    previous = record.status; record.status = "在办" if body.approved else "已驳回"; record.data = {**(record.data or {}), "reviewed_at": datetime.now().isoformat(timespec="seconds"), "reviewed_by": identity["username"], "review_comment": body.comment.strip()}
+    db.add(WorkflowEvent(record_id=record.id, action="知识产权立案审核通过" if body.approved else "知识产权立案审核驳回", from_status=previous, to_status=record.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/close")
+async def close_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status != "在办": raise HTTPException(status_code=409, detail="仅在办知识产权案件可以结案")
+    previous = record.status; record.status = "已结案"; record.data = {**(record.data or {}), "closed_at": datetime.now().isoformat(timespec="seconds"), "closed_by": identity["username"]}
+    db.add(WorkflowEvent(record_id=record.id, action="知识产权案件结案", from_status=previous, to_status=record.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reopen")
+async def reopen_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="仅管理员或管理人员可以重新开启知识产权案件")
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    if record.status != "已结案": raise HTTPException(status_code=409, detail="仅已结案知识产权案件可以重新开启")
+    previous = record.status; record.status = "在办"; record.data = {**(record.data or {}), "reopened_at": datetime.now().isoformat(timespec="seconds"), "reopened_by": identity["username"]}
+    db.add(WorkflowEvent(record_id=record.id, action="重新开启知识产权案件", from_status=previous, to_status=record.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(record)
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
+IPR_CASE_DOCUMENT_TYPES = {
+    "case-summary": "知识产权案件信息表",
+    "authorization-letter": "知识产权代理授权委托书",
+    "law-firm-letter": "律师事务所函",
+    "identity-certificate": "主体身份证明核对单",
+}
+
+
+CASE_DOCUMENT_TYPES = {
+    "authorization-letter": "授权委托书",
+    "archive-letter": "归档函",
+    "gd-authorization-letter": "广东版授权委托书",
+    "compensation-letter": "赔偿函",
+    "law-firm-letter": "律师事务所函",
+    "identity-certificate": "主体身份证明",
+    "settlement-list": "结算提成表",
+    "first-instance-appellant-lawyer-letter": "一审上诉人律师函",
+    "first-instance-appellee-lawyer-letter": "一审被上诉人律师函",
+    "second-instance-appellant-lawyer-letter": "二审上诉人律师函",
+    "second-instance-appellee-lawyer-letter": "二审被上诉人律师函",
+    "execution-lawyer-letter": "执行律师函",
+    "gd-first-instance-appellant-lawyer-letter": "广东版一审上诉人律师函",
+    "gd-first-instance-appellee-lawyer-letter": "广东版一审被上诉人律师函",
+    "gd-second-instance-appellant-lawyer-letter": "广东版二审上诉人律师函",
+    "gd-second-instance-appellee-lawyer-letter": "广东版二审被上诉人律师函",
+    "gd-execution-lawyer-letter": "广东版执行律师函",
+}
+
+
+def _case_document_bytes(record: BusinessRecord, document_type: str) -> tuple[str, bytes]:
+    """Create a traceable DOCX from the persisted ordinary-case record."""
+    title = CASE_DOCUMENT_TYPES[document_type]
+    data = record.data or {}
+    def value(*keys: str) -> str:
+        for key in keys:
+            item = data.get(key)
+            if isinstance(item, list):
+                item = "、".join(str(part) for part in item if str(part).strip())
+            if item is not None and str(item).strip():
+                return str(item).strip()
+        return "【待补充】"
+    document = Document()
+    document.add_heading(title, level=0)
+    document.add_paragraph(f"案件编号：{record.serial_no}")
+    document.add_paragraph(f"生成时间：{datetime.now():%Y-%m-%d %H:%M:%S}")
+    document.add_paragraph("")
+    document.add_heading("案件基本信息", level=1)
+    for label, text_value in [
+        ("案件名称", record.title), ("案件类型", value("case_type")), ("案件阶段", record.status), ("客户", record.customer or "【待补充】"),
+        ("原告/申请人", value("plaintiff", "applicant")), ("被告/被申请人", value("opponent", "respondent")), ("案由/罪名", value("cause_or_charge", "cause")),
+        ("法院/机构", value("court", "first_court_name", "first_instance_court")), ("合同编号", value("contract_no")),
+        ("经办律师", value("handling_lawyers", "handling_lawyer")), ("律师助理", value("assistant")),
+    ]:
+        document.add_paragraph(f"{label}：{text_value}")
+    document.add_heading("文书说明", level=1)
+    document.add_paragraph(f"本《{title}》由系统根据上述案件已保存资料生成。标记为“【待补充】”的字段须由经办人员核实补正后方可对外使用。")
+    if document_type == "settlement-list":
+        document.add_paragraph(f"诉讼标的金额：{value('litigation_amount')}")
+        document.add_paragraph(f"判决/和解金额：{value('settlement_amount')}")
+    output = io.BytesIO(); document.save(output)
+    return title, output.getvalue()
+
+
+def _ipr_case_document_bytes(record: BusinessRecord, document_type: str) -> tuple[str, bytes]:
+    """Generate a real DOCX from persisted IPR case data, never from browser text."""
+    document_title = IPR_CASE_DOCUMENT_TYPES[document_type]
+    data = record.data or {}
+    document = Document()
+    document.add_heading(document_title, level=0)
+    document.add_paragraph(f"案件编号：{record.serial_no}")
+    document.add_paragraph(f"生成时间：{datetime.now():%Y-%m-%d %H:%M:%S}")
+    document.add_paragraph("")
+    table = document.add_table(rows=0, cols=2)
+    table.style = "Table Grid"
+    fields = [
+        ("案件类型", data.get("case_kind") or "【待补充】"),
+        ("案件名称", record.title or "【待补充】"),
+        ("客户", record.customer or "【待补充】"),
+        ("申请号/注册号", data.get("application_no") or "【待补充】"),
+        ("申请类型", data.get("application_type") or "【待补充】"),
+        ("申请人/权利人", data.get("applicant") or "【待补充】"),
+        ("案件负责人", data.get("case_manager") or "【待补充】"),
+        ("申请日期", data.get("application_date") or "【待补充】"),
+        ("办理期限", data.get("deadline") or "【待补充】"),
+        ("年费年度", data.get("annual_fee_year") or "【待补充】"),
+        ("费率", data.get("rate") if data.get("rate") is not None else "【待补充】"),
+    ]
+    for label, value in fields:
+        cells = table.add_row().cells
+        cells[0].text = str(label)
+        cells[1].text = str(value)
+    if document_type == "authorization-letter":
+        document.add_paragraph("\n兹委托本所就上述知识产权案件办理申请、答复、缴费及相关程序事项。授权范围以双方另行签署的正式委托文件为准。")
+    elif document_type == "law-firm-letter":
+        document.add_paragraph("\n本函用于说明本所受委托办理上述知识产权事项。具体办理范围、费用及期限以合同和书面确认文件为准。")
+    elif document_type == "identity-certificate":
+        document.add_paragraph("\n请核对客户主体名称、申请人/权利人信息及相关证明材料；未提供的信息已用【待补充】明确标识。")
+    else:
+        document.add_paragraph("\n本信息表由系统依据已保存的案件数据生成，供内部核对与交付使用。")
+    output = io.BytesIO(); document.save(output)
+    return document_title, output.getvalue()
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/documents/{{document_type}}", status_code=status.HTTP_201_CREATED)
+async def generate_ipr_case_document(case_id: int, document_type: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if document_type not in IPR_CASE_DOCUMENT_TYPES:
+        raise HTTPException(status_code=404, detail="不支持的知识产权案件文书类型")
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status not in {"在办", "已结案"}:
+        raise HTTPException(status_code=409, detail="仅在办或已结案知识产权案件可以生成正式案件文书")
+    title, content = _ipr_case_document_bytes(record, document_type)
+    stored_name = f"{uuid4().hex}.docx"
+    target = UPLOAD_ROOT / stored_name
+    target.write_bytes(content)
+    original_name = f"{record.serial_no}-{title}-{datetime.now():%Y%m%d%H%M%S}.docx"
+    attachment = FileAttachment(record_id=record.id, category="知识产权案件文书", original_name=original_name, stored_name=stored_name, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", size=len(content), path=str(target), uploader=identity["username"], remark=f"系统生成：{document_type}")
+    db.add(attachment)
+    db.add(WorkflowEvent(record_id=record.id, action="生成知识产权案件文书", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{title}：{original_name}"))
+    await db.commit(); await db.refresh(attachment)
+    return _attachment_dict(attachment, record)
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/documents/{{document_type}}", status_code=status.HTTP_201_CREATED)
+async def generate_case_document(case_id: int, document_type: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if document_type not in CASE_DOCUMENT_TYPES:
+        raise HTTPException(status_code=404, detail="不支持的案件文书类型")
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status in {"已合并", "已归档"}:
+        raise HTTPException(status_code=409, detail="已合并或已归档案件不能再生成办理文书")
+    title, content = _case_document_bytes(record, document_type)
+    stored_name = f"{uuid4().hex}.docx"; path = UPLOAD_ROOT / stored_name; path.write_bytes(content)
+    attachment = FileAttachment(record_id=record.id, category="案件生成文书", original_name=f"{record.serial_no}-{title}-{datetime.now():%Y%m%d%H%M%S}.docx", stored_name=stored_name, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", size=len(content), path=str(path), uploader=identity["username"], remark=f"系统生成案件文书：{document_type}")
+    db.add(attachment); await db.flush()
+    db.add(WorkflowEvent(record_id=record.id, action="生成案件文书", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{title}｜附件 {attachment.original_name}"))
+    await db.commit(); await db.refresh(attachment)
+    return _attachment_dict(attachment, record)
+
+
+async def _next_ipr_official_file_serial(db: AsyncSession) -> str:
+    for _ in range(20):
+        serial = f"GW{datetime.now():%y%m%d%H%M%S}{uuid4().hex[:4].upper()}"
+        if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial)):
+            return serial
+    raise HTTPException(status_code=503, detail="知识产权官文编号生成失败，请稍后重试")
+
+
+async def _ensure_ipr_import_batch_visible(batch_id: int, identity: dict, db: AsyncSession) -> IprOfficialImportBatch:
+    batch = await db.get(IprOfficialImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="官文导入批次不存在")
+    if identity.get("role") == "admin" or batch.created_by == identity["username"]:
+        return batch
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if identity.get("role") == "manager" and user and user.department == batch.department:
+        return batch
+    raise HTTPException(status_code=404, detail="官文导入批次不存在或当前账号无权查看")
+
+
+def _parse_ipr_official_candidate_date(value: str, field: str, errors: list[str]) -> date | None:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        errors.append(f"{field}必须使用 YYYY-MM-DD 格式")
+        return None
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/import-batches", status_code=status.HTTP_201_CREATED)
+async def create_ipr_official_import_batch(
+    file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Parse a CSV source into reviewable candidates; this never creates formal official files."""
+    await _require_record_module_menu("ipr_official_file", identity, db, action="导入")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix != ".csv":
+        raise HTTPException(status_code=422, detail="候选解析当前仅接受 CSV 源文件；请先按模板整理后上传")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="候选导入源文件不能为空")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="候选导入源文件不能超过 20MB")
+    try:
+        source_text = content.decode("utf-8-sig")
+        source_rows = list(csv.DictReader(io.StringIO(source_text)))
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail="CSV 必须使用 UTF-8 编码") from exc
+    if not source_rows:
+        raise HTTPException(status_code=422, detail="CSV 没有可解析的数据行")
+    if len(source_rows) > 1000:
+        raise HTTPException(status_code=422, detail="单个候选导入批次最多 1000 行")
+    username = identity["username"]
+    user = await db.scalar(select(User).where(User.username == username))
+    source_name = Path(file.filename or "ipr-official-candidates.csv").name
+    source_path = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+    source_path.write_bytes(content)
+    batch = IprOfficialImportBatch(source_filename=source_name, source_path=str(source_path), source_size=len(content), created_by=username, department=user.department if user else "")
+    db.add(batch); await db.flush()
+    error_count = 0
+    for row_no, raw in enumerate(source_rows, 2):
+        normalized = {str(key or "").strip(): str(value or "").strip() for key, value in raw.items()}
+        application_no = normalized.get("申请号") or normalized.get("application_no") or ""
+        official_type = normalized.get("通知书名称") or normalized.get("官文类型") or normalized.get("official_type") or ""
+        official_no = normalized.get("发文号") or normalized.get("官文号") or normalized.get("official_no") or ""
+        errors: list[str] = []
+        if not application_no: errors.append("缺少申请号")
+        if not official_type: errors.append("缺少通知书名称/官文类型")
+        received_date = _parse_ipr_official_candidate_date(normalized.get("收发文日") or normalized.get("received_date") or "", "收发文日", errors)
+        due_date = _parse_ipr_official_candidate_date(normalized.get("办理期限") or normalized.get("due_date") or "", "办理期限", errors)
+        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "ipr_case", BusinessRecord.data["application_no"].as_string() == application_no)) if application_no else None
+        if application_no and not case_record: errors.append("未匹配到知识产权案件，请人工选择")
+        if case_record and case_record.status != "在办": errors.append("匹配案件不是在办状态")
+        if errors:
+            error_count += 1
+        db.add(IprOfficialImportCandidate(batch_id=batch.id, row_no=row_no, ipr_case_id=case_record.id if case_record and case_record.status == "在办" else None, application_no=application_no, official_type=official_type, official_no=official_no, received_date=received_date, due_date=due_date, raw_data=normalized, errors=errors, status="待确认" if not errors else "待修正"))
+    batch.total_count = len(source_rows); batch.error_count = error_count
+    await db.commit(); await db.refresh(batch)
+    return {"id": batch.id, "status": batch.status, "total_count": batch.total_count, "error_count": batch.error_count}
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files/import-batches")
+async def list_ipr_official_import_batches(
+    batch_status: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Return only import batches visible to the caller, newest first."""
+    await _require_record_module_menu("ipr_official_file", identity, db, action="查看")
+    conditions = []
+    if identity.get("role") != "admin":
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        if identity.get("role") == "manager" and user:
+            conditions.append(or_(IprOfficialImportBatch.created_by == identity["username"], IprOfficialImportBatch.department == user.department))
+        else:
+            conditions.append(IprOfficialImportBatch.created_by == identity["username"])
+    if batch_status:
+        conditions.append(IprOfficialImportBatch.status == batch_status)
+    rows = (await db.scalars(select(IprOfficialImportBatch).where(*conditions).order_by(IprOfficialImportBatch.created_at.desc()).limit(100))).all()
+    return {"items": [{
+        "id": row.id, "source_filename": row.source_filename, "source_size": row.source_size, "status": row.status,
+        "total_count": row.total_count, "error_count": row.error_count, "imported_count": row.imported_count,
+        "created_by": row.created_by, "department": row.department, "created_at": row.created_at, "updated_at": row.updated_at,
+    } for row in rows]}
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files/import-batches/{{batch_id}}/candidates")
+async def list_ipr_official_import_candidates(
+    batch_id: int, candidate_status: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="查看")
+    await _ensure_ipr_import_batch_visible(batch_id, identity, db)
+    conditions = [IprOfficialImportCandidate.batch_id == batch_id]
+    if candidate_status:
+        conditions.append(IprOfficialImportCandidate.status == candidate_status)
+    rows = (await db.scalars(select(IprOfficialImportCandidate).where(*conditions).order_by(IprOfficialImportCandidate.row_no))).all()
+    return {"items": [{
+        "id": row.id, "row_no": row.row_no, "ipr_case_id": row.ipr_case_id, "application_no": row.application_no,
+        "official_type": row.official_type, "official_no": row.official_no, "received_date": row.received_date,
+        "due_date": row.due_date, "raw_data": row.raw_data, "errors": row.errors, "status": row.status,
+        "official_record_id": row.official_record_id,
+    } for row in rows], "total": len(rows)}
+
+
+async def _visible_ipr_import_batches(identity: dict, db: AsyncSession) -> list[IprOfficialImportBatch]:
+    """Return import batches under the same creator/department scope as the batch workspace."""
+    conditions = []
+    if identity.get("role") != "admin":
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        if identity.get("role") == "manager" and user:
+            conditions.append(or_(IprOfficialImportBatch.created_by == identity["username"], IprOfficialImportBatch.department == user.department))
+        else:
+            conditions.append(IprOfficialImportBatch.created_by == identity["username"])
+    return list((await db.scalars(select(IprOfficialImportBatch).where(*conditions).order_by(IprOfficialImportBatch.created_at.desc()))).all())
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files/checklist")
+async def list_ipr_official_file_checklist(
+    keyword: str = "", candidate_status: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Legacy-equivalent import check list, including rows not yet confirmed as official files."""
+    await _require_record_module_menu("ipr_official_file", identity, db, action="查看")
+    batches = await _visible_ipr_import_batches(identity, db)
+    batch_by_id = {item.id: item for item in batches}
+    if not batch_by_id:
+        return {"items": [], "total": 0}
+    conditions = [IprOfficialImportCandidate.batch_id.in_(list(batch_by_id))]
+    if candidate_status:
+        conditions.append(IprOfficialImportCandidate.status == candidate_status)
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(
+            IprOfficialImportCandidate.application_no.ilike(like), IprOfficialImportCandidate.official_type.ilike(like),
+            IprOfficialImportCandidate.official_no.ilike(like),
+        ))
+    candidates = list((await db.scalars(select(IprOfficialImportCandidate).where(*conditions).order_by(IprOfficialImportCandidate.created_at.desc(), IprOfficialImportCandidate.row_no))).all())
+    official_ids = [row.official_record_id for row in candidates if row.official_record_id]
+    officials = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(official_ids), BusinessRecord.module == "ipr_official_file"))).all()) if official_ids else []
+    officials_by_id = {item.id: item for item in officials}
+    cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_([row.ipr_case_id for row in candidates if row.ipr_case_id]), BusinessRecord.module == "ipr_case"))).all()) if any(row.ipr_case_id for row in candidates) else []
+    cases_by_id = {item.id: item for item in cases}
+    items = []
+    for row in candidates:
+        batch = batch_by_id[row.batch_id]
+        official = officials_by_id.get(row.official_record_id)
+        case_record = cases_by_id.get(row.ipr_case_id)
+        raw = row.raw_data or {}
+        items.append({
+            "id": row.id, "batch_id": row.batch_id, "source_filename": batch.source_filename,
+            "application_no": row.application_no, "official_type": row.official_type,
+            "invention_title": raw.get("发明创造名称") or raw.get("invention_title") or raw.get("案件名称") or "",
+            "official_no": row.official_no, "electronic_date": row.received_date,
+            "download_status": "已确认导入" if official else "待确认导入",
+            "system_status": official.status if official else row.status,
+            "case_id": row.ipr_case_id, "case_no": case_record.serial_no if case_record else "",
+            "imported_at": (official.data or {}).get("imported_at") if official else batch.created_at,
+            "errors": row.errors or [], "candidate_status": row.status, "official_record_id": row.official_record_id,
+        })
+    return {"items": items, "total": len(items)}
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files/checklist/export/excel")
+async def export_ipr_official_file_checklist(
+    keyword: str = "", candidate_status: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    result = await list_ipr_official_file_checklist(keyword, candidate_status, identity, db)
+    return _excel_response(
+        f"知识产权官文检查清单-{date.today()}.xls",
+        ["申请号/不受理编号", "通知书名称", "发明创造名称", "发文序列号", "电子发文日", "下载状态", "系统状态", "案号", "入库时间", "错误消息"],
+        [[
+            item["application_no"], item["official_type"], item["invention_title"], item["official_no"],
+            item["electronic_date"] or "", item["download_status"], item["system_status"], item["case_no"],
+            item["imported_at"] or "", "；".join(item["errors"]),
+        ] for item in result["items"]],
+    )
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/import-candidates/{{candidate_id}}/match")
+async def match_ipr_official_import_candidate(candidate_id: int, body: IprOfficialCandidateMatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="导入")
+    candidate = await db.get(IprOfficialImportCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="官文候选行不存在")
+    await _ensure_ipr_import_batch_visible(candidate.batch_id, identity, db)
+    if candidate.status == "已导入":
+        raise HTTPException(status_code=409, detail="已导入候选行不能重新匹配案件")
+    case_record = await _ensure_record_module(body.ipr_case_id, "ipr_case", identity, db)
+    if case_record.status != "在办":
+        raise HTTPException(status_code=409, detail="只能匹配在办知识产权案件")
+    errors = [item for item in (candidate.errors or []) if item not in {"未匹配到知识产权案件，请人工选择", "匹配案件不是在办状态"}]
+    candidate.ipr_case_id = case_record.id
+    candidate.errors = errors
+    candidate.status = "待确认" if not errors else "待修正"
+    await db.commit(); await db.refresh(candidate)
+    return {"id": candidate.id, "ipr_case_id": candidate.ipr_case_id, "status": candidate.status, "errors": candidate.errors}
+
+
+@app.patch(f"{settings.api_prefix}/ipr/official-files/import-candidates/{{candidate_id}}")
+async def correct_ipr_official_import_candidate(candidate_id: int, body: IprOfficialCandidateCorrectInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="导入")
+    candidate = await db.get(IprOfficialImportCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="官文候选行不存在")
+    await _ensure_ipr_import_batch_visible(candidate.batch_id, identity, db)
+    if candidate.status == "已导入":
+        raise HTTPException(status_code=409, detail="已导入候选行不能再修改")
+    if "application_no" in body.model_fields_set: candidate.application_no = (body.application_no or "").strip()
+    if "official_type" in body.model_fields_set: candidate.official_type = (body.official_type or "").strip()
+    if "official_no" in body.model_fields_set: candidate.official_no = (body.official_no or "").strip()
+    if "received_date" in body.model_fields_set: candidate.received_date = body.received_date
+    if "due_date" in body.model_fields_set: candidate.due_date = body.due_date
+    errors: list[str] = []
+    if not candidate.application_no: errors.append("缺少申请号")
+    if not candidate.official_type: errors.append("缺少通知书名称/官文类型")
+    case_record = None
+    if candidate.application_no:
+        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "ipr_case", BusinessRecord.data["application_no"].as_string() == candidate.application_no))
+        if case_record and case_record.status == "在办":
+            await _ensure_record_visible(case_record.id, identity, db)
+            candidate.ipr_case_id = case_record.id
+        elif not candidate.ipr_case_id:
+            errors.append("未匹配到知识产权案件，请人工选择")
+    if candidate.ipr_case_id:
+        linked_case = await _ensure_record_module(candidate.ipr_case_id, "ipr_case", identity, db)
+        if linked_case.status != "在办": errors.append("匹配案件不是在办状态")
+    else:
+        errors.append("未匹配到知识产权案件，请人工选择")
+    candidate.errors = list(dict.fromkeys(errors)); candidate.status = "待确认" if not candidate.errors else "待修正"
+    await db.commit(); await db.refresh(candidate)
+    return {"id": candidate.id, "status": candidate.status, "errors": candidate.errors, "ipr_case_id": candidate.ipr_case_id}
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/import-batches/{{batch_id}}/confirm")
+async def confirm_ipr_official_import_candidates(batch_id: int, body: IprOfficialCandidateConfirmInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Atomically turn confirmed candidate rows into formal official-file records."""
+    await _require_record_module_menu("ipr_official_file", identity, db, action="导入")
+    batch = await _ensure_ipr_import_batch_visible(batch_id, identity, db)
+    candidate_ids = list(dict.fromkeys(body.candidate_ids))
+    candidates = list((await db.scalars(select(IprOfficialImportCandidate).where(IprOfficialImportCandidate.batch_id == batch.id, IprOfficialImportCandidate.id.in_(candidate_ids)))).all())
+    if len(candidates) != len(candidate_ids):
+        raise HTTPException(status_code=404, detail="存在不属于当前批次的官文候选行")
+    by_id = {candidate.id: candidate for candidate in candidates}
+    ordered = [by_id[candidate_id] for candidate_id in candidate_ids]
+    case_ids = {candidate.ipr_case_id for candidate in ordered if candidate.ipr_case_id}
+    cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(case_ids), BusinessRecord.module == "ipr_case"))).all()) if case_ids else []
+    cases_by_id = {case.id: case for case in cases}
+    for candidate in ordered:
+        if candidate.status != "待确认" or candidate.errors:
+            raise HTTPException(status_code=409, detail=f"候选行 {candidate.row_no} 仍有待修正内容，不能确认导入")
+        case_record = cases_by_id.get(candidate.ipr_case_id)
+        if not case_record:
+            raise HTTPException(status_code=404, detail=f"候选行 {candidate.row_no} 的关联案件不存在")
+        await _ensure_record_visible(case_record.id, identity, db)
+        if case_record.status != "在办":
+            raise HTTPException(status_code=409, detail=f"候选行 {candidate.row_no} 的关联案件不在办，不能确认导入")
+    created: list[BusinessRecord] = []
+    now = datetime.now()
+    for candidate in ordered:
+        case_record = cases_by_id[candidate.ipr_case_id]
+        serial_no = await _next_ipr_official_file_serial(db)
+        case_data = case_record.data or {}
+        record = BusinessRecord(
+            module="ipr_official_file", serial_no=serial_no, title=candidate.official_type,
+            customer=case_record.customer, status="待校验", owner=identity["username"], department=case_record.department,
+            description=body.comment.strip(), data={
+                "ipr_case_id": case_record.id, "ipr_case_no": case_record.serial_no, "case_kind": case_data.get("case_kind", ""),
+                "official_type": candidate.official_type, "official_no": candidate.official_no,
+                "received_date": str(candidate.received_date or ""), "due_date": str(candidate.due_date or ""),
+                "application_no": candidate.application_no, "source_import_batch_id": batch.id, "source_candidate_id": candidate.id,
+                "source_filename": batch.source_filename, "imported_at": now.isoformat(timespec="seconds"), "imported_by": identity["username"],
+                "business_process_status": "未处理", "service_process_status": "未处理",
+            },
+        )
+        db.add(record); await db.flush()
+        candidate.status = "已导入"; candidate.official_record_id = record.id; candidate.confirmed_by = identity["username"]; candidate.confirmed_at = now
+        db.add(WorkflowEvent(record_id=record.id, action="确认导入知识产权官文", to_status=record.status, operator=identity["username"], comment=f"来源批次 {batch.id} 第 {candidate.row_no} 行；{body.comment.strip()}".strip()))
+        created.append(record)
+    batch.imported_count += len(created)
+    remaining = await db.scalar(select(func.count(IprOfficialImportCandidate.id)).where(IprOfficialImportCandidate.batch_id == batch.id, IprOfficialImportCandidate.status != "已导入"))
+    batch.status = "已完成" if not remaining else "部分确认"
+    await db.commit()
+    return {"created": len(created), "record_ids": [record.id for record in created], "batch_status": batch.status}
+
+
+@app.delete(
+    f"{settings.api_prefix}/testing/ipr-official-import-batches/{{batch_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    include_in_schema=False,
+)
+async def delete_smoke_ipr_official_import_batch(
+    batch_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Remove one explicitly marked local smoke import batch and its generated records.
+
+    Candidate imports intentionally create no formal record until confirmation.  The
+    smoke suite does confirm candidates to prove that boundary, so it needs a
+    narrowly scoped cleanup path that also removes the retained source CSV.  This
+    endpoint is unavailable in production and accepts only a file name from the
+    suite's fixed ``smoke-`` namespace; it cannot delete normal import batches.
+    """
+    if settings.app_env.strip().lower() in {"production", "prod"}:
+        raise HTTPException(status_code=404, detail="接口不存在")
+    if identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可以清理本地冒烟导入批次")
+    batch = await db.get(IprOfficialImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="官文导入批次不存在")
+    if not batch.source_filename.lower().startswith("smoke-"):
+        raise HTTPException(status_code=403, detail="只能清理带明确 SMOKE 文件名标识的本地导入批次")
+    source_path = Path(batch.source_path)
+    candidates = list((await db.scalars(
+        select(IprOfficialImportCandidate).where(IprOfficialImportCandidate.batch_id == batch.id)
+    )).all())
+    record_ids = [candidate.official_record_id for candidate in candidates if candidate.official_record_id]
+    if record_ids:
+        attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(record_ids)))).all())
+        attachment_paths = [Path(item.path) for item in attachments]
+        for attachment in attachments:
+            await db.delete(attachment)
+        await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id.in_(record_ids)))
+        await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_(record_ids)))
+        await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(record_ids), BusinessRecord.module == "ipr_official_file"))
+    else:
+        attachment_paths = []
+    await db.execute(delete(IprOfficialImportCandidate).where(IprOfficialImportCandidate.batch_id == batch.id))
+    await db.delete(batch)
+    await db.commit()
+    for path in [source_path, *attachment_paths]:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files")
+async def list_ipr_official_files(
+    case_kind: str = "", record_status: str = "", keyword: str = "",
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="查看")
+    conditions = [BusinessRecord.module == "ipr_official_file", *(await _record_scope_conditions(identity, db))]
+    if case_kind:
+        if case_kind not in IPR_CASE_KINDS: raise HTTPException(status_code=422, detail="知识产权案件类型无效")
+        conditions.append(BusinessRecord.data["case_kind"].as_string() == case_kind)
+    if record_status: conditions.append(BusinessRecord.status == record_status)
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.data["official_no"].as_string().ilike(like), BusinessRecord.data["ipr_case_no"].as_string().ilike(like)))
+    total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
+    return {"items": [_record_dict(row, await _allowed_field_keys(identity, db)) for row in rows], "total": total or 0, "page": page, "page_size": page_size}
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files/export/excel")
+async def export_ipr_official_files_excel(
+    case_kind: str = "", record_status: str = "", keyword: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="查看")
+    conditions = [BusinessRecord.module == "ipr_official_file", *(await _record_scope_conditions(identity, db))]
+    if case_kind:
+        if case_kind not in IPR_CASE_KINDS:
+            raise HTTPException(status_code=422, detail="知识产权案件类型无效")
+        conditions.append(BusinessRecord.data["case_kind"].as_string() == case_kind)
+    if record_status:
+        conditions.append(BusinessRecord.status == record_status)
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.data["official_no"].as_string().ilike(like), BusinessRecord.data["ipr_case_no"].as_string().ilike(like)))
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()))).all()
+    headers = ["官文编号", "官文类型", "官文号", "关联案件", "案件类型", "客户", "接收日期", "办理期限", "状态", "导入人", "导入时间"]
+    def cell(value: object) -> str:
+        return f'<Cell><Data ss:Type="String">{xml_escape(str(value or ""))}</Data></Cell>'
+    sheet_rows = ["<Row>" + "".join(cell(header) for header in headers) + "</Row>"]
+    for row in rows:
+        data = row.data or {}
+        values = [row.serial_no, row.title, data.get("official_no"), data.get("ipr_case_no"), data.get("case_kind"), row.customer, data.get("received_date"), data.get("due_date"), row.status, data.get("imported_by") or row.owner, data.get("imported_at")]
+        sheet_rows.append("<Row>" + "".join(cell(value) for value in values) + "</Row>")
+    sheet_name = "知识产权官文"
+    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="知识产权官文"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    filename = f"{sheet_name}清单-{date.today()}.xls"
+    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=ipr-official-files.xls; filename*=UTF-8''{quote(filename)}"})
+
+
+@app.get(f"{settings.api_prefix}/ipr/official-files/download-zip")
+async def download_ipr_official_files_zip(
+    ids: str = Query(min_length=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="查看")
+    selected_ids = list(dict.fromkeys(_export_ids(ids)))
+    if not selected_ids:
+        raise HTTPException(status_code=422, detail="请选择需要打包下载的知识产权官文")
+    records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(selected_ids), BusinessRecord.module == "ipr_official_file"))).all())
+    if len(records) != len(selected_ids):
+        raise HTTPException(status_code=404, detail="选中的知识产权官文不存在")
+    by_id = {record.id: record for record in records}
+    ordered = [by_id[record_id] for record_id in selected_ids]
+    for record in ordered:
+        await _ensure_record_visible(record.id, identity, db)
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(selected_ids), FileAttachment.category == "知识产权官文原件").order_by(FileAttachment.id.asc()))).all())
+    if not attachments:
+        raise HTTPException(status_code=409, detail="所选官文没有可下载的原件")
+    archive_content = io.BytesIO()
+    missing: list[str] = []
+    with zipfile.ZipFile(archive_content, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for attachment in attachments:
+            path = Path(attachment.path)
+            if not path.exists() or not path.is_file():
+                missing.append(attachment.original_name)
+                continue
+            serial_no = by_id.get(int(attachment.record_id or 0)).serial_no if by_id.get(int(attachment.record_id or 0)) else "官文"
+            archive.writestr(f"{serial_no}-{Path(attachment.original_name).name}", path.read_bytes())
+    if missing:
+        raise HTTPException(status_code=409, detail=f"以下官文原件缺失，未生成不完整压缩包：{'、'.join(missing[:3])}")
+    archive_content.seek(0)
+    filename = f"知识产权官文原件-{date.today()}.zip"
+    return StreamingResponse(archive_content, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename=ipr-official-files.zip; filename*=UTF-8''{quote(filename)}"})
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files", status_code=status.HTTP_201_CREATED)
+async def upload_ipr_official_file(
+    file: UploadFile = File(...), ipr_case_id: int = Form(...), official_type: str = Form(...), official_no: str = Form(""),
+    received_date: date | None = Form(None), due_date: date | None = Form(None), remark: str = Form(""),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("ipr_official_file", identity, db, action="导入")
+    case_record = await _ensure_record_module(ipr_case_id, "ipr_case", identity, db)
+    if case_record.status != "在办": raise HTTPException(status_code=409, detail="仅在办知识产权案件可以导入官文")
+    if not official_type.strip(): raise HTTPException(status_code=422, detail="必须填写官文类型")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".txt", ".png", ".jpg", ".jpeg"}:
+        raise HTTPException(status_code=422, detail="不支持的官文文件格式")
+    content = await file.read()
+    if not content: raise HTTPException(status_code=422, detail="官文文件不能为空")
+    if len(content) > 20 * 1024 * 1024: raise HTTPException(status_code=413, detail="单个官文不能超过 20MB")
+    serial_no = await _next_ipr_official_file_serial(db)
+    target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"; target.write_bytes(content)
+    data = case_record.data or {}
+    official = BusinessRecord(module="ipr_official_file", serial_no=serial_no, title=official_type.strip(), customer=case_record.customer, status="待校验", owner=identity["username"], department=case_record.department, description=remark.strip(), data={"ipr_case_id": case_record.id, "ipr_case_no": case_record.serial_no, "case_kind": data.get("case_kind", ""), "official_type": official_type.strip(), "official_no": official_no.strip(), "received_date": str(received_date) if received_date else "", "due_date": str(due_date) if due_date else "", "imported_at": datetime.now().isoformat(timespec="seconds"), "imported_by": identity["username"], "business_process_status": "未处理", "service_process_status": "未处理"})
+    db.add(official); await db.flush()
+    attachment = FileAttachment(record_id=official.id, category="知识产权官文原件", original_name=Path(file.filename or target.name).name, stored_name=target.name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=f"关联知识产权案件 {case_record.serial_no}")
+    db.add(attachment)
+    db.add(WorkflowEvent(record_id=official.id, action="导入知识产权官文", to_status=official.status, operator=identity["username"], comment=attachment.original_name))
+    await db.commit(); await db.refresh(official)
+    return {"record": _record_dict(official, await _allowed_field_keys(identity, db)), "attachment": _attachment_dict(attachment, official)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/validate")
+async def validate_ipr_official_file(official_id: int, body: IprOfficialFileActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="仅管理员或管理人员可以校验知识产权官文")
+    official = await _ensure_record_module(official_id, "ipr_official_file", identity, db)
+    if official.status != "待校验": raise HTTPException(status_code=409, detail="仅待校验官文可以执行校验")
+    case_record = await _ensure_record_module(int((official.data or {}).get("ipr_case_id") or 0), "ipr_case", identity, db)
+    if case_record.status != "在办": raise HTTPException(status_code=409, detail="关联知识产权案件不在办，不能校验官文")
+    previous = official.status; official.status = "待转发"; official.data = {**(official.data or {}), "business_process_status": "处理中", "validated_at": datetime.now().isoformat(timespec="seconds"), "validated_by": identity["username"], "validate_comment": body.comment.strip()}
+    db.add(WorkflowEvent(record_id=official.id, action="校验知识产权官文", from_status=previous, to_status=official.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(official)
+    return _record_dict(official, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/transmit")
+async def transmit_ipr_official_file(official_id: int, body: IprOfficialFileActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    official = await _ensure_record_module(official_id, "ipr_official_file", identity, db)
+    await _require_record_owner_or_manager(official, identity, db)
+    if official.status != "待转发": raise HTTPException(status_code=409, detail="仅已校验官文可以转发")
+    previous = official.status; official.status = "已转发"; official.data = {**(official.data or {}), "service_process_status": "处理中", "transmitted_at": datetime.now().isoformat(timespec="seconds"), "transmitted_by": identity["username"], "transmit_comment": body.comment.strip()}
+    db.add(WorkflowEvent(record_id=official.id, action="转发知识产权官文", from_status=previous, to_status=official.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(official)
+    return _record_dict(official, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/complete")
+async def complete_ipr_official_file(official_id: int, body: IprOfficialFileActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    official = await _ensure_record_module(official_id, "ipr_official_file", identity, db)
+    await _require_record_owner_or_manager(official, identity, db)
+    if official.status != "已转发": raise HTTPException(status_code=409, detail="仅已转发官文可以办结")
+    previous = official.status; official.status = "已办结"; official.data = {**(official.data or {}), "business_process_status": "已处理", "service_process_status": "已处理", "completed_at": datetime.now().isoformat(timespec="seconds"), "completed_by": identity["username"], "complete_comment": body.comment.strip()}
+    db.add(WorkflowEvent(record_id=official.id, action="办结知识产权官文", from_status=previous, to_status=official.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit(); await db.refresh(official)
+    return _record_dict(official, await _allowed_field_keys(identity, db))
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/actions/batch/{{action}}")
+async def batch_ipr_official_file_action(action: str, body: IprOfficialFileBatchActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Apply one legitimate official-document transition to selected rows atomically.
+
+    The legacy system exposes grouped transfer actions.  This endpoint keeps that
+    efficiency without allowing the generic record interface to bypass the
+    validation / transfer / completion lifecycle.
+    """
+    transitions = {
+        "validate": ("待校验", "待转发", "校验知识产权官文"),
+        "transmit": ("待转发", "已转发", "转发知识产权官文"),
+        "complete": ("已转发", "已办结", "办结知识产权官文"),
+    }
+    if action not in transitions:
+        raise HTTPException(status_code=404, detail="不支持的知识产权官文批量操作")
+    ids = list(dict.fromkeys(body.official_ids))
+    if action == "validate" and identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="仅管理员或管理人员可以校验知识产权官文")
+    expected, target, event_action = transitions[action]
+    records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids), BusinessRecord.module == "ipr_official_file"))).all())
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="选中的知识产权官文不存在")
+    records_by_id = {record.id: record for record in records}
+    ordered = [records_by_id[item_id] for item_id in ids]
+    for official in ordered:
+        await _ensure_record_visible(official.id, identity, db)
+        if action != "validate":
+            await _require_record_owner_or_manager(official, identity, db)
+        if official.status != expected:
+            raise HTTPException(status_code=409, detail=f"官文 {official.serial_no} 当前为“{official.status}”，不能执行{event_action}")
+        if action == "validate":
+            linked_case_id = int((official.data or {}).get("ipr_case_id") or 0)
+            case_record = await _ensure_record_module(linked_case_id, "ipr_case", identity, db)
+            if case_record.status != "在办":
+                raise HTTPException(status_code=409, detail=f"关联知识产权案件 {case_record.serial_no} 不在办，不能校验官文")
+    timestamp_key = {"validate": "validated", "transmit": "transmitted", "complete": "completed"}[action]
+    for official in ordered:
+        previous = official.status
+        official.status = target
+        dual_status = "处理中" if action in {"validate", "transmit"} else "已处理"
+        dual_key = "business_process_status" if action == "validate" else "service_process_status"
+        data = {**(official.data or {}), dual_key: dual_status, f"{timestamp_key}_at": datetime.now().isoformat(timespec="seconds"), f"{timestamp_key}_by": identity["username"], f"{action}_comment": body.comment.strip()}
+        if action == "complete":
+            data["business_process_status"] = "已处理"
+        official.data = data
+        db.add(WorkflowEvent(record_id=official.id, action=event_action, from_status=previous, to_status=target, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit()
+    return {"processed": len(ordered), "ids": ids, "status": target}
+
+
+@app.post(f"{settings.api_prefix}/ipr/official-files/history/actions/batch/{{action}}")
+async def batch_ipr_official_history_action(action: str, body: IprOfficialFileBatchActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Mark one of the two historic official-file processing dimensions complete.
+
+    The legacy history queue has independent \"business\" and \"service\" mark
+    actions.  They must not reopen or otherwise change the completed document
+    lifecycle, so this dedicated endpoint only updates the corresponding
+    historical processing flag and records an auditable event.
+    """
+    action_map = {
+        "business-process": ("business_process_status", "标记历史官文业务已处理"),
+        "service-process": ("service_process_status", "标记历史官文流程已处理"),
+    }
+    if action not in action_map:
+        raise HTTPException(status_code=404, detail="不支持的历史官文操作")
+    ids = list(dict.fromkeys(body.official_ids))
+    records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids), BusinessRecord.module == "ipr_official_file"))).all())
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="选中的知识产权官文不存在")
+    key, event_action = action_map[action]
+    for official in records:
+        await _ensure_record_visible(official.id, identity, db)
+        await _require_record_owner_or_manager(official, identity, db)
+        if official.status != "已办结":
+            raise HTTPException(status_code=409, detail=f"官文 {official.serial_no} 尚未办结，不能作为历史官文标记处理")
+    now = datetime.now().isoformat(timespec="seconds")
+    for official in records:
+        official.data = {**(official.data or {}), key: "已处理", f"history_{key}_at": now, f"history_{key}_by": identity["username"]}
+        db.add(WorkflowEvent(record_id=official.id, action=event_action, from_status=official.status, to_status=official.status, operator=identity["username"], comment=body.comment.strip()))
+    await db.commit()
+    return {"processed": len(records), "ids": ids, "field": key, "value": "已处理"}
 
 
 @app.post(f"{settings.api_prefix}/records", status_code=status.HTTP_201_CREATED)

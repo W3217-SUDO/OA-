@@ -54,6 +54,14 @@ type CaseRow = {
   description: string;
   data: Record<string, any>;
 };
+const caseDocumentTypes = [
+  ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
+  ["law-firm-letter", "律师事务所函"], ["identity-certificate", "主体身份证明"], ["settlement-list", "结算提成表"],
+  ["first-instance-appellant-lawyer-letter", "一审上诉人律师函"], ["first-instance-appellee-lawyer-letter", "一审被上诉人律师函"],
+  ["second-instance-appellant-lawyer-letter", "二审上诉人律师函"], ["second-instance-appellee-lawyer-letter", "二审被上诉人律师函"], ["execution-lawyer-letter", "执行律师函"],
+  ["gd-first-instance-appellant-lawyer-letter", "广东版一审上诉人律师函"], ["gd-first-instance-appellee-lawyer-letter", "广东版一审被上诉人律师函"],
+  ["gd-second-instance-appellant-lawyer-letter", "广东版二审上诉人律师函"], ["gd-second-instance-appellee-lawyer-letter", "广东版二审被上诉人律师函"], ["gd-execution-lawyer-letter", "广东版执行律师函"],
+] as const;
 type ContractRow = {
   id: number;
   serial_no: string;
@@ -111,6 +119,8 @@ type CaseDetailCapabilities = {
   can_update_progress: boolean;
   can_manage_hearing: boolean;
   can_create_case_task: boolean;
+  can_duplicate_case: boolean;
+  can_merge_case: boolean;
   can_assign_team: boolean;
   can_edit_basic: boolean;
   can_close_case: boolean;
@@ -122,7 +132,7 @@ type CaseDetailCapabilities = {
 const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_write: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
-  can_update_progress: false, can_manage_hearing: false, can_create_case_task: false, can_assign_team: false,
+  can_update_progress: false, can_manage_hearing: false, can_create_case_task: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_basic: false, can_close_case: false, can_archive: false,
   can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
@@ -249,10 +259,15 @@ export default function CaseCenterPage({
   const [progressEditing, setProgressEditing] = useState<CaseRow | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
+  const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
+  const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
+  const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
   const [counselDetailHistory, setCounselDetailHistory] = useState<any[]>([]);
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
+  const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
+  const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
   const [counselDetailCapabilities, setCounselDetailCapabilities] = useState<CaseDetailCapabilities>(noCaseDetailWriteCapability);
@@ -274,6 +289,9 @@ export default function CaseCenterPage({
   const [selectedCaseKeys, setSelectedCaseKeys] = useState<Key[]>([]);
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
   const [caseUploadCategory, setCaseUploadCategory] = useState("案件文件");
+  const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<{value:string;label:string}[]>([{value:"案件文件",label:"案件文件"}]);
+  const [courtOptions, setCourtOptions] = useState<{value:string;label:string;code?:string}[]>([]);
+  const [courtOfficerOptions, setCourtOfficerOptions] = useState<{value:string;label:string;court_code?:string;role?:string;phone?:string}[]>([]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const [createForm] = Form.useForm();
@@ -283,6 +301,15 @@ export default function CaseCenterPage({
   const firstCourtEnabled = Form.useWatch("first_court_enabled", createForm);
   const secondCourtEnabled = Form.useWatch("second_court_enabled", createForm);
   const retrialCourtEnabled = Form.useWatch("retrial_court_enabled", createForm);
+  const firstCourtName = Form.useWatch("first_court_name", createForm);
+  const secondCourtName = Form.useWatch("second_court_name", createForm);
+  const retrialCourtName = Form.useWatch("retrial_court_name", createForm);
+  const officersForCourt = (courtName: string | undefined, role: string) => {
+    const courtCode = courtOptions.find(item => item.value === courtName)?.code;
+    return courtOfficerOptions
+      .filter(item => (!courtCode || item.court_code === courtCode) && (!role || item.role === role))
+      .map(item => ({value:item.value,label:item.phone ? `${item.label}（${item.phone}）` : item.label}));
+  };
   const [assignForm] = Form.useForm();
   const [hearingForm] = Form.useForm();
   const [archiveForm] = Form.useForm();
@@ -299,8 +326,12 @@ export default function CaseCenterPage({
   const [reminderForm] = Form.useForm();
   const [caseLogForm] = Form.useForm();
   const [attachmentRenameForm] = Form.useForm();
+  const [caseFileSealForm] = Form.useForm();
   const [batchUpdateForm] = Form.useForm();
   const [batchFeeForm] = Form.useForm();
+  const [mergeCaseForm] = Form.useForm();
+  const [notaryInfoForm] = Form.useForm();
+  const [settlementAmountForm] = Form.useForm();
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
   const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
   const loadCaseCapabilities = async (rows: CaseRow[]) => {
@@ -359,6 +390,9 @@ export default function CaseCenterPage({
       setAttachments(attachmentRes.data.items);
       setCaseTypeOptions(referenceRes.data.case_types || []);
       setCauseOptions(referenceRes.data.causes || []);
+      if ((referenceRes.data.case_file_types || []).length) setCaseFileTypeOptions(referenceRes.data.case_file_types);
+      setCourtOptions(referenceRes.data.courts || []);
+      setCourtOfficerOptions(referenceRes.data.court_officers || []);
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
       setCaseCustomers(customerRes.data.items || []);
       setCaseClues(clueRes.data.items || []);
@@ -801,6 +835,49 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
   };
+  const duplicateCase = async (row: CaseRow) => {
+    try {
+      const { data } = await api.post(`/cases/${row.id}/duplicate`);
+      message.success(`已复制为新案件：${data.serial_no}`);
+      await openCounselDetail(data);
+      void load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件复制失败");
+    }
+  };
+  const submitCaseMerge = async () => {
+    if (!mergingCase) return;
+    try {
+      const values = await mergeCaseForm.validateFields();
+      const { data } = await api.post(`/cases/${mergingCase.id}/merge`, values);
+      message.success(`已合并案件 ${data.source.serial_no}：迁移费用 ${data.moved_fees} 条、案件文件 ${data.moved_attachments} 个`);
+      setMergingCase(null);
+      mergeCaseForm.resetFields();
+      await openCounselDetail(data.target);
+      void load();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.detail || "案件合并失败");
+    }
+  };
+  const submitNotaryInfo = async () => {
+    if (!notaryInfoCase) return;
+    try {
+      const values = await notaryInfoForm.validateFields();
+      const { data } = await api.put(`/cases/${notaryInfoCase.id}/notary-info`, values);
+      message.success("公证信息已更新");
+      setNotaryInfoCase(null); notaryInfoForm.resetFields(); await openCounselDetail(data); void load();
+    } catch (error: any) { if (!error?.errorFields) message.error(error?.response?.data?.detail || "公证信息更新失败"); }
+  };
+  const submitSettlementAmount = async () => {
+    if (!settlementAmountCase) return;
+    try {
+      const values = await settlementAmountForm.validateFields();
+      const { data } = await api.put(`/cases/${settlementAmountCase.id}/settlement-amount`, values);
+      message.success("诉讼或判决金额已更新");
+      setSettlementAmountCase(null); settlementAmountForm.resetFields(); await openCounselDetail(data); void load();
+    } catch (error: any) { if (!error?.errorFields) message.error(error?.response?.data?.detail || "金额更新失败"); }
+  };
   const openRelatedCustomer = async (target: { id?: number; serial_no?: string; title?: string; customer?: string }) => {
     const title = String(target.title || target.customer || "").trim();
     if (!title && !target.id && !target.serial_no) {
@@ -976,6 +1053,51 @@ export default function CaseCenterPage({
       const response=await api.post("/cases/attachments/download",{attachment_ids:selectedCounselAttachmentKeys.map(Number)},{responseType:"blob"});
       const url=URL.createObjectURL(response.data),link=document.createElement("a");link.href=url;link.download="案件文件.zip";link.click();URL.revokeObjectURL(url);
     }catch(error:any){message.error(error?.response?.data?.detail||"案件文件下载失败");}
+  };
+  const generateCaseDocument = async (documentType: string) => {
+    if (!viewingCounselCase) return;
+    try {
+      const { data } = await api.post(`/cases/${viewingCounselCase.id}/documents/${documentType}`);
+      message.success("案件文书已生成并归入案件附件");
+      setAttachments((current) => [data, ...current.filter((item) => item.id !== data.id)]);
+      await openCounselDetail(viewingCounselCase);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "案件文书生成失败"); }
+  };
+  const openCounselAttachmentSeal = async (item: AttachmentRow) => {
+    if (!viewingCounselCase) return;
+    try {
+      const { data } = await api.get("/seals/assets");
+      const available = (data.items || []).filter((asset: { status: string }) => asset.status === "可用");
+      setCaseSealAssets(available);
+      caseFileSealForm.setFieldsValue({ seal_asset_id: undefined, print_quantity: 2, is_electronic_seal: false, is_offline_print: true, need_audit: true, remark: "" });
+      setSealingCounselAttachment(item);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "可用印章加载失败");
+    }
+  };
+  const submitCounselAttachmentSeal = async () => {
+    if (!viewingCounselCase || !sealingCounselAttachment) return;
+    try {
+      const values = await caseFileSealForm.validateFields();
+      await api.post("/official-outgoing", {
+        title: sealingCounselAttachment.original_name,
+        source_type: "case",
+        source_record_id: viewingCounselCase.id,
+        source_file_ids: [sealingCounselAttachment.id],
+        seal_asset_id: values.seal_asset_id,
+        print_quantity: values.print_quantity,
+        is_electronic_seal: Boolean(values.is_electronic_seal),
+        is_offline_print: Boolean(values.is_offline_print),
+        need_audit: Boolean(values.need_audit),
+        remark: String(values.remark || "").trim(),
+      });
+      message.success("已创建正式发文草稿，可在正式发文继续提交审批");
+      setSealingCounselAttachment(null);
+      caseFileSealForm.resetFields();
+      await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "提交用印失败");
+    }
   };
   const uploadCounselDetailAttachment = async (file?: File) => {
     if (!file || !viewingCounselCase) return message.warning("请先打开案件详情再上传文件");
@@ -1581,6 +1703,33 @@ export default function CaseCenterPage({
       link.href=url; link.download="案件资料.csv"; link.click(); URL.revokeObjectURL(url);
     } catch { message.error("案件导出失败"); }
   };
+  const downloadCaseExport = async (path: string, filename: string, ids: Key[], emptyMessage: string) => {
+    const selectedIds = ids.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    if (!selectedIds.length) return message.warning(emptyMessage);
+    try {
+      const response = await api.get(path, { params: { ids: selectedIds.join(",") }, responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文件导出失败");
+    }
+  };
+  const exportSelectedCasesExcel = (selectedOnly: boolean) => void downloadCaseExport(
+    "/cases/export/excel",
+    selectedOnly ? "普通案件-选中.xls" : "普通案件-当前查询.xls",
+    selectedOnly ? selectedCaseKeys : originalCases.map((row) => row.id),
+    selectedOnly ? "请选择需要导出的案件" : "当前查询没有可导出的案件",
+  );
+  const exportArchiveManifest = () => void downloadCaseExport(
+    "/cases/export/archive-manifest", "案件归档清单.xls", selectedCaseKeys, "请选择需要导出归档清单的案件",
+  );
+  const exportCaseQrWord = () => void downloadCaseExport(
+    "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
+  );
   const exportCounselCases = async (selectedOnly:boolean) => {
     if(selectedOnly&&!selectedCaseKeys.length)return message.warning("请选择需要导出的法律顾问案件");
     try {
@@ -1866,11 +2015,11 @@ export default function CaseCenterPage({
                 <div className="case-create-section-title">再审检察院</div>
                 <Form.Item label="检察院" name="retrial_procuratorate_name"><Input /></Form.Item><Form.Item label="案件编号" name="retrial_procuratorate_case_no"><Input /></Form.Item><Form.Item label="地址" name="retrial_procuratorate_address"><Input /></Form.Item><Form.Item label="联系电话" name="retrial_procuratorate_phone"><Input /></Form.Item><Form.Item label="承办人" name="retrial_procuratorate_operator"><Input /></Form.Item></>}
                 <Form.Item name="first_court_enabled" valuePropName="checked" wrapperCol={{ offset: 5, span: 17 }}><Checkbox>一审法院信息</Checkbox></Form.Item>
-                {firstCourtEnabled && <><Form.Item label="法院" name="first_court_name"><Input /></Form.Item><Form.Item label="法庭" name="first_court_courtroom"><Input /></Form.Item><Form.Item label="法官" name="first_court_judge"><Input /></Form.Item><Form.Item label="书记员" name="first_court_clerk"><Input /></Form.Item><Form.Item label="案号" name="first_court_case_no"><Input /></Form.Item><Form.Item label="立案日期" name="first_court_filing_date"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item label="开庭日期" name="first_court_hearing_date"><DatePicker style={{ width: "100%" }} /></Form.Item></>}
+                {firstCourtEnabled && <><Form.Item label="法院" name="first_court_name"><Select showSearch optionFilterProp="label" options={courtOptions}/></Form.Item><Form.Item label="法庭" name="first_court_courtroom"><Input /></Form.Item><Form.Item label="法官" name="first_court_judge"><Select allowClear showSearch optionFilterProp="label" options={officersForCourt(firstCourtName, "法官")} placeholder="请先选择法院" /></Form.Item><Form.Item label="书记员" name="first_court_clerk"><Select allowClear showSearch optionFilterProp="label" options={officersForCourt(firstCourtName, "书记员")} placeholder="请先选择法院" /></Form.Item><Form.Item label="案号" name="first_court_case_no"><Input /></Form.Item><Form.Item label="立案日期" name="first_court_filing_date"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item label="开庭日期" name="first_court_hearing_date"><DatePicker style={{ width: "100%" }} /></Form.Item></>}
                 <Form.Item name="second_court_enabled" valuePropName="checked" wrapperCol={{ offset: 5, span: 17 }}><Checkbox>二审法院信息</Checkbox></Form.Item>
-                {secondCourtEnabled && <><Form.Item label="法院" name="second_court_name"><Input /></Form.Item><Form.Item label="法庭" name="second_court_courtroom"><Input /></Form.Item><Form.Item label="法官" name="second_court_judge"><Input /></Form.Item><Form.Item label="书记员" name="second_court_clerk"><Input /></Form.Item><Form.Item label="案号" name="second_court_case_no"><Input /></Form.Item><Form.Item label="立案日期" name="second_court_filing_date"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item label="开庭日期" name="second_court_hearing_date"><DatePicker style={{ width: "100%" }} /></Form.Item></>}
+                {secondCourtEnabled && <><Form.Item label="法院" name="second_court_name"><Select showSearch optionFilterProp="label" options={courtOptions}/></Form.Item><Form.Item label="法庭" name="second_court_courtroom"><Input /></Form.Item><Form.Item label="法官" name="second_court_judge"><Select allowClear showSearch optionFilterProp="label" options={officersForCourt(secondCourtName, "法官")} placeholder="请先选择法院" /></Form.Item><Form.Item label="书记员" name="second_court_clerk"><Select allowClear showSearch optionFilterProp="label" options={officersForCourt(secondCourtName, "书记员")} placeholder="请先选择法院" /></Form.Item><Form.Item label="案号" name="second_court_case_no"><Input /></Form.Item><Form.Item label="立案日期" name="second_court_filing_date"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item label="开庭日期" name="second_court_hearing_date"><DatePicker style={{ width: "100%" }} /></Form.Item></>}
                 <Form.Item name="retrial_court_enabled" valuePropName="checked" wrapperCol={{ offset: 5, span: 17 }}><Checkbox>再审法院信息</Checkbox></Form.Item>
-                {retrialCourtEnabled && <><Form.Item label="法院" name="retrial_court_name"><Input /></Form.Item><Form.Item label="法庭" name="retrial_court_courtroom"><Input /></Form.Item><Form.Item label="法官" name="retrial_court_judge"><Input /></Form.Item><Form.Item label="书记员" name="retrial_court_clerk"><Input /></Form.Item><Form.Item label="案号" name="retrial_court_case_no"><Input /></Form.Item><Form.Item label="立案日期" name="retrial_court_filing_date"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item label="开庭日期" name="retrial_court_hearing_date"><DatePicker style={{ width: "100%" }} /></Form.Item></>}
+                {retrialCourtEnabled && <><Form.Item label="法院" name="retrial_court_name"><Select showSearch optionFilterProp="label" options={courtOptions}/></Form.Item><Form.Item label="法庭" name="retrial_court_courtroom"><Input /></Form.Item><Form.Item label="法官" name="retrial_court_judge"><Select allowClear showSearch optionFilterProp="label" options={officersForCourt(retrialCourtName, "法官")} placeholder="请先选择法院" /></Form.Item><Form.Item label="书记员" name="retrial_court_clerk"><Select allowClear showSearch optionFilterProp="label" options={officersForCourt(retrialCourtName, "书记员")} placeholder="请先选择法院" /></Form.Item><Form.Item label="案号" name="retrial_court_case_no"><Input /></Form.Item><Form.Item label="立案日期" name="retrial_court_filing_date"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item label="开庭日期" name="retrial_court_hearing_date"><DatePicker style={{ width: "100%" }} /></Form.Item></>}
                 <Form.Item label="司法机关备注" name="judicial_remark"><Input.TextArea rows={2} /></Form.Item><Form.Item label="案情说明" name="description"><Input.TextArea rows={3} /></Form.Item>
               </div></div>
             )}
@@ -1916,7 +2065,8 @@ export default function CaseCenterPage({
         </Form>
         <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={{pageSize:20,showTotal:total=>`共有${total}条`}} />
         <div className="case-bottom-actions"><Space wrap>
-          <Button onClick={exportCases}>导出</Button>
+          <Button onClick={exportCases}>导出全部（CSV）</Button>
+          <Button onClick={exportArchiveManifest}>导出选中归档清单（Excel）</Button>
           <Dropdown
             menu={{
               items: selectedCase ? [
@@ -1976,13 +2126,13 @@ export default function CaseCenterPage({
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
           <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{pageSize:10,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode)return;const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           <div className="case-bottom-actions"><Space size={5} wrap>
-            {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<Button onClick={exportCases}>导出全部（CSV）</Button>}
+            {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<><Button onClick={()=>exportSelectedCasesExcel(true)}>导出选中（Excel）</Button><Button onClick={()=>exportSelectedCasesExcel(false)}>导出当前查询（Excel）</Button><Button onClick={exportCaseQrWord}>导出选中二维码（Word）</Button><Button onClick={exportCases}>导出全部（CSV）</Button></>}
             {selectedCaseCapability.can_upload_attachment && <Select
               aria-label="上传材料分类"
               value={caseUploadCategory}
               onChange={setCaseUploadCategory}
               style={{ width: 150 }}
-              options={["案件文件", "委托材料", "证据材料", "诉讼文书", "裁判文书"].map((value) => ({ value, label: value }))}
+              options={caseFileTypeOptions}
             />}
             {selectedCaseCapability.can_upload_attachment && <Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button>}
             {["admin","manager"].includes(profile.role||"")&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,true)}}>立案审批通过</Button>}
@@ -2117,6 +2267,20 @@ export default function CaseCenterPage({
         )}
       </Card>
       </>}
+      <Modal open={Boolean(notaryInfoCase)} title="修改公证信息" okText="保存" cancelText="取消" onCancel={() => { setNotaryInfoCase(null); notaryInfoForm.resetFields(); }} onOk={() => void submitNotaryInfo()}>
+        <Form form={notaryInfoForm} layout="vertical">
+          <Form.Item label="公证书号" name="notary_nos" rules={[{ required: true, message: "请输入公证书号" }]}><Input placeholder="多个编号请用逗号分隔" /></Form.Item>
+          <Form.Item label="存放位置" name="deposit_address"><Input /></Form.Item>
+          <Form.Item label="修改说明" name="comment"><Input.TextArea rows={2} maxLength={1000} /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal open={Boolean(settlementAmountCase)} title="修改诉讼或判决金额" okText="保存" cancelText="取消" onCancel={() => { setSettlementAmountCase(null); settlementAmountForm.resetFields(); }} onOk={() => void submitSettlementAmount()}>
+        <Form form={settlementAmountForm} layout="vertical">
+          <Form.Item label="诉讼标的金额" name="litigation_amount" rules={[{ required: true, message: "请输入诉讼标的金额" }]}><Input type="number" min={0} step="0.01" /></Form.Item>
+          <Form.Item label="判决/和解金额" name="settlement_amount" rules={[{ required: true, message: "请输入判决或和解金额" }]}><Input type="number" min={0} step="0.01" /></Form.Item>
+          <Form.Item label="修改说明" name="comment"><Input.TextArea rows={2} maxLength={1000} /></Form.Item>
+        </Form>
+      </Modal>
       <Modal
         open={Boolean(assigning)}
         title={`案件人员分配：${assigning?.serial_no || ""}`}
@@ -2293,6 +2457,28 @@ export default function CaseCenterPage({
           <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
+      <Modal
+        open={Boolean(mergingCase)}
+        title={`合并案件至：${mergingCase?.serial_no || ""}`}
+        okText="确认合并"
+        cancelText="取消"
+        onCancel={() => { setMergingCase(null); mergeCaseForm.resetFields(); }}
+        onOk={() => void submitCaseMerge()}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="仅可合并同一客户、同一案件类型且未归档的案件"
+          description="将迁移待合并案件的案件费用、内部费用和案件文件；任务、提醒、开庭排期及历史记录不会迁移。待合并案件会保留为“已合并”以便审计回看。"
+        />
+        <Form form={mergeCaseForm} layout="vertical">
+          <Form.Item label="待合并案件编号" name="source_case_no" rules={[{ required: true, message: "请输入待合并案件编号" }]}>
+            <Input placeholder="输入同一客户下待合并的案件编号" />
+          </Form.Item>
+          <Form.Item label="合并说明" name="comment"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
+        </Form>
+      </Modal>
       <Drawer
         width="calc(100vw - 232px)"
         className="case-detail-drawer"
@@ -2307,6 +2493,11 @@ export default function CaseCenterPage({
           {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Dropdown menu={{items:[{key:"litigants",label:"修改当事人"},{key:"public-security",label:"修改公安机关"},{key:"procuratorates",label:"修改检察院"},{key:"courts",label:"修改审级法院"}],onClick:({key})=>openCriminalMaintenance(viewingCounselCase,key as "litigants"|"public-security"|"procuratorates"|"courts")}}><Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)}>维护刑事资料</Button></Dropdown>}
+          {counselDetailCapabilities.can_write && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Dropdown menu={{ items: caseDocumentTypes.map(([key, label]) => ({ key, label })), onClick: ({ key }) => void generateCaseDocument(String(key)) }}><Button icon={<FileTextOutlined />}>生成案件文书</Button></Dropdown>}
+          {counselDetailCapabilities.can_duplicate_case && <Button onClick={()=>Modal.confirm({title:`复制案件：${viewingCounselCase.serial_no}`,content:"将只复制案件基础信息并生成新案号；任务、附件、费用、提醒、排期和历史记录不会复制。",okText:"确认复制",cancelText:"取消",onOk:()=>duplicateCase(viewingCounselCase)})}>复制案件</Button>}
+          {counselDetailCapabilities.can_merge_case && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>合并案件</Button>}
+          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>修改公证信息</Button>}
+          {counselDetailCapabilities.can_edit_basic && ["民事案件","刑事案件","行政案件及国家赔偿","仲裁"].includes(viewingCounselCase.data.case_type) && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { settlementAmountForm.setFieldsValue({ litigation_amount: viewingCounselCase.data.litigation_amount ?? 0, settlement_amount: viewingCounselCase.data.settlement_amount ?? 0, comment: "" }); setSettlementAmountCase(viewingCounselCase); }}>修改诉讼/判决金额</Button>}
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
@@ -2366,7 +2557,7 @@ export default function CaseCenterPage({
                   {title:"分类",dataIndex:"category",width:150,ellipsis:true},
                   {title:"上传人",dataIndex:"uploader",width:110},
                   {title:"上传时间",dataIndex:"created_at",width:170},
-                  {title:"操作",key:"actions",width:210,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}</Space>},
+                  {title:"操作",key:"actions",width:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
                 ]}/>
               </>},
               {key:"firm-fees",label:"律所费用",children:<Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&!String(row.data.fee_type||"").includes("平台")&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"}]}/>},
@@ -2397,6 +2588,17 @@ export default function CaseCenterPage({
         <Form form={attachmentRenameForm} layout="vertical">
           <Form.Item label="文件名称" name="original_name" rules={[{required:true,message:"请输入文件名称"},{max:255,message:"文件名称不能超过 255 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\\\/]/.test(name))throw new Error("文件名不能为空且不能包含路径");const currentSuffix=renamingCounselAttachment?.original_name.slice(renamingCounselAttachment.original_name.lastIndexOf("."))||"";const nextSuffix=name.slice(name.lastIndexOf("."));if(currentSuffix.toLowerCase()!==nextSuffix.toLowerCase())throw new Error("不能修改文件扩展名");}}]}><Input autoFocus /></Form.Item>
           <Alert type="info" showIcon title="仅修改展示和下载文件名，不会移动或改写原文件内容；保存后会写入案件审计日志。"/>
+        </Form>
+      </Modal>
+      <Modal open={Boolean(sealingCounselAttachment)} title={`案件文件提交用印：${sealingCounselAttachment?.original_name || ""}`} okText="创建正式发文草稿" cancelText="取消" onOk={submitCounselAttachmentSeal} onCancel={()=>{setSealingCounselAttachment(null);caseFileSealForm.resetFields();}} destroyOnHidden>
+        <Alert type="info" showIcon message="将复制当前 Word 文件为正式发文附件" description="请明确选择可用印章。创建后仍需在“正式发文”中提交审批，原案件文件不会被修改或移动。" style={{ marginBottom: 12 }} />
+        <Form form={caseFileSealForm} layout="vertical">
+          <Form.Item label="印章类型" name="seal_asset_id" rules={[{ required: true, message: "请选择可用印章" }]}><Select placeholder="请选择可用印章" options={caseSealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}` }))} /></Form.Item>
+          <Form.Item label="盖章份数" name="print_quantity" rules={[{ required: true }]}><InputNumber min={1} max={9999} style={{ width: "100%" }} /></Form.Item>
+          <Form.Item name="is_electronic_seal" valuePropName="checked"><Checkbox>电子盖章</Checkbox></Form.Item>
+          <Form.Item name="is_offline_print" valuePropName="checked"><Checkbox>线下打印盖章</Checkbox></Form.Item>
+          <Form.Item name="need_audit" valuePropName="checked"><Checkbox>创建后进入正式发文审批</Checkbox></Form.Item>
+          <Form.Item label="备注" name="remark" rules={[{ max: 2000 }]}><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
         </Form>
       </Modal>
       <Modal open={reminderOpen} title={`新增案件提醒：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselReminder} onCancel={()=>setReminderOpen(false)}>

@@ -20,6 +20,7 @@ import {
   Table,
   Tag,
   Timeline,
+  Popconfirm,
 } from "antd";
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -98,13 +99,14 @@ type Change = {
 };
 type Profile = { username: string; display_name: string; department: string; role: string };
 type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
-type ApprovalRole = { id: number; name: string; permissions: string[]; is_active: boolean };
 type LinkedCustomerContext = { id: number; name: string; serial_no?: string; at?: number };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
 type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string };
 type SealAsset = { id: number; code: string; name: string; seal_type: string; status: string };
 type CustomerRef = { id: number; serial_no: string; title: string; owner: string; data: { customer_managers?: string[] } };
+type ContractPaymentCandidate = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; fee_type:string; contract_amount:number; reserved_amount:number; remaining_amount:number; remark:string };
+type PaymentTypeOption = { value:string; label:string; payee:string; account:string };
 const colors: Record<string, string> = {
   草稿: "default",
   审批中: "orange",
@@ -160,18 +162,24 @@ export default function ContractCenterPage({
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
+  type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
+  const [contractObjects, setContractObjects] = useState<ContractObjectRow[]>([]);
+  const [paymentCandidates, setPaymentCandidates] = useState<ContractPaymentCandidate[]>([]);
+  const [paymentTypes, setPaymentTypes] = useState<PaymentTypeOption[]>([]);
+  const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
+  const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
+  const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);
+  const [objectLogTarget, setObjectLogTarget] = useState<ContractObjectRow | null>(null);
   const [viewingAttachmentsLoading, setViewingAttachmentsLoading] = useState(false);
   const viewingAttachmentRequest = useRef(0);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [linkedCustomerContext, setLinkedCustomerContext] = useState<LinkedCustomerContext | null>(null);
-  const [approvalRoles, setApprovalRoles] = useState<ApprovalRole[]>([]);
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [savingContract, setSavingContract] = useState(false);
   const [submittingWizard, setSubmittingWizard] = useState(false);
-  const [approvalCreatorOpen, setApprovalCreatorOpen] = useState(false);
-  const [creatingApprovalUser, setCreatingApprovalUser] = useState(false);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]),
     [query, setQuery] = useState<Record<string, any>>({});
@@ -184,12 +192,19 @@ export default function ContractCenterPage({
     [invoiceForm] = Form.useForm(),
     [changeForm] = Form.useForm(),
     [queryForm] = Form.useForm(),
-    [approvalUserForm] = Form.useForm(),
-    [eventForm] = Form.useForm();
+    [eventForm] = Form.useForm(),
+    [objectForm] = Form.useForm();
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
     setViewing(null);
     setViewingAttachments([]);
+    setContractObjects([]);
+    setObjectEditing(null);
+    setObjectLogTarget(null);
+    setPaymentCandidates([]);
+    setPaymentTypes([]);
+    setSelectedPaymentObjectKeys([]);
+    setPaymentAmounts({});
     setContractEvents([]);
     setViewingAttachmentsLoading(false);
   };
@@ -199,15 +214,19 @@ export default function ContractCenterPage({
     setViewingAttachments([]);
     setViewingAttachmentsLoading(true);
     try {
-      const [attachmentResult, eventResult] = await Promise.allSettled([
+      const [attachmentResult, eventResult, objectResult, caseResult] = await Promise.allSettled([
         api.get("/attachments", { params: { record_id: contract.id } }),
         api.get(`/contracts/${contract.id}/events`),
+        api.get(`/contracts/${contract.id}/objects`),
+        api.get(`/contracts/${contract.id}/object-cases`),
       ]);
       if (requestId === viewingAttachmentRequest.current) {
         setViewingAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
         setContractEvents(eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : []);
-        if (attachmentResult.status === "rejected" || eventResult.status === "rejected") {
-          message.warning("合同基础信息已打开，部分附件或事项暂时加载失败");
+        setContractObjects(objectResult.status === "fulfilled" ? objectResult.value.data.items || [] : []);
+        setObjectCases(caseResult.status === "fulfilled" ? (caseResult.value.data.items || []) : []);
+        if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || objectResult.status === "rejected") {
+          message.warning("合同基础信息已打开，部分附件、事项或合同标的暂时加载失败");
         }
       }
     } catch (error: any) {
@@ -220,6 +239,8 @@ export default function ContractCenterPage({
       }
     }
   };
+  const saveContractObject = async () => { if (!viewing || !objectEditing) return; try { const values=await objectForm.validateFields(); const request=objectEditing.id?api.patch(`/contracts/${viewing.id}/objects/${objectEditing.id}`,values):api.post(`/contracts/${viewing.id}/objects`,values); await request; message.success(objectEditing.id?"合同标的已修改":"合同标的已新增"); setObjectEditing(null); objectForm.resetFields(); await openViewing(viewing) } catch(error:any) { if(!error?.errorFields) message.error(error?.response?.data?.detail||"合同标的保存失败") } };
+  const deleteContractObject = async (objectId:number) => { if(!viewing)return; try { await api.delete(`/contracts/${viewing.id}/objects/${objectId}`); message.success("合同标的已删除"); await openViewing(viewing) } catch(error:any) { message.error(error?.response?.data?.detail||"合同标的删除失败") } };
   const resolveContractDetailTarget = async (target: ContractDetailNavigationContext): Promise<Contract | null> => {
     if (target.id) {
       try {
@@ -250,7 +271,6 @@ export default function ContractCenterPage({
       api.get("/users/directory"),
       api.get("/seals/assets"),
       api.get("/customers", { params: { scope: "mine", customer_type: "客户", page: 1, page_size: 200 } }),
-      api.get("/hr/job-roles", { params: { active_only: true } }),
     ]);
     try {
       const recordsRes = await recordsRequest;
@@ -274,13 +294,12 @@ export default function ContractCenterPage({
       else message.warning("未找到关联合同或当前账号无权查看");
       onDetailTargetHandled?.();
     }
-    const [profileResult, directoryResult, sealResult, customerResult, roleResult] = await auxiliaryRequests;
+    const [profileResult, directoryResult, sealResult, customerResult] = await auxiliaryRequests;
     if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
     if (directoryResult.status === "fulfilled") setDirectory((directoryResult.value.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
     if (sealResult.status === "fulfilled") setSealAssets((sealResult.value.data.items || []).filter((item: SealAsset) => item.status === "可用"));
     if (customerResult.status === "fulfilled") setCustomers(customerResult.value.data.items || []);
-    if (roleResult.status === "fulfilled") setApprovalRoles((roleResult.value.data.items || []).filter((item: ApprovalRole) => item.is_active !== false && (item.permissions || []).includes("合同审批")));
-    if ([profileResult, directoryResult, sealResult, customerResult, roleResult].some((result) => result.status === "rejected")) {
+    if ([profileResult, directoryResult, sealResult, customerResult].some((result) => result.status === "rejected")) {
       message.warning("合同基础列表已加载，部分辅助数据暂时不可用");
     }
   };
@@ -509,7 +528,8 @@ export default function ContractCenterPage({
       message.warning("请输入客户关键字，并从匹配结果中选择客户");
       return;
     }
-    if (!editing && !wizardDraft && !contractFile) {
+    const hasExistingContractAttachment = attachments.some((item) => item.category === "合同附件");
+    if (!editing && !contractFile && !hasExistingContractAttachment) {
       message.warning("请上传合同附件");
       return;
     }
@@ -609,51 +629,6 @@ export default function ContractCenterPage({
       message.error(error?.response?.data?.detail || error?.message || "提交审核失败");
     } finally {
       setSubmittingWizard(false);
-    }
-  };
-  const openApprovalCreator = () => {
-    approvalUserForm.resetFields();
-    approvalUserForm.setFieldsValue({ department: profile.department || "上海分所", position: approvalRoles[0]?.name });
-    setApprovalCreatorOpen(true);
-  };
-  const createApprovalUser = async () => {
-    if (profile.role !== "admin") {
-      message.error("仅系统管理员可以创建审批账号");
-      return;
-    }
-    try {
-      const values = await approvalUserForm.validateFields();
-      setCreatingApprovalUser(true);
-      const { data } = await api.post("/system/users", {
-        username: values.username,
-        display_name: values.display_name,
-        department: values.department,
-        password: values.password,
-        role: "auditor",
-        is_active: true,
-        must_change_password: true,
-        profile: { position: values.position, staff_role: values.position },
-      });
-      const created: DirectoryUser = {
-        username: data.username,
-        display_name: data.display_name,
-        department: data.department,
-        is_active: true,
-        role: data.role,
-        position: values.position,
-        staff_role: values.position,
-        job_permissions: approvalRoles.find((item) => item.name === values.position)?.permissions || ["合同审批"],
-        can_approve_contract: true,
-      };
-      setDirectory((items) => [...items.filter((item) => item.username !== created.username), created]);
-      submitForm.setFieldValue("approvers", created.username);
-      setApprovalCreatorOpen(false);
-      message.success("合同审批账号已创建并选中；首次登录必须修改初始密码");
-    } catch (error: any) {
-      if (error?.errorFields) return;
-      message.error(error?.response?.data?.detail || error?.message || "审批账号创建失败");
-    } finally {
-      setCreatingApprovalUser(false);
     }
   };
   const refreshWizard = async () => {
@@ -902,32 +877,44 @@ export default function ContractCenterPage({
       message.error(error?.response?.data?.detail || "调查任务创建失败");
     }
   };
-  const openContractPayment = (contract: Contract) => {
-    const outstanding = Number(contract.data.official_unreceived || 0) + Number(contract.data.agency_due || 0) + Number(contract.data.other_due || 0);
+  const openContractPayment = async (contract: Contract) => {
     paymentForm.resetFields();
-    paymentForm.setFieldsValue({
-      title: `${contract.title}合同付款`,
-      amount: outstanding > 0 ? outstanding : contract.data.amount,
-      fee_type: "结算费用",
-      handler: profile.username,
-      payee: contract.customer,
-      description: `来源合同 ${contract.serial_no}`,
-    });
     setPaymentTarget(contract);
+    setPaymentCandidates([]);
+    setPaymentTypes([]);
+    setSelectedPaymentObjectKeys([]);
+    setPaymentAmounts({});
+    try {
+      const { data } = await api.get(`/contracts/${contract.id}/payment-candidates`);
+      const types = data.payment_types || [];
+      setPaymentCandidates(data.items || []);
+      setPaymentTypes(types);
+      if (types.length) paymentForm.setFieldsValue({ payment_type: types[0].value, payee: types[0].payee, account: types[0].account, application_date: dayjs(), remark: "" });
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同付款候选加载失败");
+    }
   };
   const createContractPayment = async () => {
     if (!paymentTarget) return;
     const values = await paymentForm.validateFields();
+    const lines = selectedPaymentObjectKeys.map((key) => ({ contract_object_id: Number(key), amount: Number(paymentAmounts[Number(key)] || 0) }));
+    if (!lines.length) { message.error("请至少选择一条合同标的"); return; }
+    if (lines.some((line) => !line.amount || line.amount <= 0)) { message.error("请选择合同标的并填写本次支付金额"); return; }
+    const exceeding = lines.find((line) => line.amount > Number(paymentCandidates.find((item) => item.contract_object_id === line.contract_object_id)?.remaining_amount || 0) + 0.0001);
+    if (exceeding) { message.error("本次支付金额不能超过待付余额"); return; }
     try {
-      const { data } = await api.post("/finance/fees", {
+      const { data } = await api.post(`/contracts/${paymentTarget.id}/payment-applications`, {
         ...values,
-        customer: paymentTarget.customer,
-        case_no: paymentTarget.data.case_no || "",
-        contract_record_id: paymentTarget.id,
+        application_date: formatRequiredDate(values.application_date, "申请日期"),
+        lines,
       });
-      message.success(`请款单 ${data.serial_no} 已创建并关联合同`);
+      message.success(`合同付款申请 ${data.serial_no} 已提交审批`);
       setPaymentTarget(null);
       paymentForm.resetFields();
+      setPaymentCandidates([]);
+      setPaymentTypes([]);
+      setSelectedPaymentObjectKeys([]);
+      setPaymentAmounts({});
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "合同付款申请创建失败");
     }
@@ -1177,10 +1164,10 @@ export default function ContractCenterPage({
           : "wait") as "finish" | "process" | "error" | "wait",
   }));
   const currentApproval = steps.find((step) => step.status === "待审批");
-  const canActOnCurrentApproval = Boolean(currentApproval && currentApproval.approver === profile.username);
-  const approvalOptions = directory.filter((user) => user.can_approve_contract && user.username !== profile.username).map((user) => ({
+  const canActOnCurrentApproval = Boolean(currentApproval && (currentApproval.approver === profile.username || profile.role === "admin"));
+  const approvalOptions = directory.filter((user) => user.can_approve_contract).map((user) => ({
     value: user.username,
-    label: `${user.display_name || user.username}（${user.position || user.staff_role || "合同审批角色"}｜${user.department || "未分部门"}）`,
+    label: user.display_name || user.username,
   }));
   const openRelatedCustomer = async (contract: Contract) => {
     const source = { id: Number(contract.data.customer_id) || undefined, serial_no: contract.data.customer_no, title: contract.customer };
@@ -1276,7 +1263,7 @@ export default function ContractCenterPage({
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
-          <Button onClick={()=>needSelected(()=>openContractPayment(selected!))}>合同付款</Button>
+          <Button onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
           <Button onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
           <Button onClick={()=>needSelected(()=>startCaseFromContract(selected!))}>新建案件</Button>
           <Button onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
@@ -1300,7 +1287,7 @@ export default function ContractCenterPage({
               <Form.Item label="合同名称" name="title" rules={[{ required: true }]}><Input placeholder="合同名称" /></Form.Item>
               <Form.Item label="外部合同号（可多个）" name="external_contract_numbers"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入客户方合同编号后回车" /></Form.Item>
               <Form.Item label="备注" name="description" rules={[{ required: true }]}><Input.TextArea rows={4} placeholder="备注" /></Form.Item>
-              <Form.Item label="合同附件" required>
+              <Form.Item label="合同附件" required extra="未上传合同附件不能进入下一步或提交审批">
                 <input type="file" onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
                 <div className="contract-upload-tip">附件支持常用图片、压缩包、Office 文档及 PDF 格式</div>
               </Form.Item>
@@ -1316,8 +1303,8 @@ export default function ContractCenterPage({
                 { key: "type", label: "合同类别", children: wizardDraft.data.type },
               ] : []} />
               <Form form={submitForm} layout="vertical" className="contract-submit-form">
-                <Form.Item label={<span>合同审批人{profile.role === "admin" && <Button type="link" size="small" onClick={openApprovalCreator}>新增审批人</Button>}</span>} name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
-                  <Select disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择具有合同审批权限的人员" notFoundContent="没有可用审批人，请由管理员在角色管理中授予合同审批权限" />
+                <Form.Item label="合同审批人" name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
+                  <Select disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在人事中心为在职员工配置合同审批流程资格" />
                 </Form.Item>
                 <Form.Item label="提交说明" name="comment"><Input.TextArea disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} rows={3} /></Form.Item>
               </Form>
@@ -1338,7 +1325,7 @@ export default function ContractCenterPage({
                   <Form.Item label="审批意见" name="comment"><Input.TextArea rows={3} placeholder="填写通过意见；拒绝时必须填写原因" /></Form.Item>
                   <Space><Button danger icon={<CloseOutlined />} onClick={() => approveWizard(false)}>拒绝</Button><Button type="primary" icon={<CheckOutlined />} onClick={() => approveWizard(true)}>通过当前节点</Button></Space>
                 </Form>
-              ) : <Alert type="info" showIcon title={`合同已进入 ${currentApproval.approver} 的待审批列表`} description="发起人不能审批自己提交的合同，请等待指定审批人处理。" />)}
+              ) : <Alert type="info" showIcon title={`合同已进入 ${currentApproval.approver} 的待审批列表`} description="请等待指定审批人处理。" />)}
               <Divider titlePlacement="start">合同附件</Divider>
               <div className="contract-attachment-list">{attachments.length ? attachments.map((item) => <Button key={item.id} type="link" onClick={() => downloadAttachment(item)}>{item.original_name}</Button>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />}</div>
               <Divider titlePlacement="start">状态时间线</Divider>
@@ -1391,42 +1378,41 @@ export default function ContractCenterPage({
         </Card>
       )}
       <Modal
-        open={approvalCreatorOpen}
-        title="管理员新增合同审批人"
-        okText="创建并选中"
-        cancelText="取消"
-        confirmLoading={creatingApprovalUser}
-        onOk={() => void createApprovalUser()}
-        onCancel={() => setApprovalCreatorOpen(false)}
-        destroyOnHidden
-      >
-        <Form form={approvalUserForm} layout="vertical">
-          <Form.Item label="登录账号" name="username" rules={[{ required: true, min: 3, message: "请输入至少 3 位登录账号" }, { pattern: /^[A-Za-z0-9._-]+$/, message: "账号只能包含字母、数字、点、下划线或短横线" }]}><Input autoComplete="off" /></Form.Item>
-          <Form.Item label="姓名" name="display_name" rules={[{ required: true, message: "请输入审批人姓名" }]}><Input /></Form.Item>
-          <Form.Item label="所属部门" name="department" rules={[{ required: true, message: "请输入所属部门" }]}><Input /></Form.Item>
-          <Form.Item label="审批角色" name="position" rules={[{ required: true, message: "请选择具有合同审批权限的角色" }]}><Select options={approvalRoles.map((item) => ({ value: item.name, label: item.name }))} notFoundContent="请先在角色管理中创建并授予“合同审批”权限" /></Form.Item>
-          <Form.Item label="初始密码" name="password" rules={[{ required: true, min: 8, message: "初始密码至少 8 位" }]}><Input.Password autoComplete="new-password" /></Form.Item>
-          <p className="contract-draft-tip">审批资格来自角色管理中的“合同审批”权限，不再按职务名称判断；账号首次登录必须修改初始密码。</p>
-        </Form>
-      </Modal>
-      <Modal
         open={Boolean(paymentTarget)}
         title={`合同付款：${paymentTarget?.serial_no || ""}`}
-        okText="创建请款单"
+        width={980}
+        okText="提交合同付款申请"
         cancelText="取消"
         onOk={createContractPayment}
-        onCancel={() => setPaymentTarget(null)}
+        onCancel={() => { setPaymentTarget(null); setSelectedPaymentObjectKeys([]); setPaymentAmounts({}); }}
       >
         <Form form={paymentForm} layout="vertical">
-          <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
           <div className="form-grid">
-            <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
-            <Form.Item label="费用类型" name="fee_type" rules={[{ required: true }]}><Select options={["结算费用", "官方费用", "内部费用", "预损费用", "归档费用"].map(value => ({ value, label: value }))} /></Form.Item>
-            <Form.Item label="经办人" name="handler" rules={[{ required: true }]}><Input /></Form.Item>
-            <Form.Item label="收款单位" name="payee"><Input /></Form.Item>
+            <Form.Item label="付款类型" name="payment_type" rules={[{ required: true, message: "请选择付款类型" }]}><Select options={paymentTypes} onChange={(value) => { const current = paymentTypes.find(item => item.value === value); if (current) paymentForm.setFieldsValue({ payee: current.payee, account: current.account }); }} /></Form.Item>
+            <Form.Item label="收款单位" name="payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input /></Form.Item>
+            <Form.Item label="收款账号" name="account"><Input /></Form.Item>
+            <Form.Item label="申请日期" name="application_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
           </div>
-          <Form.Item label="说明" name="description"><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item label="申请说明" name="remark"><Input.TextArea rows={2} /></Form.Item>
         </Form>
+        <Alert showIcon type="info" message="按合同标的逐项申请" description="勾选需要付款的合同标的并填写本次支付金额；系统将保留已提交、待付款和已付款金额，阻止重复超额申请。" style={{ marginBottom: 12 }} />
+        <Table<ContractPaymentCandidate>
+          rowKey="contract_object_id"
+          size="small"
+          pagination={false}
+          locale={{ emptyText: "当前合同没有可付款的合同标的" }}
+          dataSource={paymentCandidates}
+          rowSelection={{ selectedRowKeys: selectedPaymentObjectKeys, onChange: (keys) => { setSelectedPaymentObjectKeys(keys); setPaymentAmounts((previous) => { const next = { ...previous }; keys.forEach((key) => { const id = Number(key); if (next[id] === undefined) next[id] = Number(paymentCandidates.find(item => item.contract_object_id === id)?.remaining_amount || 0); }); return next; }); } }}
+          columns={[
+            { title: "案号", dataIndex: "case_no", width: 140 },
+            { title: "案件名称", dataIndex: "case_title", ellipsis: true },
+            { title: "费用类型", dataIndex: "fee_type", width: 120 },
+            { title: "合同金额", dataIndex: "contract_amount", width: 105, render: (value) => Number(value).toFixed(2) },
+            { title: "已占用", dataIndex: "reserved_amount", width: 100, render: (value) => Number(value).toFixed(2) },
+            { title: "待付余额", dataIndex: "remaining_amount", width: 105, render: (value) => Number(value).toFixed(2) },
+            { title: "本次支付", width: 130, render: (_, row) => <InputNumber disabled={!selectedPaymentObjectKeys.includes(row.contract_object_id)} min={0.01} max={row.remaining_amount} precision={2} value={paymentAmounts[row.contract_object_id]} style={{ width: "100%" }} onChange={(value) => setPaymentAmounts(previous => ({ ...previous, [row.contract_object_id]: Number(value || 0) }))} /> },
+          ]}
+        />
       </Modal>
       <Modal
         open={Boolean(invoiceTarget)}
@@ -1537,6 +1523,24 @@ export default function ContractCenterPage({
             children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,
           }))} />
         ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
+        <Divider>合同标的 <Button size="small" type="link" disabled={!viewing || ["审批中","已归档"].includes(viewing.status)} onClick={()=>{objectForm.resetFields();setObjectEditing({})}}>新增标的</Button></Divider>
+        {contractObjects.length ? <Table size="small" rowKey="id" pagination={false} scroll={{x:940}} columns={[
+          {title:"案件类型",dataIndex:"case_type",width:100},
+          {title:"案号",dataIndex:"case_no",width:155,render:(value:string)=><Button type="link" className="contract-cell-link" onClick={()=>openRelatedCase(value)}>{value}</Button>},
+          {title:"案件名称",dataIndex:"case_title",width:170,ellipsis:true},
+          {title:"案件阶段",dataIndex:"case_phase",width:110},
+          {title:"费用类型",dataIndex:"fee_type",width:110},
+          {title:"费用金额",dataIndex:"amount",width:110,render:(value:number)=>amount(value)},
+          {title:"客户管理人",dataIndex:"customer_manager",width:120},
+          {title:"备注",dataIndex:"remark",width:180,ellipsis:true},
+          {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}><Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>{!viewing||["审批中","已归档"].includes(viewing.status)?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger>删除</Button></Popconfirm></>}</Space>},
+        ]} dataSource={contractObjects} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的" />}
+      </Modal>
+      <Modal open={Boolean(objectEditing)} title={objectEditing?.id?"修改合同标的":"新增合同标的"} okText="保存" cancelText="取消" onCancel={()=>{setObjectEditing(null);objectForm.resetFields()}} onOk={()=>void saveContractObject()}>
+        <Form form={objectForm} layout="vertical"><Form.Item name="case_record_id" label="关联案件" rules={[{required:true,message:"请选择合同客户下的案件"}]}><Select showSearch optionFilterProp="label" options={objectCases.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item name="fee_type" label="费用类型" rules={[{required:true}]}><Input/></Form.Item><Form.Item name="amount" label="费用金额" rules={[{required:true}]}><InputNumber min={0} precision={2} style={{width:"100%"}}/></Form.Item><Form.Item name="remark" label="备注"><Input.TextArea rows={3}/></Form.Item></Form>
+      </Modal>
+      <Modal open={Boolean(objectLogTarget)} title={objectLogTarget ? `合同标的日志：${objectLogTarget.case_no}｜${objectLogTarget.fee_type}` : "合同标的日志"} footer={null} onCancel={()=>setObjectLogTarget(null)}>
+        {objectLogTarget?.logs?.length ? <Timeline items={objectLogTarget.logs.map(log=>({children:<div className="contract-history-item"><b>{log.action}</b><small>{log.operator} · {dayjs(log.created_at).format("YYYY-MM-DD HH:mm")}</small><small>变更前：{Object.keys(log.before || {}).length ? JSON.stringify(log.before) : "-"}</small><small>变更后：{Object.keys(log.after || {}).length ? JSON.stringify(log.after) : "-"}</small></div>}))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的日志" />}
       </Modal>
       <Modal
         open={Boolean(eventTarget)}
@@ -1654,7 +1658,7 @@ export default function ContractCenterPage({
             ] : []} />
             <Form form={submitForm} layout="vertical" className="contract-submit-form">
               <Form.Item label="合同审批人" name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
-                <Select disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择具有合同审批权限的人员" notFoundContent="没有可用审批人，请由管理员在角色管理中授予合同审批权限" />
+                <Select disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在系统用户管理中为在职员工配置合同审批流程资格" />
               </Form.Item>
               <Form.Item label="提交说明" name="comment"><Input.TextArea disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} rows={3} /></Form.Item>
             </Form>
@@ -1678,7 +1682,7 @@ export default function ContractCenterPage({
                   <Button type="primary" icon={<CheckOutlined />} onClick={() => approveWizard(true)}>通过当前节点</Button>
                 </Space>
               </Form>
-            ) : <Alert type="info" showIcon title={`合同已进入 ${currentApproval.approver} 的待审批列表`} description="发起人不能审批自己提交的合同，请等待指定审批人处理。" />)}
+            ) : <Alert type="info" showIcon title={`合同已进入 ${currentApproval.approver} 的待审批列表`} description="请等待指定审批人处理。" />)}
             <Divider titlePlacement="start">合同附件</Divider>
             <div className="contract-attachment-list">
               {attachments.length ? attachments.map((item) => (
@@ -1738,7 +1742,7 @@ export default function ContractCenterPage({
             name="approvers"
             rules={[{ required: true }]}
           >
-            <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择具有合同审批权限的人员" notFoundContent="没有可用审批人，请由管理员在角色管理中授予合同审批权限" />
+            <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在系统用户管理中为在职员工配置合同审批流程资格" />
           </Form.Item>
           <Form.Item label="提交说明" name="comment">
             <Input.TextArea rows={3} />
@@ -1781,7 +1785,8 @@ export default function ContractCenterPage({
             </Form.Item>
           </Form>
         )}
-        {reviewing?.status === "审批中" && !canActOnCurrentApproval && currentApproval && <Alert type="info" showIcon title={`当前节点应由 ${currentApproval.approver} 审批`} description="管理员可以查看全所合同，但不能代替指定审批人操作。" />}
+        {reviewing?.status === "审批中" && currentApproval && profile.role === "admin" && currentApproval.approver !== profile.username && <Alert type="info" showIcon title={`当前节点指定审批人：${currentApproval.approver}`} description="管理员可按最高权限代办；审批历史会明确记录管理员代办。" />}
+        {reviewing?.status === "审批中" && !canActOnCurrentApproval && currentApproval && <Alert type="info" showIcon title={`当前节点应由 ${currentApproval.approver} 审批`} description="当前账号没有该审批节点的办理权限。" />}
       </Modal>
       <Modal
         width={720}

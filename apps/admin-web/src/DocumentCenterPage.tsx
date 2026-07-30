@@ -4,11 +4,13 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Descriptions,
   Drawer,
   Form,
   Input,
+  InputNumber,
   message,
   Modal,
   Popconfirm,
@@ -73,6 +75,7 @@ type Attachment = {
   remark: string;
   created_at: string;
 };
+type SealAsset = { id: number; name: string; seal_type: string; status: string };
 type Template = {
   id: number;
   name: string;
@@ -148,6 +151,8 @@ export default function DocumentCenterPage({
           ? "files"
           : initialView === "documents-official"
             ? "official"
+            : initialView === "documents-outgoing"
+              ? "outgoing"
             : initialView === "documents-my"
               ? "my-receipts"
               : initialView === "documents-company"
@@ -155,6 +160,16 @@ export default function DocumentCenterPage({
                 : "documents";
   const [tab, setTab] = useState(first);
   const [documents, setDocuments] = useState<RecordRow[]>([]);
+  const [outgoingDocuments, setOutgoingDocuments] = useState<RecordRow[]>([]);
+  const [contracts, setContracts] = useState<RecordRow[]>([]);
+  const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
+  const [outgoingOpen, setOutgoingOpen] = useState(false);
+  const [outgoingSelected, setOutgoingSelected] = useState<Key[]>([]);
+  const [outgoingDetail, setOutgoingDetail] = useState<any>(null);
+  const [outgoingHistory, setOutgoingHistory] = useState<HistoryEvent[]>([]);
+  const [editingOutgoing, setEditingOutgoing] = useState<any>(null);
+  const [outgoingReview, setOutgoingReview] = useState<{ row: RecordRow; approved: boolean } | null>(null);
+  const [outgoingQuery, setOutgoingQuery] = useState<Record<string, string>>({});
   const [cases, setCases] = useState<RecordRow[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -183,6 +198,9 @@ export default function DocumentCenterPage({
   const [templateForm] = Form.useForm();
   const [actionForm] = Form.useForm();
   const [receiptForm] = Form.useForm();
+  const [outgoingForm] = Form.useForm();
+  const [outgoingReviewForm] = Form.useForm();
+  const [outgoingQueryForm] = Form.useForm();
   const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
@@ -297,22 +315,28 @@ export default function DocumentCenterPage({
   const [receiptDate, setReceiptDate] = useState<ReturnType<typeof dayjs> | null>(
     null,
   );
-  const load = async () => {
+  const load = async (outgoingQueryOverride = outgoingQuery) => {
     setLoading(true);
     try {
-      const [docRes, caseRes, fileRes, templateRes, summaryRes] =
+      const [docRes, outgoingRes, caseRes, contractRes, fileRes, sealAssetsRes, templateRes, summaryRes] =
         await Promise.all([
           api.get("/records", {
             params: { module: "document", page_size: 100 },
           }),
+          api.get("/official-outgoing", { params: outgoingQueryOverride }),
           api.get("/records", { params: { module: "case", page_size: 100 } }),
+          api.get("/records", { params: { module: "contract", page_size: 100 } }),
           api.get("/attachments"),
+          api.get("/seals/assets"),
           api.get("/templates"),
           api.get("/documents/summary"),
         ]);
       setDocuments(docRes.data.items);
+      setOutgoingDocuments(outgoingRes.data.items || []);
       setCases(caseRes.data.items);
+      setContracts(contractRes.data.items);
       setAttachments(fileRes.data.items);
+      setSealAssets(sealAssetsRes.data.items || []);
       setTemplates(templateRes.data.items);
       setSummary(summaryRes.data);
     } catch {
@@ -321,10 +345,176 @@ export default function DocumentCenterPage({
       setLoading(false);
     }
   };
+  const searchOfficialOutgoing = async () => {
+    const values = outgoingQueryForm.getFieldsValue();
+    const applicationDates = values.application_dates || [];
+    const params = Object.fromEntries(Object.entries({
+      official_no: String(values.official_no || "").trim(), owner: String(values.owner || "").trim(), customer: String(values.customer || "").trim(),
+      case_no: String(values.case_no || "").trim(), contract_no: String(values.contract_no || "").trim(), status_value: String(values.status_value || "").trim(),
+      seal_type: String(values.seal_type || "").trim(), file_name: String(values.file_name || "").trim(),
+      application_date_from: applicationDates[0] ? applicationDates[0].format("YYYY-MM-DD") : "", application_date_to: applicationDates[1] ? applicationDates[1].format("YYYY-MM-DD") : "",
+    }).filter(([, value]) => Boolean(value)) as [string, string][]);
+    setOutgoingSelected([]);
+    setOutgoingQuery(params);
+    await load(params);
+  };
+  const resetOfficialOutgoingSearch = async () => {
+    outgoingQueryForm.resetFields();
+    setOutgoingSelected([]);
+    setOutgoingQuery({});
+    await load({});
+  };
   useEffect(() => {
     setTab(first);
     load();
   }, [initialView]);
+  const createOfficialOutgoing = async () => {
+    const values = await outgoingForm.validateFields();
+    const source = (values.source_type === "case" ? cases : contracts).find((item) => item.id === Number(values.source_record_id));
+    if (!source) return;
+    try {
+      await api.post("/official-outgoing", {
+        title: values.title,
+        source_type: values.source_type,
+        source_record_id: source.id,
+        source_file_ids: values.source_file_ids || [],
+        seal_asset_id: Number(values.seal_asset_id),
+        is_electronic_seal: Boolean(values.is_electronic_seal),
+        is_offline_print: Boolean(values.is_offline_print),
+        print_quantity: Number(values.print_quantity || 1),
+        need_audit: values.need_audit !== false,
+        content: values.content || "",
+        remark: values.remark || "",
+      });
+      message.success("正式发文已创建" );
+      setOutgoingOpen(false);
+      outgoingForm.resetFields();
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "正式发文创建失败");
+    }
+  };
+  const openOfficialOutgoingEditor = async (row: RecordRow) => {
+    try {
+      const detail = await api.get(`/official-outgoing/${row.id}`);
+      const item = detail.data;
+      setEditingOutgoing(item);
+      outgoingForm.setFieldsValue({
+        title: item.title,
+        source_type: item.source_type,
+        source_record_id: item.source_record_id,
+        source_file_ids: item.source_file_ids || [],
+        seal_asset_id: Number(item.seal_asset_id) || undefined,
+        is_electronic_seal: Boolean(item.is_electronic_seal),
+        is_offline_print: Boolean(item.is_offline_print),
+        print_quantity: Number(item.print_quantity || 1),
+        need_audit: item.need_audit !== false,
+        content: item.content || "",
+        remark: item.description || "",
+      });
+      setOutgoingOpen(true);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "正式发文详情加载失败"); }
+  };
+  const updateOfficialOutgoing = async () => {
+    if (!editingOutgoing) return;
+    const values = await outgoingForm.validateFields();
+    try {
+      await api.patch(`/official-outgoing/${editingOutgoing.id}`, {
+        title: values.title,
+        seal_asset_id: Number(values.seal_asset_id),
+        is_electronic_seal: Boolean(values.is_electronic_seal),
+        is_offline_print: Boolean(values.is_offline_print),
+        print_quantity: Number(values.print_quantity || 1),
+        need_audit: values.need_audit !== false,
+        content: values.content || "",
+        remark: values.remark || "",
+      });
+      message.success("正式发文已保存");
+      setOutgoingOpen(false);
+      setEditingOutgoing(null);
+      outgoingForm.resetFields();
+      await load();
+    } catch (error: any) { message.error(error?.response?.data?.detail || "正式发文保存失败"); }
+  };
+  const reviewOfficialOutgoing = async (row: RecordRow, approved: boolean, comment: string) => {
+    try {
+      await api.post(`/official-outgoing/${row.id}/review`, { approved, comment: comment.trim() });
+      message.success(approved ? "正式发文已通过" : "正式发文已拒绝");
+      setOutgoingReview(null);
+      outgoingReviewForm.resetFields();
+      await load();
+      if (outgoingDetail?.id === row.id) await openOfficialOutgoingDetail(row);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "正式发文审批失败"); }
+  };
+  const rollbackOfficialOutgoing = async (row: RecordRow) => {
+    try {
+      await api.post(`/official-outgoing/${row.id}/rollback`, { reason: "申请人撤回正式发文" });
+      message.success("正式发文已撤回");
+      load();
+    } catch (error: any) { message.error(error?.response?.data?.detail || "正式发文撤回失败"); }
+  };
+  const openOfficialOutgoingDetail = async (row: RecordRow) => {
+    try {
+      const [detail, historyResult] = await Promise.all([
+        api.get(`/official-outgoing/${row.id}`),
+        api.get(`/records/${row.id}/history`),
+      ]);
+      setOutgoingDetail(detail.data);
+      setOutgoingHistory(historyResult.data.items || []);
+    }
+    catch (error: any) { message.error(error?.response?.data?.detail || "正式发文详情加载失败"); }
+  };
+  const openOfficialOutgoingSource = (row: any) => {
+    if (row.source_type === "case") {
+      void openCaseDetail(row.source_serial_no);
+      return;
+    }
+    if (!row.source_serial_no) {
+      message.warning("正式发文未关联可查看的来源合同");
+      return;
+    }
+    rememberContractDetailTarget({ id: Number(row.source_record_id) || undefined, serial_no: row.source_serial_no });
+    onNavigate?.("contract-company");
+  };
+  const submitOfficialOutgoing = async (row: RecordRow) => {
+    try { await api.post(`/official-outgoing/${row.id}/submit`, {}); message.success("正式发文已提交"); await load(); await openOfficialOutgoingDetail(row); }
+    catch (error: any) { message.error(error?.response?.data?.detail || "正式发文提交失败"); }
+  };
+  const uploadOfficialOutgoingFile = async (row: any, uploadFile: File, stamped = false) => {
+    const data = new FormData(); data.append("file", uploadFile);
+    try {
+      if (stamped) await api.post(`/official-outgoing/${row.id}/stamp-file`, data);
+      else { data.append("record_id", String(row.id)); data.append("category", "正式发文附件"); await api.post("/attachments", data); }
+      message.success(stamped ? "盖章文件已上传" : "正式发文附件已上传"); await load(); await openOfficialOutgoingDetail(row);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "文件上传失败"); }
+    return false;
+  };
+  const deleteOfficialOutgoingFile = async (row: any, attachment: Attachment) => {
+    try {
+      await api.delete(`/attachments/${attachment.id}`);
+      message.success("正式发文附件已删除");
+      await load();
+      await openOfficialOutgoingDetail(row);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "正式发文附件删除失败"); }
+  };
+  const downloadOfficialOutgoing = async () => {
+    if (!outgoingSelected.length) return message.warning("请先勾选需要打包下载的正式发文");
+    try {
+      const response = await api.post("/official-outgoing/download", { record_ids: outgoingSelected }, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data); const link = document.createElement("a"); link.href = url; link.download = "正式发文附件.zip"; link.click(); URL.revokeObjectURL(url);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "正式发文打包下载失败"); }
+  };
+  const markOfficialOutgoingStamped = async () => {
+    if (!outgoingSelected.length) return message.warning("请先勾选审批通过的正式发文");
+    const invalid = outgoingDocuments.filter((item) => outgoingSelected.includes(item.id) && item.status !== "已通过");
+    if (invalid.length) return message.warning("“标记已盖章”仅支持审批通过的正式发文；已盖章文书可直接打包下载");
+    try {
+      await api.post("/official-outgoing/mark-stamped", { record_ids: outgoingSelected });
+      message.success("所选正式发文已标记为已盖章");
+      setOutgoingSelected([]);
+      await load();
+    } catch (error: any) { message.error(error?.response?.data?.detail || "标记正式发文盖章失败"); }
+  };
   useEffect(() => {
     const target = consumeDocumentSearchDetailTarget();
     if (!target) return;
@@ -1347,9 +1537,12 @@ export default function DocumentCenterPage({
                 {tab === "documents" && (
                   <RecordImportButton module="document" onImported={load} />
                 )}
-                <Button icon={<ReloadOutlined />} onClick={load}>
+                <Button icon={<ReloadOutlined />} onClick={() => void load()}>
                   刷新
                 </Button>
+                {tab === "outgoing" && (
+                  <><Popconfirm title="确认将所选审批通过的正式发文标记为已盖章？" onConfirm={markOfficialOutgoingStamped}><Button disabled={!outgoingSelected.length}>标记已盖章</Button></Popconfirm><Button onClick={downloadOfficialOutgoing}>打包下载</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => { outgoingForm.resetFields(); outgoingForm.setFieldsValue({ source_type: "contract", need_audit: true, is_offline_print: true, print_quantity: 1 }); setOutgoingOpen(true); }}>新建正式发文</Button></>
+                )}
                 {tab === "documents" && (
                   <Button
                     type="primary"
@@ -1400,11 +1593,24 @@ export default function DocumentCenterPage({
               onChange={setTab}
               items={[
                 { key: "documents", label: "收发文登记" },
+                { key: "outgoing", label: "正式发文" },
                 { key: "files", label: "文件附件" },
                 { key: "templates", label: "文书模板" },
                 { key: "archive", label: "案件归档材料" },
               ]}
             />
+            {tab === "outgoing" && <Form form={outgoingQueryForm} layout="inline" onFinish={searchOfficialOutgoing} style={{ padding: "0 0 12px", rowGap: 8 }}>
+              <Form.Item label="申请编号" name="official_no"><Input allowClear placeholder="正式发文编号" style={{ width: 176 }} /></Form.Item>
+              <Form.Item label="申请人" name="owner"><Input allowClear placeholder="申请人" style={{ width: 120 }} /></Form.Item>
+              <Form.Item label="申请日期" name="application_dates"><DatePicker.RangePicker allowClear style={{ width: 230 }} /></Form.Item>
+              <Form.Item label="案件编号" name="case_no"><Input allowClear placeholder="案件编号" style={{ width: 160 }} /></Form.Item>
+              <Form.Item label="合同编号" name="contract_no"><Input allowClear placeholder="合同编号" style={{ width: 160 }} /></Form.Item>
+              <Form.Item label="客户名称" name="customer"><Input allowClear placeholder="客户名称" style={{ width: 150 }} /></Form.Item>
+              <Form.Item label="用印状态" name="status_value"><Select allowClear placeholder="全部" style={{ width: 120 }} options={["草稿", "待审批", "已通过", "已拒绝", "已撤回", "已盖章"].map((value) => ({ value, label: value }))} /></Form.Item>
+              <Form.Item label="印章类型" name="seal_type"><Input allowClear placeholder="印章类型" style={{ width: 140 }} /></Form.Item>
+              <Form.Item label="文件名称" name="file_name"><Input allowClear placeholder="文件名称" style={{ width: 160 }} /></Form.Item>
+              <Form.Item><Space><Button type="primary" htmlType="submit" icon={<SearchOutlined />}>查询</Button><Button onClick={() => void resetOfficialOutgoingSearch()}>重置</Button></Space></Form.Item>
+            </Form>}
             {tab === "documents" ? (
               <Table
                 rowKey="id"
@@ -1413,6 +1619,29 @@ export default function DocumentCenterPage({
                 columns={documentColumns}
                 dataSource={documents}
                 scroll={{ x: 1700 }}
+              />
+            ) : tab === "outgoing" ? (
+              <Table
+                rowKey="id"
+                loading={loading}
+                size="small"
+                rowSelection={{ selectedRowKeys: outgoingSelected, onChange: setOutgoingSelected, getCheckboxProps: (row: RecordRow) => ({ disabled: !["已通过", "已盖章"].includes(row.status) }) }}
+                locale={{ emptyText: "暂无正式发文；请从合同或案件发起" }}
+                columns={[
+                  { title: "正式发文编号", dataIndex: "official_no", width: 190, render: (_: unknown, row: RecordRow) => <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingDetail(row)}>{(row as any).official_no || row.serial_no}</Button> },
+                  { title: "文书名称", dataIndex: "title", width: 240, ellipsis: true },
+                  { title: "来源", width: 180, render: (_, row: any) => row.source_serial_no ? <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingSource(row)}>{`${row.source_type === "contract" ? "合同" : "案件"}：${row.source_serial_no}`}</Button> : "—" },
+                  { title: "客户", dataIndex: "customer", width: 180, ellipsis: true, render: (value: string) => value ? <Button type="link" className="case-cell-link" onClick={() => void openCustomerDetail(value)}>{value}</Button> : "—" },
+                  { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <Tag color={value === "已通过" ? "green" : value === "已拒绝" ? "red" : value === "待审批" ? "orange" : "default"}>{value}</Tag> },
+                  { title: "申请人", dataIndex: "owner", width: 120 },
+                  { title: "创建时间", dataIndex: "created_at", width: 175, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+                  { title: "审核人", dataIndex: "auditor", width: 120, render: (value: string) => value || "—" },
+                  { title: "审核时间", dataIndex: "audit_time", width: 175, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+                  { title: "审核意见", dataIndex: "audit_remark", width: 220, ellipsis: true, render: (value: string) => value || "—" },
+                  { title: "操作", fixed: "right", width: 290, render: (_, row: RecordRow) => <Space size={2}><Button type="link" size="small" onClick={() => openOfficialOutgoingDetail(row)}>详情</Button>{["草稿", "已拒绝", "已撤回"].includes(row.status) && <Button type="link" size="small" onClick={() => openOfficialOutgoingEditor(row)}>编辑</Button>}{["草稿", "已拒绝", "已撤回"].includes(row.status) && <Button type="link" size="small" onClick={() => submitOfficialOutgoing(row)}>提交</Button>}{row.status === "待审批" && <><Button type="link" size="small" onClick={() => { outgoingReviewForm.setFieldsValue({ comment: "" }); setOutgoingReview({ row, approved: true }); }}>通过</Button><Button danger type="link" size="small" onClick={() => { outgoingReviewForm.setFieldsValue({ comment: "" }); setOutgoingReview({ row, approved: false }); }}>拒绝</Button></>}{["待审批", "已拒绝"].includes(row.status) && <Popconfirm title="确认撤回正式发文？" onConfirm={() => rollbackOfficialOutgoing(row)}><Button type="link" size="small">撤回</Button></Popconfirm>}</Space> },
+                ]}
+                dataSource={outgoingDocuments}
+                scroll={{ x: 1920 }}
               />
             ) : tab === "files" ? (
               <Table
@@ -1445,6 +1674,74 @@ export default function DocumentCenterPage({
           </Card>
         </>
       )}
+      <Drawer open={!!outgoingDetail} title={outgoingDetail ? `\u6b63\u5f0f\u53d1\u6587\u8be6\u60c5\uff1a${outgoingDetail.official_no || outgoingDetail.serial_no}` : "\u6b63\u5f0f\u53d1\u6587\u8be6\u60c5"} width={760} onClose={() => setOutgoingDetail(null)}>
+        {outgoingDetail && <><Descriptions bordered size="small" column={2} items={[
+          { key: "title", label: "\u6587\u4e66\u540d\u79f0", children: outgoingDetail.title }, { key: "status", label: "\u72b6\u6001", children: outgoingDetail.status },
+          { key: "source", label: "\u6765\u6e90\u4e1a\u52a1", children: outgoingDetail.source_serial_no ? <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingSource(outgoingDetail)}>{`${outgoingDetail.source_type === "contract" ? "\u5408\u540c" : "\u6848\u4ef6"}\uff5c${outgoingDetail.source_serial_no}`}</Button> : "\u2014" }, { key: "seal", label: "\u5370\u7ae0\u7c7b\u578b", children: outgoingDetail.seal_type || "\u2014" },
+          { key: "copies", label: "\u76d6\u7ae0\u4efd\u6570", children: outgoingDetail.print_quantity || 1 }, { key: "electronic", label: "\u7535\u5b50\u5370\u7ae0", children: outgoingDetail.is_electronic_seal ? "\u662f" : "\u5426" },
+          { key: "content", label: "\u6587\u4e66\u5185\u5bb9", children: outgoingDetail.content || "\u2014", span: 2 }, { key: "remark", label: "\u5907\u6ce8", children: outgoingDetail.description || "\u2014", span: 2 },
+        ]} />
+        <Card size="small" title={"\u6b63\u5f0f\u53d1\u6587\u9644\u4ef6"} style={{ marginTop: 16 }} extra={["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) ? <Upload key="upload" showUploadList={false} beforeUpload={(item) => { void uploadOfficialOutgoingFile(outgoingDetail, item as unknown as File); return false; }}><Button icon={<UploadOutlined />}>{"\u4e0a\u4f20\u9644\u4ef6"}</Button></Upload> : null}>
+          <Table size="small" rowKey="id" pagination={false} dataSource={outgoingDetail.attachments || []} columns={[
+            { title: "\u6587\u4ef6\u540d\u79f0", dataIndex: "original_name", ellipsis: true }, { title: "\u7c7b\u522b", dataIndex: "category", width: 150 }, { title: "\u5927\u5c0f", dataIndex: "size", width: 100, render: (value: number) => fileSize(value) },
+            { title: "\u64cd\u4f5c", width: 150, render: (_, item: Attachment) => <Space size={2}><Button type="link" size="small" onClick={() => window.open(`/api/v1/attachments/${item.id}/download`, "_blank")}>{"\u4e0b\u8f7d"}</Button>{["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && item.category === "正式发文附件" && <Popconfirm title="确认删除该正式发文附件？" onConfirm={() => deleteOfficialOutgoingFile(outgoingDetail, item)}><Button danger type="link" size="small">删除</Button></Popconfirm>}</Space> },
+          ]} />
+        </Card>
+        {outgoingDetail.status === "\u5df2\u901a\u8fc7" && <Card size="small" title={"\u76d6\u7ae0\u6587\u4ef6"} style={{ marginTop: 16 }}><Upload showUploadList={false} beforeUpload={(item) => { void uploadOfficialOutgoingFile(outgoingDetail, item as unknown as File, true); return false; }}><Button type="primary" icon={<UploadOutlined />}>{"\u4e0a\u4f20\u76d6\u7ae0\u6587\u4ef6\u5e76\u6807\u8bb0\u5df2\u76d6\u7ae0"}</Button></Upload></Card>}
+        {["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && <Button style={{ marginTop: 16 }} type="primary" onClick={() => submitOfficialOutgoing(outgoingDetail)}>{"\u63d0\u4ea4\u5ba1\u6279"}</Button>}
+        <Card size="small" title="审批与办理记录" style={{ marginTop: 16 }}>
+          <Timeline items={outgoingHistory.map((item) => ({ color: item.to_status === "已通过" || item.to_status === "已盖章" ? "green" : item.to_status === "已拒绝" ? "red" : "blue", children: <div><b>{item.action}</b>{item.from_status && <span>　{item.from_status} → {item.to_status}</span>}<div style={{ color: "#999", fontSize: 12 }}>{item.operator} · {new Date(item.created_at).toLocaleString("zh-CN")}</div>{item.comment && <div>{item.comment}</div>}</div> }))} />
+        </Card>
+        </>}
+      </Drawer>
+      <Modal
+        open={!!outgoingReview}
+        title={outgoingReview?.approved ? "通过正式发文" : "拒绝正式发文"}
+        okText={outgoingReview?.approved ? "确认通过" : "确认拒绝"}
+        okButtonProps={{ danger: !outgoingReview?.approved }}
+        cancelText="取消"
+        onOk={async () => {
+          const values = await outgoingReviewForm.validateFields();
+          if (outgoingReview) await reviewOfficialOutgoing(outgoingReview.row, outgoingReview.approved, values.comment || "");
+        }}
+        onCancel={() => { setOutgoingReview(null); outgoingReviewForm.resetFields(); }}
+        destroyOnHidden
+      >
+        {outgoingReview && <>
+          <Alert
+            type={outgoingReview.approved ? "info" : "warning"}
+            showIcon
+            message={`${(outgoingReview.row as any).official_no || outgoingReview.row.serial_no}｜${outgoingReview.row.title}`}
+            description={outgoingReview.approved ? "请填写本次审核意见；该意见将同步写入正式发文审批记录。" : "请填写具体驳回原因；申请人可在修改后再次提交。"}
+            style={{ marginBottom: 16 }}
+          />
+          <Form form={outgoingReviewForm} layout="vertical">
+            <Form.Item label="审核意见" name="comment" rules={outgoingReview.approved ? [{ max: 1000 }] : [{ required: true, whitespace: true, message: "请填写驳回原因" }, { max: 1000 }]}>
+              <Input.TextArea rows={4} maxLength={1000} showCount placeholder={outgoingReview.approved ? "例如：材料齐全，同意正式发文" : "请说明需补正或修改的具体事项"} />
+            </Form.Item>
+          </Form>
+        </>}
+      </Modal>
+      <Modal open={outgoingOpen} title={editingOutgoing ? "编辑正式发文" : "新建正式发文"} okText={editingOutgoing ? "保存修改" : "创建草稿"} cancelText="取消" onOk={editingOutgoing ? updateOfficialOutgoing : createOfficialOutgoing} onCancel={() => { setOutgoingOpen(false); setEditingOutgoing(null); outgoingForm.resetFields(); }} destroyOnHidden>
+        <Form form={outgoingForm} layout="vertical">
+          <Form.Item label="文书名称" name="title" rules={[{ required: true, message: "请输入文书名称" }]}><Input /></Form.Item>
+          <Form.Item label="来源类型" name="source_type" rules={[{ required: true }]}><Select disabled={!!editingOutgoing} options={[{ value: "contract", label: "合同" }, { value: "case", label: "案件" }]} onChange={() => outgoingForm.setFieldsValue({ source_record_id: undefined, source_file_ids: [] })} /></Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.source_type !== current.source_type}>{() => <Form.Item label="来源业务" name="source_record_id" rules={[{ required: true, message: "请选择来源合同或案件" }]}><Select disabled={!!editingOutgoing} showSearch optionFilterProp="label" options={(outgoingForm.getFieldValue("source_type") === "case" ? cases : contracts).map((item) => ({ value: item.id, label: `${item.serial_no}｜${item.title}` }))} onChange={() => outgoingForm.setFieldValue("source_file_ids", [])} /></Form.Item>}</Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.source_record_id !== current.source_record_id || previous.source_type !== current.source_type}>{() => {
+            const sourceId = Number(outgoingForm.getFieldValue("source_record_id") || 0);
+            const sourceFiles = attachments.filter((item) => item.record_id === sourceId);
+            return <Form.Item label="随文附件" name="source_file_ids" extra={editingOutgoing ? "编辑不改变既有来源和已复制附件；请在详情中维护正式发文附件。" : outgoingForm.getFieldValue("source_type") === "contract" ? "未选择时将按旧系统规则带入该合同全部附件。" : "案件发文仅带入本处选中的附件。"}><Select mode="multiple" allowClear placeholder={sourceId ? "选择需要带入正式发文的附件" : "请先选择来源业务"} disabled={!!editingOutgoing || !sourceId} options={sourceFiles.map((item) => ({ value: item.id, label: `${item.original_name}（${fileSize(item.size)}）` }))} notFoundContent={sourceId ? "该来源暂无可带入附件" : undefined} /></Form.Item>;
+          }}</Form.Item>
+          <Form.Item label="印章类型" name="seal_asset_id" rules={[{ required: true, message: "请选择可用印章类型" }]}><Select placeholder="请选择可用印章" options={sealAssets.filter((item) => item.status === "可用").map((item) => ({ value: item.id, label: `${item.seal_type}｜${item.name}` }))} onChange={(value) => outgoingForm.setFieldsValue({ seal_asset_id: value })} onSelect={(value) => outgoingForm.setFieldsValue({ seal_asset_id: value })} /></Form.Item>
+          <Form.Item label="盖章份数" name="print_quantity" rules={[{ required: true }]}><InputNumber min={1} max={9999} precision={0} style={{ width: "100%" }} /></Form.Item>
+          <Form.Item name="is_electronic_seal" valuePropName="checked"><Checkbox>使用电子印章</Checkbox></Form.Item>
+          <Form.Item name="is_offline_print" valuePropName="checked"><Checkbox>需要打印盖章</Checkbox></Form.Item>
+          <Form.Item name="need_audit" valuePropName="checked"><Checkbox>提交后进入正式发文审批</Checkbox></Form.Item>
+          <Form.Item label="文书内容" name="content"><Input.TextArea rows={4} /></Form.Item>
+          <Form.Item label="备注" name="remark"><Input.TextArea rows={2} /></Form.Item>
+        </Form>
+        <Alert type="info" showIcon message="先创建草稿；可上传/删除正式发文附件后再提交审批。来源合同或案件、附件和印章均由服务端校验。" />
+      </Modal>
       <Modal
         open={receiptDateOpen}
         title={`修改收文日期（已选 ${selectedFormalReceipts.length} 条）`}

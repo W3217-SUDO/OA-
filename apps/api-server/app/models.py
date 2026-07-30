@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -116,6 +116,116 @@ class SystemConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class LawFirm(Base):
+    """独立的律所主体档案，不与客户或运行配置混用。"""
+
+    __tablename__ = "law_firms"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    registered_address: Mapped[str] = mapped_column(String(255), default="")
+    business_address: Mapped[str] = mapped_column(String(255), default="")
+    detail_address: Mapped[str] = mapped_column(String(255), default="")
+    postal_code: Mapped[str] = mapped_column(String(32), default="")
+    phone: Mapped[str] = mapped_column(String(64), default="")
+    fax: Mapped[str] = mapped_column(String(64), default="")
+    email: Mapped[str] = mapped_column(String(128), default="")
+    organization_code: Mapped[str] = mapped_column(String(64), default="")
+    company_code: Mapped[str] = mapped_column(String(64), default="")
+    country: Mapped[str] = mapped_column(String(64), default="中国")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    default_contact_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    license_attachment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    updated_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LawFirmContact(Base):
+    __tablename__ = "law_firm_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    law_firm_id: Mapped[int] = mapped_column(ForeignKey("law_firms.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    address: Mapped[str] = mapped_column(String(255), default="")
+    postal_code: Mapped[str] = mapped_column(String(32), default="")
+    phone: Mapped[str] = mapped_column(String(64), default="")
+    fax: Mapped[str] = mapped_column(String(64), default="")
+    email: Mapped[str] = mapped_column(String(128), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    updated_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LawFirmAudit(Base):
+    __tablename__ = "law_firm_audits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    law_firm_id: Mapped[int] = mapped_column(ForeignKey("law_firms.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    operator: Mapped[str] = mapped_column(String(64))
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IprCaseLawFirm(Base):
+    """An explicit collaboration-law-firm link for a patent or trademark case."""
+
+    __tablename__ = "ipr_case_law_firms"
+    __table_args__ = (UniqueConstraint("case_record_id", "law_firm_id", name="uq_ipr_case_law_firm"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    law_firm_id: Mapped[int] = mapped_column(ForeignKey("law_firms.id", ondelete="RESTRICT"), index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IprCaseCustomer(Base):
+    """A customer explicitly linked to an IPR case, including its primary customer."""
+
+    __tablename__ = "ipr_case_customers"
+    __table_args__ = (UniqueConstraint("case_record_id", "customer_record_id", name="uq_ipr_case_customer"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    customer_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="RESTRICT"), index=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IprCaseCustomerContact(Base):
+    """A selected customer contact and its legacy document/technical role on an IPR case."""
+
+    __tablename__ = "ipr_case_customer_contacts"
+    __table_args__ = (UniqueConstraint("case_record_id", "customer_record_id", "contact_id", "contact_role", name="uq_ipr_case_customer_contact_role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    customer_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="RESTRICT"), index=True)
+    contact_id: Mapped[str] = mapped_column(String(64), index=True)
+    contact_role: Mapped[str] = mapped_column(String(32), index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IprCaseLog(Base):
+    """User-authored IPR business notes; deliberately separate from immutable workflow events."""
+
+    __tablename__ = "ipr_case_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SystemMenu(Base):
     """系统已注册页面的菜单配置。"""
 
@@ -219,8 +329,10 @@ class FileAttachment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), nullable=True, index=True)
+    law_firm_id: Mapped[int | None] = mapped_column(ForeignKey("law_firms.id", ondelete="CASCADE"), nullable=True, index=True)
     finance_transaction_id: Mapped[int | None] = mapped_column(ForeignKey("finance_transactions.id", ondelete="CASCADE"), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(64), index=True, default="普通附件")
+    file_type_code: Mapped[str] = mapped_column(String(64), index=True, default="")
     original_name: Mapped[str] = mapped_column(String(255))
     stored_name: Mapped[str] = mapped_column(String(255), unique=True)
     content_type: Mapped[str] = mapped_column(String(128), default="application/octet-stream")
@@ -228,6 +340,101 @@ class FileAttachment(Base):
     path: Mapped[str] = mapped_column(String(512))
     uploader: Mapped[str] = mapped_column(String(64))
     remark: Mapped[str] = mapped_column(Text, default="")
+    # IPR 案件文件沿用附件存储，但其日期和转文状态必须可审计，不能只靠备注文本。
+    document_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    requires_transmission: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_transmitted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    transmitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    transmitted_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IprOfficialImportBatch(Base):
+    """A source-file parsing run. Candidates are not official records until confirmed."""
+
+    __tablename__ = "ipr_official_import_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    source_path: Mapped[str] = mapped_column(String(512))
+    source_size: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(32), index=True, default="待确认")
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    imported_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    department: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IprOfficialImportCandidate(Base):
+    """One parsed source row awaiting an explicit case match and confirmation."""
+
+    __tablename__ = "ipr_official_import_candidates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("ipr_official_import_batches.id", ondelete="CASCADE"), index=True)
+    row_no: Mapped[int] = mapped_column(Integer)
+    ipr_case_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    application_no: Mapped[str] = mapped_column(String(128), default="", index=True)
+    official_type: Mapped[str] = mapped_column(String(255), default="")
+    official_no: Mapped[str] = mapped_column(String(128), default="")
+    received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    raw_data: Mapped[dict] = mapped_column(JSON, default=dict)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), index=True, default="待确认")
+    official_record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    confirmed_by: Mapped[str] = mapped_column(String(64), default="")
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IprCaseFileCustomImportBatch(Base):
+    """A legacy-style filename parsing run; it has no formal attachment effect until confirmation."""
+
+    __tablename__ = "ipr_case_file_custom_import_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    source_path: Mapped[str] = mapped_column(String(512))
+    source_size: Mapped[int] = mapped_column(Integer, default=0)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True, default="待确认")
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    imported_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    department: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IprCaseFileCustomImportCandidate(Base):
+    """One source file awaiting a visible case match and editable legacy file metadata."""
+
+    __tablename__ = "ipr_case_file_custom_import_candidates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("ipr_case_file_custom_import_batches.id", ondelete="CASCADE"), index=True)
+    ipr_case_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    custom_filename: Mapped[str] = mapped_column(String(255))
+    parsed_case_no: Mapped[str] = mapped_column(String(128), default="", index=True)
+    parsed_document_no: Mapped[str] = mapped_column(String(128), default="")
+    case_kind: Mapped[str] = mapped_column(String(32), default="")
+    application_no: Mapped[str] = mapped_column(String(128), default="", index=True)
+    file_type: Mapped[str] = mapped_column(String(255), default="")
+    document_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    case_officer: Mapped[str] = mapped_column(String(64), default="")
+    fee_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee_type: Mapped[str] = mapped_column(String(128), default="")
+    fee_response_user: Mapped[str] = mapped_column(String(64), default="")
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), index=True, default="待确认")
+    attachment_id: Mapped[int | None] = mapped_column(ForeignKey("file_attachments.id", ondelete="SET NULL"), nullable=True, index=True)
+    confirmed_by: Mapped[str] = mapped_column(String(64), default="")
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -243,6 +450,61 @@ class DocumentTemplate(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IprCaseAssistedFee(Base):
+    """A patent/trademark case's government-assistance application lifecycle.
+
+    This is intentionally separate from generic finance records: the legacy IPR
+    workflow tracks an application, its handling date/operator and a receipt
+    document even when it never becomes a payable or receivable transaction.
+    """
+
+    __tablename__ = "ipr_case_assisted_fees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    assisted_type: Mapped[str] = mapped_column(String(128), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="待办理", index=True)
+    request_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    request_user: Mapped[str] = mapped_column(String(64), index=True)
+    response_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    response_user: Mapped[str] = mapped_column(String(64), default="", index=True)
+    receipt_attachment_id: Mapped[int | None] = mapped_column(ForeignKey("file_attachments.id", ondelete="SET NULL"), nullable=True)
+    remark: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IprCaseReminder(Base):
+    """Dedicated IPR case reminder, kept separate from ordinary lawsuit reminders."""
+
+    __tablename__ = "ipr_case_reminders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    event_type_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    event_type: Mapped[str] = mapped_column(String(128), default="自定义提醒", index=True)
+    reminder_date: Mapped[date] = mapped_column(Date, index=True)
+    deadline: Mapped[date] = mapped_column(Date, index=True)
+    content: Mapped[str] = mapped_column(Text)
+    creator: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IprCaseReminderSuppression(Base):
+    """Event types explicitly excluded from automatic IPR case monitoring."""
+
+    __tablename__ = "ipr_case_reminder_suppressions"
+    __table_args__ = (UniqueConstraint("case_record_id", "event_type_id", name="uq_ipr_case_reminder_suppression"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    event_type_id: Mapped[int] = mapped_column(Integer, index=True)
+    event_type: Mapped[str] = mapped_column(String(128))
+    operator: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class FinanceTransaction(Base):
@@ -323,6 +585,71 @@ class ContractEvent(Base):
     content: Mapped[str] = mapped_column(Text)
     operator: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContractObject(Base):
+    """A contract's independently maintained case/fee subject line."""
+
+    __tablename__ = "contract_objects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id"), index=True)
+    fee_type: Mapped[str] = mapped_column(String(64), default="")
+    amount: Mapped[float] = mapped_column(Float, default=0)
+    remark: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    updated_by: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ContractObjectLog(Base):
+    __tablename__ = "contract_object_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_object_id: Mapped[int] = mapped_column(ForeignKey("contract_objects.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    before: Mapped[dict] = mapped_column(JSON, default=dict)
+    after: Mapped[dict] = mapped_column(JSON, default=dict)
+    operator: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContractPaymentLine(Base):
+    """One selected payable amount from a contract subject line.
+
+    Contract payment requests have their own detail rows: a free-form finance
+    record must never be able to impersonate an approved contract payment.
+    """
+
+    __tablename__ = "contract_payment_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    payment_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    contract_object_id: Mapped[int] = mapped_column(ForeignKey("contract_objects.id", ondelete="RESTRICT"), index=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id"), index=True)
+    fee_type: Mapped[str] = mapped_column(String(64))
+    requested_amount: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OfficialOutgoingDocument(Base):
+    """Independent formal-outgoing document lifecycle, separate from receipts."""
+
+    __tablename__ = "official_outgoing_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), unique=True, index=True)
+    official_no: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(16), default="")
+    source_record_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    source_file_ids: Mapped[list] = mapped_column(JSON, default=list)
+    need_audit: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    stamp_attachment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class Notification(Base):

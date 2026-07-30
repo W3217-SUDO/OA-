@@ -301,7 +301,7 @@ def main():
                 call("DELETE", f"/templates/{stale_template['id']}", expected=(204, 404, 409))
         # 清理因上一次进程中断而留下的、带明确 SMOKE 标识的本地测试记录。
         # 生产环境不存在 testing cleanup 路由，普通业务数据也不会命中此条件。
-        for smoke_module in ["customer", "contract", "case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+        for smoke_module in ["customer", "contract", "case", "ipr_case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
             stale = call("GET", f"/records?module={smoke_module}&keyword=SMOKE&page_size=100")["items"]
             for stale_item in stale:
                 # 搜索会命中关联字段中的 SMOKE；清理接口仍应拒绝没有明确测试标识的记录。
@@ -431,10 +431,16 @@ def main():
         member_name = f"smoke_member_{suffix}".lower()
         outsider_name = f"smoke_outsider_{suffix}".lower()
         auditor_name = f"smoke_auditor_{suffix}".lower()
-        manager = call("POST", "/system/users", {"username": manager_name, "display_name": "范围经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师"}}, expected=(201,)); users.append(manager["id"])
-        peer_manager = call("POST", "/system/users", {"username": peer_manager_name, "display_name": "同部门旁观经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师"}}, expected=(201,)); users.append(peer_manager["id"])
+        manager = call("POST", "/system/users", {"username": manager_name, "display_name": "范围经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师", "contract_approval_enabled": True}}, expected=(201,)); users.append(manager["id"])
+        peer_manager = call("POST", "/system/users", {"username": peer_manager_name, "display_name": "同部门旁观经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师", "contract_approval_enabled": True}}, expected=(201,)); users.append(peer_manager["id"])
+        manager_hr = create_record("hr", "在职", "范围经理员工", {"username": manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=manager_name)
+        peer_manager_hr = create_record("hr", "在职", "同部门旁观经理员工", {"username": peer_manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=peer_manager_name)
         manager_directory = next(item for item in call("GET", "/users/directory")["items"] if item["username"] == manager_name)
-        assert manager_directory["position"] == "合伙人律师" and manager_directory["can_approve_contract"] is True and "合同审批" in manager_directory["job_permissions"]
+        assert manager_directory["position"] == "合伙人律师" and manager_directory["can_approve_contract"] is True
+        role_only_name = f"smoke_role_only_{suffix}".lower()
+        role_only = call("POST", "/system/users", {"username": role_only_name, "display_name": "仅合伙人岗位", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师"}}, expected=(201,)); users.append(role_only["id"])
+        role_only_directory = next(item for item in call("GET", "/users/directory")["items"] if item["username"] == role_only_name)
+        assert not role_only_directory["can_approve_contract"], f"岗位反向验证误入审批流程：{role_only_directory!r}"
         department_peer = call("POST", "/system/users", {"username": department_peer_name, "display_name": "同部门成员", "department": "北京分所", "password": "SmokePass2026!", "role": "user"}, expected=(201,)); users.append(department_peer["id"])
         member = call("POST", "/system/users", {"username": member_name, "display_name": "范围成员", "department": "深圳分所", "password": "SmokePass2026!", "role": "user"}, expected=(201,)); users.append(member["id"])
         outsider = call("POST", "/system/users", {"username": outsider_name, "display_name": "范围外人员", "department": "上海分所", "password": "SmokePass2026!", "role": "user"}, expected=(201,)); users.append(outsider["id"])
@@ -943,7 +949,8 @@ def main():
         admin_sensitive = call("GET", f"/customers?scope=mine&customer_name={urllib.parse.quote(own_record['title'])}&page_size=15")
         assert admin_sensitive["total"] == 1 and admin_sensitive["items"][0]["data"]["bank_account"] == "62220000"
         categories = call("GET", "/system/parameter-categories")["items"]
-        assert len(categories) == 7 and any(item["key"] == "court" for item in categories)
+        category_keys = {item["key"] for item in categories}
+        assert {"case_type", "fee_type", "case_phase", "court", "notary_office", "cause", "payment_type", "customer_type", "case_file_type", "district", "court_officer"}.issubset(category_keys)
         first_parameters = call("GET", "/system/parameters?category=court")
         second_parameters = call("GET", "/system/parameters?category=court")
         assert first_parameters["items"] and second_parameters["cached"] is True
@@ -1002,7 +1009,7 @@ def main():
             ("hr-new", "新建员工"), ("hr-all", "员工管理"), ("hr-departments", "部门管理"), ("hr-roles", "角色管理"),
         ]
         assert [(item["key"], item["label"]) for item in sorted((item for item in navigation if item["parent_key"] == "system"), key=lambda item: item["sort_order"])] == [
-            ("system-parameters", "系统参数"), ("system-management", "系统管理"),
+            ("system-parameters", "系统参数"), ("system-management", "系统管理"), ("system-law-firms", "律所档案"),
         ]
         assert any(item["key"] == "warehouse-list" and item["parent_key"] == "warehouse" for item in navigation)
         call("POST", "/system/menus", {"key": f"smoke-menu-{suffix.lower()}", "parent_key": "system-management", "label": f"冒烟自定义菜单-{suffix}", "icon": "", "sort_order": 9999, "is_visible": True, "is_active": True}, expected=(422,))
@@ -1132,6 +1139,8 @@ def main():
             "title": f"SMOKE利益检索合同-{suffix}", "customer": conflict_our_customer,
             "status": "已通过", "owner": USERNAME, "department": "上海分所", "data": {},
         }, expected=(201,)); records.append(conflict_contract["id"])
+        conflict_attachment = multipart_upload("/attachments", {"record_id": conflict_contract["id"], "category": "合同附件", "remark": "利益检索合同审批附件"}, f"smoke-conflict-contract-{suffix}.txt", b"conflict contract attachment")
+        attachments.append(conflict_attachment["id"])
         call("POST", f"/contracts/{conflict_contract['id']}/submit", {"approvers": [manager_name], "comment": "利益检索测试合同审批"})
         conflict_contract = contract_approve_as(manager_name, conflict_contract["id"], True, "利益检索测试合同审批通过")
 
@@ -1225,6 +1234,8 @@ def main():
             "data": {"amount": 5000, "type": "批量维权合同", "external_contract_numbers": [f"EXT-A-{suffix}", f"EXT-B-{suffix}"]},
         }, expected=(201,)); records.append(aligned_contract["id"])
         assert aligned_contract["data"]["external_contract_numbers"] == [f"EXT-A-{suffix}", f"EXT-B-{suffix}"]
+        aligned_attachment = multipart_upload("/attachments", {"record_id": aligned_contract["id"], "category": "合同附件", "remark": "蓝图合同审批附件"}, f"smoke-aligned-contract-{suffix}.txt", b"aligned contract attachment")
+        attachments.append(aligned_attachment["id"])
         call("POST", f"/contracts/{aligned_contract['id']}/submit", {"approvers": [manager_name], "comment": "蓝图合同审批"})
         contract_approve_as(manager_name, aligned_contract["id"], True, "蓝图合同审批通过")
         portal_document = multipart_upload("/attachments", {"record_id": aligned_contract["id"], "category": "客户可见合同", "remark": "客户服务端下载验收"}, f"smoke-portal-{suffix}.txt", b"portal document")
@@ -1232,7 +1243,7 @@ def main():
         portal = call("POST", f"/customers/{aligned_customer['id']}/portal/open", {"comment": "签约后开通客户服务端"})
         portal_credentials = {"account": portal["account"], "activation_code": portal["activation_code"]}
         portal_overview = call("POST", "/customer-portal/overview", portal_credentials)
-        assert portal_overview["customer"]["level"] == "签约客户" and len(portal_overview["contracts"]) == 1 and portal_overview["documents"][0]["id"] == portal_document["id"]
+        assert portal_overview["customer"]["level"] == "签约客户" and any(item["id"] == aligned_contract["id"] for item in portal_overview["contracts"]) and any(item["id"] == portal_document["id"] for item in portal_overview["documents"])
         portal_download = call("POST", f"/customer-portal/files/{portal_document['id']}/download", portal_credentials, raw=True)
         assert portal_download[1] == b"portal document"
         portal_demand = call("POST", "/customer-portal/demands", {**portal_credentials, "title": f"SMOKE查询案件办理进展-{suffix}", "content": "请负责人反馈本周办理情况"}, expected=(201,)); records.append(portal_demand["id"])
@@ -1260,13 +1271,24 @@ def main():
         call("DELETE", f"/contracts/{revocable_contract['id']}/draft", expected=(204,))
         records.remove(revocable_contract["id"]); attachments.remove(revocable_attachment["id"])
         call("GET", f"/records/{revocable_contract['id']}", expected=(404,))
+        self_approval_contract = create_record("contract", "草稿", "合同审批流程人员自提自审", {"amount": 200}, department="北京分所", owner=manager_name)
+        self_approval_attachment = multipart_upload("/attachments", {"record_id": self_approval_contract["id"], "category": "合同附件", "remark": "旧流程自提自审规则验收"}, f"smoke-self-approval-{suffix}.txt", b"legacy contract self approval")
+        attachments.append(self_approval_attachment["id"])
+        contract_admin_token = TOKEN
+        TOKEN = login(manager_name, "SmokePass2026!")["access_token"]
+        self_approval_submitted = call("POST", f"/contracts/{self_approval_contract['id']}/submit", {"approvers": [manager_name], "comment": "旧系统允许已配置流程人员选择本人"})
+        assert self_approval_submitted["status"] == "审批中"
+        assert call("POST", f"/contracts/{self_approval_contract['id']}/approve", {"approved": True, "comment": "本人按流程审批"})["status"] == "已通过"
+        TOKEN = contract_admin_token
         contract = create_record("contract", "草稿", "冒烟合同", {"amount": 1000, "external_contract_no": f"EXT-{suffix}"})
         call("PATCH", f"/records/{contract['id']}", {"status": "已通过", "title": "绕过合同审批"}, expected=(409,))
         call("POST", f"/records/{contract['id']}/transition", {"to_status": "审批中", "comment": "绕过合同专用审批"}, expected=(409,))
         call("DELETE", f"/records/{contract['id']}", expected=(409,))
+        call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name], "comment": "缺合同附件必须阻断"}, expected=(422,))
         contract_attachment = multipart_upload("/attachments", {"record_id": contract["id"], "category": "合同附件", "remark": "合同向导附件验收"}, f"smoke-contract-{suffix}.txt", b"contract wizard attachment")
         attachments.append(contract_attachment["id"])
         call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [USERNAME], "comment": "普通账号不得成为合同审批人"}, expected=(422,))
+        call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [role_only_name], "comment": "仅有合伙人岗位但未配置合同审批流程"}, expected=(422,))
         call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name, peer_manager_name], "comment": "合同不得选择多个审批人"}, expected=(422,))
         submitted = call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name], "comment": "提交审核说明"})
         assert submitted["data"]["submitted_by"] == USERNAME and submitted["data"]["submit_comment"] == "提交审核说明"
@@ -1290,14 +1312,15 @@ def main():
         attachments.append(sync_linked_attachment["id"])
         sync_contract_state = call("GET", f"/records/{contract['id']}")
         assert sync_linked_seal["status"] == "草稿" and sync_contract_state["data"]["sync_seal"] is True
-        call("POST", f"/contracts/{contract['id']}/approve", {"approved": True, "comment": "管理员不得代审"}, expected=(403,))
-        first = contract_approve_as(manager_name, contract["id"], True, "角色审批通过")
+        first = call("POST", f"/contracts/{contract['id']}/approve", {"approved": True, "comment": "管理员最高权限代办验收"})
         assert first["status"] == "已通过"
         sync_linked_seal = call("GET", f"/records/{sync_linked_seal['id']}")
         assert sync_linked_seal["status"] == "待审批" and sync_linked_seal["data"]["contract_no"] == contract["serial_no"]
         approval_state = call("GET", f"/contracts/{contract['id']}/approvals")
-        assert approval_state["items"][0]["comment"] == "角色审批通过" and approval_state["items"][0]["acted_at"]
+        assert approval_state["items"][0]["comment"] == "管理员最高权限代办验收" and approval_state["items"][0]["acted_at"]
         assert approval_state["current_step"] is None
+        contract_history = call("GET", f"/records/{contract['id']}/history")["items"]
+        assert any(item["action"] == "合同审批完成" and item["operator"] == USERNAME and f"管理员代办 {manager_name}" in item["comment"] for item in contract_history)
         contract_investigation = call("POST", f"/contracts/{contract['id']}/investigation", {"title": f"冒烟合同调查任务-{suffix}", "owner": "", "authorized_from": str(date.today()), "authorized_to": str(date.today() + timedelta(days=30)), "region": "上海市", "right_type": "商标", "customer_review": True, "description": "合同发起调查任务验收"}, expected=(201,))
         records.append(contract_investigation["id"])
         assert contract_investigation["module"] == "investigation" and contract_investigation["status"] == "待分配" and contract_investigation["data"]["contract_id"] == contract["id"]
@@ -1318,6 +1341,8 @@ def main():
         contract_history = call("GET", f"/records/{contract['id']}/history")["items"]
         assert {"提交合同审批", "合同审批完成"}.issubset({item["action"] for item in contract_history})
         rejected_contract = create_record("contract", "草稿", "驳回续办冒烟合同", {"amount": 300})
+        rejected_attachment = multipart_upload("/attachments", {"record_id": rejected_contract["id"], "category": "合同附件", "remark": "驳回续办合同附件"}, f"smoke-rejected-contract-{suffix}.txt", b"rejected contract attachment")
+        attachments.append(rejected_attachment["id"])
         call("POST", f"/contracts/{rejected_contract['id']}/submit", {"approvers": [manager_name], "comment": "首次提交"})
         contract_approve_as(manager_name, rejected_contract["id"], False, "", expected=(422,))
         rejected = contract_approve_as(manager_name, rejected_contract["id"], False, "附件需要补正")
@@ -1332,6 +1357,8 @@ def main():
         change_history = call("GET", f"/contracts/{contract['id']}/changes")
         assert change_history["total"] == 2 and all(item["reason"] == "补充服务范围" for item in change_history["items"])
         archive_contract = create_record("contract", "草稿", "归档冒烟合同", {"amount": 500})
+        archive_attachment = multipart_upload("/attachments", {"record_id": archive_contract["id"], "category": "合同附件", "remark": "归档合同审批附件"}, f"smoke-archive-contract-{suffix}.txt", b"archive contract attachment")
+        attachments.append(archive_attachment["id"])
         call("POST", f"/contracts/{archive_contract['id']}/submit", {"approvers": [manager_name], "comment": "归档前审批"})
         contract_approve_as(manager_name, archive_contract["id"], True, "审批通过")
         archived_contract = call("POST", f"/contracts/{archive_contract['id']}/archive")
@@ -1351,6 +1378,8 @@ def main():
         case_references = call("GET", "/cases/reference-options")
         assert {item["value"] for item in case_references["case_types"]} == {"民事案件", "刑事案件", "行政案件及国家赔偿", "法律顾问", "仲裁"}
         assert "侵害商标权纠纷" in {item["value"] for item in case_references["causes"]} and "商标权" in case_references["right_types"]
+        valid_court = next(item["value"] for item in case_references["courts"] if item["value"].strip())
+        valid_case_file_type = next(item["value"] for item in case_references["case_file_types"] if item["value"].strip())
         call("POST", "/records", {"module": "case", "serial_no": serial("CASE-NO-CONTRACT"), "title": "无合同案件", "status": "新案待分配"}, expected=(422,))
         case_payload = {"contract_record_id": contract["id"], "serial_no": serial("CASE"), "title": "冒烟案件", "status": "新案待分配", "owner": USERNAME, "case_type": "刑事案件", "client_position": "被告人/犯罪嫌疑人", "cause_or_charge": "测试罪名", "handling_lawyers": [USERNAME], "court": "不应由第一步写入的法院"}
         civil_payload = {**case_payload, "serial_no": serial("CIVIL-CASE"), "title": "冒烟民事案件", "case_type": "民事案件", "client_position": "原告/申请人", "cause_or_charge": "侵害商标权纠纷", "right_type": "商标权"}
@@ -1358,7 +1387,7 @@ def main():
         assert civil_case["data"]["case_type"] == "民事案件" and civil_case["data"]["right_type"] == "商标权"
         assert civil_case["data"]["source_person"] == (contract["data"].get("source_person") or contract["owner"])
         call("PUT", f"/cases/{civil_case['id']}/litigants", {"plaintiffs": ["冒烟民事原告"], "defendants": ["冒烟民事被告"], "comment": "民事当事人"})
-        call("PUT", f"/cases/{civil_case['id']}/judicial", {"first_court_enabled": True, "first_court_name": "上海市民事测试人民法院", "first_court_case_no": serial("CIVIL-JUDICIAL")})
+        call("PUT", f"/cases/{civil_case['id']}/judicial", {"first_court_enabled": True, "first_court_name": valid_court, "first_court_case_no": serial("CIVIL-JUDICIAL")})
         civil_case = call("POST", f"/cases/{civil_case['id']}/creation/review", {"approved": True, "comment": "民事案件主管审核通过"})
         assert civil_case["status"] == "新案待分配" and civil_case["data"]["case_creation_approval_status"] == "已通过"
         normal_basic_payload = {
@@ -1373,6 +1402,14 @@ def main():
         assert edited_civil["customer"] == customer["title"] and edited_civil["title"] == normal_basic_payload["title"] and edited_civil["status"] == "文书准备"
         assert edited_civil["data"]["customer_record_id"] == customer["id"] and edited_civil["data"]["investigator"] == USERNAME
         assert "修改普通案件基本信息" in {item["action"] for item in call("GET", f"/records/{civil_case['id']}/history")["items"]}
+        selected_case_export = call("GET", f"/cases/export/excel?ids={civil_case['id']}", raw=True)
+        assert selected_case_export[0] == 200 and "application/vnd.ms-excel" in selected_case_export[2] and b"<Workbook" in selected_case_export[1] and civil_case["serial_no"].encode() in selected_case_export[1]
+        archive_manifest_export = call("GET", f"/cases/export/archive-manifest?ids={civil_case['id']}", raw=True)
+        assert archive_manifest_export[0] == 200 and "application/vnd.ms-excel" in archive_manifest_export[2] and "附件数量".encode("utf-8") in archive_manifest_export[1]
+        case_qr_export = call("GET", f"/cases/export/qr-word?ids={civil_case['id']}", raw=True)
+        assert case_qr_export[0] == 200 and "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in case_qr_export[2] and case_qr_export[1].startswith(b"PK")
+        call("GET", "/cases/export/excel", expected=(422,))
+        passed("普通案件选中 Excel、归档清单 Excel、二维码 Word 专用导出与空选阻断")
         team_assigned_case = call("POST", f"/cases/{civil_case['id']}/assign", {
             "customer_manager": member_name,
             "hearing_lawyer": member_name,
@@ -1394,7 +1431,7 @@ def main():
         assert all(handling_capabilities[key] is True for key in ["can_upload_attachment", "can_create_reminder", "can_create_log", "can_update_progress", "can_manage_hearing", "can_create_case_task"])
         assert all(handling_capabilities[key] is False for key in ["can_assign_team", "can_close_case", "can_archive", "can_create_finance"])
         call("PUT", f"/cases/{civil_case['id']}/normal-basic", normal_basic_payload, expected=(403,))
-        member_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": "案件文档", "remark": "团队律师附件权限验收"}, f"smoke-case-team-{suffix}.txt", b"case team permission")
+        member_attachment = multipart_upload("/attachments", {"record_id": civil_case["id"], "category": valid_case_file_type, "remark": "团队律师附件权限验收"}, f"smoke-case-team-{suffix}.txt", b"case team permission")
         call("DELETE", f"/attachments/{member_attachment['id']}", expected=(204,))
         member_progress = call("POST", f"/cases/{civil_case['id']}/progress", {"first_instance_court": "上海市团队权限测试法院", "first_instance_case_no": serial("TEAM-PROGRESS"), "comment": "受派经办律师登记进展"})
         assert member_progress["data"]["first_instance_case_no"]
@@ -1460,8 +1497,8 @@ def main():
             "public_security_name": "上海市公安局测试分局", "public_security_case_no": serial("PS-NO"),
             "public_security_operator": "测试侦查员",
             "first_procuratorate_name": "上海市测试人民检察院", "first_procuratorate_operator": "测试检察官",
-            "first_court_enabled": True, "first_court_name": "上海市测试人民法院",
-            "first_court_case_no": serial("FIRST-JUDICIAL-NO"), "first_court_clerk": "测试书记员",
+            "first_court_enabled": True, "first_court_name": valid_court,
+            "first_court_case_no": serial("FIRST-JUDICIAL-NO"),
         })
         assert judicial["data"]["case_creation_step"] == "completed" and judicial["data"]["public_security_operator"] == "测试侦查员"
         assert judicial["status"] == "待立案审批" and judicial["data"]["case_creation_approval_status"] == "待审批"
@@ -1475,7 +1512,7 @@ def main():
         assert maintained_security["data"]["public_security_phone"] == "021-12345678"
         maintained_procuratorates = call("PUT", f"/cases/{case['id']}/criminal/procuratorates", {"first_procuratorate_name": "上海市维护检察院", "first_procuratorate_case_no": serial("PROC-MAINTAIN"), "first_procuratorate_address": "上海市检察路1号", "first_procuratorate_phone": "021-87654321", "first_procuratorate_operator": "维护检察官", "comment": "刑事检察院维护验收"})
         assert maintained_procuratorates["data"]["first_procuratorate_address"] == "上海市检察路1号" and maintained_procuratorates["data"]["first_procuratorate_phone"] == "021-87654321"
-        maintained_courts = call("PUT", f"/cases/{case['id']}/criminal/courts", {"first_court_enabled": True, "first_court_name": "上海市维护人民法院", "first_court_case_no": serial("COURT-MAINTAIN"), "first_court_courtroom": "维护第一法庭", "first_court_judge": "维护法官", "first_court_clerk": "维护书记员", "first_court_filing_date": str(date.today()), "first_court_hearing_date": str(date.today() + timedelta(days=2)), "comment": "刑事审级法院维护验收"})
+        maintained_courts = call("PUT", f"/cases/{case['id']}/criminal/courts", {"first_court_enabled": True, "first_court_name": valid_court, "first_court_case_no": serial("COURT-MAINTAIN"), "first_court_courtroom": "维护第一法庭", "first_court_judge": "维护法官", "first_court_clerk": "维护书记员", "first_court_filing_date": str(date.today()), "first_court_hearing_date": str(date.today() + timedelta(days=2)), "comment": "刑事审级法院维护验收"})
         assert maintained_courts["data"]["first_court_enabled"] is True and maintained_courts["data"]["first_court_hearing_date"] == str(date.today() + timedelta(days=2))
         call("PUT", f"/cases/{case['id']}/litigants", {"defendants": ["完成后禁止回退"]}, expected=(409,))
         call("PUT", f"/cases/{case['id']}/judicial", {"court": "完成后禁止重复完成"}, expected=(409,))
@@ -1497,15 +1534,14 @@ def main():
         })
         assert admin_litigants["data"]["case_creation_step"] == "litigants" and admin_litigants["data"]["plaintiffs"] == ["冒烟行政原告"]
         call("PUT", f"/cases/{admin_case['id']}/judicial", {}, expected=(422,))
-        call("PUT", f"/cases/{admin_case['id']}/judicial", {"first_court_enabled": True, "first_court_name": "上海市行政测试人民法院", "public_security_name": "不应填写公安"}, expected=(422,))
+        call("PUT", f"/cases/{admin_case['id']}/judicial", {"first_court_enabled": True, "first_court_name": valid_court, "public_security_name": "不应填写公安"}, expected=(422,))
         admin_judicial = call("PUT", f"/cases/{admin_case['id']}/judicial", {
             "first_court_enabled": True,
-            "first_court_name": "上海市行政测试人民法院",
+            "first_court_name": valid_court,
             "first_court_case_no": serial("ADMIN-JUDICIAL-NO"),
-            "first_court_judge": "行政测试法官",
             "judicial_remark": "行政司法机关阶段验收",
         })
-        assert admin_judicial["data"]["case_creation_step"] == "completed" and admin_judicial["data"]["first_court_name"] == "上海市行政测试人民法院"
+        assert admin_judicial["data"]["case_creation_step"] == "completed" and admin_judicial["data"]["first_court_name"] == valid_court
         counsel_payload = {
             **case_payload,
             "serial_no": serial("COUNSEL-CASE"),
@@ -1682,7 +1718,7 @@ def main():
         archived_capabilities = call("GET", f"/cases/{archive_case['id']}/action-capabilities")
         assert all(archived_capabilities[key] is False for key in ["can_upload_attachment", "can_delete_attachment", "can_create_reminder", "can_delete_reminder", "can_create_log"])
         call("POST", f"/cases/{archive_case['id']}/logs", {"content": "归档中案件不得新增日志"}, expected=(409,))
-        multipart_upload("/attachments", {"record_id": archive_case["id"], "category": "案件文档", "remark": "归档中案件不得上传"}, f"archive-write-denied-{suffix}.txt", b"denied", expected=(409,))
+        multipart_upload("/attachments", {"record_id": archive_case["id"], "category": valid_case_file_type, "remark": "归档中案件不得上传"}, f"archive-write-denied-{suffix}.txt", b"denied", expected=(409,))
         rejected_archive = call("POST", f"/cases/{archive_case['id']}/archive/review", {"approved": False, "comment": "缺少纸质签收页，请补齐"})
         assert rejected_archive["status"] == "一审准备开庭" and rejected_archive["data"]["archive_reject_reason"]
         pending_archive = call("POST", f"/cases/{archive_case['id']}/archive", archive_payload)
@@ -3295,6 +3331,222 @@ def main():
         audited_seals = call("GET", "/seals/applications?view=audit")["items"]
         assert any(item["id"] == refused_seal["id"] and item["status"] == "已拒绝" for item in audited_seals)
         passed("用印申请、单个 ZIP 打包下载、审批、实际用印、归档及受控撤回")
+
+        ipr_application_no = serial("SMOKE-IPR-APP")
+        ipr_case = call("POST", "/ipr/cases", {
+            "case_kind": "专利", "title": f"SMOKE知识产权官文导入-{suffix}", "customer": customer["title"],
+            "application_no": ipr_application_no, "application_type": "发明专利", "applicant": customer["title"],
+            "case_manager": USERNAME, "application_date": str(date.today()), "deadline": str(date.today() + timedelta(days=30)),
+            "annual_fee_year": 1, "rate": 0.1, "description": "候选导入与双状态流转冒烟验收",
+        }, expected=(201,))
+        records.append(ipr_case["id"])
+        call("POST", f"/ipr/cases/{ipr_case['id']}/submit")
+        ipr_case = call("POST", f"/ipr/cases/{ipr_case['id']}/review", {"approved": True, "comment": "冒烟立案审核"})
+        assert ipr_case["status"] == "在办"
+        ipr_batch_case = call("POST", "/ipr/cases", {"case_kind": ipr_case["data"]["case_kind"], "title": f"SMOKE-IPR-BATCH-{suffix}", "customer": customer["title"], "application_no": serial("SMOKE-IPR-BATCH"), "application_type": ipr_case["data"]["application_type"], "applicant": customer["title"], "case_manager": USERNAME, "application_date": str(date.today()), "deadline": str(date.today() + timedelta(days=30)), "annual_fee_year": 1, "rate": 0.1, "description": "SMOKE batch target"}, expected=(201,))
+        records.append(ipr_batch_case["id"])
+        call("POST", f"/ipr/cases/{ipr_batch_case['id']}/submit")
+        ipr_batch_case = call("POST", f"/ipr/cases/{ipr_batch_case['id']}/review", {"approved": True, "comment": "SMOKE batch review"})
+        assert ipr_batch_case["status"] == ipr_case["status"]
+        call("POST", "/ipr/cases/batch-maintenance", {"case_ids": [ipr_case["id"], 999999999], "annual_fee_year": 2, "comment": "SMOKE 批量维护原子性"}, expected=(404,))
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}")["data"].get("annual_fee_year") == 1
+        batch_maintained = call("POST", "/ipr/cases/batch-maintenance", {"case_ids": [ipr_case["id"], ipr_batch_case["id"]], "case_manager": USERNAME, "deadline": str(date.today() + timedelta(days=45)), "annual_fee_year": 2, "rate": 0.25, "comment": "SMOKE 批量维护"})
+        assert batch_maintained["updated"] == 2
+        for item in (call("GET", f"/ipr/cases/{ipr_case['id']}"), call("GET", f"/ipr/cases/{ipr_batch_case['id']}")):
+            assert item["data"]["case_manager"] == USERNAME and item["data"]["annual_fee_year"] == 2 and item["data"]["rate"] == 0.25
+        call("POST", "/ipr/cases/annual-fee-monitoring/add", {"case_ids": [ipr_case["id"], 999999999], "comment": "SMOKE 年费监控原子性"}, expected=(404,))
+        assert not call("GET", f"/ipr/cases/{ipr_case['id']}")["data"].get("annual_fee_monitoring")
+        annual_monitoring = call("POST", "/ipr/cases/annual-fee-monitoring/add", {"case_ids": [ipr_case["id"], ipr_batch_case["id"]], "comment": "SMOKE 加入年费监控"})
+        assert annual_monitoring["updated"] == 2 and annual_monitoring["annual_fee_monitoring"] is True
+        assert call("GET", "/ipr/cases?annual_fee_monitoring=true&page_size=100")["total"] >= 2
+        for item in (call("GET", f"/ipr/cases/{ipr_case['id']}"), call("GET", f"/ipr/cases/{ipr_batch_case['id']}")):
+            assert item["data"].get("annual_fee_monitoring") is True
+        annual_monitoring = call("POST", "/ipr/cases/annual-fee-monitoring/remove", {"case_ids": [ipr_case["id"], ipr_batch_case["id"]], "comment": "SMOKE 放弃年费监控"})
+        assert annual_monitoring["updated"] == 2 and annual_monitoring["annual_fee_monitoring"] is False
+        for item in (call("GET", f"/ipr/cases/{ipr_case['id']}"), call("GET", f"/ipr/cases/{ipr_batch_case['id']}")):
+            assert item["data"].get("annual_fee_monitoring") is False
+        ipr_business_log = call("POST", f"/ipr/cases/{ipr_case['id']}/logs", {"content": f"SMOKE 知识产权案件业务日志-{suffix}"}, expected=(201,))
+        ipr_logs = call("GET", f"/ipr/cases/{ipr_case['id']}/logs")
+        assert any(item["id"] == ipr_business_log["id"] for item in ipr_logs["business_logs"]) and any(item["action"] == "新增知识产权案件业务日志" for item in ipr_logs["operation_logs"])
+        call("DELETE", f"/ipr/cases/{ipr_case['id']}/logs/{ipr_business_log['id']}", expected=(204,))
+        assert not call("GET", f"/ipr/cases/{ipr_case['id']}/logs")["business_logs"]
+        ipr_primary_contact = call("POST", f"/customers/{customer['id']}/contacts", {"name": f"SMOKE-IPR 文书联系人-{suffix}", "phone": "13800000018", "email": f"ipr-doc-{suffix.lower()}@example.test", "is_valid": True}, expected=(201,))
+        ipr_extra_customer = create_record("customer", "潜在", f"SMOKE-IPR 关联客户-{suffix}")
+        ipr_extra_contact = call("POST", f"/customers/{ipr_extra_customer['id']}/contacts", {"name": f"SMOKE-IPR 技术联系人-{suffix}", "phone": "13800000019", "email": f"ipr-tech-{suffix.lower()}@example.test", "is_valid": True}, expected=(201,))
+        ipr_customer_candidates = call("GET", f"/ipr/cases/{ipr_case['id']}/customers/candidates")
+        assert customer["id"] in ipr_customer_candidates["selected_ids"] and ipr_customer_candidates["primary_customer_id"] == customer["id"]
+        ipr_case_customers = call("PUT", f"/ipr/cases/{ipr_case['id']}/customers", {"customer_ids": [customer["id"], ipr_extra_customer["id"]], "primary_customer_id": customer["id"]})
+        assert ipr_case_customers["total"] == 2 and {item["customer_id"] for item in ipr_case_customers["items"]} == {customer["id"], ipr_extra_customer["id"]}
+        ipr_contact_candidates = call("GET", f"/ipr/cases/{ipr_case['id']}/customers/{customer['id']}/contact-candidates")
+        assert any(item["id"] == ipr_primary_contact["id"] for item in ipr_contact_candidates["items"])
+        ipr_selected_contacts = call("PUT", f"/ipr/cases/{ipr_case['id']}/customer-contacts", {"customer_id": customer["id"], "document_contact_ids": [ipr_primary_contact["id"]], "technology_contact_ids": [ipr_primary_contact["id"]]})
+        assert ipr_primary_contact["id"] in ipr_selected_contacts["document_contact_ids"] and ipr_primary_contact["id"] in ipr_selected_contacts["technology_contact_ids"]
+        call("DELETE", f"/customers/{customer['id']}/contacts/{ipr_primary_contact['id']}", expected=(409,))
+        ipr_selected_contacts = call("PUT", f"/ipr/cases/{ipr_case['id']}/customer-contacts", {"customer_id": customer["id"], "document_contact_ids": [], "technology_contact_ids": []})
+        assert not ipr_selected_contacts["document_contact_ids"] and not ipr_selected_contacts["technology_contact_ids"]
+        call("DELETE", f"/customers/{customer['id']}/contacts/{ipr_primary_contact['id']}", expected=(204,))
+        ipr_extra_contact_candidates = call("GET", f"/ipr/cases/{ipr_case['id']}/customers/{ipr_extra_customer['id']}/contact-candidates")
+        assert any(item["id"] == ipr_extra_contact["id"] for item in ipr_extra_contact_candidates["items"])
+        call("PUT", f"/ipr/cases/{ipr_case['id']}/customer-contacts", {"customer_id": ipr_extra_customer["id"], "document_contact_ids": [], "technology_contact_ids": [ipr_extra_contact["id"]]})
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}/customer-contacts")["total"] == 1
+        call("PUT", f"/ipr/cases/{ipr_case['id']}/customer-contacts", {"customer_id": ipr_extra_customer["id"], "document_contact_ids": [], "technology_contact_ids": []})
+        call("DELETE", f"/customers/{ipr_extra_customer['id']}/contacts/{ipr_extra_contact['id']}", expected=(204,))
+        ipr_case_customers = call("PUT", f"/ipr/cases/{ipr_case['id']}/customers", {"customer_ids": [customer["id"]], "primary_customer_id": customer["id"]})
+        assert ipr_case_customers["total"] == 1
+        ipr_law_firm = call("POST", "/law-firms", {
+            "code": serial("SMOKE-IPR-LF")[:60], "name": f"SMOKE知识产权协作律所-{suffix}",
+            "phone": "13800000000", "email": f"smoke-ipr-{suffix.lower()}@example.test",
+        }, expected=(201,))
+        ipr_law_firm_candidates = call("GET", f"/ipr/cases/{ipr_case['id']}/law-firms/candidates")
+        assert any(item["id"] == ipr_law_firm["id"] and not item["selected"] for item in ipr_law_firm_candidates["items"])
+        ipr_law_firms = call("PUT", f"/ipr/cases/{ipr_case['id']}/law-firms", {"law_firm_ids": [ipr_law_firm["id"]]})
+        assert ipr_law_firms["total"] == 1 and ipr_law_firms["items"][0]["law_firm_id"] == ipr_law_firm["id"]
+        call("DELETE", f"/law-firms/{ipr_law_firm['id']}", expected=(409,))
+        call("PUT", f"/ipr/cases/{ipr_case['id']}/law-firms", {"law_firm_ids": []})
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}/law-firms")["total"] == 0
+        call("DELETE", f"/law-firms/{ipr_law_firm['id']}", expected=(200,))
+        ipr_reminder = call("POST", f"/ipr/cases/{ipr_case['id']}/reminders", {"reminder_date": str(date.today()), "deadline": str(date.today() + timedelta(days=1)), "content": "SMOKE知识产权案件提醒"}, expected=(201,))
+        assert ipr_reminder["event_type_id"] == 0 and ipr_reminder["creator"] == USERNAME
+        ipr_reminder_list = call("GET", f"/ipr/cases/{ipr_case['id']}/reminders")
+        assert any(row["id"] == ipr_reminder["id"] for row in ipr_reminder_list["items"])
+        call("DELETE", f"/ipr/cases/{ipr_case['id']}/reminders/{ipr_reminder['id']}", expected=(204,))
+        ipr_suppressions = call("GET", f"/ipr/cases/{ipr_case['id']}/reminder-suppressions")
+        assert len(ipr_suppressions["event_types"]) == 22 and not ipr_suppressions["suppressed_ids"]
+        call("PUT", f"/ipr/cases/{ipr_case['id']}/reminder-suppressions", {"event_type_ids": [1, 24]})
+        ipr_suppressions = call("GET", f"/ipr/cases/{ipr_case['id']}/reminder-suppressions")
+        assert ipr_suppressions["suppressed_ids"] == [1, 24]
+        call("PUT", f"/ipr/cases/{ipr_case['id']}/reminder-suppressions", {"event_type_ids": []})
+        multipart_upload("/attachments", {"record_id": ipr_case["id"], "category": "普通附件"}, f"smoke-ipr-bypass-{suffix}.txt", b"ipr generic bypass", expected=(409,))
+        ipr_file_types = call("GET", f"/ipr/case-file-types?case_kind={urllib.parse.quote('专利')}")["items"]
+        ipr_normal_type = next(item for item in ipr_file_types if item["code"] == "IPR-OTHER")
+        ipr_transfer_type = next(item for item in ipr_file_types if item["code"] == "IPR-TRANSFER")
+        assert not ipr_normal_type["requires_transmission"] and ipr_transfer_type["requires_transmission"]
+        ipr_batch_files = multipart_upload("/ipr/cases/files/batch-upload", {"case_ids": json.dumps([ipr_case["id"], ipr_batch_case["id"]]), "category": ipr_normal_type["name"], "document_date": str(date.today()), "remark": "SMOKE batch success"}, f"smoke-ipr-batch-{suffix}.txt", b"smoke batch two cases", expected=(201,))
+        assert ipr_batch_files["created"] == 2 and {item["record_id"] for item in ipr_batch_files["items"]} == {ipr_case["id"], ipr_batch_case["id"]}
+        for item in ipr_batch_files["items"]:
+            assert item["file_type_code"] == "IPR-OTHER" and item["requires_transmission"] is False
+            call("DELETE", f"/ipr/cases/{item['record_id']}/files/{item['id']}", expected=(204,))
+        multipart_upload(
+            "/ipr/cases/files/batch-upload",
+            {"case_ids": json.dumps([ipr_case["id"], 999999999]), "category": ipr_normal_type["name"], "document_date": str(date.today()), "remark": "SMOKE 批量预检原子性"},
+            f"smoke-ipr-batch-invalid-{suffix}.txt", b"smoke batch invalid target", expected=(404,),
+        )
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 0
+        custom_import_batch = multipart_upload(
+            "/ipr/case-files/custom-import-batches", {"test_only": "true"}, f"SMOKEA0000000001W0000000001-{suffix}.txt", b"SMOKE custom import source", expected=(201,)
+        )
+        # The suffix makes the legacy name intentionally invalid; it must stay a candidate and never attach itself.
+        assert custom_import_batch["error_count"] == 1 and custom_import_batch["candidate"]["status"] == "待修正"
+        custom_candidates = call("GET", f"/ipr/case-files/custom-import-batches/{custom_import_batch['id']}/candidates")["items"]
+        assert len(custom_candidates) == 1 and custom_candidates[0]["attachment_id"] is None
+        custom_candidate = call("POST", f"/ipr/case-files/custom-import-candidates/{custom_candidates[0]['id']}/match", {"ipr_case_id": ipr_case["id"]})
+        assert custom_candidate["status"] == "待修正" and custom_candidate["attachment_id"] is None
+        call("DELETE", f"/testing/ipr-case-file-custom-import-batches/{custom_import_batch['id']}", expected=(204,))
+        valid_custom_batch = multipart_upload(
+            "/ipr/case-files/custom-import-batches", {"test_only": "true"}, "A0000000001W0000000001.txt", b"SMOKE custom import valid source", expected=(201,)
+        )
+        valid_custom_candidate = valid_custom_batch["candidate"]
+        assert valid_custom_candidate["status"] == "待修正" and valid_custom_candidate["attachment_id"] is None
+        valid_custom_candidate = call("POST", f"/ipr/case-files/custom-import-candidates/{valid_custom_candidate['id']}/match", {"ipr_case_id": ipr_case["id"]})
+        assert valid_custom_candidate["status"] == "待确认" and valid_custom_candidate["ipr_case_id"] == ipr_case["id"]
+        custom_confirmed = call("POST", f"/ipr/case-files/custom-import-batches/{valid_custom_batch['id']}/confirm", {"candidate_ids": [valid_custom_candidate["id"]], "comment": "SMOKE custom import confirm"})
+        assert custom_confirmed["created"] == 1 and custom_confirmed["batch_status"] == "已完成"
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 1
+        call("DELETE", f"/testing/ipr-case-file-custom-import-batches/{valid_custom_batch['id']}", expected=(204,))
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 0
+        ipr_pending_file = multipart_upload(
+            f"/ipr/cases/{ipr_case['id']}/files",
+            {"category": ipr_normal_type["name"], "document_date": str(date.today()), "requires_transmission": "true", "remark": "专用 IPR 文件删除验证"},
+            f"smoke-ipr-pending-{suffix}.txt", b"smoke ipr pending document", expected=(201,),
+        )
+        assert ipr_pending_file["file_type_code"] == "IPR-OTHER" and ipr_pending_file["requires_transmission"] is False
+        call("DELETE", f"/ipr/cases/{ipr_case['id']}/files/{ipr_pending_file['id']}", expected=(204,))
+        ipr_file = multipart_upload(
+            f"/ipr/cases/{ipr_case['id']}/files",
+            {"category": ipr_transfer_type["name"], "document_date": str(date.today()), "requires_transmission": "false", "remark": "专用 IPR 文件转文验证"},
+            f"smoke-ipr-transfer-{suffix}.txt", b"smoke ipr transfer document", expected=(201,),
+        )
+        ipr_second_transfer_file = multipart_upload(
+            f"/ipr/cases/{ipr_case['id']}/files",
+            {"category": ipr_transfer_type["name"], "document_date": str(date.today()), "remark": "SMOKE 批量转文验证"},
+            f"smoke-ipr-batch-transfer-{suffix}.txt", b"smoke ipr batch transfer document", expected=(201,),
+        )
+        assert ipr_file["file_type_code"] == "IPR-TRANSFER" and ipr_file["requires_transmission"] is True and ipr_file["is_transmitted"] is False
+        ipr_files = call("GET", f"/ipr/cases/{ipr_case['id']}/files")["items"]
+        assert len(ipr_files) == 2 and {item["id"] for item in ipr_files} == {ipr_file["id"], ipr_second_transfer_file["id"]}
+        call("POST", f"/ipr/cases/{ipr_case['id']}/files/mark-transmitted", {"attachment_ids": [ipr_file["id"], 999999999], "comment": "SMOKE 批量原子性"}, expected=(404,))
+        assert all(not item["is_transmitted"] for item in call("GET", f"/ipr/cases/{ipr_case['id']}/files")["items"])
+        batch_transmitted = call("POST", f"/ipr/cases/{ipr_case['id']}/files/mark-transmitted", {"attachment_ids": [ipr_file["id"], ipr_second_transfer_file["id"]], "comment": "SMOKE 批量已转文"})
+        assert batch_transmitted["updated"] == 2 and all(item["is_transmitted"] and item["transmitted_by"] == USERNAME for item in batch_transmitted["items"])
+        ipr_file = next(item for item in batch_transmitted["items"] if item["id"] == ipr_file["id"])
+        assert call("GET", f"/attachments/{ipr_file['id']}/download", raw=True)[0] == 200
+        call("DELETE", f"/ipr/cases/{ipr_case['id']}/files/{ipr_file['id']}", expected=(204,))
+        call("DELETE", f"/ipr/cases/{ipr_case['id']}/files/{ipr_second_transfer_file['id']}", expected=(204,))
+        assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 0
+        assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees", {"assisted_type": "SMOKE专利资助", "remark": "资助费用专用闭环"}, expected=(201,))
+        assert assisted_fee["status"] == "待办理" and assisted_fee["request_user"] == USERNAME
+        pending_assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees", {"assisted_type": "SMOKE待删除资助"}, expected=(201,))
+        call("DELETE", f"/ipr/cases/{ipr_case['id']}/assisted-fees/{pending_assisted_fee['id']}", expected=(204,))
+        handled_assisted_fee = multipart_upload(
+            f"/ipr/cases/{ipr_case['id']}/assisted-fees/{assisted_fee['id']}/transact",
+            {"response_date": str(date.today()), "remark": "SMOKE回执办理"}, f"smoke-ipr-assisted-{suffix}.pdf", b"%PDF-1.4 smoke IPR assisted receipt", expected=(200,)
+        )
+        assert handled_assisted_fee["status"] == "已办理" and handled_assisted_fee["response_date"] == str(date.today()) and handled_assisted_fee["receipt"]
+        assert call("GET", f"/attachments/{handled_assisted_fee['receipt']['id']}/download", raw=True)[0] == 200
+        assert call("DELETE", f"/ipr/cases/{ipr_case['id']}/assisted-fees/{assisted_fee['id']}", expected=(409,)) is not None
+        assisted_rows = call("GET", f"/ipr/cases/{ipr_case['id']}/assisted-fees")["items"]
+        assert len(assisted_rows) == 1 and assisted_rows[0]["id"] == assisted_fee["id"] and assisted_rows[0]["receipt"]["id"] == handled_assisted_fee["receipt"]["id"]
+        candidate_csv = (
+            "\ufeff申请号,通知书名称,发文号,收发文日,办理期限\r\n"
+            f"{ipr_application_no},SMOKE自动匹配通知书,{serial('IPR-NOTICE')},{date.today()},{date.today() + timedelta(days=10)}\r\n"
+            f"{ipr_application_no},,{serial('IPR-CORRECT')},{date.today()},{date.today() + timedelta(days=11)}\r\n"
+            f"{serial('IPR-MANUAL')},SMOKE人工匹配通知书,{serial('IPR-MANUAL-NOTICE')},{date.today()},{date.today() + timedelta(days=12)}\r\n"
+        ).encode("utf-8")
+        ipr_batch = multipart_upload(
+            "/ipr/official-files/import-batches", {}, f"smoke-ipr-official-{suffix}.csv", candidate_csv, expected=(201,)
+        )
+        assert ipr_batch["total_count"] == 3 and ipr_batch["error_count"] == 2
+        candidates = call("GET", f"/ipr/official-files/import-batches/{ipr_batch['id']}/candidates")["items"]
+        assert len(candidates) == 3
+        auto_candidate = next(item for item in candidates if item["official_type"] == "SMOKE自动匹配通知书")
+        correction_candidate = next(item for item in candidates if not item["official_type"])
+        manual_candidate = next(item for item in candidates if item["official_type"] == "SMOKE人工匹配通知书")
+        assert auto_candidate["status"] == "待确认" and auto_candidate["ipr_case_id"] == ipr_case["id"]
+        checklist_before = call("GET", f"/ipr/official-files/checklist?keyword={urllib.parse.quote(ipr_application_no)}")
+        assert checklist_before["total"] == 2
+        assert any("缺少通知书名称/官文类型" in item["errors"] for item in checklist_before["items"])
+        checklist_export_before = call("GET", f"/ipr/official-files/checklist/export/excel?keyword={urllib.parse.quote(ipr_application_no)}", raw=True)
+        assert checklist_export_before[2].startswith("application/vnd.ms-excel") and "申请号/不受理编号".encode() in checklist_export_before[1]
+        corrected_candidate = call("PATCH", f"/ipr/official-files/import-candidates/{correction_candidate['id']}", {"official_type": "SMOKE修正通知书"})
+        assert corrected_candidate["status"] == "待确认" and corrected_candidate["ipr_case_id"] == ipr_case["id"]
+        matched_candidate = call("POST", f"/ipr/official-files/import-candidates/{manual_candidate['id']}/match", {"ipr_case_id": ipr_case["id"], "comment": "人工确认关联案件"})
+        assert matched_candidate["status"] == "待确认" and matched_candidate["ipr_case_id"] == ipr_case["id"]
+        confirmed_import = call("POST", f"/ipr/official-files/import-batches/{ipr_batch['id']}/confirm", {
+            "candidate_ids": [auto_candidate["id"], correction_candidate["id"], manual_candidate["id"]], "comment": "SMOKE候选确认导入",
+        })
+        assert confirmed_import["created"] == 3 and confirmed_import["batch_status"] == "已完成"
+        imported_official = call("GET", f"/records/{confirmed_import['record_ids'][0]}")
+        assert imported_official["status"] == "待校验"
+        assert imported_official["data"]["source_import_batch_id"] == ipr_batch["id"]
+        assert imported_official["data"]["business_process_status"] == "未处理" and imported_official["data"]["service_process_status"] == "未处理"
+        checklist_after = call("GET", f"/ipr/official-files/checklist?keyword={urllib.parse.quote(ipr_application_no)}")
+        assert checklist_after["total"] == 2 and all(item["download_status"] == "已确认导入" for item in checklist_after["items"])
+        validated_official = call("POST", f"/ipr/official-files/{imported_official['id']}/validate", {"comment": "SMOKE校验"})
+        assert validated_official["status"] == "待转发" and validated_official["data"]["business_process_status"] == "处理中"
+        transmitted_official = call("POST", f"/ipr/official-files/{imported_official['id']}/transmit", {"comment": "SMOKE转发"})
+        assert transmitted_official["status"] == "已转发" and transmitted_official["data"]["service_process_status"] == "处理中"
+        completed_official = call("POST", f"/ipr/official-files/{imported_official['id']}/complete", {"comment": "SMOKE办结"})
+        assert completed_official["status"] == "已办结"
+        assert completed_official["data"]["business_process_status"] == "已处理" and completed_official["data"]["service_process_status"] == "已处理"
+        history_business = call("POST", "/ipr/official-files/history/actions/batch/business-process", {"official_ids": [imported_official["id"]], "comment": "SMOKE历史业务处理"})
+        assert history_business["processed"] == 1 and history_business["field"] == "business_process_status"
+        history_service = call("POST", "/ipr/official-files/history/actions/batch/service-process", {"official_ids": [imported_official["id"]], "comment": "SMOKE历史流程处理"})
+        assert history_service["processed"] == 1 and history_service["field"] == "service_process_status"
+        historical_official = call("GET", f"/records/{imported_official['id']}")
+        assert historical_official["status"] == "已办结" and historical_official["data"]["business_process_status"] == "已处理" and historical_official["data"]["service_process_status"] == "已处理"
+        call("DELETE", f"/testing/ipr-official-import-batches/{ipr_batch['id']}", expected=(204,))
+        call("GET", f"/ipr/official-files/import-batches/{ipr_batch['id']}/candidates", expected=(404,))
+        passed("知识产权案件立案、资助申请与回执办理/下载/删除阻断、官文候选解析、自动/人工匹配、修正确认导入、双状态流转、历史双处理标记与精确清理")
 
         for analytics_view, expected_charts in {"brand": 4, "lawyer": 4, "refund": 4, "execution-1": 10, "execution-2": 10, "execution-3": 10}.items():
             analytics = call("GET", f"/reports/analytics?view={analytics_view}")

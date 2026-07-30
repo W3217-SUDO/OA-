@@ -105,10 +105,15 @@ const CustomerConflictPage = lazyWithVersionRecovery("customer-conflict", () => 
 const ContractReceivablesPage = lazyWithVersionRecovery("contract-receivables", () => import("./ContractReceivablesPage"));
 const InvestigationCenterPage = lazyWithVersionRecovery("investigation", () => import("./InvestigationCenterPage"));
 const CaseCenterPage = lazyWithVersionRecovery("case", () => import("./CaseCenterPage"));
+const IprCenterPage = lazyWithVersionRecovery("ipr", () => import("./IprCenterPage"));
+const IprOfficialFilePage = lazyWithVersionRecovery("ipr-office-files", () => import("./IprOfficialFilePage"));
+const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import", () => import("./IprCustomFileImportPage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./TaskCenterPage"));
 const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./DocumentCenterPage"));
 const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
 const SystemCenterPage = lazyWithVersionRecovery("system", () => import("./SystemCenterPage"));
+const IprFileTypeSettingsPage = lazyWithVersionRecovery("ipr-file-types", () => import("./IprFileTypeSettingsPage"));
+const LawFirmPage = lazyWithVersionRecovery("law-firms", () => import("./LawFirmPage"));
 const HrCenterPage = lazyWithVersionRecovery("hr", () => import("./HrCenterPage"));
 const OrganizationCenterPage = lazyWithVersionRecovery("organization", () => import("./OrganizationCenterPage"));
 const WarehousePage = lazyWithVersionRecovery("warehouse", () => import("./WarehousePage"));
@@ -250,6 +255,17 @@ const menuItems: NavItem[] = [
     ],
   },
   {
+    key: "ipr",
+    label: "知识产权中心",
+    children: [
+      { key: "ipr-patent", label: "专利案件" },
+      { key: "ipr-trademark", label: "商标案件" },
+      { key: "ipr-review", label: "知识产权立案审核" },
+      { key: "ipr-office-files", label: "知识产权官文" },
+      { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
+    ],
+  },
+  {
     key: "investigation",
     icon: <SearchOutlined />,
     label: "调查大厅",
@@ -265,6 +281,7 @@ const menuItems: NavItem[] = [
     label: "收发文台",
     children: [
       { key: "documents-official", label: "官文收文" },
+      { key: "documents-outgoing", label: "正式发文" },
       { key: "documents-my", label: "我的收文" },
       { key: "documents-company", label: "公司收文" },
       { key: "documents-register", label: "收发文登记" },
@@ -364,8 +381,14 @@ const menuItems: NavItem[] = [
           { key: "system-parameters-cause", label: "案由设置" },
           { key: "system-parameters-payment", label: "付款类型" },
           { key: "system-parameters-company", label: "公司设置" },
+          { key: "system-parameters-customer-type", label: "客户类型" },
+          { key: "system-parameters-case-file-type", label: "案件文件类型" },
+          { key: "system-parameters-ipr-case-file-type", label: "知识产权案件文件类型" },
+          { key: "system-parameters-district", label: "地区设置" },
+          { key: "system-parameters-court-officer", label: "法院工作人员" },
         ],
       },
+      { key: "system-law-firms", label: "律所档案" },
       {
         key: "system-management",
         label: "系统管理",
@@ -1255,6 +1278,12 @@ export default function App() {
       />
     ) : active.startsWith("investigation-task-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
       <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
+    ) : route === "ipr-office-files" ? (
+      <IprOfficialFilePage />
+    ) : route === "ipr-custom-file-import" ? (
+      <IprCustomFileImportPage />
+    ) : route.startsWith("ipr-") ? (
+      <IprCenterPage initialView={active} />
     ) : route.startsWith("case-") ? (
       <CaseCenterPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("task-") ? (
@@ -1277,8 +1306,12 @@ export default function App() {
       <UserCenterPage />
     ) : route.startsWith("finance-") ? (
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
+    ) : route === "system-law-firms" ? (
+      <LawFirmPage />
     ) : route === "system-audit" ? (
       <AuditLogPage onNavigate={navigate} />
+    ) : route === "system-parameters-ipr-case-file-type" ? (
+      <IprFileTypeSettingsPage />
     ) : route.startsWith("system-") ? (
       <SystemCenterPage initialView={route} />
     ) : ["hr-departments", "hr-roles"].includes(route) ? (

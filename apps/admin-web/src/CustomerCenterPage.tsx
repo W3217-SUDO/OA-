@@ -17,6 +17,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Upload,
 } from "antd";
 import {
   DeleteOutlined,
@@ -47,6 +48,8 @@ type Contact = {
   is_valid: boolean;
   is_primary: boolean;
   remark: string;
+  photo_attachment_id?: number;
+  photo_original_name?: string;
 };
 type Note = {
   id: string;
@@ -198,6 +201,7 @@ export default function CustomerCenterPage({
   const [allRows, setAllRows] = useState<Customer[]>([]),
     [keyword, setKeyword] = useState(""),
     [customerType, setCustomerType] = useState("客户"),
+    [customerTypeOptions, setCustomerTypeOptions] = useState<{value:string;label:string}[]>([{value:"客户",label:"客户"},{value:"当事人",label:"当事人"}]),
     [managerKeyword, setManagerKeyword] = useState(""),
     [loading, setLoading] = useState(false),
     [open, setOpen] = useState(initialView === "customer-new"),
@@ -214,7 +218,8 @@ export default function CustomerCenterPage({
   const [attachments, setAttachments] = useState<Attachment[]>([]),
     [detailLoading, setDetailLoading] = useState(false),
     [detailTab, setDetailTab] = useState("contacts"),
-    [documentFile, setDocumentFile] = useState<File | null>(null);
+    [documentFile, setDocumentFile] = useState<File | null>(null),
+    [contactPhotoPreview, setContactPhotoPreview] = useState<{name:string;url:string}|null>(null);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
@@ -322,14 +327,22 @@ export default function CustomerCenterPage({
         if (targetRow) void openDetail(targetRow);
         else message.warning("未找到关联客户或当前账号无权查看");
       }
-      const [profileResult, directoryResult] = await Promise.allSettled([
+      const [profileResult, directoryResult, customerTypeResult] = await Promise.allSettled([
         api.get("/auth/me"),
         api.get("/users/directory"),
+        api.get("/customers/reference-options"),
       ]);
       if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
       else message.warning("当前登录身份加载失败，已保留客户列表和详情入口");
       if (directoryResult.status === "fulfilled") setDirectory(directoryResult.value.data.items || []);
       else message.warning("客户人员目录加载失败，稍后可刷新重试");
+      if (customerTypeResult.status === "fulfilled") {
+        const options = customerTypeResult.value.data.customer_types || [];
+        if (options.length) {
+          setCustomerTypeOptions(options);
+          if (!options.some((item:{value:string}) => item.value === customerType)) setCustomerType(options[0].value);
+        }
+      } else message.warning("客户类型加载失败，暂使用缓存选项");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "客户数据加载失败");
     } finally {
@@ -618,7 +631,7 @@ export default function CustomerCenterPage({
         recordRes.data.items.find((x: Customer) => x.id === target.id) ||
           target,
       );
-      setAttachments(fileRes.data.items);
+      setAttachments((fileRes.data.items || []).filter((item: Attachment) => item.category !== "客户联系人照片"));
     } finally {
       setDetailLoading(false);
     }
@@ -663,6 +676,20 @@ export default function CustomerCenterPage({
       message.error("删除失败");
     }
   };
+  const uploadContactPhoto = async (contact: Contact, option: any) => {
+    if (!contacts) return;
+    try {
+      const data = new FormData(); data.append("file", option.file as Blob);
+      await api.post(`/customers/${contacts.id}/contacts/${contact.id}/photo`, data, {headers:{"Content-Type":"multipart/form-data"}});
+      option.onSuccess?.({}); message.success("联系人照片已上传"); await refreshDetail(); load();
+    } catch (error: any) { option.onError?.(error); message.error(error?.response?.data?.detail || "联系人照片上传失败"); }
+  };
+  const viewContactPhoto = async (contact: Contact) => {
+    if (!contacts || !contact.photo_attachment_id) return message.info("该联系人尚未上传照片");
+    try { const response = await api.get(`/customers/${contacts.id}/contacts/${contact.id}/photo/download`, {responseType:"blob"}); setContactPhotoPreview({name:contact.photo_original_name || `${contact.name}的照片`,url:URL.createObjectURL(response.data)}); }
+    catch (error:any) { message.error(error?.response?.data?.detail || "联系人照片加载失败"); }
+  };
+  const contactPhotoActions = (contact: Contact) => canManageCurrentCustomer ? <Space size={0}><Upload accept=".jpg,.jpeg,.png,.gif,.webp" showUploadList={false} customRequest={option=>void uploadContactPhoto(contact,option)}><Button type="link">{contact.photo_attachment_id?"替换照片":"上传照片"}</Button></Upload>{contact.photo_attachment_id&&<Button type="link" onClick={()=>void viewContactPhoto(contact)}>查看照片</Button>}</Space> : (contact.photo_attachment_id?<Button type="link" onClick={()=>void viewContactPhoto(contact)}>查看照片</Button>:null);
   const openContactEdit = (contact: Contact) => {
     contactEditForm.setFieldsValue({ ...contact });
     setEditingContact(contact);
@@ -1054,7 +1081,7 @@ export default function CustomerCenterPage({
               <label><span><i>*</i>客户名称</span><Input disabled value={contacts.title} /></label>
               <label><span>客户编码</span><Input disabled value={contacts.serial_no} placeholder="自动生成" /></label>
               <label><span>客户状态</span><Select disabled value={["潜在","目标","立项","关怀","签约","谈判","价值"].includes(contacts.status) ? contacts.status : "请选择"} options={["请选择","潜在","目标","立项","关怀","签约","谈判","价值"].map(value=>({value,label:value}))} /></label>
-              <label><span>客户类型</span><Select disabled value={contacts.data.customer_type || "客户"} options={["客户","当事人"].map(value=>({value,label:value}))} /></label>
+              <label><span>客户类型</span><Select disabled value={contacts.data.customer_type || "客户"} options={customerTypeOptions} /></label>
               <label><span>注册地址</span><Input disabled value={contacts.data.registered_address || ""} /></label>
               <label><span>电话</span><Input disabled value={contacts.data.phone || ""} /></label>
               <label><span>传 真</span><Input disabled value={contacts.data.fax || ""} /></label>
@@ -1097,7 +1124,7 @@ export default function CustomerCenterPage({
                 key: "contacts",
                 label: "联系人",
                 children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={false} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>:null},
+                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>:null},
                 ]} />,
               },
               {
@@ -1132,7 +1159,7 @@ export default function CustomerCenterPage({
           <Select
             value={customerType}
             onChange={setCustomerType}
-            options={["客户", "当事人"].map((value) => ({ value, label: value }))}
+            options={customerTypeOptions}
           />
           <label>客户管理人</label>
           <Input
@@ -1256,7 +1283,7 @@ export default function CustomerCenterPage({
                 <Form.Item label="客户名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
                 <Form.Item label="客户编码" name="serial_no"><Input disabled placeholder="自动生成" /></Form.Item>
                 <Form.Item label="客户状态" name="status"><Select allowClear placeholder="请选择" options={["潜在","目标","立项","关怀","签约","谈判","价值"].map(value=>({value,label:value}))} /></Form.Item>
-                <Form.Item label="客户类型" name="customer_type"><Select options={["客户","当事人"].map(value=>({value,label:value}))} /></Form.Item>
+                <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions} /></Form.Item>
                 <Form.Item label="注册地址" name="registered_address"><Input /></Form.Item>
                 <Form.Item label="客户简称" name="short_name"><Input /></Form.Item>
                 <Form.Item label="电话" name="phone"><Input /></Form.Item>
@@ -1306,7 +1333,7 @@ export default function CustomerCenterPage({
                   <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={false} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
                     {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
-                    {title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
+                    {title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
                   ]} />
                   {(contacts?.data.contacts?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button>}
                 </>
@@ -1337,6 +1364,7 @@ export default function CustomerCenterPage({
           />
         </Card>
       )}
+      <Modal open={Boolean(contactPhotoPreview)} title={contactPhotoPreview?.name || "联系人照片"} footer={null} onCancel={()=>{if(contactPhotoPreview)URL.revokeObjectURL(contactPhotoPreview.url);setContactPhotoPreview(null);}} destroyOnHidden><img src={contactPhotoPreview?.url} alt={contactPhotoPreview?.name || "联系人照片"} style={{display:"block",maxWidth:"100%",maxHeight:560,margin:"0 auto"}} /></Modal>
       <Modal open={newEditor === "contact"} title="新建联系人" okText="保存" cancelText="取消" onOk={addContact} onCancel={()=>setNewEditor(null)} destroyOnHidden>
         <Form form={contactForm} layout="vertical">
           <div className="form-grid">
@@ -1421,7 +1449,7 @@ export default function CustomerCenterPage({
               />
             </Form.Item>
             <Form.Item label="客户类型" name="customer_type">
-              <Select options={["客户", "当事人"].map((value) => ({ value, label: value }))} />
+              <Select options={customerTypeOptions} />
             </Form.Item>
             <Form.Item label="客户等级" name="level">
               <Select
@@ -1639,6 +1667,7 @@ export default function CustomerCenterPage({
                       { title: "邮箱", dataIndex: "email" },
                       { title: "联系状态", dataIndex: "contact_status" },
                       { title: "有效", dataIndex: "is_valid", render: (value: boolean) => value !== false ? "是" : "否" },
+                      { title: "照片", width: 150, render: (_: unknown, r: Contact) => contactPhotoActions(r) },
                       {
                         title: "操作",
                         render: (_: unknown, r: Contact) => canManageCurrentCustomer ? (
