@@ -14031,6 +14031,8 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
     suffix = Path(item.original_name).suffix.lower()
     content_type = str(item.content_type or "").lower()
     base = {"original_name": item.original_name, "content_type": content_type}
+    if suffix == ".docx" and path.stat().st_size == 0:
+        return {**base, "kind": "unsupported", "detail": "DOCX 文件为空，无法在线查看，请重新上传有效文件"}
     if content_type.startswith("image/") or suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}:
         return {**base, "kind": "image"}
     if content_type == "application/pdf" or suffix == ".pdf":
