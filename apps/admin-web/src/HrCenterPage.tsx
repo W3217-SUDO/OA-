@@ -58,9 +58,15 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const [transitioningEmployee,setTransitioningEmployee]=useState<Employee|null>(null),[transitionForm]=Form.useForm(),[transitionSaving,setTransitionSaving]=useState(false)
   const load=async()=>{setLoading(true);try{
     const [employeeResult,userResult]=await Promise.all([api.get('/records',{params:{module:'hr',page_size:100}}),api.get('/system/users')])
-    const employees:Employee[]=employeeResult.data.items||[]
+    const systemUsers:any[]=userResult.data.items||[]
+    const usersByName=new Map(systemUsers.map(user=>[String(user.username).toLowerCase(),user]))
+    const employees:Employee[]=(employeeResult.data.items||[]).map((row:Employee)=>{
+      const account=usersByName.get(String(row.data?.username||row.owner).toLowerCase())
+      if(!account)return row
+      return {...row,department:account.department||row.department,data:{...(row.data||{}),...(account.profile||{}),username:account.username,role:account.role,is_active:account.is_active,system_user_id:account.id}}
+    })
     const existing=new Set(employees.map(row=>String(row.data?.username||row.owner).toLowerCase()))
-    const accountOnly:Employee[]=(userResult.data.items||[]).filter((user:any)=>!existing.has(String(user.username).toLowerCase())).map((user:any)=>({
+    const accountOnly:Employee[]=systemUsers.filter((user:any)=>!existing.has(String(user.username).toLowerCase())).map((user:any)=>({
       id:-Number(user.id),serial_no:user.profile?.employee_no||`SYS-${String(user.id).padStart(4,'0')}`,title:user.display_name||user.username,
       customer:user.profile?.company||companyName,status:user.is_active?'在职':'停用',owner:user.username,department:user.department||'',description:'系统账号（尚未建立独立人事档案）',created_at:user.created_at,
       data:{...(user.profile||{}),username:user.username,role:user.role,is_active:user.is_active,system_user_id:user.id,position:user.profile?.position||'系统管理员'},
