@@ -277,8 +277,15 @@ DEFAULT_DEPARTMENTS = [
     ("SHNJ", "申浩南京办公室"), ("GENERAL", "综合管理部"), ("SH-OFFICE", "上海分所"),
     ("BJ-OFFICE", "北京分所"), ("HZ-OFFICE", "杭州分所"), ("SZ-OFFICE", "深圳分所"),
 ]
+SYSTEM_ADMIN_JOB_PERMISSIONS = [
+    "客户查看", "客户新建", "客户修改", "客户分配", "客户回收/恢复", "客户共享", "利益冲突检索", "合同查看", "合同新建", "合同修改", "合同提交审批", "合同审批", "合同归档",
+    "案件查看", "案件新建", "案件分配", "案件承办", "案件进展维护", "开庭排期", "案件办结", "案件归档申请", "案件归档审核", "调查任务发起", "调查任务办理", "线索审核", "公证管理", "证据管理",
+    "任务查看", "任务派发", "任务接受", "任务协作", "任务交接", "任务完成确认", "收文登记", "发文登记", "文书模板维护", "业务附件上传/下载", "智能文档生成", "智能文档人工确认",
+    "费用查看", "费用申请", "费用审批", "回款登记", "回款分配", "付款登记", "付款审批", "开票申请", "开票审批", "退款办理", "内部结算", "对账", "用印申请", "用印审批", "印章管理",
+    "员工查看", "员工新建", "员工修改", "部门管理", "岗位角色管理", "仓库查看", "仓库出入库", "报表查看", "报表导出", "系统用户管理", "系统权限配置", "系统参数配置", "审计日志查看",
+]
 DEFAULT_JOB_ROLES = [
-    ("SYSTEM-ADMIN", "系统管理员", ["系统配置", "用户管理", "权限分配", "全部模块管理"]),
+    ("SYSTEM-ADMIN", "系统管理员", SYSTEM_ADMIN_JOB_PERMISSIONS),
     ("BUSINESS-SPECIALIST", "业务专员", ["客户新建", "客户编辑", "联系人管理"]),
     ("CUSTOMER-SUPERVISOR", "客户主管", ["客户审批", "客户分级调整", "客户服务端开通"]),
     ("CONTRACT-ADMIN", "合同管理员", ["合同创建", "合同变更", "外部合同号管理"]),
@@ -537,6 +544,11 @@ async def lifespan(_: FastAPI):
         existing_job_role_codes = set((await db.scalars(select(JobRole.code))).all())
         for index, (code, name, permissions) in enumerate(DEFAULT_JOB_ROLES, start=1):
             if code not in existing_job_role_codes: db.add(JobRole(code=code, name=name, permissions=permissions, sort_order=index, created_by="system", updated_by="system"))
+        system_admin_job_role = await db.scalar(select(JobRole).where(JobRole.code == "SYSTEM-ADMIN"))
+        if system_admin_job_role:
+            system_admin_job_role.name = "系统管理员"
+            system_admin_job_role.permissions = list(SYSTEM_ADMIN_JOB_PERMISSIONS)
+            system_admin_job_role.is_active = True
         # 七类印章是合同用印流程所需的基础资料，不属于演示数据。这里只补缺，
         # 不覆盖管理员已经维护的保管人、位置、状态、用印次数等真实台账字段。
         existing_seal_assets = (await db.scalars(select(SealAsset))).all()
@@ -14719,6 +14731,11 @@ async def create_job_role(body: JobRoleInput, identity: dict = Depends(current_i
 async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity); item = await db.get(JobRole, role_id)
     if not item: raise HTTPException(status_code=404, detail="岗位角色不存在")
+    if item.code == "SYSTEM-ADMIN":
+        requested_permissions = body.permissions if body.permissions is not None else list(SYSTEM_ADMIN_JOB_PERMISSIONS)
+        normalized_permissions = list(dict.fromkeys(entry.strip() for entry in requested_permissions if entry.strip()))
+        if body.code not in {None, "SYSTEM-ADMIN"} or body.name not in {None, "系统管理员"} or set(normalized_permissions) != set(SYSTEM_ADMIN_JOB_PERMISSIONS) or body.is_active is False:
+            raise HTTPException(status_code=422, detail="系统管理员岗位必须保持启用、名称不变并保留全部业务动作权限")
     old_name = item.name; code = body.code.strip().upper() if body.code is not None else item.code; name = body.name.strip() if body.name is not None else item.name
     if await db.scalar(select(JobRole.id).where(JobRole.id != item.id, or_(JobRole.code == code, JobRole.name == name))): raise HTTPException(status_code=409, detail="岗位角色代码或名称已存在")
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
