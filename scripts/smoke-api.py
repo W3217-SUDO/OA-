@@ -1405,6 +1405,10 @@ def main():
         civil_case = edited_civil
         assert edited_civil["customer"] == customer["title"] and edited_civil["title"] == normal_basic_payload["title"] and edited_civil["status"] == "文书准备"
         assert edited_civil["data"]["customer_record_id"] == customer["id"] and edited_civil["data"]["investigator"] == USERNAME
+        customer_list_query = urllib.parse.urlencode({"scope": "mine", "customer_name": customer["title"], "customer_type": "客户", "page_size": 15})
+        customer_projection = next(item for item in call("GET", f"/customers?{customer_list_query}")["items"] if item["id"] == customer["id"])
+        assert customer_projection["data"]["contract_count"] >= 1
+        assert customer_projection["data"]["civil_case_count"] >= 1
         assert "修改普通案件基本信息" in {item["action"] for item in call("GET", f"/records/{civil_case['id']}/history")["items"]}
         selected_case_export = call("GET", f"/cases/export/excel?ids={civil_case['id']}", raw=True)
         assert selected_case_export[0] == 200 and "application/vnd.ms-excel" in selected_case_export[2] and b"<Workbook" in selected_case_export[1] and civil_case["serial_no"].encode() in selected_case_export[1]

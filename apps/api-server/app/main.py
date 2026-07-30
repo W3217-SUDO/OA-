@@ -9142,8 +9142,53 @@ async def list_customers(
     total = len(candidate_rows)
     page_items = candidate_rows[(page - 1) * page_size : page * page_size]
     allowed_fields = await _allowed_field_keys(identity, db)
+    # Contract/case totals are relationship projections, not editable customer
+    # attributes. Historical rows may still contain denormalized zeroes, so
+    # recompute the visible page from authoritative related records every time.
+    related_records = list((await db.scalars(
+        select(BusinessRecord).where(
+            BusinessRecord.module.in_(["contract", "case"]),
+            *(await _record_scope_conditions(identity, db)),
+        )
+    )).all())
+    customers_by_id = {item.id: item for item in page_items}
+    customers_by_no = {str(item.serial_no or "").strip(): item for item in page_items if str(item.serial_no or "").strip()}
+    customers_by_name = {_normalize_customer_name(item.title): item for item in page_items}
+    relationship_counts = {
+        item.id: {"contract_count": 0, "civil_case_count": 0}
+        for item in page_items
+    }
+    for related in related_records:
+        related_data = related.data or {}
+        linked_customer = None
+        try:
+            linked_customer = customers_by_id.get(
+                int(related_data.get("customer_id") or related_data.get("customer_record_id") or 0)
+            )
+        except (TypeError, ValueError):
+            linked_customer = None
+        if linked_customer is None:
+            customer_no = str(related_data.get("customer_no") or "").strip()
+            if customer_no:
+                linked_customer = customers_by_no.get(customer_no)
+        if linked_customer is None and related.customer:
+            linked_customer = customers_by_name.get(_normalize_customer_name(related.customer))
+        if linked_customer is None:
+            continue
+        if related.module == "contract":
+            relationship_counts[linked_customer.id]["contract_count"] += 1
+        elif str(related_data.get("case_type") or "").strip() == "民事案件":
+            relationship_counts[linked_customer.id]["civil_case_count"] += 1
+    response_items = []
+    for item in page_items:
+        row = _record_dict(item, allowed_fields)
+        row["data"] = {
+            **(row.get("data") or {}),
+            **relationship_counts[item.id],
+        }
+        response_items.append(row)
     return {
-        "items": [_record_dict(item, allowed_fields) for item in page_items],
+        "items": response_items,
         "total": total,
         "page": page,
         "page_size": page_size,
