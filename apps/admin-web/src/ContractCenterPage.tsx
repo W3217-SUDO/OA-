@@ -142,6 +142,11 @@ export default function ContractCenterPage({
   detailTarget?: ContractDetailNavigationContext | null;
   onDetailTargetHandled?: () => void;
 }) {
+  const isContractDetailView = initialView.startsWith("contract-detail-");
+  const contractDetailRouteMatch = initialView.match(/^contract-detail-(\d+)-(.+)$/);
+  const contractDetailRouteTarget: ContractDetailNavigationContext | null = contractDetailRouteMatch
+    ? { id: Number(contractDetailRouteMatch[1]), serial_no: decodeURIComponent(contractDetailRouteMatch[2]), at: Date.now() }
+    : null;
   const [allRows, setAllRows] = useState<Contract[]>([]),
     [loading, setLoading] = useState(false),
     [open, setOpen] = useState(initialView === "contract-new"),
@@ -215,6 +220,9 @@ export default function ContractCenterPage({
     setViewingAttachmentsLoading(false);
   };
   const openViewing = async (contract: Contract) => {
+    if (!isContractDetailView) {
+      onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
+    }
     const requestId = ++viewingAttachmentRequest.current;
     setViewing(contract);
     setViewingAttachments([]);
@@ -269,7 +277,7 @@ export default function ContractCenterPage({
   };
   const load = async () => {
     setLoading(true);
-    const target = detailTarget || consumeContractDetailTarget();
+    const target = detailTarget || consumeContractDetailTarget() || contractDetailRouteTarget;
     const recordsRequest = api.get("/records", { params: { module: "contract", page_size: 100 } });
     const targetRequest = target ? resolveContractDetailTarget(target) : null;
     const auxiliaryRequests = Promise.allSettled([
@@ -1290,7 +1298,7 @@ export default function ContractCenterPage({
   }));
   return (
     <>
-      {initialView !== "contract-new" && <Card className="panel contract-original-panel" title="合同查询">
+      {initialView !== "contract-new" && !isContractDetailView && <Card className="panel contract-original-panel" title="合同查询">
         <Form
           form={queryForm}
           className="contract-query"
@@ -1544,11 +1552,14 @@ export default function ContractCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={860}
+        width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
         title={`合同查看：${viewing?.serial_no || ""}`}
         footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={closeViewing}>关闭</Button></Space>}
-        onCancel={closeViewing}
+        onCancel={() => isContractDetailView ? onNavigate?.("contract-mine") : closeViewing()}
+        getContainer={isContractDetailView ? false : undefined}
+        mask={!isContractDetailView}
+        rootClassName={isContractDetailView ? "contract-detail-static-root" : undefined}
       >
         <Descriptions
           bordered

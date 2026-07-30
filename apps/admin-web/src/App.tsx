@@ -627,6 +627,17 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
     }
     return "案件详情";
   }
+  if (normalizedKey.startsWith("contract-detail-")) {
+    const match = normalizedKey.match(/^contract-detail-\d+-(.+)$/);
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+    return "合同详情";
+  }
   const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
   return menuLabel || routePageLabels[normalizedKey] || "业务页面";
 }
@@ -1268,6 +1279,8 @@ export default function App() {
         key.startsWith("case-company") ||
         key.startsWith("case-archive")
       )) ||
+    (active.startsWith("contract-detail-") &&
+      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
     // Leaf menus are independently grantable.  A canonical route can collapse
     // a leaf such as task-my-accepted to its container task-my for component
     // selection, but that must not discard the explicit leaf grant.
@@ -1448,7 +1461,7 @@ export default function App() {
           )}
         </Sider>
         <Content
-          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") ? "case-detail-content" : ""}`}
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") ? "case-detail-content" : ""}`}
         >
           <div className="page-head">
             <div>
