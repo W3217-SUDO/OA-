@@ -222,6 +222,7 @@ export default function ContractCenterPage({
   const openViewing = async (contract: Contract) => {
     if (!isContractDetailView) {
       onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
+      return;
     }
     const requestId = ++viewingAttachmentRequest.current;
     setViewing(contract);
