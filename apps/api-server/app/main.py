@@ -14013,6 +14013,53 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     return FileResponse(path, media_type=item.content_type, filename=item.original_name)
 
 
+@app.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/preview")
+async def preview_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return safe, authenticated metadata/content for the in-app attachment preview."""
+    item = await db.get(FileAttachment, attachment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    if item.record_id:
+        await _ensure_attachment_record_visible(item.record_id, identity, db)
+    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
+        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+
+    path = Path(item.path)
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+        raise HTTPException(status_code=404, detail="附件文件不存在")
+
+    suffix = Path(item.original_name).suffix.lower()
+    content_type = str(item.content_type or "").lower()
+    base = {"original_name": item.original_name, "content_type": content_type}
+    if content_type.startswith("image/") or suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}:
+        return {**base, "kind": "image"}
+    if content_type == "application/pdf" or suffix == ".pdf":
+        return {**base, "kind": "pdf"}
+    if suffix == ".docx":
+        try:
+            document = Document(path)
+            parts = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+            for index, table in enumerate(document.tables, start=1):
+                rows = [" | ".join(cell.text.strip() for cell in row.cells) for row in table.rows]
+                if rows:
+                    parts.append(f"表格 {index}：\n" + "\n".join(rows))
+            preview_text = "\n\n".join(parts) or "（该 DOCX 文档没有可提取的文字内容）"
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="DOCX 文件无法在线读取") from exc
+        if len(preview_text) > 200_000:
+            preview_text = f"{preview_text[:200_000]}\n\n[文档内容过长，在线预览仅显示前 200000 个字符]"
+        return {**base, "kind": "docx", "text": preview_text}
+    if suffix in {".txt", ".md", ".csv", ".json", ".xml", ".log", ".yaml", ".yml", ".html", ".htm"}:
+        try:
+            preview_text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise HTTPException(status_code=422, detail="文本文件无法在线读取") from exc
+        if len(preview_text) > 200_000:
+            preview_text = f"{preview_text[:200_000]}\n\n[文件内容过长，在线预览仅显示前 200000 个字符]"
+        return {**base, "kind": "text", "text": preview_text}
+    return {**base, "kind": "unsupported", "detail": "当前文件格式暂不支持在线预览，请下载后查看"}
+
+
 @app.delete(f"{settings.api_prefix}/attachments/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await db.get(FileAttachment, attachment_id)

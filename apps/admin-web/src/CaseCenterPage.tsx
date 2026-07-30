@@ -108,6 +108,7 @@ type TaskRow = {
   collaborators?: string[];
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;created_at:string;size:number;remark?:string};
+type AttachmentPreview = {name:string;kind:"image"|"pdf"|"text"|"docx";url?:string;text?:string};
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
 type CaseLogRow = {id:number;content:string;operator:string;created_at:string};
 type CaseDetailCapabilities = {
@@ -269,6 +270,7 @@ export default function CaseCenterPage({
   const [counselDetailHistory, setCounselDetailHistory] = useState<any[]>([]);
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
@@ -1142,27 +1144,25 @@ export default function CaseCenterPage({
     }
   };
   const previewCounselDetailAttachment = async (item: AttachmentRow) => {
-    const previewWindow = window.open("", "_blank");
-    if (!previewWindow) {
-      message.warning("浏览器拦截了预览窗口，请允许弹出窗口后重试");
-      return;
-    }
     try {
-      const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
-      const contentType = String(response.headers["content-type"] || response.data.type || "").toLowerCase();
-      if (!contentType.includes("pdf") && !contentType.startsWith("image/")) {
-        previewWindow.close();
-        message.info("当前文件格式不支持在线预览，已开始下载");
-        await downloadCounselDetailAttachment(item);
+      const { data } = await api.get(`/attachments/${item.id}/preview`);
+      if (data.kind === "unsupported") {
+        message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
         return;
       }
-      const url = URL.createObjectURL(response.data);
-      previewWindow.location.href = url;
-      previewWindow.addEventListener("beforeunload", () => URL.revokeObjectURL(url), { once: true });
+      if (data.kind === "pdf" || data.kind === "image") {
+        const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+        setAttachmentPreview({ name: item.original_name, kind: data.kind, url: URL.createObjectURL(response.data) });
+        return;
+      }
+      setAttachmentPreview({ name: item.original_name, kind: data.kind, text: data.text || "" });
     } catch (error: any) {
-      previewWindow.close();
       message.error(error?.response?.data?.detail || "案件文件预览失败");
     }
+  };
+  const closeAttachmentPreview = () => {
+    if (attachmentPreview?.url) URL.revokeObjectURL(attachmentPreview.url);
+    setAttachmentPreview(null);
   };
   const deleteCounselAttachments = () => {
     if(!viewingCounselCase||!selectedCounselAttachmentKeys.length)return message.warning("请选择需要删除的案件文件");
@@ -2627,6 +2627,18 @@ export default function CaseCenterPage({
           </div>
         </div>}
       </Drawer>
+      <Modal
+        open={Boolean(attachmentPreview)}
+        title={`在线查看：${attachmentPreview?.name || ""}`}
+        footer={<Button onClick={closeAttachmentPreview}>关闭</Button>}
+        onCancel={closeAttachmentPreview}
+        width={attachmentPreview?.kind === "pdf" ? 1000 : 760}
+        destroyOnHidden
+      >
+        {attachmentPreview?.kind === "image" && <img src={attachmentPreview.url} alt={attachmentPreview.name} style={{ display: "block", maxWidth: "100%", maxHeight: "72vh", margin: "0 auto" }} />}
+        {attachmentPreview?.kind === "pdf" && <iframe title={attachmentPreview.name} src={attachmentPreview.url} style={{ width: "100%", height: "72vh", border: 0 }} />}
+        {(attachmentPreview?.kind === "text" || attachmentPreview?.kind === "docx") && <pre style={{ maxHeight: "70vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7 }}>{attachmentPreview.text}</pre>}
+      </Modal>
       <Modal open={Boolean(renamingCounselAttachment)} title={`重命名案件文件：${renamingCounselAttachment?.original_name || ""}`} okText="保存" cancelText="取消" onOk={renameCounselAttachment} onCancel={()=>{setRenamingCounselAttachment(null);attachmentRenameForm.resetFields();}}>
         <Form form={attachmentRenameForm} layout="vertical">
           <Form.Item label="文件名称" name="original_name" rules={[{required:true,message:"请输入文件名称"},{max:255,message:"文件名称不能超过 255 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\\\/]/.test(name))throw new Error("文件名不能为空且不能包含路径");const currentSuffix=renamingCounselAttachment?.original_name.slice(renamingCounselAttachment.original_name.lastIndexOf("."))||"";const nextSuffix=name.slice(name.lastIndexOf("."));if(currentSuffix.toLowerCase()!==nextSuffix.toLowerCase())throw new Error("不能修改文件扩展名");}}]}><Input autoFocus /></Form.Item>
