@@ -427,9 +427,9 @@ export default function ContractCenterPage({
     const context = getContractCustomerContext();
     if (context) {
       linkedContext = context;
-      if (customers.some((item) => item.id === context.id)) {
-        linkedCustomerId = context.id;
-      }
+      // The customer list loads asynchronously. Keep the linked id immediately;
+      // customerOptions supplies the context label until the full list arrives.
+      linkedCustomerId = context.id;
     }
     sessionStorage.removeItem("sunhold:contract-customer");
     setLinkedCustomerContext(linkedContext);
@@ -1347,7 +1347,7 @@ export default function ContractCenterPage({
           </div>
           {wizardStep === 0 && (
             <Form form={form} layout="horizontal" className="contract-page-form">
-              <Form.Item label="客户" name="customer_id" rules={[{ required: true, message: "请选择客户" }]}><Select disabled={Boolean(linkedCustomerContext)} showSearch optionFilterProp="label" placeholder="输入客户名称关键字后选择" options={customerOptions} notFoundContent="没有匹配客户，请先在客户管理中新建客户" /></Form.Item>
+              <Form.Item label="客户" name="customer_id" rules={[{ required: true, message: "请选择客户" }]}><Select showSearch optionFilterProp="label" placeholder="输入客户名称关键字后选择" options={customerOptions} notFoundContent="没有匹配客户，请先在客户管理中新建客户" onChange={() => setLinkedCustomerContext(null)} /></Form.Item>
               <Form.Item label="合同主体" name="contract_body" rules={[{ required: true }]}><Select options={["律所", "平台"].map((v) => ({ value: v, label: v }))} /></Form.Item>
               <Form.Item label="合同类别" name="type" rules={[{ required: true }]}><Select options={["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"].map((v) => ({ value: v, label: v }))} /></Form.Item>
               <Form.Item label="收费模式" name="fee_type" rules={[{ required: true }]}><Select options={["固定收费", "固定+后期", "免费代理", "法律援助", "计时收费", "全风险代理"].map((v) => ({ value: v, label: v }))} /></Form.Item>
@@ -1663,7 +1663,7 @@ export default function ContractCenterPage({
               <Input disabled={Boolean(editing)} />
             </Form.Item>
             <Form.Item label="客户" name="customer_id" rules={[{ required: true, message: "请选择客户" }]}>
-              <Select disabled={Boolean(linkedCustomerContext)} showSearch optionFilterProp="label" placeholder="输入客户名称关键字后选择" options={customerOptions} notFoundContent="没有匹配客户，请先在客户管理中新建客户" />
+              <Select showSearch optionFilterProp="label" placeholder="输入客户名称关键字后选择" options={customerOptions} notFoundContent="没有匹配客户，请先在客户管理中新建客户" onChange={() => setLinkedCustomerContext(null)} />
             </Form.Item>
             <Form.Item label="合同主体" name="contract_body" rules={[{ required: true }]}>
               <Select options={["律所", "平台"].map((v) => ({ value: v, label: v }))} />
