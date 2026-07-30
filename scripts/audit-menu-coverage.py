@@ -154,6 +154,27 @@ def main() -> None:
     assert "if item.key in SYSTEM_MENU_ROUTE_KEYS" in MAIN, "navigation must hide menus without an implemented route"
     assert "菜单标识不是已实现的系统路由" in MAIN, "menu API must block dead custom menu routes"
     assert "新增菜单" not in SYSTEM, "menu management must not expose dead-route creation"
+    for permission_group in (
+        "客户管理",
+        "合同中心",
+        "案件中心",
+        "调查大厅",
+        "事务中心",
+        "收发文台",
+        "用印中心",
+        "财务中心 / 平台财务中心",
+        "人事中心",
+        "仓库管理",
+        "报表中心",
+        "系统中心",
+    ):
+        assert f'name: "{permission_group}"' in ORGANIZATION, (
+            f"role permission tree must align with the sidebar module: {permission_group}"
+        )
+    for merged_permission_group in ("客户与合同", "案件与调查", "任务与文档", "财务与用印", "组织与系统"):
+        assert f'name: "{merged_permission_group}"' not in ORGANIZATION, (
+            f"role permission tree must not retain the merged sidebar group: {merged_permission_group}"
+        )
 
     ipr_center = (ROOT / "apps/admin-web/src/IprCenterPage.tsx").read_text(encoding="utf-8")
     ipr_official = (ROOT / "apps/admin-web/src/IprOfficialFilePage.tsx").read_text(encoding="utf-8")
