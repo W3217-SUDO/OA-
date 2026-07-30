@@ -528,11 +528,6 @@ export default function ContractCenterPage({
       message.warning("请输入客户关键字，并从匹配结果中选择客户");
       return;
     }
-    const hasExistingContractAttachment = attachments.some((item) => item.category === "合同附件");
-    if (!editing && !contractFile && !hasExistingContractAttachment) {
-      message.warning("请上传合同附件");
-      return;
-    }
     setSavingContract(true);
     try {
       const target = editing || wizardDraft;
@@ -710,6 +705,26 @@ export default function ContractCenterPage({
       URL.revokeObjectURL(url);
     } catch {
       message.error("附件下载失败");
+    }
+  };
+  const uploadDraftContractAttachment = async () => {
+    if (!wizardDraft) return;
+    if (!contractFile) {
+      message.warning("请先选择合同附件");
+      return;
+    }
+    const attachment = new FormData();
+    attachment.append("file", contractFile);
+    attachment.append("record_id", String(wizardDraft.id));
+    attachment.append("category", "合同附件");
+    attachment.append("remark", "合同草稿补传附件");
+    try {
+      await api.post("/attachments", attachment);
+      setContractFile(null);
+      await loadWizardContext(wizardDraft.id);
+      message.success("合同附件已上传");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同附件上传失败");
     }
   };
   const submit = async () => {
@@ -1287,7 +1302,7 @@ export default function ContractCenterPage({
               <Form.Item label="合同名称" name="title" rules={[{ required: true }]}><Input placeholder="合同名称" /></Form.Item>
               <Form.Item label="外部合同号（可多个）" name="external_contract_numbers"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入客户方合同编号后回车" /></Form.Item>
               <Form.Item label="备注" name="description" rules={[{ required: true }]}><Input.TextArea rows={4} placeholder="备注" /></Form.Item>
-              <Form.Item label="合同附件" required extra="未上传合同附件不能进入下一步或提交审批">
+              <Form.Item label="合同附件" extra="起草阶段可跳过；提交审批前须上传至少一份合同附件">
                 <input type="file" onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
                 <div className="contract-upload-tip">附件支持常用图片、压缩包、Office 文档及 PDF 格式</div>
               </Form.Item>
@@ -1656,6 +1671,12 @@ export default function ContractCenterPage({
               { key: "customer", label: "客户", children: wizardDraft.customer },
               { key: "type", label: "合同类别", children: wizardDraft.data.type },
             ] : []} />
+            <Form.Item label="合同附件" extra="可在草稿阶段补传；未上传时提交审批会被阻断">
+              <Space wrap>
+                <input type="file" onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
+                <Button onClick={uploadDraftContractAttachment} disabled={!contractFile}>上传附件</Button>
+              </Space>
+            </Form.Item>
             <Form form={submitForm} layout="vertical" className="contract-submit-form">
               <Form.Item label="合同审批人" name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
                 <Select disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在系统用户管理中为在职员工配置合同审批流程资格" />
