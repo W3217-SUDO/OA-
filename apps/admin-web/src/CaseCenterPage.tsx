@@ -1992,7 +1992,8 @@ export default function CaseCenterPage({
     ? counselDetailAttachments.filter(row=>String(row.category||"").includes(activeCounselDocCategory))
     : counselDetailAttachments;
   return (
-    <div className="case-center-page">
+    <div className={`case-center-page ${isCaseDetailView ? "case-detail-route" : ""}`}>
+      {isCaseDetailView && !viewingCounselCase && <div className="case-detail-route-loading">正在加载案件详情...</div>}
       {isCreateView && (
         <div className="case-create-route-page" data-flow-token={createFlowToken}>
           <Steps
@@ -2549,13 +2550,13 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         width="100%"
-        className="case-detail-drawer"
+        className={`case-detail-drawer ${isCaseDetailView ? "case-detail-static" : ""}`}
         getContainer={false}
         mask={false}
         rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 88px)"}}
         open={Boolean(viewingCounselCase)}
         title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
-        onClose={() => setViewingCounselCase(null)}
+        onClose={() => isCaseDetailView ? onNavigate?.("case-mine-civil") : setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
           {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
           {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
