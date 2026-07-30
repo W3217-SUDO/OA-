@@ -1965,7 +1965,7 @@ export default function CaseCenterPage({
     ? counselDetailAttachments.filter(row=>String(row.category||"").includes(activeCounselDocCategory))
     : counselDetailAttachments;
   return (
-    <>
+    <div className="case-center-page">
       {isCreateView && (
         <div className="case-create-route-page" data-flow-token={createFlowToken}>
           <Steps
@@ -2519,8 +2519,11 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Drawer
-        width="calc(100vw - 232px)"
+        width="100%"
         className="case-detail-drawer"
+        getContainer={false}
+        mask={false}
+        rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 150px)"}}
         open={Boolean(viewingCounselCase)}
         title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
         onClose={() => setViewingCounselCase(null)}
@@ -2738,6 +2741,10 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         size={900}
+        className="case-subpage-drawer"
+        getContainer={false}
+        mask={false}
+        rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 150px)"}}
         open={Boolean(taskCase)}
         title={`案件任务：${taskCase?.serial_no || ""}`}
         onClose={() => setTaskCase(null)}
@@ -2958,6 +2965,6 @@ export default function CaseCenterPage({
           </Form.Item>
         </Form>
       </Modal>
-    </>
+    </div>
   );
 }
