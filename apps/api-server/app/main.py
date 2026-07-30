@@ -14532,14 +14532,10 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     username = await _rename_system_username(user, body.username, identity, db)
     if user.username == identity["username"] and not body.is_active: raise HTTPException(status_code=409, detail="不能停用当前登录账号")
     if user.username == identity["username"] and body.role != "admin": raise HTTPException(status_code=409, detail="不能取消当前登录账号的管理员角色")
-    # Employment status is the source of truth for a linked employee login.
-    # Account enable/disable must go through the dedicated HR lifecycle so the
-    # reason, effective date and workflow event cannot be bypassed by a profile
-    # edit.  Probationary accounts remain usable; only offboarded/disabled staff
-    # are prevented from logging in.
-    expected_active = employee.status not in {"离职", "停用"}
-    if body.is_active != expected_active:
-        raise HTTPException(status_code=409, detail="员工账号启停必须通过“办理状态”完成，以同步人事状态、原因和生效日期")
+    # Login availability is independent from employment status: an active
+    # employee may temporarily have login disabled without being offboarded.
+    # Formal resignation/HR suspension still goes through the dedicated
+    # transition endpoint, which also disables the linked account.
     previous_status = employee.status
     profile = {**(user.profile or {}), **body.data, "account_type": "员工账号", "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
     user.display_name = body.display_name.strip(); user.department = body.department.strip(); user.role = body.role; user.is_active = body.is_active; user.profile = profile

@@ -3387,24 +3387,28 @@ def main() -> None:
         'const transitionOptions=(status:string)=>status===\'试用\'?',
         '办理状态',
         '办理人事状态：',
-        '账号启停请使用列表中的“办理状态”',
+        'name="is_active" label="登录账号启用" valuePropName="checked"',
+        '关闭后该用户立即无法登录',
+        'account?.contract_approval_enabled??profileData.contract_approval_enabled',
         'api.post(`/hr/${transitioningEmployee.id}/transition`',
     ):
         assert token in HR, f"HR lifecycle UI contract missing: {token}"
     for token in (
-        'expected_active = employee.status not in {"离职", "停用"}',
-        '员工账号启停必须通过“办理状态”完成',
+        'Login availability is independent from employment status',
+        'user.is_active = body.is_active',
+        'if not user or not user.is_active:',
         '@app.post(f"{settings.api_prefix}/hr/{{employee_id}}/transition")',
     ):
         assert token in MAIN, f"HR account lifecycle API contract missing: {token}"
     for token in (
-        'expected=(409,))\n        assert call("GET", f"/system/users?keyword={renamed_atomic_name}")',
+        'active_employee_token = login(renamed_atomic_name',
+        'call("GET", "/auth/me", expected=(401,))',
         'regularized = call("POST", f"/hr/{hr[\'id\']}/transition"',
         'offboarded = call("POST", f"/hr/{hr[\'id\']}/transition"',
     ):
         assert token in SMOKE, f"HR lifecycle smoke coverage missing: {token}"
     assert 'linked_user and linked_user.role != "admin"' in MAIN, "HR offboarding must synchronize manager and auditor employee accounts while preserving the protected administrator account"
-    print("HR_ACCOUNT_LIFECYCLE_OK: dedicated employee status flow controls ordinary and elevated employee access and blocks profile-edit bypass")
+    print("HR_ACCOUNT_LIFECYCLE_OK: account availability is editable and immediately enforced while formal HR transitions retain reason/effective-date synchronization")
     for token in (
         'grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))',
         '.hr-query label .ant-input-affix-wrapper',

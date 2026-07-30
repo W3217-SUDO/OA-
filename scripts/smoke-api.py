@@ -3603,8 +3603,15 @@ def main():
         renamed_atomic = call("PATCH", f"/hr/employees/{atomic_employee['employee']['id']}", {"username": renamed_atomic_name, "display_name": "原子新建员工", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": True, "email": "", "mobile": "13800000001", "office_phone": "", "joined_at": str(date.today()), "left_at": None, "data": {"joined_at": str(date.today()), "mobile": "13800000001"}})
         assert renamed_atomic["user"]["username"] == renamed_atomic_name
         assert renamed_atomic["employee"]["owner"] == renamed_atomic_name and renamed_atomic["employee"]["data"]["username"] == renamed_atomic_name
-        call("PATCH", f"/hr/employees/{atomic_employee['employee']['id']}", {"username": renamed_atomic_name, "display_name": "原子新建员工", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": False, "email": "", "mobile": "13800000001", "office_phone": "", "joined_at": str(date.today()), "left_at": None, "data": {"account_type": "员工账号", "joined_at": str(date.today()), "mobile": "13800000001"}}, expected=(409,))
-        assert call("GET", f"/system/users?keyword={renamed_atomic_name}")["items"][0]["is_active"] is True
+        active_employee_token = login(renamed_atomic_name, "SmokePass2026!")["access_token"]
+        TOKEN = admin_token
+        disabled_atomic = call("PATCH", f"/hr/employees/{atomic_employee['employee']['id']}", {"username": renamed_atomic_name, "display_name": "原子新建员工", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": False, "email": "", "mobile": "13800000001", "office_phone": "", "joined_at": str(date.today()), "left_at": None, "data": {"account_type": "员工账号", "joined_at": str(date.today()), "mobile": "13800000001"}})
+        assert disabled_atomic["user"]["is_active"] is False and disabled_atomic["employee"]["data"]["is_active"] is False
+        login(renamed_atomic_name, "SmokePass2026!", expected=(401,))
+        TOKEN = active_employee_token
+        call("GET", "/auth/me", expected=(401,))
+        TOKEN = admin_token
+        call("PATCH", f"/hr/employees/{atomic_employee['employee']['id']}", {"username": renamed_atomic_name, "display_name": "原子新建员工", "department": active_department["name"], "role": "user", "position": active_job_role["name"], "is_active": True, "email": "", "mobile": "13800000001", "office_phone": "", "joined_at": str(date.today()), "left_at": None, "data": {"account_type": "员工账号", "joined_at": str(date.today()), "mobile": "13800000001"}})
         login(atomic_employee_name, "SmokePass2026!", expected=(401,))
         assert login(renamed_atomic_name, "SmokePass2026!")["access_token"]
         # The preceding login proves the renamed employee can authenticate;
