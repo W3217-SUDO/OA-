@@ -435,6 +435,11 @@ def main():
         peer_manager = call("POST", "/system/users", {"username": peer_manager_name, "display_name": "同部门旁观经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师", "contract_approval_enabled": True}}, expected=(201,)); users.append(peer_manager["id"])
         manager_hr = create_record("hr", "在职", "范围经理员工", {"username": manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=manager_name)
         peer_manager_hr = create_record("hr", "在职", "同部门旁观经理员工", {"username": peer_manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=peer_manager_name)
+        approver_settings_before = call("GET", "/contracts/approver-settings")["items"]
+        selected_approvers_before = [item["username"] for item in approver_settings_before if item["selected"]]
+        call("PUT", "/contracts/approver-settings", {"usernames": [username for username in selected_approvers_before if username != manager_name]})
+        assert next(item for item in call("GET", "/contracts/approver-settings")["items"] if item["username"] == manager_name)["selected"] is False
+        call("PUT", "/contracts/approver-settings", {"usernames": selected_approvers_before})
         manager_directory = next(item for item in call("GET", "/users/directory")["items"] if item["username"] == manager_name)
         assert manager_directory["position"] == "合伙人律师" and manager_directory["can_approve_contract"] is True
         role_only_name = f"smoke_role_only_{suffix}".lower()
@@ -3580,6 +3585,7 @@ def main():
         assert atomic_employee["employee"]["owner"] == atomic_employee_name and atomic_employee["user"]["username"] == atomic_employee_name and atomic_employee["user"]["role"] == "user"
         call("PATCH", f"/system/users/{atomic_employee['user']['id']}", {"is_active": False}, expected=(409,))
         call("DELETE", f"/system/users/{atomic_employee['user']['id']}", expected=(409,))
+        call("POST", "/hr/employees", {"username": f"duplicate_no_{suffix}".lower(), "display_name": "重复员工号", "employee_no": atomic_employee["employee"]["serial_no"], "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "user", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号"}}, expected=(409,))
         call("POST", "/hr/employees", {"username": atomic_employee_name, "display_name": "重复员工", "employee_no": serial("HR-ATOMIC-2"), "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "user", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号"}}, expected=(409,))
         call("POST", "/hr/employees", {"username": "admin", "display_name": "禁止覆盖管理员", "employee_no": serial("HR-ADMIN"), "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "user", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号"}}, expected=(409,))
         call("DELETE", f"/records/{atomic_employee['employee']['id']}", expected=(409,))

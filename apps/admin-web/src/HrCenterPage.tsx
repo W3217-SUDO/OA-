@@ -18,7 +18,6 @@ const systemRoleOf=(staffRole:string)=>staffRole==='系统管理员'?'admin':/�
 const employeeDateFields=['graduation_date','agent_qualification_date','agent_practice_date','lawyer_license_date','training_date','agent_intern_start','agent_intern_end','partner_start','partner_end','joined_at','left_at','contract_end']
 const accountTypes=['员工账号','客户账号','外部合作账号'].map(value=>({value,label:value}))
 const dataLevels=['公司','部门','本人'].map(value=>({value,label:value}))
-const employeeNo=()=>`RS${dayjs().format('YYYYMMDDHHmmss')}`
 
 type SubrecordKind='leave'|'matter'|'commission'
 type Subrecord={id:number;employee_id:number;kind:SubrecordKind;data:Record<string,any>;created_by:string;created_at:string}
@@ -71,7 +70,7 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   useEffect(()=>{void load();Promise.all([api.get('/hr/departments',{params:{active_only:true}}),api.get('/hr/job-roles',{params:{active_only:true}})]).then(([ds,rs])=>{setDepartments(ds.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})));setPositions(rs.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})))}).catch(()=>message.error('部门与职务加载失败'))},[])
   useEffect(()=>{setTopTab(isNew?'new':'list')},[isNew])
   useEffect(()=>{const target=consumeBusinessRecordDetailTarget('hr');if(!target)return;void (async()=>{try{const {data}=await api.get(`/records/${target.id}`);if(data.module!=='hr')throw new Error('关联记录不是员工档案');setViewing(data)}catch(error:any){message.error(error?.response?.data?.detail||error?.message||'员工详情加载失败')}})()},[])
-  const resetNewEmployee=()=>{setCurrentEmployeeId(undefined);form.resetFields();form.setFieldsValue({serial_no:employeeNo(),company:companyName,data_level:'公司',is_active:true,account_type:'员工账号',role:undefined,joined_at:dayjs(),contract_approval_enabled:false})}
+  const resetNewEmployee=()=>{setCurrentEmployeeId(undefined);form.resetFields();form.setFieldsValue({serial_no:'',company:companyName,data_level:'公司',is_active:true,account_type:'员工账号',role:undefined,joined_at:dayjs(),contract_approval_enabled:false})}
   useEffect(()=>{if(isNew)resetNewEmployee()},[isNew])
 
   const filtered=useMemo(()=>rows.filter(row=>{const d=row.data||{};return (!company||row.customer===company)&&(!department||row.department===department)&&(!username||String(d.username||row.owner).includes(username))&&(!name||row.title.includes(name))&&(!mobile||String(d.mobile||d.phone||'').includes(mobile))&&(!enabled||(d.is_active!==false?'是':'否')===enabled)}),[rows,company,department,username,name,mobile,enabled])

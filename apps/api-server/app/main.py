@@ -2099,6 +2099,9 @@ class ContractSubmitInput(BaseModel):
     approvers: list[str] = Field(min_length=1, max_length=10)
     comment: str = ""
 
+class ContractApproverSettingsInput(BaseModel):
+    usernames: list[str] = Field(default_factory=list, max_length=200)
+
 
 class ContractDraftInput(BaseModel):
     serial_no: str = Field(min_length=1, max_length=128)
@@ -3946,6 +3949,63 @@ async def user_directory(identity: dict = Depends(current_identity), db: AsyncSe
             "can_approve_contract": await _is_contract_approver(item, db),
         })
     return {"items": payload}
+
+@app.get(f"{settings.api_prefix}/contracts/approver-settings")
+async def contract_approver_settings(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    employees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ).order_by(BusinessRecord.title, BusinessRecord.id))).all())
+    usernames = list(dict.fromkeys(
+        str((item.data or {}).get("username") or item.owner or "").strip().lower()
+        for item in employees
+        if str((item.data or {}).get("username") or item.owner or "").strip()
+    ))
+    users = list((await db.scalars(select(User).where(User.username.in_(usernames), User.is_active.is_(True)))).all()) if usernames else []
+    by_username = {item.username: item for item in users if item.role != "admin"}
+    items = []
+    for employee in employees:
+        username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+        user = by_username.get(username)
+        if not user:
+            continue
+        items.append({
+            "username": username,
+            "display_name": user.display_name or employee.title or username,
+            "department": user.department or employee.department,
+            "position": str((user.profile or {}).get("position") or (employee.data or {}).get("position") or ""),
+            "selected": bool((user.profile or {}).get("contract_approval_enabled")),
+        })
+    return {"items": items}
+
+@app.put(f"{settings.api_prefix}/contracts/approver-settings")
+async def save_contract_approver_settings(body: ContractApproverSettingsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    requested = set(dict.fromkeys(value.strip().lower() for value in body.usernames if value.strip()))
+    employees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all())
+    eligible = {
+        str((item.data or {}).get("username") or item.owner or "").strip().lower()
+        for item in employees
+        if str((item.data or {}).get("username") or item.owner or "").strip()
+    }
+    invalid = sorted(requested - eligible)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"所选人员不是启用的在职员工：{', '.join(invalid)}")
+    users = list((await db.scalars(select(User).where(User.username.in_(eligible)))).all()) if eligible else []
+    active_usernames = {item.username for item in users if item.is_active and item.role != "admin"}
+    invalid = sorted(requested - active_usernames)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"所选人员账号不存在、已停用或为管理员账号：{', '.join(invalid)}")
+    for user in users:
+        if user.role == "admin":
+            continue
+        user.profile = {**(user.profile or {}), "contract_approval_enabled": user.username in requested}
+    await db.commit()
+    return {"usernames": sorted(requested), "count": len(requested)}
 
 
 @app.post(f"{settings.api_prefix}/notifications/send", status_code=status.HTTP_201_CREATED)
