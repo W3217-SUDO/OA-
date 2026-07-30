@@ -444,6 +444,7 @@ export default function ContractCenterPage({
       amount: 0,
       signed_at: dayjs(),
       customer_id: linkedCustomerId,
+      title: linkedContext?.name ? `${linkedContext.name}合同` : undefined,
     });
     setOpen(true);
   };
