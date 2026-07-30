@@ -2550,7 +2550,8 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         width="100%"
-        className={`case-detail-drawer ${isCaseDetailView ? "case-detail-static" : ""}`}
+        rootClassName={isCaseDetailView ? "case-detail-static-root" : undefined}
+        className="case-detail-drawer"
         getContainer={false}
         mask={false}
         rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 88px)"}}
