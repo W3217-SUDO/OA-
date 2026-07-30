@@ -287,6 +287,14 @@ export default function ContractCenterPage({
       api.get("/seals/assets"),
       api.get("/customers", { params: { scope: "mine", customer_type: "客户", page: 1, page_size: 200 } }),
     ]);
+    // A dedicated detail route must not wait for the full contract list or
+    // unrelated directory/seal/customer data before showing its target.
+    if (target) {
+      const targetRow = await targetRequest;
+      if (targetRow) void openViewing(targetRow);
+      else message.warning("未找到关联合同或当前账号无权查看");
+      onDetailTargetHandled?.();
+    }
     try {
       const recordsRes = await recordsRequest;
       setAllRows(recordsRes.data.items);
@@ -300,14 +308,6 @@ export default function ContractCenterPage({
       message.error("合同数据加载失败");
     } finally {
       setLoading(false);
-    }
-    // Detail navigation is intentionally independent from the paged list and all auxiliary context.
-    // A failed list/profile/directory request must never turn a valid related-contract click into a blank list.
-    if (target) {
-      const targetRow = await targetRequest;
-      if (targetRow) void openViewing(targetRow);
-      else message.warning("未找到关联合同或当前账号无权查看");
-      onDetailTargetHandled?.();
     }
     const [profileResult, directoryResult, sealResult, customerResult] = await auxiliaryRequests;
     if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
