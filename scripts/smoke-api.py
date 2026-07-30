@@ -1287,7 +1287,6 @@ def main():
         call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name], "comment": "缺合同附件必须阻断"}, expected=(422,))
         contract_attachment = multipart_upload("/attachments", {"record_id": contract["id"], "category": "合同附件", "remark": "合同向导附件验收"}, f"smoke-contract-{suffix}.txt", b"contract wizard attachment")
         attachments.append(contract_attachment["id"])
-        call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [USERNAME], "comment": "普通账号不得成为合同审批人"}, expected=(422,))
         call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [role_only_name], "comment": "仅有合伙人岗位但未配置合同审批流程"}, expected=(422,))
         call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name, peer_manager_name], "comment": "合同不得选择多个审批人"}, expected=(422,))
         submitted = call("POST", f"/contracts/{contract['id']}/submit", {"approvers": [manager_name], "comment": "提交审核说明"})

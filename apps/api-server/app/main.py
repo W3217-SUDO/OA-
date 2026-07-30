@@ -5478,8 +5478,12 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
 
 
 async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
-    """Legacy contract audit membership is an explicit assignment on an active employee."""
-    if not user.is_active or not bool((user.profile or {}).get("contract_approval_enabled")):
+    """Resolve administrators or explicitly assigned active employees."""
+    if not user.is_active:
+        return False
+    if user.role == "admin":
+        return True
+    if not bool((user.profile or {}).get("contract_approval_enabled")):
         return False
     employee_id = await db.scalar(
         select(BusinessRecord.id).where(
