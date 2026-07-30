@@ -14515,6 +14515,26 @@ def _job_role_dict(item: JobRole) -> dict:
     return {"id": item.id, "code": item.code, "name": item.name, "permissions": item.permissions or [], "description": item.description, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
+async def _require_unique_hr_display_name(display_name: str, db: AsyncSession, *, employee_id: int | None = None, linked_username: str = "") -> str:
+    """Keep the personnel-facing Chinese name unique across HR files and login-only accounts."""
+    normalized = display_name.strip()
+    name_key = normalized.casefold()
+    employee_statement = select(BusinessRecord.id).where(
+        BusinessRecord.module == "hr",
+        func.lower(func.trim(BusinessRecord.title)) == name_key,
+    )
+    if employee_id:
+        employee_statement = employee_statement.where(BusinessRecord.id != employee_id)
+    if await db.scalar(employee_statement.limit(1)):
+        raise HTTPException(status_code=409, detail="中文姓名已存在")
+    user_statement = select(User.id).where(func.lower(func.trim(User.display_name)) == name_key)
+    if linked_username:
+        user_statement = user_statement.where(User.username != linked_username.strip().lower())
+    if await db.scalar(user_statement.limit(1)):
+        raise HTTPException(status_code=409, detail="中文姓名已存在")
+    return normalized
+
+
 @app.post(f"{settings.api_prefix}/hr/employees", status_code=status.HTTP_201_CREATED)
 async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
@@ -14523,6 +14543,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
         raise HTTPException(status_code=422, detail="账号类型无效")
     username = body.username.strip().lower()
     employee_no = body.employee_no.strip()
+    display_name = await _require_unique_hr_display_name(body.display_name, db, linked_username=username)
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "hr", BusinessRecord.serial_no == employee_no)):
         raise HTTPException(status_code=409, detail="员工编号已存在")
     department = await db.scalar(select(Department).where(Department.name == body.department, Department.is_active.is_(True)))
@@ -14552,14 +14573,14 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
         if len(body.password) < policy.min_password_length:
             raise HTTPException(status_code=422, detail=f"员工账号密码至少需要 {policy.min_password_length} 位")
         user = User(
-            username=username, display_name=body.display_name.strip(), department=body.department.strip(),
+            username=username, display_name=display_name, department=body.department.strip(),
             # Job position controls investigation capability.  A new HR
             # account always starts as the least-privileged system user.
             role="user", profile=profile, password_hash=hash_password(body.password),
             is_active=body.is_active, password_changed_at=None, must_change_password=True,
         )
     employee = BusinessRecord(
-        module="hr", serial_no=employee_no, title=body.display_name.strip(), customer=body.company.strip(),
+        module="hr", serial_no=employee_no, title=display_name, customer=body.company.strip(),
         status="在职" if body.is_active else "停用", owner=username if user else identity["username"], department=body.department.strip(), description="",
         data={**profile, "username": username if user else "", "role": user.role if user else "", "is_active": body.is_active},
     )
@@ -14594,6 +14615,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
     username = str((employee.data or {}).get("username") or employee.owner).strip().lower()
+    display_name = await _require_unique_hr_display_name(body.display_name, db, employee_id=employee.id, linked_username=username)
     user = await db.scalar(select(User).where(User.username == username))
     if account_type == "员工账号" and not user: raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在，不能只修改一侧资料")
     if user and user.username == "admin":
@@ -14603,7 +14625,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if not user:
         previous_status = employee.status
         profile = {**(employee.data or {}), **body.data, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
-        employee.title = body.display_name.strip(); employee.department = body.department.strip(); employee.data = profile
+        employee.title = display_name; employee.department = body.department.strip(); employee.data = profile
         db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"账号类型：{account_type}；未关联系统登录账号"))
         await db.commit(); await db.refresh(employee)
         return {"employee": _record_dict(employee), "user": None}
@@ -14616,8 +14638,8 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     # transition endpoint, which also disables the linked account.
     previous_status = employee.status
     profile = {**(user.profile or {}), **body.data, "account_type": "员工账号", "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
-    user.display_name = body.display_name.strip(); user.department = body.department.strip(); user.role = body.role; user.is_active = body.is_active; user.profile = profile
-    employee.title = body.display_name.strip(); employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "username": username, "role": body.role, "is_active": body.is_active}
+    user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.is_active = body.is_active; user.profile = profile
+    employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "username": username, "role": body.role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
