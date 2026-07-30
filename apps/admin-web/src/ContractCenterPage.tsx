@@ -18,6 +18,7 @@ import {
   Space,
   Steps,
   Table,
+  Tabs,
   Tag,
   Timeline,
   Popconfirm,
@@ -47,6 +48,7 @@ type Contract = {
     type: string;
     fee_type?: string;
     case_no?: string;
+    contract_no?: string;
     source_person?: string;
     contract_body?: string;
     official_paid?: number;
@@ -173,6 +175,10 @@ export default function ContractCenterPage({
   const [approverSettingsSaving, setApproverSettingsSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
+  const [detailReceipts, setDetailReceipts] = useState<any[]>([]);
+  const [detailInvoices, setDetailInvoices] = useState<Contract[]>([]);
+  const [detailPayments, setDetailPayments] = useState<Contract[]>([]);
+  const [detailApprovals, setDetailApprovals] = useState<Step[]>([]);
   type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
   const [contractObjects, setContractObjects] = useState<ContractObjectRow[]>([]);
   const [paymentCandidates, setPaymentCandidates] = useState<ContractPaymentCandidate[]>([]);
@@ -217,6 +223,10 @@ export default function ContractCenterPage({
     setSelectedPaymentObjectKeys([]);
     setPaymentAmounts({});
     setContractEvents([]);
+    setDetailReceipts([]);
+    setDetailInvoices([]);
+    setDetailPayments([]);
+    setDetailApprovals([]);
     setViewingAttachmentsLoading(false);
   };
   const openViewing = async (contract: Contract) => {
@@ -229,17 +239,31 @@ export default function ContractCenterPage({
     setViewingAttachments([]);
     setViewingAttachmentsLoading(true);
     try {
-      const [attachmentResult, eventResult, objectResult, caseResult] = await Promise.allSettled([
+      const [attachmentResult, eventResult, objectResult, caseResult, receiptResult, invoiceResult, paymentResult, approvalResult] = await Promise.allSettled([
         api.get("/attachments", { params: { record_id: contract.id } }),
         api.get(`/contracts/${contract.id}/events`),
         api.get(`/contracts/${contract.id}/objects`),
         api.get(`/contracts/${contract.id}/object-cases`),
+        api.get("/finance/incoming-payments"),
+        api.get("/records", { params: { module: "invoice", keyword: contract.serial_no, page: 1, page_size: 100 } }),
+        api.get("/records", { params: { module: "contract_payment", keyword: contract.serial_no, page: 1, page_size: 100 } }),
+        api.get(`/contracts/${contract.id}/approvals`),
       ]);
       if (requestId === viewingAttachmentRequest.current) {
         setViewingAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
         setContractEvents(eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : []);
         setContractObjects(objectResult.status === "fulfilled" ? objectResult.value.data.items || [] : []);
         setObjectCases(caseResult.status === "fulfilled" ? (caseResult.value.data.items || []) : []);
+        setDetailReceipts(receiptResult.status === "fulfilled"
+          ? (receiptResult.value.data.items || []).filter((item: any) => item.contract_record_id === contract.id || item.contract_no === contract.serial_no)
+          : []);
+        setDetailInvoices(invoiceResult.status === "fulfilled"
+          ? (invoiceResult.value.data.items || []).filter((item: Contract) => item.data?.contract_no === contract.serial_no || item.title?.includes(contract.serial_no))
+          : []);
+        setDetailPayments(paymentResult.status === "fulfilled"
+          ? (paymentResult.value.data.items || []).filter((item: Contract) => item.data?.contract_no === contract.serial_no || item.title?.includes(contract.serial_no))
+          : []);
+        setDetailApprovals(approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : []);
         if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || objectResult.status === "rejected") {
           message.warning("合同基础信息已打开，部分附件、事项或合同标的暂时加载失败");
         }
@@ -1076,11 +1100,13 @@ export default function ContractCenterPage({
     {
       title: "合同号",
       dataIndex: "serial_no",
-      width: 105,
+      width: 160,
+      ellipsis: true,
       render: (v: string, r: Contract) => (
           <Button
             type="link"
             className="contract-cell-link"
+            title={v}
           onClick={() => void openViewing(r)}
           >
             {v}
@@ -1090,9 +1116,9 @@ export default function ContractCenterPage({
     {
       title: "合同名称",
       dataIndex: "title",
-      width: 135,
+      width: 220,
       ellipsis: true,
-      render: textCell,
+      render: (value: string) => <span className="contract-cell-text" title={value}>{value}</span>,
     },
     {
       title: "合同主体",
@@ -1331,6 +1357,7 @@ export default function ContractCenterPage({
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),
           }}
+          tableLayout="fixed"
           scroll={{ x: isAuditView ? 1450 : 1480 }}
           pagination={{pageSize:15,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:()=>`共有${rows.length}条`}}
           summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
@@ -1555,13 +1582,133 @@ export default function ContractCenterPage({
       <Modal
         width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
-        title={`合同查看：${viewing?.serial_no || ""}`}
+        title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
         footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={closeViewing}>关闭</Button></Space>}
         onCancel={() => isContractDetailView ? onNavigate?.("contract-mine") : closeViewing()}
         getContainer={isContractDetailView ? false : undefined}
         mask={!isContractDetailView}
         rootClassName={isContractDetailView ? "contract-detail-static-root" : undefined}
       >
+        {isContractDetailView && viewing ? (
+          <div className="contract-detail-workbench">
+            <section className="contract-detail-summary">
+              <div><span>客户编码：</span><Button type="link" onClick={() => openRelatedCustomer(viewing)}>{viewing.data.customer_no || "—"}</Button></div>
+              <div><span>签订日期：</span><b>{viewing.data.signed_at || "—"}</b></div>
+              <div><span>客户名称：</span><Button type="link" onClick={() => openRelatedCustomer(viewing)}>{viewing.customer || "—"}</Button></div>
+              <div><span>合同编号：</span><b>{viewing.serial_no}</b></div>
+              <div><span>客户管理人：</span><b>{viewing.data.customer_manager || viewing.owner || "—"}</b></div>
+              <div><span>合同名称：</span><b>{viewing.title || "—"}</b></div>
+            </section>
+            <section className="contract-detail-finance-summary">
+              {[
+                ["官费支付金额", viewing.data.official_paid],
+                ["官费到账金额", viewing.data.official_received],
+                ["官费未到金额", viewing.data.official_unreceived],
+                ["官费亏损金额", viewing.data.official_loss],
+                ["代理费总金额", viewing.data.agency_total],
+                ["代理费到账金额", viewing.data.agency_received],
+                ["代理费待收金额", viewing.data.agency_due],
+                ["其他金额", viewing.data.other_total],
+                ["其他金额已支付", viewing.data.other_paid],
+                ["其他金额待支付", viewing.data.other_due],
+                ["发票已开金额", viewing.data.invoice_opened],
+                ["发票应开金额", viewing.data.invoice_should],
+                ["发票高开金额", viewing.data.invoice_excess],
+              ].map(([label, value]) => <div key={String(label)}><span>{label}：</span><b>{amount(Number(value || 0))}</b></div>)}
+            </section>
+            <Tabs
+              className="contract-detail-tabs"
+              items={[
+                {
+                  key: "objects",
+                  label: "合同标的",
+                  children: <Table size="small" rowKey="id" pagination={false} scroll={{ x: 980 }} dataSource={contractObjects} locale={{ emptyText: "暂无合同标的" }} columns={[
+                    { title: "序号", width: 64, render: (_: unknown, __: ContractObjectRow, index: number) => index + 1 },
+                    { title: "案件类型", dataIndex: "case_type", width: 110 },
+                    { title: "案号", dataIndex: "case_no", width: 160, render: (value: string) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCase(value)}>{value}</Button> : "—" },
+                    { title: "案件名称", dataIndex: "case_title", width: 180 },
+                    { title: "案件阶段", dataIndex: "case_phase", width: 120 },
+                    { title: "费用类型", dataIndex: "fee_type", width: 120 },
+                    { title: "费用金额", dataIndex: "amount", width: 110, render: (value: number) => amount(value) },
+                    { title: "客户管理人", dataIndex: "customer_manager", width: 120 },
+                    { title: "备注", dataIndex: "remark", width: 180 },
+                  ]} />,
+                },
+                {
+                  key: "events",
+                  label: "事项记录",
+                  children: contractEvents.length ? <Timeline items={contractEvents.map((event) => ({ children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div> }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />,
+                },
+                {
+                  key: "attachments",
+                  label: "合同附件",
+                  children: viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} columns={[
+                    { title: "序号", width: 64, render: (_: unknown, __: Attachment, index: number) => index + 1 },
+                    { title: "文件名称", dataIndex: "original_name" },
+                    { title: "分类", dataIndex: "category", width: 160 },
+                    { title: "操作", width: 100, render: (_: unknown, item: Attachment) => <Button type="link" onClick={() => downloadAttachment(item)}>下载</Button> },
+                  ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />,
+                },
+                {
+                  key: "approvals",
+                  label: "审批信息",
+                  children: <Table size="small" rowKey="id" pagination={false} dataSource={detailApprovals} locale={{ emptyText: "暂无审批信息" }} columns={[
+                    { title: "审批顺序", dataIndex: "step_order", width: 100 },
+                    { title: "审批人", dataIndex: "approver" },
+                    { title: "状态", dataIndex: "status", width: 120 },
+                    { title: "审批意见", dataIndex: "comment" },
+                  ]} />,
+                },
+              ]}
+            />
+            <section className="contract-record-section">
+              <h3>回款记录</h3>
+              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1180 }} dataSource={detailReceipts} locale={{ emptyText: "暂无回款记录" }} columns={[
+                { title: "序号", width: 64, render: (_: unknown, __: any, index: number) => index + 1 },
+                { title: "回款单号", dataIndex: "receipt_no", width: 150 },
+                { title: "回款日期", dataIndex: "received_date", width: 120 },
+                { title: "银行单据号", dataIndex: "bank_reference", width: 150 },
+                { title: "回款金额", dataIndex: "amount", width: 110, render: (value: number) => amount(value) },
+                { title: "官费", width: 100, render: (_: unknown, row: any) => amount(row.official_amount || 0) },
+                { title: "代理费", width: 100, render: (_: unknown, row: any) => amount(row.agency_amount || 0) },
+                { title: "其他费用", width: 100, render: (_: unknown, row: any) => amount(row.other_amount || 0) },
+                { title: "回款方式", dataIndex: "payment_method", width: 120 },
+                { title: "回款分配人", dataIndex: "claimant", width: 120 },
+              ]} />
+            </section>
+            <section className="contract-record-section">
+              <h3>开票记录</h3>
+              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={detailInvoices} locale={{ emptyText: "暂无开票记录" }} columns={[
+                { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
+                { title: "请票单号", dataIndex: "serial_no", width: 150 },
+                { title: "发票号码", width: 150, render: (_: unknown, row: Contract) => (row.data as any).invoice_no || "—" },
+                { title: "开票日期", width: 120, render: (_: unknown, row: Contract) => (row.data as any).invoice_date || "—" },
+                { title: "开票金额", width: 110, render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0) },
+                { title: "官费", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0) },
+                { title: "代理费", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).agency_amount || 0) },
+                { title: "其他费用", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0) },
+                { title: "状态", dataIndex: "status", width: 110 },
+                { title: "备注", dataIndex: "description", width: 180 },
+              ]} />
+            </section>
+            <section className="contract-record-section">
+              <h3>付款记录</h3>
+              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={detailPayments} locale={{ emptyText: "暂无付款记录" }} columns={[
+                { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
+                { title: "申请单号", dataIndex: "serial_no", width: 150 },
+                { title: "申请人", width: 120, render: (_: unknown, row: Contract) => (row.data as any).applicant || row.owner || "—" },
+                { title: "待付金额", width: 110, render: (_: unknown, row: Contract) => amount((row.data as any).pending_amount || 0) },
+                { title: "付款日期", width: 120, render: (_: unknown, row: Contract) => (row.data as any).payment_date || "—" },
+                { title: "付款单据", width: 140, render: (_: unknown, row: Contract) => (row.data as any).payment_reference || "—" },
+                { title: "付款金额", width: 110, render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0) },
+                { title: "付款类型", width: 120, render: (_: unknown, row: Contract) => (row.data as any).payment_type || "—" },
+                { title: "官费", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0) },
+                { title: "其他费用", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0) },
+              ]} />
+            </section>
+          </div>
+        ) : (
+          <>
         <Descriptions
           bordered
           size="small"
@@ -1615,6 +1762,8 @@ export default function ContractCenterPage({
           {title:"备注",dataIndex:"remark",width:180,ellipsis:true},
           {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}><Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>{!viewing||["审批中","已归档"].includes(viewing.status)?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger>删除</Button></Popconfirm></>}</Space>},
         ]} dataSource={contractObjects} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的" />}
+          </>
+        )}
       </Modal>
       <Modal open={Boolean(objectEditing)} title={objectEditing?.id?"修改合同标的":"新增合同标的"} okText="保存" cancelText="取消" onCancel={()=>{setObjectEditing(null);objectForm.resetFields()}} onOk={()=>void saveContractObject()}>
         <Form form={objectForm} layout="vertical"><Form.Item name="case_record_id" label="关联案件" rules={[{required:true,message:"请选择合同客户下的案件"}]}><Select showSearch optionFilterProp="label" options={objectCases.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item name="fee_type" label="费用类型" rules={[{required:true}]}><Input/></Form.Item><Form.Item name="amount" label="费用金额" rules={[{required:true}]}><InputNumber min={0} precision={2} style={{width:"100%"}}/></Form.Item><Form.Item name="remark" label="备注"><Input.TextArea rows={3}/></Form.Item></Form>
