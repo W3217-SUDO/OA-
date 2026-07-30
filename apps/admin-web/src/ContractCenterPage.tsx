@@ -99,6 +99,7 @@ type Change = {
 };
 type Profile = { username: string; display_name: string; department: string; role: string };
 type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
+type ApproverSetting = { username: string; display_name: string; department: string; position: string; selected: boolean };
 type LinkedCustomerContext = { id: number; name: string; serial_no?: string; at?: number };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
@@ -160,6 +161,11 @@ export default function ContractCenterPage({
     [contractEvents, setContractEvents] = useState<ContractEvent[]>([]),
     [eventTarget, setEventTarget] = useState<Contract | null>(null);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
+  const [approverSettingsOpen, setApproverSettingsOpen] = useState(false);
+  const [approverSettings, setApproverSettings] = useState<ApproverSetting[]>([]);
+  const [selectedApproverUsernames, setSelectedApproverUsernames] = useState<string[]>([]);
+  const [approverSettingsLoading, setApproverSettingsLoading] = useState(false);
+  const [approverSettingsSaving, setApproverSettingsSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
   type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
@@ -309,6 +315,12 @@ export default function ContractCenterPage({
   useEffect(() => {
     if (initialView !== "contract-new") {
       setOpen(false);
+      return;
+    }
+    // A customer-side “新增合同” always starts a new draft for that customer.
+    // It must not restore an unfinished draft belonging to a different customer.
+    if (getContractCustomerContext()) {
+      startCreate();
       return;
     }
     const savedId = Number(localStorage.getItem(WIZARD_STORAGE_KEY) || 0);
@@ -1184,6 +1196,46 @@ export default function ContractCenterPage({
     value: user.username,
     label: user.display_name || user.username,
   }));
+  const openApproverSettings = async () => {
+    if (profile.role !== "admin") return;
+    setApproverSettingsOpen(true);
+    setApproverSettingsLoading(true);
+    try {
+      const response = await api.get("/contracts/approver-settings");
+      const items = (response.data.items || []) as ApproverSetting[];
+      setApproverSettings(items);
+      setSelectedApproverUsernames(items.filter((item) => item.selected).map((item) => item.username));
+    } catch (error: any) {
+      setApproverSettingsOpen(false);
+      message.error(error?.response?.data?.detail || "合同审批人配置加载失败");
+    } finally {
+      setApproverSettingsLoading(false);
+    }
+  };
+  const saveApproverSettings = async () => {
+    setApproverSettingsSaving(true);
+    try {
+      await api.put("/contracts/approver-settings", { usernames: selectedApproverUsernames });
+      const directoryResponse = await api.get("/users/directory");
+      setDirectory((directoryResponse.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
+      setApproverSettingsOpen(false);
+      message.success("合同审批人设置已保存");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同审批人设置保存失败");
+    } finally {
+      setApproverSettingsSaving(false);
+    }
+  };
+  const contractApproverLabel = (
+    <Space size={4}>
+      <span>合同审批人</span>
+      {profile.role === "admin" && (
+        <Button type="link" size="small" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openApproverSettings(); }}>
+          设置审批人
+        </Button>
+      )}
+    </Space>
+  );
   const openRelatedCustomer = async (contract: Contract) => {
     const source = { id: Number(contract.data.customer_id) || undefined, serial_no: contract.data.customer_no, title: contract.customer };
     if (!source.id && !source.serial_no && !source.title) {
@@ -1318,7 +1370,7 @@ export default function ContractCenterPage({
                 { key: "type", label: "合同类别", children: wizardDraft.data.type },
               ] : []} />
               <Form form={submitForm} layout="vertical" className="contract-submit-form">
-                <Form.Item label="合同审批人" name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
+                <Form.Item label={contractApproverLabel} name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
                   <Select disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在人事中心为在职员工配置合同审批流程资格" />
                 </Form.Item>
                 <Form.Item label="提交说明" name="comment"><Input.TextArea disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} rows={3} /></Form.Item>
@@ -1678,8 +1730,8 @@ export default function ContractCenterPage({
               </Space>
             </Form.Item>
             <Form form={submitForm} layout="vertical" className="contract-submit-form">
-              <Form.Item label="合同审批人" name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
-                <Select disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在系统用户管理中为在职员工配置合同审批流程资格" />
+              <Form.Item label={contractApproverLabel} name="approvers" rules={[{required:true,message:"请选择一名合同审批人"}]}>
+                <Select disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员设置在职员工的合同审批资格" />
               </Form.Item>
               <Form.Item label="提交说明" name="comment"><Input.TextArea disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} rows={3} /></Form.Item>
             </Form>
@@ -1759,16 +1811,52 @@ export default function ContractCenterPage({
       >
         <Form form={submitForm} layout="vertical">
           <Form.Item
-            label="合同审批人"
+            label={contractApproverLabel}
             name="approvers"
             rules={[{ required: true }]}
           >
-            <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员在系统用户管理中为在职员工配置合同审批流程资格" />
+            <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择合同审批流程人员" notFoundContent="没有可用审批人，请由管理员设置在职员工的合同审批资格" />
           </Form.Item>
           <Form.Item label="提交说明" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        width={760}
+        open={approverSettingsOpen}
+        title="设置合同审批人"
+        okText="保存设置"
+        cancelText="取消"
+        confirmLoading={approverSettingsSaving}
+        onOk={saveApproverSettings}
+        onCancel={() => setApproverSettingsOpen(false)}
+      >
+        <Alert
+          type="info"
+          showIcon
+          title="仅管理员可以配置"
+          description="勾选的启用、在职员工会出现在合同审批人下拉框中。admin 始终保留最高审批权限，不受本设置影响。"
+          style={{ marginBottom: 16 }}
+        />
+        <Table
+          rowKey="username"
+          size="small"
+          loading={approverSettingsLoading}
+          pagination={false}
+          dataSource={approverSettings}
+          rowSelection={{
+            selectedRowKeys: selectedApproverUsernames,
+            onChange: (keys) => setSelectedApproverUsernames(keys.map(String)),
+          }}
+          columns={[
+            { title: "姓名", dataIndex: "display_name", render: (value: string, row: ApproverSetting) => value || row.username },
+            { title: "登录账号", dataIndex: "username" },
+            { title: "部门", dataIndex: "department", render: (value: string) => value || "—" },
+            { title: "职务", dataIndex: "position", render: (value: string) => value || "—" },
+          ]}
+          locale={{ emptyText: "暂无可配置的启用、在职员工" }}
+        />
       </Modal>
       <Modal
         width={680}
