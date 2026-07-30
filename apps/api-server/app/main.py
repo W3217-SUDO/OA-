@@ -1362,6 +1362,7 @@ class CaseNormalBasicInput(BaseModel):
     investigator: str = Field(default="", max_length=128)
     investigation_clue_ids: list[int] = Field(default_factory=list, max_length=50)
     right_type: str = Field(default="", max_length=128)
+    source_person: str = Field(default="", max_length=128)
     comment: str = Field(default="", max_length=500)
 
 
@@ -2711,6 +2712,7 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
     resolved_labels: list[str] = []
     resolved_usernames: list[str] = []
     invalid: list[str] = []
+    non_lawyers: list[str] = []
     for label in labels:
         user = by_username.get(label)
         if not user:
@@ -2719,13 +2721,19 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
         if not user:
             invalid.append(label)
             continue
-        # Preserve the UI's submitted label for backward-compatible display;
-        # the parallel username list below is the authoritative ACL identity.
-        resolved_labels.append(label)
+        position = str((user.profile or {}).get("position") or (user.profile or {}).get("staff_role") or "").strip()
+        if field_name == "经办律师" and ("律师" not in position or "助理" in position):
+            non_lawyers.append(label)
+            continue
+        # Persist a stable, human-readable display value; usernames remain the
+        # authoritative ACL identity and are what new selection controls submit.
+        resolved_labels.append(user.display_name)
         if user.username not in resolved_usernames:
             resolved_usernames.append(user.username)
     if invalid:
         raise HTTPException(status_code=422, detail=f"{field_name}不存在、已停用或姓名不唯一：{'、'.join(invalid)}")
+    if non_lawyers:
+        raise HTTPException(status_code=422, detail=f"经办律师必须从系统已创建且在职的律师中选择：{'、'.join(non_lawyers)}")
     return resolved_labels, resolved_usernames
 
 
@@ -12020,6 +12028,12 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     # 防止旧租户尚未配置案件文件类型时页面提交无效的静态分类。
     if not any(item["value"] == "普通附件" for item in serialized_case_file_types):
         serialized_case_file_types.append({"value": "普通附件", "label": "普通附件", "code": "COMMON", "parent_code": ""})
+    active_users = (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
+    people_options = [
+        {"value": item.username, "label": f"{item.display_name}（{item.department}）", "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip()}
+        for item in active_users
+    ]
+    lawyer_options = [item for item in people_options if "律师" in item["position"] and "助理" not in item["position"]]
     return {
         "case_types": [
             {"value": "民事案件", "label": "民事争议"},
@@ -12032,6 +12046,8 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
         "case_file_types": serialized_case_file_types,
         "courts": [{"value": item.name, "label": item.name, "code": item.code} for item in courts],
         "court_officers": [{"value": item.name, "label": item.name, "code": item.code, "court_code": (item.extra or {}).get("court_code", ""), "role": (item.extra or {}).get("role", ""), "phone": (item.extra or {}).get("phone", "")} for item in court_officers],
+        "case_lawyers": lawyer_options,
+        "case_assistants": people_options,
         "right_types": ["商标权", "专利权", "著作权", "不正当竞争", "商业秘密", "其他"],
     }
 
@@ -12195,7 +12211,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
             "client_position": client_position,
             "cause_or_charge": cause_or_charge,
             "right_type": right_type,
-            "source_person": contract_data.get("source_person") or contract.owner,
+            "source_person": body.source_person.strip() or contract_data.get("source_person") or contract.owner,
             "counsel_type": counsel_type,
             "counsel_start": str(body.counsel_start) if body.counsel_start else "",
             "counsel_end": str(body.counsel_end) if body.counsel_end else "",

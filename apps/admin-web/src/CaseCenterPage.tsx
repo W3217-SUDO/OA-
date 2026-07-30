@@ -229,6 +229,8 @@ export default function CaseCenterPage({
   const [caseTypeOptions, setCaseTypeOptions] = useState<{value:string;label:string}[]>([]);
   const [causeOptions, setCauseOptions] = useState<{value:string;label:string}[]>([]);
   const [rightTypeOptions, setRightTypeOptions] = useState<{value:string;label:string}[]>([]);
+  const [caseLawyerOptions, setCaseLawyerOptions] = useState<{value:string;label:string}[]>([]);
+  const [caseAssistantOptions, setCaseAssistantOptions] = useState<{value:string;label:string}[]>([]);
   const [profile, setProfile] = useState<Profile>(() => {
     try {
       const stored = JSON.parse(localStorage.getItem("user") || "{}");
@@ -421,6 +423,8 @@ export default function CaseCenterPage({
       }
       setCourtOptions(referenceRes.data.courts || []);
       setCourtOfficerOptions(referenceRes.data.court_officers || []);
+      setCaseLawyerOptions(referenceRes.data.case_lawyers || []);
+      setCaseAssistantOptions(referenceRes.data.case_assistants || []);
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
       setCaseCustomers(customerRes.data.items || []);
       setCaseClues(clueRes.data.items || []);
@@ -477,8 +481,8 @@ export default function CaseCenterPage({
     createForm.setFieldsValue({
       status: "新案待分配",
       owner: profile.username || "admin",
-      handling_lawyers: [operator],
-      assistant: operator,
+      handling_lawyers: [],
+      assistant: undefined,
       case_type: createRouteType,
       client_position: isCounselCreate ? "" : isCriminalCreate ? "被告人/犯罪嫌疑人" : "原告/申请人",
       contract_record_id: contractPrefill?.id,
@@ -536,6 +540,7 @@ export default function CaseCenterPage({
           client_position: isCounselCreate ? "" : values.client_position || "",
           cause_or_charge: isCounselCreate ? "" : String(values.cause_or_charge || "").trim(),
           right_type: isCounselCreate ? "" : String(values.right_type || "").trim(),
+          source_person: String(values.source_person || "").trim(),
           counsel_type: isCounselCreate ? String(values.counsel_type || "").trim() : "",
           counsel_start: isCounselCreate ? values.counsel_range[0].format("YYYY-MM-DD") : null,
           counsel_end: isCounselCreate ? values.counsel_range[1].format("YYYY-MM-DD") : null,
@@ -2028,13 +2033,13 @@ export default function CaseCenterPage({
                       {contracts.map((row) => <Select.Option key={row.id} value={row.id} label={`${row.serial_no}｜${row.customer}｜${row.title}`}>{row.serial_no}｜{row.customer}｜{row.title}</Select.Option>)}
                     </Select>
                   </Form.Item>
-                  <Form.Item label="案源人" name="source_person"><Input disabled value={selectedCreateContract?.data?.source_person||selectedCreateContract?.owner||""} placeholder="由关联合同自动带入" /></Form.Item>
+                  <Form.Item label="案源人" name="source_person"><Input placeholder="由关联合同自动带入，可按本案实际情况修改" maxLength={128} /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
                   {isCounselCreate && <><Form.Item label="顾问类型" name="counsel_type" rules={[{ required: true }]}><Input placeholder="请输入顾问类型" /></Form.Item><Form.Item label="顾问期限" name="counsel_range" rules={[{ required: true }]}><DatePicker.RangePicker style={{ width: "100%" }} /></Form.Item></>}
                   <Form.Item label="案件名称" name="title" rules={[{ required: true }]}><Input placeholder="请输入案件名称" /></Form.Item>
                   {!isCounselCreate && <Form.Item label="案件阶段" name="status"><Select disabled options={caseStatuses.map((value) => ({ value, label: value === "新案待分配" ? "待分配" : value }))} /></Form.Item>}
-                  <Form.Item label="经办律师" name="handling_lawyers" rules={[{ required: true }]}><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="请选择或录入经办律师" /></Form.Item>
-                  <Form.Item label="律师助理" name="assistant"><Input placeholder="请输入律师助理" /></Form.Item>
+                  <Form.Item label="经办律师" name="handling_lawyers" rules={[{ required: true, message: "请选择系统已创建的在职律师" }]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="请选择系统已创建的在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" /></Form.Item>
+                  <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
                   {!isCriminalCreate && !isCounselCreate && <Form.Item label="权利类型" name="right_type"><Select allowClear showSearch optionFilterProp="label" placeholder="请选择权利类型" options={rightTypeOptions} /></Form.Item>}
                 </div>
               </div>
@@ -2348,13 +2353,15 @@ export default function CaseCenterPage({
           </Form.Item>
           <Form.Item label="经办律师" name="handling_lawyers">
             <Select
-              mode="tags"
-              tokenSeparators={[",", "，"]}
-              placeholder="输入姓名后回车，可添加多人"
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              options={caseLawyerOptions}
+              placeholder="请选择系统已创建的在职律师"
             />
           </Form.Item>
           <Form.Item label="律师助理" name="assistant">
-            <Input />
+            <Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" />
           </Form.Item>
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
@@ -2690,8 +2697,8 @@ export default function CaseCenterPage({
       <Modal width={680} open={batchUpdateOpen} title={`批量修改法律顾问案件（已选 ${selectedCaseKeys.length} 个）`} okText="确定" cancelText="取消" onOk={submitCounselBatchUpdate} onCancel={()=>setBatchUpdateOpen(false)}>
         <Alert type="warning" showIcon title="只填写需要统一修改的字段；未填写字段保持原值。已进入归档流程的案件会被整体阻断。" style={{marginBottom:12}}/>
         <Form form={batchUpdateForm} layout="vertical">
-          <Form.Item label="经办律师" name="handling_lawyers"><Select mode="tags" tokenSeparators={[",","，"]} placeholder="不修改则留空"/></Form.Item>
-          <div className="form-grid"><Form.Item label="律师助理" name="assistant"><Input placeholder="不修改则留空"/></Form.Item><Form.Item label="案件阶段" name="case_stage"><Input placeholder="不修改则留空"/></Form.Item></div>
+          <Form.Item label="经办律师" name="handling_lawyers"><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="不修改则留空"/></Form.Item>
+          <div className="form-grid"><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="不修改则留空"/></Form.Item><Form.Item label="案件阶段" name="case_stage"><Input placeholder="不修改则留空"/></Form.Item></div>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -2721,8 +2728,8 @@ export default function CaseCenterPage({
           <Form.Item label="顾问类型" name="counsel_type" rules={[{required:true,message:"请输入顾问类型"}]}><Input /></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input /></Form.Item>
           <Form.Item label="顾问期限" name="counsel_range" rules={[{required:true,message:"请选择顾问期限"}]}><DatePicker.RangePicker style={{width:"100%"}} /></Form.Item>
-          <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请录入经办律师"}]}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>
-          <Form.Item label="律师助理" name="assistant"><Input /></Form.Item>
+          <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
+          <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -2745,8 +2752,8 @@ export default function CaseCenterPage({
           <Form.Item label={editingNormalCase?.data.case_type === "刑事案件" ? "罪名/案由" : "案由"} name="cause_or_charge" rules={[{required:true,message:"请输入案由或罪名"}]}><Input/></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
-            <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请录入经办律师"}]}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>
-            <Form.Item label="律师助理" name="assistant"><Input/></Form.Item>
+            <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
+            <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
             <Form.Item label="调查员" name="investigator"><Input/></Form.Item>
             {editingNormalCase?.data.case_type === "民事案件" && <Form.Item label="案源人" name="business_owner"><Input/></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
@@ -2760,7 +2767,7 @@ export default function CaseCenterPage({
         <Form form={arbitrationBasicForm} layout="vertical">
           <div className="form-grid"><Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}><Select options={caseStatuses.map(value=>({value,label:value}))}/></Form.Item></div>
           <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
-          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请录入经办律师"}]}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item><Form.Item label="律师助理" name="assistant"><Input/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item></div>
+          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item></div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>

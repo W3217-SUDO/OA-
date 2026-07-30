@@ -1226,8 +1226,10 @@ def main() -> None:
     assert 'api.put(`/cases/${createdCaseId}/judicial`' in normalized_case, "criminal judicial step must submit through its dedicated endpoint"
     for token in (
         'client_position:isCounselCreate?"":isCriminalCreate?"被告人/犯罪嫌疑人":"原告/申请人"',
-        'handling_lawyers:[operator]',
-        'assistant:operator',
+        'handling_lawyers:[]',
+        'assistant:undefined',
+        'options={caseLawyerOptions}',
+        'placeholder="请选择系统已创建的在职律师"',
         'if(isCreateView)startCreate();',
     ):
         assert token in normalized_case, f"criminal create lifecycle contract missing: {token}"
