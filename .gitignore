@@ -4,6 +4,7 @@
 !.env.production.example
 .agents/
 .codegraph/
+.superpowers/
 .tmp/
 .tmp-docx/
 sfhc/
