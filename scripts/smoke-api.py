@@ -10,6 +10,7 @@ import json
 import io
 import os
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -220,6 +221,22 @@ def local_db_scalar(sql: str, *, label: str) -> int:
 def passed(name: str):
     PASSED.append(name)
     print(f"[PASS] {name}")
+
+
+def smoke_hr_deletion_impact():
+    """Focused regression check that leaves the test server data unchanged."""
+    global TOKEN
+    if not PASSWORD:
+        raise RuntimeError("SMOKE_PASSWORD 未配置；请在本机 .env 中设置测试账号密码")
+    call("GET", f"{BASE}/health", expected=(200,))
+    TOKEN = login(USERNAME, PASSWORD)["access_token"]
+    employees = call("GET", "/records?module=hr&page_size=1")["items"]
+    if not employees:
+        raise AssertionError("缺少可用于删除影响预检的员工档案")
+    impact = call("GET", f"/hr/employees/{employees[0]['id']}/deletion-impact")
+    assert isinstance(impact["deletable"], bool)
+    assert isinstance(impact["blockers"], list)
+    passed("员工删除影响预检接口")
 
 
 def contract_approve_as(username: str, contract_id: int, approved: bool, comment: str, *, expected=(200,)):
@@ -3591,6 +3608,8 @@ def main():
         atomic_employee = call("POST", "/hr/employees", {"username": atomic_employee_name, "display_name": "原子新建员工", "employee_no": serial("HR-ATOMIC"), "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "manager", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号", "joined_at": str(date.today()), "mobile": "13800000001"}}, expected=(201,))
         users.append(atomic_employee["user"]["id"]); records.append(atomic_employee["employee"]["id"])
         assert atomic_employee["employee"]["owner"] == atomic_employee_name and atomic_employee["user"]["username"] == atomic_employee_name and atomic_employee["user"]["role"] == "user"
+        deletion_impact = call("GET", f"/hr/employees/{atomic_employee['employee']['id']}/deletion-impact")
+        assert deletion_impact == {"deletable": True, "blockers": []}
         call("PATCH", f"/system/users/{atomic_employee['user']['id']}", {"is_active": False}, expected=(409,))
         call("DELETE", f"/system/users/{atomic_employee['user']['id']}", expected=(409,))
         call("POST", "/hr/employees", {"username": f"duplicate_no_{suffix}".lower(), "display_name": "重复员工号", "employee_no": atomic_employee["employee"]["serial_no"], "company": "上海申浩律师事务所", "department": active_department["name"], "password": "SmokePass2026!", "role": "user", "position": active_job_role["name"], "is_active": True, "account_type": "员工账号", "data": {"account_type": "员工账号"}}, expected=(409,))
@@ -3799,4 +3818,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--group" in sys.argv:
+        group = sys.argv[sys.argv.index("--group") + 1]
+        if group != "hr_lifecycle":
+            raise SystemExit(f"未知冒烟分组：{group}")
+        smoke_hr_deletion_impact()
+    else:
+        main()

@@ -14690,6 +14690,47 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
 
 
+async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, identity: dict, db: AsyncSession) -> tuple[list[dict[str, object]], User | None]:
+    """Return every conservative deletion blocker used by both HR preflight and delete."""
+    username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+    blockers: list[dict[str, object]] = []
+    user = await db.scalar(select(User).where(User.username == username)) if username else None
+    if username == identity["username"].lower() or username == "admin" or (user and user.role == "admin"):
+        blockers.append({"kind": "受保护登录账号", "count": 1, "records": [username or employee.serial_no]})
+    subrecord_count = int((await db.scalar(select(func.count()).select_from(HrSubrecord).where(HrSubrecord.employee_id == employee.id))) or 0)
+    if subrecord_count:
+        rows = list((await db.scalars(select(HrSubrecord).where(HrSubrecord.employee_id == employee.id).order_by(HrSubrecord.id).limit(10))).all())
+        blockers.append({"kind": "员工附属记录", "count": subrecord_count, "records": [f"{row.kind}#{row.id}" for row in rows]})
+    attachment_count = int((await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == employee.id))) or 0)
+    if attachment_count:
+        rows = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == employee.id).order_by(FileAttachment.id).limit(10))).all())
+        blockers.append({"kind": "员工档案文件", "count": attachment_count, "records": [row.original_name for row in rows]})
+    reference_terms = [value for value in {username, employee.title.strip()} if value]
+    reference_conditions = [BusinessRecord.owner == username] if username else []
+    reference_conditions.extend(func.cast(BusinessRecord.data, String).ilike(f"%{value}%") for value in reference_terms)
+    if reference_conditions:
+        reference_filter = (
+            BusinessRecord.id != employee.id,
+            BusinessRecord.module.in_({"case", "task", "investigation", "contract", "seal", "finance"}),
+            or_(*reference_conditions),
+        )
+        reference_count = int((await db.scalar(select(func.count()).select_from(BusinessRecord).where(*reference_filter))) or 0)
+        if reference_count:
+            rows = list((await db.scalars(select(BusinessRecord).where(*reference_filter).order_by(BusinessRecord.id).limit(10))).all())
+            blockers.append({"kind": "可能业务关联", "count": reference_count, "records": [row.serial_no for row in rows]})
+    return blockers, user
+
+
+@app.get(f"{settings.api_prefix}/hr/employees/{{employee_id}}/deletion-impact")
+async def get_hr_employee_deletion_impact(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    employee = await db.get(BusinessRecord, employee_id)
+    if not employee or employee.module != "hr":
+        raise HTTPException(status_code=404, detail="员工档案不存在")
+    blockers, _ = await _collect_hr_employee_deletion_blockers(employee, identity, db)
+    return {"deletable": not blockers, "blockers": blockers}
+
+
 @app.delete(f"{settings.api_prefix}/hr/employees/{{employee_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Old Staff/Delete parity: delete only an unreferenced employee and linked login atomically."""
@@ -14697,29 +14738,9 @@ async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_
     employee = await db.get(BusinessRecord, employee_id)
     if not employee or employee.module != "hr":
         raise HTTPException(status_code=404, detail="员工档案不存在")
-    username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
-    if username == identity["username"].lower() or username == "admin":
-        raise HTTPException(status_code=409, detail="不能删除当前登录或系统管理员员工档案")
-    related_subrecords = await db.scalar(select(func.count()).select_from(HrSubrecord).where(HrSubrecord.employee_id == employee.id))
-    related_attachments = await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == employee.id))
-    if (related_subrecords or 0) + (related_attachments or 0) > 0:
-        raise HTTPException(status_code=409, detail=f"员工仍有 {related_subrecords or 0} 条附属记录和 {related_attachments or 0} 个档案文件，请先逐项清理")
-    reference_terms = [value for value in {username, employee.title.strip()} if value]
-    reference_conditions = [BusinessRecord.owner == username] if username else []
-    for value in reference_terms:
-        reference_conditions.append(func.cast(BusinessRecord.data, String).ilike(f"%{value}%"))
-    referenced = []
-    if reference_conditions:
-        referenced = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.id != employee.id,
-            BusinessRecord.module.in_({"case", "task", "investigation", "contract", "seal", "finance"}),
-            or_(*reference_conditions),
-        ).limit(10))).all())
-    if referenced:
-        raise HTTPException(status_code=409, detail="案件或业务中仍关联该员工，不允许删除：" + "、".join(item.serial_no for item in referenced))
-    user = await db.scalar(select(User).where(User.username == username)) if username else None
-    if user and user.role == "admin":
-        raise HTTPException(status_code=409, detail="不能删除系统管理员员工档案")
+    blockers, user = await _collect_hr_employee_deletion_blockers(employee, identity, db)
+    if blockers:
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))
     await db.delete(employee)
     if user:
