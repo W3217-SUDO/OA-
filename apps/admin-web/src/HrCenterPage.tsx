@@ -113,7 +113,8 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const deleteEmployee=async()=>{if(!deletingEmployee||!deletionImpact?.deletable)return;try{await api.delete(`/hr/employees/${deletingEmployee.id}`);if(viewing?.id===deletingEmployee.id)setViewing(null);message.success('员工档案及未被引用的关联登录账号已删除');setDeletingEmployee(null);setDeletionImpact(null);await load()}catch(error:any){const impact=error?.response?.data;if(impact?.blockers)setDeletionImpact(impact);else message.error(error?.response?.data?.detail||'删除员工失败')}}
   const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number]) => {
     if(!deletingEmployee)return
-    const tab=blocker.kind==='员工档案文件'?'archive':blocker.kind.includes('请假')?'leave':blocker.kind.includes('提成')?'commission':'matter'
+    const marker=blocker.records.find(record=>/^(leave|matter|commission)#/i.test(record))||''
+    const tab=blocker.kind==='员工档案文件'?'archive':/^leave#/i.test(marker)||blocker.kind.includes('请假')?'leave':/^commission#/i.test(marker)||blocker.kind.includes('提成')?'commission':/^matter#/i.test(marker)?'matter':'matter'
     setDetailTab(tab);setViewing(deletingEmployee);setDeletingEmployee(null);setDeletionImpact(null)
   }
   const openPasswordReset=(row:Employee)=>{if(row.id<0){message.error('请先补建正式员工档案后再重置密码');return}passwordResetForm.resetFields();setResettingEmployee(row)}

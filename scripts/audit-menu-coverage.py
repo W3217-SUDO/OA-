@@ -3528,12 +3528,14 @@ def main() -> None:
         'const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number]) => {',
         "blocker.kind==='员工附属记录'",
         "blocker.kind==='员工档案文件'",
+        'const marker=blocker.records.find(record=>/^(leave|matter|commission)#/i.test(record))||\'\'',
+        '/^commission#/i.test(marker)',
         '去清理',
         'activeKey={detailTab}',
         '员工附属记录和员工档案文件可直接进入当前员工的对应维护页签；业务关联仅作说明，仍须在原业务流程中处理。',
     ):
         assert token in HR, f"Employee deletion blocker cleanup modal contract missing: {token}"
-    print("HR_DELETE_BLOCKER_CLEANUP_OK: cleanable HR blockers link to filtered employee record tabs without bypassing business lifecycle")
+    print("HR_DELETE_BLOCKER_CLEANUP_OK: cleanable HR blockers map each returned record kind to its maintenance tab without bypassing business lifecycle")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")
 
 
