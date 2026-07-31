@@ -27,6 +27,7 @@ type Department = {
   code: string;
   name: string;
   manager: string;
+  overdue_deduction: boolean;
   permissions: string[];
   permission_source_department_id?: number | null;
   sort_order: number;
@@ -306,6 +307,7 @@ export default function OrganizationCenterPage({
     { title: "序号", key: "no", width: 70, render: (_v, _r, i) => i + 1 },
     { title: "部门名称", dataIndex: "name", width: 180 },
     { title: "部门代码", dataIndex: "code", width: 150 },
+    { title: "是否逾期扣款", dataIndex: "overdue_deduction", width: 120, render: (value) => value ? "是" : "否" },
     {
       title: "部门负责人",
       dataIndex: "manager",
@@ -554,6 +556,9 @@ export default function OrganizationCenterPage({
               </Form.Item>
               <Form.Item label="部门负责人" name="manager">
                 <Input />
+              </Form.Item>
+              <Form.Item label="是否逾期扣款" name="overdue_deduction" valuePropName="checked">
+                <Switch checkedChildren="是" unCheckedChildren="否" />
               </Form.Item>
               <Form.Item
                 label="排序号"

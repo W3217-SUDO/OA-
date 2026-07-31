@@ -336,6 +336,9 @@ def _upgrade_schema(connection) -> None:
     if "is_test" not in custom_import_batch_columns:
         connection.execute(text("ALTER TABLE ipr_case_file_custom_import_batches ADD COLUMN is_test BOOLEAN NOT NULL DEFAULT FALSE"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ipr_case_file_custom_import_batches_is_test ON ipr_case_file_custom_import_batches (is_test)"))
+    department_columns = {item["name"] for item in inspect(connection).get_columns("departments")}
+    if "overdue_deduction" not in department_columns:
+        connection.execute(text("ALTER TABLE departments ADD COLUMN overdue_deduction BOOLEAN NOT NULL DEFAULT FALSE"))
     user_columns = {item["name"] for item in inspect(connection).get_columns("users")}
     if "department" not in user_columns:
         connection.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(64) NOT NULL DEFAULT '上海分所'"))
@@ -886,6 +889,7 @@ class DepartmentInput(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
     manager: str = Field(default="", max_length=64)
+    overdue_deduction: bool = False
     sort_order: int = Field(default=0, ge=0, le=99999)
     is_active: bool = True
 
@@ -894,6 +898,7 @@ class DepartmentUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=128)
     manager: str | None = Field(default=None, max_length=64)
+    overdue_deduction: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=99999)
     is_active: bool | None = None
 
@@ -14553,7 +14558,7 @@ async def delete_seal_asset(asset_id: int, identity: dict = Depends(current_iden
 
 
 def _department_dict(item: Department) -> dict:
-    return {"id": item.id, "code": item.code, "name": item.name, "manager": item.manager, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
+    return {"id": item.id, "code": item.code, "name": item.name, "manager": item.manager, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 def _job_role_dict(item: JobRole) -> dict:

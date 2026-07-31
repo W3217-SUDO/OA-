@@ -13,6 +13,7 @@ class Department(Base):
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     manager: Mapped[str] = mapped_column(String(64), default="")
+    overdue_deduction: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by: Mapped[str] = mapped_column(String(64), default="system")
