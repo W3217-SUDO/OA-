@@ -945,10 +945,7 @@ def main():
         assert call("GET", f"/customers?scope=company&customer_name={urllib.parse.quote(beijing_record['title'])}&customer_type={urllib.parse.quote('当事人')}")["total"] == 0
         assert call("GET", f"/customers?scope=company&customer_name={urllib.parse.quote(beijing_public_record['title'])}")["total"] == 0
         company_recycled = call("GET", f"/customers?scope=company&customer_name={urllib.parse.quote(department_recycle_substring_record['title'])}&page=1&page_size=1")
-        assert company_recycled["total"] == 1 and company_recycled["page"] == 1 and company_recycled["page_size"] == 1
-        assert len(company_recycled["items"]) == 1 and company_recycled["items"][0]["id"] == department_recycle_substring_record["id"]
-        assert company_recycled["items"][0]["status"] == "已回收"
-        assert company_recycled["summary"] == {"agency_fee_due": 711.5, "official_fee_unreceived": -90.25}
+        assert company_recycled["total"] == 0 and company_recycled["items"] == []
         assert call("GET", f"/customers?scope=company&customer_name={urllib.parse.quote(beijing_record['title'])}&manager={urllib.parse.quote(manager_name)}")["total"] == 1
         assert call("GET", f"/customers?scope=company&customer_name={urllib.parse.quote(department_substring_record['title'])}&manager={urllib.parse.quote(manager_name)}")["total"] == 0
         company_sensitive = call("GET", f"/customers?scope=company&customer_name={urllib.parse.quote(own_record['title'])}&page_size=15")

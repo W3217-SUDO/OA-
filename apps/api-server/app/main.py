@@ -9121,10 +9121,8 @@ async def list_customers(
             raise HTTPException(status_code=403, detail="当前角色不能查看最近更新的客户")
         conditions.append(BusinessRecord.status != "公海")
     elif scope == "company":
-        # The original company list is a full-firm register and includes rows
-        # displayed as “已删除” (our persisted ``已回收`` status).  Public-pool
-        # customers remain isolated on the separate 公海客户 page.
-        conditions.append(BusinessRecord.status != "公海")
+        # Recycled (deleted) and public-pool customers have dedicated lists.
+        conditions.append(BusinessRecord.status.not_in(["已回收", "公海"]))
     else:
         conditions.append(BusinessRecord.status.not_in(["已回收", "公海"]))
     if scope in {"department", "department_recycle"}:
