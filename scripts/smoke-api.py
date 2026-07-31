@@ -1065,8 +1065,8 @@ def main():
             "contract": (["业务编号", "合同名称", "客户/主体", "合同类型", "合同金额", "签订日期", "外部合同号", "负责人", "部门", "说明"], [serial("IMPORT-CONTRACT"), "冒烟导入合同", "冒烟导入客户", "专项服务", "10000.00", str(date.today()), serial("EXT"), USERNAME, "上海分所", suffix]),
             "case": (["业务编号", "案件名称", "关联合同号", "案件类型", "对方当事人", "法院", "负责人", "说明"], [serial("IMPORT-CASE"), "冒烟导入案件", "HT2026060097", "民事案件", "冒烟对方", "上海知识产权法院", USERNAME, suffix]),
             "task": (["业务编号", "任务内容", "客户/主体", "截止日期", "优先级", "来源", "关联案号", "负责人", "协作人", "部门", "说明"], [serial("IMPORT-TASK"), "冒烟导入任务", "冒烟导入客户", str(date.today() + timedelta(days=7)), "普通", "日常任务", "SH191000382B", USERNAME, f"{manager_name}、{member_name}", "上海分所", suffix]),
-            "document": (["业务编号", "文件名称", "客户/主体", "收发类型", "文件日期", "关联案号", "来文/送达单位", "负责人", "部门", "说明"], [serial("IMPORT-DOC"), "冒烟导入收文", "光明乳业股份有限公司", "收文", str(date.today()), "SH191000382B", "上海市冒烟人民法院", USERNAME, "上海分所", suffix]),
-            "finance": (["业务编号", "费用名称", "客户/主体", "费用类型", "金额", "关联案号", "经办人", "部门", "说明"], [serial("IMPORT-FEE"), "冒烟导入费用", "光明乳业股份有限公司", "官方费用", "88.80", "SH191000382B", USERNAME, "上海分所", suffix]),
+            "document": (["业务编号", "文件名称", "客户/主体", "收发类型", "文件日期", "关联案号", "来文/送达单位", "负责人", "部门", "说明"], [serial("IMPORT-DOC"), "冒烟导入收文", "光明乳业股份有限公司", "收文", str(date.today()), "", "上海市冒烟人民法院", USERNAME, "上海分所", suffix]),
+            "finance": (["业务编号", "费用名称", "客户/主体", "费用类型", "金额", "关联案号", "经办人", "部门", "说明"], [serial("IMPORT-FEE"), "冒烟导入费用", "光明乳业股份有限公司", "官方费用", "88.80", "", USERNAME, "上海分所", suffix]),
             "hr": (["员工编号", "姓名", "状态", "部门", "岗位", "联系电话", "入职日期", "用工类型", "证件号码", "邮箱", "说明"], [serial("IMPORT-HR"), "冒烟导入员工", "试用", "上海分所", "律师助理", "13800000000", str(date.today()), "全职", "", "smoke@example.com", suffix]),
             "warehouse": (["物品编号", "物品名称", "物品类别", "数量", "单位", "存放位置", "部门", "供应商", "说明"], [serial("IMPORT-WH"), "冒烟导入物品", "电子设备", "1", "台", "冒烟仓 A-01", "上海分所", "冒烟供应商", suffix]),
             "seal": (["申请编号", "申请标题", "客户/主体", "印章编号", "份数", "用途", "计划日期", "办理方式", "文件名称", "负责人", "部门", "说明"], [serial("IMPORT-SEAL"), "冒烟导入用印", "冒烟导入客户", "YZ-GZ-001", "2", "接口验收", str(date.today() + timedelta(days=1)), "现场用印", "测试文件", USERNAME, "上海分所", suffix]),
@@ -1082,7 +1082,7 @@ def main():
             invalid_row = ["" for _ in headers]
             content = ("\ufeff" + ",".join(headers) + "\r\n" + ",".join(valid_row) + "\r\n" + ",".join(invalid_row) + "\r\n").encode("utf-8")
             imported = multipart_upload(f"/records/import?module={module}", {}, f"{module}-{suffix}.csv", content, expected=(200,))
-            assert imported["created"] == 1 and imported["failed"] == 1 and imported["errors"][0]["row"] == 3
+            assert imported["created"] == 1 and imported["failed"] == 1 and imported["errors"][0]["row"] == 3, f"{module} import contract failed: {imported}"
             records.extend(item["id"] for item in imported["items"])
         task_headers = import_rows["task"][0]
         invalid_task_rows = [
@@ -1172,7 +1172,7 @@ def main():
                 "serial_no": serial(f"CONFLICT-{label}"),
                 "title": f"SMOKE利益检索案件-{label}-{suffix}",
                 "status": "新案待分配", "owner": USERNAME, "case_type": "刑事案件",
-                "cause_or_charge": "利益检索测试罪名", "handling_lawyers": [USERNAME],
+                "cause_or_charge": "利益检索测试罪名", "handling_lawyers": [manager_name],
                 "client_position": "被告人/犯罪嫌疑人",
             }, expected=(201,))
             records.append(created["id"])

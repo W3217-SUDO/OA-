@@ -1165,6 +1165,7 @@ class CaseCreateInput(BaseModel):
     counsel_start: date | None = None
     counsel_end: date | None = None
     handling_lawyers: list[str] = Field(default_factory=list, max_length=20)
+    source_person: str = Field(default="", max_length=128)
     assistant: str = ""
     investigator: str = ""
     investigation_clue: str = ""
