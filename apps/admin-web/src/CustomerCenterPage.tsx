@@ -951,6 +951,17 @@ export default function CustomerCenterPage({
         return <span title={managers}>{managers}</span>;
       },
     },
+    ...(initialView === "customer-shared" ? [{
+      title: "共享接收人",
+      key: "sharedRecipients",
+      width: 180,
+      align: "center" as const,
+      ellipsis: true,
+      render: (_: unknown, r: Customer) => {
+        const recipients = (r.data.shared_with || []).map(userLabel).join("、") || "—";
+        return <span title={recipients}>{recipients}</span>;
+      },
+    }] : []),
     {
       title: "建档日期",
       key: "fileDate",
