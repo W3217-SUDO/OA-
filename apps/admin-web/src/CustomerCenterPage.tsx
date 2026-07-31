@@ -823,7 +823,7 @@ export default function CustomerCenterPage({
       onOk: async () => {
         try {
           await api.post(`/customers/${row.id}/recycle`, {
-            comment: "我的客户：客户删除",
+            comment: `${initialView === "customer-company" ? "公司客户" : "客户"}：客户删除`,
           });
           message.success("客户已移入回收站");
           setSelectedRowKeys([]);
@@ -837,7 +837,6 @@ export default function CustomerCenterPage({
   const originalActionItems =
     initialView === "customer-mine"
       ? [
-          { key: "delete", label: "客户删除" },
           { key: "edit", label: "客户编辑" },
           { key: "contract", label: "新增合同" },
           { key: "level", label: "申请客户分级调整" },
@@ -847,7 +846,14 @@ export default function CustomerCenterPage({
           { key: "portal-close", label: "停用客户服务端" },
         ]
       : ["customer-dept", "customer-company"].includes(initialView)
-        ? [{ key: "assign", label: "分配客户" }, { key: "level-review", label: "审批客户分级" }, { key: "key-change-review", label: "审批关键字段变更" }, { key: "portal-open", label: "开通/重置客户服务端" }, { key: "portal-close", label: "停用客户服务端" }]
+        ? [
+            ...(initialView === "customer-company" ? [{ key: "edit", label: "客户编辑" }, { key: "delete", label: "客户删除" }] : []),
+            { key: "assign", label: "分配客户" },
+            { key: "level-review", label: "审批客户分级" },
+            { key: "key-change-review", label: "审批关键字段变更" },
+            { key: "portal-open", label: "开通/重置客户服务端" },
+            { key: "portal-close", label: "停用客户服务端" },
+          ]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"
@@ -1343,7 +1349,7 @@ export default function CustomerCenterPage({
                 <Form.Item label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
                   <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
                 </Form.Item>
-                <Form.Item label="客户联系人账号" name="contact"><Input /></Form.Item>
+                <Form.Item label="客户联系人账号" name="contact"><AutoComplete options={directoryOptions} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
               </div>
             </section>
           </Form>
@@ -1496,8 +1502,8 @@ export default function CustomerCenterPage({
             <Form.Item label="所属部门" name="department">
               <Input />
             </Form.Item>
-            <Form.Item label="主要联系人" name="contact">
-              <Input />
+            <Form.Item label="客户联系人账号" name="contact">
+              <AutoComplete options={directoryOptions} placeholder="输入姓名或账号，选择系统员工" />
             </Form.Item>
             <Form.Item label="联系电话" name="phone">
               <Input />
@@ -1534,6 +1540,7 @@ export default function CustomerCenterPage({
             </Form.Item>
             <div className="span-2"><b>控制信息</b></div>
             <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} placeholder="输入或选择人员" /></Form.Item>
+            <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
             <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
             <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
             <Form.Item className="span-2" label="备注" name="description">
@@ -1578,7 +1585,7 @@ export default function CustomerCenterPage({
         footer={<Button type="primary" onClick={() => setPortalResult(null)}>我已安全保存</Button>}
         closable={false}
       >
-        <Alert type="warning" showIcon message="激活码仅本次显示，请通过安全方式交付客户。再次开通会重置旧激活码。" />
+        <Alert type="warning" showIcon message="请将服务账号和一次性激活码一并交付客户；客户首次登录时需用二者设置密码。激活码仅本次显示，再次开通会重置旧激活码。" />
         <p style={{ marginTop: 16 }}><strong>服务账号：</strong>{portalResult?.account}</p>
         <p><strong>一次性激活码：</strong>{portalResult?.activation_code}</p>
       </Modal>

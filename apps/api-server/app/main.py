@@ -4187,9 +4187,8 @@ async def list_communication_attachments(communication_id: int, identity: dict =
 async def upload_communication_attachment(communication_id: int, file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _item, customer = await _communication_attachment_context(communication_id, identity, db)
     suffix = Path(file.filename or "").suffix.lower()
-    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
-    if suffix not in allowed:
-        raise HTTPException(status_code=422, detail="不支持的文件格式；文件夹请先压缩为 ZIP")
+    # Accept all ordinary file types. Browsers do not upload a directory as a
+    # file; a directory must still be compressed as ZIP before selection.
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
@@ -4900,7 +4899,25 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     data["customer_managers"] = [owner, *[manager for manager in managers if manager != owner]]
     serial_no = body.serial_no.strip()
     if not serial_no:
-        serial_no = f"KH{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:4].upper()}"
+        # Keep the customer coding convention visible in the original-system
+        # screenshots: SHKH + two-digit year + a five-digit running sequence.
+        serial_prefix = f"SHKH{datetime.now():%y}"
+        serial_candidates = (await db.scalars(
+            select(BusinessRecord.serial_no).where(
+                BusinessRecord.module == "customer",
+                BusinessRecord.serial_no.like(f"{serial_prefix}%"),
+            )
+        )).all()
+        serial_sequence = max(
+            (
+                int(item[len(serial_prefix):])
+                for item in serial_candidates
+                if item[len(serial_prefix):].isdigit()
+                and len(item[len(serial_prefix):]) == 5
+            ),
+            default=0,
+        ) + 1
+        serial_no = f"{serial_prefix}{serial_sequence:05d}"
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial_no)):
         raise HTTPException(status_code=409, detail="业务编号已存在")
     record = BusinessRecord(
@@ -9113,8 +9130,6 @@ async def list_customers(
     if scope in {"department", "department_recycle"}:
         if current_user.role not in {"admin", "manager"}:
             raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以查看部门客户")
-        if current_user.role == "manager":
-            conditions.append(BusinessRecord.department == current_user.department)
     elif scope in {"company", "company_recycle"} and current_user.role != "admin":
         detail = "只有系统管理员可以查看公司回收站" if scope == "company_recycle" else "只有系统管理员可以查看公司客户"
         raise HTTPException(status_code=403, detail=detail)
@@ -9156,16 +9171,35 @@ async def list_customers(
             return set()
         return {str(value).strip() for value in raw_managers if str(value).strip()}
 
-    # Personal customer pages are still semantic subsets for normal users. Administrators
-    # deliberately bypass that subset so their documented all-firm data access
-    # cannot be reduced by this dedicated endpoint.  Recycle-bin and public-pool
-    # rows remain on their own pages for every role.
-    if scope in {"mine", "recycle"} and current_user.role != "admin":
+    def customer_participants(item: BusinessRecord) -> set[str]:
+        data = item.data or {}
+        source = str(data.get("customer_source") or data.get("source_person") or "").strip()
+        return {str(item.owner or "").strip(), *exact_managers(item), source} - {""}
+
+    department_users = (await db.scalars(
+        select(User).where(User.is_active.is_(True), User.department == current_user.department)
+    )).all()
+    department_tokens = {
+        value
+        for user in department_users
+        for value in (str(user.username or "").strip(), str(user.display_name or "").strip())
+        if value
+    }
+
+    # “我的客户” means that the current user is either a customer manager or
+    # the source person; this applies to administrators too.
+    if scope in {"mine", "recycle"}:
         candidate_rows = [
             item
             for item in candidate_rows
-            if str(item.owner or "").strip() in manager_tokens
-            or bool(exact_managers(item) & manager_tokens)
+            if bool(customer_participants(item) & manager_tokens)
+        ]
+    # A department list is a projection of the personnel relationships shown
+    # in the screenshot, not merely the department stamped on the record.
+    if scope in {"department", "department_recycle"}:
+        candidate_rows = [
+            item for item in candidate_rows
+            if bool(customer_participants(item) & department_tokens)
         ]
     if scope == "shared":
         # “我的共享客户” contains only active customer rows with an explicit

@@ -23,6 +23,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
   const [editing,setEditing]=useState<Communication|null>(null)
   const [viewing,setViewing]=useState<Communication|null>(null)
   const [attachments,setAttachments]=useState<Attachment[]>([])
+  const [pendingAttachments,setPendingAttachments]=useState<File[]>([])
   const [attachmentLoading,setAttachmentLoading]=useState(false)
   const [form]=Form.useForm()
   const isAdmin=(()=>{try{return JSON.parse(localStorage.getItem('user')||'{}').role==='admin'}catch{return false}})()
@@ -44,6 +45,8 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
   const startCreate=()=>{
     setEditing(null)
     form.resetFields()
+    setAttachments([])
+    setPendingAttachments([])
     form.setFieldsValue({occurred_at:dayjs()})
     setOpen(true)
   }
@@ -54,6 +57,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
   }
   const startEdit=(row:Communication)=>{
     setEditing(row)
+    setPendingAttachments([])
     void loadAttachments(row.id)
     form.setFieldsValue({...row,occurred_at:dayjs(row.occurred_at)})
     setOpen(true)
@@ -67,20 +71,20 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
     try{
       const value=await form.validateFields()
       const payload={customer_record_id:value.customer_record_id,contact:value.contact||'',phone:value.phone||'',content:value.content,occurred_at:formatRequiredDate(value.occurred_at,'记录时间','YYYY-MM-DDTHH:mm:ss')}
-      if(editing)await api.patch(`/communications/${editing.id}`,payload);else await api.post('/communications',payload)
+      const response=editing ? await api.patch(`/communications/${editing.id}`,payload) : await api.post('/communications',payload)
+      const communicationId=editing?.id||response.data.id
+      for(const file of pendingAttachments) await uploadAttachment(file,communicationId,false)
       message.success(editing?'沟通记录已修改并同步到客户跟进':'沟通记录已新增并同步到客户跟进')
       setOpen(false)
       void load()
     }catch(error:any){if(error?.errorFields)return;message.error(error?.response?.data?.detail||error?.message||'保存失败')}
   }
   const remove=async(row:Communication)=>{try{await api.delete(`/communications/${row.id}`);message.success('沟通记录已删除并同步客户跟进');setOpen(false);setEditing(null);void load()}catch(error:any){message.error(error?.response?.data?.detail||'删除失败')}}
-  const uploadAttachment=async(file:File)=>{
-    if(!editing)return
-    const suffix=file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-    if(!['.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt','.png','.jpg','.jpeg','.zip','.rar'].includes(suffix)){message.error('不支持的文件格式；文件夹请先压缩为 ZIP');return}
+  const uploadAttachment=async(file:File,communicationId=editing?.id,refresh=true)=>{
+    if(!communicationId)return
     if(file.size>20*1024*1024){message.error('单个文件不能超过 20MB');return}
     setAttachmentLoading(true)
-    try{const data=new FormData();data.append('file',file);await api.post(`/communications/${editing.id}/attachments`,data,{headers:{'Content-Type':'multipart/form-data'}});message.success('附件上传成功');await loadAttachments(editing.id)}
+    try{const data=new FormData();data.append('file',file);await api.post(`/communications/${communicationId}/attachments`,data,{headers:{'Content-Type':'multipart/form-data'}});message.success('附件上传成功');if(refresh)await loadAttachments(communicationId)}
     catch(error:any){message.error(error?.response?.data?.detail||'附件上传失败')}
     finally{setAttachmentLoading(false)}
   }
@@ -125,7 +129,16 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
             <Form.Item className="span-2" name="occurred_at" label="记录时间" rules={[{required:true,message:'请选择记录时间'}]}><DatePicker showTime style={{width:'100%'}}/></Form.Item>
             <Form.Item className="span-2" name="content" label="沟通内容" rules={[{required:true,message:'请输入沟通内容'},{max:4000}]}><Input.TextArea rows={5} showCount maxLength={4000}/></Form.Item>
           </div>
-        </Form>{editing&&<><section className="communication-attachments"><div className="communication-attachments-title"><span><PaperClipOutlined/> 附件</span><Upload showUploadList={false} beforeUpload={file=>{void uploadAttachment(file);return false}}><Button icon={<UploadOutlined/>} loading={attachmentLoading}>上传附件</Button></Upload></div><p>支持常用文档、图片及压缩包，单个不超过 20MB；如需上传文件夹，请先压缩为 ZIP。</p><List size="small" locale={{emptyText:'暂无附件'}} dataSource={attachments} renderItem={attachment=><List.Item actions={[<Button key="download" type="link" onClick={()=>void downloadAttachment(attachment)}>下载</Button>,<Popconfirm key="delete" title="确认删除该附件？" onConfirm={()=>void deleteAttachment(attachment)}><Button type="link" danger icon={<DeleteOutlined/>}>删除</Button></Popconfirm>]}>{attachment.original_name}（{Math.max(1,Math.ceil(attachment.size/1024))} KB）</List.Item>}/></section><div className="communication-history">{rows.filter(item=>item.customer_record_id===editing.customer_record_id).map(item=><div key={item.id}><time>{new Date(item.occurred_at).toLocaleString('zh-CN',{hour12:false})}</time><span>{item.contact} {item.phone} {item.content}</span></div>)}</div></>}
+        </Form>
+        <>
+          <section className="communication-attachments">
+            <div className="communication-attachments-title"><span><PaperClipOutlined/> 附件</span><Upload showUploadList={false} beforeUpload={file=>{if(editing)void uploadAttachment(file);else setPendingAttachments(current=>[...current,file]);return false}}><Button icon={<UploadOutlined/>} loading={attachmentLoading}>上传附件</Button></Upload></div>
+            <p>支持任意普通文件，单个不超过 20MB；如需上传文件夹，请先压缩为 ZIP。</p>
+            {!editing&&pendingAttachments.length>0&&<List size="small" dataSource={pendingAttachments} renderItem={(file,index)=><List.Item actions={[<Button key="remove" type="link" danger onClick={()=>setPendingAttachments(current=>current.filter((_,itemIndex)=>itemIndex!==index))}>移除</Button>]}>{file.name}（{Math.max(1,Math.ceil(file.size/1024))} KB）</List.Item>}/>}
+            {editing&&<List size="small" locale={{emptyText:'暂无附件'}} dataSource={attachments} renderItem={attachment=><List.Item actions={[<Button key="download" type="link" onClick={()=>void downloadAttachment(attachment)}>下载</Button>,<Popconfirm key="delete" title="确认删除该附件？" onConfirm={()=>void deleteAttachment(attachment)}><Button type="link" danger icon={<DeleteOutlined/>}>删除</Button></Popconfirm>]}>{attachment.original_name}（{Math.max(1,Math.ceil(attachment.size/1024))} KB）</List.Item>}/>}
+          </section>
+          {editing&&<div className="communication-history">{rows.filter(item=>item.customer_record_id===editing.customer_record_id).map(item=><div key={item.id}><time>{new Date(item.occurred_at).toLocaleString('zh-CN',{hour12:false})}</time><span>{item.contact} {item.phone} {item.content}</span></div>)}</div>}
+        </>
     </Modal>
 
     <Modal open={Boolean(viewing)} title="查看沟通记录" onCancel={()=>setViewing(null)} footer={<Button onClick={()=>setViewing(null)}>关闭</Button>} destroyOnHidden width={680}>
