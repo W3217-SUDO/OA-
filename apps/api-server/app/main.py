@@ -332,6 +332,9 @@ def _upgrade_schema(connection) -> None:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN transmitted_at TIMESTAMP WITH TIME ZONE"))
     if "transmitted_by" not in columns:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN transmitted_by VARCHAR(64) NOT NULL DEFAULT ''"))
+    if "communication_log_id" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN communication_log_id INTEGER REFERENCES communication_logs(id) ON DELETE CASCADE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_communication_log_id ON file_attachments (communication_log_id)"))
     custom_import_batch_columns = {item["name"] for item in inspect(connection).get_columns("ipr_case_file_custom_import_batches")}
     if "is_test" not in custom_import_batch_columns:
         connection.execute(text("ALTER TABLE ipr_case_file_custom_import_batches ADD COLUMN is_test BOOLEAN NOT NULL DEFAULT FALSE"))
@@ -2445,7 +2448,7 @@ async def _delete_task_notifications(task_id: int, db: AsyncSession) -> None:
 
 def _attachment_dict(item: FileAttachment, record: BusinessRecord | None = None) -> dict:
     return {
-        "id": item.id, "record_id": item.record_id, "finance_transaction_id": item.finance_transaction_id,
+        "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
         "record_no": record.serial_no if record else "",
         "record_title": record.title if record else "", "category": item.category, "file_type_code": item.file_type_code,
         "original_name": item.original_name, "content_type": item.content_type,
@@ -4155,6 +4158,73 @@ async def list_communications(keyword: str = "", date_from: date | None = None, 
     return {"items": [_communication_dict(item) for item in items], "total": total, "page": page, "page_size": page_size}
 
 
+async def _communication_attachment_context(communication_id: int, identity: dict, db: AsyncSession) -> tuple[CommunicationLog, BusinessRecord]:
+    item = await db.get(CommunicationLog, communication_id)
+    if not item or (identity.get("role") != "admin" and item.operator != identity["username"]):
+        raise HTTPException(status_code=404, detail="沟通记录不存在")
+    customer = await _customer_or_404(item.customer_record_id, identity, db)
+    await _require_record_owner_or_manager(customer, identity, db)
+    return item, customer
+
+
+@app.get(f"{settings.api_prefix}/communications/{{communication_id}}/attachments")
+async def list_communication_attachments(communication_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _item, customer = await _communication_attachment_context(communication_id, identity, db)
+    attachments = (await db.scalars(select(FileAttachment).where(
+        FileAttachment.communication_log_id == communication_id,
+    ).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all()
+    return {"items": [_attachment_dict(attachment, customer) for attachment in attachments]}
+
+
+@app.post(f"{settings.api_prefix}/communications/{{communication_id}}/attachments", status_code=status.HTTP_201_CREATED)
+async def upload_communication_attachment(communication_id: int, file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _item, customer = await _communication_attachment_context(communication_id, identity, db)
+    suffix = Path(file.filename or "").suffix.lower()
+    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    if suffix not in allowed:
+        raise HTTPException(status_code=422, detail="不支持的文件格式；文件夹请先压缩为 ZIP")
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
+    stored_name = f"{uuid4().hex}{suffix}"
+    target = UPLOAD_ROOT / stored_name
+    target.write_bytes(content)
+    attachment = FileAttachment(
+        record_id=customer.id, communication_log_id=communication_id, category="沟通记录附件",
+        original_name=Path(file.filename or stored_name).name, stored_name=stored_name,
+        content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target),
+        uploader=identity["username"], remark="",
+    )
+    try:
+        db.add(attachment)
+        db.add(_customer_event(customer, "上传沟通记录附件", identity, f"沟通记录 #{communication_id}：{attachment.original_name}"))
+        await db.commit()
+        await db.refresh(attachment)
+    except Exception:
+        await db.rollback()
+        target.unlink(missing_ok=True)
+        raise
+    return _attachment_dict(attachment, customer)
+
+
+@app.delete(f"{settings.api_prefix}/communications/{{communication_id}}/attachments/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_communication_attachment(communication_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _item, customer = await _communication_attachment_context(communication_id, identity, db)
+    attachment = await db.scalar(select(FileAttachment).where(
+        FileAttachment.id == attachment_id, FileAttachment.communication_log_id == communication_id,
+    ))
+    if not attachment:
+        raise HTTPException(status_code=404, detail="沟通记录附件不存在")
+    path = Path(attachment.path)
+    name = attachment.original_name
+    await db.delete(attachment)
+    db.add(_customer_event(customer, "删除沟通记录附件", identity, f"沟通记录 #{communication_id}：{name}"))
+    await db.commit()
+    if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+        path.unlink(missing_ok=True)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post(f"{settings.api_prefix}/communications", status_code=status.HTTP_201_CREATED)
 async def create_communication(body: CommunicationLogInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     customer = await _customer_or_404(body.customer_record_id, identity, db)
@@ -4195,6 +4265,7 @@ async def update_communication(communication_id: int, body: CommunicationLogUpda
 async def delete_communication(communication_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await db.get(CommunicationLog, communication_id)
     if not item or (identity.get("role") != "admin" and item.operator != identity["username"]): raise HTTPException(status_code=404, detail="沟通记录不存在")
+    attachment_paths = (await db.scalars(select(FileAttachment.path).where(FileAttachment.communication_log_id == communication_id))).all()
     customer = await db.get(BusinessRecord, item.customer_record_id)
     if customer:
         customer = await _customer_or_404(customer.id, identity, db)
@@ -4202,7 +4273,12 @@ async def delete_communication(communication_id: int, identity: dict = Depends(c
         data = customer.data or {}; customer.data = {**data, "notes": [note for note in list(data.get("notes", [])) if note.get("id") != item.note_id]}
         _sync_customer_contact_metrics(customer)
         db.add(_customer_event(customer, "删除沟通日志", identity, item.content[:120]))
-    await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
+    await db.delete(item); await db.commit()
+    for raw_path in attachment_paths:
+        path = Path(raw_path)
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink(missing_ok=True)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get(f"{settings.api_prefix}/reports/summary")

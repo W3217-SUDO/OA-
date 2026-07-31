@@ -330,6 +330,7 @@ class FileAttachment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), nullable=True, index=True)
+    communication_log_id: Mapped[int | None] = mapped_column(ForeignKey("communication_logs.id", ondelete="CASCADE"), nullable=True, index=True)
     law_firm_id: Mapped[int | None] = mapped_column(ForeignKey("law_firms.id", ondelete="CASCADE"), nullable=True, index=True)
     finance_transaction_id: Mapped[int | None] = mapped_column(ForeignKey("finance_transactions.id", ondelete="CASCADE"), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(64), index=True, default="普通附件")
