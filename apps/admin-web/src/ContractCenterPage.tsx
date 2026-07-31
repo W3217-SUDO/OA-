@@ -621,7 +621,7 @@ export default function ContractCenterPage({
         attachment.append("remark", "合同起草时上传");
         await api.post("/attachments", attachment);
       }
-      message.success(editing ? "合同已更新" : "合同草稿已保存，进入提交审核");
+      message.success(editing ? "合同已更新" : "合同草稿已保存，进入提交审批");
       sessionStorage.removeItem("sunhold:contract-customer");
       setContractFile(null);
       if (editing) {
@@ -671,7 +671,7 @@ export default function ContractCenterPage({
       await load();
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(error?.response?.data?.detail || error?.message || "提交审核失败");
+      message.error(error?.response?.data?.detail || error?.message || "提交审批失败");
     } finally {
       setSubmittingWizard(false);
     }
@@ -1382,7 +1382,7 @@ export default function ContractCenterPage({
       {initialView === "contract-new" && (
         <Card className="panel contract-create-page" title="新建合同">
           <div className="contract-page-steps">
-            {["合同基本信息", "提交审核", "合同审批", "合同用印"].map((title, index) => (
+            {["合同基本信息", "提交审批", "合同审批", "合同用印"].map((title, index) => (
               <div key={title} className={wizardStep === index ? "active" : wizardStep > index ? "done" : ""}>{["①", "②", "③", "④"][index]} {title}</div>
             ))}
           </div>
@@ -1819,7 +1819,7 @@ export default function ContractCenterPage({
           <Steps
             className="contract-create-steps"
             current={wizardStep}
-            items={["合同基本信息", "提交审核", "合同审批", "合同用印"].map((title) => ({ title }))}
+            items={["合同基本信息", "提交审批", "合同审批", "合同用印"].map((title) => ({ title }))}
           />
         )}
         {(editing || wizardStep === 0) && (
