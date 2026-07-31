@@ -2060,13 +2060,19 @@ class CustomerPortalActionInput(BaseModel):
 
 class CustomerPortalLoginInput(BaseModel):
     account: str = Field(min_length=3, max_length=128)
-    activation_code: str = Field(min_length=16, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class CustomerPortalDemandInput(CustomerPortalLoginInput):
     title: str = Field(min_length=2, max_length=200)
     content: str = Field(min_length=2, max_length=2000)
     case_no: str = Field(default="", max_length=128)
+
+
+class CustomerPortalActivationInput(BaseModel):
+    account: str = Field(min_length=3, max_length=128)
+    activation_code: str = Field(min_length=16, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class CustomerCreateInput(BaseModel):
@@ -5490,8 +5496,8 @@ async def _portal_customer(body: CustomerPortalLoginInput, db: AsyncSession) -> 
     customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
     customer = next((item for item in customers if str(((item.data or {}).get("portal_access") or {}).get("account") or "").casefold() == body.account.strip().casefold()), None)
     portal = (customer.data or {}).get("portal_access") if customer else None
-    if not customer or not portal or not portal.get("enabled") or portal.get("activation_code_hash") != _portal_code_hash(body.activation_code.strip()):
-        raise HTTPException(status_code=401, detail="客户服务账号或激活码无效")
+    if not customer or not portal or not portal.get("enabled") or not portal.get("activated_at") or not portal.get("password_hash") or not verify_password(body.password, portal["password_hash"]):
+        raise HTTPException(status_code=401, detail="客户服务账号或密码无效")
     return customer
 
 
@@ -5511,6 +5517,7 @@ async def open_customer_portal(customer_id: int, body: CustomerPortalActionInput
     activation_code = uuid4().hex
     portal = {
         "account": account, "enabled": True, "activation_code_hash": _portal_code_hash(activation_code),
+        "activated_at": None, "password_hash": "",
         "opened_by": identity["username"], "opened_at": datetime.now().isoformat(timespec="seconds"),
         "comment": body.comment.strip(),
     }
@@ -5518,6 +5525,22 @@ async def open_customer_portal(customer_id: int, body: CustomerPortalActionInput
     db.add(_customer_event(customer, "开通客户服务端", identity, body.comment or f"服务账号：{account}"))
     await db.commit()
     return {"customer_id": customer.id, "account": account, "activation_code": activation_code, "notice": "激活码仅本次显示，请安全交付客户"}
+
+
+@app.post(f"{settings.api_prefix}/customer-portal/activate")
+async def activate_customer_portal(body: CustomerPortalActivationInput, db: AsyncSession = Depends(get_db)):
+    customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
+    customer = next((item for item in customers if str(((item.data or {}).get("portal_access") or {}).get("account") or "").casefold() == body.account.strip().casefold()), None)
+    portal = (customer.data or {}).get("portal_access") if customer else None
+    if not customer or not portal or not portal.get("enabled") or portal.get("activated_at") or not portal.get("activation_code_hash") or portal["activation_code_hash"] != _portal_code_hash(body.activation_code.strip()):
+        raise HTTPException(status_code=401, detail="客户服务账号或激活码无效")
+    customer.data = {**(customer.data or {}), "portal_access": {
+        **portal, "password_hash": hash_password(body.password), "activation_code_hash": "",
+        "activated_at": datetime.now().isoformat(timespec="seconds"),
+    }}
+    db.add(_customer_event(customer, "激活客户服务端", {"username": body.account.strip()}, "客户已设置服务端登录密码"))
+    await db.commit()
+    return {"account": portal["account"], "activated": True}
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/portal/close")

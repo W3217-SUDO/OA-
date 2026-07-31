@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, Button, Card, Form, Input, message, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "./api";
 
-type Credentials = { account: string; activation_code: string };
+type Credentials = { account: string; password: string };
 type PortalData = {
   customer: { serial_no: string; name: string; level: string };
   contracts: Array<{ id: number; serial_no: string; title: string; status: string; data: Record<string, any> }>;
@@ -14,6 +14,7 @@ export default function CustomerPortalPage() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [data, setData] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activating, setActivating] = useState(false);
   const login = async (values: Credentials) => {
     setLoading(true);
     try {
@@ -25,6 +26,17 @@ export default function CustomerPortalPage() {
     } finally {
       setLoading(false);
     }
+  };
+  const activate = async (values: { account: string; activation_code: string; password: string; confirm_password: string }) => {
+    if (values.password !== values.confirm_password) { message.error("两次输入的密码不一致"); return; }
+    setLoading(true);
+    try {
+      await api.post("/customer-portal/activate", { account: values.account, activation_code: values.activation_code, password: values.password });
+      message.success("客户服务端已激活，请使用账号和密码登录");
+      setActivating(false);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "客户服务端激活失败");
+    } finally { setLoading(false); }
   };
   const download = async (file: PortalData["documents"][number]) => {
     if (!credentials) return;
@@ -50,12 +62,20 @@ export default function CustomerPortalPage() {
   if (!data) return (
     <div style={{ minHeight: "100vh", background: "#f3f5f7", padding: "10vh 16px" }}>
       <Card title="申浩客户服务端" style={{ maxWidth: 460, margin: "0 auto" }}>
-        <Alert type="info" showIcon message="签约客户可查看合同、案件进展并下载已共享文档" style={{ marginBottom: 20 }} />
-        <Form layout="vertical" onFinish={login}>
+        <Alert type="info" showIcon message={activating ? "首次激活请使用管理员安全交付的一次性激活码设置密码。" : "签约客户可查看合同、案件进展并下载已共享文档。"} style={{ marginBottom: 20 }} />
+        {activating ? <Form layout="vertical" onFinish={activate}>
           <Form.Item name="account" label="客户服务账号" rules={[{ required: true }]}><Input autoComplete="username" /></Form.Item>
-          <Form.Item name="activation_code" label="激活码" rules={[{ required: true }]}><Input.Password autoComplete="current-password" /></Form.Item>
+          <Form.Item name="activation_code" label="一次性激活码" rules={[{ required: true }]}><Input.Password autoComplete="one-time-code" /></Form.Item>
+          <Form.Item name="password" label="设置登录密码" rules={[{ required: true }, { min: 8, message: "密码至少 8 位" }]}><Input.Password autoComplete="new-password" /></Form.Item>
+          <Form.Item name="confirm_password" label="确认登录密码" rules={[{ required: true }]}><Input.Password autoComplete="new-password" /></Form.Item>
+          <Button loading={loading} type="primary" htmlType="submit" block>激活并设置密码</Button>
+          <Button type="link" block onClick={() => setActivating(false)}>返回登录</Button>
+        </Form> : <Form layout="vertical" onFinish={login}>
+          <Form.Item name="account" label="客户服务账号" rules={[{ required: true }]}><Input autoComplete="username" /></Form.Item>
+          <Form.Item name="password" label="登录密码" rules={[{ required: true }]}><Input.Password autoComplete="current-password" /></Form.Item>
           <Button loading={loading} type="primary" htmlType="submit" block>登录客户服务端</Button>
-        </Form>
+          <Button type="link" block onClick={() => setActivating(true)}>首次激活 / 重置密码</Button>
+        </Form>}
       </Card>
     </div>
   );

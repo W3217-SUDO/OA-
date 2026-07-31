@@ -1263,7 +1263,11 @@ def main():
         portal_document = multipart_upload("/attachments", {"record_id": aligned_contract["id"], "category": "客户可见合同", "remark": "客户服务端下载验收"}, f"smoke-portal-{suffix}.txt", b"portal document")
         attachments.append(portal_document["id"])
         portal = call("POST", f"/customers/{aligned_customer['id']}/portal/open", {"comment": "签约后开通客户服务端"})
-        portal_credentials = {"account": portal["account"], "activation_code": portal["activation_code"]}
+        portal_credentials = {"account": portal["account"], "password": f"Portal-{suffix}-pass"}
+        call("POST", "/customer-portal/overview", portal_credentials, expected=(401,))
+        activated = call("POST", "/customer-portal/activate", {**portal_credentials, "activation_code": portal["activation_code"]})
+        assert activated["account"] == portal["account"] and activated["activated"] is True
+        call("POST", "/customer-portal/activate", {**portal_credentials, "activation_code": portal["activation_code"]}, expected=(401,))
         portal_overview = call("POST", "/customer-portal/overview", portal_credentials)
         assert portal_overview["customer"]["level"] == "签约客户" and any(item["id"] == aligned_contract["id"] for item in portal_overview["contracts"]) and any(item["id"] == portal_document["id"] for item in portal_overview["documents"])
         portal_download = call("POST", f"/customer-portal/files/{portal_document['id']}/download", portal_credentials, raw=True)
