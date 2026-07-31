@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react";
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -223,6 +224,10 @@ export default function CustomerCenterPage({
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
+  const directoryOptions = directory.map((user) => ({
+    value: user.username,
+    label: user.display_name ? `${user.display_name}（${user.username}）` : user.username,
+  }));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [total, setTotal] = useState(0);
@@ -478,9 +483,18 @@ export default function CustomerCenterPage({
       data,
     };
     try {
-      const response = editing
-        ? await api.patch(`/records/${editing.id}`, payload)
-        : await api.post("/customers", {
+      let response;
+      if (editing) {
+        const existingManagers = editing.data.customer_managers?.length
+          ? editing.data.customer_managers
+          : [editing.owner];
+        const managerChanged = managers.length !== existingManagers.length || managers.some((manager: string, index: number) => manager !== existingManagers[index]);
+        const { customer_managers: _customerManagers, ...editableData } = data;
+        response = await api.patch(`/records/${editing.id}`, { ...payload, data: editableData });
+        if (managerChanged) {
+          response = await api.put(`/customers/${editing.id}/managers`, { managers });
+        }
+      } else response = await api.post("/customers", {
             serial_no: v.serial_no,
             title: v.title,
             status: v.status || "",
@@ -1322,12 +1336,12 @@ export default function CustomerCenterPage({
               <h3>控制信息</h3>
               <div className="customer-create-grid customer-control-grid">
                 <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
-                <Form.Item label="客户来源" name="customer_source"><Input /></Form.Item>
+                <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} placeholder="输入或选择人员" /></Form.Item>
                 <Form.Item label="是否共享" name="is_shared"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="客户等级" name="level"><Select options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
-                  <Select mode="multiple" options={directory.map(user=>({value:user.username,label:user.display_name || user.username}))} />
+                  <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
                 </Form.Item>
                 <Form.Item label="客户联系人账号" name="contact"><Input /></Form.Item>
               </div>
@@ -1477,11 +1491,7 @@ export default function CustomerCenterPage({
               name="customer_managers"
               rules={[{ required: true, message: "至少设置一名客户管理人" }]}
             >
-              <Select
-                mode="tags"
-                tokenSeparators={[",", "，"]}
-                placeholder="输入账号或姓名后回车，可设置多人"
-              />
+              <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择客户管理人，可设置多人" options={directoryOptions} />
             </Form.Item>
             <Form.Item label="所属部门" name="department">
               <Input />
@@ -1523,7 +1533,7 @@ export default function CustomerCenterPage({
               <Input />
             </Form.Item>
             <div className="span-2"><b>控制信息</b></div>
-            <Form.Item label="客户来源" name="customer_source"><Input /></Form.Item>
+            <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} placeholder="输入或选择人员" /></Form.Item>
             <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
             <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
             <Form.Item className="span-2" label="备注" name="description">

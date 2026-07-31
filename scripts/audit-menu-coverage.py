@@ -225,7 +225,7 @@ def main() -> None:
         'name="customer_type"><Selectoptions={customerTypeOptions}',
         'placeholder="不允许有空格."',
         'tabBarExtraContent={<Buttontype="primary"onClick={save}><span>保</span><span>存</span></Button>}',
-        'value:user.username,label:user.display_name||user.username',
+        'options={directoryOptions}',
     ):
         assert token in normalized_customer_new, f"customer-new field/control contract missing: {token}"
     related_tables = (
@@ -252,7 +252,7 @@ def main() -> None:
     assert '.customer-create-form .ant-form-item-control-input { min-height: 23px; }' in CUSTOMER_CSS, "customer-new rows must override Ant Form's 32px control wrapper to match the original compact table"
     assert '.customer-create-form .ant-select { height: 23px; }' in CUSTOMER_CSS, "customer-new selects must not expand the original 25px table rows"
     assert '.customer-create-form .ant-form-item { height: 25px;' in CUSTOMER_CSS, "customer-new field rows must retain the original 25px table rhythm"
-    assert ': await api.post("/customers", {' in CUSTOMER, "customer-new must use the dedicated protected create API"
+    assert 'await api.post("/customers", {' in CUSTOMER, "customer-new must use the dedicated protected create API"
     assert 'open={Boolean(contacts) && initialView !== "customer-new" && !detailPageOpen}' in CUSTOMER, "customer-new and customer-mine view states must not fall through to the editable drawer"
     assert "height: 20px" in CUSTOMER_CSS and "border-bottom: 1px solid #d9d9d9" in CUSTOMER_CSS, "customer-new must retain horizontal 20px section headers"
     assert "grid-template-columns: 92px minmax(0, 1fr)" not in CUSTOMER_CSS, "customer-new must not use a vertical section heading column"
