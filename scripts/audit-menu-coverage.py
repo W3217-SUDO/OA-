@@ -2477,8 +2477,8 @@ def main() -> None:
     for token in ("按案件查看适用提成", "选择案件，查看该日期适用的提成方案", "performance-for-case"):
         assert token in HR, f"employee performance case-resolution UI is missing {token}"
     assert '联系人照片请在客户联系人中维护' in MAIN, "generic attachment deletion must not orphan a customer contact photo reference"
-    assert '/hr/employees/{{employee_id}}' in MAIN and '案件或业务中仍关联该员工，不允许删除' in MAIN, "old staff delete must block referenced employees"
-    assert '确认删除该员工档案及未被引用的关联登录账号？' in HR, "employee list must expose the guarded old-system delete action"
+    assert '/hr/employees/{{employee_id}}/deletion-impact' in MAIN and '_collect_hr_employee_deletion_blockers' in MAIN and 'if blockers:' in MAIN, "employee delete must preflight and preserve server-side blocker enforcement"
+    assert 'openDeletionImpact' in HR and 'deletionModal' in HR, "employee list must expose the guarded deletion-impact modal"
 
     print(f"MENU_COVERAGE_OK: {len(menus)} nodes, {len(leaves)} leaves, 0 unhandled")
     print("LAW_FIRM_LIFECYCLE_OK: dedicated admin firm, contacts, default-contact guards, license lifecycle and cleanup action")
@@ -3524,6 +3524,16 @@ def main() -> None:
     ):
         assert token in MAIN, f"Referenced system parameters must be protected from deletion: {token}"
     print("SYSTEM_PARAMETER_DELETE_GUARD_OK: referenced master data cannot be physically deleted through the generic parameter API")
+    for token in (
+        'const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number]) => {',
+        "blocker.kind==='员工附属记录'",
+        "blocker.kind==='员工档案文件'",
+        '去清理',
+        'activeKey={detailTab}',
+        '员工附属记录和员工档案文件可直接进入当前员工的对应维护页签；业务关联仅作说明，仍须在原业务流程中处理。',
+    ):
+        assert token in HR, f"Employee deletion blocker cleanup modal contract missing: {token}"
+    print("HR_DELETE_BLOCKER_CLEANUP_OK: cleanable HR blockers link to filtered employee record tabs without bypassing business lifecycle")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")
 
 
