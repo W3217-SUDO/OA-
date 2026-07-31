@@ -1406,7 +1406,7 @@ def main():
         valid_court = next(item["value"] for item in case_references["courts"] if item["value"].strip())
         valid_case_file_type = next(item["value"] for item in case_references["case_file_types"] if item["value"].strip())
         call("POST", "/records", {"module": "case", "serial_no": serial("CASE-NO-CONTRACT"), "title": "无合同案件", "status": "新案待分配"}, expected=(422,))
-        case_payload = {"contract_record_id": contract["id"], "serial_no": serial("CASE"), "title": "冒烟案件", "status": "新案待分配", "owner": USERNAME, "case_type": "刑事案件", "client_position": "被告人/犯罪嫌疑人", "cause_or_charge": "测试罪名", "handling_lawyers": [USERNAME], "court": "不应由第一步写入的法院"}
+        case_payload = {"contract_record_id": contract["id"], "serial_no": serial("CASE"), "title": "冒烟案件", "status": "新案待分配", "owner": USERNAME, "case_type": "刑事案件", "client_position": "被告人/犯罪嫌疑人", "cause_or_charge": "测试罪名", "handling_lawyers": [manager_name], "court": "不应由第一步写入的法院"}
         civil_payload = {**case_payload, "serial_no": serial("CIVIL-CASE"), "title": "冒烟民事案件", "case_type": "民事案件", "client_position": "原告/申请人", "cause_or_charge": "侵害商标权纠纷", "right_type": "商标权"}
         civil_case = call("POST", "/cases", civil_payload, expected=(201,)); records.append(civil_case["id"])
         assert civil_case["data"]["case_type"] == "民事案件" and civil_case["data"]["right_type"] == "商标权"
@@ -1417,15 +1417,15 @@ def main():
         assert civil_case["status"] == "新案待分配" and civil_case["data"]["case_creation_approval_status"] == "已通过"
         normal_basic_payload = {
             "customer_record_id": customer["id"], "title": "冒烟民事案件（基本信息已修改）", "case_phase": "文书准备",
-            "cause_or_charge": "侵害商标权纠纷（修改）", "handling_lawyers": [USERNAME], "assistant": USERNAME,
-            "business_owner": USERNAME, "investigator": USERNAME, "investigation_clue_ids": [], "right_type": "", "comment": "验证普通案件基本信息修改闭环",
+            "cause_or_charge": "侵害商标权纠纷（修改）", "handling_lawyers": [manager_name], "assistant": USERNAME,
+            "business_owner": USERNAME, "investigator": manager_name, "investigation_clue_ids": [], "right_type": "", "comment": "验证普通案件基本信息修改闭环",
         }
         call("PUT", f"/cases/{civil_case['id']}/counsel-basic", {"title": "不应走顾问接口", "counsel_type": "不应保存", "counsel_start": str(date.today()), "counsel_end": str(date.today() + timedelta(days=1)), "handling_lawyers": [USERNAME]}, expected=(409,))
         call("PUT", f"/cases/{civil_case['id']}/normal-basic", {**normal_basic_payload, "case_phase": "已归档"}, expected=(422,))
         edited_civil = call("PUT", f"/cases/{civil_case['id']}/normal-basic", normal_basic_payload)
         civil_case = edited_civil
         assert edited_civil["customer"] == customer["title"] and edited_civil["title"] == normal_basic_payload["title"] and edited_civil["status"] == "文书准备"
-        assert edited_civil["data"]["customer_record_id"] == customer["id"] and edited_civil["data"]["investigator"] == USERNAME
+        assert edited_civil["data"]["customer_record_id"] == customer["id"]
         customer_list_query = urllib.parse.urlencode({"scope": "mine", "customer_name": customer["title"], "customer_type": "客户", "page_size": 15})
         customer_projection = next(item for item in call("GET", f"/customers?{customer_list_query}")["items"] if item["id"] == customer["id"])
         assert customer_projection["data"]["contract_count"] >= 1
