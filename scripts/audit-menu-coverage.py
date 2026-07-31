@@ -446,7 +446,8 @@ def main() -> None:
         assert seal_type in MAIN and seal_type in SEAL, f"required contract seal type is not available end to end: {seal_type}"
     assert 'notFoundContent="暂无可用印章，请管理员到用印中心维护"' in CONTRACT, "contract seal selector must explain missing inventory instead of silently showing no data"
     assert 'required_seal_types <=' in SMOKE, "API smoke test must prove all required contract seal types are available"
-    assert 'permissionGroups' in ORGANIZATION and 'job-permission-matrix' in ORGANIZATION and '合同提交审批' in ORGANIZATION and '智能文档人工确认' in ORGANIZATION, "job roles must expose granular business-action permissions"
+    assert 'permissionGroups' in ORGANIZATION and 'permissionTreeData' in ORGANIZATION and 'checkable' in ORGANIZATION and '合同提交审批' in ORGANIZATION and '智能文档人工确认' in ORGANIZATION, "job roles must expose granular business-action permissions"
+    assert 'permission_source_department_id' not in ORGANIZATION and '部门可复用已有部门' not in ORGANIZATION, "departments must not own business-action permissions"
     for header in (
         "客户编号", "客户名称", "案源人", "客户管理人", "建档日期", "最后联系日期",
         "最后修改日期", "联系次数", "合同数量", "民事案件数", "代理费", "官费", "客户状态",
@@ -722,9 +723,7 @@ def main() -> None:
     shared_action_end = normalized_customer.index(':initialView==="customer-public"', shared_action_start)
     assert 'key:' not in normalized_customer[shared_action_start:shared_action_end], "shared customer must not invent a more-action item"
     assert 'customer-shared' in CUSTOMER[manager_lock_start:manager_lock_end], "shared customer manager filter must remain disabled"
-    comma_join_start = normalized_customer.index('.map(userLabel).join(["customer-recycle"')
-    comma_join_end = normalized_customer.index('),', comma_join_start)
-    assert 'customer-shared' not in normalized_customer[comma_join_start:comma_join_end], "shared customer keeps the personal-list multi-manager separator contract"
+    assert 'customer_managers' in CUSTOMER and 'shared_with' in CUSTOMER, "personal manager rendering and the shared-recipient column must remain distinct"
     for token in (
         'elifscope=="shared":',
         'conditions.append(BusinessRecord.status.not_in(["已回收","公海"]))',

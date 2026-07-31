@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Empty,
   Form,
   Input,
@@ -11,7 +10,6 @@ import {
   message,
   Modal,
   Popconfirm,
-  Select,
   Space,
   Switch,
   Table,
@@ -28,8 +26,6 @@ type Department = {
   name: string;
   manager: string;
   overdue_deduction: boolean;
-  permissions: string[];
-  permission_source_department_id?: number | null;
   sort_order: number;
   is_active: boolean;
 };
@@ -233,19 +229,12 @@ export default function OrganizationCenterPage({
       departmentForm.resetFields();
       departmentForm.setFieldsValue(
         department || {
-          permissions: [],
-          permission_source_department_id: null,
           sort_order: departments.length + 1,
           is_active: true,
         },
       );
     }
     setOpen(true);
-  };
-  const copyDepartmentPermissions = (sourceId: number | undefined) => {
-    if (!sourceId) return;
-    const source = departments.find((item) => item.id === sourceId);
-    departmentForm.setFieldValue("permissions", source?.permissions || []);
   };
   const save = async () => {
     try {
@@ -256,7 +245,6 @@ export default function OrganizationCenterPage({
         else await api.post("/hr/job-roles", value);
       } else {
         const value = await departmentForm.validateFields();
-        value.permission_source_department_id ??= null;
         if (editingDepartment)
           await api.patch(`/hr/departments/${editingDepartment.id}`, value);
         else await api.post("/hr/departments", value);
@@ -313,23 +301,6 @@ export default function OrganizationCenterPage({
       dataIndex: "manager",
       width: 130,
       render: (value) => value || "—",
-    },
-    {
-      title: "业务权限",
-      dataIndex: "permissions",
-      width: 100,
-      render: (values: string[]) => `${values?.length || 0} 项`,
-    },
-    {
-      title: "权限来源",
-      key: "permission_source",
-      width: 180,
-      render: (_v, row) =>
-        row.permission_source_department_id
-          ? departments.find(
-              (item) => item.id === row.permission_source_department_id,
-            )?.name || "已删除来源"
-          : "手动配置",
     },
     { title: "排序", dataIndex: "sort_order", width: 75 },
     {
@@ -437,7 +408,7 @@ export default function OrganizationCenterPage({
             loading={loading}
             columns={departmentColumns}
             dataSource={departments}
-            scroll={{ x: 1080 }}
+            scroll={{ x: 800 }}
             locale={{ emptyText: emptyContent }}
             pagination={{
               pageSize: 20,
@@ -454,7 +425,7 @@ export default function OrganizationCenterPage({
         onOk={save}
         onCancel={() => setOpen(false)}
         destroyOnHidden
-        width={rolesView ? 560 : 980}
+        width={560}
       >
         {rolesView ? (
           <Form form={roleForm} layout="vertical">
@@ -499,8 +470,8 @@ export default function OrganizationCenterPage({
                 <Alert
                   type="info"
                   showIcon
-                  title="部门可复用已有部门的业务动作权限"
-                  description="选择权限来源部门后会复制该部门当前权限；后续可单独调整。菜单、数据范围和敏感字段仍由系统角色统一控制。"
+                  title="部门只维护组织和数据归属"
+                  description="菜单和业务动作权限统一在“角色管理”中配置；部门用于组织归属及部门范围的数据查看。"
                 />
               </Form.Item>
               <Form.Item
@@ -516,43 +487,6 @@ export default function OrganizationCenterPage({
                 rules={[{ required: true }]}
               >
                 <Input />
-              </Form.Item>
-              <Form.Item
-                className="span-2"
-                label="权限来源部门（可选）"
-                name="permission_source_department_id"
-              >
-                <Select
-                  allowClear
-                  placeholder="手动配置权限，或选择一个已有部门复制权限"
-                  options={departments
-                    .filter((item) => item.id !== editingDepartment?.id)
-                    .map((item) => ({
-                      value: item.id,
-                      label: `${item.name}（${item.permissions?.length || 0} 项）`,
-                    }))}
-                  onChange={copyDepartmentPermissions}
-                />
-              </Form.Item>
-              <Form.Item
-                className="span-2"
-                label="业务动作权限"
-                name="permissions"
-              >
-                <Checkbox.Group className="job-permission-matrix">
-                  {permissionGroups.map((group) => (
-                    <section key={group.name}>
-                      <b>{group.name}</b>
-                      <div>
-                        {group.items.map((item) => (
-                          <Checkbox key={item} value={item}>
-                            {item}
-                          </Checkbox>
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </Checkbox.Group>
               </Form.Item>
               <Form.Item label="部门负责人" name="manager">
                 <Input />
