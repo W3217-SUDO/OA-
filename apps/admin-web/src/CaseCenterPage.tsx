@@ -40,6 +40,7 @@ import { rememberInvestigationDetailTarget } from "./investigationDetailNavigati
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
+import { buildCaseContractOptions } from "./caseContractPrefill";
 import "./case-center.css";
 
 type CaseRow = {
@@ -199,7 +200,7 @@ export default function CaseCenterPage({
   const litigantLabels = isAdministrativeCreate
     ? { plaintiff: "原告/申请人", plaintiffAgent: "原告/申请人代理人", defendant: "被告/被申请人", defendantAgent: "被告/被申请人代理人", third: "第三人", thirdAgent: "第三人代理人" }
     : { plaintiff: "原告", plaintiffAgent: "原告代理人", defendant: "被告", defendantAgent: "被告代理人", third: "第三人", thirdAgent: "第三人代理人" };
-  const [contractPrefill] = useState<{ id: number; title: string; customer: string } | null>(() => {
+  const [contractPrefill] = useState<{ id: number; serial_no: string; title: string; customer: string } | null>(() => {
     try {
       const value = JSON.parse(sessionStorage.getItem("sunhold:case-contract-context") || "null");
       sessionStorage.removeItem("sunhold:case-contract-context");
@@ -310,6 +311,10 @@ export default function CaseCenterPage({
   const createCustomer = Form.useWatch("customer", createForm);
   const createContractId = Form.useWatch("contract_record_id", createForm);
   const selectedCreateContract = useMemo(() => contracts.find((row) => row.id === createContractId), [contracts, createContractId]);
+  const createContractOptions = useMemo(
+    () => buildCaseContractOptions(contracts, contractPrefill),
+    [contracts, contractPrefill],
+  );
   const firstCourtEnabled = Form.useWatch("first_court_enabled", createForm);
   const secondCourtEnabled = Form.useWatch("second_court_enabled", createForm);
   const retrialCourtEnabled = Form.useWatch("retrial_court_enabled", createForm);
@@ -2024,15 +2029,13 @@ export default function CaseCenterPage({
                     />
                   </Form.Item>
                   <Form.Item label="客户" name="customer" rules={[{ required: true, message: "请选择客户" }]}>
-                    <Select disabled={Boolean(createContractId)} showSearch optionFilterProp="label" placeholder="先选择合同后自动锁定客户" options={[...new Set(contracts.map((row) => row.customer))].map((value) => ({ value, label: value }))} />
+                    <Select showSearch optionFilterProp="label" placeholder="请选择客户" options={[...new Set(contracts.map((row) => row.customer))].map((value) => ({ value, label: value }))} />
                   </Form.Item>
                   {!isCounselCreate && <Form.Item label="客户诉讼地位" name="client_position" rules={[{ required: true }]}>
                     <Select options={clientPositionOptions.map((value) => ({ value, label: value }))} />
                   </Form.Item>}
                   <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}>
-                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:selected?.data?.source_person||selected?.owner||"",title:selected?`${selected.title}案件`:undefined})}}>
-                      {contracts.map((row) => <Select.Option key={row.id} value={row.id} label={`${row.serial_no}｜${row.customer}｜${row.title}`}>{row.serial_no}｜{row.customer}｜{row.title}</Select.Option>)}
-                    </Select>
+                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:selected?.data?.source_person||selected?.owner||"",title:selected?`${selected.title}案件`:undefined})}} />
                   </Form.Item>
                   <Form.Item label="案源人" name="source_person"><Input placeholder="由关联合同自动带入，可按本案实际情况修改" maxLength={128} /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
