@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {Button, Card, DatePicker, Empty, Form, Input, message, Modal, Popconfirm, Select, Table} from 'antd'
+import {Button, Card, DatePicker, Descriptions, Empty, Form, Input, message, Modal, Popconfirm, Select, Table} from 'antd'
 import type {TableColumnsType} from 'antd'
 import {PlusOutlined} from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -20,6 +20,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
   const [loading,setLoading]=useState(false)
   const [open,setOpen]=useState(false)
   const [editing,setEditing]=useState<Communication|null>(null)
+  const [viewing,setViewing]=useState<Communication|null>(null)
   const [form]=Form.useForm()
   const isAdmin=(()=>{try{return JSON.parse(localStorage.getItem('user')||'{}').role==='admin'}catch{return false}})()
 
@@ -43,7 +44,8 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
     form.setFieldsValue({occurred_at:dayjs()})
     setOpen(true)
   }
-  const startView=(row:Communication)=>{
+  const startView=(row:Communication)=>setViewing(row)
+  const startEdit=(row:Communication)=>{
     setEditing(row)
     form.setFieldsValue({...row,occurred_at:dayjs(row.occurred_at)})
     setOpen(true)
@@ -67,12 +69,12 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
   const columns:TableColumnsType<Communication>=[
     {title:'用户',dataIndex:'operator',width:110},
     {title:'记录时间',dataIndex:'occurred_at',width:165,render:(value:string)=>new Date(value).toLocaleString('zh-CN',{hour12:false})},
-    {title:'客户ID',dataIndex:'customer_record_id',width:110,align:'center',render:(value:number,row)=><Button type="link" onClick={()=>openCustomer(value,row.customer_name)}>{customers.find(item=>item.id===value)?.serial_no||value}</Button>},
-    {title:'客户名称',dataIndex:'customer_name',width:220,ellipsis:true,render:(value:string,row)=><Button type="link" onClick={()=>openCustomer(row.customer_record_id,value)}>{value}</Button>},
+    {title:'客户ID',dataIndex:'customer_record_id',width:160,ellipsis:true,align:'center',render:(value:number,row)=><Button className="communication-customer-id" type="link" title={String(customers.find(item=>item.id===value)?.serial_no||value)} onClick={()=>openCustomer(value,row.customer_name)}><span>{customers.find(item=>item.id===value)?.serial_no||value}</span></Button>},
+    {title:'客户名称',dataIndex:'customer_name',width:260,ellipsis:true,render:(value:string,row)=><Button className="communication-customer-name" type="link" title={value} onClick={()=>openCustomer(row.customer_record_id,value)}><span>{value}</span></Button>},
     {title:'联系人',dataIndex:'contact',width:110,render:(value:string)=>value||'—'},
     {title:'联系电话',dataIndex:'phone',width:135,render:(value:string)=>value||'—'},
-    {title:'内容',dataIndex:'content',ellipsis:true},
-    {title:'操作',key:'action',width:125,render:(_value,row)=><><Button type="link" onClick={()=>startView(row)}>编辑</Button><Popconfirm title="确认删除该沟通记录？" onConfirm={()=>remove(row)}><Button type="link" danger>删除</Button></Popconfirm></>},
+    {title:'内容',dataIndex:'content',width:320,ellipsis:true},
+    {title:'操作',key:'action',width:185,render:(_value,row)=><><Button type="link" onClick={()=>startView(row)}>查看</Button><Button type="link" onClick={()=>startEdit(row)}>编辑</Button><Popconfirm title="确认删除该沟通记录？" onConfirm={()=>remove(row)}><Button type="link" danger>删除</Button></Popconfirm></>},
   ]
 
   return <>
@@ -84,7 +86,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
         <Button type="primary" onClick={load}>查询</Button>
         <Button type="primary" icon={<PlusOutlined/>} onClick={startCreate}>新增沟通记录</Button>
       </div>
-      <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<div className="communication-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/><Button type="primary" icon={<PlusOutlined/>} onClick={startCreate}>新增沟通记录</Button></div>}} pagination={{pageSize:15,showTotal:total=>`共 ${total} 条`}} scroll={{x:1120}}/>
+      <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<div className="communication-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/><Button type="primary" icon={<PlusOutlined/>} onClick={startCreate}>新增沟通记录</Button></div>}} pagination={{pageSize:15,showTotal:total=>`共 ${total} 条`}} tableLayout="fixed" scroll={{x:1445}}/>
     </Card>
 
     <Modal open={open} title={editing?'编辑沟通记录':'新增沟通记录'} okText="保存" cancelText="取消" onOk={save} onCancel={()=>setOpen(false)} destroyOnHidden width={680}>
@@ -97,6 +99,18 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
             <Form.Item className="span-2" name="content" label="沟通内容" rules={[{required:true,message:'请输入沟通内容'},{max:4000}]}><Input.TextArea rows={5} showCount maxLength={4000}/></Form.Item>
           </div>
         </Form>{editing&&<div className="communication-history">{rows.filter(item=>item.customer_record_id===editing.customer_record_id).map(item=><div key={item.id}><time>{new Date(item.occurred_at).toLocaleString('zh-CN',{hour12:false})}</time><span>{item.contact} {item.phone} {item.content}</span></div>)}</div>}
+    </Modal>
+
+    <Modal open={Boolean(viewing)} title="查看沟通记录" onCancel={()=>setViewing(null)} footer={<Button onClick={()=>setViewing(null)}>关闭</Button>} destroyOnHidden width={680}>
+      {viewing&&<Descriptions bordered size="small" column={2}>
+        <Descriptions.Item label="客户ID"><Button type="link" onClick={()=>openCustomer(viewing.customer_record_id,viewing.customer_name)}>{customers.find(item=>item.id===viewing.customer_record_id)?.serial_no||viewing.customer_record_id}</Button></Descriptions.Item>
+        <Descriptions.Item label="客户名称"><Button type="link" onClick={()=>openCustomer(viewing.customer_record_id,viewing.customer_name)}>{viewing.customer_name}</Button></Descriptions.Item>
+        <Descriptions.Item label="联系人">{viewing.contact||'—'}</Descriptions.Item>
+        <Descriptions.Item label="联系电话">{viewing.phone||'—'}</Descriptions.Item>
+        <Descriptions.Item label="记录时间">{new Date(viewing.occurred_at).toLocaleString('zh-CN',{hour12:false})}</Descriptions.Item>
+        <Descriptions.Item label="记录用户">{viewing.operator||'—'}</Descriptions.Item>
+        <Descriptions.Item label="沟通内容" span={2}><span style={{whiteSpace:'pre-wrap'}}>{viewing.content||'—'}</span></Descriptions.Item>
+      </Descriptions>}
     </Modal>
   </>
 }
