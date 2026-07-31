@@ -644,30 +644,13 @@ export default function ContractCenterPage({
       setSubmittingWizard(true);
       await api.post(`/contracts/${wizardDraft.id}/submit`, { approvers: values.approvers ? [values.approvers] : [], comment: values.comment || "" });
       const contract = await loadWizardContext(wizardDraft.id);
-      setWizardStep(2);
       message.success(`合同已进入 ${values.approvers} 的待审批列表`);
-      Modal.confirm({
-        title: "是否同步办理合同用印？",
-        content: "选择同步用印后，可立即选择印章并保存用印资料；合同审批通过时，系统会自动把该用印申请提交审批。",
-        okText: "同步用印",
-        cancelText: "暂不同步",
-        onOk: () => {
-          sealForm.resetFields();
-          sealForm.setFieldsValue({
-            copies: 1,
-            use_date: dayjs().add(1, "day"),
-            delivery_method: "现场用印",
-            document_names: attachments.map((item) => item.original_name).join("、"),
-            purpose: `${contract.title}合同用印`,
-            submit: false,
-          });
-          setWizardStep(3);
-        },
-        onCancel: () => {
-          setOpen(false);
-          onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
-        },
-      });
+      // Contract approval and seal usage are separate workflows. Once the
+      // contract is submitted, always return to its detail page so the
+      // applicant cannot accidentally enter an approval or seal operation.
+      localStorage.removeItem(WIZARD_STORAGE_KEY);
+      setOpen(false);
+      onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
       await load();
     } catch (error: any) {
       if (error?.errorFields) return;
