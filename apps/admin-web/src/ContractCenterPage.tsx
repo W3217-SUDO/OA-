@@ -663,6 +663,10 @@ export default function ContractCenterPage({
           });
           setWizardStep(3);
         },
+        onCancel: () => {
+          setOpen(false);
+          onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
+        },
       });
       await load();
     } catch (error: any) {
@@ -1469,7 +1473,7 @@ export default function ContractCenterPage({
             {wizardStep > 0 && wizardStep < 3 && (wizardStep !== 1 || ["草稿", "已拒绝"].includes(wizardDraft?.status || "")) && <Button onClick={() => setWizardStep((step) => Math.max(0, step - 1))}>上一步</Button>}
             {wizardStep === 0 && <Button type="primary" loading={savingContract} onClick={save}>下一步</Button>}
             {wizardStep === 1 && wizardDraft?.status === "草稿" && <Button danger onClick={() => revokeDraft(wizardDraft)}>撤销草稿</Button>}
-            {wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") && <Button type="primary" loading={submittingWizard} onClick={submitWizard}>提交审核</Button>}
+            {wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") && <Button type="primary" loading={submittingWizard} onClick={submitWizard}>提交审批</Button>}
             {wizardStep === 1 && wizardDraft?.status === "审批中" && <Button type="primary" onClick={() => setWizardStep(2)}>返回审批进度</Button>}
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>{wizardDraft?.status === "审批中" ? "保存同步用印资料" : "保存用印草稿"}</Button>}
@@ -1799,7 +1803,7 @@ export default function ContractCenterPage({
             <Button key="close" onClick={() => setOpen(false)}>{wizardStep === 0 ? "取消" : "关闭"}</Button>,
             wizardStep === 0 ? <Button key="next" type="primary" loading={savingContract} onClick={save}>下一步</Button> : null,
             wizardStep === 1 && wizardDraft?.status === "草稿" ? <Button key="revoke" danger onClick={() => revokeDraft(wizardDraft)}>撤销草稿</Button> : null,
-            wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") ? <Button key="submit" type="primary" loading={submittingWizard} onClick={submitWizard}>提交审核</Button> : null,
+            wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") ? <Button key="submit" type="primary" loading={submittingWizard} onClick={submitWizard}>提交审批</Button> : null,
             wizardStep === 1 && wizardDraft?.status === "审批中" ? <Button key="approval" type="primary" onClick={() => setWizardStep(2)}>返回审批进度</Button> : null,
             wizardStep === 2 ? <Button key="refresh" type="primary" onClick={refreshWizard}>刷新审批状态</Button> : null,
             wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-save" onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>{wizardDraft?.status === "审批中" ? "保存同步用印资料" : "保存用印草稿"}</Button> : null,
