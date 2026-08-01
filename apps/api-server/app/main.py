@@ -2902,6 +2902,18 @@ async def _require_record_owner_or_manager(record: BusinessRecord, identity: dic
     raise HTTPException(status_code=403, detail="只有负责人、部门负责人或系统管理员可以执行此操作")
 
 
+async def _require_contract_attachment_write_access(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Protect generic attachment writes for contract records.
+
+    Contract detail UI disables attachment writes while approval is in progress or
+    after archiving; enforce the same rule server-side so the generic attachment
+    endpoints cannot be used to bypass that guard.
+    """
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status in {"审批中", "已归档"}:
+        raise HTTPException(status_code=409, detail="审批中或已归档合同不能上传或删除附件")
+
+
 def _require_task_owner_or_initiator(task: BusinessRecord, identity: dict, *, action: str) -> None:
     """Protect task writes from department-manager privilege escalation.
 
@@ -14215,6 +14227,8 @@ async def upload_attachment(
         record = await _ensure_attachment_record_visible(record_id, identity, db)
         if record.module == "ipr_case":
             raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
+        if record.module == "contract":
+            await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
             await _require_case_detail_write_access(record, identity, db)
             permitted_case_file_types = set((await db.scalars(select(SystemParameter.name).where(
@@ -14384,6 +14398,8 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     may_manage_task_attachment = False
     may_manage_seal_attachment = False
     may_manage_official_outgoing_attachment = False
+    if record and record.module == "contract":
+        await _require_contract_attachment_write_access(record, identity, db)
     if record and record.module == "task":
         record = await _ensure_attachment_record_visible(record.id, identity, db)
         if item.category not in {"任务反馈附件", "任务资料附件"}:

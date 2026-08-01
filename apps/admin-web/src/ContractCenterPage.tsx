@@ -105,6 +105,7 @@ type DirectoryUser = { username: string; display_name: string; department: strin
 type ApproverSetting = { username: string; display_name: string; department: string; position: string; selected: boolean };
 type LinkedCustomerContext = { id: number; name: string; serial_no?: string; at?: number };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
+type AttachmentPreview = { name: string; kind: "image" | "pdf" | "text" | "docx"; url?: string; text?: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
 type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string };
 type SealAsset = { id: number; code: string; name: string; seal_type: string; status: string };
@@ -200,6 +201,7 @@ export default function ContractCenterPage({
   const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);
   const [objectLogTarget, setObjectLogTarget] = useState<ContractObjectRow | null>(null);
   const [viewingAttachmentsLoading, setViewingAttachmentsLoading] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const viewingAttachmentRequest = useRef(0);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
@@ -778,6 +780,27 @@ export default function ContractCenterPage({
       message.error("附件下载失败");
     }
   };
+  const previewAttachment = async (item: Attachment) => {
+    try {
+      const { data } = await api.get(`/attachments/${item.id}/preview`);
+      if (data.kind === "unsupported") {
+        message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
+        return;
+      }
+      if (data.kind === "image" || data.kind === "pdf") {
+        const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+        setAttachmentPreview({ name: item.original_name, kind: data.kind, url: URL.createObjectURL(response.data) });
+      } else {
+        setAttachmentPreview({ name: item.original_name, kind: data.kind, text: data.text || "" });
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同附件预览失败");
+    }
+  };
+  const closeAttachmentPreview = () => {
+    if (attachmentPreview?.url) URL.revokeObjectURL(attachmentPreview.url);
+    setAttachmentPreview(null);
+  };
   const uploadDraftContractAttachment = async () => {
     if (!wizardDraft) return;
     if (!contractFile) {
@@ -796,6 +819,39 @@ export default function ContractCenterPage({
       message.success("合同附件已上传");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "合同附件上传失败");
+    }
+  };
+  const uploadViewingAttachment = async () => {
+    if (!viewing) return;
+    if (!contractFile) {
+      message.warning("请先选择合同附件");
+      return;
+    }
+    if (contractFile.size > 20 * 1024 * 1024) {
+      message.error("单个文件不能超过 20MB");
+      return;
+    }
+    const attachment = new FormData();
+    attachment.append("file", contractFile);
+    attachment.append("record_id", String(viewing.id));
+    attachment.append("category", "合同附件");
+    attachment.append("remark", "合同详情补传附件");
+    try {
+      await api.post("/attachments", attachment);
+      setContractFile(null);
+      await openViewing(viewing);
+      message.success("合同附件已上传");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同附件上传失败");
+    }
+  };
+  const deleteViewingAttachment = async (item: Attachment) => {
+    try {
+      await api.delete(`/attachments/${item.id}`);
+      await openViewing(viewing!);
+      message.success("合同附件已删除");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同附件删除失败");
     }
   };
   const submit = async () => {
@@ -1687,7 +1743,11 @@ export default function ContractCenterPage({
                 {
                   key: "objects",
                   label: "合同标的",
-                  children: <Table size="small" rowKey="id" pagination={false} scroll={{ x: 980 }} dataSource={contractObjects} locale={{ emptyText: "暂无合同标的" }} columns={[
+                  children: <>
+                    <Space style={{ marginBottom: 8 }}>
+                      <Button size="small" type="primary" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onClick={() => { objectForm.resetFields(); setObjectEditing({}); }}>新增标的</Button>
+                    </Space>
+                    <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={contractObjects} locale={{ emptyText: "暂无合同标的" }} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: ContractObjectRow, index: number) => index + 1 },
                     { title: "案件类型", dataIndex: "case_type", width: 110 },
                     { title: "案号", dataIndex: "case_no", width: 160, render: (value: string) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCase(value)}>{value}</Button> : "—" },
@@ -1697,7 +1757,12 @@ export default function ContractCenterPage({
                     { title: "费用金额", dataIndex: "amount", width: 110, render: (value: number) => amount(value) },
                     { title: "客户管理人", dataIndex: "customer_manager", width: 120 },
                     { title: "备注", dataIndex: "remark", width: 180 },
-                  ]} />,
+                    { title: "操作", width: 176, fixed: "right", render: (_: unknown, row: ContractObjectRow) => <Space size={0}>
+                      <Button type="link" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
+                      <Popconfirm title="确认删除该合同标的？" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}>删除</Button></Popconfirm>
+                    </Space> },
+                  ]} />
+                  </>,
                 },
                 {
                   key: "events",
@@ -1707,12 +1772,18 @@ export default function ContractCenterPage({
                 {
                   key: "attachments",
                   label: "合同附件",
-                  children: viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} columns={[
+                  children: <>
+                    <Space wrap style={{ marginBottom: 8 }}>
+                      <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
+                      <Button onClick={() => void uploadViewingAttachment()} disabled={!contractFile || !viewing || ["审批中", "已归档"].includes(viewing.status)}>上传附件</Button>
+                    </Space>
+                    {viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: Attachment, index: number) => index + 1 },
                     { title: "文件名称", dataIndex: "original_name" },
                     { title: "分类", dataIndex: "category", width: 160 },
-                    { title: "操作", width: 100, render: (_: unknown, item: Attachment) => <Button type="link" onClick={() => downloadAttachment(item)}>下载</Button> },
-                  ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />,
+                    { title: "操作", width: 180, render: (_: unknown, item: Attachment) => <Space size={0}><Button type="link" onClick={() => downloadAttachment(item)}>下载</Button><Button type="link" onClick={() => void previewAttachment(item)}>预览</Button><Popconfirm title="确认删除该合同附件？" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onConfirm={() => void deleteViewingAttachment(item)}><Button type="link" danger disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}>删除</Button></Popconfirm></Space> },
+                  ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />}
+                  </>,
                 },
                 {
                   key: "approvals",
@@ -1835,6 +1906,11 @@ export default function ContractCenterPage({
       </Modal>
       <Modal open={Boolean(objectLogTarget)} title={objectLogTarget ? `合同标的日志：${objectLogTarget.case_no}｜${objectLogTarget.fee_type}` : "合同标的日志"} footer={null} onCancel={()=>setObjectLogTarget(null)}>
         {objectLogTarget?.logs?.length ? <Timeline items={objectLogTarget.logs.map(log=>({children:<div className="contract-history-item"><b>{log.action}</b><small>{log.operator} · {dayjs(log.created_at).format("YYYY-MM-DD HH:mm")}</small><small>变更前：{Object.keys(log.before || {}).length ? JSON.stringify(log.before) : "-"}</small><small>变更后：{Object.keys(log.after || {}).length ? JSON.stringify(log.after) : "-"}</small></div>}))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的日志" />}
+      </Modal>
+      <Modal open={Boolean(attachmentPreview)} title={`在线查看：${attachmentPreview?.name || ""}`} footer={<Button onClick={closeAttachmentPreview}>关闭</Button>} onCancel={closeAttachmentPreview} width={attachmentPreview?.kind === "pdf" ? 1000 : 760} destroyOnHidden>
+        {attachmentPreview?.kind === "image" && <img src={attachmentPreview.url} alt={attachmentPreview.name} style={{ display: "block", maxWidth: "100%", maxHeight: "72vh", margin: "0 auto" }} />}
+        {attachmentPreview?.kind === "pdf" && <iframe title={attachmentPreview.name} src={attachmentPreview.url} style={{ width: "100%", height: "72vh", border: 0 }} />}
+        {(attachmentPreview?.kind === "text" || attachmentPreview?.kind === "docx") && <pre style={{ maxHeight: "70vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7 }}>{attachmentPreview.text}</pre>}
       </Modal>
       <Modal
         open={Boolean(eventTarget)}
