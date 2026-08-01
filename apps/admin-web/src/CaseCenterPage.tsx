@@ -2575,6 +2575,7 @@ export default function CaseCenterPage({
           {counselDetailCapabilities.can_merge_case && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>合并案件</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>修改公证信息</Button>}
           {counselDetailCapabilities.can_edit_basic && ["民事案件","刑事案件","行政案件及国家赔偿","仲裁"].includes(viewingCounselCase.data.case_type) && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { settlementAmountForm.setFieldsValue({ litigation_amount: viewingCounselCase.data.litigation_amount ?? 0, settlement_amount: viewingCounselCase.data.settlement_amount ?? 0, comment: "" }); setSettlementAmountCase(viewingCounselCase); }}>修改诉讼/判决金额</Button>}
+          {counselDetailCapabilities.can_archive && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase)}>申请归档</Button>}
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
