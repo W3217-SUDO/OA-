@@ -2560,8 +2560,9 @@ export default function CaseCenterPage({
         rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 88px)"}}
         open={Boolean(viewingCounselCase)}
         title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
-        onClose={() => isCaseDetailView ? onNavigate?.("case-mine-civil") : setViewingCounselCase(null)}
+        onClose={() => isCaseDetailView ? onNavigate?.("case-mine") : setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
+          {isCaseDetailView && <Button data-testid="case-detail-back" onClick={() => onNavigate?.("case-mine")}>返回案件列表</Button>}
           {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
           {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
           {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
