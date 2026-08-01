@@ -1205,6 +1205,16 @@ export default function CustomerCenterPage({
           }}>
             查询
           </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => {
+            setKeyword("");
+            setCustomerType(customerTypeOptions[0]?.value || "客户");
+            setManagerKeyword("");
+            setSelectedRowKeys([]);
+            if (page === 1) void load();
+            else setPage(1);
+          }}>
+            重置
+          </Button>
         </div>
         <Table
           className="customer-original-table"
