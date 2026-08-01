@@ -531,7 +531,7 @@ def main():
         }
         forged_create_record = call("POST", "/customers", {
             "serial_no": f"{serial('CUSTOMER-SYSTEM-INJECTION')}-{uuid.uuid4().hex[:4]}",
-            "title": "范围客户创建系统字段注入",
+            "title": f"范围客户创建系统字段注入-{suffix}",
             "status": "潜在", "owner": outsider_name, "department": "上海分所",
             "is_shared": True, "data": forged_create_system_fields,
         }, expected=(201,))
