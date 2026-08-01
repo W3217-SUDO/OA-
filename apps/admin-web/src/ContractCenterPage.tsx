@@ -1044,6 +1044,34 @@ export default function ContractCenterPage({
       message.error("导出失败");
     }
   };
+  const exportExcel = async () => {
+    try {
+      const filters = {
+        title: query.title || undefined,
+        serial_no: query.serial_no || undefined,
+        type: query.type || undefined,
+        customer: query.customer || undefined,
+        case_no: query.case_no || undefined,
+        fee_type: query.fee_type || undefined,
+        contract_body: query.contract_body || undefined,
+        source_person: query.source_person || undefined,
+        signed_at_start: query.signed_at?.[0]?.format("YYYY-MM-DD"),
+        signed_at_end: query.signed_at?.[1]?.format("YYYY-MM-DD"),
+      };
+      const res = await api.get("/records/export-excel", {
+        params: { module: "contract", ...filters },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "合同资料.xls";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error("导出失败");
+    }
+  };
   const needSelected = (action: () => void) =>
     selected ? action() : message.warning("请先选择一份合同");
   const selected = rows.find((row) => selectedRowKeys.includes(row.id));
@@ -1350,7 +1378,7 @@ export default function ContractCenterPage({
           summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
-          <Button onClick={exportCsv}>导出CSV</Button>
+          <Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
@@ -1360,7 +1388,7 @@ export default function ContractCenterPage({
           <Button onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
           <Button onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
         </Space></div>}
-        {isAuditView && <div className="contract-bottom-actions"><Space><Button onClick={exportCsv}>导出CSV</Button><Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></Space></div>}
+        {isAuditView && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button><Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></Space></div>}
       </Card>}
       {initialView === "contract-new" && (
         <Card className="panel contract-create-page" title="新建合同">
