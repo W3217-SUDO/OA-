@@ -105,3 +105,10 @@
 在本地已授权 `admin` 会话中创建 `CODEX-HR-DL3-20260801-001`（员工 ID `30`），上传附件 `CODEX-HR-DL3-20260801-download.txt`（附件 ID `1`），并点击页面“下载”。运行时点击路径执行，但 Browser Playwright 隔离评估环境不提供 `localStorage`/`fetch`，因此无法在该环境内读取 `access_token` 或采集真实下载响应的 HTTP 状态、`Content-Disposition`、字节数和 SHA-256；未把按钮点击误报为响应证明。
 
 随后通过本地页面删除附件、员工及关联账号；SQLite 只读复核三项均为空，临时源文件已删除。旧系统未操作，服务器未部署。下载响应证明仍需具备网络响应拦截能力的浏览器运行环境完成。
+## 2026-08-01 下载响应闭环完成
+
+在本地已授权 `admin` 会话中创建临时员工 `CODEX-HR-DL4-20260801-001`（员工 ID `31`），上传附件 `CODEX-HR-DL4-20260801-download.txt`（附件 ID `1`）。浏览器点击页面“下载”按钮后未出现“文件下载失败”。
+
+Shell 内存 HTTP 客户端使用同一凭据登录 `POST /api/v1/auth/login`，随后请求 `GET /api/v1/attachments/1/download`，得到：HTTP `200`；`Content-Disposition: attachment; filename="CODEX-HR-DL4-20260801-download.txt"`；`Content-Type: text/plain; charset=utf-8`；字节数 `47`；源文件 SHA-256 与响应 SHA-256 均为 `d680c47a7b3c411ff3866d63e425b6adf14b834f3c4e052066bb79f1c5d22a64`，哈希匹配。
+
+随后通过本地页面删除附件、员工及关联账号；SQLite 只读复核员工、账号、附件均为零残留，源文件已删除。未操作旧系统，未部署服务器。
