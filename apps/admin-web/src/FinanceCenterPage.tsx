@@ -155,6 +155,7 @@ const feeTypes = [
   "归档费用",
 ];
 const internalApprovalRoutes = [
+  "finance-payment-audit",
   "finance-internal-archive",
   "finance-internal-audit",
   "finance-internal-fee-audit",
@@ -5311,6 +5312,18 @@ export default function FinanceCenterPage({
       }),
     [feeReviewTargets],
   );
+  const paymentReviewRows = useMemo(
+    () =>
+      feeReviewTargets.map((fee) => ({
+        key: fee.id,
+        case_no: fee.data?.case_no ?? fee.data?.案件编号,
+        plaintiff: fee.data?.plaintiff ?? fee.data?.customer_name ?? fee.title,
+        amount: fee.data?.amount,
+        fee_type: fee.data?.fee_type ?? fee.title,
+        payment_remark: fee.data?.remark ?? fee.data?.payment_remark ?? fee.description,
+      })),
+    [feeReviewTargets],
+  );
   const reviewNumber = (value: unknown) =>
     value == null || value === "" || Number.isNaN(Number(value))
       ? "—"
@@ -7389,28 +7402,26 @@ export default function FinanceCenterPage({
                       : undefined
                 }
                 rowSelection={
-                  activeRouteConfig
-                    ? activeRouteConfig.selectable
-                      ? {
-                          selectedRowKeys: selectedOriginalRows,
-                          onChange: (keys) =>
-                            setSelectedOriginalRows(
-                              keys as (string | number)[],
-                            ),
-                          getCheckboxProps: (row) => ({
-                            disabled:
-                              initialView === "finance-internal-refund-audit" &&
-                              row.status !== "待审批",
-                          }),
-                          ...(isArchiveSettlementActiveRoute
-                            ? {
-                                columnWidth: isArchiveSettlementRejectedRoute
-                                  ? 54
-                                  : 51,
-                              }
-                            : {}),
-                        }
-                      : undefined
+                  activeRouteConfig?.selectable || initialView === "finance-payment-audit"
+                    ? {
+                        selectedRowKeys: selectedOriginalRows,
+                        onChange: (keys) =>
+                          setSelectedOriginalRows(
+                            keys as (string | number)[],
+                          ),
+                        getCheckboxProps: (row) => ({
+                          disabled:
+                            initialView === "finance-internal-refund-audit" &&
+                            row.status !== "待审批",
+                        }),
+                        ...(isArchiveSettlementActiveRoute
+                          ? {
+                              columnWidth: isArchiveSettlementRejectedRoute
+                                ? 54
+                                : 51,
+                            }
+                          : {}),
+                      }
                     : undefined
                 }
                 rowClassName={(row) =>
@@ -8326,7 +8337,7 @@ export default function FinanceCenterPage({
         ))}
       <Drawer
         open={Boolean(feeReviewTargets.length)}
-        title={<h5>提成审批</h5>}
+        title={<h5>{initialView === "finance-payment-audit" ? "付款审批" : "提成审批"}</h5>}
         width={580}
         placement="right"
         mask={false}
@@ -8375,8 +8386,18 @@ export default function FinanceCenterPage({
           size="small"
           pagination={false}
           tableLayout="fixed"
-          dataSource={feeReviewRows}
-          columns={[
+          columns={initialView === "finance-payment-audit" ? [
+            {
+              title: "案号",
+              dataIndex: "case_no",
+              width: 100,
+              render: (value) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—",
+            },
+            { title: "原告", dataIndex: "plaintiff", width: 100 },
+            { title: "金额", dataIndex: "amount", width: 80, render: reviewNumber },
+            { title: "费用类型", dataIndex: "fee_type", width: 90 },
+            { title: "付款备注", dataIndex: "payment_remark", width: 120 },
+          ] : [
             {
               title: "案号",
               dataIndex: "case_no",
@@ -8478,6 +8499,7 @@ export default function FinanceCenterPage({
               render: reviewNumber,
             },
           ]}
+          dataSource={(initialView === "finance-payment-audit" ? paymentReviewRows : feeReviewRows) as any}
         />
       </Drawer>
       <Modal
