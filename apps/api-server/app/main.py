@@ -2247,6 +2247,12 @@ class ContractPaymentPayInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+class ContractPaymentWriteoffInput(BaseModel):
+    writeoff_date: date
+    voucher_no: str = Field(min_length=2, max_length=128)
+    comment: str = Field(default="", max_length=1000)
+
+
 class SealApplicationInput(BaseModel):
     title: str
     customer: str = ""
@@ -6255,7 +6261,7 @@ async def _ensure_contract_object_not_reserved(item: ContractObject, db: AsyncSe
         .where(
             ContractPaymentLine.contract_object_id == item.id,
             BusinessRecord.module == "contract_payment",
-            BusinessRecord.status.in_(["待审批", "待付款", "已付款"]),
+            BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
         )
         .limit(1)
     )
@@ -6374,7 +6380,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
     if object_ids:
         active_payment_ids = select(BusinessRecord.id).where(
             BusinessRecord.module == "contract_payment",
-            BusinessRecord.status.in_(["待审批", "待付款", "已付款"]),
+            BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
         )
         lines = (await db.scalars(select(ContractPaymentLine).where(
             ContractPaymentLine.contract_object_id.in_(object_ids),
@@ -6493,6 +6499,38 @@ async def pay_contract_payment_application(payment_id: int, body: ContractPaymen
     payment.status = "已付款"; payment.data = {**data, "paid_date": body.paid_date.isoformat(), "voucher_no": body.voucher_no.strip(), "paid_by": identity["username"]}
     db.add(WorkflowEvent(record_id=payment.id, action="合同付款完成", from_status="待付款", to_status="已付款", operator=identity["username"], comment=body.comment.strip()))
     await db.commit(); await db.refresh(payment); return await _record_dict_for_identity(payment, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/writeoff")
+async def writeoff_contract_payment_application(payment_id: int, body: ContractPaymentWriteoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有合同付款核销权限")
+    payment = await _ensure_record_module(payment_id, "contract_payment", identity, db)
+    data = dict(payment.data or {})
+    if data.get("writeoff_status") == "已核销" or payment.status == "已核销":
+        raise HTTPException(status_code=409, detail="合同付款已经核销")
+    if payment.status != "已付款":
+        raise HTTPException(status_code=409, detail="仅已付款合同付款申请可以核销")
+    payment_total = float(await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(
+        FinanceTransaction.finance_record_id == payment.id,
+        FinanceTransaction.transaction_type == "合同付款",
+    )) or 0)
+    amount = abs(float(data.get("amount") or 0))
+    if payment_total + 0.001 < amount:
+        raise HTTPException(status_code=409, detail="合同付款流水合计未达到申请金额，不能核销")
+    payment.status = "已核销"
+    payment.data = {
+        **data,
+        "writeoff_status": "已核销",
+        "writeoff_date": body.writeoff_date.isoformat(),
+        "writeoff_voucher_no": body.voucher_no.strip(),
+        "writeoff_comment": body.comment.strip(),
+        "written_off_by": identity["username"],
+        "written_off_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    db.add(WorkflowEvent(record_id=payment.id, action="合同付款核销", from_status="已付款", to_status="已核销", operator=identity["username"], comment=f"核销凭证：{body.voucher_no.strip()}；{body.comment.strip()}"))
+    await db.commit(); await db.refresh(payment)
+    return await _record_dict_for_identity(payment, identity, db)
 
 
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/changes")

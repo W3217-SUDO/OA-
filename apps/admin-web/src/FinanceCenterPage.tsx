@@ -216,6 +216,7 @@ export default function FinanceCenterPage({
               : "fees";
   const [tab, setTab] = useState(first);
   const [fees, setFees] = useState<Fee[]>([]);
+  const [contractPayments, setContractPayments] = useState<Fee[]>([]);
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
   const [cases, setCases] = useState<Fee[]>([]);
@@ -991,6 +992,7 @@ export default function FinanceCenterPage({
     try {
       const [
         feeRes,
+        contractPaymentRes,
         invoiceRes,
         refundRes,
         caseRes,
@@ -1014,6 +1016,7 @@ export default function FinanceCenterPage({
         feeQueryRes,
       ] = await Promise.all([
         api.get("/records", { params: { module: "finance", page_size: 100 } }),
+        api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
         api.get("/records", { params: { module: "invoice", page_size: 100 } }),
         api.get("/records", { params: { module: "refund", page_size: 100 } }),
         api.get("/records", { params: { module: "case", page_size: 100 } }),
@@ -1147,6 +1150,18 @@ export default function FinanceCenterPage({
             }),
       ]);
       setFees(feeRes.data.items);
+      setContractPayments(
+        (contractPaymentRes.data.items || []).map((item: Fee) => ({
+          ...item,
+          data: {
+            ...(item.data || {}),
+            _source_module: "contract_payment",
+            fee_type: item.data?.lines?.[0]?.fee_type || item.data?.payment_type,
+            case_no: item.data?.lines?.[0]?.case_no,
+            amount: item.data?.amount,
+          },
+        })),
+      );
       setInvoices(invoiceRes.data.items);
       setRefunds(refundRes.data.items);
       setCases(caseRes.data.items);
@@ -1467,6 +1482,19 @@ export default function FinanceCenterPage({
     if (!writeoffTarget) return;
     const values = await writeoffForm.validateFields();
     try {
+      const contractPayment = contractPayments.find((item) => item.id === writeoffTarget.id);
+      if (contractPayment) {
+        await api.post(`/contract-payment-applications/${contractPayment.id}/writeoff`, {
+          writeoff_date: formatRequiredDate(values.writeoff_date || dayjs(), "核销日期"),
+          voucher_no: values.voucher_no,
+          comment: values.comment || "",
+        });
+        message.success("合同付款已核销");
+        setWriteoffTarget(null);
+        writeoffForm.resetFields();
+        await load();
+        return;
+      }
       await api.post(`/finance/fees/${writeoffTarget.id}/writeoff`, values);
       message.success("付款已核销并留痕");
       setWriteoffTarget(null);
@@ -1718,6 +1746,21 @@ export default function FinanceCenterPage({
   const createTransaction = async () => {
     const v = await transactionForm.validateFields();
     try {
+      const contractPayment = contractPayments.find(
+        (item) => item.id === Number(v.finance_record_id),
+      );
+      if (contractPayment) {
+        await api.post(`/contract-payment-applications/${contractPayment.id}/pay`, {
+          paid_date: formatRequiredDate(v.transaction_date, "交易日期"),
+          voucher_no: v.voucher_no || "",
+          comment: v.remark || "",
+        });
+        message.success("合同付款已登记");
+        setTransactionOpen(false);
+        transactionForm.resetFields();
+        await load();
+        return;
+      }
       const { data } = await api.post("/finance/transactions", {
         ...v,
         transaction_date: formatRequiredDate(v.transaction_date, "交易日期"),
@@ -2538,7 +2581,10 @@ export default function FinanceCenterPage({
     fee.data?.fee_type === "内部费用" &&
     (fee.data?.is_refund === true || Number(fee.data?.amount || 0) < 0);
   const originalFinanceRows = useMemo(() => {
-    let result = [...fees];
+    let result = [
+      ...fees,
+      ...(originalKind === "payment" ? contractPayments : []),
+    ];
     if (originalKind === "internal") {
       result = result.filter((item) => item.data.fee_type === "内部费用");
     }
@@ -2557,7 +2603,9 @@ export default function FinanceCenterPage({
     }
     if (initialView === "finance-payment-waiting") {
       result = result.filter((item) =>
-        ["已审批", "部分付款"].includes(item.status),
+        item.data?._source_module === "contract_payment"
+          ? item.status === "待付款"
+          : ["已审批", "部分付款"].includes(item.status),
       );
     }
     if (initialView === "finance-payment-print") {
@@ -2589,6 +2637,9 @@ export default function FinanceCenterPage({
       const paymentRange = originalQuery.paymentRange;
       return (
         (!originalQuery.status ||
+          (initialView === "finance-payment-writeoff" &&
+            item.data?._source_module === "contract_payment" &&
+            item.status === "已付款") ||
           paymentStatus(item) === originalQuery.status) &&
         textMatch(item.data.applicant || item.owner, "applicant") &&
         textMatch(item.data.contract_no, "contractNo") &&
@@ -2614,6 +2665,7 @@ export default function FinanceCenterPage({
     return result;
   }, [
     fees,
+    contractPayments,
     transactions,
     originalQuery,
     originalKind,
@@ -2807,7 +2859,8 @@ export default function FinanceCenterPage({
           审批
         </Button>
       )}
-      {["已审批", "部分付款"].includes(row.status) && (
+      {((row.data?._source_module === "contract_payment" && row.status === "待付款") ||
+        ["已审批", "部分付款"].includes(row.status)) && (
         <Button
           type="link"
           onClick={() => {
@@ -3732,6 +3785,39 @@ export default function FinanceCenterPage({
   ];
 
   const routeConfigs: Record<string, OriginalRouteConfig> = {
+    "finance-payment-print": {
+      fields: [
+        f("申请日期", { control: "date" }),
+        f("付款状态"),
+        f("申请人"),
+        f("付款日期", { control: "date" }),
+        f("合同号"),
+        f("案件编号"),
+        f("收款单位"),
+        f("请款单号"),
+        f("费用类型"),
+        f("客户名称"),
+      ],
+      source: "fees",
+      selectable: true,
+      clear: true,
+      export: true,
+      headers: [
+        "操作",
+        "请款单号",
+        "状态",
+        "申请日期",
+        "申请金额",
+        "截止日期",
+        "案件编号",
+        "案件阶段",
+        "合同编号",
+        "付款日期",
+        "申请人",
+        "客户管理人",
+        "交款人",
+      ],
+    },
     "finance-receipts-icbc": {
       fields: bankFields,
       source: "incoming",
@@ -5332,7 +5418,14 @@ export default function FinanceCenterPage({
     if (!feeReviewTargets.length) return;
     setFeeReviewLoading(true);
     try {
-      if (feeReviewTargets.length === 1) {
+      if (feeReviewTargets.every((item) => item.data?._source_module === "contract_payment")) {
+        for (const target of feeReviewTargets) {
+          await api.post(`/contract-payment-applications/${target.id}/review`, {
+            approved,
+            comment: feeReviewComment,
+          });
+        }
+      } else if (feeReviewTargets.length === 1) {
         await api.post(`/finance/fees/${feeReviewTargets[0].id}/review`, {
           approved,
           comment: feeReviewComment,
@@ -7875,7 +7968,14 @@ export default function FinanceCenterPage({
               )}
             {activeRouteConfig?.export && (
               <div className="finance-original-footer">
-                {isInvoiceUnissuedRoute ? (
+                {initialView === "finance-payment-print" ? (
+                  <Button
+                    onClick={() => void previewInternalPaymentPackage()}
+                    loading={paymentPackageLoading}
+                  >
+                    合并打印
+                  </Button>
+                ) : isInvoiceUnissuedRoute ? (
                   <Space size={7}>
                     <Dropdown
                       trigger={["click"]}
@@ -8806,6 +8906,14 @@ export default function FinanceCenterPage({
         }}
       >
         <Form form={writeoffForm} layout="vertical">
+          <Form.Item
+            label="核销日期"
+            name="writeoff_date"
+            initialValue={dayjs()}
+            rules={[{ required: true, message: "请选择核销日期" }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
           <Form.Item
             label="核销凭证号"
             name="voucher_no"

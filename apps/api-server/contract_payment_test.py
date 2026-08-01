@@ -100,11 +100,11 @@ class ContractPaymentTest(unittest.TestCase):
                 "cause_or_charge": "合同纠纷", "client_position": "原告/申请人", "handling_lawyers": [lawyer_name],
             })
             self.assertEqual(status, 201, body.decode()); case_id = json.loads(body)["id"]
-            status, body = call("POST", f"/contracts/{contract_id}/objects", token, {"case_record_id": case_id, "fee_type": "代理费", "amount": 120, "remark": "付款专测"})
+            status, body = call("POST", f"/contracts/{contract_id}/objects", token, {"case_record_id": case_id, "fee_type": "代理费", "amount": 100, "remark": "付款专测"})
             self.assertEqual(status, 201, body.decode()); object_id = json.loads(body)["id"]
             status, body = call("GET", f"/contracts/{contract_id}/payment-candidates", token)
             self.assertEqual(status, 200); candidate = json.loads(body)["items"][0]
-            self.assertEqual(candidate["contract_object_id"], object_id); self.assertEqual(candidate["remaining_amount"], 120)
+            self.assertEqual(candidate["contract_object_id"], object_id); self.assertEqual(candidate["remaining_amount"], 100)
 
             payment_payload = {"payment_type": "法院费用", "payee": "人民法院", "account": "CODEX-ACCOUNT", "application_date": "2026-08-01", "remark": "付款正向链", "lines": [{"contract_object_id": object_id, "amount": 100}]}
             status, body = call("POST", f"/contracts/{contract_id}/payment-applications", token, payment_payload)
@@ -118,6 +118,16 @@ class ContractPaymentTest(unittest.TestCase):
             status, body = call("GET", f"/contracts/{contract_id}/payment-applications", token)
             self.assertEqual(status, 200); self.assertEqual(json.loads(body)["items"][0]["status"], "已付款")
             self.assertEqual(call("POST", f"/contract-payment-applications/{payment_id}/pay", token, {"paid_date": "2026-08-01", "voucher_no": "DUP", "comment": "非法重复支付"})[0], 409)
+            self.assertEqual(call("POST", f"/contract-payment-applications/{payment_id}/writeoff", token, {"writeoff_date": "2026-08-02", "voucher_no": f"{prefix}-WRITEOFF", "comment": "核销"})[0], 200)
+            status, body = call("GET", f"/contracts/{contract_id}/payment-applications", token)
+            self.assertEqual(status, 200); self.assertEqual(json.loads(body)["items"][0]["status"], "已核销")
+            self.assertEqual(call("POST", f"/contract-payment-applications/{payment_id}/writeoff", token, {"writeoff_date": "2026-08-02", "voucher_no": "DUP-WRITEOFF", "comment": "重复"})[0], 409)
+            self.assertEqual(call("POST", "/contract-payment-applications/999999/writeoff", token, {"writeoff_date": "2026-08-02", "voucher_no": "MISSING-WRITEOFF", "comment": "不存在"})[0], 404)
+            self.assertEqual(call("POST", f"/contract-payment-applications/{payment_id}/pay", token, {"paid_date": "2026-08-02", "voucher_no": "AFTER-WRITEOFF", "comment": "非法"})[0], 409)
+            status, body = call("GET", f"/contracts/{contract_id}/payment-candidates", token)
+            self.assertEqual(status, 200); candidate = json.loads(body)["items"][0]
+            self.assertEqual(candidate["reserved_amount"], 100); self.assertEqual(candidate["remaining_amount"], 0)
+            self.assertIn(call("POST", f"/contracts/{contract_id}/payment-applications", token, {**payment_payload, "lines": [{"contract_object_id": object_id, "amount": 1} ]})[0], (409, 422))
             self.assertEqual(call("POST", f"/contracts/{rejected_contract_id}/payment-applications", token, {**payment_payload, "lines": [{"contract_object_id": object_id, "amount": 1} ]})[0], 409)
         finally:
             conn = sqlite3.connect(DB); conn.execute("PRAGMA foreign_keys=ON")

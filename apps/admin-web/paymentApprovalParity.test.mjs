@@ -16,3 +16,17 @@ test("payment approval route exposes row selection and approval action", () => {
   assert.match(source, /if \(!targets\.length\)/);
   assert.match(source, /message\.warning\(/);
 });
+
+test("payment print empty state keeps selectable export controls", () => {
+  assert.match(source, /"finance-payment-print":\s*\{[\s\S]*?selectable:\s*true[\s\S]*?export:\s*true/);
+  assert.match(source, /initialView\s*===\s*"finance-payment-print"\s*\?\s*\(/);
+  assert.match(source, /合并打印/);
+  assert.match(source, /if \(!targets\.length\)\s*\{\s*Modal\.info/);
+});
+
+test("contract payment applications are loaded and reviewed through contract API", () => {
+  assert.match(source, /module:\s*"contract_payment"/);
+  assert.match(source, /_source_module:\s*"contract_payment"/);
+  assert.match(source, /contract-payment-applications\/\$\{target\.id\}\/review/);
+  assert.match(source, /contract-payment-applications\/\$\{contractPayment\.id\}\/writeoff/);
+});
