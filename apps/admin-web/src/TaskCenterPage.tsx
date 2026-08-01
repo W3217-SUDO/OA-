@@ -1328,6 +1328,18 @@ export default function TaskCenterPage({
             <Button type="primary" htmlType="submit">
               查询
             </Button>
+            <Button
+              htmlType="button"
+              onClick={() => {
+                queryForm.resetFields();
+                setQuery({});
+                setTaskSort(null);
+                setSelectedKeys([]);
+                void load({}, statusTab, 1, taskMeta.pageSize, null);
+              }}
+            >
+              重置
+            </Button>
           </div>
         </Form>
         <Table<TaskRow>

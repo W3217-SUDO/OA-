@@ -10,6 +10,7 @@ test('事务中心我的任务 exposes list filters, pagination, create/detail a
   assert.match(source, /任务标题/)
   assert.match(source, /任务内容/)
   assert.match(source, /pageSize/)
+  assert.match(source, /重置/)
   assert.match(source, /新增任务/)
   assert.match(source, /发起任务/)
   assert.match(source, /选择任务资料附件/)
