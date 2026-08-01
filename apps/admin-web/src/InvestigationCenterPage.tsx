@@ -62,7 +62,7 @@ export default function InvestigationCenterPage({initialTab,onNavigate}:{initial
     }
     const statuses=routeStatuses[initialTab]||[]
     if(statuses.length)result=result.filter(row=>statuses.includes(row.status))
-    if(initialTab==='investigation-task-published'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(String(row.data.publisher||'')))}
+    if(initialTab==='investigation-task-published'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(String(row.data.publisher||row.owner||'')))}
     if(initialTab==='investigation-task-mine'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
     if(initialTab.startsWith('investigation-task-sub-'))result=result.filter(row=>Boolean(row.data.investigation_record_id||row.data.investigation_no||row.data.investigation_module))
     if(initialTab==='investigation-task-sub-published'&&profile.role!=='admin'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(String(row.data.initiator||row.data.publisher||'')))}
