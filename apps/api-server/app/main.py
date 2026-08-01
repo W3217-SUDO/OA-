@@ -269,7 +269,18 @@ DEFAULT_SYSTEM_CONFIGS = {
     },
 }
 SYSTEM_PARAMETER_CACHE: dict[str, list[dict]] = {}
-SYSTEM_CACHE_META = {"system-parameters": {"last_cleared_at": None, "last_cleared_by": ""}}
+SYSTEM_CACHE_REGISTRY = {
+    "IPR_CASETYPE_PREFIX_casetype": {"name": "非诉讼案件类型", "description": "system_parameters:case_type", "category": "case_type"},
+    "IPR_CASEFEETYPE_PREFIX_casefeetype": {"name": "非诉讼案案件费用", "description": "system_parameters:fee_type", "category": "fee_type"},
+    "IPR_CASEPHASETYPE_PREFIX_casephasetype": {"name": "非诉讼案案件阶段", "description": "system_parameters:case_phase", "category": "case_phase"},
+    "IPR_CASEPHASETYPE_PREFIX_casefiletype": {"name": "非诉讼案案件文档", "description": "system_parameters:case_file_type", "category": "case_file_type"},
+    "IPR_CASEFEETYPE_PREFIX_caseassistedfeeType": {"name": "非诉讼案案件资助费用", "description": "ipr_case_assisted_fees", "model": IprCaseAssistedFee},
+    "DEPARTMENT_PREFIX_department": {"name": "部门", "description": "departments:is_active"},
+    "USER_PREFIX_userlist": {"name": "用户", "description": "users:is_active"},
+    "SYS_APPSETTING_PREFIX_configtype": {"name": "系统自动配置", "description": "system_configs"},
+    "system-parameters": {"name": "系统参数字典缓存", "description": "system_parameters:all", "category": "__all__"},
+}
+SYSTEM_CACHE_META = {key: {"last_cleared_at": None, "last_cleared_by": ""} for key in SYSTEM_CACHE_REGISTRY}
 DEFAULT_DEPARTMENTS = [
     ("SHONE", "诉讼一部"), ("SHTWO", "诉讼二部"), ("SH-THREE", "诉讼三部"), ("SHFOUR", "诉讼四部"),
     ("IP", "知识产权中心"), ("DCQZ", "调查取证部"), ("CW", "财务部"), ("SH", "审核部"),
@@ -1846,6 +1857,10 @@ class SystemUserInput(BaseModel):
     # caller to opt a newly created account out of the first-login change.
     must_change_password: bool = True
     profile: dict = Field(default_factory=dict)
+
+
+class CacheBatchClearInput(BaseModel):
+    cache_keys: list[str] = Field(min_length=1, max_length=50)
 
 
 class SystemUserUpdate(BaseModel):
@@ -3448,19 +3463,57 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     return {"key": item.key, "label": item.label, "group": item.group, "value": item.value, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at}
 
 
+async def _system_cache_entry_count(cache_key: str, definition: dict, db: AsyncSession) -> int:
+    category = definition.get("category")
+    if category:
+        if category == "__all__":
+            return sum(len(items) for items in SYSTEM_PARAMETER_CACHE.values())
+        return len(SYSTEM_PARAMETER_CACHE.get(category, []))
+    return 0
+
+
+def _clear_registered_cache(cache_key: str, operator: str) -> None:
+    definition = SYSTEM_CACHE_REGISTRY[cache_key]
+    category = definition.get("category")
+    if category:
+        _clear_parameter_cache(None if category == "__all__" else category, operator)
+    SYSTEM_CACHE_META[cache_key] = {"last_cleared_at": datetime.now().isoformat(), "last_cleared_by": operator}
+
+
 @app.get(f"{settings.api_prefix}/system/caches")
-async def list_system_caches(identity: dict = Depends(current_identity)):
+async def list_system_caches(page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
-    meta = SYSTEM_CACHE_META["system-parameters"]
-    return {"items": [{"key": "system-parameters", "name": "系统参数字典缓存", "entry_count": sum(len(items) for items in SYSTEM_PARAMETER_CACHE.values()), "bucket_count": len(SYSTEM_PARAMETER_CACHE), **meta}]}
+    # system-parameters is retained as a backwards-compatible clear alias, but the
+    # visible registry mirrors the legacy eight cache rows.
+    keys = [key for key in SYSTEM_CACHE_REGISTRY if key != "system-parameters"]
+    rows = []
+    for key in keys:
+        definition = SYSTEM_CACHE_REGISTRY[key]
+        rows.append({"key": key, "name": definition["name"], "description": definition["description"], "entry_count": await _system_cache_entry_count(key, definition, db), "bucket_count": 1, **SYSTEM_CACHE_META[key]})
+    total = len(rows)
+    start = (page - 1) * page_size
+    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size}
+
+
+@app.post(f"{settings.api_prefix}/system/caches/clear")
+async def clear_system_caches(body: CacheBatchClearInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    unknown = [key for key in body.cache_keys if key not in SYSTEM_CACHE_REGISTRY or key == "system-parameters"]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"缓存不存在: {unknown[0]}")
+    keys = list(dict.fromkeys(body.cache_keys))
+    for key in keys:
+        _clear_registered_cache(key, identity["username"])
+    return {"cleared": keys, "items": [{"key": key, "entry_count": await _system_cache_entry_count(key, SYSTEM_CACHE_REGISTRY[key], db), **SYSTEM_CACHE_META[key]} for key in keys]}
 
 
 @app.post(f"{settings.api_prefix}/system/caches/{{cache_key}}/clear")
-async def clear_system_cache(cache_key: str, identity: dict = Depends(current_identity)):
+async def clear_system_cache(cache_key: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
-    if cache_key != "system-parameters": raise HTTPException(status_code=404, detail="缓存不存在")
-    _clear_parameter_cache(operator=identity["username"])
-    return {"key": cache_key, "cleared": True, **SYSTEM_CACHE_META[cache_key]}
+    if cache_key not in SYSTEM_CACHE_REGISTRY: raise HTTPException(status_code=404, detail="缓存不存在")
+    _clear_registered_cache(cache_key, identity["username"])
+    definition = SYSTEM_CACHE_REGISTRY[cache_key]
+    return {"key": cache_key, "cleared": True, "entry_count": await _system_cache_entry_count(cache_key, definition, db), **SYSTEM_CACHE_META[cache_key]}
 
 
 def _law_firm_contact_dict(item: LawFirmContact, *, is_default: bool = False) -> dict:

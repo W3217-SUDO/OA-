@@ -52,6 +52,7 @@ type SystemConfig = {
 type CacheRow = {
   key: string;
   name: string;
+  description: string;
   entry_count: number;
   bucket_count: number;
   last_cleared_at: string | null;
@@ -182,6 +183,10 @@ export default function SystemCenterPage({
   const [parameters, setParameters] = useState<ParameterRow[]>([]);
   const [configs, setConfigs] = useState<SystemConfig[]>([]);
   const [caches, setCaches] = useState<CacheRow[]>([]);
+  const [cacheTotal, setCacheTotal] = useState(0);
+  const [cachePage, setCachePage] = useState(1);
+  const [cachePageSize, setCachePageSize] = useState(15);
+  const [selectedCacheKeys, setSelectedCacheKeys] = useState<string[]>([]);
   const [menus, setMenus] = useState<MenuRow[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]),
     [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
@@ -248,10 +253,11 @@ export default function SystemCenterPage({
       message.error(error?.response?.data?.detail || "系统配置加载失败");
     }
   };
-  const loadCaches = async () => {
+  const loadCaches = async (page = cachePage, pageSize = cachePageSize) => {
     try {
-      const { data } = await api.get("/system/caches");
+      const { data } = await api.get("/system/caches", { params: { page, page_size: pageSize } });
       setCaches(data.items);
+      setCacheTotal(data.total ?? data.items.length);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "缓存加载失败");
     }
@@ -430,9 +436,24 @@ export default function SystemCenterPage({
     try {
       await api.post(`/system/caches/${row.key}/clear`);
       message.success("缓存已清空");
-      void loadCaches();
+      setSelectedCacheKeys((keys) => keys.filter((key) => key !== row.key));
+      void loadCaches(cachePage, cachePageSize);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "清理失败");
+    }
+  };
+  const clearSelectedCaches = async () => {
+    if (!selectedCacheKeys.length) {
+      message.info("请先选择要清除的缓存");
+      return;
+    }
+    try {
+      await api.post("/system/caches/clear", { cache_keys: selectedCacheKeys });
+      message.success(`已清除 ${selectedCacheKeys.length} 项缓存`);
+      setSelectedCacheKeys([]);
+      void loadCaches(cachePage, cachePageSize);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量清除缓存失败");
     }
   };
   const editMenu = (row: MenuRow) => {
@@ -952,6 +973,8 @@ export default function SystemCenterPage({
         <Table
           rowKey="key"
           size="small"
+          rowSelection={{ selectedRowKeys: selectedCacheKeys, onChange: (keys) => setSelectedCacheKeys(keys.map(String)) }}
+          title={() => <Popconfirm title="确认批量清空缓存？" onConfirm={clearSelectedCaches}><Button danger>批量清空</Button></Popconfirm>}
           columns={[
             {
               title: "序号",
@@ -979,7 +1002,7 @@ export default function SystemCenterPage({
           ]}
           dataSource={caches}
           locale={{ emptyText: empty }}
-          pagination={false}
+          pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showSizeChanger: true, onChange: (page, pageSize) => { setCachePage(page); setCachePageSize(pageSize); void loadCaches(page, pageSize); } }}
         />
       </Card>
     );
