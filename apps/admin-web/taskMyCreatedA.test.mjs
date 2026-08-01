@@ -46,3 +46,7 @@ test('事务中心未读空列表仍显示标记已读，未选择时只提示�
   assert.match(handler, /if \(!selectedRows\.length\) \{[\s\S]*?message\.warning\([\s\S]*?return;[\s\S]*?\}/)
   assert.ok(handler.indexOf('return;') < handler.indexOf('api.post("/tasks/messages/batch-read"'))
 })
+
+test('我发起的任务空状态页隐藏底部新增和更多操作', () => {
+  assert.match(source, /hideTaskFooter[\s\S]*?\(isCreated \|\|/)
+})

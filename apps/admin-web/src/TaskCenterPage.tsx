@@ -290,7 +290,8 @@ export default function TaskCenterPage({
     profile.role === "admin" && initialView === "task-company-created";
   const hideTaskFooter =
     taskMeta.total === 0 &&
-    (isCollaborating ||
+    (isCreated ||
+      isCollaborating ||
       isReminder ||
       initialView === "task-dept-created" ||
       initialView === "task-dept-accepted" ||
