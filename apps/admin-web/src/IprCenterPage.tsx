@@ -92,8 +92,10 @@ const statusColor: Record<string, string> = {
 
 export default function IprCenterPage({
   initialView,
+  onNavigate,
 }: {
   initialView: string;
+  onNavigate?: (route: string) => void;
 }) {
   const kind =
     initialView === "ipr-trademark"
@@ -944,6 +946,8 @@ export default function IprCenterPage({
               />
               <Button onClick={() => void exportExcel()}>导出Excel</Button>
               <Button onClick={() => { iprBatchForm.resetFields(); iprBatchForm.setFieldsValue({ document_date: dayjs() }); void loadIprFileTypes(""); setIprBatchFile(null); setIprBatchOpen(true); }}>批量上传文档</Button>
+              <Button onClick={() => onNavigate?.("case-files-receipt")}>案件票据导入</Button>
+              <Button onClick={() => onNavigate?.("case-files-invoice")}>案件发票导入</Button>
               <Button disabled={!selectedIprCaseIds.length} onClick={openBatchMaintenance}>批量维护</Button>
               <Button disabled={!selectedIprCaseIds.length} onClick={() => setAnnualFeeMonitoring(true)}>加入年费监控</Button>
               <Button disabled={!selectedIprCaseIds.length} onClick={() => setAnnualFeeMonitoring(false)}>放弃年费监控</Button>

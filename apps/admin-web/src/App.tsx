@@ -1319,7 +1319,7 @@ export default function App() {
     ) : route === "ipr-custom-file-import" ? (
       <IprCustomFileImportPage />
     ) : route.startsWith("ipr-") ? (
-      <IprCenterPage initialView={active} />
+      <IprCenterPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("case-") ? (
       <CaseCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "affairs-records" ? (
