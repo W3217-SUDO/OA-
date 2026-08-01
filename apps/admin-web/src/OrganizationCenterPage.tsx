@@ -19,6 +19,8 @@ import {
 import type { TableColumnsType, TreeDataNode } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api } from "./api";
+// @ts-ignore Role-gated organization actions are covered by a standalone Node test.
+import { organizationActionAccess } from "./hrAccessGuard.mjs";
 import "./organization-center.css";
 
 type Department = {
@@ -185,6 +187,7 @@ export default function OrganizationCenterPage({
   const [departments, setDepartments] = useState<Department[]>([]),
     [roles, setRoles] = useState<JobRole[]>([]),
     [loading, setLoading] = useState(false);
+  const [accessRole, setAccessRole] = useState("");
   const [open, setOpen] = useState(false),
     [editingDepartment, setEditingDepartment] = useState<Department | null>(
       null,
@@ -211,8 +214,14 @@ export default function OrganizationCenterPage({
   };
   useEffect(() => {
     void load();
+    void api.get("/auth/me").then(({ data }) => setAccessRole(String(data.role || ""))).catch(() => setAccessRole(""));
   }, []);
+  const canManageOrganization = organizationActionAccess(accessRole).canManageOrganization;
   const start = (row?: Department | JobRole) => {
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以维护部门和角色");
+      return;
+    }
     if (rolesView) {
       const role = row as JobRole | undefined;
       setEditingRole(role || null);
@@ -240,6 +249,10 @@ export default function OrganizationCenterPage({
     setOpen(true);
   };
   const save = async () => {
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以维护部门和角色");
+      return;
+    }
     try {
       if (rolesView) {
         const value = await roleForm.validateFields();
@@ -260,6 +273,10 @@ export default function OrganizationCenterPage({
     }
   };
   const removeDepartment = async (row: Department) => {
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以删除部门");
+      return;
+    }
     try {
       await api.delete(`/hr/departments/${row.id}`);
       message.success("删除成功");
@@ -269,6 +286,10 @@ export default function OrganizationCenterPage({
     }
   };
   const removeRole = async (row: JobRole) => {
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以删除角色");
+      return;
+    }
     try {
       await api.delete(`/hr/job-roles/${row.id}`);
       message.success("删除成功");
@@ -278,11 +299,19 @@ export default function OrganizationCenterPage({
     }
   };
   const openRolePermissions = (row: JobRole) => {
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以设置角色权限");
+      return;
+    }
     setPermissionRole(row);
     setSelectedRolePermissions(row.permissions || []);
   };
   const saveRolePermissions = async () => {
     if (!permissionRole) return;
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以设置角色权限");
+      return;
+    }
     try {
       await api.patch(`/hr/job-roles/${permissionRole.id}`, {
         permissions: selectedRolePermissions,
@@ -318,7 +347,7 @@ export default function OrganizationCenterPage({
       key: "action",
       width: 130,
       fixed: "right",
-      render: (_v, row) => (
+      render: (_v, row) => canManageOrganization ? (
         <Space size={0}>
           <Button
             type="link"
@@ -334,7 +363,7 @@ export default function OrganizationCenterPage({
             <Button type="link" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
-      ),
+      ) : "—",
     },
   ];
   const roleColumns: TableColumnsType<JobRole> = [
@@ -343,13 +372,13 @@ export default function OrganizationCenterPage({
     {
       title: "角色权限",
       key: "permissions",
-      render: (_v, row) => <Button type="link" onClick={() => openRolePermissions(row)}>权限设定</Button>,
+      render: (_v, row) => canManageOrganization ? <Button type="link" onClick={() => openRolePermissions(row)}>权限设定</Button> : "—",
     },
     {
       title: "操作",
       key: "action",
       width: 170,
-      render: (_v, row) => (
+      render: (_v, row) => canManageOrganization ? (
         <Space size={0}>
           <Button
             type="link"
@@ -365,7 +394,7 @@ export default function OrganizationCenterPage({
             <Button type="link" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
-      ),
+      ) : "—",
     },
   ];
   const title = rolesView ? "角色列表" : "部门列表",
@@ -373,7 +402,7 @@ export default function OrganizationCenterPage({
   const emptyContent = (
     <div className="organization-empty">
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
-      {rolesView && (
+      {rolesView && canManageOrganization && (
         <Button type="primary" icon={<PlusOutlined />} onClick={() => start()}>
           新增角色
         </Button>
@@ -384,13 +413,13 @@ export default function OrganizationCenterPage({
     <>
       <Card className="panel organization-panel" title={title}>
         <div className="organization-action">
-          <Button
+          {canManageOrganization && <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => start()}
           >
             {button}
-          </Button>
+          </Button>}
         </div>
         {rolesView ? (
           <Table
