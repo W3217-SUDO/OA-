@@ -879,6 +879,10 @@ class HrTransitionInput(BaseModel):
     comment: str = ""
 
 
+class HrEmployeeBatchDeleteInput(BaseModel):
+    employee_ids: list[int] = Field(min_length=1, max_length=100)
+
+
 class HrSubrecordInput(BaseModel):
     kind: str = Field(pattern="^(leave|matter|commission)$")
     data: dict = Field(default_factory=dict)
@@ -14884,6 +14888,46 @@ async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_
         await db.delete(user)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _load_hr_batch_deletion_impact(body: HrEmployeeBatchDeleteInput, identity: dict, db: AsyncSession) -> tuple[list[tuple[BusinessRecord, User | None]], list[dict[str, object]]]:
+    employee_ids = sorted(set(body.employee_ids))
+    if any(employee_id <= 0 for employee_id in employee_ids):
+        raise HTTPException(status_code=422, detail="员工标识无效")
+    employees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(employee_ids), BusinessRecord.module == "hr").with_for_update())).all())
+    found_ids = {employee.id for employee in employees}
+    missing = [employee_id for employee_id in employee_ids if employee_id not in found_ids]
+    blockers: list[dict[str, object]] = [{"employee_id": employee_id, "employee_no": str(employee_id), "blockers": [{"kind": "员工档案不存在", "count": 1, "records": [str(employee_id)]}]} for employee_id in missing]
+    loaded: list[tuple[BusinessRecord, User | None]] = []
+    for employee in employees:
+        employee_blockers, user = await _collect_hr_employee_deletion_blockers(employee, identity, db)
+        loaded.append((employee, user))
+        if employee_blockers:
+            blockers.append({"employee_id": employee.id, "employee_no": employee.serial_no, "employee_name": employee.title, "blockers": employee_blockers})
+    return loaded, blockers
+
+
+@app.post(f"{settings.api_prefix}/hr/employees/batch-deletion-impact")
+async def get_hr_employee_batch_deletion_impact(body: HrEmployeeBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    _, blockers = await _load_hr_batch_deletion_impact(body, identity, db)
+    return {"deletable": not blockers, "blockers": blockers}
+
+
+@app.api_route(f"{settings.api_prefix}/hr/employees/batch", methods=["DELETE"])
+async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    employees, blockers = await _load_hr_batch_deletion_impact(body, identity, db)
+    if blockers:
+        await db.rollback()
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
+    for employee, user in employees:
+        await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))
+        await db.delete(employee)
+        if user:
+            await db.delete(user)
+    await db.commit()
+    return {"deleted_ids": [employee.id for employee, _ in employees]}
 
 
 @app.get(f"{settings.api_prefix}/hr/departments")
