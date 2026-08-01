@@ -26,3 +26,15 @@ test('事务中心任务 API validates owner/status, withdrawal reason, attachme
   assert.match(api, /file_attachments/) 
   assert.match(api, /record\.module == "task"/) 
 })
+
+test('事务中心我发起的任务 restores the legacy batch acceptance action with dedicated server validation', () => {
+  assert.match(source, /批量验收任务/)
+  assert.match(source, /TaskBatchLifecycleAction = "accept" \| "complete" \| "confirm" \| "handoff" \| "withdraw"/)
+  assert.match(api, /\^\(accept\|complete\|confirm\|handoff\|withdraw\)\$/)
+  assert.match(api, /仅任务发起人可以批量确认完成/)
+  assert.match(api, /仅待确认或已完成任务可以批量确认/)
+})
+
+test('事务中心 batch selection trusts the server-authorized task page instead of re-filtering it locally', () => {
+  assert.match(source, /\(\) => tasks\.filter\(\(row\) => selectedKeys\.includes\(row\.id\)\)/)
+})

@@ -1586,7 +1586,7 @@ class TaskBatchUpdateInput(BaseModel):
 
 class TaskBatchLifecycleInput(BaseModel):
     task_ids: list[int] = Field(min_length=1, max_length=100)
-    action: str = Field(pattern="^(accept|complete|handoff|withdraw)$")
+    action: str = Field(pattern="^(accept|complete|confirm|handoff|withdraw)$")
     recipient: str = Field(default="", max_length=128)
     comment: str = Field(default="", max_length=1000)
 
@@ -7797,6 +7797,11 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可提交完成")
             if task.status != "处理中":
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 仅处理中可提交完成")
+        elif body.action == "confirm":
+            if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
+                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅任务发起人可以批量确认完成")
+            if task.status not in {"待确认", "已完成"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 仅待确认或已完成任务可以批量确认")
         elif body.action == "handoff":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅当前负责人可交接")
@@ -7814,6 +7819,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     action_labels = {
         "accept": "批量接收任务",
         "complete": "批量提交任务完成",
+        "confirm": "批量验收任务",
         "handoff": "批量任务交接",
         "withdraw": "批量撤回任务",
     }
@@ -7841,6 +7847,14 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 "completion_submitted_at": datetime.now().isoformat(timespec="seconds"),
                 "completion_auto_confirm_at": str(auto_at),
                 "completion_comment": comment,
+            }
+        elif body.action == "confirm":
+            task.status = "已验收"
+            task.data = {
+                **data,
+                "verified_at": datetime.now().isoformat(timespec="seconds"),
+                "verify_comment": comment,
+                "completion_auto_confirm_at": "",
             }
         elif body.action == "handoff":
             previous_owner = task.owner
@@ -7881,7 +7895,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 comment=event_comment,
             ),
             db,
-            content=content_labels[body.action],
+            content=content_labels.get(body.action, "任务已批量验收"),
         )
     await db.commit()
     for task in ordered_tasks:

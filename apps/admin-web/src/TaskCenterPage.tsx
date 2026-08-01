@@ -129,7 +129,7 @@ type DialogAction = "reject" | "resend";
 type FeeAction = "lawFee" | "platformFee" | "internalFee";
 type FeeSubtype = "官费" | "第三方费用" | "代理费" | "其他费用" | "内部费用";
 type CaseBatchAction = "hearing_lawyer" | "handling_lawyers" | "assistant" | "case_stage";
-type TaskBatchLifecycleAction = "accept" | "complete" | "handoff" | "withdraw";
+type TaskBatchLifecycleAction = "accept" | "complete" | "confirm" | "handoff" | "withdraw";
 type TaskQuery = {
   priority?: string;
   serial_no?: string;
@@ -524,8 +524,12 @@ export default function TaskCenterPage({
     });
   }, [scopedTasks, tabs, statusTab, query, tasks, taskMeta.statusCounts]);
   const selectedRows = useMemo(
-    () => scopedTasks.filter((row) => selectedKeys.includes(row.id)),
-    [scopedTasks, selectedKeys],
+    // The API has already applied the requested relation and data scope. In
+    // particular admins may receive historical tasks whose initiator name no
+    // longer matches the active account profile; filtering again here makes a
+    // visibly selected row unusable for its permitted batch workflow.
+    () => tasks.filter((row) => selectedKeys.includes(row.id)),
+    [tasks, selectedKeys],
   );
   const selected = selectedRows.length === 1 ? selectedRows[0] : null;
   const createTask = async () => {
@@ -899,6 +903,7 @@ export default function TaskCenterPage({
   const taskBatchLabels: Record<TaskBatchLifecycleAction, string> = {
     accept: "批量接收任务",
     complete: "批量提交完成",
+    confirm: "批量验收任务",
     handoff: "批量交接任务",
     withdraw: "批量撤回任务",
   };
@@ -1443,6 +1448,7 @@ export default function TaskCenterPage({
                         { key: "handoff", label: "批量交接任务" },
                       ] : []),
                       ...((canManageInitiatedTask || canManageCompanyCreatedTask) ? [
+                        { key: "confirm", label: "批量验收任务" },
                         { key: "withdraw", label: "批量撤回任务", danger: true },
                       ] : []),
                     ],
@@ -1745,9 +1751,11 @@ export default function TaskCenterPage({
           showIcon
           message={taskBatchAction === "handoff"
             ? "所有任务将转交给同一接收人；交接后 5 天内未重新开始会自动完成。"
-            : taskBatchAction === "withdraw"
-              ? "仅任务发起人或管理员可撤回；任一任务不符合条件时整批不会提交。"
-              : "系统将逐条核验负责人、状态和权限；任一任务不符合条件时整批不会提交。"}
+                : taskBatchAction === "withdraw"
+                  ? "仅任务发起人或管理员可撤回；任一任务不符合条件时整批不会提交。"
+                  : taskBatchAction === "confirm"
+                    ? "仅任务发起人或管理员可验收待确认任务；任一任务不符合条件时整批不会提交。"
+                  : "系统将逐条核验负责人、状态和权限；任一任务不符合条件时整批不会提交。"}
           style={{ marginBottom: 16 }}
         />
         <Form form={taskBatchForm} layout="vertical">
