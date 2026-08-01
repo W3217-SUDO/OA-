@@ -278,6 +278,10 @@ def main():
     system_configs_original: dict[str, dict] = {}
 
     def create_record(module: str, status: str, title: str, data=None, *, department="上海分所", owner=USERNAME):
+        # Fixture titles participate in the customer duplicate-name rule.
+        # Keep every interrupted or repeated run independent from prior smoke
+        # data instead of weakening that production rule during cleanup.
+        title = f"{title}-{suffix}"
         path = "/customers" if module == "customer" else ("/contracts" if module == "contract" else "/records")
         effective_status = "潜在" if module == "customer" else status
         payload = {
