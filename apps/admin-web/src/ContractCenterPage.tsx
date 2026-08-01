@@ -245,7 +245,11 @@ export default function ContractCenterPage({
         api.get(`/contracts/${contract.id}/objects`),
         api.get(`/contracts/${contract.id}/object-cases`),
         api.get("/finance/incoming-payments"),
-        api.get("/records", { params: { module: "invoice", keyword: contract.serial_no, page: 1, page_size: 100 } }),
+        // Invoice records are keyed by contract_record_id/contract_no rather
+        // than the generic record serial/title search fields.  Query the
+        // finance invoice projection so issued applications reappear in the
+        // contract detail instead of falling through to an empty table.
+        api.get("/finance/invoices", { params: { scope: "company", customer: contract.customer, page: 1, page_size: 100 } }),
         api.get("/records", { params: { module: "contract_payment", keyword: contract.serial_no, page: 1, page_size: 100 } }),
         api.get(`/contracts/${contract.id}/approvals`),
       ]);
