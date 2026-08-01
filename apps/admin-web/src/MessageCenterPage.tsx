@@ -105,6 +105,7 @@ export default function MessageCenterPage(){
         </div>
         <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{pageSize:15,showTotal:total=>`共 ${total} 条`}} scroll={{x:1120}}/>
         <div className="message-table-actions">{view!=='sent'&&<><Button disabled={!selectedKeys.length} onClick={markSelectedRead}>标记已读</Button><Button onClick={markAllRead}>全部标记已读</Button></>}<Popconfirm title="确认删除选中的消息？" onConfirm={()=>deleteMessages(selectedKeys)}><Button danger disabled={!selectedKeys.length}>删除选中</Button></Popconfirm></div>
+        <Button onClick={() => { setDates(null); setSender(""); setKeyword(""); setType(""); void load(); }}>重置</Button>
       </section>
     </Card>
     <Drawer open={Boolean(selected)} width={520} title={<Space><MailOutlined/>{selected?.title}</Space>} onClose={()=>setSelected(null)}>
