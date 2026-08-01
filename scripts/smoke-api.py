@@ -770,7 +770,7 @@ def main():
             "fee_reduction": "no", "credit_code": member_credit_code,
             "data": {"agency_fee_due": 123.45, "official_fee_unreceived": -67.89},
         }, expected=(201,)); records.append(member_created["id"])
-        assert member_created["serial_no"].startswith("KH")
+        assert member_created["serial_no"].startswith("SHKH")
         assert member_created["owner"] == member_name and member_created["department"] == "深圳分所"
         assert member_created["data"]["customer_managers"] == [member_name, manager_name]
         assert member_created["data"]["is_shared"] == "否" and member_created["data"]["fee_reduction"] == "否"
