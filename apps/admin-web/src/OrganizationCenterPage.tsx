@@ -20,7 +20,7 @@ import type { TableColumnsType, TreeDataNode } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api } from "./api";
 // @ts-ignore Role-gated organization actions are covered by a standalone Node test.
-import { organizationActionAccess } from "./hrAccessGuard.mjs";
+import { canDeleteOrganizationRole, organizationActionAccess } from "./hrAccessGuard.mjs";
 import "./organization-center.css";
 
 type Department = {
@@ -387,12 +387,14 @@ export default function OrganizationCenterPage({
           >
             修改
           </Button>
-          <Popconfirm
-            title="确认删除该角色？"
-            onConfirm={() => removeRole(row)}
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {canDeleteOrganizationRole(row.code) && (
+            <Popconfirm
+              title="确认删除该角色？"
+              onConfirm={() => removeRole(row)}
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ) : "—",
     },

@@ -15047,6 +15047,8 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
 @app.delete(f"{settings.api_prefix}/hr/job-roles/{{role_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job_role(role_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity); item = await db.get(JobRole, role_id)
+    if item and item.code == "SYSTEM-ADMIN":
+        raise HTTPException(status_code=422, detail="系统管理员角色不能删除")
     if not item: raise HTTPException(status_code=404, detail="岗位角色不存在")
     hr_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all()
     used = sum(1 for record in hr_records if (record.data or {}).get("position") == item.name)

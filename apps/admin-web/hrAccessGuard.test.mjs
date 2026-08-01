@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { hrActionAccess, organizationActionAccess } from './src/hrAccessGuard.mjs'
+import { canDeleteOrganizationRole, hrActionAccess, organizationActionAccess } from './src/hrAccessGuard.mjs'
 
 test('limits employee account administration to administrators while allowing managers to process HR status', () => {
   assert.deepEqual(hrActionAccess('admin'), {
@@ -27,4 +27,9 @@ test('limits department and role administration to administrators', () => {
   assert.equal(organizationActionAccess('admin').canManageOrganization, true)
   assert.equal(organizationActionAccess('manager').canManageOrganization, false)
   assert.equal(organizationActionAccess('user').canManageOrganization, false)
+})
+
+test('protects the built-in system administrator role from deletion', () => {
+  assert.equal(canDeleteOrganizationRole('SYSTEM-ADMIN'), false)
+  assert.equal(canDeleteOrganizationRole('HR-MANAGER'), true)
 })

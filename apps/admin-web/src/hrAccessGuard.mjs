@@ -11,3 +11,9 @@ export function hrActionAccess(role) {
 export function organizationActionAccess(role) {
   return { canManageOrganization: role === 'admin' }
 }
+
+// Keep the built-in administrator role available; the API enforces the same
+// invariant so UI and direct requests cannot diverge.
+export function canDeleteOrganizationRole(roleCode) {
+  return roleCode !== 'SYSTEM-ADMIN'
+}
