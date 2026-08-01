@@ -1180,7 +1180,7 @@ export default function ContractCenterPage({
   };
   const needSelected = (action: () => void) =>
     selected ? action() : message.warning("请先选择一份合同");
-  const selected = rows.find((row) => selectedRowKeys.includes(row.id));
+  const selected = rows.find((row) => row.id === Number(selectedRowKeys[0]));
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const moneyKeys = [
     "official_paid",
@@ -1488,7 +1488,10 @@ export default function ContractCenterPage({
           dataSource={rows}
           rowSelection={{
             selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys),
+            onChange: (keys) => {
+              setSelectedRowKeys(keys.length ? [keys[keys.length - 1]] : []);
+              setChanging(null);
+            },
           }}
           tableLayout="fixed"
           scroll={{ x: isAuditView ? 1450 : 1480 }}
