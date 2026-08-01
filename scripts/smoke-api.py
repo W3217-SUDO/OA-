@@ -502,7 +502,9 @@ def main():
         department_recycle_substring_record = create_record("customer", "跟进中", "范围部门回收用户名子串客户", {"customer_managers": [department_substring_manager_name], "agency_fee_due": 711.5, "official_fee_unreceived": -90.25}, department="北京分所", owner=department_substring_manager_name)
         department_recycle_substring_record = call("POST", f"/customers/{department_recycle_substring_record['id']}/recycle", {"comment": "构造部门回收站子串隔离客户"})
         company_recycle_record = create_record("customer", "跟进中", "范围公司回收站客户", {"customer_managers": [outsider_name], "agency_fee_due": 812.75, "official_fee_unreceived": -101.25, "bank_account": "COMPANY-RECYCLE-PRIVATE-BANK"}, department="上海分所", owner=outsider_name)
-        assert call("GET", f"/customers?scope=mine&customer_name={urllib.parse.quote(company_recycle_record['title'])}")["total"] == 1
+        # The administrator is neither this customer's manager nor its source.
+        # "我的客户" must not leak it before (or after) it enters the recycle bin.
+        assert call("GET", f"/customers?scope=mine&customer_name={urllib.parse.quote(company_recycle_record['title'])}")["total"] == 0
         deleted_from_mine = call("POST", f"/customers/{company_recycle_record['id']}/recycle", {"comment": "我的客户：客户删除"})
         assert deleted_from_mine["status"] == "已回收"
         company_recycle_record = deleted_from_mine
