@@ -1425,6 +1425,18 @@ export default function ContractCenterPage({
       message.error(error?.response?.data?.detail || "关联案件加载失败");
     }
   };
+  const openRelatedPayment = (payment: Contract) => {
+    const paymentNo = String(payment.serial_no || "").trim();
+    if (!paymentNo) {
+      message.warning("当前付款记录缺少申请单号");
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", "finance-payment-mine");
+    params.set("payment_no", paymentNo);
+    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    onNavigate?.("finance-payment-mine");
+  };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());
   const customerOptions = uniqueCustomers.map((customer) => ({
     value: customer.id,
@@ -1831,7 +1843,7 @@ export default function ContractCenterPage({
               <h3>付款记录</h3>
               <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={detailPayments} locale={{ emptyText: "暂无付款记录" }} columns={[
                 { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
-                { title: "申请单号", dataIndex: "serial_no", width: 150 },
+                { title: "申请单号", dataIndex: "serial_no", width: 150, render: (value: string, row: Contract) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedPayment(row)}>{value}</Button> : "—" },
                 { title: "申请人", width: 120, render: (_: unknown, row: Contract) => (row.data as any).applicant || row.owner || "—" },
                 { title: "待付金额", width: 110, render: (_: unknown, row: Contract) => amount((row.data as any).pending_amount || 0) },
                 { title: "付款日期", width: 120, render: (_: unknown, row: Contract) => (row.data as any).payment_date || "—" },
