@@ -48,3 +48,15 @@ test('returns each required field as the first missing field in old-system order
     null,
   )
 })
+
+test('does not treat extension fields as required core fields', () => {
+  assert.equal(firstMissingRequiredEmployeeField({
+    serial_no: 'E-1',
+    username: 'u',
+    title: 'n',
+    role: 'user',
+    password: 'p',
+    department: 'd',
+    position: 'employee',
+  }), null)
+})
