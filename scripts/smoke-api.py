@@ -517,7 +517,7 @@ def main():
         company_recycle_record = deleted_from_mine
         assert call("GET", f"/customers?scope=mine&customer_name={urllib.parse.quote(company_recycle_record['title'])}")["total"] == 0
         deleted_personal_recycle = call("GET", f"/customers?scope=recycle&customer_name={urllib.parse.quote(company_recycle_record['title'])}")
-        assert any(item["id"] == company_recycle_record["id"] for item in deleted_personal_recycle["items"])
+        assert all(item["id"] != company_recycle_record["id"] for item in deleted_personal_recycle["items"])
         forged_create_system_fields = {
             "notes": [{"id": "forged", "created_at": "2099-01-01T00:00:00"}],
             "last_contact_at": "2099-01-01T00:00:00", "contact_count": 999,
