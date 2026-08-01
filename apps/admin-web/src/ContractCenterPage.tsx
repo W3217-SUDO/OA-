@@ -121,6 +121,16 @@ const colors: Record<string, string> = {
 };
 const contractNo = () => `HT${dayjs().format("YYYYMMDDHHmmss")}`;
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
+const CONTRACT_QUERY_STORAGE_KEY = "sunhold:contract-query";
+const readContractQuery = (): Record<string, any> => {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(CONTRACT_QUERY_STORAGE_KEY) || "{}");
+    if (Array.isArray(parsed.signed_at)) parsed.signed_at = parsed.signed_at.map((value: string) => dayjs(value));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
 const initialProfile = (): Profile => {
   try {
     const stored = JSON.parse(localStorage.getItem("user") || "{}");
@@ -200,7 +210,7 @@ export default function ContractCenterPage({
   const [submittingWizard, setSubmittingWizard] = useState(false);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]),
-    [query, setQuery] = useState<Record<string, any>>({});
+    [query, setQuery] = useState<Record<string, any>>(readContractQuery);
   const [form] = Form.useForm(),
     [submitForm] = Form.useForm(),
     [reviewForm] = Form.useForm(),
@@ -232,6 +242,11 @@ export default function ContractCenterPage({
   };
   const openViewing = async (contract: Contract) => {
     if (!isContractDetailView) {
+      try {
+        sessionStorage.setItem(CONTRACT_QUERY_STORAGE_KEY, JSON.stringify(query));
+      } catch {
+        // Session storage may be unavailable in embedded/private contexts.
+      }
       onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
       return;
     }
@@ -338,6 +353,13 @@ export default function ContractCenterPage({
     try {
       const recordsRes = await recordsRequest;
       setAllRows(recordsRes.data.items);
+      if (!isContractDetailView) {
+        const savedQuery = readContractQuery();
+        if (Object.keys(savedQuery).length) {
+          setQuery(savedQuery);
+          queryForm.setFieldsValue(savedQuery);
+        }
+      }
       const relationTarget = consumeCustomerRelationTarget();
       if (relationTarget?.target === "contracts") {
         const customerKeyword = relationTarget.title || relationTarget.serial_no || "";
