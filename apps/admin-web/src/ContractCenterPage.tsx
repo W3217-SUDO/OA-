@@ -239,9 +239,10 @@ export default function ContractCenterPage({
     setViewingAttachments([]);
     setViewingAttachmentsLoading(true);
     try {
-      const [attachmentResult, eventResult, objectResult, caseResult, receiptResult, invoiceResult, paymentResult, approvalResult] = await Promise.allSettled([
+      const [attachmentResult, eventResult, workflowHistoryResult, objectResult, caseResult, receiptResult, invoiceResult, paymentResult, approvalResult] = await Promise.allSettled([
         api.get("/attachments", { params: { record_id: contract.id } }),
         api.get(`/contracts/${contract.id}/events`),
+        api.get(`/records/${contract.id}/history`),
         api.get(`/contracts/${contract.id}/objects`),
         api.get(`/contracts/${contract.id}/object-cases`),
         api.get("/finance/incoming-payments"),
@@ -255,7 +256,17 @@ export default function ContractCenterPage({
       ]);
       if (requestId === viewingAttachmentRequest.current) {
         setViewingAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
-        setContractEvents(eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : []);
+        const manualEvents = eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : [];
+        const workflowEvents = workflowHistoryResult.status === "fulfilled"
+          ? (workflowHistoryResult.value.data.items || []).map((event: HistoryEvent) => ({
+            id: -event.id,
+            contract_record_id: contract.id,
+            content: [event.action, event.comment].filter(Boolean).join("："),
+            operator: event.operator,
+            created_at: event.created_at,
+          }))
+          : [];
+        setContractEvents([...manualEvents, ...workflowEvents].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
         setContractObjects(objectResult.status === "fulfilled" ? objectResult.value.data.items || [] : []);
         setObjectCases(caseResult.status === "fulfilled" ? (caseResult.value.data.items || []) : []);
         setDetailReceipts(receiptResult.status === "fulfilled"
@@ -268,7 +279,7 @@ export default function ContractCenterPage({
           ? (paymentResult.value.data.items || []).filter((item: Contract) => item.data?.contract_no === contract.serial_no || item.title?.includes(contract.serial_no))
           : []);
         setDetailApprovals(approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : []);
-        if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || objectResult.status === "rejected") {
+        if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || workflowHistoryResult.status === "rejected" || objectResult.status === "rejected") {
           message.warning("合同基础信息已打开，部分附件、事项或合同标的暂时加载失败");
         }
       }
