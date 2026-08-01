@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 test("seal center exposes all required views and safety gates", () => {
-  const source = fs.readFileSync(new URL("./src/SealCenterPage.tsx", import.meta.url), "utf8");
+  const source = fs.readFileSync(new URL("./src/SealCenterPage.tsx", import.meta.url), "utf8") + fs.readFileSync(new URL("./src/sealViewMapping.ts", import.meta.url), "utf8");
   for (const route of ["seal-my-pending", "seal-my-stamping", "seal-my-used", "seal-my-refused", "seal-my-withdrawn", "seal-audit-pending", "seal-admin-pending"]) {
     assert.match(source, new RegExp(route.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
   }
