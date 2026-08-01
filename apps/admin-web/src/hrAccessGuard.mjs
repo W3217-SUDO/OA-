@@ -17,3 +17,17 @@ export function organizationActionAccess(role) {
 export function canDeleteOrganizationRole(roleCode) {
   return roleCode !== 'SYSTEM-ADMIN'
 }
+
+export function hrTransitionOptions(status) {
+  return {
+    '试用': ['在职', '离职'],
+    '在职': ['离职', '停用'],
+  }[status] || []
+}
+
+export function hrTransitionReasonMessage(toStatus, reason) {
+  if (['离职', '停用'].includes(toStatus) && String(reason || '').trim().length < 2) {
+    return '离职或停用必须填写办理原因'
+  }
+  return null
+}

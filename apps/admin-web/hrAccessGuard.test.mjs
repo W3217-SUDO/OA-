@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { canDeleteOrganizationRole, hrActionAccess, organizationActionAccess } from './src/hrAccessGuard.mjs'
+import { canDeleteOrganizationRole, hrActionAccess, organizationActionAccess, hrTransitionOptions, hrTransitionReasonMessage } from './src/hrAccessGuard.mjs'
 
 test('limits employee account administration to administrators while allowing managers to process HR status', () => {
   assert.deepEqual(hrActionAccess('admin'), {
@@ -32,4 +32,13 @@ test('limits department and role administration to administrators', () => {
 test('protects the built-in system administrator role from deletion', () => {
   assert.equal(canDeleteOrganizationRole('SYSTEM-ADMIN'), false)
   assert.equal(canDeleteOrganizationRole('HR-MANAGER'), true)
+})
+
+test('keeps employee lifecycle transitions aligned with the dedicated HR workflow', () => {
+  assert.deepEqual(hrTransitionOptions('试用'), ['在职', '离职'])
+  assert.deepEqual(hrTransitionOptions('在职'), ['离职', '停用'])
+  assert.deepEqual(hrTransitionOptions('离职'), [])
+  assert.equal(hrTransitionReasonMessage('离职', ''), '离职或停用必须填写办理原因')
+  assert.equal(hrTransitionReasonMessage('停用', 'xx'), null)
+  assert.equal(hrTransitionReasonMessage('在职', ''), null)
 })
