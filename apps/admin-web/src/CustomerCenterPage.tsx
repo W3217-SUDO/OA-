@@ -842,6 +842,7 @@ export default function CustomerCenterPage({
     initialView === "customer-mine"
       ? [
           { key: "edit", label: "客户编辑" },
+          { key: "delete", label: "客户删除" },
           { key: "contract", label: "新增合同" },
           { key: "level", label: "申请客户分级调整" },
           { key: "key-change", label: "申请关键字段变更" },
