@@ -2823,12 +2823,15 @@ export default function FinanceCenterPage({
     queryField("费用类型", "feeType", "feeType"),
   ];
   const originalOperation = (_: unknown, row: Fee) => (
-    <Space size={0}>
-      {initialView === "finance-payment-print" && row.status === "已付款" && (
-        <Button type="link" onClick={() => printPayment(row)}>
-          打印付款单
-        </Button>
-      )}
+    initialView === "finance-payment-print" ? (
+      <Space size={0}>
+        {row.status === "已付款" && (
+          <Button type="link" onClick={() => printPayment(row)}>
+            打印
+          </Button>
+        )}
+      </Space>
+    ) : <Space size={0}>
       {initialView === "finance-payment-writeoff" &&
         row.status === "已付款" &&
         row.data.writeoff_status !== "已核销" && (
@@ -6875,7 +6878,9 @@ export default function FinanceCenterPage({
                   上传
                 </Button>
               )}
-              {(originalKind === "fee-query" || activeRouteConfig?.clear) && (
+              {(originalKind === "fee-query" ||
+                activeRouteConfig?.clear ||
+                initialView === "finance-payment-writeoff") && (
                 <Button onClick={clearConfiguredQuery}>
                   清空
                 </Button>
@@ -7495,7 +7500,9 @@ export default function FinanceCenterPage({
                       : undefined
                 }
                 rowSelection={
-                  activeRouteConfig?.selectable || initialView === "finance-payment-audit"
+                  activeRouteConfig?.selectable ||
+                  initialView === "finance-payment-audit" ||
+                  initialView === "finance-payment-writeoff"
                     ? {
                         selectedRowKeys: selectedOriginalRows,
                         onChange: (keys) =>

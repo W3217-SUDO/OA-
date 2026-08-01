@@ -24,6 +24,35 @@ test("payment print empty state keeps selectable export controls", () => {
   assert.match(source, /if \(!targets\.length\)\s*\{\s*Modal\.info/);
 });
 
+test("payment print rows expose only print action by status", () => {
+  assert.match(
+    source,
+    /initialView\s*===\s*"finance-payment-print"\s*\?\s*\([\s\S]*?row\.status[\s\S]*?printPayment\(row\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /initialView\s*===\s*"finance-payment-print"\s*&&[\s\S]*?printPayment\(row\)/,
+  );
+  assert.match(source, /canApprove\s*&&\s*row\.status/);
+});
+
+test("payment writeoff exposes clear and selectable checkbox controls", () => {
+  assert.match(
+    source,
+    /activeRouteConfig\?\.clear[\s\S]*?initialView\s*===\s*"finance-payment-writeoff"/,
+  );
+  assert.match(
+    source,
+    /initialView\s*===\s*"finance-payment-audit"[\s\S]*?initialView\s*===\s*"finance-payment-writeoff"/,
+  );
+});
+
+test("non-print payment routes retain generic actions", () => {
+  assert.match(source, /canApprove\s*&&\s*row\.status/);
+  assert.match(source, /transactionForm\.setFieldsValue\(\{/);
+  assert.match(source, /openRecordFiles\(row/);
+});
+
 test("contract payment applications are loaded and reviewed through contract API", () => {
   assert.match(source, /module:\s*"contract_payment"/);
   assert.match(source, /_source_module:\s*"contract_payment"/);
