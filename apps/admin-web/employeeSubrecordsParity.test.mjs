@@ -53,6 +53,11 @@ test('员工档案保留旧系统的查看入口并支持安全在线预览', ()
   has('查看')
 })
 
+test('员工档案列表保留旧系统分页入口', () => {
+  has('pageSizeOptions:[10,15,20,50,100,200]')
+  has('showSizeChanger:true')
+})
+
 test('提成页保留按案件查询适用方案的跳转接口', () => {
   has("api.get('/records',{params:{module:'case',page_size:100}})")
   has("api.get(`/hr/${employeeId}/performance-for-case/${performanceCaseId}`)")
