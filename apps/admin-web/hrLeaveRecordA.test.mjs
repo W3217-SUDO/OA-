@@ -17,6 +17,17 @@ test('员工请假记录 exposes list, client pagination, create/edit/delete and
   assert.match(source, /name="leave_type"/)
 })
 
+test('hr-all normalizes array and paginated employee responses before storing rows', () => {
+  assert.match(source, /const payload=employeeResult\.value\.data/)
+  assert.match(source, /Array\.isArray\(payload\)\?payload:\(payload\?\.items\|\|\[\]\)/)
+})
+
+test('hr-all does not discard employee rows when profile lookup fails', () => {
+  assert.match(source, /Promise\.allSettled\(\[api\.get\('\/auth\/me'/)
+  assert.match(source, /profileResult\.status==='fulfilled'\?String\(profileResult\.value\.data\.role\|\|''\)/)
+  assert.match(source, /if\(employeeResult\.status==='rejected'\)throw employeeResult\.reason/)
+})
+
 test('请假记录 API provides scoped list/create/update/delete and validates dates and hours', () => {
   assert.match(api, /@app\.get\(f"\{settings\.api_prefix\}\/hr\/\{\{employee_id\}\}\/subrecords"\)/)
   assert.match(api, /@app\.post\(f"\{settings\.api_prefix\}\/hr\/\{\{employee_id\}\}\/subrecords"/)

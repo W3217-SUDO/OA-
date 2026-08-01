@@ -89,12 +89,14 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const [deletingEmployee,setDeletingEmployee]=useState<Employee|null>(null),[deletionImpact,setDeletionImpact]=useState<DeletionImpact|null>(null),[deletionLoading,setDeletionLoading]=useState(false)
   const [selectedEmployeeIds,setSelectedEmployeeIds]=useState<number[]>([]),[batchDeletionImpact,setBatchDeletionImpact]=useState<any>(null),[batchDeleting,setBatchDeleting]=useState(false)
   const load=async(requestedPage=employeePage)=>{setLoading(true);try{
-    const [profileResult,employeeResult]=await Promise.all([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:20,company,department,username,name,mobile,enabled}})])
-    const role=String(profileResult.data.role||'')
+    const [profileResult,employeeResult]=await Promise.allSettled([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:20,company,department,username,name,mobile,enabled}})])
+    const role=profileResult.status==='fulfilled'?String(profileResult.value.data.role||''):''
     setAccessRole(role)
-    setRows((employeeResult.data.items||[]) as Employee[])
-    setEmployeeTotal(Number(employeeResult.data.total||0))
-    setEmployeePage(Number(employeeResult.data.page||requestedPage))
+    if(employeeResult.status==='rejected')throw employeeResult.reason
+    const payload=employeeResult.value.data
+    setRows((Array.isArray(payload)?payload:(payload?.items||[])) as Employee[])
+    setEmployeeTotal(Number(payload.total||0))
+    setEmployeePage(Number(payload.page||requestedPage))
   }catch{message.error('员工数据加载失败')}finally{setLoading(false)}}
   useEffect(()=>{void load();Promise.all([api.get('/hr/departments',{params:{active_only:true}}),api.get('/hr/job-roles',{params:{active_only:true}})]).then(([ds,rs])=>{setDepartments(ds.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})));setPositions(rs.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})))}).catch(()=>message.error('部门与职务加载失败'))},[])
   useEffect(()=>{setTopTab(isNew?'new':'list')},[isNew])
