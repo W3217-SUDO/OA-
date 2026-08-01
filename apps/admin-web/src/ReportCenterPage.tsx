@@ -146,6 +146,7 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
       </Form.Item>
       <div className="report-filter-action">
         <Button type="primary" htmlType="submit">查询</Button>
+        <Button onClick={()=>{form.resetFields(); onQuery({})}}>重置</Button>
       </div>
     </Form>
   );
