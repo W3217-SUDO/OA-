@@ -526,6 +526,8 @@ export default function OrganizationCenterPage({
               <Form.Item label="上级部门" name="parent_department_id">
                 <Select
                   allowClear
+                  showSearch
+                  optionFilterProp="label"
                   placeholder="请选择（顶级部门）"
                   options={departments.filter((candidate) => candidate.is_active && candidate.id !== editingDepartment?.id).map((candidate) => ({ value: candidate.id, label: candidate.name }))}
                 />
