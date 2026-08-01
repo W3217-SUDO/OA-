@@ -49,4 +49,5 @@ test('事务中心未读空列表仍显示标记已读，未选择时只提示�
 
 test('我发起的任务空状态页隐藏底部新增和更多操作', () => {
   assert.match(source, /hideTaskFooter[\s\S]*?\(isCreated \|\|/)
+  assert.match(source, /hideTaskFooter[\s\S]*?isAccepted \|\|/)
 })

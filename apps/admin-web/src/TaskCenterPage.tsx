@@ -291,6 +291,7 @@ export default function TaskCenterPage({
   const hideTaskFooter =
     taskMeta.total === 0 &&
     (isCreated ||
+      isAccepted ||
       isCollaborating ||
       isReminder ||
       initialView === "task-dept-created" ||
