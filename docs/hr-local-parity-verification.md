@@ -42,3 +42,10 @@
 - 旧系统新建员工页包含员工号、用户名、中文姓名、角色、密码、公司、部门、职务、数据级别、是否可用、账号类型、身份证号、手机及英语等级、专业学历、分机、籍贯、外语、毕业时间、社保情况、毕业学校、住址、身份证地址等字段，并提供请假记录、事项记录、员工档案、提成设定入口和保存按钮。
 - 本地新建员工页逐项保留上述字段和四个子页签，并保留现有扩展字段（代理人/律师证照、日期、职称、社会职务、政治面貌、年休、提成比例、性别、婚姻、生育、合同到期日、在职情况、Email、IM 等）。
 - 旧系统仅浏览入口与字段，本次未填写或保存；本地页面可见保存操作由现有校验和测试门禁保护。
+
+## 2026-08-01 员工列表服务端分页复核
+
+- 旧系统只读页面确认员工列表提供六项筛选（公司、部门、用户名、中文名、手机号、是否可用）、查询入口、旧版字段列及分页区域；未发现独立“重置”按钮。
+- 本地 `HrCenterPage` 改用专用 `GET /hr/employees`，将六项筛选、数据范围和 `page/page_size/total` 交由服务端处理，表格按返回的 `current/total` 翻页；系统账号-only 行由接口一并返回，未丢失原有显示。
+- 服务端在应用数据范围后执行筛选和分页，额外列（合同审批流程、Email、扩展电话等）仍由本地页面保留。
+- 旧系统未执行任何写入；本地验证命令：`node --test apps/admin-web/employeeListServerPagination.test.mjs apps/admin-web/employeeListBulkDeleteUi.test.mjs apps/admin-web/employeeBulkDelete.test.mjs apps/admin-web/hrAccessGuard.test.mjs`（8/8）；后端 `compileall` 与前端 `npm.cmd run build` 通过。

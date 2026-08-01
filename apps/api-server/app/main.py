@@ -14726,6 +14726,70 @@ async def _require_unique_hr_display_name(display_name: str, db: AsyncSession, *
     return normalized
 
 
+@app.get(f"{settings.api_prefix}/hr/employees")
+async def list_hr_employees(
+    company: str = "", department: str = "", username: str = "", name: str = "", mobile: str = "", enabled: str = "",
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Return the HR list with authoritative filtering and pagination.
+
+    The old page exposes the employee list as a paged query.  Keep the
+    account-only rows visible for administrators, but apply the same filters
+    and page window before returning data so the browser cannot silently lose
+    employees after the first 100 records.
+    """
+    scope = await _record_scope_conditions(identity, db)
+    employees = list((await db.scalars(
+        select(BusinessRecord).where(BusinessRecord.module == "hr", *scope).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
+    )).all())
+    users_by_name: dict[str, User] = {}
+    if identity.get("role") == "admin":
+        users = list((await db.scalars(select(User).order_by(User.id))).all())
+        users_by_name = {str(user.username).strip().lower(): user for user in users}
+    rows: list[dict] = []
+    linked_names: set[str] = set()
+    for employee in employees:
+        row = _record_dict(employee)
+        data = dict(row.get("data") or {})
+        key = str(data.get("username") or row.get("owner") or "").strip().lower()
+        account = users_by_name.get(key)
+        if account:
+            profile = account.profile or {}
+            row["department"] = account.department or row.get("department", "")
+            row["data"] = {**data, **profile, "username": account.username, "role": account.role, "is_active": account.is_active, "system_user_id": account.id}
+            linked_names.add(key)
+        rows.append(row)
+    if identity.get("role") == "admin":
+        for user in users_by_name.values():
+            key = str(user.username).strip().lower()
+            if key in linked_names:
+                continue
+            profile = user.profile or {}
+            rows.append({
+                "id": -int(user.id), "serial_no": profile.get("employee_no") or f"SYS-{int(user.id):04d}",
+                "title": user.display_name or user.username, "customer": profile.get("company") or "上海申浩律师事务所",
+                "status": "在职" if user.is_active else "停用", "owner": user.username,
+                "department": user.department or "", "description": "系统账号（尚未建立独立人事档案）", "created_at": user.created_at,
+                "data": {**profile, "username": user.username, "role": user.role, "is_active": user.is_active, "system_user_id": user.id, "position": profile.get("position") or "系统管理员"},
+            })
+    def contains(value: object, needle: str) -> bool:
+        return not needle or needle.casefold() in str(value or "").casefold()
+    def visible(row: dict) -> bool:
+        data = row.get("data") or {}
+        active = data.get("is_active") is not False
+        return (
+            contains(row.get("customer"), company) and contains(row.get("department"), department)
+            and contains(data.get("username") or row.get("owner"), username) and contains(row.get("title"), name)
+            and contains(data.get("mobile") or data.get("phone"), mobile)
+            and (not enabled or ("是" if active else "否") == enabled)
+        )
+    rows = [row for row in rows if visible(row)]
+    total = len(rows)
+    start = (page - 1) * page_size
+    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size}
+
+
 @app.post(f"{settings.api_prefix}/hr/employees", status_code=status.HTTP_201_CREATED)
 async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)

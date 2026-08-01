@@ -64,7 +64,7 @@ function EmployeeSubrecords({employeeId,kind}:{employeeId?:number;kind:Subrecord
 
 export default function HrCenterPage({initialView='hr-all'}:{initialView?:string}){
   const isNew=initialView==='hr-new'
-  const [rows,setRows]=useState<Employee[]>([]),[loading,setLoading]=useState(false)
+  const [rows,setRows]=useState<Employee[]>([]),[loading,setLoading]=useState(false),[employeePage,setEmployeePage]=useState(1),[employeeTotal,setEmployeeTotal]=useState(0)
   const [accessRole,setAccessRole]=useState('')
   const [company,setCompany]=useState(companyName),[department,setDepartment]=useState(''),[username,setUsername]=useState(''),[name,setName]=useState(''),[mobile,setMobile]=useState(''),[enabled,setEnabled]=useState('')
   const [departments,setDepartments]=useState<{value:string;label:string}[]>([]),[positions,setPositions]=useState<{value:string;label:string}[]>([])
@@ -84,25 +84,13 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const [resettingEmployee,setResettingEmployee]=useState<Employee|null>(null),[passwordResetForm]=Form.useForm(),[passwordResetSaving,setPasswordResetSaving]=useState(false)
   const [deletingEmployee,setDeletingEmployee]=useState<Employee|null>(null),[deletionImpact,setDeletionImpact]=useState<DeletionImpact|null>(null),[deletionLoading,setDeletionLoading]=useState(false)
   const [selectedEmployeeIds,setSelectedEmployeeIds]=useState<number[]>([]),[batchDeletionImpact,setBatchDeletionImpact]=useState<any>(null),[batchDeleting,setBatchDeleting]=useState(false)
-  const load=async()=>{setLoading(true);try{
-    const [profileResult,employeeResult]=await Promise.all([api.get('/auth/me'),api.get('/records',{params:{module:'hr',page_size:100}})])
+  const load=async(requestedPage=employeePage)=>{setLoading(true);try{
+    const [profileResult,employeeResult]=await Promise.all([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:20,company,department,username,name,mobile,enabled}})])
     const role=String(profileResult.data.role||'')
     setAccessRole(role)
-    const userResult=role==='admin'?await api.get('/system/users'):null
-    const systemUsers:any[]=userResult?.data.items||[]
-    const usersByName=new Map(systemUsers.map(user=>[String(user.username).toLowerCase(),user]))
-    const employees:Employee[]=(employeeResult.data.items||[]).map((row:Employee)=>{
-      const account=usersByName.get(String(row.data?.username||row.owner).toLowerCase())
-      if(!account)return row
-      return {...row,department:account.department||row.department,data:{...(row.data||{}),...(account.profile||{}),username:account.username,role:account.role,is_active:account.is_active,system_user_id:account.id}}
-    })
-    const existing=new Set(employees.map(row=>String(row.data?.username||row.owner).toLowerCase()))
-    const accountOnly:Employee[]=systemUsers.filter((user:any)=>!existing.has(String(user.username).toLowerCase())).map((user:any)=>({
-      id:-Number(user.id),serial_no:user.profile?.employee_no||`SYS-${String(user.id).padStart(4,'0')}`,title:user.display_name||user.username,
-      customer:user.profile?.company||companyName,status:user.is_active?'在职':'停用',owner:user.username,department:user.department||'',description:'系统账号（尚未建立独立人事档案）',created_at:user.created_at,
-      data:{...(user.profile||{}),username:user.username,role:user.role,is_active:user.is_active,system_user_id:user.id,position:user.profile?.position||'系统管理员'},
-    }))
-    setRows([...employees,...accountOnly])
+    setRows((employeeResult.data.items||[]) as Employee[])
+    setEmployeeTotal(Number(employeeResult.data.total||0))
+    setEmployeePage(Number(employeeResult.data.page||requestedPage))
   }catch{message.error('员工数据加载失败')}finally{setLoading(false)}}
   useEffect(()=>{void load();Promise.all([api.get('/hr/departments',{params:{active_only:true}}),api.get('/hr/job-roles',{params:{active_only:true}})]).then(([ds,rs])=>{setDepartments(ds.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})));setPositions(rs.data.items.map((item:OrganizationOption)=>({value:item.name,label:item.name})))}).catch(()=>message.error('部门与职务加载失败'))},[])
   useEffect(()=>{setTopTab(isNew?'new':'list')},[isNew])
@@ -145,7 +133,7 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
     {title:'序号',key:'no',width:65,render:(_v,_r,i)=>i+1},{title:'员工号',dataIndex:'serial_no',width:150},{title:'用户名',key:'username',width:120,render:(_v,r)=>r.data.username||r.owner},{title:'中文姓名',dataIndex:'title',width:110},{title:'所属部门',dataIndex:'department',width:150},{title:'所属公司',dataIndex:'customer',width:190},{title:'合同审批流程',key:'contractApproval',width:120,render:(_v,r)=>r.id>0&&r.data.contract_approval_enabled?'已配置':'未配置'},{title:'Email',key:'email',width:190,render:(_v,r)=>r.data.email||'—'},{title:'手机号码',key:'mobile',width:135,render:(_v,r)=>r.data.mobile||r.data.phone||'—'},{title:'固定电话',key:'office',width:125,render:(_v,r)=>r.data.office_phone||r.data.extension||'—'},{title:<Tooltip title="仅表示该员工关联的系统登录账号是否能访问系统；不等同于在职、离职等人事状态。">是否可用</Tooltip>,key:'active',width:100,render:(_v,r)=>r.data.is_active===false?'否':'是'},{title:'操作',key:'action',width:190,render:(_v,r)=><div className="employee-row-actions"><Button type="link" onClick={()=>setViewing(r)}>查看</Button>{actionAccess.canEditEmployee&&<Button type="link" icon={<EditOutlined/>} onClick={()=>void openEmployeeEdit(r)}>修改</Button>}{actionAccess.canProcessStatus&&<Button type="link" onClick={()=>openTransition(r)}>办理状态</Button>}{actionAccess.canManageAccount&&<><Button type="link" onClick={()=>openPasswordReset(r)}>修改密码</Button><Button type="link" onClick={()=>{window.location.href=`${window.location.pathname}?page=system-users`}}>系统用户</Button></>}{actionAccess.canDeleteEmployee&&<Button type="link" danger loading={deletionLoading} onClick={()=>void openDeletionImpact(r)}>删除</Button>}</div>},
   ]
   const rowSelection={selectedRowKeys:selectedEmployeeIds,onChange:(keys:React.Key[])=>setSelectedEmployeeIds(keys.map(Number).filter(id=>id>0)),getCheckboxProps:(row:Employee)=>({disabled:row.id<=0})}
-  const listPanel=<><div className="hr-query"><label><span>公司</span><Select value={company} onChange={setCompany} options={[{value:companyName,label:companyName}]}/></label><label><span>部门</span><Select value={department} onChange={setDepartment} allowClear placeholder="请选择" options={departments}/></label><label><span>用户名</span><Input value={username} onChange={e=>setUsername(e.target.value)} allowClear/></label><label><span>中文名</span><Input value={name} onChange={e=>setName(e.target.value)} allowClear/></label><label><span>手机号</span><Input value={mobile} onChange={e=>setMobile(e.target.value)} allowClear/></label><label><span>是否可用</span><Select value={enabled} onChange={setEnabled} options={[{value:'',label:'请选择'},{value:'是',label:'是'},{value:'否',label:'否'}]}/></label><Button type="primary" onClick={()=>void load()}>查询</Button>{actionAccess.canDeleteEmployee&&<Button danger loading={batchDeleting} onClick={()=>void openBatchDeletionImpact()}>删除选中</Button>}</div><Table className="employee-list-table" rowKey="id" rowSelection={actionAccess.canDeleteEmployee?rowSelection:undefined} size="small" loading={loading} columns={columns} dataSource={filtered} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{pageSize:20,showTotal:total=>`共 ${total} 条`}} scroll={{x:1710}}/></>
+  const listPanel=<><div className="hr-query"><label><span>公司</span><Select value={company} onChange={setCompany} options={[{value:companyName,label:companyName}]}/></label><label><span>部门</span><Select value={department} onChange={setDepartment} allowClear placeholder="请选择" options={departments}/></label><label><span>用户名</span><Input value={username} onChange={e=>setUsername(e.target.value)} allowClear/></label><label><span>中文名</span><Input value={name} onChange={e=>setName(e.target.value)} allowClear/></label><label><span>手机号</span><Input value={mobile} onChange={e=>setMobile(e.target.value)} allowClear/></label><label><span>是否可用</span><Select value={enabled} onChange={setEnabled} options={[{value:'',label:'请选择'},{value:'是',label:'是'},{value:'否',label:'否'}]}/></label><Button type="primary" onClick={()=>{setEmployeePage(1);void load(1)}}>查询</Button>{actionAccess.canDeleteEmployee&&<Button danger loading={batchDeleting} onClick={()=>void openBatchDeletionImpact()}>删除选中</Button>}</div><Table className="employee-list-table" rowKey="id" rowSelection={actionAccess.canDeleteEmployee?rowSelection:undefined} size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{current:employeePage,pageSize:20,total:employeeTotal,showTotal:total=>`共 ${total} 条`,onChange:(page)=>void load(page)}} scroll={{x:1710}}/></>
 
   const basicFields:[string,string,'input'|'select'|'date'|'number',any?][]=[
     ['serial_no','员工号*','input'],['username','用户名*','input'],['title','中文姓名*','input'],['role','角色*','select',staffRoleOptions],['password','密码*','input'],
