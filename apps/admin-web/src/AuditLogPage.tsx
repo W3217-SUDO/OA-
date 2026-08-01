@@ -113,6 +113,7 @@ export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: stri
         <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => { setPage(1); void load(1); }} allowClear prefix={<SearchOutlined />} placeholder="编号、标题、操作人或意见" />
         <Select value={module || undefined} allowClear placeholder="全部模块" onChange={(value) => setModule(value || "")} options={Object.entries(labels).map(([value, label]) => ({ value, label }))} />
         <Button type="primary" onClick={() => { setPage(1); void load(1); }}>查询</Button>
+        <Button onClick={() => { setKeyword(""); setModule(""); setPage(1); void load(1); }}>重置</Button>
       </div>
       <Table
         rowKey="id"
