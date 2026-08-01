@@ -279,22 +279,26 @@ export default function CustomerCenterPage({
     }
     return null;
   };
-  const load = async () => {
+  const load = async (overrides: Partial<{ keyword: string; customerType: string; managerKeyword: string; page: number }> = {}) => {
+    const requestKeyword = overrides.keyword ?? keyword;
+    const requestCustomerType = overrides.customerType ?? customerType;
+    const requestManagerKeyword = overrides.managerKeyword ?? managerKeyword;
+    const requestPage = overrides.page ?? page;
     setLoading(true);
     try {
       const recordsRequest = isOriginalCustomerList
         ? api.get("/customers", {
             params: {
               scope: originalCustomerScope,
-              customer_name: keyword,
-              customer_type: customerType,
-              ...(["customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) ? {} : { manager: managerKeyword }),
-              page,
+              customer_name: requestKeyword,
+              customer_type: requestCustomerType,
+              ...(["customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) ? {} : { manager: requestManagerKeyword }),
+              page: requestPage,
               page_size: pageSize,
             },
           })
         : api.get("/records", {
-            params: { module: "customer", keyword, page_size: 100 },
+          params: { module: "customer", keyword: requestKeyword, page_size: 100 },
           });
       // The customer list and an incoming detail target are core content.  Do
       // not make them disappear when the optional identity/directory panels
@@ -307,7 +311,7 @@ export default function CustomerCenterPage({
         isOriginalCustomerList &&
         responseTotal > 0 &&
         responseItems.length === 0 &&
-        page > responseLastPage
+        requestPage > responseLastPage
       ) {
         setPage(responseLastPage);
         setJumpPage(String(responseLastPage));
@@ -1183,7 +1187,9 @@ export default function CustomerCenterPage({
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={load}
+            onPressEnter={() => {
+              void load();
+            }}
             allowClear
           />
           <label>客户/当事人</label>
@@ -1206,12 +1212,14 @@ export default function CustomerCenterPage({
             查询
           </Button>
           <Button icon={<ReloadOutlined />} onClick={() => {
+            const resetCustomerType = customerTypeOptions[0]?.value || "客户";
             setKeyword("");
-            setCustomerType(customerTypeOptions[0]?.value || "客户");
+            setCustomerType(resetCustomerType);
             setManagerKeyword("");
             setSelectedRowKeys([]);
-            if (page === 1) void load();
-            else setPage(1);
+            setPage(1);
+            setJumpPage("1");
+            void load({ keyword: "", customerType: resetCustomerType, managerKeyword: "", page: 1 });
           }}>
             重置
           </Button>
