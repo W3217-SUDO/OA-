@@ -342,6 +342,9 @@ def _upgrade_schema(connection) -> None:
     department_columns = {item["name"] for item in inspect(connection).get_columns("departments")}
     if "overdue_deduction" not in department_columns:
         connection.execute(text("ALTER TABLE departments ADD COLUMN overdue_deduction BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "parent_department_id" not in department_columns:
+        connection.execute(text("ALTER TABLE departments ADD COLUMN parent_department_id INTEGER"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_departments_parent_department_id ON departments (parent_department_id)"))
     user_columns = {item["name"] for item in inspect(connection).get_columns("users")}
     if "department" not in user_columns:
         connection.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(64) NOT NULL DEFAULT '上海分所'"))
@@ -895,6 +898,7 @@ class HrSubrecordUpdate(BaseModel):
 class DepartmentInput(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
+    parent_department_id: int | None = Field(default=None, ge=1)
     manager: str = Field(default="", max_length=64)
     overdue_deduction: bool = False
     sort_order: int = Field(default=0, ge=0, le=99999)
@@ -904,6 +908,7 @@ class DepartmentInput(BaseModel):
 class DepartmentUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=128)
+    parent_department_id: int | None = Field(default=None, ge=1)
     manager: str | None = Field(default=None, max_length=64)
     overdue_deduction: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=99999)
@@ -14693,8 +14698,8 @@ async def delete_seal_asset(asset_id: int, identity: dict = Depends(current_iden
     await db.commit()
 
 
-def _department_dict(item: Department) -> dict:
-    return {"id": item.id, "code": item.code, "name": item.name, "manager": item.manager, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
+def _department_dict(item: Department, parent_name: str = "") -> dict:
+    return {"id": item.id, "code": item.code, "name": item.name, "parent_department_id": item.parent_department_id, "parent_department_name": parent_name, "manager": item.manager, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 def _job_role_dict(item: JobRole) -> dict:
@@ -14937,15 +14942,22 @@ async def list_departments(keyword: str = "", active_only: bool = False, identit
         term = f"%{keyword.strip()}%"; statement = statement.where(or_(Department.code.ilike(term), Department.name.ilike(term), Department.manager.ilike(term)))
     if active_only: statement = statement.where(Department.is_active.is_(True))
     items = (await db.scalars(statement.order_by(Department.sort_order, Department.id))).all()
-    return {"items": [_department_dict(item) for item in items], "total": len(items)}
+    parent_ids = {item.parent_department_id for item in items if item.parent_department_id}
+    parents = (await db.scalars(select(Department).where(Department.id.in_(parent_ids)))).all() if parent_ids else []
+    names_by_id = {item.id: item.name for item in parents}
+    return {"items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, "")) for item in items], "total": len(items)}
 
 
 @app.post(f"{settings.api_prefix}/hr/departments", status_code=status.HTTP_201_CREATED)
 async def create_department(body: DepartmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity); code, name = body.code.strip().upper(), body.name.strip()
     if await db.scalar(select(Department.id).where(or_(Department.code == code, Department.name == name))): raise HTTPException(status_code=409, detail="部门代码或名称已存在")
+    parent = None
+    if body.parent_department_id:
+        parent = await db.get(Department, body.parent_department_id)
+        if not parent or not parent.is_active: raise HTTPException(status_code=422, detail="上级部门不存在或已停用")
     item = Department(**body.model_dump(exclude={"code", "name", "manager"}), code=code, name=name, manager=body.manager.strip(), created_by=identity["username"], updated_by=identity["username"])
-    db.add(item); await db.commit(); await db.refresh(item); return _department_dict(item)
+    db.add(item); await db.commit(); await db.refresh(item); return _department_dict(item, parent.name if parent else "")
 
 
 @app.patch(f"{settings.api_prefix}/hr/departments/{{department_id}}")
@@ -14954,13 +14966,26 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     if not item: raise HTTPException(status_code=404, detail="部门不存在")
     old_name = item.name; code = body.code.strip().upper() if body.code is not None else item.code; name = body.name.strip() if body.name is not None else item.name
     if await db.scalar(select(Department.id).where(Department.id != item.id, or_(Department.code == code, Department.name == name))): raise HTTPException(status_code=409, detail="部门代码或名称已存在")
+    if "parent_department_id" in body.model_fields_set and body.parent_department_id is not None:
+        if body.parent_department_id == item.id: raise HTTPException(status_code=422, detail="上级部门不能是本部门")
+        parent = await db.get(Department, body.parent_department_id)
+        if not parent or not parent.is_active: raise HTTPException(status_code=422, detail="上级部门不存在或已停用")
+        ancestor = parent
+        while ancestor.parent_department_id:
+            if ancestor.parent_department_id == item.id: raise HTTPException(status_code=422, detail="上级部门不能是本部门的下级部门")
+            ancestor = await db.get(Department, ancestor.parent_department_id)
+            if not ancestor: break
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    if "parent_department_id" in body.model_fields_set:
+        changes["parent_department_id"] = body.parent_department_id
     for key, value in changes.items(): setattr(item, key, value.strip().upper() if key == "code" else value.strip() if key in {"name", "manager"} else value)
     item.updated_by = identity["username"]
     if item.name != old_name:
         await db.execute(update(User).where(User.department == old_name).values(department=item.name))
         await db.execute(update(BusinessRecord).where(BusinessRecord.department == old_name).values(department=item.name))
-    await db.commit(); await db.refresh(item); return _department_dict(item)
+    await db.commit(); await db.refresh(item)
+    parent = await db.get(Department, item.parent_department_id) if item.parent_department_id else None
+    return _department_dict(item, parent.name if parent else "")
 
 
 @app.delete(f"{settings.api_prefix}/hr/departments/{{department_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -14969,7 +14994,9 @@ async def delete_department(department_id: int, identity: dict = Depends(current
     if not item: raise HTTPException(status_code=404, detail="部门不存在")
     users = await db.scalar(select(func.count()).select_from(User).where(User.department == item.name))
     records = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.department == item.name))
+    child_count = await db.scalar(select(func.count()).select_from(Department).where(Department.parent_department_id == item.id))
     if (users or 0) + (records or 0) > 0: raise HTTPException(status_code=409, detail=f"部门仍被 {users or 0} 个账号和 {records or 0} 条业务记录使用，请先停用或迁移")
+    if child_count: raise HTTPException(status_code=409, detail=f"部门仍有 {child_count} 个下级部门，请先调整其上级部门")
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

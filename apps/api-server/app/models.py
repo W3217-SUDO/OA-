@@ -12,6 +12,7 @@ class Department(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    parent_department_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     manager: Mapped[str] = mapped_column(String(64), default="")
     overdue_deduction: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

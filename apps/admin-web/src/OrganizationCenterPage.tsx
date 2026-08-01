@@ -10,6 +10,7 @@ import {
   message,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Switch,
   Table,
@@ -24,6 +25,8 @@ type Department = {
   id: number;
   code: string;
   name: string;
+  parent_department_id: number | null;
+  parent_department_name: string;
   manager: string;
   overdue_deduction: boolean;
   sort_order: number;
@@ -295,6 +298,7 @@ export default function OrganizationCenterPage({
     { title: "序号", key: "no", width: 70, render: (_v, _r, i) => i + 1 },
     { title: "部门名称", dataIndex: "name", width: 180 },
     { title: "部门代码", dataIndex: "code", width: 150 },
+    { title: "上级部门", dataIndex: "parent_department_name", width: 160, render: (value) => value || "—" },
     { title: "是否逾期扣款", dataIndex: "overdue_deduction", width: 120, render: (value) => value ? "是" : "否" },
     {
       title: "部门负责人",
@@ -408,7 +412,7 @@ export default function OrganizationCenterPage({
             loading={loading}
             columns={departmentColumns}
             dataSource={departments}
-            scroll={{ x: 800 }}
+            scroll={{ x: 960 }}
             locale={{ emptyText: emptyContent }}
             pagination={{
               pageSize: 20,
@@ -487,6 +491,13 @@ export default function OrganizationCenterPage({
                 rules={[{ required: true }]}
               >
                 <Input />
+              </Form.Item>
+              <Form.Item label="上级部门" name="parent_department_id">
+                <Select
+                  allowClear
+                  placeholder="请选择（顶级部门）"
+                  options={departments.filter((candidate) => candidate.is_active && candidate.id !== editingDepartment?.id).map((candidate) => ({ value: candidate.id, label: candidate.name }))}
+                />
               </Form.Item>
               <Form.Item label="部门负责人" name="manager">
                 <Input />
