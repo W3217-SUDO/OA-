@@ -291,7 +291,6 @@ export default function TaskCenterPage({
   const hideTaskFooter =
     taskMeta.total === 0 &&
     (isCollaborating ||
-      isUnread ||
       isReminder ||
       initialView === "task-dept-created" ||
       initialView === "task-dept-accepted" ||
@@ -1402,7 +1401,7 @@ export default function TaskCenterPage({
         {!hideTaskFooter && (
           <div className="task-bottom-actions">
             <Space size={5} wrap>
-              {isUnread && selectedRows.length > 0 && (
+              {isUnread && (
                 <Button loading={actionSubmitting} onClick={() => void markSelectedUnreadTasksRead()}>标记已读</Button>
               )}
               {canManageInitiatedTask && <Button onClick={openCreateTask}>新增任务</Button>}

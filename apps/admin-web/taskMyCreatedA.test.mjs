@@ -38,3 +38,11 @@ test('事务中心我发起的任务 restores the legacy batch acceptance action
 test('事务中心 batch selection trusts the server-authorized task page instead of re-filtering it locally', () => {
   assert.match(source, /\(\) => tasks\.filter\(\(row\) => selectedKeys\.includes\(row\.id\)\)/)
 })
+
+test('事务中心未读空列表仍显示标记已读，未选择时只提示且不调用写接口', () => {
+  assert.match(source, /\{isUnread && \(\s*<Button[\s\S]*?标记已读/)
+  assert.doesNotMatch(source, /hideTaskFooter[\s\S]*?isUnread \|\|/)
+  const handler = source.slice(source.indexOf('const markSelectedUnreadTasksRead'), source.indexOf('const taskBatchLabels'))
+  assert.match(handler, /if \(!selectedRows\.length\) \{[\s\S]*?message\.warning\([\s\S]*?return;[\s\S]*?\}/)
+  assert.ok(handler.indexOf('return;') < handler.indexOf('api.post("/tasks/messages/batch-read"'))
+})
