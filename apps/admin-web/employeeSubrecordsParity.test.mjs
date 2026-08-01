@@ -58,6 +58,10 @@ test('员工档案列表保留旧系统分页入口', () => {
   has('showSizeChanger:true')
 })
 
+test('请假、事项和提成列表同样保留旧系统分页入口', () => {
+  assert.equal((source.match(/pagination=\{\{pageSize:15/g) || []).length, 2, '档案与子记录列表都应启用分页')
+})
+
 test('提成页保留按案件查询适用方案的跳转接口', () => {
   has("api.get('/records',{params:{module:'case',page_size:100}})")
   has("api.get(`/hr/${employeeId}/performance-for-case/${performanceCaseId}`)")
