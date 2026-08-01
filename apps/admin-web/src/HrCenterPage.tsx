@@ -7,6 +7,8 @@ import {DownloadOutlined, EditOutlined, PlusOutlined, UploadOutlined} from '@ant
 import {api} from './api'
 import {consumeBusinessRecordDetailTarget} from './businessRecordDetailNavigation'
 import {formatRequiredDate} from './formSafety'
+// @ts-ignore The tiny guard is also exercised by the standalone Node test.
+import {employeeSubrecordCreateMessage} from './employeeSubrecordGuard.mjs'
 import './hr-center.css'
 
 type Employee={id:number;serial_no:string;title:string;customer:string;status:string;owner:string;department:string;description:string;data:Record<string,any>;created_at:string}
@@ -33,7 +35,7 @@ function EmployeeSubrecords({employeeId,kind}:{employeeId?:number;kind:Subrecord
   const load=async()=>{if(!employeeId){setRows([]);return}setLoading(true);try{const {data}=kind==='archive'?await api.get('/attachments',{params:{record_id:employeeId,category:'员工档案'}}):await api.get(`/hr/${employeeId}/subrecords`,{params:{kind}});setRows(data.items)}catch{message.error('员工附属记录加载失败')}finally{setLoading(false)}}
   useEffect(()=>{void load()},[employeeId,kind])
   useEffect(()=>{if(kind!=='commission'){setPerformanceCases([]);setPerformanceCaseId(undefined);setResolvedPerformance(null);return}let active=true;void api.get('/records',{params:{module:'case',page_size:100}}).then(({data})=>{if(active)setPerformanceCases((data.items||[]).map((item:any)=>({value:item.id,label:`${item.serial_no}｜${item.title||'未命名案件'}`})))}).catch(()=>{if(active)message.error('案件候选加载失败')});return()=>{active=false}},[kind])
-  if(!employeeId)return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请先保存员工基本信息，再维护此页记录"/>
+  if(!employeeId){const notice=employeeSubrecordCreateMessage(employeeId);return <div className="employee-subrecord"><div className="subrecord-toolbar"><Button type="primary" icon={<PlusOutlined/>} onClick={()=>{if(notice)message.info(notice)}}>新建</Button></div><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={notice||'请先保存员工基本信息，再维护此页记录'}/></div>}
   const remove=async(id:number)=>{try{await api.delete(kind==='archive'?`/attachments/${id}`:`/hr/${employeeId}/subrecords/${id}`);message.success('删除成功');void load()}catch(error:any){message.error(error?.response?.data?.detail||'删除失败')}}
   const download=async(item:Attachment)=>{try{const response=await api.get(`/attachments/${item.id}/download`,{responseType:'blob'});const url=URL.createObjectURL(response.data);const anchor=document.createElement('a');anchor.href=url;anchor.download=item.original_name;anchor.click();URL.revokeObjectURL(url)}catch{message.error('文件下载失败')}}
   const showEditor=(item?:Subrecord)=>{setEditing(item||null);const values:Record<string,any>=item?{...(item.data||{})}:kind==='commission'?{...commissionDefaults}:{};['start_date','end_date','operation_date'].forEach(key=>{if(values[key])values[key]=dayjs(values[key])});form.setFieldsValue(values);setOpen(true)}
