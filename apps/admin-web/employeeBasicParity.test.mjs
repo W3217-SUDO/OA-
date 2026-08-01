@@ -15,13 +15,34 @@ test('keeps the old system core field order without removing extension fields', 
   ])
 })
 
-test('returns only the first missing required field in old-system order', () => {
-  assert.deepEqual(firstMissingRequiredEmployeeField({}), {
-    key: 'serial_no', label: '员工号', message: '请输入员工号.',
+test('keeps the old system required field order', () => {
+  assert.deepEqual(legacyRequiredEmployeeFields, [
+    'serial_no', 'username', 'title', 'role', 'password', 'department', 'position',
+  ])
+})
+
+test('returns each required field as the first missing field in old-system order', () => {
+  const labels = {
+    serial_no: '员工号',
+    username: '用户名',
+    title: '中文姓名',
+    role: '角色',
+    password: '密码',
+    department: '部门',
+    position: '职务',
+  }
+
+  legacyRequiredEmployeeFields.forEach((key, index) => {
+    const precedingValues = Object.fromEntries(
+      legacyRequiredEmployeeFields.slice(0, index).map((field) => [field, 'ok']),
+    )
+    assert.deepEqual(firstMissingRequiredEmployeeField(precedingValues), {
+      key,
+      label: labels[key],
+      message: `请输入${labels[key]}.`,
+    })
   })
-  assert.deepEqual(firstMissingRequiredEmployeeField({ serial_no: 'E-1' }), {
-    key: 'username', label: '用户名', message: '请输入用户名.',
-  })
+
   assert.equal(
     firstMissingRequiredEmployeeField(Object.fromEntries(legacyRequiredEmployeeFields.map((key) => [key, 'ok']))),
     null,
