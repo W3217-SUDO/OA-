@@ -358,6 +358,9 @@ def _upgrade_schema(connection) -> None:
         "must_change_password": "BOOLEAN NOT NULL DEFAULT FALSE",
     }.items():
         if column not in user_columns: connection.execute(text(f"ALTER TABLE users ADD COLUMN {column} {definition}"))
+    menu_columns = {item["name"] for item in inspect(connection).get_columns("system_menus")}
+    if "description" not in menu_columns:
+        connection.execute(text("ALTER TABLE system_menus ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''"))
     role_columns = {item["name"] for item in inspect(connection).get_columns("role_permissions")}
     if "field_keys" not in role_columns:
         default_fields = json.dumps(FIELD_KEYS, ensure_ascii=False)
@@ -1986,6 +1989,7 @@ class LawFirmContactInput(BaseModel):
 
 class SystemMenuUpdate(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=255)
     icon: str | None = Field(default=None, max_length=64)
     sort_order: int | None = Field(default=None, ge=0, le=99999)
     is_visible: bool | None = None
@@ -1993,9 +1997,10 @@ class SystemMenuUpdate(BaseModel):
 
 
 class SystemMenuInput(BaseModel):
-    key: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    key: str | None = Field(default=None, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]*$")
     parent_key: str = Field(default="", max_length=128)
     label: str = Field(min_length=1, max_length=128)
+    description: str = Field(default="", max_length=255)
     icon: str = Field(default="", max_length=64)
     sort_order: int = Field(default=0, ge=0, le=99999)
     is_visible: bool = True
@@ -3629,7 +3634,7 @@ async def download_law_firm_license(law_firm_id: int, identity: dict = Depends(c
 def _system_menu_dict(item: SystemMenu) -> dict:
     return {
         "id": item.id, "key": item.key, "parent_key": item.parent_key,
-        "label": item.label, "icon": item.icon, "sort_order": item.sort_order,
+        "label": item.label, "description": getattr(item, "description", ""), "icon": item.icon, "sort_order": item.sort_order,
         "is_visible": item.is_visible, "is_active": item.is_active,
         "is_system": item.key in SYSTEM_MENU_ROUTE_KEYS,
         "updated_by": item.updated_by, "updated_at": item.updated_at,
@@ -3642,7 +3647,7 @@ async def navigation_menus(identity: dict = Depends(current_identity), db: Async
         item for item in (await db.scalars(
             select(SystemMenu).where(SystemMenu.is_active.is_(True), SystemMenu.is_visible.is_(True)).order_by(SystemMenu.sort_order, SystemMenu.id)
         )).all()
-        if item.key in SYSTEM_MENU_ROUTE_KEYS
+        if item.key in SYSTEM_MENU_ROUTE_KEYS or item.key.startswith("legacy-menu-")
     ]
     if identity.get("role") == "admin":
         visible_keys = {item.key for item in items}
@@ -3669,9 +3674,10 @@ async def list_system_menus(identity: dict = Depends(current_identity), db: Asyn
 @app.post(f"{settings.api_prefix}/system/menus", status_code=status.HTTP_201_CREATED)
 async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
-    menu_key = body.key.strip()
+    requested_key = (body.key or "").strip()
+    menu_key = requested_key or f"legacy-menu-{uuid4().hex[:12]}"
     parent_key = body.parent_key.strip()
-    if menu_key not in SYSTEM_MENU_ROUTE_KEYS:
+    if requested_key and menu_key not in SYSTEM_MENU_ROUTE_KEYS:
         raise HTTPException(status_code=422, detail="菜单标识不是已实现的系统路由，不能创建菜单入口")
     if await db.scalar(select(SystemMenu.id).where(SystemMenu.key == menu_key)):
         raise HTTPException(status_code=409, detail="菜单标识已经存在")
@@ -3687,6 +3693,8 @@ async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(cur
         is_active=body.is_active,
         updated_by=identity["username"],
     )
+    if hasattr(item, "description"):
+        item.description = body.description.strip()
     db.add(item)
     await db.commit()
     await db.refresh(item)
@@ -3754,7 +3762,8 @@ def _role_permission_dict(item: RolePermission) -> dict:
 async def list_role_permissions(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     items = (await db.scalars(select(RolePermission).order_by(RolePermission.id))).all()
-    return {"items": [_role_permission_dict(item) for item in items], "available_menu_keys": MENU_KEYS, "available_field_keys": FIELD_KEYS}
+    legacy_keys = list((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
+    return {"items": [_role_permission_dict(item) for item in items], "available_menu_keys": [*MENU_KEYS, *legacy_keys], "available_field_keys": FIELD_KEYS}
 
 
 @app.patch(f"{settings.api_prefix}/system/role-permissions/{{role}}")
@@ -3765,13 +3774,15 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     data_scope = body.data_scope.strip()
     if data_scope not in ROLE_DATA_SCOPES:
         raise HTTPException(status_code=422, detail="数据范围无效")
-    invalid = sorted(set(body.menu_keys) - set(MENU_KEYS))
+    legacy_keys = set((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
+    all_menu_keys = set(MENU_KEYS) | legacy_keys
+    invalid = sorted(set(body.menu_keys) - all_menu_keys)
     if invalid:
         raise HTTPException(status_code=422, detail=f"无效菜单权限：{', '.join(invalid)}")
     menu_keys = list(dict.fromkeys(body.menu_keys))
     if "user-center" not in menu_keys:
         raise HTTPException(status_code=422, detail="用户中心为基础权限，不能移除")
-    if role == "admin" and set(menu_keys) != set(MENU_KEYS):
+    if role == "admin" and set(menu_keys) != all_menu_keys:
         raise HTTPException(status_code=422, detail="系统管理员必须保留全部菜单权限")
     if role == "admin" and data_scope != DEFAULT_ROLE_PERMISSIONS["admin"]["data_scope"]:
         raise HTTPException(status_code=422, detail="系统管理员必须保留全所数据权限")

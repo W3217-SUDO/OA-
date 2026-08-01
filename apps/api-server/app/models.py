@@ -237,6 +237,7 @@ class SystemMenu(Base):
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     parent_key: Mapped[str] = mapped_column(String(64), default="", index=True)
     label: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(String(255), default="")
     icon: Mapped[str] = mapped_column(String(64), default="file-text")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_visible: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

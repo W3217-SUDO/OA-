@@ -136,6 +136,7 @@ type NavItem = {
   icon?: ReactNode;
   label: string;
   badge?: string;
+  disabled?: boolean;
   children?: NavItem[];
 };
 type NavConfig = {
@@ -147,6 +148,7 @@ type NavConfig = {
   sort_order: number;
   is_visible: boolean;
   is_active: boolean;
+  is_system?: boolean;
 };
 
 const menuItems: NavItem[] = [
@@ -443,6 +445,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
         return {
           key: item.key,
           label: item.label,
+          disabled: item.key.startsWith("legacy-menu-"),
           icon: parentKey ? undefined : icon(item.icon),
           badge: item.key === "dashboard" ? "hot" : undefined,
           children: children.length ? children : undefined,
@@ -1445,7 +1448,7 @@ export default function App() {
             selectedKeys={[active]}
             openKeys={openMenuKeys}
             onOpenChange={(keys) => setOpenMenuKeys(keys as string[])}
-            onClick={({ key }) => navigate(key)}
+            onClick={({ key }) => { const item = flattenMenu(sideMenuItems).find(entry => entry.key === key); if (!item?.disabled) navigate(key) }}
           />
           {!collapsed && (
             <div className="support-tools">
