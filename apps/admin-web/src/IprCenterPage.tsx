@@ -81,6 +81,7 @@ type CustomerContact = { id: string; name: string; phone?: string; email?: strin
 type IprCaseContact = CustomerContact & { customer_id: number; customer_name: string; contact_id: string; contact_role: "document" | "technology" };
 type IprBusinessLog = { id: number; content: string; created_by: string; created_at: string };
 type IprOperationLog = { id: number; action: string; operator: string; comment: string; from_status?: string; to_status?: string; created_at: string };
+type IprHistoryItem = { id: number; action: string; operator: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
 const statusColor: Record<string, string> = {
   草稿: "default",
   待立案审核: "gold",
@@ -158,6 +159,7 @@ export default function IprCenterPage({
     [technologyContactIds, setTechnologyContactIds] = useState<string[]>([]);
   const [iprBusinessLogs, setIprBusinessLogs] = useState<IprBusinessLog[]>([]),
     [iprOperationLogs, setIprOperationLogs] = useState<IprOperationLog[]>([]),
+    [iprHistory, setIprHistory] = useState<IprHistoryItem[]>([]),
     [iprLogOpen, setIprLogOpen] = useState(false),
     [iprLogForm] = Form.useForm();
   const batchCaseIds = Form.useWatch("case_ids", iprBatchForm) as number[] | undefined;
@@ -360,6 +362,15 @@ export default function IprCenterPage({
       setIprOperationLogs([]);
     }
   };
+  const loadIprHistory = async (caseId: number) => {
+    try {
+      const { data } = await api.get<{ items: IprHistoryItem[] }>(`/records/${caseId}/history`);
+      setIprHistory(data.items || []);
+    } catch (e: any) {
+      setIprHistory([]);
+      message.error(e?.response?.data?.detail || "案件事项记录加载失败");
+    }
+  };
   const createIprLog = async () => {
     if (!detail) return;
     try {
@@ -453,6 +464,7 @@ export default function IprCenterPage({
         loadCaseCustomers(record.id),
         loadCaseContacts(record.id),
         loadIprLogs(record.id),
+        loadIprHistory(record.id),
         loadAssistedFees(record.id),
         loadReminders(record.id),
         loadReminderSuppressions(record.id),
@@ -1157,6 +1169,26 @@ export default function IprCenterPage({
                 columns={[
                   { title: "操作", dataIndex: "action", width: 180 },
                   { title: "说明", dataIndex: "comment", ellipsis: true, render: (value) => value || "—" },
+                  { title: "操作人", dataIndex: "operator", width: 110 },
+                  { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+                ]}
+              />
+            </Card>
+            <Card
+              size="small"
+              title="案件事项记录"
+              style={{ marginTop: 16 }}
+            >
+              <Table
+                rowKey="id"
+                size="small"
+                pagination={false}
+                dataSource={iprHistory}
+                locale={{ emptyText: "暂无案件事项记录" }}
+                columns={[
+                  { title: "事项", dataIndex: "action", width: 160 },
+                  { title: "状态变化", width: 180, render: (_, row: IprHistoryItem) => row.from_status || row.to_status ? `${row.from_status || "—"} → ${row.to_status || "—"}` : "—" },
+                  { title: "说明", dataIndex: "comment", ellipsis: true },
                   { title: "操作人", dataIndex: "operator", width: 110 },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                 ]}
