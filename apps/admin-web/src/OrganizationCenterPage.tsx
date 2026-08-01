@@ -404,7 +404,7 @@ export default function OrganizationCenterPage({
   const emptyContent = (
     <div className="organization-empty">
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
-      {rolesView && canManageOrganization && (
+      {canManageOrganization && (
         <Button type="primary" icon={<PlusOutlined />} onClick={() => start()}>
           新增角色
         </Button>
