@@ -33,6 +33,11 @@ test('未保存员工时请假和提成被门禁，避免产生孤立记录', ()
   has("if(!employeeId){message.info('请先保存员工基本资料');return}")
 })
 
+test('未保存员工时事项记录同样被门禁，不能提交孤立记录', () => {
+  has("if(!employeeId && kind==='matter')")
+  has('请先保存员工基本信息，再维护此页记录')
+})
+
 test('员工档案页使用真实附件上传、下载和删除', () => {
   has("api.get('/attachments',{params:{record_id:employeeId,category:'员工档案'}})")
   has("data.append('category','员工档案')")
