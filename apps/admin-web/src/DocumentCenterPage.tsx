@@ -1619,6 +1619,11 @@ export default function DocumentCenterPage({
                 columns={documentColumns}
                 dataSource={documents}
                 scroll={{ x: 1700 }}
+                pagination={{
+                  pageSize: 15,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                  showSizeChanger: true,
+                }}
               />
             ) : tab === "outgoing" ? (
               <Table
