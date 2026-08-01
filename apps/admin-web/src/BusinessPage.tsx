@@ -78,7 +78,7 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
     return text
   }
 
-  const load=async(nextPage=page)=>{setLoading(true);try{const {data}=await api.get('/records',{params:{module,keyword,record_status:recordStatus,page:nextPage,page_size:20}});setRows(data.items);setTotal(data.total)}catch{message.error('业务数据加载失败')}finally{setLoading(false)}}
+  const load=async(nextPage=page,nextKeyword=keyword,nextRecordStatus=recordStatus)=>{setLoading(true);try{const {data}=await api.get('/records',{params:{module,keyword:nextKeyword,record_status:nextRecordStatus,page:nextPage,page_size:20}});setRows(data.items);setTotal(data.total)}catch{message.error('业务数据加载失败')}finally{setLoading(false)}}
   useEffect(()=>{setPage(1);load(1)},[module])
   useEffect(()=>{if(openCreate)startCreate()},[module,openCreate])
 
@@ -104,7 +104,7 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
 
   return <>
     <Card className="panel business-panel" title={title||config.title} extra={<Space><Button icon={<ReloadOutlined/>} onClick={()=>load()}>刷新</Button><Button type="primary" icon={<PlusOutlined/>} onClick={startCreate}>新建</Button></Space>}>
-      <div className="filter-bar"><Input allowClear value={keyword} onChange={e=>setKeyword(e.target.value)} onPressEnter={()=>{setPage(1);load(1)}} placeholder="编号、标题、客户或负责人" prefix={<SearchOutlined/>}/><Select allowClear value={recordStatus||undefined} onChange={v=>setRecordStatus(v||'')} placeholder="全部状态" options={config.statuses.map(v=>({label:v,value:v}))}/><Button type="primary" onClick={()=>{setPage(1);load(1)}}>查询</Button><Button onClick={()=>{setKeyword('');setRecordStatus('');setTimeout(()=>load(1))}}>重置</Button></div>
+      <div className="filter-bar"><Input allowClear value={keyword} onChange={e=>setKeyword(e.target.value)} onPressEnter={()=>{setPage(1);load(1)}} placeholder="编号、标题、客户或负责人" prefix={<SearchOutlined/>}/><Select allowClear value={recordStatus||undefined} onChange={v=>setRecordStatus(v||'')} placeholder="全部状态" options={config.statuses.map(v=>({label:v,value:v}))}/><Button type="primary" onClick={()=>{setPage(1);load(1)}}>查询</Button><Button onClick={()=>{setKeyword('');setRecordStatus('');setPage(1);void load(1,'','')}}>重置</Button></div>
       <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} size="small" scroll={{x:1250}} pagination={{current:page,total,pageSize:20,showTotal:n=>`共 ${n} 条`,onChange:p=>{setPage(p);load(p)}}}/>
     </Card>
     <Modal width={760} open={modalOpen} title={`${editing?'编辑':'新建'}${title||config.title}`} okText="保存" cancelText="取消" onOk={save} onCancel={()=>setModalOpen(false)} destroyOnHidden>
