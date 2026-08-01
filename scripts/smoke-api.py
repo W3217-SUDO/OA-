@@ -328,7 +328,10 @@ def main():
         # before creating users with fixed display-name test fixtures.
         for stale_user in call("GET", "/system/users?keyword=smoke")["items"]:
             if str(stale_user.get("username") or "").lower().startswith(("smoke_", "xsmoke_")):
-                call("DELETE", f"/system/users/{stale_user['id']}", expected=(204, 404))
+                # A prior interrupted run may have created the matching HR
+                # record.  Direct account deletion must then stay blocked by
+                # the employee-record protection rule (409).
+                call("DELETE", f"/system/users/{stale_user['id']}", expected=(204, 404, 409))
         profile = call("GET", "/auth/me")
         assert profile["username"] == USERNAME and profile["is_active"] is True
         assert all(key in profile for key in ["email", "office_phone", "mobile", "menu_auto_collapse"])
