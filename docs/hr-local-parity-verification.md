@@ -48,6 +48,12 @@
 
 清理复核：页面刷新后不再出现临时员工号或附件名；SQLite 只读查询确认 `business_records`、`employee_subrecords`、`file_attachments` 均无 `CODEX-HR-SUBREC-` 残留；本地临时源文件已删除。针对性测试 `node --test apps/admin-web/employeeSubrecordsParity.test.mjs` 通过（10/10）。
 
+## 2026-08-01 下载闭环补充尝试
+
+本轮创建最小临时员工 `CODEX-HR-DL-20260801-001`，员工记录 ID `29`，账号 ID `6`。保存成功后本地页面刷新丢失登录会话，重新打开目标页进入登录页，无法在已认证页面继续完成 `.txt` 上传和下载响应采集；因此没有把下载按钮误报为已证明，也未上传到旧系统或服务器。
+
+已按精确 ID 清理 `business_records.id=29`、`users.id=6` 及其 `hr_subrecords`/`file_attachments` 关联；SQLite 只读复核四项均为空，临时源文件已删除。下载的 `Content-Disposition`、响应状态和内容哈希仍待下一次保持本地认证会话的专门复验。
+
 ## 2026-08-01 部门与角色双页面复核
 
 通过内置浏览器同时打开申浩旧系统与本地 `dev` 页面，旧系统仅浏览、不提交表单：
