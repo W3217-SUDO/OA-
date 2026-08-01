@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 所有修改只发生在本地 `dev` 工作副本；服务器只在最终提交后接收推送和部署。
+- 所有修改只发生在本地 `dev` 工作副本；本阶段不推送、不部署、不在服务器构建。
 - 开发页已有多余字段不删除；只补旧系统确实存在而开发页缺少的字段或行为。
 - 旧系统只读，不创建、修改、删除旧系统数据。
 - 不把密码、令牌或私有环境配置提交到 Git。
@@ -144,13 +144,13 @@ git add docs/功能实现清单.md docs/迁移交接与当前状态.md
 git commit -m "docs: record local employee parity verification"
 ```
 
-### Task 4: Prepare final server synchronization without remote builds
+### Task 4: Prepare the local completion gate (server sync deferred)
 
 **Files:**
 - Modify: `docs/迁移交接与当前状态.md`
 
 - [ ] **Step 1: Run local frontend build and backend syntax checks again**
 - [ ] **Step 2: Verify `git status`, branch `dev`, and commit history locally**
-- [ ] **Step 3: Push the reviewed commits to the server `dev` remote**
-- [ ] **Step 4: Trigger the server’s deployment-only workflow, never `npm run build` or dependency installation on the server**
-- [ ] **Step 5: Check 8088/8089 health and repeat the same old/local page checks after deployment**
+- [ ] **Step 3: Run the full local old-system versus development-system page checklist**
+- [ ] **Step 4: Record unresolved local gaps; do not claim parity without browser evidence**
+- [ ] **Step 5: Defer push/deployment until the user explicitly requests final synchronization**
