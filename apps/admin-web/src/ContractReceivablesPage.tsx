@@ -204,7 +204,10 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
       <Form.Item label="客户名称" name="customer"><Input placeholder="客户名称" /></Form.Item>
       <Form.Item label="案件编号" name="case_no"><Input placeholder="案号" /></Form.Item>
       <Form.Item label="案源人" name="source_person"><Input /></Form.Item>
-      <Form.Item className="contract-query-submit"><Button type="primary" htmlType="submit">查询</Button></Form.Item>
+      <Form.Item className="contract-query-submit">
+        <Button type="primary" htmlType="submit">查询</Button>
+        <Button onClick={() => { form.resetFields(); setQuery({}); }}>重置</Button>
+      </Form.Item>
     </Form>
     {detailView ? (
       <Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ pageSize: 15, showTotal: (total) => `共 ${total} 条` }} />
