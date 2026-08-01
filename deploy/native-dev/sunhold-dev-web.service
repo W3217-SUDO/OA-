@@ -1,0 +1,16 @@
+[Unit]
+Description=Sunhold native Vite development server with hot module reload
+After=sunhold-dev-api.service
+Requires=sunhold-dev-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sunhold-oa/worktrees/codex-resume-20260731/apps/admin-web
+Environment=NODE_ENV=development
+Environment=VITE_API_PROXY_TARGET=http://127.0.0.1:8001
+ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 8089 --strictPort
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

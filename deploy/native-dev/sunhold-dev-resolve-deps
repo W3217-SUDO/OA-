@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Native development services reuse the existing Docker data dependencies.
+# Docker DNS is unavailable to host processes, so publish only their current
+# bridge IPs under the same internal names used by .env.production.
+declare -A containers=(
+  [postgres]=sunhold-legal-platform-postgres-1
+  [redis]=sunhold-legal-platform-redis-1
+  [minio]=sunhold-legal-platform-minio-1
+)
+
+marker="# sunhold-native-dev"
+tmp_file="$(mktemp)"
+trap 'rm -f "$tmp_file"' EXIT
+grep -Fv "$marker" /etc/hosts > "$tmp_file" || true
+for host in "${!containers[@]}"; do
+  address="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${containers[$host]}")"
+  test -n "$address"
+  printf '%s %s %s\n' "$address" "$host" "$marker" >> "$tmp_file"
+done
+install -m 0644 "$tmp_file" /etc/hosts

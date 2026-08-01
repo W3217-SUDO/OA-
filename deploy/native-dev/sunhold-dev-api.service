@@ -1,0 +1,17 @@
+[Unit]
+Description=Sunhold native API development server with auto reload
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sunhold-oa/worktrees/codex-resume-20260731/apps/api-server
+EnvironmentFile=/opt/sunhold-oa/private/.env.production
+Environment=APP_ENV=development
+ExecStartPre=/usr/local/sbin/sunhold-dev-resolve-deps
+ExecStart=/opt/sunhold-oa/dev-runtime/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload --reload-dir /opt/sunhold-oa/worktrees/codex-resume-20260731/apps/api-server
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
