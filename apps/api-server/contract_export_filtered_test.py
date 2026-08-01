@@ -6,6 +6,8 @@ never written to output or repository files.
 import datetime
 import json
 import os
+import pathlib
+import sqlite3
 import urllib.parse
 import urllib.request
 import unittest
@@ -36,12 +38,15 @@ class ContractExportFilteredTest(unittest.TestCase):
             token = json.load(response)["access_token"]
 
         prefix = f"CODEX-CONTRACT-C-{datetime.datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:6]}"
-        customers = call("GET", "/customers?page_size=10", token)[2]
-        customer_items = json.loads(customers)["items"]
-        self.assertGreaterEqual(len(customer_items), 2)
+        customer_ids = []
+        customer_items = []
         created = []
         try:
-            for index, (customer, signed_at) in enumerate(zip(customer_items[:2], ("2026-07-01", "2026-08-01")), 1):
+            for index, signed_at in enumerate(("2026-07-01", "2026-08-01"), 1):
+                customer_payload = {"serial_no": f"{prefix}-CUS-{index}", "title": f"{prefix}-CUSTOMER-{index}", "owner": "admin", "department": "Shanghai", "description": "export fixture"}
+                status, _, body = call("POST", "/customers", token, customer_payload)
+                self.assertEqual(status, 201)
+                customer = json.loads(body); customer_ids.append(customer["id"]); customer_items.append(customer)
                 payload = {
                     "serial_no": f"{prefix}-{index}", "title": f"{prefix}-合同{index}",
                     "customer": customer["title"], "owner": "admin", "department": "上海分所",
@@ -70,8 +75,14 @@ class ContractExportFilteredTest(unittest.TestCase):
                 self.assertIn("中文合同扩展数据验收", text)
                 self.assertGreaterEqual(len(cells), 10)
         finally:
-            for contract_id in created:
-                call("DELETE", f"/contracts/{contract_id}/draft", token)
+            db_path = pathlib.Path(__file__).with_name("legal_platform.db")
+            connection = sqlite3.connect(db_path); connection.execute("PRAGMA foreign_keys=ON")
+            ids = [*customer_ids, *created]
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                connection.execute(f"DELETE FROM workflow_events WHERE record_id IN ({placeholders})", ids)
+                connection.execute(f"DELETE FROM business_records WHERE id IN ({placeholders})", ids)
+            connection.commit(); connection.close()
             remaining = json.loads(call("GET", f"/records?module=contract&keyword={urllib.parse.quote(prefix)}&page_size=100", token)[2])
             self.assertEqual(remaining["items"], [])
 
