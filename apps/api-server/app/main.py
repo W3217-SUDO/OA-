@@ -4432,10 +4432,31 @@ async def list_audit_events(module: str = "", keyword: str = "", page: int = Que
 
 
 @app.get(f"{settings.api_prefix}/records/export")
-async def export_records(module: str = Query(min_length=1, max_length=32), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def export_records(
+    module: str = Query(min_length=1, max_length=32),
+    title: str = "", serial_no: str = "", record_type: str = Query("", alias="type"),
+    customer: str = "", case_no: str = "", fee_type: str = "", contract_body: str = "",
+    source_person: str = "", signed_at_start: str = "", signed_at_end: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
     await _require_record_module_menu(module, identity, db, action="导出")
     conditions = [BusinessRecord.module == module, *(await _record_scope_conditions(identity, db))]
-    records = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.created_at))).all()
+    records = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.created_at))).all())
+    def contains(value: object, needle: str) -> bool:
+        return not needle or needle.lower() in str(value or "").lower()
+    def matches(item: BusinessRecord) -> bool:
+        data = item.data or {}
+        if not contains(item.title, title) or not contains(item.serial_no, serial_no): return False
+        if record_type and data.get("type") != record_type: return False
+        if not contains(item.customer, customer) or not contains(data.get("case_no"), case_no): return False
+        if fee_type and data.get("fee_type") != fee_type: return False
+        if contract_body and data.get("contract_body") != contract_body: return False
+        if source_person and not contains(data.get("source_person") or item.owner, source_person): return False
+        signed = str(data.get("signed_at") or "")[:10]
+        if signed_at_start and (not signed or signed < signed_at_start): return False
+        if signed_at_end and (not signed or signed > signed_at_end): return False
+        return True
+    records = [item for item in records if matches(item)]
     allowed_fields = await _allowed_field_keys(identity, db)
     output = io.StringIO(); writer = csv.writer(output); writer.writerow(["业务编号", "标题", "客户/主体", "状态", "负责人", "部门", "说明", "扩展数据", "创建时间", "更新时间"])
     for item in records:
