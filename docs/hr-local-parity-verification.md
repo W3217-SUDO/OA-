@@ -49,3 +49,9 @@
 - 本地 `HrCenterPage` 改用专用 `GET /hr/employees`，将六项筛选、数据范围和 `page/page_size/total` 交由服务端处理，表格按返回的 `current/total` 翻页；系统账号-only 行由接口一并返回，未丢失原有显示。
 - 服务端在应用数据范围后执行筛选和分页，额外列（合同审批流程、Email、扩展电话等）仍由本地页面保留。
 - 旧系统未执行任何写入；本地验证命令：`node --test apps/admin-web/employeeListServerPagination.test.mjs apps/admin-web/employeeListBulkDeleteUi.test.mjs apps/admin-web/employeeBulkDelete.test.mjs apps/admin-web/hrAccessGuard.test.mjs`（8/8）；后端 `compileall` 与前端 `npm.cmd run build` 通过。
+
+## 2026-08-01 权限与状态按钮复核
+
+- 本地按角色保留旧系统可见的查看、修改、状态办理、密码重置、系统用户和删除入口；管理员拥有账号维护权限，部门负责人仅办理人事状态，普通用户仅查看。
+- 服务端同步执行同等权限拦截：新建/编辑/删除/批量删除/密码重置/系统用户仅管理员；状态办理和员工附属记录允许管理员或部门负责人；停用账号不能继续登录，管理员账号不能被自身停用或删除。
+- 旧系统只读检查未写入业务数据；本地 `hrAccessGuard` 与 API 权限测试通过，未部署服务器。
