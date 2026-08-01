@@ -9,4 +9,5 @@ test("seal center exposes all required views and safety gates", () => {
   }
   for (const label of ["保存草稿", "取消", "上传用印文件", "下载", "删除用印草稿"]) assert.match(source, new RegExp(label));
   assert.match(source, /未上传文件不能提交审批/);
+  for (const status of ["待审批", "待用印", "已拒绝", "已撤回"]) assert.match(source, new RegExp(status));
 });

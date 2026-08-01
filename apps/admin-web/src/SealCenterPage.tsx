@@ -147,6 +147,21 @@ export default function SealCenterPage({
           ? "assets"
           : "my";
   const statusFromView = (v: string): string[] => {
+    // Keep route filters in the same UTF-8 status vocabulary persisted by the API.
+    // The legacy mojibake literals previously caused seal-audit-pending to return no rows.
+    const canonical: Record<string, string[]> = {
+      "seal-my-pending": ["草稿", "待审批"],
+      "seal-my-stamping": ["待用印"],
+      "seal-my-used": ["已用印", "已归档"],
+      "seal-my-refused": ["已拒绝"],
+      "seal-my-withdrawn": ["已撤回"],
+      "seal-audit-pending": ["待审批"],
+      "seal-audit-stamping": ["待用印"],
+      "seal-audit-refused": ["已拒绝"],
+      "seal-admin-pending": ["待用印"],
+      "seal-admin-used": ["已用印"],
+    };
+    if (canonical[v]) return canonical[v];
     const routeStatuses: Record<string, string[]> = {
       "seal-my-pending": ["草稿", "待审批"],
       "seal-my-stamping": ["待用印"],
