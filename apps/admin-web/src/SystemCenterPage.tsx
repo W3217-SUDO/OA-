@@ -599,6 +599,10 @@ export default function SystemCenterPage({
     }
   };
   const removeUser = async (row: SystemUser) => {
+    if (row.role === "admin") {
+      message.error("系统管理员账号不可删除");
+      return;
+    }
     try {
       await api.delete(`/system/users/${row.id}`);
       message.success("账号已删除");
@@ -608,11 +612,18 @@ export default function SystemCenterPage({
     }
   };
   const openPasswordReset = (row: SystemUser) => {
+    if (row.username === currentUsername) {
+      message.error("不能重置当前登录账号密码");
+      return;
+    }
     resetPasswordForm.resetFields();
     setResettingUser(row);
   };
   const resetPassword = async () => {
-    if (!resettingUser) return;
+    if (!resettingUser || resettingUser.username === currentUsername) {
+      if (resettingUser) message.error("不能重置当前登录账号密码");
+      return;
+    }
     try {
       const value = await resetPasswordForm.validateFields();
       await api.post(`/system/users/${resettingUser.id}/reset-password`, {
@@ -1345,13 +1356,30 @@ export default function SystemCenterPage({
             loading={loading}
             dataSource={users}
             pagination={{
-              pageSize: 20,
+              defaultPageSize: 15,
+              showSizeChanger: true,
+              pageSizeOptions: ["10", "15", "20", "50", "100", "200"],
+              showQuickJumper: true,
               showTotal: (total) => `共 ${total} 个账号`,
+            }}
+            locale={{
+              emptyText: (
+                <span>
+                  没有查询到符合条件的记录，可以去
+                  <Button type="link" size="small" onClick={() => editUser()}>
+                    新增用户
+                  </Button>
+                  。
+                </span>
+              ),
             }}
             columns={[
               { title: "登录账号", dataIndex: "username", width: 130 },
               { title: "姓名", dataIndex: "display_name", width: 110 },
               { title: "部门", dataIndex: "department", width: 140 },
+              { title: "Email", dataIndex: "email", width: 180 },
+              { title: "手机号码", dataIndex: "mobile", width: 130 },
+              { title: "固定电话", dataIndex: "office_phone", width: 130 },
               {
                 title: "系统角色",
                 dataIndex: "role",
