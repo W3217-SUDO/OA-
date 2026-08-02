@@ -324,6 +324,9 @@ const paymentPrintStatusField = (initialView: string) =>
       }
     : undefined;
 
+const paymentWriteoffClearQuery = (initialView: string) =>
+  initialView === "finance-payment-writeoff" ? { status: "待核销" } : {};
+
 type PaymentPrintDocumentData = {
   documentTitle: string;
   packageNo: string;
@@ -5919,8 +5922,9 @@ export default function FinanceCenterPage({
       );
       return;
     }
-    setOriginalQueryDraft({});
-    setOriginalQuery({});
+    const next = paymentWriteoffClearQuery(initialView);
+    setOriginalQueryDraft(next);
+    setOriginalQuery(next);
   };
   const exportFeeQuery = async (selectedOnly: boolean) => {
     if (selectedOnly && !selectedOriginalRows.length) {
