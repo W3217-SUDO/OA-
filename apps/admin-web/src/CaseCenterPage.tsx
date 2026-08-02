@@ -162,6 +162,7 @@ export const shouldShowCompanyScheduleActions = (initialView: string, rowCount: 
 export const shouldUseCompanySchedulePagination = (initialView: string) => initialView === "case-company-schedule";
 export const getCompanySchedulePageSizeOptions = () => ["10","15","20","50","100","200"];
 export const shouldShowCompanyScheduleSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => initialView === "case-company-schedule" && rowCount > 0 && rowCount <= pageSize;
+export const shouldUseCompanyScheduleDetailOperationMenu = (initialView: string, sourceRoute?: string) => initialView === "case-company-schedule" || (initialView.startsWith("case-detail-") && sourceRoute === "case-company-schedule");
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -2250,6 +2251,23 @@ export default function CaseCenterPage({
   const filteredCounselDetailAttachments=activeCounselDocCategory
     ? counselDetailAttachments.filter(row=>String(row.category||"").includes(activeCounselDocCategory))
     : counselDetailAttachments;
+  const caseDetailActionButtons = viewingCounselCase ? <>
+    {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
+    {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
+    {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
+    {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseLitigants(viewingCounselCase)}>修改当事人</Button>}
+    {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseHearingLawyer(viewingCounselCase)}>修改开庭律师</Button>}
+    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "法律顾问" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
+    {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
+    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
+    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Dropdown menu={{items:[{key:"litigants",label:"修改当事人"},{key:"public-security",label:"修改公安机关"},{key:"procuratorates",label:"修改检察院"},{key:"courts",label:"修改审级法院"}],onClick:({key})=>openCriminalMaintenance(viewingCounselCase,key as "litigants"|"public-security"|"procuratorates"|"courts")}}><Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)}>维护刑事资料</Button></Dropdown>}
+    {counselDetailCapabilities.can_write && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Dropdown trigger={["click"]} menu={{ items: caseDocumentTypes.map(([key, label]) => ({ key, label })), onClick: ({ key }) => void generateCaseDocument(String(key)) }}><Button icon={<FileTextOutlined />}>生成案件文书</Button></Dropdown>}
+    {counselDetailCapabilities.can_duplicate_case && <Button onClick={()=>Modal.confirm({title:`复制案件：${viewingCounselCase.serial_no}`,content:"将只复制案件基础信息并生成新案号；任务、附件、费用、提醒、排期和历史记录不会复制。",okText:"确认复制",cancelText:"取消",onOk:()=>duplicateCase(viewingCounselCase)})}>复制案件</Button>}
+    {counselDetailCapabilities.can_merge_case && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>合并案件</Button>}
+    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>修改公证信息</Button>}
+    {counselDetailCapabilities.can_edit_basic && ["民事案件","刑事案件","行政案件及国家赔偿","仲裁"].includes(viewingCounselCase.data.case_type) && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { settlementAmountForm.setFieldsValue({ litigation_amount: viewingCounselCase.data.litigation_amount ?? 0, settlement_amount: viewingCounselCase.data.settlement_amount ?? 0, comment: "" }); setSettlementAmountCase(viewingCounselCase); }}>修改诉讼/判决金额</Button>}
+    {counselDetailCapabilities.can_archive && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase)}>申请归档</Button>}
+  </> : null;
   return (
     <div className={`case-center-page ${isCaseDetailView ? "case-detail-route" : ""}`}>
       {isCaseDetailView && !viewingCounselCase && <div className="case-detail-route-loading">正在加载案件详情...</div>}
@@ -2838,21 +2856,7 @@ export default function CaseCenterPage({
         onClose={() => isCaseDetailView ? returnToCaseList() : setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
           {isCaseDetailView && <Button data-testid="case-detail-back" onClick={returnToCaseList}>返回案件列表</Button>}
-          {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
-          {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
-          {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
-          {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseLitigants(viewingCounselCase)}>修改当事人</Button>}
-          {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseHearingLawyer(viewingCounselCase)}>修改开庭律师</Button>}
-          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "法律顾问" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
-          {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
-          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
-          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Dropdown menu={{items:[{key:"litigants",label:"修改当事人"},{key:"public-security",label:"修改公安机关"},{key:"procuratorates",label:"修改检察院"},{key:"courts",label:"修改审级法院"}],onClick:({key})=>openCriminalMaintenance(viewingCounselCase,key as "litigants"|"public-security"|"procuratorates"|"courts")}}><Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)}>维护刑事资料</Button></Dropdown>}
-          {counselDetailCapabilities.can_write && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Dropdown trigger={["click"]} menu={{ items: caseDocumentTypes.map(([key, label]) => ({ key, label })), onClick: ({ key }) => void generateCaseDocument(String(key)) }}><Button icon={<FileTextOutlined />}>生成案件文书</Button></Dropdown>}
-          {counselDetailCapabilities.can_duplicate_case && <Button onClick={()=>Modal.confirm({title:`复制案件：${viewingCounselCase.serial_no}`,content:"将只复制案件基础信息并生成新案号；任务、附件、费用、提醒、排期和历史记录不会复制。",okText:"确认复制",cancelText:"取消",onOk:()=>duplicateCase(viewingCounselCase)})}>复制案件</Button>}
-          {counselDetailCapabilities.can_merge_case && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>合并案件</Button>}
-          {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>修改公证信息</Button>}
-          {counselDetailCapabilities.can_edit_basic && ["民事案件","刑事案件","行政案件及国家赔偿","仲裁"].includes(viewingCounselCase.data.case_type) && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { settlementAmountForm.setFieldsValue({ litigation_amount: viewingCounselCase.data.litigation_amount ?? 0, settlement_amount: viewingCounselCase.data.settlement_amount ?? 0, comment: "" }); setSettlementAmountCase(viewingCounselCase); }}>修改诉讼/判决金额</Button>}
-          {counselDetailCapabilities.can_archive && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase)}>申请归档</Button>}
+          {shouldUseCompanyScheduleDetailOperationMenu(initialView,caseListReturnContext?.route)?<Dropdown trigger={["click"]} dropdownRender={()=><Card size="small"><div style={{display:"grid",gap:8}}>{caseDetailActionButtons}</div></Card>}><Button>操作</Button></Dropdown>:caseDetailActionButtons}
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
