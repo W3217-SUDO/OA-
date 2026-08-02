@@ -59,6 +59,7 @@ REQUIRED_SEAL_ASSETS = (
     ("YZ-CS-001", "财务三排章", "财务部保险柜 F03"),
 )
 REQUIRED_SEAL_TYPES = {seal_type for _, seal_type, _ in REQUIRED_SEAL_ASSETS}
+SEAL_USE_TYPES = {"案件用印", "合同用印", "行政用印"}
 ADMINISTRATIVE_CLIENT_POSITIONS = {"原告/申请人", "被告/被申请人", "第三人"}
 CASE_CREATE_PERMISSION_KEYS = list(CASE_CREATE_PERMISSION_BY_TYPE.values())
 CASE_CREATE_STATUS_ALIASES = {"新案待分配": "新案待分配", "待分配": "新案待分配"}
@@ -2343,6 +2344,11 @@ class SealPackageDownloadInput(BaseModel):
     application_ids: list[int] = Field(min_length=1, max_length=100)
 
 
+class SealBatchApplicationInput(BaseModel):
+    application_ids: list[int] = Field(min_length=1, max_length=100)
+    comment: str = Field(default="", max_length=1000)
+
+
 class SealApprovalInput(BaseModel):
     approved: bool
     comment: str = ""
@@ -2353,6 +2359,12 @@ class SealStampInput(BaseModel):
     operator: str = ""
     archive_no: str = ""
     comment: str = ""
+
+
+class SealBatchStampInput(SealBatchApplicationInput):
+    actual_copies: int = Field(ge=1, le=999)
+    operator: str = ""
+    archive_no: str = ""
 
 
 class SealAssetInput(BaseModel):
@@ -15021,6 +15033,59 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.post(f"{settings.api_prefix}/seals/applications/batch/files/delete")
+async def batch_delete_seal_attachments(body: AttachmentBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Delete selected draft seal files atomically, including physical-file compensation."""
+    ids = list(dict.fromkeys(body.attachment_ids))
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(ids)))).all())
+    if len(attachments) != len(ids):
+        raise HTTPException(status_code=404, detail="选中的用印附件不存在")
+    by_id = {item.id: item for item in attachments}
+    ordered = [by_id[item_id] for item_id in ids]
+    prepared: list[tuple[FileAttachment, BusinessRecord, Path]] = []
+    for item in ordered:
+        if not item.record_id:
+            raise HTTPException(status_code=422, detail="选中的附件未关联用印申请")
+        record = await _ensure_record_module(item.record_id, "seal", identity, db)
+        await _require_record_owner_or_manager(record, identity, db)
+        if record.status != "草稿":
+            raise HTTPException(status_code=409, detail="只有草稿用印申请可以删除用印文件")
+        if item.category != "用印文件":
+            raise HTTPException(status_code=422, detail="用印申请附件类型无效")
+        path = Path(item.path)
+        if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+            raise HTTPException(status_code=404, detail=f"附件文件 {item.original_name} 不存在")
+        prepared.append((item, record, path))
+
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for item, _, path in prepared:
+            staged_path = path.with_name(f".seal-delete-{uuid4().hex}-{path.name}")
+            path.replace(staged_path)
+            staged.append((path, staged_path))
+        affected: dict[int, BusinessRecord] = {}
+        for item, record, _ in prepared:
+            affected[record.id] = record
+            await db.delete(item)
+            db.add(WorkflowEvent(record_id=record.id, action="批量删除用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=item.original_name))
+        await db.flush()
+        for record in affected.values():
+            await _sync_seal_document_names(record, db)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        for original, staged_path in reversed(staged):
+            if staged_path.is_file():
+                staged_path.replace(original)
+        raise
+    for _, staged_path in staged:
+        try:
+            staged_path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("无法清理已删除的用印附件临时文件: %s", staged_path)
+    return {"deleted": len(prepared), "attachment_ids": ids}
+
+
 @app.post(f"{settings.api_prefix}/receivables", status_code=status.HTTP_201_CREATED)
 async def create_receivable(body: ReceivableInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(body.contract_record_id, "contract", identity, db)
@@ -15084,6 +15149,8 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
     """Return canonical, visible seal references and prevent dangling business links."""
     case_no, contract_no, customer = body.case_no.strip(), body.contract_no.strip(), body.customer.strip()
     use_type = body.use_type.strip() or ("案件用印" if case_no else "合同用印" if contract_no else "行政用印")
+    if use_type not in SEAL_USE_TYPES:
+        raise HTTPException(status_code=422, detail="用印类型无效")
     scope = await _record_scope_conditions(identity, db)
 
     async def visible(module: str, serial_no: str, label: str) -> BusinessRecord:
@@ -15111,9 +15178,9 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
 
 
 @app.get(f"{settings.api_prefix}/seals/applications")
-async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", serial_no: str = "", applicant: str = "", date_from: date | None = None, date_to: date | None = None, case_no: str = "", contract_no: str = "", customer: str = "", use_type: str = "", file_name: str = "", page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", serial_no: str = "", applicant: str = "", date_from: date | None = None, date_to: date | None = None, case_no: str = "", contract_no: str = "", customer: str = "", use_type: str = "", file_name: str = "", page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if view not in {"my", "audit", "all"}: raise HTTPException(status_code=422, detail="无效的用印视图")
-    if view == "all" and identity.get("role") != "admin": raise HTTPException(status_code=403, detail="只有系统管理员可以查看全部用印申请")
+    if view == "all" and identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以查看全部用印申请")
     scope_conditions = await _record_scope_conditions(identity, db)
     conditions = [BusinessRecord.module == "seal", *scope_conditions]
     if view == "my": conditions.append(BusinessRecord.owner == identity["username"])
@@ -15259,11 +15326,40 @@ async def withdraw_seal_application(record_id: int, body: TaskActionInput, ident
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
 
+@app.post(f"{settings.api_prefix}/seals/applications/batch/withdraw")
+async def batch_withdraw_seal_applications(body: SealBatchApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Withdraw selected pending seal applications as one atomic workflow action."""
+    ids = list(dict.fromkeys(body.application_ids))
+    records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids), BusinessRecord.module == "seal"))).all())
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="选中的用印申请不存在")
+    by_id = {record.id: record for record in records}
+    ordered = [by_id[item_id] for item_id in ids]
+    try:
+        for item in ordered:
+            await _ensure_record_visible(item.id, identity, db)
+            if identity.get("role") != "admin" and item.owner != identity["username"]:
+                raise HTTPException(status_code=403, detail="只有申请人或管理员可以撤回用印申请")
+            if item.status not in {"待审批", "待用印"}:
+                raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 只有待审批或已审待用印状态可以撤回")
+        for item in ordered:
+            previous = item.status
+            item.status = "已撤回"
+            db.add(WorkflowEvent(record_id=item.id, action="批量撤回用印申请", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment.strip()))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return {"processed": len(ordered), "ids": ids, "status": "已撤回"}
+
+
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/approve")
 async def approve_seal_application(record_id: int, body: SealApprovalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _get_seal_application(record_id, identity, db)
     if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有用印审批权限")
     if item.status != "待审批": raise HTTPException(status_code=409, detail="申请不在待审批状态")
+    if not body.approved and not body.comment.strip():
+        raise HTTPException(status_code=422, detail="驳回时必须填写审批意见")
     old = item.status; item.status = "待用印" if body.approved else "已拒绝"
     item.data = {
         **(item.data or {}),
@@ -15288,7 +15384,49 @@ async def stamp_seal_application(record_id: int, body: SealStampInput, identity:
     data.update({"actual_copies": body.actual_copies, "stamp_operator": body.operator or identity["username"], "stamped_at": datetime.now().isoformat(), "archive_no": body.archive_no}); item.data = data
     asset.usage_count += body.actual_copies; asset.last_used_at = datetime.now()
     db.add(WorkflowEvent(record_id=item.id, action="完成实际用印", from_status=old, to_status=item.status, operator=identity["username"], comment=f"实际 {body.actual_copies} 份；归档号：{body.archive_no}。{body.comment}"))
+    db.add(SealAssetAudit(asset_id=asset.id, asset_code=asset.code, asset_name=asset.name, action="完成实际用印", operator=identity["username"], comment=f"用印申请 {item.serial_no}；实际 {body.actual_copies} 份"))
     await db.commit(); await db.refresh(item); await db.refresh(asset); return await _seal_record_dict(item, db)
+
+
+@app.post(f"{settings.api_prefix}/seals/applications/batch-stamp")
+async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Stamp selected approved applications in one transaction."""
+    if identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记实际用印")
+    ids = list(dict.fromkeys(body.application_ids))
+    records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids), BusinessRecord.module == "seal"))).all())
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="选中的用印申请不存在")
+    by_id = {record.id: record for record in records}
+    ordered = [by_id[item_id] for item_id in ids]
+    prepared: list[tuple[BusinessRecord, SealAsset]] = []
+    try:
+        for item in ordered:
+            await _ensure_record_visible(item.id, identity, db)
+            if item.status != "待用印":
+                raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 尚未审批通过或已经用印")
+            requested = int((item.data or {}).get("copies") or 0)
+            if body.actual_copies > requested:
+                raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 实际用印份数不能超过申请份数 {requested}")
+            asset = await db.get(SealAsset, int((item.data or {}).get("seal_asset_id") or 0))
+            if not asset or asset.status != "可用":
+                raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 关联印章不存在或当前不可用")
+            prepared.append((item, asset))
+        for item, asset in prepared:
+            previous = item.status
+            item.status = "已用印"
+            data = dict(item.data or {})
+            data.update({"actual_copies": body.actual_copies, "stamp_operator": body.operator or identity["username"], "stamped_at": datetime.now().isoformat(), "archive_no": body.archive_no})
+            item.data = data
+            asset.usage_count += body.actual_copies
+            asset.last_used_at = datetime.now()
+            db.add(WorkflowEvent(record_id=item.id, action="批量完成实际用印", from_status=previous, to_status=item.status, operator=identity["username"], comment=f"实际 {body.actual_copies} 份；归档号：{body.archive_no}。{body.comment}"))
+            db.add(SealAssetAudit(asset_id=asset.id, asset_code=asset.code, asset_name=asset.name, action="批量完成实际用印", operator=identity["username"], comment=f"用印申请 {item.serial_no}；实际 {body.actual_copies} 份"))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return {"processed": len(prepared), "ids": ids, "status": "已用印"}
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/archive")
@@ -15316,7 +15454,9 @@ async def create_seal_asset(body: SealAssetInput, identity: dict = Depends(curre
     if identity["role"] != "admin": raise HTTPException(status_code=403, detail="仅管理员可新增印章")
     if body.seal_type not in REQUIRED_SEAL_TYPES: raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
     if await db.scalar(select(SealAsset.id).where(SealAsset.code == body.code)): raise HTTPException(status_code=409, detail="印章编号已存在")
-    item = SealAsset(**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return _seal_asset_dict(item)
+    item = SealAsset(**body.model_dump()); db.add(item); await db.flush()
+    db.add(SealAssetAudit(asset_id=item.id, asset_code=item.code, asset_name=item.name, action="创建印章资产", operator=identity["username"], comment="新增印章资产"))
+    await db.commit(); await db.refresh(item); return _seal_asset_dict(item)
 
 
 @app.patch(f"{settings.api_prefix}/seals/assets/{{asset_id}}")
@@ -15327,7 +15467,9 @@ async def update_seal_asset(asset_id: int, body: SealAssetUpdate, identity: dict
     changes = body.model_dump(exclude_unset=True)
     if changes.get("status") not in {None, "可用", "停用", "维修", "遗失"}: raise HTTPException(status_code=422, detail="无效的印章状态")
     if changes.get("seal_type") not in {None, *REQUIRED_SEAL_TYPES}: raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
+    previous = {key: getattr(item, key) for key in changes}
     for key, value in changes.items(): setattr(item, key, value)
+    db.add(SealAssetAudit(asset_id=item.id, asset_code=item.code, asset_name=item.name, action="修改印章资产", operator=identity["username"], comment=f"变更 {previous} -> {changes}"))
     await db.commit(); await db.refresh(item); return _seal_asset_dict(item)
 
 

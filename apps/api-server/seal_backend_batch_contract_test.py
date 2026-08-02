@@ -78,19 +78,35 @@ class SealBackendBatchContractTest(unittest.TestCase):
         self.assertIn("StreamingResponse", source)
         self.assertNotIn("db.delete", source)
 
-    @unittest.expectedFailure
+    def test_local_batch_delete_has_permission_status_transaction_and_file_compensation(self):
+        start = self.local.index("async def batch_delete_seal_attachments")
+        end = self.local.index("@app.post", start + 10)
+        source = self.local[start:end]
+        for token in ("status_code=404", "status_code=409", "status_code=422", "staged", "path.replace", "await db.rollback()", "await db.commit()", "WorkflowEvent", "unlink"):
+            self.assertIn(token, source)
+
+    def test_local_batch_stamp_and_withdraw_prevalidate_then_commit_once(self):
+        stamp_start = self.local.index("async def batch_stamp_seal_applications")
+        stamp_end = self.local.index("@app.post", stamp_start + 10)
+        withdraw_start = self.local.index("async def batch_withdraw_seal_applications")
+        withdraw_end = self.local.index("@app.post", withdraw_start + 10)
+        stamp = self.local[stamp_start:stamp_end]
+        withdraw = self.local[withdraw_start:withdraw_end]
+        for token in ("status_code=403", "status_code=404", "status_code=409", "SealAssetAudit", "WorkflowEvent", "await db.rollback()", "await db.commit()"):
+            self.assertIn(token, stamp)
+        for token in ("status_code=403", "status_code=404", "status_code=409", "WorkflowEvent", "await db.rollback()", "await db.commit()"):
+            self.assertIn(token, withdraw)
+
     def test_gate_default_seal_page_size_is_fifteen(self):
-        """Main-thread gate: old list/file defaults are 15, local seal list is 20."""
+        """Main-thread gate: old list/file defaults are 15."""
         declaration = re.search(r"async def list_seal_applications\([^\n]+", self.local)
         self.assertIsNotNone(declaration)
         self.assertIn("page_size: int = Query(15", declaration.group(0))
 
-    @unittest.expectedFailure
     def test_gate_seal_batch_attachment_delete_endpoint_exists(self):
         """Main-thread gate: legacy Delete accepts multiple file IDs."""
-        self.assertRegex(self.local, r"/seals/applications/[^\n]+files/delete")
+        self.assertRegex(self.local, r"seals/applications/[^\n]+files/delete")
 
-    @unittest.expectedFailure
     def test_gate_multi_number_stamp_endpoint_exists(self):
         """Main-thread gate: legacy Print/StampFileUpload accepts many numbers."""
         self.assertRegex(self.local, r"seals/applications/(batch|package)-stamp|stamp.*application_ids")

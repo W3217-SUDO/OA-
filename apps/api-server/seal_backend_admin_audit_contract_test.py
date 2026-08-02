@@ -87,16 +87,15 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
         for token in ('identity.get("role") not in', "待用印", "actual_copies", "asset.status", "usage_count", "last_used_at", "WorkflowEvent", "await db.commit()"):
             self.assertIn(token, source)
 
-    @unittest.expectedFailure
     def test_gate_batch_rollback_endpoint_accepts_multiple_record_ids(self):
         """Old Rollback accepts List<string>; local withdraw is single-record only."""
         self.assertRegex(self.local, r"seals/applications/(batch|bulk).*(withdraw|rollback)|withdraw.*application_ids")
 
-    @unittest.expectedFailure
     def test_gate_use_type_is_enum_validated_server_side(self):
         """Old type 30 is a closed admin-use choice; free text must not reach DB."""
         source = self._span("_validated_seal_relations", "@app.get")
-        self.assertRegex(source, r"use_type\s+not\s+in\s+\{[^}]*行政用印")
+        self.assertIn("if use_type not in SEAL_USE_TYPES", source)
+        self.assertIn("SEAL_USE_TYPES", self.local)
 
     @unittest.expectedFailure
     def test_gate_seal_type_bitmask_or_multi_asset_relation_is_preserved(self):
@@ -104,7 +103,6 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
         dto = self.local[self.local.index("class SealApplicationInput"):self.local.index("class SealPackageDownloadInput")]
         self.assertRegex(dto, r"seal_types?\s*:")
 
-    @unittest.expectedFailure
     def test_gate_rejection_comment_is_required_by_backend(self):
         """The UI requires a rejection reason; API must enforce the same 422 contract."""
         source = self._span("approve_seal_application", "@app.post")
@@ -123,7 +121,6 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
         source = self._span("record_history", "@app.patch")
         self.assertRegex(source, r"audit_only|audit_status|action_filter")
 
-    @unittest.expectedFailure
     def test_gate_asset_update_and_stamp_write_asset_audit_rows(self):
         """Create/update/stamp lifecycle changes need the same asset audit trail as delete."""
         update = self._span("update_seal_asset")
@@ -131,9 +128,8 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
         self.assertIn("SealAssetAudit", update)
         self.assertIn("SealAssetAudit", stamp)
 
-    @unittest.expectedFailure
     def test_gate_admin_queue_permission_matches_stamp_roles(self):
-        """Managers can stamp locally but the all/admin queue currently admits admin only."""
+        """Managers allowed to stamp must also be able to read the administrative queue."""
         source = self._span("list_seal_applications", "@app.post")
         self.assertNotRegex(source, r'view == "all" and identity\.get\("role"\) != "admin"')
 

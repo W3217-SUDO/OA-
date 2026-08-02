@@ -121,7 +121,7 @@ class SealBackendContractTest(unittest.TestCase):
     def test_local_menu_permission_and_scope_guards(self):
         self.assertIn('("seal", "", "用印中心"', self.local_main)
         self.assertIn('"seal": ("seal",)', self.local_main)
-        self.assertIn('if view == "all" and identity.get("role") != "admin"', self.local_main)
+        self.assertIn('if view == "all" and identity.get("role") not in {"admin", "manager"}', self.local_main)
         self.assertIn("Depends(current_identity)", self.local_main)
 
     def test_external_old_service_source_is_a_known_audit_debt(self):
