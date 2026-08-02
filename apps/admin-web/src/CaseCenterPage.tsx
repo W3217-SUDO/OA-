@@ -121,8 +121,23 @@ export const getCompanyCriminalColumnSchema = () => [
   {key:"remaining_days",title:"剩余时间",width:90},
   {key:"spacer",title:"",width:40},
 ];
+export const getCompanyArbitrationColumnSchema = () => [
+  {key:"serial_no",title:"案件编号",width:150},
+  {key:"charge",title:"案由",width:180},
+  {key:"plaintiff",title:"申请人",width:180},
+  {key:"defendant",title:"被申请人",width:190},
+  {key:"status",title:"案件阶段",width:120},
+  {key:"court",title:"仲裁机构",width:180},
+  {key:"hearing_at",title:"开庭时间",width:120},
+  {key:"handling_lawyer",title:"经办律师",width:140},
+  {key:"assistant",title:"律师助理",width:110},
+  {key:"source_person",title:"案源人",width:110},
+  {key:"remaining_days",title:"剩余时间",width:90},
+  {key:"spacer",title:"",width:40},
+];
 export const shouldUseCompanyCriminalQueryFields = (initialView: string) => initialView === "case-company-criminal";
 export const shouldUseCompanyArbitrationQueryFields = (initialView: string) => initialView === "case-company-arbitration";
+export const shouldUseCompanyArbitrationColumns = (initialView: string) => initialView === "case-company-arbitration";
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -2039,6 +2054,7 @@ export default function CaseCenterPage({
       case "serial_no": return <Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>{row.serial_no}</Button>;
       case "charge": return row.data.cause_or_charge||"";
       case "prosecutor": return row.data.prosecutor||row.data.first_procuratorate_name||row.data.procuratorate||"";
+      case "plaintiff": return row.data.plaintiff||row.customer||"";
       case "defendant": return Array.isArray(row.data.defendants)?row.data.defendants.join(","):row.data.defendants||row.data.opponent||"";
       case "status": return row.status;
       case "court": return row.data.court||row.data.first_court_name||"";
@@ -2051,7 +2067,8 @@ export default function CaseCenterPage({
     }
   };
   const companyCriminalCaseColumns = getCompanyCriminalColumnSchema().map(({key,title,width})=>({title,key,width,sorter:key==="serial_no"||key==="hearing_at",render:(_:unknown,row:CaseRow)=>renderCompanyCriminalColumn(key,row)}));
-  const originalCaseColumns = [
+  const companyArbitrationCaseColumns = getCompanyArbitrationColumnSchema().map(({key,title,width})=>({title,key,width,sorter:key==="serial_no"||key==="hearing_at",render:(_:unknown,row:CaseRow)=>renderCompanyCriminalColumn(key,row)}));
+  const groupedOriginalCaseColumns = [
     {title:"基本信息",key:"base",width:185,render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>案件编号:{row.serial_no}</Button></p><p>案件名称:{row.title}</p></>},
     {title:"当事人信息",key:"parties",width:250,render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},
     {title:"阶段信息",key:"phase",width:175,render:(_:unknown,row:CaseRow)=><><p>案件阶段:{row.status}</p><p>变更时间:{row.data.phase_changed_at||""}</p></>},
@@ -2065,6 +2082,7 @@ export default function CaseCenterPage({
     {title:"主体信息",key:"entity",width:190,render:(_:unknown,row:CaseRow)=><><p>主体:{row.customer?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:row.customer})}>{row.data.subject_name||row.customer}</Button>:row.data.subject_name||""}</p><p>披露状态:{row.data.subject_status||""}</p></>},
     {title:"归档信息",key:"archive",width:190,render:(_:unknown,row:CaseRow)=><><p>归档状态:{row.data.archive_status||row.status}</p><p>归档日期:{row.data.archived_at||""} <Button type="link" className="case-cell-link" onClick={()=>openCaseTasks(row)}>查看</Button></p></>},
   ];
+  const originalCaseColumns=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseColumns:groupedOriginalCaseColumns;
   const counselCaseColumns = [
     {title:"案件编号",dataIndex:"serial_no",width:170,sorter:true,render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>{value}</Button>},
     {title:"顾问类型",key:"counsel_type",width:150,render:(_:unknown,row:CaseRow)=>row.data.counsel_type||"—"},
@@ -2099,7 +2117,8 @@ export default function CaseCenterPage({
   ];
   // All data columns below declare their widths. Keep the selection column inside
   // the horizontal viewport so the fixed right action column never overlays data.
-  const originalCaseTableScrollX=2420;
+  const companyArbitrationCaseTableScrollX=1610;
+  const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseTableScrollX:2420;
   const companyCriminalCaseTableScrollX=1610;
   const counselCaseTableScrollX=1460;
   const archiveCaseTableScrollX=archiveDone||archiveRefused?1700:1600;
