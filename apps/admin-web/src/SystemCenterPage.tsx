@@ -193,6 +193,18 @@ export function isShareDaysValueValid(value: unknown): boolean {
   return Number.isInteger(days) && days >= 1 && days <= 3650;
 }
 
+export function sanitizeCompanyDigitsInput(value: unknown): string {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+export function cleanCompanyDigitsInputEvent(event: {
+  currentTarget: { value: string };
+}): string {
+  const sanitized = sanitizeCompanyDigitsInput(event.currentTarget.value);
+  event.currentTarget.value = sanitized;
+  return sanitized;
+}
+
 export default function SystemCenterPage({
   initialView = "system-parameters",
 }: {
@@ -958,35 +970,63 @@ export default function SystemCenterPage({
       </Card>
     );
   } else if (initialView === "system-parameters-company") {
-    const fields = [
-      ["name", "公司名称"],
-      ["code", "公司代码"],
-      ["short_code", "公司字母短写代码"],
-      ["address", "公司地址"],
-      ["phone", "联系电话"],
-      ["fax", "联系传真"],
-      ["email", "联系邮箱"],
-      ["postal_code", "联系邮编"],
-      ["bank_name", "开户银行"],
-      ["bank_account", "开户帐号"],
-      ["bank_address", "开户银行地址"],
+    const fields: {
+      name: string;
+      label: string;
+      normalize?: typeof sanitizeCompanyDigitsInput;
+      type?: "email";
+    }[] = [
+      { name: "name", label: "公司名称" },
+      { name: "code", label: "公司代码" },
+      { name: "short_code", label: "公司字母短写代码" },
+      { name: "address", label: "公司地址" },
+      { name: "phone", label: "联系电话" },
+      { name: "fax", label: "联系传真" },
+      { name: "email", label: "联系邮箱", type: "email" },
+      {
+        name: "postal_code",
+        label: "联系邮编",
+        normalize: sanitizeCompanyDigitsInput,
+      },
+      { name: "bank_name", label: "开户银行" },
+      {
+        name: "bank_account",
+        label: "开户帐号",
+        normalize: sanitizeCompanyDigitsInput,
+      },
+      { name: "bank_address", label: "开户银行地址" },
     ];
     content = (
       <Card className="panel system-focused" title="公司设置">
+        <Alert
+          type="info"
+          message="请完善以下信息,方便我们更好的为您服务"
+          style={{ marginBottom: 16 }}
+        />
         <Form
           form={companyForm}
           className="system-config-form"
           labelCol={{ flex: "150px" }}
           wrapperCol={{ flex: "420px" }}
         >
-          {fields.map(([name, label]) => (
+          {fields.map(({ name, label, normalize, type }) => (
             <Form.Item
               key={name}
               name={name}
               label={label}
-              rules={[{ required: true, message: `请填写${label}` }]}
+              normalize={normalize}
+              rules={[
+                { required: true, message: "请输入红星*必填项." },
+                ...(type === "email"
+                  ? [{ type, message: "请填写正确联系邮箱！" }]
+                  : []),
+              ]}
             >
-              <Input />
+              <Input
+                type={type}
+                inputMode={normalize ? "numeric" : undefined}
+                onInput={normalize ? cleanCompanyDigitsInputEvent : undefined}
+              />
             </Form.Item>
           ))}
           <Form.Item label=" ">
