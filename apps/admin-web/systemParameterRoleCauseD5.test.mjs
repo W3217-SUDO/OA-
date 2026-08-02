@@ -48,8 +48,8 @@ test("legacy role permissions keeps tree fields, admin lock, and feedback", () =
   assert.match(pageSource, /name="menu_keys"/);
   assert.match(pageSource, /treeCheckable/);
   assert.match(pageSource, /disabled=\{editingRole\?\.role === "admin"\}/);
-  assert.match(pageSource, /message\.success\("角色权限已保存"\)/);
-  assert.match(pageSource, /message\.error\(error\?\.response\?\.data\?\.detail \|\| "角色权限保存失败"\)/);
+  assert.match(pageSource, /message\.success\("保存成功！"\)/);
+  assert.match(pageSource, /message\.error\(error\?\.response\?\.data\?\.detail \|\| "保存失败！"\)/);
 });
 
 test("parameter and role APIs keep admin guards and legacy failure paths", () => {

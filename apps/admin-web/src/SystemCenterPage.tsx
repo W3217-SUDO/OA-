@@ -456,11 +456,11 @@ export default function SystemCenterPage({
           extra,
         });
       else await api.post("/system/parameters", payload);
-      message.success(editingParameter ? "修改成功" : "新增成功");
+      message.success("保存成功！");
       setParameterOpen(false);
       void loadParameters("");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "保存失败");
+      message.error(error?.response?.data?.detail || "保存失败！");
     }
   };
   const removeParameter = async (row: ParameterRow) => {
@@ -643,14 +643,18 @@ export default function SystemCenterPage({
   };
   const saveRole = async () => {
     if (!editingRole) return;
+    if (editingRole.role === "admin") {
+      message.error("系统管理员权限不可修改");
+      return;
+    }
     const value = await roleForm.validateFields();
     try {
       await api.patch(`/system/role-permissions/${editingRole.role}`, value);
-      message.success("角色权限已保存");
+      message.success("保存成功！");
       setRoleOpen(false);
       void loadRoles();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "角色权限保存失败");
+      message.error(error?.response?.data?.detail || "保存失败！");
     }
   };
   const saveSecurity = async () => {
@@ -1835,10 +1839,42 @@ export default function SystemCenterPage({
       >
         <Form form={parameterForm} layout="vertical">
           <div className="system-modal-grid">
-            <Form.Item label="代码" name="code" rules={[{ required: true }]}>
+            <Form.Item
+              label={category === "case_type" ? "类型字母名称" : "代码"}
+              name="code"
+              rules={[
+                {
+                  required: true,
+                  message:
+                    category === "case_type"
+                      ? "请输入类型字母名称."
+                      : undefined,
+                },
+              ]}
+            >
               <Input />
             </Form.Item>
-            <Form.Item label="名称" name="name" rules={[{ required: true }]}>
+            <Form.Item
+              label={
+                category === "case_type"
+                  ? "类型名称"
+                  : category === "cause"
+                    ? "案由名称"
+                    : "名称"
+              }
+              name="name"
+              rules={[
+                {
+                  required: true,
+                  message:
+                    category === "case_type"
+                      ? "请输入类型名称."
+                      : category === "cause"
+                        ? "请输入案由名称."
+                        : undefined,
+                },
+              ]}
+            >
               <Input />
             </Form.Item>
             {(extraFields[category] || []).map((item) => {
