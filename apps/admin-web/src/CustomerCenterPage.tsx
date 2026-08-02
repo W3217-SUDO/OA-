@@ -870,9 +870,12 @@ export default function CustomerCenterPage({
           { key: "portal-open", label: "开通/重置客户服务端" },
           { key: "portal-close", label: "停用客户服务端" },
         ]
-      : ["customer-dept", "customer-company"].includes(initialView)
+      : initialView === "customer-dept"
+        ? [{ key: "assign", label: "分配客户" }]
+      : initialView === "customer-company"
         ? [
-            ...(initialView === "customer-company" ? [{ key: "edit", label: "客户编辑" }, { key: "delete", label: "客户删除" }] : []),
+            { key: "edit", label: "客户编辑" },
+            { key: "delete", label: "客户删除" },
             { key: "assign", label: "分配客户" },
             { key: "level-review", label: "审批客户分级" },
             { key: "key-change-review", label: "审批关键字段变更" },
