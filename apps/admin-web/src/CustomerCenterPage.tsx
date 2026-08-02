@@ -873,15 +873,7 @@ export default function CustomerCenterPage({
       : initialView === "customer-dept"
         ? [{ key: "assign", label: "分配客户" }]
       : initialView === "customer-company"
-        ? [
-            { key: "edit", label: "客户编辑" },
-            { key: "delete", label: "客户删除" },
-            { key: "assign", label: "分配客户" },
-            { key: "level-review", label: "审批客户分级" },
-            { key: "key-change-review", label: "审批关键字段变更" },
-            { key: "portal-open", label: "开通/重置客户服务端" },
-            { key: "portal-close", label: "停用客户服务端" },
-          ]
+        ? [{ key: "assign", label: "分配客户" }]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"
