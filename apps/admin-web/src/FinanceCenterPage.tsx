@@ -7565,6 +7565,7 @@ export default function FinanceCenterPage({
                 rowSelection={
                   activeRouteConfig?.selectable ||
                   initialView === "finance-payment-audit" ||
+                  initialView === "finance-payment-waiting" ||
                   initialView === "finance-payment-writeoff"
                     ? {
                         selectedRowKeys: selectedOriginalRows,
@@ -7572,6 +7573,10 @@ export default function FinanceCenterPage({
                           setSelectedOriginalRows(
                             keys as (string | number)[],
                           ),
+                        getTitleCheckboxProps: () =>
+                          initialView === "finance-payment-waiting"
+                            ? { disabled: false }
+                            : {},
                         getCheckboxProps: (row) => ({
                           disabled:
                             initialView === "finance-internal-refund-audit" &&
