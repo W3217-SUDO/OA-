@@ -327,6 +327,9 @@ const paymentPrintStatusField = (initialView: string) =>
 const paymentWriteoffClearQuery = (initialView: string) =>
   initialView === "finance-payment-writeoff" ? { status: "待核销" } : {};
 
+const paymentQueryDefaultPageSize = (initialView: string) =>
+  initialView === "finance-payment-query" ? 15 : undefined;
+
 const paymentQueryFeeTypeControl = (initialView: string) =>
   initialView === "finance-payment-query" ? undefined : "feeType";
 
@@ -8023,7 +8026,8 @@ export default function FinanceCenterPage({
                       ? feeQueryMeta.pageSize
                     : initialView === "finance-payment-audit"
                       ? paymentAuditPageSize
-                    : [
+                    : paymentQueryDefaultPageSize(initialView) ??
+                      ([
                     "finance-payment-mine",
                     "finance-internal-mine",
                     "finance-internal-settle",
@@ -8046,7 +8050,7 @@ export default function FinanceCenterPage({
                       ? invoiceUnissuedMeta.pageSize
                     : isInternalDetailRoute
                       ? internalDetailMeta.pageSize
-                      : 20,
+                      : 20),
                   pageSizeOptions: [
                     "finance-payment-mine",
                     "finance-settlement-pending",
