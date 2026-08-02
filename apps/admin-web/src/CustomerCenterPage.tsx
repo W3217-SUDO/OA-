@@ -680,7 +680,11 @@ export default function CustomerCenterPage({
     setDetailPageOpen(isReadOnlyCustomerList);
     setDetailTab(tab);
     setAttachments([]);
-    await refreshDetail(r);
+    try {
+      await refreshDetail(r);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "客户详情加载失败");
+    }
   };
   const openCustomerContracts = (customer: Customer) => {
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "contracts" });
@@ -711,8 +715,8 @@ export default function CustomerCenterPage({
       message.success("联系人已删除");
       await refreshDetail();
       load();
-    } catch {
-      message.error("删除失败");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "删除失败");
     }
   };
   const uploadContactPhoto = async (contact: Contact, option: any) => {
@@ -821,8 +825,8 @@ export default function CustomerCenterPage({
       a.download = file.original_name;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      message.error("下载失败");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "下载失败");
     }
   };
   const openNewEditor = (type: "contact" | "note" | "document") => {
