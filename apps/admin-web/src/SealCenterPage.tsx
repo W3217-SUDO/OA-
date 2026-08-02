@@ -916,7 +916,9 @@ export default function SealCenterPage({
             dataSource={visibleRows}
             scroll={{ x: 1850 }}
             pagination={
-              initialView === "seal-audit-pending"
+              ["seal-audit-pending", "seal-audit-stamping"].includes(
+                initialView,
+              )
                 ? {
                     defaultPageSize: 15,
                     showSizeChanger: true,
