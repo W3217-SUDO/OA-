@@ -41,6 +41,7 @@ export const shouldUseMyReceivablesPagination = (initialView: string) => ["contr
 export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView) && rowCount > 0 && rowCount <= pageSize;
 export const receivablesDetailPageSizes = [10, 15, 20, 50, 100, 200];
 export const shouldShowReceivablesDetailSinglePageJumper = (rowCount: number, pageSize: number) => rowCount > 0 && rowCount <= pageSize;
+export const shouldShowReceivableCreateAction = (detailView: boolean) => !detailView;
 export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
 export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
 
@@ -261,7 +262,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
       <><Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={shouldUseMyReceivablesPagination(initialView) ? [...listColumns, { title: "", key: "legacy-empty-operation", width: 80 }] : listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} />
       {shouldShowMyReceivablesSinglePageJumper(initialView, visibleContracts.length, listPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setListPage(1)}>GO</Button></Space>}</>
     )}
-    <div className="contract-bottom-actions"><Button type="primary" onClick={openCreateReceivable}>新增应收计划</Button><Button onClick={exportExcel}>导出Excel</Button></div>
+    <div className="contract-bottom-actions">{shouldShowReceivableCreateAction(detailView) && <Button type="primary" onClick={openCreateReceivable}>新增应收计划</Button>}<Button onClick={exportExcel}>导出Excel</Button></div>
     <Modal
       open={creating}
       title="新增应收计划"
