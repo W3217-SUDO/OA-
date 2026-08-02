@@ -388,6 +388,12 @@ const paymentQueryPageSizeOptions = (initialView: string) =>
 const paymentQueryDefaultPageSize = (initialView: string) =>
   initialView === "finance-payment-query" ? 15 : undefined;
 
+// Legacy FAS/FAM invoice controllers initialize every invoice list with
+// PageSize=20 (audit/process/application lists alike).
+const invoiceLegacyDefaultPageSize = (initialView: string) =>
+  initialView.startsWith("finance-invoice") ? 20 : 15;
+const invoiceLegacyErrorMessage = "查询出错.";
+
 const paymentQueryControlledPageSize = (
   initialView: string,
   selectedPageSize: number,
@@ -722,7 +728,7 @@ export default function FinanceCenterPage({
     totalAmount: 0,
     totalExtraAmount: 0,
     page: 1,
-    pageSize: 15,
+    pageSize: invoiceLegacyDefaultPageSize(initialView),
   });
   const [invoicePendingRows, setInvoicePendingRows] = useState<FinanceFlow[]>([]);
   const [invoicePendingMeta, setInvoicePendingMeta] = useState({
@@ -730,7 +736,7 @@ export default function FinanceCenterPage({
     totalAmount: 0,
     totalExtraAmount: 0,
     page: 1,
-    pageSize: 15,
+    pageSize: invoiceLegacyDefaultPageSize(initialView),
   });
   const [invoiceCompanyRows, setInvoiceCompanyRows] = useState<FinanceFlow[]>([]);
   const [invoiceCompanyMeta, setInvoiceCompanyMeta] = useState({
@@ -738,7 +744,7 @@ export default function FinanceCenterPage({
     totalAmount: 0,
     totalExtraAmount: 0,
     page: 1,
-    pageSize: 15,
+    pageSize: invoiceLegacyDefaultPageSize(initialView),
   });
   const [invoiceUnissuedRows, setInvoiceUnissuedRows] = useState<FinanceFlow[]>([]);
   const [invoiceUnissuedMeta, setInvoiceUnissuedMeta] = useState({
@@ -748,7 +754,7 @@ export default function FinanceCenterPage({
     totalCashedAmount: 0,
     totalPaidAmount: 0,
     page: 1,
-    pageSize: 15,
+    pageSize: invoiceLegacyDefaultPageSize(initialView),
   });
   const [feeQueryRows, setFeeQueryRows] = useState<Fee[]>([]);
   const [feeQueryMeta, setFeeQueryMeta] = useState({
@@ -1175,7 +1181,7 @@ export default function FinanceCenterPage({
   const invoiceMineParams = (
     query: Record<string, any>,
     page = 1,
-    pageSize = 15,
+    pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
     const invoiceRange = query.routeField6;
     return {
@@ -1213,7 +1219,7 @@ export default function FinanceCenterPage({
   const invoicePendingParams = (
     query: Record<string, any>,
     page = 1,
-    pageSize = 15,
+    pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
     const invoiceRange = query.routeField6;
     return {
@@ -1235,7 +1241,7 @@ export default function FinanceCenterPage({
   const invoiceCompanyParams = (
     query: Record<string, any>,
     page = 1,
-    pageSize = 15,
+    pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
     const invoiceRange = query.routeField6;
     return {
@@ -1274,7 +1280,7 @@ export default function FinanceCenterPage({
   const invoiceUnissuedParams = (
     query: Record<string, any>,
     page = 1,
-    pageSize = 15,
+    pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
     const invoiceAmount = query.routeField3;
     const invoiceRange = query.routeField7;
@@ -1451,7 +1457,7 @@ export default function FinanceCenterPage({
             }),
         isInvoiceMineRoute
           ? api.get("/finance/invoices", {
-              params: invoiceMineParams({}, 1, 15),
+              params: invoiceMineParams({}, 1, invoiceLegacyDefaultPageSize(initialView)),
             })
           : Promise.resolve({
               data: {
@@ -1460,12 +1466,12 @@ export default function FinanceCenterPage({
                 total_amount: 0,
                 total_extra_amount: 0,
                 page: 1,
-                page_size: 15,
+                page_size: invoiceLegacyDefaultPageSize(initialView),
               },
             }),
         isInvoicePendingRoute
           ? api.get("/finance/invoices", {
-              params: invoicePendingParams({}, 1, 15),
+              params: invoicePendingParams({}, 1, invoiceLegacyDefaultPageSize(initialView)),
             })
           : Promise.resolve({
               data: {
@@ -1474,12 +1480,12 @@ export default function FinanceCenterPage({
                 total_amount: 0,
                 total_extra_amount: 0,
                 page: 1,
-                page_size: 15,
+                page_size: invoiceLegacyDefaultPageSize(initialView),
               },
             }),
         isInvoiceCompanyRoute
           ? api.get("/finance/invoices", {
-              params: invoiceCompanyParams({}, 1, 15),
+              params: invoiceCompanyParams({}, 1, invoiceLegacyDefaultPageSize(initialView)),
             })
           : Promise.resolve({
               data: {
@@ -1488,7 +1494,7 @@ export default function FinanceCenterPage({
                 total_amount: 0,
                 total_extra_amount: 0,
                 page: 1,
-                page_size: 15,
+                page_size: invoiceLegacyDefaultPageSize(initialView),
               },
             }),
         isInvoiceUnissuedRoute
@@ -1499,7 +1505,7 @@ export default function FinanceCenterPage({
                   routeField12: ["律师代理费"],
                 },
                 1,
-                15,
+                invoiceLegacyDefaultPageSize(initialView),
               ),
             })
           : Promise.resolve({
@@ -1508,7 +1514,7 @@ export default function FinanceCenterPage({
                 total: 0,
                 totals: {},
                 page: 1,
-                page_size: 15,
+                page_size: invoiceLegacyDefaultPageSize(initialView),
               },
             }),
         isGeneralSettlementRoute
@@ -6129,6 +6135,33 @@ export default function FinanceCenterPage({
       );
       return;
     }
+    if (isInvoiceMineRoute) {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      setSelectedOriginalRows([]);
+      void loadInvoiceMine({}, 1, invoiceMineMeta.pageSize).catch(() =>
+        message.error(invoiceLegacyErrorMessage),
+      );
+      return;
+    }
+    if (isInvoicePendingRoute) {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      setSelectedOriginalRows([]);
+      void loadInvoicePending({}, 1, invoicePendingMeta.pageSize).catch(() =>
+        message.error(invoiceLegacyErrorMessage),
+      );
+      return;
+    }
+    if (isInvoiceCompanyRoute) {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      setSelectedOriginalRows([]);
+      void loadInvoiceCompany({}, 1, invoiceCompanyMeta.pageSize).catch(() =>
+        message.error(invoiceLegacyErrorMessage),
+      );
+      return;
+    }
     if (isInvoiceUnissuedRoute) {
       const next = {
         routeField6: "未开票",
@@ -6139,7 +6172,7 @@ export default function FinanceCenterPage({
       setSelectedOriginalRows([]);
       void loadInvoiceUnissued(next, 1, invoiceUnissuedMeta.pageSize).catch(
         (error: any) =>
-          message.error(error?.response?.data?.detail || "未开票清空失败"),
+          message.error(error?.response?.data?.detail || invoiceLegacyErrorMessage),
       );
       return;
     }
