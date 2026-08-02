@@ -327,6 +327,18 @@ const paymentPrintStatusField = (initialView: string) =>
 const paymentWriteoffClearQuery = (initialView: string) =>
   initialView === "finance-payment-writeoff" ? { status: "待核销" } : {};
 
+const paymentQueryQuickJumper = (initialView: string) =>
+  initialView === "finance-payment-query" ? { goButton: "GO" } : undefined;
+
+const paymentQueryShowsSinglePageGo = (
+  initialView: string,
+  total: number,
+  pageSize: number,
+) =>
+  initialView === "finance-payment-query" &&
+  total > 0 &&
+  total <= pageSize;
+
 const paymentQueryPageSizeOptions = (initialView: string) =>
   initialView === "finance-payment-query"
     ? [10, 15, 20, 50, 100, 200]
@@ -614,6 +626,7 @@ export default function FinanceCenterPage({
   >({});
   const [originalQuery, setOriginalQuery] = useState<Record<string, any>>({});
   const [paymentAuditPageSize, setPaymentAuditPageSize] = useState(15);
+  const [paymentQueryQuickPage, setPaymentQueryQuickPage] = useState("1");
   const [internalDetailRows, setInternalDetailRows] = useState<Fee[]>([]);
   const [internalDetailMeta, setInternalDetailMeta] = useState({
     total: 0,
@@ -8086,6 +8099,7 @@ export default function FinanceCenterPage({
                     ].includes(initialView)
                       ? [10, 15, 20, 50, 100, 200]
                       : undefined),
+                  showQuickJumper: paymentQueryQuickJumper(initialView),
                   showSizeChanger: true,
                   ...(initialView === "finance-payment-audit"
                     ? {
@@ -8287,6 +8301,41 @@ export default function FinanceCenterPage({
                     : "没有查询到符合条件的记录。",
                 }}
               />
+              {paymentQueryShowsSinglePageGo(
+                initialView,
+                configuredRows.length,
+                paymentQueryDefaultPageSize(initialView) ?? 20,
+              ) && (
+                <div
+                  className="finance-payment-query-single-page-go"
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 16px 16px",
+                  }}
+                >
+                  <Input
+                    aria-label="跳转页码"
+                    size="small"
+                    value={paymentQueryQuickPage}
+                    onChange={(event) =>
+                      setPaymentQueryQuickPage(
+                        event.target.value.replace(/\D/g, ""),
+                      )
+                    }
+                    onPressEnter={() => setPaymentQueryQuickPage("1")}
+                    style={{ width: 50 }}
+                  />
+                  <Button
+                    size="small"
+                    onClick={() => setPaymentQueryQuickPage("1")}
+                  >
+                    GO
+                  </Button>
+                </div>
+              )}
             </div>
             {isArchiveSettlementActiveRoute && archiveSettlementMeta.total > 0 && (
               <div className="finance-archive-settlement-footer">
