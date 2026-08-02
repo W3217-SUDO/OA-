@@ -2707,11 +2707,23 @@ export default function FinanceCenterPage({
           onChange={(value) => setOriginalField(key, value)}
         />
       ) : control === "date" ? (
-        <DatePicker.RangePicker
-          value={originalQueryDraft[key]}
-          disabled={disabled}
-          onChange={(value) => setOriginalField(key, value)}
-        />
+        <Space.Compact>
+          <DatePicker.RangePicker
+            value={originalQueryDraft[key]}
+            allowClear
+            disabled={disabled}
+            onChange={(value) => setOriginalField(key, value)}
+          />
+          {initialView === "finance-payment-query" && (
+            <Button
+              size="small"
+              disabled={disabled}
+              onClick={() => setOriginalField(key, undefined)}
+            >
+              清空
+            </Button>
+          )}
+        </Space.Compact>
       ) : control === "money" ? (
         <Space.Compact>
           <InputNumber
@@ -2830,6 +2842,12 @@ export default function FinanceCenterPage({
             打印
           </Button>
         )}
+      </Space>
+    ) : initialView === "finance-payment-query" ? (
+      <Space size={0}>
+        <Button type="link" onClick={() => setFeeDetail(row)}>
+          查看
+        </Button>
       </Space>
     ) : <Space size={0}>
       {initialView === "finance-payment-writeoff" &&

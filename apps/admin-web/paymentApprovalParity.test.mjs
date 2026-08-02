@@ -53,6 +53,15 @@ test("non-print payment routes retain generic actions", () => {
   assert.match(source, /openRecordFiles\(row/);
 });
 
+test("payment query keeps date clear and read-only detail action", () => {
+  assert.match(source, /DatePicker\.RangePicker[\s\S]*?allowClear/);
+  assert.match(source, /initialView\s*===\s*"finance-payment-query"[\s\S]*?setOriginalField\(key, undefined\)[\s\S]*?清空/);
+  assert.match(
+    source,
+    /initialView\s*===\s*"finance-payment-query"\s*\?\s*\([\s\S]*?setFeeDetail\(row\)[\s\S]*?查看/,
+  );
+});
+
 test("contract payment applications are loaded and reviewed through contract API", () => {
   assert.match(source, /module:\s*"contract_payment"/);
   assert.match(source, /_source_module:\s*"contract_payment"/);
