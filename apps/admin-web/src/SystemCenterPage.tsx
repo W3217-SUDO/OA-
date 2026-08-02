@@ -188,6 +188,10 @@ export default function SystemCenterPage({
   const [cachePageSize, setCachePageSize] = useState(15);
   const [selectedCacheKeys, setSelectedCacheKeys] = useState<string[]>([]);
   const [menus, setMenus] = useState<MenuRow[]>([]);
+  const [menuPage, setMenuPage] = useState(1);
+  const [menuPageSize, setMenuPageSize] = useState(15);
+  const [menuSearchInput, setMenuSearchInput] = useState("");
+  const [menuSearch, setMenuSearch] = useState("");
   const [users, setUsers] = useState<SystemUser[]>([]),
     [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [availableMenuKeys, setAvailableMenuKeys] = useState<string[]>([]),
@@ -314,6 +318,9 @@ export default function SystemCenterPage({
   useEffect(() => {
     setKeyword("");
     setSecondaryKeyword("");
+    setMenuPage(1);
+    setMenuSearchInput("");
+    setMenuSearch("");
     if (initialView === "system-users")
       void api
         .get("/auth/me")
@@ -1009,6 +1016,10 @@ export default function SystemCenterPage({
   } else if (initialView === "system-management-menu") {
     const systemMenus = menus.filter((row) => row.is_system),
       legacyMenus = menus.filter((row) => !row.is_system);
+    const normalizedMenuSearch = menuSearch.trim().toLowerCase();
+    const filteredSystemMenus = normalizedMenuSearch
+      ? systemMenus.filter((row) => [row.key, row.parent_key, row.label, row.description].join(" ").toLowerCase().includes(normalizedMenuSearch))
+      : systemMenus;
     content = (
       <>
         <Card className="panel system-focused" title="菜单列表">
@@ -1039,6 +1050,11 @@ export default function SystemCenterPage({
           >
             新增菜单
           </Button>
+          <Space wrap style={{ margin: "12px 0" }}>
+            <Input value={menuSearchInput} placeholder="菜单名称/标识" onChange={(event) => setMenuSearchInput(event.target.value)} style={{ width: 220 }} />
+            <Button onClick={() => { setMenuSearch(menuSearchInput); setMenuPage(1); }}>查询</Button>
+            <Button onClick={() => { setMenuSearchInput(""); setMenuSearch(""); setMenuPage(1); }}>重置</Button>
+          </Space>
           <Table
             rowKey="id"
             size="small"
@@ -1074,10 +1090,16 @@ export default function SystemCenterPage({
                 ),
               },
             ]}
-            dataSource={systemMenus}
+            dataSource={filteredSystemMenus}
             locale={{ emptyText: empty }}
             pagination={{
-              pageSize: 30,
+              current: menuPage,
+              pageSize: menuPageSize,
+              total: filteredSystemMenus.length,
+              showSizeChanger: true,
+              pageSizeOptions: ["10", "15", "20", "30", "50", "100", "200"],
+              showQuickJumper: true,
+              onChange: (page, size) => { setMenuPage(page); setMenuPageSize(size); },
               showTotal: (total) => `共 ${total} 项`,
             }}
             scroll={{ x: 1100 }}
