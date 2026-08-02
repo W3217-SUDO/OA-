@@ -5550,6 +5550,33 @@ async def add_customer_note(customer_id: int, body: CustomerNoteInput, identity:
     return note
 
 
+@app.put(f"{settings.api_prefix}/customers/{{customer_id}}/notes/{{note_id}}")
+async def update_customer_note(customer_id: int, note_id: str, body: CustomerNoteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Update one customer note in place without changing its identity or audit origin."""
+    customer = await _customer_or_404(customer_id, identity, db)
+    await _require_record_owner_or_manager(customer, identity, db)
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="事项内容不能为空")
+    data = customer.data or {}
+    notes = list(data.get("notes", []))
+    index = next((i for i, note in enumerate(notes) if note.get("id") == note_id), None)
+    if index is None:
+        raise HTTPException(status_code=404, detail="跟进记录不存在")
+    original = dict(notes[index])
+    note = {
+        **original,
+        "type": body.note_type.strip() or "跟进记录",
+        "content": content,
+    }
+    notes[index] = note
+    customer.data = {**data, "notes": notes}
+    _sync_customer_contact_metrics(customer)
+    db.add(_customer_event(customer, "编辑客户跟进", identity, f"{note['type']}：{note['content'][:120]}"))
+    await db.commit(); await db.refresh(customer)
+    return note
+
+
 @app.delete(f"{settings.api_prefix}/customers/{{customer_id}}/notes/{{note_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_customer_note(customer_id: int, note_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     customer = await _customer_or_404(customer_id, identity, db)

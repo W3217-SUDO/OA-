@@ -214,6 +214,7 @@ export default function CustomerCenterPage({
     [portalResult, setPortalResult] = useState<{ account: string; activation_code: string } | null>(null),
     [contacts, setContacts] = useState<Customer | null>(null),
     [editingContact, setEditingContact] = useState<Contact | null>(null),
+    [editingNote, setEditingNote] = useState<Note | null>(null),
     [detailPageOpen, setDetailPageOpen] = useState(false),
     [newEditor, setNewEditor] = useState<"contact" | "note" | "document" | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]),
@@ -242,6 +243,7 @@ export default function CustomerCenterPage({
     [contactForm] = Form.useForm(),
     [contactEditForm] = Form.useForm(),
     [noteForm] = Form.useForm(),
+    [noteEditForm] = Form.useForm(),
     [levelForm] = Form.useForm(),
     [keyChangeForm] = Form.useForm(),
     [documentForm] = Form.useForm();
@@ -751,6 +753,24 @@ export default function CustomerCenterPage({
       message.error(error?.response?.data?.detail || "删除失败");
     }
   };
+  const openNoteEdit = (note: Note) => {
+    noteEditForm.setFieldsValue({ note_type: note.type, content: note.content });
+    setEditingNote(note);
+  };
+  const updateNote = async () => {
+    if (!contacts || !editingNote) return;
+    const values = await noteEditForm.validateFields();
+    try {
+      await api.put(`/customers/${contacts.id}/notes/${editingNote.id}`, values);
+      message.success("事项记录已更新");
+      setEditingNote(null);
+      noteEditForm.resetFields();
+      await refreshDetail();
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "事项记录更新失败");
+    }
+  };
   const uploadDocument = async () => {
     if (!contacts || !documentFile) return message.warning("请选择客户文档");
     const v = await documentForm.validateFields();
@@ -787,7 +807,7 @@ export default function CustomerCenterPage({
     }
   };
   const openNewEditor = (type: "contact" | "note" | "document") => {
-    if (!editing || !contacts) {
+    if ((!editing && !detailPageOpen) || !contacts) {
       Modal.info({
         title: "提示",
         content: "请先保存客户基本资料.",
@@ -1179,6 +1199,29 @@ export default function CustomerCenterPage({
               },
             ]}
           />
+          {canManageCurrentCustomer && detailTab === "notes" && (
+            <div className="customer-detail-actions">
+              <Button type="link" onClick={() => openNewEditor("note")}>新建事项记录</Button>
+              {(contacts.data.notes || []).map((note) => (
+                <Space key={note.id} size={0}>
+                  <Button type="link" onClick={() => openNoteEdit(note)}>编辑事项记录</Button>
+                  <Popconfirm title="删除这条记录？" onConfirm={() => deleteNote(note.id)}>
+                    <Button type="link" danger>删除事项记录</Button>
+                  </Popconfirm>
+                </Space>
+              ))}
+            </div>
+          )}
+          {canManageCurrentCustomer && detailTab === "documents" && (
+            <div className="customer-detail-actions">
+              <Button type="link" onClick={() => openNewEditor("document")}>上传客户文件</Button>
+              {attachments.map((attachment) => (
+                <Popconfirm key={attachment.id} title="删除客户文档？" onConfirm={() => deleteDocument(attachment.id)}>
+                  <Button type="link" danger>删除客户文档</Button>
+                </Popconfirm>
+              ))}
+            </div>
+          )}
         </Card>
       )}
       {initialView !== "customer-new" && !(isReadOnlyCustomerList && detailPageOpen) && (
@@ -1452,6 +1495,13 @@ export default function CustomerCenterPage({
         <Form form={noteForm} layout="vertical" initialValues={{note_type:"跟进记录"}}>
           <Form.Item name="note_type" label="记录类型"><Select options={["跟进记录","会议纪要","电话沟通","风险提示","客户备注"].map(value=>({value,label:value}))} /></Form.Item>
           <Form.Item name="content" label="内容" rules={[{required:true}]}><Input.TextArea rows={4} /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal open={Boolean(editingNote)} title="编辑事项记录" okText="保存修改" cancelText="取消" onOk={updateNote} onCancel={()=>{setEditingNote(null);noteEditForm.resetFields();}} destroyOnHidden>
+        <Form form={noteEditForm} layout="vertical">
+          <Form.Item name="note_type" label="记录类型"><Select options={["跟进记录","会议纪要","电话沟通","风险提示","客户备注"].map(value=>({value,label:value}))} /></Form.Item>
+          <Form.Item name="content" label="内容" rules={[{required:true}]}><Input.TextArea rows={4} /></Form.Item>
+          <Alert type="info" showIcon message="保存将更新当前事项记录，保留原始创建人和创建时间。" />
         </Form>
       </Modal>
       <Modal open={newEditor === "document"} title="上传客户文件" okText="上传" cancelText="取消" onOk={uploadDocument} onCancel={()=>setNewEditor(null)} destroyOnHidden>
