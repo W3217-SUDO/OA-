@@ -174,6 +174,25 @@ const extraFields: Record<string, { key: string; label: string }[]> = {
 const formatTime = (value: string) =>
   value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
 
+export function sanitizeShareDaysInput(value: unknown): string {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+export function cleanShareDaysInputEvent(event: {
+  currentTarget: { value: string };
+}): string {
+  const sanitized = sanitizeShareDaysInput(event.currentTarget.value);
+  event.currentTarget.value = sanitized;
+  return sanitized;
+}
+
+export function isShareDaysValueValid(value: unknown): boolean {
+  const normalized = sanitizeShareDaysInput(value);
+  if (!normalized || normalized !== String(value ?? "")) return false;
+  const days = Number(normalized);
+  return Number.isInteger(days) && days >= 1 && days <= 3650;
+}
+
 export default function SystemCenterPage({
   initialView = "system-parameters",
 }: {
@@ -1665,13 +1684,24 @@ export default function SystemCenterPage({
               key={name}
               name={name}
               label={label}
-              rules={[{ required: true }]}
+              normalize={sanitizeShareDaysInput}
+              rules={[
+                { required: true },
+                {
+                  validator: (_rule, value) =>
+                    isShareDaysValueValid(value)
+                      ? Promise.resolve()
+                      : Promise.reject(
+                          new Error("请输入 1–3650 之间的天数"),
+                        ),
+                },
+              ]}
             >
-              <InputNumber
-                min={1}
-                max={3650}
+              <Input
+                inputMode="numeric"
+                maxLength={4}
+                onInput={cleanShareDaysInputEvent}
                 addonAfter="天"
-                style={{ width: "100%" }}
               />
             </Form.Item>
           ))}
