@@ -5253,8 +5253,10 @@ export default function FinanceCenterPage({
   }));
   const configuredRows = useMemo(() => {
     if (!activeRouteConfig) return originalFinanceRows;
-    let rows: any[] = isFeeQueryRoute
-      ? [...feeQueryRows]
+    let rows: any[] = initialView === "finance-payment-print"
+      ? [...originalFinanceRows]
+      : isFeeQueryRoute
+        ? [...feeQueryRows]
       : isInternalDetailRoute
       ? [...internalDetailRows]
       : isInvoiceMineRoute
