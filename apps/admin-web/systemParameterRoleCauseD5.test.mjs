@@ -40,6 +40,13 @@ test("legacy cause and case-type fields keep parent-code and validation behavior
   assert.match(pageSource, /onCancel=\{\(\) => setParameterOpen\(false\)\}/);
 });
 
+test("legacy fee-type and case-phase codes keep the numeric seven-digit input guard", () => {
+  assert.match(pageSource, /const numericCode = category === "fee_type" \|\| category === "case_phase"/);
+  assert.match(pageSource, /name="code"[\s\S]*inputMode=\{numericCode \? "numeric" : undefined\}/);
+  assert.match(pageSource, /name="code"[\s\S]*maxLength=\{numericCode \? 7 : undefined\}/);
+  assert.match(pageSource, /name="code"[\s\S]*onInput=\{\s*numericCode \? cleanCompanyDigitsInputEvent : undefined\s*\}/);
+});
+
 test("legacy role permissions keeps tree fields, admin lock, and feedback", () => {
   assert.match(pageSource, /title="系统角色权限"/);
   assert.match(pageSource, /权限设定/);

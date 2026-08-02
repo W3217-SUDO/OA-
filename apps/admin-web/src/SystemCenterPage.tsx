@@ -211,6 +211,7 @@ export default function SystemCenterPage({
   initialView?: string;
 }) {
   const category = categoryByRoute[initialView] || "";
+  const numericCode = category === "fee_type" || category === "case_phase";
   const [parameters, setParameters] = useState<ParameterRow[]>([]);
   const [configs, setConfigs] = useState<SystemConfig[]>([]);
   const [caches, setCaches] = useState<CacheRow[]>([]);
@@ -1880,7 +1881,13 @@ export default function SystemCenterPage({
                 },
               ]}
             >
-              <Input />
+              <Input
+                inputMode={numericCode ? "numeric" : undefined}
+                maxLength={numericCode ? 7 : undefined}
+                onInput={
+                  numericCode ? cleanCompanyDigitsInputEvent : undefined
+                }
+              />
             </Form.Item>
             <Form.Item
               label={
