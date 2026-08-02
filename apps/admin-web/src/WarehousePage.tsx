@@ -139,7 +139,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
           <Button onClick={()=>openEditor()}>登记证物</Button>
         </Space>
       </div>
-      <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有查询到符合条件的记录 。"/>}} pagination={{pageSize:20,showTotal:total=>`共 ${total} 条`}} scroll={{x:1500}}/>
+      <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有查询到符合条件的记录 。"/>}} pagination={{defaultPageSize:15,showSizeChanger:true,pageSizeOptions:['10','15','20','50','100','200'],showQuickJumper:true,showTotal:total=>`共 ${total} 条`}} scroll={{x:1500}}/>
       </section>
     </div>
 
