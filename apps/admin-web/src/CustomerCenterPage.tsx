@@ -1199,7 +1199,7 @@ export default function CustomerCenterPage({
               {
                 key: "notes",
                 label: "事项记录",
-                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: initialView === "customer-shared" ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
+                children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator"},{title:"操作日期",dataIndex:"created_at"},{title:"操作",render:()=>null},
                 ]} />,
               },
