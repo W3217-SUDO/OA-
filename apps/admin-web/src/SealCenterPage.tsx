@@ -915,7 +915,17 @@ export default function SealCenterPage({
             columns={appColumns}
             dataSource={visibleRows}
             scroll={{ x: 1850 }}
-            pagination={{ pageSize: 20, showTotal: (n) => `共 ${n} 条记录` }}
+            pagination={
+              initialView === "seal-audit-pending"
+                ? {
+                    defaultPageSize: 15,
+                    showSizeChanger: true,
+                    showQuickJumper: true,
+                    pageSizeOptions: [10, 15, 20, 50, 100, 200],
+                    showTotal: (n) => `共 ${n} 条记录`,
+                  }
+                : { pageSize: 20, showTotal: (n) => `共 ${n} 条记录` }
+            }
             locale={{
               emptyText:
                 initialView === "seal-my-pending" ? (

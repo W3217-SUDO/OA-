@@ -29,7 +29,15 @@ function executeTsx(source, filename, localRequire) {
   return module.exports;
 }
 
-function renderSealCenterPage(initialView) {
+function renderSealCenterPage(initialView, rows = []) {
+  let stateCallCount = 0;
+  const pageReact = {
+    ...React,
+    useState(initialValue) {
+      stateCallCount += 1;
+      return React.useState(stateCallCount === 2 ? rows : initialValue);
+    },
+  };
   const sourceDir = path.join(process.cwd(), "src");
   const mappingPath = path.join(sourceDir, "sealViewMapping.ts");
   const mapping = executeTsx(
@@ -39,6 +47,7 @@ function renderSealCenterPage(initialView) {
   );
   const pagePath = path.join(sourceDir, "SealCenterPage.tsx");
   const localModules = {
+    react: pageReact,
     "./sealViewMapping": mapping,
     "./api": { api: {} },
     "./caseDetailNavigation": { rememberCaseDetailTarget() {} },
@@ -59,6 +68,21 @@ function renderSealCenterPage(initialView) {
     React.createElement(page.default, { initialView }),
   );
   return html;
+}
+
+function createSealRows(count, status) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: index + 1,
+    serial_no: `CODEX-SEAL-PAGINATION-${index + 1}`,
+    title: "pagination fixture",
+    customer: "pagination customer",
+    status,
+    owner: "pagination owner",
+    description: "",
+    data: { use_type: "合同用印", seal_names: "合同章", file_count: 1 },
+    created_at: "2026-08-02T00:00:00Z",
+    updated_at: "2026-08-02T00:00:00Z",
+  }));
 }
 
 test("my pending route shows the legacy locked status as 待审核", () => {
@@ -113,4 +137,63 @@ test("my withdrawn route keeps the legacy locked status unselected", () => {
     /已撤回/,
     "the legacy withdrawn page should not show a selected status label",
   );
+});
+
+test("audit pagination shows the legacy page controls", () => {
+  const html = renderSealCenterPage(
+    "seal-audit-pending",
+    createSealRows(16, "待审批"),
+  );
+  const paginationStart = html.indexOf("ant-pagination");
+  const paginationMarkup = html.slice(paginationStart, paginationStart + 5000);
+
+  assert.notEqual(
+    paginationStart,
+    -1,
+    "the rendered table should contain pagination",
+  );
+  assert.match(
+    paginationMarkup,
+    /ant-pagination-options-size-changer[\s\S]*title="15 \/ page"/,
+    "pagination should expose the legacy page size",
+  );
+  assert.match(
+    paginationMarkup,
+    /共 16 条记录/,
+    "pagination should retain the record total",
+  );
+  assert.match(
+    paginationMarkup,
+    /ant-pagination-options-quick-jumper/,
+    "pagination should expose the legacy quick-jump control",
+  );
+});
+
+test("unverified seal routes retain the original 20-row pagination", () => {
+  for (const [route, status] of [
+    ["seal-my-used", "已用印"],
+    ["seal-my-refused", "已拒绝"],
+  ]) {
+    const html = renderSealCenterPage(route, createSealRows(20, status));
+    const paginationStart = html.indexOf("ant-pagination");
+    const paginationMarkup = html.slice(paginationStart, paginationStart + 5000);
+
+    assert.notEqual(paginationStart, -1, `${route} should render pagination`);
+    assert.match(paginationMarkup, /共 20 条记录/, `${route} should retain its total`);
+    assert.doesNotMatch(
+      paginationMarkup,
+      /ant-pagination-item-2/,
+      `${route} should keep all 20 rows on its original first page`,
+    );
+    assert.doesNotMatch(
+      paginationMarkup,
+      /ant-pagination-options-size-changer/,
+      `${route} should retain its original controls`,
+    );
+    assert.doesNotMatch(
+      paginationMarkup,
+      /ant-pagination-options-quick-jumper/,
+      `${route} should retain its original controls`,
+    );
+  }
 });
