@@ -36,6 +36,8 @@ import { api } from "./api";
 import { customerStatusLabel } from "./customerStatusLabel";
 import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
+import { filterCustomerPatchData, normalizeCustomerSummary } from "./customerParity.mjs";
+import type { CustomerListSummary } from "./customerParity.mjs";
 import "./customer-center.css";
 type Contact = {
   id: string;
@@ -234,10 +236,7 @@ export default function CustomerCenterPage({
   const [pageSize, setPageSize] = useState(15);
   const [total, setTotal] = useState(0);
   const [jumpPage, setJumpPage] = useState("1");
-  const [listSummary, setListSummary] = useState({
-    agency_fee_due: 0,
-    official_fee_unreceived: 0,
-  });
+  const [listSummary, setListSummary] = useState<CustomerListSummary>(() => normalizeCustomerSummary());
   const [form] = Form.useForm(),
     [assignForm] = Form.useForm(),
     [shareForm] = Form.useForm(),
@@ -323,10 +322,7 @@ export default function CustomerCenterPage({
       }
       setAllRows(responseItems);
       setTotal(responseTotal);
-      setListSummary(recordsRes.data.summary || {
-        agency_fee_due: 0,
-        official_fee_unreceived: 0,
-      });
+      setListSummary(normalizeCustomerSummary(recordsRes.data.summary));
       const target = consumeCustomerDetailTarget();
       if (target) {
         const normalizedTitle = String(target.title || "").trim();
@@ -515,7 +511,7 @@ export default function CustomerCenterPage({
           : [editing.owner];
         const managerChanged = managers.length !== existingManagers.length || managers.some((manager: string, index: number) => manager !== existingManagers[index]);
         const { customer_managers: _customerManagers, ...editableData } = data;
-        response = await api.patch(`/records/${editing.id}`, { ...payload, data: editableData });
+        response = await api.patch(`/records/${editing.id}`, { ...payload, data: filterCustomerPatchData(editableData) });
         if (managerChanged) {
           response = await api.put(`/customers/${editing.id}/managers`, { managers });
         }
