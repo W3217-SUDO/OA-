@@ -14999,7 +14999,7 @@ async def _require_unique_hr_display_name(display_name: str, db: AsyncSession, *
 @app.get(f"{settings.api_prefix}/hr/employees")
 async def list_hr_employees(
     company: str = "", department: str = "", username: str = "", name: str = "", mobile: str = "", enabled: str = "",
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Return the HR list with authoritative filtering and pagination.

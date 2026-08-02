@@ -94,7 +94,7 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const [deletingEmployee,setDeletingEmployee]=useState<Employee|null>(null),[deletionImpact,setDeletionImpact]=useState<DeletionImpact|null>(null),[deletionLoading,setDeletionLoading]=useState(false)
   const [selectedEmployeeIds,setSelectedEmployeeIds]=useState<number[]>([]),[batchDeletionImpact,setBatchDeletionImpact]=useState<any>(null),[batchDeleting,setBatchDeleting]=useState(false)
   const load=async(requestedPage=employeePage)=>{setLoading(true);try{
-    const [profileResult,employeeResult]=await Promise.allSettled([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:20,company,department,username,name,mobile,enabled}})])
+    const [profileResult,employeeResult]=await Promise.allSettled([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:15,company,department,username,name,mobile,enabled}})])
     const role=profileResult.status==='fulfilled'?String(profileResult.value.data.role||''):''
     setAccessRole(role)
     if(employeeResult.status==='rejected')throw employeeResult.reason
