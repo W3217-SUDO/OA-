@@ -926,7 +926,12 @@ export default function SystemCenterPage({
           columns={parameterColumns}
           dataSource={visibleParameters}
           locale={{ emptyText: empty }}
-          pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+          pagination={{
+            defaultPageSize: 15,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "15", "20", "50", "100", "200"],
+            showTotal: (total) => `共 ${total} 条`,
+          }}
           scroll={{ x: 1100 }}
         />
       </Card>
