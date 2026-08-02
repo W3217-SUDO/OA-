@@ -129,17 +129,12 @@ test("archive settlement pending exposes clear/export controls", () => {
   assert.match(source, /exportPendingArchiveSettlements/);
 });
 
-test("archive settlement payment is the only next archive route enabled", () => {
+test("archive settlement routes expose scoped clear/export capability", () => {
   const expr = source.slice(source.indexOf('clear: [', source.indexOf("const routeConfigs")), source.indexOf('headers:', source.indexOf('clear: [', source.indexOf("const routeConfigs"))));
   assert.match(expr, /finance-archive-fee-pending/);
   assert.match(expr, /finance-archive-fee-payment/);
-  assert.doesNotMatch(expr, /finance-archive-fee-refused/);
-});
-
-test("archive settlement paid is enabled without opening refused", () => {
-  const expr = source.slice(source.indexOf('clear: [', source.indexOf("const routeConfigs")), source.indexOf('headers:', source.indexOf('clear: [', source.indexOf("const routeConfigs"))));
   assert.match(expr, /finance-archive-fee-paid/);
-  assert.doesNotMatch(expr, /finance-archive-fee-refused/);
+  assert.match(expr, /finance-archive-fee-refused/);
 });
 
 test("contract payment applications are loaded and reviewed through contract API", () => {
