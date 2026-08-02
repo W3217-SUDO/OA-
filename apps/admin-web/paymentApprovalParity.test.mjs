@@ -75,6 +75,13 @@ test("invoice mine gates empty-state exports", () => {
   assert.match(source, /if \(selectedOnly && !selectedOriginalRows\.length\)[\s\S]*?请选择需要导出的发票/);
 });
 
+test("unissued invoice empty-state export and more actions are gated", () => {
+  assert.match(source, /isInvoiceUnissuedRoute\s*\?\s*\(\s*<Space/);
+  assert.match(source, /exportInvoiceUnissued\(key === "selected"\)/);
+  assert.match(source, /disabled=\{!configuredRows\.length\}/);
+  assert.match(source, /loading=\{settlementActionLoading\}/);
+});
+
 test("contract payment applications are loaded and reviewed through contract API", () => {
   assert.match(source, /module:\s*"contract_payment"/);
   assert.match(source, /_source_module:\s*"contract_payment"/);
