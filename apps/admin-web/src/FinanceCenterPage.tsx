@@ -339,6 +339,20 @@ const paymentQueryShowsSinglePageGo = (
   total > 0 &&
   total <= pageSize;
 
+const paymentQueryQuickPageResult = (value: string, totalPages: number) => {
+  if (value === "") {
+    return { ok: false, page: null, message: "请输入页码数" };
+  }
+  if (!/^[0-9]*[1-9][0-9]*$/.test(value)) {
+    return { ok: false, page: null, message: "请输入正确的页码!" };
+  }
+  const page = Number(value);
+  if (page > totalPages) {
+    return { ok: false, page: null, message: "请输入有效范围的页码!" };
+  }
+  return { ok: true, page, message: "" };
+};
+
 const paymentQueryPageSizeOptions = (initialView: string) =>
   initialView === "finance-payment-query"
     ? [10, 15, 20, 50, 100, 200]
@@ -5678,6 +5692,19 @@ export default function FinanceCenterPage({
     isFeeQueryRoute,
     feeQueryRows,
   ]);
+  const submitPaymentQueryQuickPage = () => {
+    const pageSize = paymentQueryDefaultPageSize(initialView) ?? 15;
+    const totalPages = Math.max(1, Math.ceil(configuredRows.length / pageSize));
+    const result = paymentQueryQuickPageResult(
+      paymentQueryQuickPage,
+      totalPages,
+    );
+    if (!result.ok) {
+      message.warning(result.message);
+      return;
+    }
+    setPaymentQueryQuickPage(String(result.page));
+  };
   const feeReviewRows = useMemo(
     () =>
       feeReviewTargets.flatMap((fee) => {
@@ -8321,16 +8348,13 @@ export default function FinanceCenterPage({
                     size="small"
                     value={paymentQueryQuickPage}
                     onChange={(event) =>
-                      setPaymentQueryQuickPage(
-                        event.target.value.replace(/\D/g, ""),
-                      )
+                      setPaymentQueryQuickPage(event.target.value)
                     }
-                    onPressEnter={() => setPaymentQueryQuickPage("1")}
                     style={{ width: 50 }}
                   />
                   <Button
                     size="small"
-                    onClick={() => setPaymentQueryQuickPage("1")}
+                    onClick={submitPaymentQueryQuickPage}
                   >
                     GO
                   </Button>
