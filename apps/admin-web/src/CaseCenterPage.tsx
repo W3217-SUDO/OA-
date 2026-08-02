@@ -68,6 +68,14 @@ export const buildCasePhaseItems = (rows: CaseRow[], initialView: string, items:
   return items.map((item) => ({...item, count: routeCases.filter((row) => row.status === item.value).length}));
 };
 export const getCasePhaseDefinitions = (initialView: string, defaultItems: {label:string;value:string}[], criminalItems: {label:string;value:string}[]) => {
+  if (initialView === "case-company-arbitration") return [
+    {label:"待分配",value:"新案待分配"},
+    {label:"文书准备",value:"文书准备"},
+    {label:"仲裁阶段",value:"仲裁阶段"},
+    {label:"申诉阶段",value:"申诉阶段"},
+    {label:"执行立案",value:"执行立案"},
+    {label:"归档阶段",value:"归档阶段"},
+  ];
   if (initialView.includes("counsel")) return [
     {label:"待分配",value:"新案待分配"},
     {label:"服务中",value:"服务中"},
