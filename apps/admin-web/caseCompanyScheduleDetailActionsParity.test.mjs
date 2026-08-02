@@ -26,6 +26,6 @@ test('公司案件开庭排期详情把权限操作收纳到旧站单一操作�
   assert.match(source, /const caseDetailActionButtons = viewingCounselCase \? <>/);
   assert.match(
     source,
-    /shouldUseCompanyScheduleDetailOperationMenu\(initialView,caseListReturnContext\?\.route\)\?<Dropdown trigger=\{\["click"\]\} dropdownRender=\{\(\)=><Card size="small"><div style=\{\{display:"grid",gap:8\}\}>\{caseDetailActionButtons\}<\/div><\/Card>\}><Button>操作<\/Button><\/Dropdown>:caseDetailActionButtons/,
+    /shouldUseCompanyScheduleDetailOperationMenu\(initialView,caseListReturnContext\?\.route\)\?<Dropdown trigger=\{\["click"\]\} dropdownRender=\{\(\)=><Card size="small"><div style=\{\{display:"grid",gap:8\}\}>\{companyScheduleDetailActionButtons\}<\/div><\/Card>\}><Button>操作<\/Button><\/Dropdown>:caseDetailActionButtons/,
   );
 });
