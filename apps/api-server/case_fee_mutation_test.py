@@ -44,6 +44,6 @@ class CaseFeeMutationTest(unittest.TestCase):
             if case_id: c.execute("delete from business_records where id=?",(case_id,))
             c.commit(); c.close()
             if user_id: req("DELETE",f"/system/users/{user_id}",admin)
-            check=sqlite3.connect(DB); self.assertEqual(check.execute("select count(*) from business_records where serial_no like ?",(prefix+"%",)).fetchone()[0],0); self.assertEqual(check.execute("select count(*) from workflow_events where comment like ?",(prefix+"%",)).fetchone()[0],0); check.close()
+            check=sqlite3.connect(DB); self.assertEqual(check.execute("select count(*) from business_records where serial_no like ?",(prefix+"%",)).fetchone()[0],0); self.assertEqual(check.execute("select count(*) from workflow_events where comment like ?",(prefix+"%",)).fetchone()[0],0); self.assertEqual(check.execute("select count(*) from file_attachments where original_name like ?",(prefix+"%",)).fetchone()[0],0); check.close()
 
 if __name__ == "__main__": unittest.main()
