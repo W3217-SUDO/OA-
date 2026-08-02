@@ -17348,8 +17348,8 @@ async def delete_smoke_ipr_official_import_batch(
     batch = await db.get(IprOfficialImportBatch, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="官文导入批次不存在")
-    if not batch.source_filename.lower().startswith("smoke-"):
-        raise HTTPException(status_code=403, detail="只能清理带明确 SMOKE 文件名标识的本地导入批次")
+    if not (batch.source_filename.lower().startswith("smoke-") or batch.source_filename.lower().startswith(".tmp-codex-")):
+        raise HTTPException(status_code=403, detail="只能清理带明确 SMOKE 或 CODEX 文件名标识的本地导入批次")
     source_path = Path(batch.source_path)
     candidates = list((await db.scalars(
         select(IprOfficialImportCandidate).where(IprOfficialImportCandidate.batch_id == batch.id)
@@ -17486,6 +17486,29 @@ async def upload_ipr_official_file(
     db.add(WorkflowEvent(record_id=official.id, action="导入知识产权官文", to_status=official.status, operator=identity["username"], comment=attachment.original_name))
     await db.commit(); await db.refresh(official)
     return {"record": _record_dict(official, await _allowed_field_keys(identity, db)), "attachment": _attachment_dict(attachment, official)}
+
+
+@app.delete(f"{settings.api_prefix}/ipr/official-files/{{official_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_official_file(official_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Delete an unvalidated official file owned by the caller, including its stored originals."""
+    official = await db.get(BusinessRecord, official_id)
+    if not official or official.module != "ipr_official_file":
+        raise HTTPException(status_code=404, detail="知识产权官文不存在")
+    await _require_record_owner_or_manager(official, identity, db)
+    if official.status != "待校验":
+        raise HTTPException(status_code=409, detail="仅待校验官文可以删除")
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == official.id))).all())
+    attachment_paths = [Path(item.path) for item in attachments]
+    for attachment in attachments:
+        await db.delete(attachment)
+    await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == official.id))
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == official.id))
+    await db.delete(official)
+    await db.commit()
+    for path in attachment_paths:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/validate")
@@ -17901,6 +17924,7 @@ async def delete_smoke_record(record_id: int, identity: dict = Depends(current_i
         or "冒烟" in (record.customer or "")
         or record.owner.lower().startswith("smoke_")
         or "smoke_" in json.dumps(record.data or {}, ensure_ascii=False).lower()
+        or record.title.startswith("CODEX-")
     )
     if not explicit_test_marker:
         raise HTTPException(status_code=403, detail="只能清理带明确测试标识的本地冒烟记录")
