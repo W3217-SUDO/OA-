@@ -330,6 +330,33 @@ const paymentWriteoffClearQuery = (initialView: string) =>
 const paymentQueryQuickJumper = (initialView: string) =>
   initialView === "finance-payment-query" ? { goButton: "GO" } : undefined;
 
+// Legacy AP/PaymentList accepts the complete payment status vocabulary and
+// treats an omitted status as "all statuses". Keep this matrix explicit so
+// query requests do not silently collapse to the local workflow subset.
+const paymentQueryLegacyStatusMatrix = [
+  "创建待提交",
+  "待审批",
+  "待付款",
+  "待核销",
+  "已付款",
+  "已驳回",
+  "已作废",
+];
+
+const paymentQueryLegacyErrorMessage = "查询出错.";
+
+const paymentQueryRequestParams = (
+  query: Record<string, any>,
+  page: number,
+  pageSize: number,
+) => ({
+  module: "finance",
+  page,
+  page_size: pageSize,
+  keyword: String(query.paymentNo || "").trim(),
+  record_status: String(query.status || "").trim(),
+});
+
 const paymentQueryShowsSinglePageGo = (
   initialView: string,
   total: number,
@@ -366,6 +393,20 @@ const paymentQueryControlledPageSize = (
   selectedPageSize: number,
 ) =>
   initialView === "finance-payment-query" ? selectedPageSize : undefined;
+
+const paymentQueryServerPagePlan = (page: number, pageSize: number) => {
+  const safePage = Math.max(1, page);
+  const safePageSize = Math.max(1, pageSize);
+  if (safePageSize <= 100) {
+    return [{ page: safePage, pageSize: safePageSize }];
+  }
+  const apiPageCount = Math.ceil(safePageSize / 100);
+  const firstApiPage = (safePage - 1) * apiPageCount + 1;
+  return Array.from({ length: apiPageCount }, (_value, index) => ({
+    page: firstApiPage + index,
+    pageSize: 100,
+  }));
+};
 
 const paymentQueryPageTotal = (
   rows: ReadonlyArray<{
@@ -663,6 +704,11 @@ export default function FinanceCenterPage({
   const [paymentQueryPageSize, setPaymentQueryPageSize] = useState(
     paymentQueryDefaultPageSize(initialView) ?? 15,
   );
+  const [paymentQueryMeta, setPaymentQueryMeta] = useState({
+    total: 0,
+    page: 1,
+    pageSize: paymentQueryDefaultPageSize(initialView) ?? 15,
+  });
   const [internalDetailRows, setInternalDetailRows] = useState<Fee[]>([]);
   const [internalDetailMeta, setInternalDetailMeta] = useState({
     total: 0,
@@ -1282,6 +1328,31 @@ export default function FinanceCenterPage({
       pageSize: response.data.page_size || pageSize,
     });
   };
+  const loadPaymentQueryPage = async (
+    query: Record<string, any>,
+    page = 1,
+    pageSize = paymentQueryPageSize,
+  ) => {
+    const requests = paymentQueryServerPagePlan(page, pageSize);
+    const responses = await Promise.all(
+      requests.map((request) =>
+        api.get("/records", {
+          params: paymentQueryRequestParams(query, request.page, request.pageSize),
+        }),
+      ),
+    );
+    const firstResponse = responses[0]?.data || { items: [], total: 0 };
+    return {
+      data: {
+        items: responses
+          .flatMap((response) => response.data?.items || [])
+          .slice(0, pageSize),
+        total: Number(firstResponse.total || 0),
+        page,
+        page_size: pageSize,
+      },
+    };
+  };
   const load = async () => {
     setLoading(true);
     setFinanceDataReady(false);
@@ -1311,8 +1382,19 @@ export default function FinanceCenterPage({
         archiveSettlementRes,
         feeQueryRes,
       ] = await Promise.all([
-        api.get("/records", { params: { module: "finance", page_size: 100 } }),
-        api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
+        initialView === "finance-payment-query"
+          ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
+          : api.get("/records", { params: { module: "finance", page_size: 100 } }),
+        initialView === "finance-payment-query"
+          ? Promise.resolve({
+              data: {
+                items: [],
+                total: 0,
+                page: 1,
+                page_size: paymentQueryPageSize,
+              },
+            })
+          : api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
         api.get("/records", { params: { module: "invoice", page_size: 100 } }),
         api.get("/records", { params: { module: "refund", page_size: 100 } }),
         api.get("/records", { params: { module: "case", page_size: 100 } }),
@@ -1446,6 +1528,13 @@ export default function FinanceCenterPage({
             }),
       ]);
       setFees(feeRes.data.items);
+      if (initialView === "finance-payment-query") {
+        setPaymentQueryMeta({
+          total: Number(feeRes.data.total || 0),
+          page: Number(feeRes.data.page || 1),
+          pageSize: Number(feeRes.data.page_size || paymentQueryPageSize),
+        });
+      }
       setContractPayments(
         (contractPaymentRes.data.items || []).map((item: Fee) => ({
           ...item,
@@ -2820,15 +2909,7 @@ export default function FinanceCenterPage({
     platformMode && initialView === "finance-payment-mine"
       ? "请款单列表"
       : originalTitle[initialView] || "财务中心";
-  const paymentStatuses = [
-    "创建待提交",
-    "待审批",
-    "待付款",
-    "待核销",
-    "已付款",
-    "已驳回",
-    "已作废",
-  ];
+  const paymentStatuses = paymentQueryLegacyStatusMatrix;
   const latestTransaction = (fee: Fee) =>
     transactions
       .filter((item) => item.finance_record_id === fee.id)
@@ -5719,7 +5800,10 @@ export default function FinanceCenterPage({
       paymentQueryControlledPageSize(initialView, paymentQueryPageSize) ??
       paymentQueryDefaultPageSize(initialView) ??
       15;
-    const totalPages = Math.max(1, Math.ceil(configuredRows.length / pageSize));
+    const totalPages =
+      initialView === "finance-payment-query"
+        ? Math.max(1, Math.ceil(paymentQueryMeta.total / pageSize))
+        : Math.max(1, Math.ceil(configuredRows.length / pageSize));
     const result = paymentQueryQuickPageResult(
       paymentQueryQuickPage,
       totalPages,
@@ -5729,6 +5813,20 @@ export default function FinanceCenterPage({
       return;
     }
     setPaymentQueryQuickPage(String(result.page));
+  };
+  const refreshPaymentQueryPage = (page: number, pageSize: number) => {
+    setSelectedOriginalRows([]);
+    setPaymentQueryPageSize(pageSize);
+    void loadPaymentQueryPage(originalQuery, page, pageSize)
+      .then(({ data }) => {
+        setFees(data.items || []);
+        setPaymentQueryMeta({
+          total: Number(data.total || 0),
+          page: Number(data.page || page),
+          pageSize: Number(data.page_size || pageSize),
+        });
+      })
+      .catch(() => message.error(paymentQueryLegacyErrorMessage));
   };
   const feeReviewRows = useMemo(
     () =>
@@ -5910,6 +6008,18 @@ export default function FinanceCenterPage({
     );
     setOriginalQuery(next);
     setSelectedOriginalRows([]);
+    if (initialView === "finance-payment-query") {
+      void loadPaymentQueryPage(next, 1, paymentQueryPageSize)
+        .then(({ data }) => {
+          setFees(data.items || []);
+          setPaymentQueryMeta({
+            total: Number(data.total || 0),
+            page: 1,
+            pageSize: Number(data.page_size || paymentQueryPageSize),
+          });
+        })
+        .catch(() => message.error(paymentQueryLegacyErrorMessage));
+    }
     if (isFeeQueryRoute) {
       void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: any) =>
         message.error(error?.response?.data?.detail || "费用查询失败"),
@@ -5976,6 +6086,22 @@ export default function FinanceCenterPage({
     }
   };
   const clearConfiguredQuery = () => {
+    if (initialView === "finance-payment-query") {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      setSelectedOriginalRows([]);
+      void loadPaymentQueryPage({}, 1, paymentQueryPageSize)
+        .then(({ data }) => {
+          setFees(data.items || []);
+          setPaymentQueryMeta({
+            total: Number(data.total || 0),
+            page: 1,
+            pageSize: Number(data.page_size || paymentQueryPageSize),
+          });
+        })
+        .catch(() => message.error(paymentQueryLegacyErrorMessage));
+      return;
+    }
     if (isFeeQueryRoute) {
       setOriginalQueryDraft({});
       setOriginalQuery({});
@@ -8197,6 +8323,7 @@ export default function FinanceCenterPage({
                         onShowSizeChange: (_page: number, pageSize: number) => {
                           setSelectedOriginalRows([]);
                           setPaymentQueryPageSize(pageSize);
+                          refreshPaymentQueryPage(1, pageSize);
                         },
                       }
                     : {}),
@@ -8223,7 +8350,15 @@ export default function FinanceCenterPage({
                           );
                         },
                       }
-                    : {}),
+                    : initialView === "finance-payment-query"
+                      ? {
+                          current: paymentQueryMeta.page,
+                          total: paymentQueryMeta.total,
+                          onChange: (page: number, pageSize: number) => {
+                            refreshPaymentQueryPage(page, pageSize);
+                          },
+                        }
+                      : {}),
                   ...(isInternalDetailRoute
                     ? {
                         current: internalDetailMeta.page,
@@ -8395,7 +8530,10 @@ export default function FinanceCenterPage({
                       : `共 ${total} 条`,
                 }}
                 locale={{
-                  emptyText: isInternalDetailRoute || isFeeQueryRoute
+                  emptyText:
+                    isInternalDetailRoute ||
+                    isFeeQueryRoute ||
+                    initialView === "finance-payment-query"
                     ? "没有查询到符合条件的记录 。"
                     : "没有查询到符合条件的记录。",
                 }}
