@@ -481,6 +481,17 @@ function ancestorMenuKeys(
   }
   return [];
 }
+export function routeForMenuOpenChange(
+  currentKeys: string[],
+  nextKeys: string[],
+  activeRoute: string,
+): string | null {
+  const route = "system-parameters";
+  const toggled = currentKeys.includes(route) !== nextKeys.includes(route);
+  const alreadyInsideSection =
+    activeRoute === route || activeRoute.startsWith(`${route}-`);
+  return toggled && !alreadyInsideSection ? route : null;
+}
 function canonicalRoute(route: string): string {
   if (route.endsWith("-schedule") && route.startsWith("case-"))
     return "case-schedule";
@@ -1447,7 +1458,12 @@ export default function App() {
             items={sideMenuItems}
             selectedKeys={[active]}
             openKeys={openMenuKeys}
-            onOpenChange={(keys) => setOpenMenuKeys(keys as string[])}
+            onOpenChange={(keys) => {
+              const nextKeys = keys as string[];
+              const parentRoute = routeForMenuOpenChange(openMenuKeys, nextKeys, active);
+              setOpenMenuKeys(nextKeys);
+              if (parentRoute) navigate(parentRoute);
+            }}
             onClick={({ key }) => { const item = flattenMenu(sideMenuItems).find(entry => entry.key === key); if (!item?.disabled) navigate(key) }}
           />
           {!collapsed && (
