@@ -1206,7 +1206,7 @@ export default function CustomerCenterPage({
               {
                 key: "documents",
                 label: "客户文档",
-                children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: initialView === "customer-shared" ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
+                children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",dataIndex:"created_at"},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
                 ]} />,
               },
