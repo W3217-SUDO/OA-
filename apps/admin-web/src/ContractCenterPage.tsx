@@ -34,6 +34,7 @@ import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
 import { createContractCustomerContextConsumer, createContractNumber, type LinkedCustomerContext } from "./contractCreateContext";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
+import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./contract-center.css";
@@ -1423,16 +1424,18 @@ export default function ContractCenterPage({
     }
   };
   const openRelatedPayment = (payment: Contract) => {
-    const paymentNo = String(payment.serial_no || "").trim();
-    if (!paymentNo) {
-      message.warning("当前付款记录缺少申请单号");
+    const target = buildContractPaymentNavigation({
+      pathname: window.location.pathname,
+      hash: window.location.hash,
+      payment,
+      contract: viewing || {},
+    });
+    if (!target.ok) {
+      message.warning(target.message);
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    params.set("page", "finance-payment-mine");
-    params.set("payment_no", paymentNo);
-    window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
-    onNavigate?.("finance-payment-mine");
+    window.history.pushState(null, "", target.url);
+    onNavigate?.(target.page);
   };
   const updateListPagination = (current: number, pageSize: number) => {
     setListPagination(saveContractListPagination(sessionStorage, initialView, { current, pageSize }));
