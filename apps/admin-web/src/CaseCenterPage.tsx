@@ -96,6 +96,17 @@ export const getCompanyCriminalQueryFields = () => [
   ["handling_lawyer", "经办律师", "经办律师"],
   ["court", "法院名称", "法院名称"],
 ];
+export const getCompanyArbitrationQueryFields = () => [
+  ["plaintiff", "申请人", "申请人"],
+  ["serial_no", "案号", "案号"],
+  ["keyword", "关键字", "案号、法院号、案件名称、客户名称"],
+  ["defendant", "被申请人", "被申请人"],
+  ["notary_no", "公证书号", "公证书号"],
+  ["status", "案件阶段", "案件阶段"],
+  ["hearing_lawyer", "开庭律师", "开庭律师"],
+  ["handling_lawyer", "经办律师", "经办律师"],
+  ["court", "仲裁机构", "仲裁机构"],
+];
 export const getCompanyCriminalColumnSchema = () => [
   {key:"serial_no",title:"案件编号",width:150},
   {key:"charge",title:"罪名",width:180},
@@ -111,6 +122,7 @@ export const getCompanyCriminalColumnSchema = () => [
   {key:"spacer",title:"",width:40},
 ];
 export const shouldUseCompanyCriminalQueryFields = (initialView: string) => initialView === "case-company-criminal";
+export const shouldUseCompanyArbitrationQueryFields = (initialView: string) => initialView === "case-company-arbitration";
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -2368,6 +2380,8 @@ export default function CaseCenterPage({
               <Form.Item label="顾问类型" name="counsel_type"><Input placeholder="顾问类型"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
             </> : shouldUseCompanyCriminalQueryFields(initialView) ? <>
               {getCompanyCriminalQueryFields().map(([name,label,placeholder])=><Form.Item key={name} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
+            </> : shouldUseCompanyArbitrationQueryFields(initialView) ? <>
+              {getCompanyArbitrationQueryFields().map(([name,label,placeholder])=><Form.Item key={name} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
             </> : <>
               <Form.Item label="原告" name="plaintiff"><Input placeholder="原告"/></Form.Item><Form.Item label="案件编号" name="serial_no"><Input placeholder="案件编号"/></Form.Item><Form.Item label="取证机构" name="evidence_org"><Input placeholder="取证机构"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、法院号、案件名、客户名"/></Form.Item>
               <Form.Item label="被告" name="defendant"><Input placeholder="被告"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="公证书号" name="notary_no"><Input placeholder="公证书号"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item>
