@@ -32,6 +32,7 @@ import { consumeContractDetailTarget, type ContractDetailNavigationContext } fro
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
+import { createContractCustomerContextConsumer, createContractNumber, type LinkedCustomerContext } from "./contractCreateContext";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
@@ -105,7 +106,6 @@ type Change = {
 type Profile = { username: string; display_name: string; department: string; role: string };
 type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
 type ApproverSetting = { username: string; display_name: string; department: string; position: string; selected: boolean };
-type LinkedCustomerContext = { id: number; name: string; serial_no?: string; at?: number };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
 type AttachmentPreview = { name: string; kind: "image" | "pdf" | "text" | "docx"; url?: string; text?: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
@@ -122,7 +122,6 @@ const colors: Record<string, string> = {
   已完成: "green",
   已拒绝: "red",
 };
-const contractNo = () => `HT${dayjs().format("YYYYMMDDHHmmss")}`;
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
 const CONTRACT_QUERY_STORAGE_KEY = "sunhold:contract-query";
 const readContractQuery = (): Record<string, any> => {
@@ -158,6 +157,7 @@ export default function ContractCenterPage({
   detailTarget?: ContractDetailNavigationContext | null;
   onDetailTargetHandled?: () => void;
 }) {
+  const customerContextConsumerRef = useRef(createContractCustomerContextConsumer(sessionStorage));
   const isContractDetailView = initialView.startsWith("contract-detail-");
   const contractDetailRouteMatch = initialView.match(/^contract-detail-(\d+)-(.+)$/);
   const contractDetailRouteTarget: ContractDetailNavigationContext | null = contractDetailRouteMatch
@@ -393,13 +393,15 @@ export default function ContractCenterPage({
   }, [initialView]);
   useEffect(() => {
     if (initialView !== "contract-new") {
+      customerContextConsumerRef.current.reset();
       setOpen(false);
       return;
     }
     // A customer-side “新增合同” always starts a new draft for that customer.
     // It must not restore an unfinished draft belonging to a different customer.
-    if (getContractCustomerContext()) {
-      startCreate();
+    const customerContext = getContractCustomerContext();
+    if (customerContext) {
+      startCreate(customerContext);
       return;
     }
     const savedId = Number(localStorage.getItem(WIZARD_STORAGE_KEY) || 0);
@@ -459,19 +461,7 @@ export default function ContractCenterPage({
     return list;
   }, [allRows, initialView, profile, query]);
   const getContractCustomerContext = (): LinkedCustomerContext | null => {
-    try {
-      const context = JSON.parse(sessionStorage.getItem("sunhold:contract-customer") || "null");
-      if (!context?.id || !context?.name) return null;
-      if (context.at && Date.now() - Number(context.at) > 60 * 60 * 1000) return null;
-      return {
-        id: Number(context.id),
-        name: String(context.name),
-        serial_no: context.serial_no ? String(context.serial_no) : "",
-        at: Number(context.at || 0),
-      };
-    } catch {
-      return null;
-    }
+    return customerContextConsumerRef.current.consume();
   };
   const resolveCustomerRef = (customerId: number | undefined): CustomerRef | null => {
     if (!customerId || Number.isNaN(customerId)) return null;
@@ -488,7 +478,7 @@ export default function ContractCenterPage({
     }
     return null;
   };
-  const startCreate = () => {
+  const startCreate = (context: LinkedCustomerContext | null = null) => {
     localStorage.removeItem(WIZARD_STORAGE_KEY);
     setEditing(null);
     setWizardDraft(null);
@@ -503,17 +493,15 @@ export default function ContractCenterPage({
     sealForm.resetFields();
     let linkedCustomerId: number | undefined;
     let linkedContext: LinkedCustomerContext | null = null;
-    const context = getContractCustomerContext();
     if (context) {
       linkedContext = context;
       // The customer list loads asynchronously. Keep the linked id immediately;
       // customerOptions supplies the context label until the full list arrives.
       linkedCustomerId = context.id;
     }
-    sessionStorage.removeItem("sunhold:contract-customer");
     setLinkedCustomerContext(linkedContext);
     form.setFieldsValue({
-      serial_no: contractNo(),
+      serial_no: createContractNumber(),
       status: "草稿",
       owner: profile.username || "admin",
       department: profile.department || "上海分所",
@@ -529,7 +517,10 @@ export default function ContractCenterPage({
   };
   useEffect(() => {
     const handleRouteReselect = (event: Event) => {
-      if ((event as CustomEvent<string>).detail === "contract-new" && initialView === "contract-new") startCreate();
+      if ((event as CustomEvent<string>).detail === "contract-new" && initialView === "contract-new") {
+        customerContextConsumerRef.current.reset();
+        startCreate(getContractCustomerContext());
+      }
     };
     window.addEventListener("sunhold:route-reselect", handleRouteReselect);
     return () => window.removeEventListener("sunhold:route-reselect", handleRouteReselect);
@@ -644,7 +635,7 @@ export default function ContractCenterPage({
         customer_manager: (selectedCustomer.data.customer_managers || [selectedCustomer.owner]).join("、"),
       };
       const payload = {
-        serial_no: v.serial_no || target?.serial_no || contractNo(),
+        serial_no: v.serial_no || target?.serial_no || createContractNumber(),
         title: v.title,
         customer: selectedCustomer.title,
         owner: v.owner || target?.owner || profile.username || "admin",
@@ -1631,8 +1622,8 @@ export default function ContractCenterPage({
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>{wizardDraft?.status === "审批中" ? "保存同步用印资料" : "保存用印草稿"}</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿并上传文件</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status === "审批中" && <Button disabled>同步用印资料已保存，等待合同审批</Button>}
-            {wizardStep === 3 && <Button onClick={startCreate}>开始新建合同</Button>}
-            {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button onClick={startCreate}>继续新建合同</Button>}
+            {wizardStep === 3 && <Button onClick={() => startCreate()}>开始新建合同</Button>}
+            {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button onClick={() => startCreate()}>继续新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button type="primary" onClick={() => onNavigate?.("seal-my")}>进入用印中心</Button>}
           </Space></div>
         </Card>
