@@ -67,6 +67,16 @@ export const buildCasePhaseItems = (rows: CaseRow[], initialView: string, items:
   const routeCases = scopeCasesByListRoute(rows, initialView);
   return items.map((item) => ({...item, count: routeCases.filter((row) => row.status === item.value).length}));
 };
+export const getCasePhaseDefinitions = (initialView: string, defaultItems: {label:string;value:string}[], criminalItems: {label:string;value:string}[]) => {
+  if (initialView.includes("counsel")) return [
+    {label:"待分配",value:"新案待分配"},
+    {label:"服务中",value:"服务中"},
+    {label:"续费中",value:"续费中"},
+    {label:"已过期",value:"已过期"},
+    {label:"归档阶段",value:"归档阶段"},
+  ];
+  return initialView.includes("criminal") ? criminalItems : defaultItems;
+};
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
   ["law-firm-letter", "律师事务所函"], ["identity-certificate", "主体身份证明"], ["settlement-list", "结算提成表"],
@@ -2003,7 +2013,7 @@ export default function CaseCenterPage({
   ];
   const phaseLabels=["等待公证书","审核公证书","待主体披露","新案待分配","文书准备","客户盖章","等待立案","补充取证","提交立案","一审阶段","二审阶段","再审阶段","执行阶段","归档阶段"];
   const criminalPhaseItems=[{label:"待分配",value:"新案待分配"},{label:"公安侦查",value:"公安侦查"},{label:"批捕",value:"批捕"},{label:"检察院审查起诉",value:"检察院审查起诉"},{label:"一审阶段",value:"一审阶段"},{label:"二审阶段",value:"二审阶段"},{label:"再审阶段",value:"再审阶段"},{label:"归档阶段",value:"归档阶段"}];
-  const phaseItems=buildCasePhaseItems(scopedCases,initialView,initialView.includes("criminal")?criminalPhaseItems:phaseLabels.map(value=>({label:value,value})));
+  const phaseItems=buildCasePhaseItems(scopedCases,initialView,getCasePhaseDefinitions(initialView,phaseLabels.map(value=>({label:value,value})),criminalPhaseItems));
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?row.status==="已归档":archiveRefused?Boolean(row.data.archive_reject_reason):row.status==="待归档审核").filter(row=>{
