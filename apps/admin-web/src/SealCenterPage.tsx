@@ -767,6 +767,8 @@ export default function SealCenterPage({
       ? routeStatuses[0]
       : initialView === "seal-my-pending"
         ? "待审批"
+        : initialView === "seal-my-used"
+          ? "已用印"
         : "";
   const tabItems = [
     { key: "my", label: "我的申请" },

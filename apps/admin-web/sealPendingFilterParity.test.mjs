@@ -82,3 +82,15 @@ test("my stamping empty state ends with the legacy full stop", () => {
     "the empty state should preserve the legacy sentence punctuation",
   );
 });
+
+test("my used route shows the legacy locked status as 已用印", () => {
+  const html = renderSealCenterPage("seal-my-used");
+  const statusStart = html.indexOf("用印状态");
+
+  assert.notEqual(statusStart, -1, "the rendered query form should contain 用印状态");
+  assert.match(
+    html.slice(statusStart, statusStart + 2500),
+    /已用印/,
+    "the disabled status filter should show the legacy 已用印 label",
+  );
+});
