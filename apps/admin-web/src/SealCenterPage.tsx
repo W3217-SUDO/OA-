@@ -916,7 +916,11 @@ export default function SealCenterPage({
             dataSource={visibleRows}
             scroll={{ x: 1850 }}
             pagination={
-              ["seal-audit-pending", "seal-audit-stamping"].includes(
+              [
+                "seal-audit-pending",
+                "seal-audit-stamping",
+                "seal-audit-refused",
+              ].includes(
                 initialView,
               )
                 ? {
