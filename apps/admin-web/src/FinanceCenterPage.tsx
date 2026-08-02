@@ -4310,6 +4310,8 @@ export default function FinanceCenterPage({
       fields: settlementFields,
       source: "generalSettlements",
       selectable: true,
+      clear: true,
+      export: true,
       headers: [
         "操作",
         "客户名称",
@@ -6905,6 +6907,7 @@ export default function FinanceCenterPage({
                   "finance-settlement-pending",
                   "finance-settlement-audit",
                   "finance-settlement-payment",
+                  "finance-settlement-refused",
                 ].includes(initialView)) && (
                 <Button onClick={clearConfiguredQuery}>
                   清空

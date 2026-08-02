@@ -83,7 +83,7 @@ test("unissued invoice empty-state export and more actions are gated", () => {
 });
 
 test("pending settlement exposes query clear control", () => {
-  assert.match(source, /"finance-settlement-pending",[\s\S]*?"finance-settlement-audit",[\s\S]*?"finance-settlement-payment",[\s\S]*?"finance-settlement-paid"/);
+  assert.match(source, /"finance-settlement-pending",[\s\S]*?"finance-settlement-audit",[\s\S]*?"finance-settlement-payment",[\s\S]*?"finance-settlement-refused"/);
   assert.match(source, /clearConfiguredQuery/);
 });
 
@@ -104,6 +104,16 @@ test("paid settlement rows keep view/export/rollback actions without pay action"
   assert.match(operation[0], /\{isGeneralSettlementPaymentRoute && \(/);
   assert.match(source, /exportGeneralSettlement\("receipt"\)/);
   assert.match(source, /exportGeneralSettlement\("case"\)/);
+});
+
+test("refused settlement exposes clear/export and reapply-only row flow", () => {
+  const route = source.match(/"finance-settlement-refused": \{([\s\S]*?)\n    \},\n    \.\.\.Object\.fromEntries/);
+  assert.ok(route, "refused settlement route config should exist");
+  assert.match(route[1], /clear: true/);
+  assert.match(route[1], /export: true/);
+  const operation = source.match(/const generalSettlementOperation = \([\s\S]*?\n  const archiveSettlementPendingOperation/);
+  assert.match(operation[0], /isGeneralSettlementRejectedRoute/);
+  assert.match(operation[0], /openGeneralSettlementReapply\(\[row\]\)/);
 });
 
 test("contract payment applications are loaded and reviewed through contract API", () => {
