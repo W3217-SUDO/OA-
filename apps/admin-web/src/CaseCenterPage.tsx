@@ -1994,7 +1994,8 @@ export default function CaseCenterPage({
     {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={["待归档审核","已归档"].includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
   ];
   const phaseLabels=["等待公证书","审核公证书","待主体披露","新案待分配","文书准备","客户盖章","等待立案","补充取证","提交立案","一审阶段","二审阶段","再审阶段","执行阶段","归档阶段"];
-  const phaseItems=phaseLabels.map(label=>[label,scopedCases.filter(row=>row.status===label).length] as const);
+  const criminalPhaseItems=[{label:"待分配",value:"新案待分配"},{label:"公安侦查",value:"公安侦查"},{label:"批捕",value:"批捕"},{label:"检察院审查起诉",value:"检察院审查起诉"},{label:"一审阶段",value:"一审阶段"},{label:"二审阶段",value:"二审阶段"},{label:"再审阶段",value:"再审阶段"},{label:"归档阶段",value:"归档阶段"}];
+  const phaseItems=(initialView.includes("criminal")?criminalPhaseItems:phaseLabels.map(value=>({label:value,value}))).map(item=>({...item,count:scopedCases.filter(row=>row.status===item.value).length}));
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?row.status==="已归档":archiveRefused?Boolean(row.data.archive_reject_reason):row.status==="待归档审核").filter(row=>{
@@ -2287,7 +2288,7 @@ export default function CaseCenterPage({
           }}>解档审批</Button>}
         </Space></div>
       </Card> : originalListMode && <div className="case-original-layout">
-        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(([label,count])=><button key={label} type="button" onClick={()=>{caseQueryForm.setFieldValue("status",label);setCaseQuery({...caseQuery,status:String(label)})}}>📁 {label}【{count}】</button>)}</aside>
+        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(({label,value,count})=><button key={value} type="button" onClick={()=>{caseQueryForm.setFieldValue("status",value);setCaseQuery({...caseQuery,status:value})}}>📁 {label}【{count}】</button>)}</aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
           <Form form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);}}>
             {counselListMode ? <>
