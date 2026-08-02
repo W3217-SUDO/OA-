@@ -4065,6 +4065,7 @@ export default function FinanceCenterPage({
         {
           fields: paymentPackageFields,
           source: "paymentPackages",
+          clear: route === "finance-internal-writeoff",
           headers: [
             "操作",
             "付款包号码",

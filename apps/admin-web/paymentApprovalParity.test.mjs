@@ -137,6 +137,11 @@ test("archive settlement routes expose scoped clear/export capability", () => {
   assert.match(expr, /finance-archive-fee-refused/);
 });
 
+test("internal writeoff route exposes query clear without changing done route", () => {
+  assert.match(source, /clear: route === "finance-internal-writeoff"/);
+  assert.match(source, /\["finance-internal-writeoff", "finance-internal-done"\]/);
+});
+
 test("contract payment applications are loaded and reviewed through contract API", () => {
   assert.match(source, /module:\s*"contract_payment"/);
   assert.match(source, /_source_module:\s*"contract_payment"/);
