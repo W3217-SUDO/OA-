@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -33,6 +33,10 @@ type Department = {
   overdue_deduction: boolean;
   sort_order: number;
   is_active: boolean;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
 };
 type JobRole = {
   id: number;
@@ -42,6 +46,10 @@ type JobRole = {
   description: string;
   sort_order: number;
   is_active: boolean;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
 };
 const permissionGroups = [
   {
@@ -217,6 +225,30 @@ export default function OrganizationCenterPage({
     void api.get("/auth/me").then(({ data }) => setAccessRole(String(data.role || ""))).catch(() => setAccessRole(""));
   }, []);
   const canManageOrganization = organizationActionAccess(accessRole).canManageOrganization;
+  const departmentTreeData = useMemo<TreeDataNode[]>(() => {
+    const byParent = new Map<number | null, Department[]>();
+    for (const department of departments) {
+      const parentId = department.parent_department_id && departments.some((candidate) => candidate.id === department.parent_department_id)
+        ? department.parent_department_id
+        : null;
+      const siblings = byParent.get(parentId) || [];
+      siblings.push(department);
+      byParent.set(parentId, siblings);
+    }
+    const build = (parentId: number | null, trail: Set<number>): TreeDataNode[] =>
+      (byParent.get(parentId) || []).map((department) => {
+        const nextTrail = new Set(trail).add(department.id);
+        const children = nextTrail.has(department.parent_department_id || 0)
+          ? []
+          : build(department.id, nextTrail);
+        return {
+          key: `department:${department.id}`,
+          title: `${department.name}（${department.code}）${department.is_active ? "" : "（停用）"}`,
+          children,
+        };
+      });
+    return build(null, new Set());
+  }, [departments]);
   const start = (row?: Department | JobRole) => {
     if (!canManageOrganization) {
       message.error("仅系统管理员可以维护部门和角色");
@@ -265,11 +297,11 @@ export default function OrganizationCenterPage({
           await api.patch(`/hr/departments/${editingDepartment.id}`, value);
         else await api.post("/hr/departments", value);
       }
-      message.success("保存成功");
+      message.success("保存成功.");
       setOpen(false);
       void load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "保存失败");
+      message.error(error?.response?.data?.detail || "保存失败.");
     }
   };
   const removeDepartment = async (row: Department) => {
@@ -277,12 +309,17 @@ export default function OrganizationCenterPage({
       message.error("仅系统管理员可以删除部门");
       return;
     }
+    const childCount = departments.filter((candidate) => candidate.parent_department_id === row.id).length;
+    if (childCount > 0) {
+      message.error(`存在 ${childCount} 个下级部门，不能删除`);
+      return;
+    }
     try {
       await api.delete(`/hr/departments/${row.id}`);
-      message.success("删除成功");
+      message.success("删除成功.");
       void load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "删除失败");
+      message.error(error?.response?.data?.detail || "删除失败.");
     }
   };
   const removeRole = async (row: JobRole) => {
@@ -290,12 +327,16 @@ export default function OrganizationCenterPage({
       message.error("仅系统管理员可以删除角色");
       return;
     }
+    if (row.code === "SYSTEM-ADMIN") {
+      message.error("系统管理员角色不可删除");
+      return;
+    }
     try {
       await api.delete(`/hr/job-roles/${row.id}`);
-      message.success("删除成功");
+      message.success("删除成功.");
       void load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "删除失败");
+      message.error(error?.response?.data?.detail || "删除失败.");
     }
   };
   const openRolePermissions = (row: JobRole) => {
@@ -312,15 +353,19 @@ export default function OrganizationCenterPage({
       message.error("仅系统管理员可以设置角色权限");
       return;
     }
+    if (permissionRole.code === "SYSTEM-ADMIN") {
+      message.error("系统管理员权限不可修改");
+      return;
+    }
     try {
       await api.patch(`/hr/job-roles/${permissionRole.id}`, {
         permissions: selectedRolePermissions,
       });
-      message.success("角色权限已保存");
+      message.success("角色权限已保存.");
       setPermissionRole(null);
       void load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "角色权限保存失败");
+      message.error(error?.response?.data?.detail || "角色权限保存失败.");
     }
   };
   const departmentColumns: TableColumnsType<Department> = [
@@ -336,6 +381,8 @@ export default function OrganizationCenterPage({
       render: (value) => value || "—",
     },
     { title: "排序", dataIndex: "sort_order", width: 75 },
+    { title: "创建人", dataIndex: "created_by", width: 100, render: (value) => value || "—" },
+    { title: "更新人", dataIndex: "updated_by", width: 100, render: (value) => value || "—" },
     {
       title: "可用",
       dataIndex: "is_active",
@@ -369,6 +416,11 @@ export default function OrganizationCenterPage({
   const roleColumns: TableColumnsType<JobRole> = [
     { title: "序号", key: "no", width: 70, render: (_v, _r, i) => i + 1 },
     { title: "角色名称", dataIndex: "name", width: 240 },
+    { title: "角色代码", dataIndex: "code", width: 150 },
+    { title: "说明", dataIndex: "description", width: 220, render: (value) => value || "—" },
+    { title: "排序", dataIndex: "sort_order", width: 75 },
+    { title: "可用", dataIndex: "is_active", width: 75, render: (value) => (value ? "是" : "否") },
+    { title: "更新人", dataIndex: "updated_by", width: 100, render: (value) => value || "—" },
     {
       title: "角色权限",
       key: "permissions",
@@ -406,7 +458,7 @@ export default function OrganizationCenterPage({
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
       {canManageOrganization && (
         <Button type="primary" icon={<PlusOutlined />} onClick={() => start()}>
-          新增角色
+          {button}
         </Button>
       )}
     </div>
@@ -433,6 +485,9 @@ export default function OrganizationCenterPage({
             locale={{ emptyText: emptyContent }}
             pagination={{
               pageSize: 15,
+              showSizeChanger: true,
+              pageSizeOptions: ["10", "15", "20", "50", "100"],
+              showQuickJumper: true,
               showTotal: (total) => `共 ${total} 条`,
             }}
           />
@@ -447,11 +502,23 @@ export default function OrganizationCenterPage({
             locale={{ emptyText: emptyContent }}
             pagination={{
               pageSize: 15,
+              showSizeChanger: true,
+              pageSizeOptions: ["10", "15", "20", "50", "100"],
+              showQuickJumper: true,
               showTotal: (total) => `共 ${total} 条`,
             }}
           />
         )}
       </Card>
+      {!rolesView && (
+        <Card className="panel organization-tree-panel" size="small" title="组织树">
+          {departmentTreeData.length ? (
+            <Tree defaultExpandAll treeData={departmentTreeData} />
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无组织层级" />
+          )}
+        </Card>
+      )}
       <Modal
         open={open}
         title={`${editingDepartment || editingRole ? "修改" : "新增"}${rolesView ? "角色" : "部门"}`}
@@ -468,14 +535,14 @@ export default function OrganizationCenterPage({
               <Form.Item
                 label="角色名称"
                 name="name"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: "请输入角色名称." }]}
               >
                 <Input disabled={editingRole?.code === "SYSTEM-ADMIN"} />
               </Form.Item>
               <Form.Item
                 label="角色代码"
                 name="code"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: "请输入角色代码." }]}
               >
                 <Input disabled={editingRole?.code === "SYSTEM-ADMIN"} />
               </Form.Item>
@@ -493,7 +560,7 @@ export default function OrganizationCenterPage({
               >
                 <Switch />
               </Form.Item>
-              <Form.Item className="span-2" label="说明" name="description">
+              <Form.Item className="span-2" label="说明" name="description" rules={[{ required: true, message: "请输入角色名称描述." }]}>
                 <Input.TextArea rows={2} />
               </Form.Item>
             </div>
@@ -512,14 +579,14 @@ export default function OrganizationCenterPage({
               <Form.Item
                 label="部门名称"
                 name="name"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: "请输入部门名称." }]}
               >
                 <Input />
               </Form.Item>
               <Form.Item
                 label="部门代码"
                 name="code"
-                rules={[{ required: true }]}
+                rules={[{ required: true, message: "请输入部门代码." }]}
               >
                 <Input />
               </Form.Item>
