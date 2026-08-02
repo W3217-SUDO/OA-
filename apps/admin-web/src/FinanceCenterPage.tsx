@@ -800,6 +800,24 @@ export default function FinanceCenterPage({
   const [settlementActionLoading, setSettlementActionLoading] = useState(false);
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
+  // Legacy PaymentView resolves the complete payment plus its contract,
+  // customer and package before rendering. Fetch the canonical record for
+  // payment-list detail actions instead of reusing a possibly truncated row.
+  const openPaymentDetail = async (row: Fee) => {
+    try {
+      const { data } = await api.get(`/records/${row.id}`);
+      if (!data || !["finance", "contract_payment"].includes(data.module)) {
+        throw new Error("请款单详情记录无效");
+      }
+      setFeeDetail(data);
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail ||
+          error?.message ||
+          "请款单详情加载失败",
+      );
+    }
+  };
   useEffect(() => {
     const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund", "finance_package", "finance_settlement", "finance_archive_settlement"]);
     if (!target) return;
@@ -3197,7 +3215,7 @@ export default function FinanceCenterPage({
             提交审批
           </Button>
         )}
-        <Button type="link" onClick={() => setFeeDetail(row)}>
+        <Button type="link" onClick={() => void openPaymentDetail(row)}>
           查看
         </Button>
       </Space>
@@ -3232,7 +3250,7 @@ export default function FinanceCenterPage({
         "finance-internal-mine",
       ].includes(initialView) ? (
       <Space size={0}>
-        <Button type="link" onClick={() => setFeeDetail(row)}>
+        <Button type="link" onClick={() => void openPaymentDetail(row)}>
           查看
         </Button>
       </Space>

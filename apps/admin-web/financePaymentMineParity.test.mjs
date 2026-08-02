@@ -15,7 +15,7 @@ test("my payment rows always expose the legacy read-only detail entry", () => {
   assert.ok(operation, "payment row operation should exist");
   assert.match(
     operation[0],
-    /\[\s*"finance-payment-mine",\s*"finance-payment-query",\s*"finance-internal-mine",?\s*\]\.includes\(initialView\)[\s\S]*?setFeeDetail\(row\)[\s\S]*?查看/,
+    /\[\s*"finance-payment-mine",\s*"finance-payment-query",\s*"finance-internal-mine",?\s*\]\.includes\(initialView\)[\s\S]*?(?:setFeeDetail\(row\)|void openPaymentDetail\(row\))[\s\S]*?查看/,
   );
 });
 
