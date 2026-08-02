@@ -77,6 +77,7 @@ export const getCasePhaseDefinitions = (initialView: string, defaultItems: {labe
   ];
   return initialView.includes("criminal") ? criminalItems : defaultItems;
 };
+export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
   ["law-firm-letter", "律师事务所函"], ["identity-certificate", "主体身份证明"], ["settlement-list", "结算提成表"],
@@ -2323,7 +2324,7 @@ export default function CaseCenterPage({
           </Form>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
           <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:caseQuery}));return;}const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
-          <div className="case-bottom-actions"><Space size={5} wrap>
+          {shouldShowCaseListActions(counselListMode?counselCases.length:originalCases.length)&&<div className="case-bottom-actions"><Space size={5} wrap>
             {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<><Button onClick={()=>exportSelectedCasesExcel(true)}>导出选中（Excel）</Button><Button onClick={()=>exportSelectedCasesExcel(false)}>导出当前查询（Excel）</Button><Button onClick={exportCaseQrWord}>导出选中二维码（Word）</Button><Button onClick={exportCases}>导出全部（CSV）</Button></>}
             {selectedCaseCapability.can_upload_attachment && <Select
               aria-label="上传材料分类"
@@ -2364,7 +2365,7 @@ export default function CaseCenterPage({
                 },
               }}
             ><Button>更多操作 ▾</Button></Dropdown>
-          </Space></div>
+          </Space></div>}
         </Card>
       </div>}
       {!specialMode && !originalListMode && !originalArchiveMode && !isCreateView && <>
