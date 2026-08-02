@@ -217,10 +217,12 @@ export default function SystemCenterPage({
   const [cacheTotal, setCacheTotal] = useState(0);
   const [cachePage, setCachePage] = useState(1);
   const [cachePageSize, setCachePageSize] = useState(15);
+  const [cacheJumpPage, setCacheJumpPage] = useState("");
   const [selectedCacheKeys, setSelectedCacheKeys] = useState<string[]>([]);
   const [menus, setMenus] = useState<MenuRow[]>([]);
   const [menuPage, setMenuPage] = useState(1);
   const [menuPageSize, setMenuPageSize] = useState(15);
+  const [menuJumpPage, setMenuJumpPage] = useState("");
   const [menuSearchInput, setMenuSearchInput] = useState("");
   const [menuSearch, setMenuSearch] = useState("");
   const [users, setUsers] = useState<SystemUser[]>([]),
@@ -494,11 +496,36 @@ export default function SystemCenterPage({
       message.error(error?.response?.data?.detail || "批量清除缓存失败");
     }
   };
+  const jumpToCachePage = () => {
+    const requested = Number(cacheJumpPage);
+    if (!Number.isInteger(requested)) return;
+    const maxPage = Math.max(1, Math.ceil(cacheTotal / cachePageSize));
+    const target = Math.min(maxPage, Math.max(1, requested));
+    setCachePage(target);
+    setCacheJumpPage("");
+    void loadCaches(target, cachePageSize);
+  };
   const editMenu = (row: MenuRow) => {
     setEditingMenu(row);
     menuForm.resetFields();
     menuForm.setFieldsValue(row);
     setMenuOpen(true);
+  };
+  const jumpToMenuPage = () => {
+    const requested = Number(menuJumpPage);
+    if (!Number.isInteger(requested)) return;
+    const normalized = menuSearch.trim().toLowerCase();
+    const total = menus.filter((row) => {
+      if (!row.is_system) return false;
+      if (!normalized) return true;
+      return [row.key, row.parent_key, row.label, row.description]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized);
+    }).length;
+    const maxPage = Math.max(1, Math.ceil(total / menuPageSize));
+    setMenuPage(Math.min(maxPage, Math.max(1, requested)));
+    setMenuJumpPage("");
   };
   const saveMenu = async () => {
     const value = await menuForm.validateFields();
@@ -506,7 +533,7 @@ export default function SystemCenterPage({
       const { data } = editingMenu
         ? await api.patch(`/system/menus/${editingMenu.id}`, value)
         : await api.post("/system/menus", value);
-      message.success(editingMenu ? "菜单已修改" : "菜单已新增");
+      message.success("保存成功.");
       setMenuOpen(false);
       window.dispatchEvent(new Event("sunhold:menus-updated"));
       setMenus((items) =>
@@ -515,7 +542,7 @@ export default function SystemCenterPage({
           : [...items, data],
       );
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "保存失败");
+      message.error(error?.response?.data?.detail || "保存失败！");
     }
   };
   const removeMenu = async (row: MenuRow) => {
@@ -958,7 +985,19 @@ export default function SystemCenterPage({
           loading={loading}
           columns={parameterColumns}
           dataSource={visibleParameters}
-          locale={{ emptyText: empty }}
+          locale={{
+            emptyText: (
+              <span>
+                没有查询到符合条件的记录，可以去
+                <Button type="link" size="small" onClick={() => startParameter()}>
+                  {category === "payment_type"
+                    ? "新增付款单位"
+                    : `新增${categoryTitle[category]}`}
+                </Button>
+                。
+              </span>
+            ),
+          }}
           pagination={{
             defaultPageSize: 15,
             showSizeChanger: true,
@@ -1075,8 +1114,20 @@ export default function SystemCenterPage({
           ]}
           dataSource={caches}
           locale={{ emptyText: empty }}
-          pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showTotal: (total) => `共有${total}条`, showSizeChanger: true, onChange: (page, pageSize) => { setCachePage(page); setCachePageSize(pageSize); void loadCaches(page, pageSize); } }}
+          pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showTotal: (total) => `共有${total}条`, showSizeChanger: true, pageSizeOptions: ["10", "15", "20", "50", "100", "200"], showQuickJumper: { goButton: "GO" }, onChange: (page, pageSize) => { setCachePage(page); setCachePageSize(pageSize); void loadCaches(page, pageSize); } }}
         />
+        <Space size="small" style={{ float: "right", marginTop: -40, marginRight: 8 }}>
+          <Input
+            aria-label="缓存页码"
+            value={cacheJumpPage}
+            onChange={(event) => setCacheJumpPage(event.target.value.replace(/\\D/g, ""))}
+            onPressEnter={jumpToCachePage}
+            placeholder="页码"
+            size="small"
+            style={{ width: 64 }}
+          />
+          <Button size="small" onClick={jumpToCachePage}>GO</Button>
+        </Space>
       </Card>
     );
   } else if (initialView === "system-management-menu") {
@@ -1157,7 +1208,7 @@ export default function SystemCenterPage({
               },
             ]}
             dataSource={filteredSystemMenus}
-            locale={{ emptyText: empty }}
+            locale={{ emptyText: "没有查询到符合条件的记录，可以去新增菜单。" }}
             pagination={{
               current: menuPage,
               pageSize: menuPageSize,
@@ -1170,6 +1221,18 @@ export default function SystemCenterPage({
             }}
             scroll={{ x: 1100 }}
           />
+          <Space size="small" style={{ float: "right", marginTop: -40, marginRight: 8 }}>
+            <Input
+              aria-label="菜单页码"
+              value={menuJumpPage}
+              onChange={(event) => setMenuJumpPage(event.target.value.replace(/\D/g, ""))}
+              onPressEnter={jumpToMenuPage}
+              placeholder="页码"
+              size="small"
+              style={{ width: 64 }}
+            />
+            <Button size="small" onClick={jumpToMenuPage}>GO</Button>
+          </Space>
         </Card>
         {legacyMenus.length > 0 && (
           <Card
@@ -1565,7 +1628,7 @@ export default function SystemCenterPage({
                 width: 90,
                 render: (_v, row: RolePermission) => (
                   <Button type="link" onClick={() => editRole(row)}>
-                    配置
+                    权限设定
                   </Button>
                 ),
               },
@@ -1574,7 +1637,7 @@ export default function SystemCenterPage({
         </Card>
         <Modal
           open={roleOpen}
-          title={`配置角色：${editingRole?.display_name || ""}`}
+          title={`角色维护：${editingRole?.display_name || ""}`}
           okText="保存权限"
           cancelText="取消"
           onOk={saveRole}
@@ -1778,11 +1841,19 @@ export default function SystemCenterPage({
             <Form.Item label="名称" name="name" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
-            {(extraFields[category] || []).map((item) => (
-              <Form.Item key={item.key} label={item.label} name={item.key}>
-                <Input />
-              </Form.Item>
-            ))}
+            {(extraFields[category] || []).map((item) => {
+              const numericParent = item.key === "parent_code";
+              return (
+                <Form.Item key={item.key} label={item.label} name={item.key}>
+                  <Input
+                    inputMode={numericParent ? "numeric" : undefined}
+                    onInput={
+                      numericParent ? cleanCompanyDigitsInputEvent : undefined
+                    }
+                  />
+                </Form.Item>
+              );
+            })}
             <Form.Item
               label="排序号"
               name="sort_order"
@@ -1803,7 +1874,7 @@ export default function SystemCenterPage({
       <Modal
         open={menuOpen}
         title={editingMenu ? "修改菜单" : "新增菜单"}
-        okText="保存"
+        okText="确定"
         cancelText="取消"
         onOk={saveMenu}
         onCancel={() => setMenuOpen(false)}
@@ -1819,7 +1890,11 @@ export default function SystemCenterPage({
           <Form.Item label="菜单名称" name="label" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="菜单描述" name="description">
+          <Form.Item
+            label="菜单名称描述"
+            name="description"
+            rules={[{ required: true, message: "请输入菜单名称描述." }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item label="图标" name="icon">

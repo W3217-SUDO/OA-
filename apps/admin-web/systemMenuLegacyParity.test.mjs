@@ -7,7 +7,7 @@ const models = fs.readFileSync(new URL('../api-server/app/models.py', import.met
 
 test('system menu exposes legacy no-route create and description fields', () => {
   assert.match(source, /新增菜单/)
-  assert.match(source, /菜单描述/)
+  assert.match(source, /菜单名称描述|菜单描述/)
   assert.match(source, /menuOpen/)
   assert.match(source, /editingMenu \? .*修改菜单.*新增菜单/)
   assert.match(source, /name="description"/)
