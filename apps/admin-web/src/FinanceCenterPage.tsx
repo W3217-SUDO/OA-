@@ -307,6 +307,23 @@ const paymentPackageEmptySelectionMessage = (initialView: string) =>
     ? "请选择需要导出的请款单."
     : "请选择提成.";
 
+const paymentPrintStatusField = (initialView: string) =>
+  initialView === "finance-payment-print"
+    ? {
+        options: [
+          "请选择",
+          "创建待提交",
+          "待审批",
+          "待付款",
+          "待核销",
+          "已付款",
+          "已驳回",
+          "已作废",
+        ],
+        defaultValue: "请选择",
+      }
+    : undefined;
+
 export default function FinanceCenterPage({
   initialView,
   platformMode = false,
@@ -3971,7 +3988,7 @@ export default function FinanceCenterPage({
     "finance-payment-print": {
       fields: [
         f("申请日期", { control: "date" }),
-        f("付款状态"),
+        f("付款状态", paymentPrintStatusField(initialView)),
         f("申请人"),
         f("付款日期", { control: "date" }),
         f("合同号"),
