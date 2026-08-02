@@ -2909,6 +2909,16 @@ async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: 
     return await _ensure_record_visible(record_id, identity, db)
 
 
+async def _require_hr_attachment_write_access(record: BusinessRecord, category: str, identity: dict, db: AsyncSession) -> None:
+    if record.module != "hr":
+        return
+    if category != "员工档案":
+        raise HTTPException(status_code=422, detail="员工档案附件类型必须为员工档案")
+    if identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="仅系统管理员或部门负责人可以维护员工档案")
+    await _ensure_record_module(record.id, "hr", identity, db)
+
+
 async def _ensure_record_module(record_id: int, module: str, identity: dict, db: AsyncSession) -> BusinessRecord:
     record = await _ensure_record_visible(record_id, identity, db)
     if record.module != module:
@@ -14393,6 +14403,7 @@ async def upload_attachment(
             raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        await _require_hr_attachment_write_access(record, category, identity, db)
         if record.module == "ipr_case":
             raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
         if record.module == "contract":
@@ -14599,7 +14610,10 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         if item.category != "正式发文附件":
             raise HTTPException(status_code=422, detail="已提交正式发文的盖章文件不能通过普通附件删除")
         may_manage_official_outgoing_attachment = True
-    may_manage_hr_document = identity.get("role") == "manager" and record and record.module == "hr" and item.category == "员工档案"
+    may_manage_hr_document = False
+    if record and record.module == "hr":
+        await _require_hr_attachment_write_access(record, item.category, identity, db)
+        may_manage_hr_document = True
     if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment and not may_manage_official_outgoing_attachment:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
     path = Path(item.path)
