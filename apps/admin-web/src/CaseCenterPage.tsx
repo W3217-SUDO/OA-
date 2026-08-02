@@ -294,6 +294,8 @@ export default function CaseCenterPage({
   const [editingCounselCase, setEditingCounselCase] = useState<CaseRow | null>(null);
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
   const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
+  const [editingCaseLitigants, setEditingCaseLitigants] = useState<CaseRow | null>(null);
+  const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
@@ -338,6 +340,8 @@ export default function CaseCenterPage({
   const [normalCaseEditForm] = Form.useForm();
   const [arbitrationBasicForm] = Form.useForm();
   const [criminalMaintenanceForm] = Form.useForm();
+  const [caseLitigantsForm] = Form.useForm();
+  const [caseHearingLawyerForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
   const [reminderForm] = Form.useForm();
@@ -1334,6 +1338,60 @@ export default function CaseCenterPage({
     const dateFields=["first_court_filing_date","first_court_hearing_date","second_court_filing_date","second_court_hearing_date","retrial_court_filing_date","retrial_court_hearing_date"];
     const payload={...values,...Object.fromEntries(dateFields.map(key=>[key,values[key]?.format?.("YYYY-MM-DD")||null]))};
     try { const {data}=await api.put(`/cases/${criminalMaintenance.row.id}/criminal/${criminalMaintenance.kind}`,payload); message.success("刑事案件资料已保存"); setCriminalMaintenance(null);setViewingCounselCase(data);await load(); } catch(error:any){message.error(error?.response?.data?.detail||"刑事案件资料保存失败");}
+  };
+  const openCaseLitigants = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改当事人权限");
+    if (["待归档审核", "已归档"].includes(row.status)) return message.warning("归档中的案件不能修改当事人");
+    caseLitigantsForm.setFieldsValue({
+      plaintiffs: row.data.plaintiffs || (row.data.plaintiff ? [row.data.plaintiff] : row.customer ? [row.customer] : []),
+      plaintiff_agents: row.data.plaintiff_agents || [],
+      defendants: row.data.defendants || (row.data.opponent ? [row.data.opponent] : []),
+      defendant_agents: row.data.defendant_agents || [],
+      third_parties: row.data.third_parties || [],
+      third_party_agents: row.data.third_party_agents || [],
+      comment: "",
+    });
+    setEditingCaseLitigants(row);
+  };
+  const saveCaseLitigants = async () => {
+    if (!editingCaseLitigants) return;
+    const values = await caseLitigantsForm.validateFields();
+    try {
+      const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants`, values);
+      message.success("当事人信息已保存");
+      setEditingCaseLitigants(null);
+      setViewingCounselCase(data);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "当事人信息保存失败");
+    }
+  };
+  const openCaseHearingLawyer = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_assign_team) return message.warning("当前账号没有修改开庭律师权限");
+    if (["待归档审核", "已归档"].includes(row.status)) return message.warning("归档中的案件不能修改开庭律师");
+    caseHearingLawyerForm.setFieldsValue({ hearing_lawyer: row.data.hearing_lawyer || "", comment: "" });
+    setEditingCaseHearingLawyer(row);
+  };
+  const saveCaseHearingLawyer = async () => {
+    if (!editingCaseHearingLawyer) return;
+    const values = await caseHearingLawyerForm.validateFields();
+    const handling = Array.isArray(editingCaseHearingLawyer.data.handling_lawyers) ? editingCaseHearingLawyer.data.handling_lawyers : [];
+    if (!handling.length) return message.error("请先分配经办律师后再修改开庭律师");
+    try {
+      const { data } = await api.post(`/cases/${editingCaseHearingLawyer.id}/assign`, {
+        customer_manager: editingCaseHearingLawyer.data.customer_manager || "",
+        hearing_lawyer: values.hearing_lawyer || "",
+        handling_lawyers: handling,
+        assistant: editingCaseHearingLawyer.data.assistant || "",
+        comment: values.comment || "",
+      });
+      message.success("开庭律师已保存");
+      setEditingCaseHearingLawyer(null);
+      setViewingCounselCase(data);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "开庭律师保存失败");
+    }
   };
   const openCaseTaskCreator = (row: CaseRow) => {
     if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
@@ -2566,11 +2624,13 @@ export default function CaseCenterPage({
           {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
           {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
           {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
+          {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseLitigants(viewingCounselCase)}>修改当事人</Button>}
+          {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseHearingLawyer(viewingCounselCase)}>修改开庭律师</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "法律顾问" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Dropdown menu={{items:[{key:"litigants",label:"修改当事人"},{key:"public-security",label:"修改公安机关"},{key:"procuratorates",label:"修改检察院"},{key:"courts",label:"修改审级法院"}],onClick:({key})=>openCriminalMaintenance(viewingCounselCase,key as "litigants"|"public-security"|"procuratorates"|"courts")}}><Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)}>维护刑事资料</Button></Dropdown>}
-          {counselDetailCapabilities.can_write && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Dropdown menu={{ items: caseDocumentTypes.map(([key, label]) => ({ key, label })), onClick: ({ key }) => void generateCaseDocument(String(key)) }}><Button icon={<FileTextOutlined />}>生成案件文书</Button></Dropdown>}
+          {counselDetailCapabilities.can_write && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Dropdown trigger={["click"]} menu={{ items: caseDocumentTypes.map(([key, label]) => ({ key, label })), onClick: ({ key }) => void generateCaseDocument(String(key)) }}><Button icon={<FileTextOutlined />}>生成案件文书</Button></Dropdown>}
           {counselDetailCapabilities.can_duplicate_case && <Button onClick={()=>Modal.confirm({title:`复制案件：${viewingCounselCase.serial_no}`,content:"将只复制案件基础信息并生成新案号；任务、附件、费用、提醒、排期和历史记录不会复制。",okText:"确认复制",cancelText:"取消",onOk:()=>duplicateCase(viewingCounselCase)})}>复制案件</Button>}
           {counselDetailCapabilities.can_merge_case && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>合并案件</Button>}
           {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>修改公证信息</Button>}
@@ -2776,6 +2836,26 @@ export default function CaseCenterPage({
           {criminalMaintenance?.kind==="procuratorates"&&["first","second","retrial"].map(level=><div className="form-grid" key={level}>{[[`${level}_procuratorate_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}检察院`],[`${level}_procuratorate_case_no`,`案件号`],[`${level}_procuratorate_address`,`地址`],[`${level}_procuratorate_phone`,`联系电话`],[`${level}_procuratorate_operator`,`承办人`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>)}
           {criminalMaintenance?.kind==="courts"&&["first","second","retrial"].map(level=><div key={level}><Form.Item name={`${level}_court_enabled`} valuePropName="checked"><Checkbox>{`${level==="first"?"一审":level==="second"?"二审":"再审"}法院信息`}</Checkbox></Form.Item><div className="form-grid">{[[`${level}_court_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}法院`],[`${level}_court_case_no`,`案号`],[`${level}_court_courtroom`,`法庭`],[`${level}_court_judge`,`法官`],[`${level}_court_clerk`,`书记员`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}<Form.Item label="立案日期" name={`${level}_court_filing_date`}><DatePicker style={{width:"100%"}}/></Form.Item><Form.Item label="开庭日期" name={`${level}_court_hearing_date`}><DatePicker style={{width:"100%"}}/></Form.Item></div></div>)}
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
+        </Form>
+      </Modal>
+      <Modal width={760} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} destroyOnHidden>
+        <Alert type="info" showIcon title="可维护原告、原告代理人、被告、被告代理人及第三人；保存后会记录案件日志，归档中的案件不可修改。" style={{marginBottom:12}} />
+        <Form form={caseLitigantsForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item label="原告" name="plaintiffs" rules={[{required:true,message:"请至少填写一名原告"}]}><Select mode="tags" tokenSeparators={[",","，"]} showSearch placeholder="输入客户或当事人后回车" /></Form.Item>
+            <Form.Item label="原告代理人" name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+            <Form.Item label="被告" name="defendants" rules={[{required:true,message:"请至少填写一名被告"}]}><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+            <Form.Item label="被告代理人" name="defendant_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+            <Form.Item label="第三人" name="third_parties"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+            <Form.Item label="第三人代理人" name="third_party_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+          </div>
+          <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
+        <Form form={caseHearingLawyerForm} layout="vertical">
+          <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请输入开庭律师"}]}><Input placeholder="输入在职律师姓名" /></Form.Item>
+          <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
       <Drawer

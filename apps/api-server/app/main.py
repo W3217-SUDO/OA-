@@ -12835,8 +12835,11 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
     if case_record.status in {"待归档审核", "已归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改当事人")
     creation_step = str((case_record.data or {}).get("case_creation_step") or "")
-    if creation_step not in {"basic", "litigants"}:
-        raise HTTPException(status_code=409, detail="当前案件不处于新建当事人信息阶段")
+    # New-case wizard records still advance from basic -> litigants. Existing
+    # ordinary cases have no wizard step and must be editable from the detail
+    # action; applying the same payload/permission/state contract keeps both
+    # paths consistent without weakening the archive guard above.
+    is_creation_wizard = creation_step in {"basic", "litigants"}
 
     def clean_parties(values: list[str]) -> list[str]:
         result = list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
@@ -12866,7 +12869,7 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
         "defendant_agents": defendant_agents,
         "third_parties": third_parties,
         "third_party_agents": third_party_agents,
-        "case_creation_step": "litigants",
+        "case_creation_step": "litigants" if is_creation_wizard else creation_step,
     }
     db.add(WorkflowEvent(
         record_id=case_record.id,
