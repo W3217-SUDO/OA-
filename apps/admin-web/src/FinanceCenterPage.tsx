@@ -370,6 +370,7 @@ export default function FinanceCenterPage({
     Record<string, any>
   >({});
   const [originalQuery, setOriginalQuery] = useState<Record<string, any>>({});
+  const [paymentAuditPageSize, setPaymentAuditPageSize] = useState(15);
   const [internalDetailRows, setInternalDetailRows] = useState<Fee[]>([]);
   const [internalDetailMeta, setInternalDetailMeta] = useState({
     total: 0,
@@ -3283,7 +3284,16 @@ export default function FinanceCenterPage({
     },
   ];
   const paymentAuditOriginalColumns = [
-    { title: "请款单号", dataIndex: "serial_no", width: 165 },
+    {
+      title: "请款单号",
+      dataIndex: "serial_no",
+      width: 165,
+      render: (value: string, row: Fee) => (
+        <Button type="link" onClick={() => setFeeReviewTargets([row])}>
+          {value}
+        </Button>
+      ),
+    },
     {
       title: "类型",
       width: 95,
@@ -5495,7 +5505,15 @@ export default function FinanceCenterPage({
       (row) => selectedOriginalRows.includes(row.id) && row.status === "待审批",
     );
     if (!targets.length) {
-      message.warning("请先选择需要审批的请款单");
+      if (initialView === "finance-payment-audit") {
+        Modal.info({
+          title: "提示",
+          content: "请选择审批项.",
+          okText: "确定",
+        });
+      } else {
+        message.warning("请先选择需要审批的请款单");
+      }
       return;
     }
     setFeeReviewTargets(targets);
@@ -7604,6 +7622,8 @@ export default function FinanceCenterPage({
                       ? archiveSettlementMeta.pageSize
                     : isFeeQueryRoute
                       ? feeQueryMeta.pageSize
+                    : initialView === "finance-payment-audit"
+                      ? paymentAuditPageSize
                     : [
                     "finance-payment-mine",
                     "finance-internal-mine",
@@ -7657,6 +7677,14 @@ export default function FinanceCenterPage({
                     ? [10, 15, 20, 50, 100, 200]
                     : undefined,
                   showSizeChanger: true,
+                  ...(initialView === "finance-payment-audit"
+                    ? {
+                        onShowSizeChange: (_page: number, pageSize: number) => {
+                          setSelectedOriginalRows([]);
+                          setPaymentAuditPageSize(pageSize);
+                        },
+                      }
+                    : {}),
                   ...(isFeeQueryRoute
                     ? {
                         current: feeQueryMeta.page,
