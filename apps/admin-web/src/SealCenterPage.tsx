@@ -98,6 +98,25 @@ function getSealPreviewMode(payload: { kind?: string }): SealPreviewMode {
   if (payload.kind === "docx" || payload.kind === "text") return "text";
   return "unsupported";
 }
+const sealUploadExtensions = new Set([
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar",
+]);
+function validateSealUploadFile(file: File | undefined): string | null {
+  if (!file || !file.name || file.size <= 0) return "请选择上传文件.";
+  const suffix = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  if (!sealUploadExtensions.has(suffix)) return "不支持的文件格式";
+  if (file.size > 20 * 1024 * 1024) return "单个文件不能超过 20MB";
+  return null;
+}
+function sealActionFailureMessage(type: "approve" | "reject" | "stamp" | "archive"): string {
+  return {
+    approve: "审批失败",
+    reject: "审批失败",
+    stamp: "登记实际用印失败",
+    archive: "归档失败",
+  }[type];
+}
 type RelationRow = {
   id: number;
   serial_no: string;
@@ -442,7 +461,9 @@ export default function SealCenterPage({
       actionForm.resetFields();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "操作失败");
+      message.error(
+        error?.response?.data?.detail || sealActionFailureMessage(action.type),
+      );
     }
   };
   const loadDetailFiles = async (row: SealRow) => {
@@ -521,6 +542,11 @@ export default function SealCenterPage({
   };
   const uploadSealFile = async (file: File) => {
     if (!detail) return;
+    const validationError = validateSealUploadFile(file);
+    if (validationError) {
+      message.error(validationError);
+      return;
+    }
     const body = new FormData();
     body.append("file", file);
     body.append("record_id", String(detail.id));
@@ -1473,9 +1499,14 @@ export default function SealCenterPage({
             {detail.status === "草稿" && (
               <Upload
                 multiple
-                showUploadList={false}
-                beforeUpload={(file) => {
-                  void uploadSealFile(file as File);
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      const validationError = validateSealUploadFile(file as File);
+                      if (validationError) {
+                        message.error(validationError);
+                        return Upload.LIST_IGNORE;
+                      }
+                      void uploadSealFile(file as File);
                   return Upload.LIST_IGNORE;
                 }}
               >
