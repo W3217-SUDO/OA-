@@ -34,10 +34,23 @@ type Contract = {
   data: Record<string, any>;
 };
 type Profile = { username: string; display_name: string; department: string };
+type ReceivableDetailContext = { contract_no: string; return_view: string };
 
 const money = (value: unknown) => Number(value || 0).toFixed(2);
 export const shouldUseMyReceivablesPagination = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView);
 export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView) && rowCount > 0 && rowCount <= pageSize;
+export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
+export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
+
+const readReceivableDetailContext = (): ReceivableDetailContext | null => {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem("sunhold:receivable-detail-context") || "") as ReceivableDetailContext;
+    if (parsed?.contract_no && receivableDetailReturnView(parsed.return_view) === parsed.return_view) return parsed;
+  } catch {
+    // A direct menu entry remains available when no short-lived navigation context exists.
+  }
+  return null;
+};
 
 export default function ContractReceivablesPage({ initialView, onNavigate }: { initialView: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
@@ -48,9 +61,21 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
   const [creating, setCreating] = useState(false);
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(10);
+  const [detailContext, setDetailContext] = useState<ReceivableDetailContext | null>(null);
   const [form] = Form.useForm();
   const [receivableForm] = Form.useForm();
   const detailView = initialView === "contract-receivable-detail";
+
+  useEffect(() => {
+    if (!detailView) return setDetailContext(null);
+    const context = readReceivableDetailContext();
+    if (context) setDetailContext(context);
+    try {
+      sessionStorage.removeItem("sunhold:receivable-detail-context");
+    } catch {
+      // The in-memory context remains sufficient for this mounted detail view.
+    }
+  }, [detailView]);
 
   const load = async () => {
     setLoading(true);
@@ -91,6 +116,17 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     rememberContractDetailTarget({ id: contract.id || contract.contract_record_id, serial_no: contract.serial_no || contract.contract_no });
     onNavigate?.("contract-my");
   };
+  const openReceivableDetail = (contract: { serial_no?: string; contract_no?: string }) => {
+    const contractNo = String(contract.serial_no || contract.contract_no || "").trim();
+    if (!contractNo) return;
+    setDetailContext({ contract_no: contractNo, return_view: receivableDetailReturnView(initialView) });
+    try {
+      sessionStorage.setItem("sunhold:receivable-detail-context", JSON.stringify({ contract_no: contractNo, return_view: receivableDetailReturnView(initialView) }));
+    } catch {
+      // The detail page can still open from its menu when session storage is unavailable.
+    }
+    onNavigate?.("contract-receivable-detail");
+  };
   const openCase = async (serialNo: unknown) => {
     const value = String(serialNo || "").trim();
     if (!value) return;
@@ -114,13 +150,14 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
   const detailRows = useMemo(() => receivables.filter((item) => {
     const contract = contractById.get(item.contract_record_id);
     if (!contract) return false;
+    if (!matchesReceivableDetailContract(detailContext?.contract_no, item.contract_no)) return false;
     if (query.contract_body && (contract.data.contract_body || "律所") !== query.contract_body) return false;
     if (query.contract_no && !contract.serial_no.toLowerCase().includes(String(query.contract_no).toLowerCase())) return false;
     if (query.customer && !contract.customer.toLowerCase().includes(String(query.customer).toLowerCase())) return false;
     if (query.case_no && !String(contract.data.case_no || "").toLowerCase().includes(String(query.case_no).toLowerCase())) return false;
     if (query.source_person && !String(contract.data.source_person || contract.owner).toLowerCase().includes(String(query.source_person).toLowerCase())) return false;
     return true;
-  }), [receivables, contractById, query]);
+  }), [receivables, contractById, detailContext, query]);
 
   const openCreateReceivable = () => {
     receivableForm.resetFields();
@@ -143,7 +180,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
   };
 
   const listColumns = [
-    { title: "合同号", dataIndex: "serial_no", width: 130, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openContract(row)}>{row.serial_no}</Button> },
+    { title: "合同号", dataIndex: "serial_no", width: 130, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openReceivableDetail(row)}>{row.serial_no}</Button> },
     { title: "合同名称", dataIndex: "title", width: 210, ellipsis: true },
     { title: "合同状态", dataIndex: "status", width: 90 },
     { title: "官费支付金额", key: "official_paid", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.official_paid) },
