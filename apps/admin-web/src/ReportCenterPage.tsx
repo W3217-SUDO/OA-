@@ -91,12 +91,22 @@ const PAGE_SPECS: Record<string, PageSpec> = {
 };
 
 PAGE_SPECS["reports-execution-2"] = {
-  ...PAGE_SPECS["reports-execution-1"],
-  charts: [...PAGE_SPECS["reports-execution-1"].charts],
+  title: "执行进度案件统计",
+  filter: "none",
+  charts: [
+    { title: "执行受理案件数量", unit: "个/案" },
+    { title: "执行中止案件数量", unit: "个/案" },
+    { title: "执行结案案件数量", unit: "个/案" },
+    { title: "执行终本案件数量", unit: "个/案" },
+  ],
 };
 PAGE_SPECS["reports-execution-3"] = {
-  ...PAGE_SPECS["reports-execution-1"],
-  charts: [...PAGE_SPECS["reports-execution-1"].charts],
+  title: "执行进度案件统计",
+  filter: "none",
+  charts: [
+    { title: "执行终结案件数量", unit: "个/案" },
+    { title: "执行中止案件数量", unit: "个/案" },
+  ],
 };
 
 function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options: Analytics["filter_options"]; onQuery: (values: ReportFilterValues) => void }) {
