@@ -32,6 +32,7 @@ import { consumeContractDetailTarget, type ContractDetailNavigationContext } fro
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
+import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./contract-center.css";
@@ -213,7 +214,8 @@ export default function ContractCenterPage({
   const [submittingWizard, setSubmittingWizard] = useState(false);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]),
-    [query, setQuery] = useState<Record<string, any>>(readContractQuery);
+    [query, setQuery] = useState<Record<string, any>>(readContractQuery),
+    [listPagination, setListPagination] = useState(() => readContractListPagination(sessionStorage, initialView));
   const [form] = Form.useForm(),
     [submitForm] = Form.useForm(),
     [reviewForm] = Form.useForm(),
@@ -386,6 +388,9 @@ export default function ContractCenterPage({
   useEffect(() => {
     load();
   }, [initialView, detailTarget?.id, detailTarget?.serial_no]);
+  useEffect(() => {
+    setListPagination(readContractListPagination(sessionStorage, initialView));
+  }, [initialView]);
   useEffect(() => {
     if (initialView !== "contract-new") {
       setOpen(false);
@@ -1438,6 +1443,13 @@ export default function ContractCenterPage({
     window.history.pushState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
     onNavigate?.("finance-payment-mine");
   };
+  const updateListPagination = (current: number, pageSize: number) => {
+    setListPagination(saveContractListPagination(sessionStorage, initialView, { current, pageSize }));
+  };
+  const applyQuery = (values: Record<string, any>) => {
+    setQuery(values);
+    updateListPagination(1, listPagination.pageSize);
+  };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());
   const customerOptions = uniqueCustomers.map((customer) => ({
     value: customer.id,
@@ -1463,7 +1475,7 @@ export default function ContractCenterPage({
         <Form
           form={queryForm}
           className="contract-query"
-          onFinish={(values) => setQuery(values)}
+          onFinish={applyQuery}
         >
           <Form.Item label="合同名称" name="title"><Input placeholder="合同名称" /></Form.Item>
           <Form.Item label="合同编号" name="serial_no"><Input placeholder="合同编号" /></Form.Item>
@@ -1496,7 +1508,7 @@ export default function ContractCenterPage({
           }}
           tableLayout="fixed"
           scroll={{ x: isAuditView ? 1450 : 1480 }}
-          pagination={{pageSize:15,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:()=>`共有${rows.length}条`}}
+          pagination={{current:listPagination.current,pageSize:listPagination.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:()=>`共有${rows.length}条`,onChange:updateListPagination}}
           summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
