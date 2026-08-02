@@ -2714,7 +2714,7 @@ export default function FinanceCenterPage({
             disabled={disabled}
             onChange={(value) => setOriginalField(key, value)}
           />
-          {initialView === "finance-payment-query" && (
+          {["finance-payment-query", "finance-internal-mine"].includes(initialView) && (
             <Button
               size="small"
               disabled={disabled}
@@ -2843,7 +2843,7 @@ export default function FinanceCenterPage({
           </Button>
         )}
       </Space>
-    ) : initialView === "finance-payment-query" ? (
+    ) : ["finance-payment-query", "finance-internal-mine"].includes(initialView) ? (
       <Space size={0}>
         <Button type="link" onClick={() => setFeeDetail(row)}>
           查看
@@ -8072,12 +8072,14 @@ export default function FinanceCenterPage({
                 ) : isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute ? (
                   <Space size={7}>
                     <Button
+                      disabled={!configuredRows.length}
                       loading={invoiceExportLoading}
                       onClick={() => void exportInvoiceList(false)}
                     >
                       导出全部
                     </Button>
                     <Button
+                      disabled={!configuredRows.length}
                       loading={invoiceExportLoading}
                       onClick={() => void exportInvoiceList(true)}
                     >

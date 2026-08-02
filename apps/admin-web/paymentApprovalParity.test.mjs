@@ -55,11 +55,24 @@ test("non-print payment routes retain generic actions", () => {
 
 test("payment query keeps date clear and read-only detail action", () => {
   assert.match(source, /DatePicker\.RangePicker[\s\S]*?allowClear/);
-  assert.match(source, /initialView\s*===\s*"finance-payment-query"[\s\S]*?setOriginalField\(key, undefined\)[\s\S]*?清空/);
+  assert.match(source, /\["finance-payment-query",\s*"finance-internal-mine"\]\.includes\(initialView\)[\s\S]*?setOriginalField\(key, undefined\)[\s\S]*?清空/);
   assert.match(
     source,
-    /initialView\s*===\s*"finance-payment-query"\s*\?\s*\([\s\S]*?setFeeDetail\(row\)[\s\S]*?查看/,
+    /\["finance-payment-query",\s*"finance-internal-mine"\]\.includes\(initialView\)\s*\?\s*\([\s\S]*?setFeeDetail\(row\)[\s\S]*?查看/,
   );
+});
+
+test("internal expense mine keeps query controls and read-only rows", () => {
+  assert.match(source, /\["finance-payment-query",\s*"finance-internal-mine"\]\.includes\(initialView\)/);
+  assert.match(source, /queryField\("审核日期",\s*"auditRange",\s*"date"\)/);
+  assert.match(source, /queryField\("费用类型",\s*"feeType"\)/);
+});
+
+test("invoice mine gates empty-state exports", () => {
+  assert.match(source, /isInvoiceMineRoute\s*\|\|\s*isInvoicePendingRoute\s*\|\|\s*isInvoiceCompanyRoute/);
+  assert.match(source, /disabled=\{!configuredRows\.length\}[\s\S]*?exportInvoiceList\(false\)/);
+  assert.match(source, /disabled=\{!configuredRows\.length\}[\s\S]*?exportInvoiceList\(true\)/);
+  assert.match(source, /if \(selectedOnly && !selectedOriginalRows\.length\)[\s\S]*?请选择需要导出的发票/);
 });
 
 test("contract payment applications are loaded and reviewed through contract API", () => {
