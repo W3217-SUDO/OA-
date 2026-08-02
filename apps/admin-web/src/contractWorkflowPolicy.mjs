@@ -127,6 +127,17 @@ export const filterContractCaseOptions = (cases, customer) => {
   return cases.filter((item) => !String(item.customer || "").trim() || item.customer === expected);
 };
 
+export const filterContractLinkedRows = (rows = [], contract = {}) => {
+  const contractId = Number(contract?.id || 0);
+  const contractNo = String(contract?.serial_no || "").trim();
+  return rows.filter((item) => {
+    const data = item?.data || {};
+    const linkedId = Number(item?.contract_record_id || data.contract_record_id || data.contract_id || 0);
+    const linkedNo = String(item?.contract_no || data.contract_no || "").trim();
+    return (contractId > 0 && linkedId === contractId) || (Boolean(contractNo) && linkedNo === contractNo);
+  });
+};
+
 export const canActOnContractApproval = (status, approver, username, role) =>
   status === "审批中" && Boolean(approver) && (approver === username || role === "admin");
 

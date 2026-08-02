@@ -35,6 +35,7 @@ export function buildContractDraftDefaults(input: {
 export function validateContractDraftValues(values: Record<string, unknown>): string[];
 export function resolveContractCustomerSelection<T extends { id: number }>(customerId: number | undefined, customers: T[], linkedCustomer: { id: number; name: string; serial_no?: string } | null, profile: { username?: string }): T | { id: number; serial_no: string; title: string; owner: string; data: { customer_managers: string[] } } | null;
 export function filterContractCaseOptions<T extends { customer?: string }>(cases: T[], customer: string): T[];
+export function filterContractLinkedRows<T extends { id?: number; contract_record_id?: number; contract_no?: string; data?: { contract_record_id?: number; contract_id?: number; contract_no?: string } }>(rows: T[], contract: { id?: number; serial_no?: string }): T[];
 export function canActOnContractApproval(status: string, approver: string, username: string, role: string): boolean;
 export function buildContractApprovalPayload(approved: boolean, comment: unknown): { approved: boolean; comment: string };
 export function canMutateContractAttachments(status: string): boolean;

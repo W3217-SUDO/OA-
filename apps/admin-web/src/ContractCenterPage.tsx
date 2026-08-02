@@ -50,6 +50,7 @@ import {
   contractListViewConfig,
   extractContractErrorMessage,
   filterContractCaseOptions,
+  filterContractLinkedRows,
   normalizeContractQuery,
   normalizeContractDetailReturnView,
   resolveContractCustomerSelection,
@@ -325,10 +326,10 @@ export default function ContractCenterPage({
           ? (receiptResult.value.data.items || []).filter((item: any) => item.contract_record_id === contract.id || item.contract_no === contract.serial_no)
           : []);
         setDetailInvoices(invoiceResult.status === "fulfilled"
-          ? (invoiceResult.value.data.items || []).filter((item: Contract) => item.data?.contract_no === contract.serial_no || item.title?.includes(contract.serial_no))
+          ? filterContractLinkedRows(invoiceResult.value.data.items || [], contract)
           : []);
         setDetailPayments(paymentResult.status === "fulfilled"
-          ? (paymentResult.value.data.items || []).filter((item: Contract) => item.data?.contract_no === contract.serial_no || item.title?.includes(contract.serial_no))
+          ? filterContractLinkedRows(paymentResult.value.data.items || [], contract)
           : []);
         setDetailApprovals(approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : []);
         if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || workflowHistoryResult.status === "rejected" || objectResult.status === "rejected") {
