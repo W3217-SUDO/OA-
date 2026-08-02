@@ -4353,10 +4353,12 @@ export default function FinanceCenterPage({
           clear: [
             "finance-archive-fee-pending",
             "finance-archive-fee-payment",
+            "finance-archive-fee-paid",
           ].includes(route),
           export: [
             "finance-archive-fee-pending",
             "finance-archive-fee-payment",
+            "finance-archive-fee-paid",
           ].includes(route),
           headers: [
             "操作",
