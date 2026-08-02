@@ -82,6 +82,11 @@ test("unissued invoice empty-state export and more actions are gated", () => {
   assert.match(source, /loading=\{settlementActionLoading\}/);
 });
 
+test("pending settlement exposes query clear control", () => {
+  assert.match(source, /initialView\s*===\s*"finance-settlement-pending"/);
+  assert.match(source, /clearConfiguredQuery/);
+});
+
 test("contract payment applications are loaded and reviewed through contract API", () => {
   assert.match(source, /module:\s*"contract_payment"/);
   assert.match(source, /_source_module:\s*"contract_payment"/);

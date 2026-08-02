@@ -6898,7 +6898,8 @@ export default function FinanceCenterPage({
               )}
               {(originalKind === "fee-query" ||
                 activeRouteConfig?.clear ||
-                initialView === "finance-payment-writeoff") && (
+                initialView === "finance-payment-writeoff" ||
+                initialView === "finance-settlement-pending") && (
                 <Button onClick={clearConfiguredQuery}>
                   清空
                 </Button>
