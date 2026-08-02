@@ -1264,7 +1264,7 @@ export default function CustomerCenterPage({
           <Button type="primary" icon={<SearchOutlined />} onClick={queryCustomerList}>
             查询
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={() => {
+          {!isOriginalCustomerList && <Button icon={<ReloadOutlined />} onClick={() => {
             const resetCustomerType = customerTypeOptions[0]?.value || "客户";
             setKeyword("");
             setCustomerType(resetCustomerType);
@@ -1275,7 +1275,7 @@ export default function CustomerCenterPage({
             void load({ keyword: "", customerType: resetCustomerType, managerKeyword: "", page: 1 });
           }}>
             重置
-          </Button>
+          </Button>}
         </div>
         <Table
           className="customer-original-table"
