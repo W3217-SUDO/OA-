@@ -33,6 +33,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { customerStatusLabel } from "./customerStatusLabel";
 import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
 import "./customer-center.css";
@@ -1114,7 +1115,8 @@ export default function CustomerCenterPage({
       width: 118,
       align: "center" as const,
       render: (v: string) => {
-        const label = ["customer-recycle", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-recent-update"].includes(initialView) && v === "已回收" ? "已删除" : v;
+        const status = customerStatusLabel(v);
+        const label = ["customer-recycle", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-recent-update"].includes(initialView) && status === "已回收" ? "已删除" : status;
         return <span className={`customer-status customer-status-${v}`}>{label}</span>;
       },
     },
