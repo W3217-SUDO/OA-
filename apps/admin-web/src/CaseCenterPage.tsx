@@ -88,6 +88,20 @@ export const getCompanyCriminalQueryFields = () => [
   ["handling_lawyer", "经办律师", "经办律师"],
   ["court", "法院名称", "法院名称"],
 ];
+export const getCompanyCriminalColumnSchema = () => [
+  {key:"serial_no",title:"案件编号",width:150},
+  {key:"charge",title:"罪名",width:180},
+  {key:"prosecutor",title:"公诉机关",width:180},
+  {key:"defendant",title:"被告人/犯罪嫌疑人",width:190},
+  {key:"status",title:"案件阶段",width:120},
+  {key:"court",title:"法院名称",width:180},
+  {key:"hearing_at",title:"开庭时间",width:120},
+  {key:"handling_lawyer",title:"经办律师",width:140},
+  {key:"assistant",title:"律师助理",width:110},
+  {key:"source_person",title:"案源人",width:110},
+  {key:"remaining_days",title:"剩余时间",width:90},
+  {key:"spacer",title:"",width:40},
+];
 export const shouldUseCompanyCriminalQueryFields = (initialView: string) => initialView === "case-company-criminal";
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
@@ -2000,6 +2014,23 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "发票文件导入失败");
     }
   };
+  const renderCompanyCriminalColumn = (key:string,row:CaseRow) => {
+    switch (key) {
+      case "serial_no": return <Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>{row.serial_no}</Button>;
+      case "charge": return row.data.cause_or_charge||"";
+      case "prosecutor": return row.data.prosecutor||row.data.first_procuratorate_name||row.data.procuratorate||"";
+      case "defendant": return Array.isArray(row.data.defendants)?row.data.defendants.join(","):row.data.defendants||row.data.opponent||"";
+      case "status": return row.status;
+      case "court": return row.data.court||row.data.first_court_name||"";
+      case "hearing_at": return row.data.hearing_date||row.data.first_court_hearing_date||"";
+      case "handling_lawyer": return Array.isArray(row.data.handling_lawyers)?row.data.handling_lawyers.join(","):row.data.handling_lawyers||"";
+      case "assistant": return row.data.assistant||"";
+      case "source_person": return row.data.source_person||row.owner||"";
+      case "remaining_days": return row.data.remaining_days??0;
+      default: return "";
+    }
+  };
+  const companyCriminalCaseColumns = getCompanyCriminalColumnSchema().map(({key,title,width})=>({title,key,width,sorter:key==="serial_no"||key==="hearing_at",render:(_:unknown,row:CaseRow)=>renderCompanyCriminalColumn(key,row)}));
   const originalCaseColumns = [
     {title:"基本信息",key:"base",width:185,render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>案件编号:{row.serial_no}</Button></p><p>案件名称:{row.title}</p></>},
     {title:"当事人信息",key:"parties",width:250,render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},
@@ -2049,6 +2080,7 @@ export default function CaseCenterPage({
   // All data columns below declare their widths. Keep the selection column inside
   // the horizontal viewport so the fixed right action column never overlays data.
   const originalCaseTableScrollX=2420;
+  const companyCriminalCaseTableScrollX=1610;
   const counselCaseTableScrollX=1460;
   const archiveCaseTableScrollX=archiveDone||archiveRefused?1700:1600;
   const specialMode=initialView.endsWith("-schedule")?"schedule":initialView.endsWith("-execution")?"execution":initialView.endsWith("-unclaimed")?"unclaimed":initialView.endsWith("-stage")?"stage":initialView.endsWith("-no-refund")?"refund":initialView==="case-files-receipt"?"receipt":initialView==="case-files-invoice"?"invoice":"";
@@ -2338,7 +2370,7 @@ export default function CaseCenterPage({
             <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setOriginalPage(1);if(counselListMode)void loadCounselCases({},1,counselPageSize);}}>重置</Button></Space></Form.Item>
           </Form>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
-          <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:caseQuery}));return;}const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:caseQuery}));return;}const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           {shouldShowCaseListActions(counselListMode?counselCases.length:originalCases.length)&&<div className="case-bottom-actions"><Space size={5} wrap>
             {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<><Button onClick={()=>exportSelectedCasesExcel(true)}>导出选中（Excel）</Button><Button onClick={()=>exportSelectedCasesExcel(false)}>导出当前查询（Excel）</Button><Button onClick={exportCaseQrWord}>导出选中二维码（Word）</Button><Button onClick={exportCases}>导出全部（CSV）</Button></>}
             {selectedCaseCapability.can_upload_attachment && <Select
