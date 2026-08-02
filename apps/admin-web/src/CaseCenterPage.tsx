@@ -218,12 +218,22 @@ export default function CaseCenterPage({
         : initialView.startsWith("case-archive")
           ? "archive"
           : "cases";
+  const [caseListReturnContext] = useState<{route?:string;page?:number;pageSize?:number;query?:Record<string,any>} | null>(() => {
+    try {
+      const raw = sessionStorage.getItem("sunhold:case-list-return");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [tab, setTab] = useState(first);
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [counselCases, setCounselCases] = useState<CaseRow[]>([]);
   const [counselTotal, setCounselTotal] = useState(0);
   const [counselPage, setCounselPage] = useState(1);
   const [counselPageSize, setCounselPageSize] = useState(10);
+  const [originalPage, setOriginalPage] = useState(caseListReturnContext?.page || 1);
+  const [originalPageSize, setOriginalPageSize] = useState(caseListReturnContext?.pageSize || 10);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [caseCustomers, setCaseCustomers] = useState<CaseRow[]>([]);
   const [caseClues, setCaseClues] = useState<CaseRow[]>([]);
@@ -516,9 +526,33 @@ export default function CaseCenterPage({
       caseQueryForm.setFieldsValue(relationQuery);
       setCaseQuery(relationQuery);
     }
+    if (!isCreateView && !isCaseDetailView && caseListReturnContext?.query) {
+      caseQueryForm.setFieldsValue(caseListReturnContext.query);
+      setCaseQuery(caseListReturnContext.query);
+      sessionStorage.removeItem("sunhold:case-list-return");
+    }
     load();
     if (!isCreateView && initialView.includes("counsel")) void loadCounselCases(relationQuery,1,10);
   }, [initialView]);
+  const returnToCaseList = () => {
+    let route = caseListReturnContext?.route || "case-mine";
+    let page = originalPage;
+    let pageSize = originalPageSize;
+    try {
+      const raw = sessionStorage.getItem("sunhold:case-list-return");
+      if (raw) {
+        const saved = JSON.parse(raw);
+        route = saved?.route || route;
+        page = Number(saved?.page) || page;
+        pageSize = Number(saved?.pageSize) || pageSize;
+      }
+    } catch {
+      // fall back to the standard list route
+    }
+    setOriginalPage(page);
+    setOriginalPageSize(pageSize);
+    onNavigate?.(route);
+  };
   const advanceCreateStep = async () => {
     if (createStep === 0) {
       const values = createForm.getFieldsValue(true);
@@ -854,6 +888,7 @@ export default function CaseCenterPage({
     if (!isCaseDetailView) {
       const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
       rememberCaseDetailTarget({ id: row.id, serial_no: serialNo });
+      sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({ route: initialView, page: originalPage, pageSize: originalPageSize, query: caseQuery }));
       onNavigate?.(`case-detail-${row.id}-${encodeURIComponent(serialNo)}`);
       return;
     }
@@ -1841,6 +1876,7 @@ export default function CaseCenterPage({
   const canCreateSelectedCaseFees = selectedCases.length > 0 && selectedCases.every((row) => getCaseCapability(row).can_create_finance);
   const isArchiveManager = ["admin", "manager"].includes(profile.role || "");
   const exportCases = async () => {
+    if (!originalCases.length) return message.warning("当前查询没有可导出的案件");
     try {
       const res = await api.get("/records/export", {params:{module:"case"},responseType:"blob"});
       const url = URL.createObjectURL(res.data), link = document.createElement("a");
@@ -2253,7 +2289,7 @@ export default function CaseCenterPage({
       </Card> : originalListMode && <div className="case-original-layout">
         <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(([label,count])=><button key={label} type="button" onClick={()=>{caseQueryForm.setFieldValue("status",label);setCaseQuery({...caseQuery,status:String(label)})}}>📁 {label}【{count}】</button>)}</aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
-          <Form form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);if(counselListMode)void loadCounselCases(values,1,counselPageSize);}}>
+          <Form form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);}}>
             {counselListMode ? <>
               <Form.Item label="客户" name="customer"><Input placeholder="客户"/></Form.Item><Form.Item label="案号" name="serial_no"><Input placeholder="案号"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、案件名称、客户名称"/></Form.Item><Form.Item label="顾问期间" name="counsel_range"><DatePicker.RangePicker /></Form.Item>
               <Form.Item label="顾问类型" name="counsel_type"><Input placeholder="顾问类型"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
@@ -2264,10 +2300,10 @@ export default function CaseCenterPage({
               <Form.Item label="案源时间" name="source_range"><DatePicker.RangePicker /></Form.Item><Form.Item label="侵权渠道" name="channel"><Input placeholder="侵权渠道"/></Form.Item><Form.Item label="仓库" name="warehouse"><Input placeholder="仓库"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
               <Form.Item label="开庭时间" name="hearing_range"><DatePicker.RangePicker /></Form.Item><Form.Item label="侵权区域" name="area"><Input placeholder="侵权区域"/></Form.Item><Form.Item label="库位" name="location"><Input placeholder="库位"/></Form.Item><Form.Item label="日志内容" name="log_content"><Input placeholder="日志内容"/></Form.Item>
             </>}
-            <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(counselListMode)void loadCounselCases({},1,counselPageSize);}}>重置</Button></Space></Form.Item>
+            <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setOriginalPage(1);if(counselListMode)void loadCounselCases({},1,counselPageSize);}}>重置</Button></Space></Form.Item>
           </Form>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
-          <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{pageSize:10,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode)return;const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:caseQuery}));return;}const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           <div className="case-bottom-actions"><Space size={5} wrap>
             {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<><Button onClick={()=>exportSelectedCasesExcel(true)}>导出选中（Excel）</Button><Button onClick={()=>exportSelectedCasesExcel(false)}>导出当前查询（Excel）</Button><Button onClick={exportCaseQrWord}>导出选中二维码（Word）</Button><Button onClick={exportCases}>导出全部（CSV）</Button></>}
             {selectedCaseCapability.can_upload_attachment && <Select
@@ -2664,9 +2700,9 @@ export default function CaseCenterPage({
         rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 88px)"}}
         open={Boolean(viewingCounselCase)}
         title={`${viewingCounselCase?.data.case_type || "案件"}详情：${viewingCounselCase?.serial_no || ""}`}
-        onClose={() => isCaseDetailView ? onNavigate?.("case-mine") : setViewingCounselCase(null)}
+        onClose={() => isCaseDetailView ? returnToCaseList() : setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
-          {isCaseDetailView && <Button data-testid="case-detail-back" onClick={() => onNavigate?.("case-mine")}>返回案件列表</Button>}
+          {isCaseDetailView && <Button data-testid="case-detail-back" onClick={returnToCaseList}>返回案件列表</Button>}
           {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>登记进展</Button>}
           {counselDetailCapabilities.can_manage_hearing && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openHearing(viewingCounselCase)}>开庭排期</Button>}
           {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}

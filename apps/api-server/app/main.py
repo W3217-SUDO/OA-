@@ -61,6 +61,7 @@ REQUIRED_SEAL_ASSETS = (
 REQUIRED_SEAL_TYPES = {seal_type for _, seal_type, _ in REQUIRED_SEAL_ASSETS}
 ADMINISTRATIVE_CLIENT_POSITIONS = {"原告/申请人", "被告/被申请人", "第三人"}
 CASE_CREATE_PERMISSION_KEYS = list(CASE_CREATE_PERMISSION_BY_TYPE.values())
+CASE_CREATE_STATUS_ALIASES = {"新案待分配": "新案待分配", "待分配": "新案待分配"}
 CASE_CLIENT_POSITIONS_BY_TYPE = {
     "民事案件": {"原告/申请人", "被告/被申请人", "第三人"},
     "刑事案件": {"被告人/犯罪嫌疑人", "被害人"},
@@ -12596,7 +12597,8 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     if case_type not in CASE_CREATABLE_TYPES:
         raise HTTPException(status_code=422, detail="案件类型不是原系统允许的新建类型")
     serial_no = body.serial_no.strip() or await _next_case_serial(case_type, db)
-    if body.status != "新案待分配":
+    canonical_status = CASE_CREATE_STATUS_ALIASES.get(body.status.strip())
+    if canonical_status is None:
         raise HTTPException(status_code=422, detail="新建案件阶段必须为待分配")
     counsel_type = body.counsel_type.strip()
     if case_type != "法律顾问" and not cause_or_charge:
@@ -12663,7 +12665,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         raise HTTPException(status_code=422, detail="案件负责人必须是有效用户")
     record = BusinessRecord(
         module="case", serial_no=serial_no, title=title,
-        customer=contract.customer, status="新案待分配", owner=owner,
+        customer=contract.customer, status=canonical_status, owner=owner,
         department=department, description="",
         data={
             "contract_id": contract.id,
