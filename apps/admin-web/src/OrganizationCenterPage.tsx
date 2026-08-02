@@ -432,7 +432,7 @@ export default function OrganizationCenterPage({
             dataSource={roles}
             locale={{ emptyText: emptyContent }}
             pagination={{
-              pageSize: 20,
+              pageSize: 15,
               showTotal: (total) => `共 ${total} 条`,
             }}
           />
