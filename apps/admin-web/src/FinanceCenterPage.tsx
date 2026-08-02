@@ -330,6 +330,24 @@ const paymentWriteoffClearQuery = (initialView: string) =>
 const paymentQueryFeeTypeControl = (initialView: string) =>
   initialView === "finance-payment-query" ? undefined : "feeType";
 
+const effectivePaymentQuery = (
+  initialView: string,
+  query: Record<string, any>,
+  knownFeeTypes: string[],
+) => {
+  const feeType = String(query.feeType || "").trim();
+  if (
+    initialView !== "finance-payment-query" ||
+    !feeType ||
+    knownFeeTypes.includes(feeType)
+  ) {
+    return query;
+  }
+  const next = { ...query };
+  delete next.feeType;
+  return next;
+};
+
 type PaymentPrintDocumentData = {
   documentTitle: string;
   packageNo: string;
@@ -5812,7 +5830,11 @@ export default function FinanceCenterPage({
       .filter(([, value]) => value !== undefined),
   );
   const submitConfiguredQuery = () => {
-    const next = { ...configuredDefaults, ...originalQueryDraft };
+    const next = effectivePaymentQuery(
+      initialView,
+      { ...configuredDefaults, ...originalQueryDraft },
+      feeTypes,
+    );
     setOriginalQuery(next);
     setSelectedOriginalRows([]);
     if (isFeeQueryRoute) {
