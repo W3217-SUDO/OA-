@@ -92,6 +92,12 @@ type AttachmentRow = {
   uploader: string;
   created_at: string;
 };
+type SealPreviewMode = "binary" | "text" | "unsupported";
+function getSealPreviewMode(payload: { kind?: string }): SealPreviewMode {
+  if (payload.kind === "image" || payload.kind === "pdf") return "binary";
+  if (payload.kind === "docx" || payload.kind === "text") return "text";
+  return "unsupported";
+}
 type RelationRow = {
   id: number;
   serial_no: string;
@@ -176,6 +182,9 @@ export default function SealCenterPage({
   const [auditListOpen, setAuditListOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewText, setPreviewText] = useState("");
+  const [previewMode, setPreviewMode] = useState<"binary" | "text" | "unsupported">("binary");
+  const [previewDetail, setPreviewDetail] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [fileListOpen, setFileListOpen] = useState(false);
@@ -488,14 +497,22 @@ export default function SealCenterPage({
   };
   const previewAttachment = async (item: AttachmentRow) => {
     try {
-      const response = await api.get(`/attachments/${item.id}/preview`, {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(response.data);
+      const { data } = await api.get(`/attachments/${item.id}/preview`);
+      const mode = getSealPreviewMode(data);
+      setPreviewMode(mode);
+      setPreviewText(data.text || "");
+      setPreviewDetail(data.detail || "");
       setPreviewUrl((previous) => {
         if (previous) URL.revokeObjectURL(previous);
-        return url;
+        return "";
       });
+      if (mode === "binary") {
+        const response = await api.get(`/attachments/${item.id}/download`, {
+          responseType: "blob",
+        });
+        const url = URL.createObjectURL(response.data);
+        setPreviewUrl(url);
+      }
       setPreviewName(item.original_name);
       setPreviewOpen(true);
     } catch (error: any) {
@@ -1557,6 +1574,7 @@ export default function SealCenterPage({
           size="small"
           rowKey="id"
           pagination={false}
+          locale={{ emptyText: "" }}
           dataSource={history.filter((item) => item.action.includes("审批"))}
           columns={[
             { title: "审批人", dataIndex: "operator" },
@@ -1592,6 +1610,7 @@ export default function SealCenterPage({
           size="small"
           rowKey="id"
           pagination={false}
+          locale={{ emptyText: "" }}
           dataSource={fileListAttachments}
           columns={[
             { title: "上传人", dataIndex: "uploader" },
@@ -1622,22 +1641,32 @@ export default function SealCenterPage({
           setPreviewOpen(false);
           if (previewUrl) URL.revokeObjectURL(previewUrl);
           setPreviewUrl("");
+          setPreviewText("");
+          setPreviewDetail("");
           setPreviewName("");
         }}>关闭</Button>}
         onCancel={() => {
           setPreviewOpen(false);
           if (previewUrl) URL.revokeObjectURL(previewUrl);
           setPreviewUrl("");
+          setPreviewText("");
+          setPreviewDetail("");
           setPreviewName("");
         }}
       >
-        {previewUrl && (
+        {previewMode === "binary" && previewUrl && (
           <iframe
             title={previewName}
             src={previewUrl}
             style={{ width: "100%", height: 620, border: 0 }}
           />
         )}
+        {previewMode === "text" && (
+          <pre style={{ maxHeight: 620, overflow: "auto", whiteSpace: "pre-wrap" }}>
+            {previewText}
+          </pre>
+        )}
+        {previewMode === "unsupported" && <Alert type="info" message={previewDetail || "当前文件格式暂不支持在线预览，请下载后查看"} />}
       </Modal>
     </>
   );
