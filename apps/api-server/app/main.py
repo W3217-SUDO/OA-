@@ -14702,6 +14702,10 @@ def _seal_asset_dict(item: SealAsset) -> dict:
 
 async def _seal_record_dict(record: BusinessRecord, db: AsyncSession) -> dict:
     result = _record_dict(record)
+    result["file_count"] = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
+        FileAttachment.record_id == record.id,
+        FileAttachment.category == "用印文件",
+    )) or 0)
     asset_id = int((record.data or {}).get("seal_asset_id") or 0)
     asset = await db.get(SealAsset, asset_id) if asset_id else None
     result["seal_asset"] = _seal_asset_dict(asset) if asset else None

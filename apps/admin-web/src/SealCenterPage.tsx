@@ -67,6 +67,7 @@ type SealRow = {
   seal_asset?: SealAsset;
   created_at: string;
   updated_at: string;
+  file_count: number;
 };
 type Summary = {
   total: number;
@@ -177,6 +178,9 @@ export default function SealCenterPage({
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
+  const [fileListOpen, setFileListOpen] = useState(false);
+  const [fileListRow, setFileListRow] = useState<SealRow | null>(null);
+  const [fileListAttachments, setFileListAttachments] = useState<AttachmentRow[]>([]);
   const [action, setAction] = useState<{
     type: "approve" | "reject" | "stamp" | "archive";
     row: SealRow;
@@ -470,6 +474,18 @@ export default function SealCenterPage({
       message.error(error?.response?.data?.detail || "用印文件下载失败");
     }
   };
+  const openFileList = async (row: SealRow) => {
+    try {
+      const { data } = await api.get("/attachments", {
+        params: { record_id: row.id, category: "用印文件" },
+      });
+      setFileListRow(row);
+      setFileListAttachments(data.items);
+      setFileListOpen(true);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "文件列表加载失败");
+    }
+  };
   const previewAttachment = async (item: AttachmentRow) => {
     try {
       const response = await api.get(`/attachments/${item.id}/preview`, {
@@ -629,7 +645,12 @@ export default function SealCenterPage({
     {
       title: "文件数",
       width: 70,
-      render: (_: unknown, r: SealRow) => r.data.copies || 0,
+      dataIndex: "file_count",
+      render: (value: number, r: SealRow) => (
+        <Button type="link" onClick={() => void openFileList(r)}>
+          {value || 0}
+        </Button>
+      ),
     },
     {
       title: "案号",
@@ -1552,6 +1573,46 @@ export default function SealCenterPage({
             },
           ]}
         />
+      </Modal>
+      <Modal
+        open={fileListOpen}
+        title="文件列表"
+        onCancel={() => {
+          setFileListOpen(false);
+          setFileListRow(null);
+          setFileListAttachments([]);
+        }}
+        footer={<Button onClick={() => {
+          setFileListOpen(false);
+          setFileListRow(null);
+          setFileListAttachments([]);
+        }}>关闭</Button>}
+      >
+        <Table
+          size="small"
+          rowKey="id"
+          pagination={false}
+          dataSource={fileListAttachments}
+          columns={[
+            { title: "上传人", dataIndex: "uploader" },
+            { title: "文件名称", dataIndex: "original_name" },
+            {
+              title: "文件日期",
+              dataIndex: "created_at",
+              render: (value: string) => dayjs(value).format("YYYY-MM-DD"),
+            },
+            {
+              title: "操作",
+              render: (_: unknown, item: AttachmentRow) => (
+                <Space size={0}>
+                  <Button type="link" onClick={() => void previewAttachment(item)}>查看</Button>
+                  <Button type="link" onClick={() => void downloadAttachment(item)}>下载</Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
+        {!fileListRow && <span>暂无文件</span>}
       </Modal>
       <Modal
         open={previewOpen}
