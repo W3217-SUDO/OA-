@@ -367,6 +367,19 @@ const paymentQueryControlledPageSize = (
 ) =>
   initialView === "finance-payment-query" ? selectedPageSize : undefined;
 
+const paymentQueryPageTotal = (
+  rows: ReadonlyArray<{
+    data?: Record<string, any>;
+    amount?: number | string;
+  }>,
+) =>
+  rows
+    .reduce(
+      (sum, row) => sum + Number(row.data?.amount ?? row.amount ?? 0),
+      0,
+    )
+    .toFixed(2);
+
 const paymentQueryFeeTypeControl = (initialView: string) =>
   initialView === "finance-payment-query" ? undefined : "feeType";
 
@@ -7578,7 +7591,26 @@ export default function FinanceCenterPage({
                     : undefined
                 }
                 components={
-                  isFeeQueryRoute && configuredRows.length
+                  initialView === "finance-payment-query" && configuredRows.length
+                    ? {
+                        body: {
+                          wrapper: ({ children, ...bodyProps }: any) => (
+                            <tbody {...bodyProps}>
+                              <tr className="finance-payment-query-page-total">
+                                {paymentOriginalColumns.map((_column, index) => (
+                                  <td key={`payment-query-total-${index}`}>
+                                    {index === 4
+                                      ? paymentQueryPageTotal(configuredRows)
+                                      : null}
+                                  </td>
+                                ))}
+                              </tr>
+                              {children}
+                            </tbody>
+                          ),
+                        },
+                      }
+                  : isFeeQueryRoute && configuredRows.length
                     ? {
                         body: {
                           wrapper: ({ children, ...bodyProps }: any) => (
@@ -7799,7 +7831,23 @@ export default function FinanceCenterPage({
                     : undefined
                 }
                 summary={
-                  isFeeQueryRoute
+                  initialView === "finance-payment-query"
+                    ? (pageData) =>
+                        pageData.length ? (
+                          <Table.Summary.Row className="finance-payment-query-page-total-bottom">
+                            {paymentOriginalColumns.map((_column, index) => (
+                              <Table.Summary.Cell
+                                key={`payment-query-summary-${index}`}
+                                index={index}
+                              >
+                                {index === 4
+                                  ? paymentQueryPageTotal(pageData)
+                                  : null}
+                              </Table.Summary.Cell>
+                            ))}
+                          </Table.Summary.Row>
+                        ) : null
+                    : isFeeQueryRoute
                     ? (pageData) =>
                         pageData.length ? (
                           <Table.Summary.Row className="finance-fee-query-page-total">
