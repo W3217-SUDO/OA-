@@ -55,6 +55,7 @@ export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_i
   });
   return totals;
 };
+export const isRepeatedReceivableDetailRow = (rows: Array<{ contract_record_id: number }>, index: number) => index > 0 && rows[index - 1]?.contract_record_id === rows[index]?.contract_record_id;
 export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
 export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
 
@@ -216,15 +217,15 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string) => <Button type="link" onClick={() => openCustomer(value)}>{value}</Button> },
   ];
   const detailColumns = [
-    { title: "合同号", dataIndex: "contract_no", width: 130, render: (_: unknown, row: Receivable) => <Button type="link" onClick={() => openContract(row)}>{row.contract_no}</Button> },
-    { title: "合同名称", dataIndex: "contract_title", width: 200, ellipsis: true },
-    { title: "官费支付金额", key: "official_paid", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.official_paid) },
-    { title: "官费到账金额", key: "official_received", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.official_received) },
-    { title: "官费未到金额", key: "official_unreceived", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.official_unreceived) },
-    { title: "官费亏损金额", key: "official_loss", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.official_loss) },
-    { title: "代理费总金额", key: "agency_total", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.agency_total) },
-    { title: "代理费到账金额", key: "agency_received", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.agency_received) },
-    { title: "代理费待收金额", key: "agency_due", width: 110, render: (_: unknown, row: Receivable) => money(contractById.get(row.contract_record_id)?.data.agency_due) },
+        { title: "合同号", dataIndex: "contract_no", width: 130, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : <Button type="link" onClick={() => openContract(row)}>{row.contract_no}</Button> },
+        { title: "合同名称", dataIndex: "contract_title", width: 200, ellipsis: true, render: (value: string, _row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : value },
+        { title: "官费支付金额", key: "official_paid", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.official_paid) },
+        { title: "官费到账金额", key: "official_received", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.official_received) },
+        { title: "官费未到金额", key: "official_unreceived", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.official_unreceived) },
+        { title: "官费亏损金额", key: "official_loss", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.official_loss) },
+        { title: "代理费总金额", key: "agency_total", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.agency_total) },
+        { title: "代理费到账金额", key: "agency_received", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.agency_received) },
+        { title: "代理费待收金额", key: "agency_due", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.agency_due) },
     { title: "案号", key: "case_no", width: 130, render: (_: unknown, row: Receivable) => {
       const caseNo = contractById.get(row.contract_record_id)?.data.case_no;
       return caseNo ? <Button type="link" onClick={() => openCase(caseNo)}>{caseNo}</Button> : "—";
