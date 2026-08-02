@@ -36,8 +36,8 @@ type Contract = {
 type Profile = { username: string; display_name: string; department: string };
 
 const money = (value: unknown) => Number(value || 0).toFixed(2);
-export const shouldUseMyReceivablesPagination = (initialView: string) => initialView === "contract-receivable-mine";
-export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => initialView === "contract-receivable-mine" && rowCount > 0 && rowCount <= pageSize;
+export const shouldUseMyReceivablesPagination = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView);
+export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView) && rowCount > 0 && rowCount <= pageSize;
 
 export default function ContractReceivablesPage({ initialView, onNavigate }: { initialView: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
