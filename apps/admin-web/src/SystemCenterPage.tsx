@@ -1165,7 +1165,13 @@ export default function SystemCenterPage({
           ]}
           dataSource={configs}
           locale={{ emptyText: empty }}
-          pagination={false}
+          pagination={{
+            defaultPageSize: 15,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "15", "20", "50", "100", "200"],
+            showQuickJumper: true,
+            showTotal: (total) => `共有${total}条`,
+          }}
         />
       </Card>
     );
