@@ -126,6 +126,17 @@ const colors: Record<string, string> = {
   已拒绝: "red",
 };
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
+const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-return-view";
+const consumeContractDetailReturnView = () => {
+  try {
+    const view = String(sessionStorage.getItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY) || "");
+    sessionStorage.removeItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY);
+    if (view.startsWith("contract-") && !view.startsWith("contract-detail-") && view !== "contract-new") return view;
+  } catch {
+    // Detail pages can still close safely when session storage is unavailable.
+  }
+  return "contract-mine";
+};
 const readContractQuery = (view: string): Record<string, any> => {
   const parsed = readContractListQuery(sessionStorage, view) as Record<string, any>;
   if (Array.isArray(parsed.signed_at)) parsed.signed_at = parsed.signed_at.map((value: string) => dayjs(value));
@@ -247,6 +258,7 @@ export default function ContractCenterPage({
     if (!isContractDetailView) {
       try {
         saveContractListQuery(sessionStorage, initialView, query);
+        sessionStorage.setItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY, initialView);
       } catch {
         // Session storage may be unavailable in embedded/private contexts.
       }
@@ -311,6 +323,10 @@ export default function ContractCenterPage({
         setViewingAttachmentsLoading(false);
       }
     }
+  };
+  const returnFromDetail = () => {
+    closeViewing();
+    if (isContractDetailView) onNavigate?.(consumeContractDetailReturnView());
   };
   const saveContractObject = async () => { if (!viewing || !objectEditing) return; try { const values=await objectForm.validateFields(); const request=objectEditing.id?api.patch(`/contracts/${viewing.id}/objects/${objectEditing.id}`,values):api.post(`/contracts/${viewing.id}/objects`,values); await request; message.success(objectEditing.id?"合同标的已修改":"合同标的已新增"); setObjectEditing(null); objectForm.resetFields(); await openViewing(viewing) } catch(error:any) { if(!error?.errorFields) message.error(error?.response?.data?.detail||"合同标的保存失败") } };
   const deleteContractObject = async (objectId:number) => { if(!viewing)return; try { await api.delete(`/contracts/${viewing.id}/objects/${objectId}`); message.success("合同标的已删除"); await openViewing(viewing) } catch(error:any) { message.error(error?.response?.data?.detail||"合同标的删除失败") } };
@@ -1731,8 +1747,8 @@ export default function ContractCenterPage({
         width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
         title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
-        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={closeViewing}>关闭</Button></Space>}
-        onCancel={() => isContractDetailView ? onNavigate?.("contract-mine") : closeViewing()}
+        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
+        onCancel={returnFromDetail}
         getContainer={isContractDetailView ? false : undefined}
         mask={!isContractDetailView}
         rootClassName={isContractDetailView ? "contract-detail-static-root" : undefined}
