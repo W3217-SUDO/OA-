@@ -393,6 +393,7 @@ const paymentQueryDefaultPageSize = (initialView: string) =>
 const invoiceLegacyDefaultPageSize = (initialView: string) =>
   initialView.startsWith("finance-invoice") ? 20 : 15;
 const invoiceLegacyErrorMessage = "查询出错.";
+const settlementLegacyErrorMessage = "查询出错.";
 
 const paymentQueryControlledPageSize = (
   initialView: string,
@@ -6132,6 +6133,25 @@ export default function FinanceCenterPage({
       setSelectedOriginalRows([]);
       void loadFeeQuery({}, 1, feeQueryMeta.pageSize).catch((error: any) =>
         message.error(error?.response?.data?.detail || "费用查询清空失败"),
+      );
+      return;
+    }
+    if (isGeneralSettlementRoute) {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      setSelectedOriginalRows([]);
+      setGeneralSettlementDetails([]);
+      void loadGeneralSettlements({}, 1, generalSettlementMeta.pageSize).catch(
+        () => message.error(settlementLegacyErrorMessage),
+      );
+      return;
+    }
+    if (isArchiveSettlementActiveRoute) {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      setSelectedOriginalRows([]);
+      void loadArchiveSettlements({}, 1, archiveSettlementMeta.pageSize).catch(
+        () => message.error(settlementLegacyErrorMessage),
       );
       return;
     }
