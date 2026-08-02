@@ -37,6 +37,16 @@ import { filterPendingContractApprovals } from "./contractAuditScope";
 import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
+import {
+  buildContractApprovalPayload,
+  buildContractDraftDefaults,
+  canActOnContractApproval,
+  canMutateContractAttachments,
+  filterContractCaseOptions,
+  resolveContractCustomerSelection,
+  validateContractAttachment,
+  validateContractDraftValues,
+} from "./contractWorkflowPolicy.mjs";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./contract-center.css";
@@ -478,19 +488,7 @@ export default function ContractCenterPage({
     return customerContextConsumerRef.current.consume();
   };
   const resolveCustomerRef = (customerId: number | undefined): CustomerRef | null => {
-    if (!customerId || Number.isNaN(customerId)) return null;
-    const exact = customers.find((item) => item.id === customerId);
-    if (exact) return exact;
-    if (linkedCustomerContext && linkedCustomerContext.id === customerId) {
-      return {
-        id: linkedCustomerContext.id,
-        serial_no: linkedCustomerContext.serial_no || `C-${linkedCustomerContext.id}`,
-        title: linkedCustomerContext.name,
-        owner: profile.username || "",
-        data: { customer_managers: [profile.username] },
-      };
-    }
-    return null;
+    return resolveContractCustomerSelection(customerId, customers, linkedCustomerContext, profile) as CustomerRef | null;
   };
   const startCreate = (context: LinkedCustomerContext | null = null) => {
     localStorage.removeItem(WIZARD_STORAGE_KEY);
@@ -514,19 +512,12 @@ export default function ContractCenterPage({
       linkedCustomerId = context.id;
     }
     setLinkedCustomerContext(linkedContext);
-    form.setFieldsValue({
-      serial_no: createContractNumber(),
-      status: "草稿",
-      owner: profile.username || "admin",
-      department: profile.department || "上海分所",
-      type: "法律顾问合同",
-      contract_body: "律所",
-      fee_type: "固定收费",
-      amount: 0,
-      signed_at: dayjs(),
-      customer_id: linkedCustomerId,
-      title: linkedContext?.name ? `${linkedContext.name}合同` : undefined,
+    const defaults = buildContractDraftDefaults({
+      serialNo: createContractNumber(),
+      profile,
+      customer: linkedContext ? { id: linkedContext.id, title: linkedContext.name } : null,
     });
+    form.setFieldsValue({ ...defaults, customer_id: linkedCustomerId, signed_at: dayjs(defaults.signed_at) });
     setOpen(true);
   };
   useEffect(() => {
@@ -617,6 +608,13 @@ export default function ContractCenterPage({
       v = await form.validateFields();
     } catch {
       message.warning("请先补全红色提示的合同必填信息");
+      return;
+    }
+    const draftErrors = validateContractDraftValues(v);
+    if (draftErrors.length) {
+      if (draftErrors.includes("customer_id")) form.setFields([{ name: "customer_id", errors: ["请选择客户"] }]);
+      if (draftErrors.includes("title")) form.setFields([{ name: "title", errors: ["请输入合同名称"] }]);
+      message.warning("请先补全合同必填信息");
       return;
     }
     const selectedCustomer = customers.find((customer) => customer.id === Number(v.customer_id)) || resolveCustomerRef(Number(v.customer_id));
@@ -737,10 +735,7 @@ export default function ContractCenterPage({
       return;
     }
     try {
-      await api.post(`/contracts/${wizardDraft.id}/approve`, {
-        approved,
-        comment: values.comment || "",
-      });
+      await api.post(`/contracts/${wizardDraft.id}/approve`, buildContractApprovalPayload(approved, values.comment));
       reviewForm.resetFields();
       const contract = await loadWizardContext(wizardDraft.id);
       if (contract.status === "已通过") {
@@ -818,6 +813,11 @@ export default function ContractCenterPage({
       message.warning("请先选择合同附件");
       return;
     }
+    const attachmentError = validateContractAttachment(contractFile);
+    if (attachmentError) {
+      message.warning(attachmentError);
+      return;
+    }
     const attachment = new FormData();
     attachment.append("file", contractFile);
     attachment.append("record_id", String(wizardDraft.id));
@@ -836,6 +836,15 @@ export default function ContractCenterPage({
     if (!viewing) return;
     if (!contractFile) {
       message.warning("请先选择合同附件");
+      return;
+    }
+    if (!canMutateContractAttachments(viewing.status)) {
+      message.warning("当前合同状态不允许修改附件");
+      return;
+    }
+    const attachmentError = validateContractAttachment(contractFile);
+    if (attachmentError && attachmentError !== "请选择合同附件") {
+      message.error(attachmentError);
       return;
     }
     if (contractFile.size > 20 * 1024 * 1024) {
@@ -890,10 +899,7 @@ export default function ContractCenterPage({
     if (!reviewing) return;
     const v = await reviewForm.validateFields();
     try {
-      await api.post(`/contracts/${reviewing.id}/approve`, {
-        approved,
-        comment: v.comment || "",
-      });
+      await api.post(`/contracts/${reviewing.id}/approve`, buildContractApprovalPayload(approved, v.comment));
       message.success(approved ? "当前审批节点已通过" : "合同已拒绝");
       reviewForm.resetFields();
       const { data } = await api.get(`/contracts/${reviewing.id}/approvals`);
@@ -1359,7 +1365,7 @@ export default function ContractCenterPage({
           : "wait") as "finish" | "process" | "error" | "wait",
   }));
   const currentApproval = steps.find((step) => step.status === "待审批");
-  const canActOnCurrentApproval = Boolean(currentApproval && (currentApproval.approver === profile.username || profile.role === "admin"));
+  const canActOnCurrentApproval = Boolean(currentApproval && canActOnContractApproval("审批中", currentApproval.approver, profile.username, profile.role));
   const approvalOptions = directory.filter((user) => user.can_approve_contract).map((user) => ({
     value: user.username,
     label: user.display_name || user.username,
@@ -1945,7 +1951,7 @@ export default function ContractCenterPage({
         )}
       </Modal>
       <Modal open={Boolean(objectEditing)} title={objectEditing?.id?"修改合同标的":"新增合同标的"} okText="保存" cancelText="取消" onCancel={()=>{setObjectEditing(null);objectForm.resetFields()}} onOk={()=>void saveContractObject()}>
-        <Form form={objectForm} layout="vertical"><Form.Item name="case_record_id" label="关联案件" rules={[{required:true,message:"请选择合同客户下的案件"}]}><Select showSearch optionFilterProp="label" options={objectCases.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item name="fee_type" label="费用类型" rules={[{required:true}]}><Input/></Form.Item><Form.Item name="amount" label="费用金额" rules={[{required:true}]}><InputNumber min={0} precision={2} style={{width:"100%"}}/></Form.Item><Form.Item name="remark" label="备注"><Input.TextArea rows={3}/></Form.Item></Form>
+        <Form form={objectForm} layout="vertical"><Form.Item name="case_record_id" label="关联案件" rules={[{required:true,message:"请选择合同客户下的案件"}]}><Select showSearch optionFilterProp="label" options={filterContractCaseOptions(objectCases, viewing?.customer || "").map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item name="fee_type" label="费用类型" rules={[{required:true}]}><Input/></Form.Item><Form.Item name="amount" label="费用金额" rules={[{required:true}]}><InputNumber min={0} precision={2} style={{width:"100%"}}/></Form.Item><Form.Item name="remark" label="备注"><Input.TextArea rows={3}/></Form.Item></Form>
       </Modal>
       <Modal open={Boolean(objectLogTarget)} title={objectLogTarget ? `合同标的日志：${objectLogTarget.case_no}｜${objectLogTarget.fee_type}` : "合同标的日志"} footer={null} onCancel={()=>setObjectLogTarget(null)}>
         {objectLogTarget?.logs?.length ? <Timeline items={objectLogTarget.logs.map(log=>({children:<div className="contract-history-item"><b>{log.action}</b><small>{log.operator} · {dayjs(log.created_at).format("YYYY-MM-DD HH:mm")}</small><small>变更前：{Object.keys(log.before || {}).length ? JSON.stringify(log.before) : "-"}</small><small>变更后：{Object.keys(log.after || {}).length ? JSON.stringify(log.after) : "-"}</small></div>}))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的日志" />}
@@ -2054,7 +2060,7 @@ export default function ContractCenterPage({
             <Form.Item className="span-2" label="备注" name="description" rules={[{ required: !editing }]}>
               <Input.TextArea rows={2} placeholder="备注" />
             </Form.Item>
-            <Form.Item className="span-2" label="合同附件" required={!editing}>
+            <Form.Item className="span-2" label="合同附件">
               <input type="file" onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
             </Form.Item>
           </div>
