@@ -107,6 +107,25 @@ export const getCompanyArbitrationQueryFields = () => [
   ["handling_lawyer", "经办律师", "经办律师"],
   ["court", "仲裁机构", "仲裁机构"],
 ];
+export const getCompanyScheduleQueryFields = (): [string,string,string?,string?][] => [
+  ["plaintiff", "原告/申请人/公诉机关", "text", "原告"],
+  ["serial_no", "案号", "text", "案号"],
+  ["handling_lawyer", "经办律师", "text", "经办律师"],
+  ["keyword", "关键字", "text", "案号、法院号、案件名称、客户名称"],
+  ["defendant", "被告/被申请人", "text", "被告"],
+  ["notary_no", "公证书号", "text", "公证书号"],
+  ["hearing_lawyer", "开庭律师", "text", "开庭律师"],
+  ["court", "法院/机构", "text", "法院名称"],
+  ["third_party", "第三人/受害人", "text", "第三人"],
+  ["investigator", "调查员", "text", "调查员"],
+  ["assistant", "律师助理", "text", "律师助理"],
+  ["document_name", "文档名称", "text", "文档名称"],
+  ["source_range", "案源时间", "date", ""],
+  ["hearing_range", "开庭时间", "date", ""],
+  ["case_type", "案件类型", "select", "请选择"],
+  ["log_content", "日志内容", "text", "日志内容"],
+];
+export const getCompanyScheduleQueryInitialValues = (today: unknown) => ({hearing_range:[today,null]});
 export const getCompanyCriminalColumnSchema = () => [
   {key:"serial_no",title:"案件编号",width:150},
   {key:"charge",title:"罪名",width:180},
@@ -138,6 +157,7 @@ export const getCompanyArbitrationColumnSchema = () => [
 export const shouldUseCompanyCriminalQueryFields = (initialView: string) => initialView === "case-company-criminal";
 export const shouldUseCompanyArbitrationQueryFields = (initialView: string) => initialView === "case-company-arbitration";
 export const shouldUseCompanyArbitrationColumns = (initialView: string) => initialView === "case-company-arbitration";
+export const shouldUseCompanyScheduleQueryFields = (initialView: string) => initialView === "case-company-schedule";
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -2124,8 +2144,8 @@ export default function CaseCenterPage({
   const archiveCaseTableScrollX=archiveDone||archiveRefused?1700:1600;
   const specialMode=initialView.endsWith("-schedule")?"schedule":initialView.endsWith("-execution")?"execution":initialView.endsWith("-unclaimed")?"unclaimed":initialView.endsWith("-stage")?"stage":initialView.endsWith("-no-refund")?"refund":initialView==="case-files-receipt"?"receipt":initialView==="case-files-invoice"?"invoice":"";
   const specialTitle:Record<string,string>={schedule:"案件列表",execution:"案件列表",unclaimed:"内部提成-待结算",stage:"案件阶段统计",refund:"退费查询",receipt:"票据上传",invoice:"发票文件导入"};
-  const specialFilters:Record<string,[string,string,string?][]>= {
-    schedule:[["plaintiff","原告/申请人/公诉机关"],["serial_no","案号"],["handling_lawyer","经办律师"],["keyword","关键字"],["defendant","被告/被申请人"],["notary_no","公证书号"],["hearing_lawyer","开庭律师"],["court","法院/机构"],["third_party","第三人/受害人"],["investigator","调查员"],["assistant","律师助理"],["document_name","文档名称"],["source_range","案源时间","date"],["hearing_range","开庭时间","date"],["case_type","案件类型","select"],["log_content","日志内容"]],
+  const specialFilters:Record<string,[string,string,string?,string?][]>= {
+    schedule:shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryFields():[["plaintiff","原告/申请人/公诉机关"],["serial_no","案号"],["handling_lawyer","经办律师"],["keyword","关键字"],["defendant","被告/被申请人"],["notary_no","公证书号"],["hearing_lawyer","开庭律师"],["court","法院/机构"],["third_party","第三人/受害人"],["investigator","调查员"],["assistant","律师助理"],["document_name","文档名称"],["source_range","案源时间","date"],["hearing_range","开庭时间","date"],["case_type","案件类型","select"],["log_content","日志内容"]],
     execution:[["plaintiff","原告"],["serial_no","案件编号"],["evidence_org","取证机构"],["keyword","关键字"],["defendant","被告"],["handling_lawyer","经办律师"],["notary_no","公证书号"],["execution_progress","执行进度"],["hearing_lawyer","开庭律师"],["assistant","律师助理"],["investigator","调查员"],["court","法院名称"],["source_range","案源时间","date"],["channel","侵权渠道"],["warehouse","仓库"],["document_name","文档名称"],["hearing_range","开庭时间","date"],["area","侵权区域"],["location","库位"],["log_content","日志内容"]],
     unclaimed:[["customer","客户名称"],["serial_no","案件编号"],["court_case_no","法院案号"],["notary_no","公证书号"],["hearing_lawyer","开庭律师"],["assistant","律师助理"],["status","案件阶段"],["investigator","调查员"],["source_person","案源人"]],
     refund:[["serial_no","案件编号"],["court_case_no","法院案号"],["court","法院名称"],["payment_range","付款时间","date"],["customer","客户名称"],["payee","收款单位"],["refund_status","退费状态"],["refund_amount","退费金额"],["hearing_lawyer","开庭律师"],["assistant","律师助理"],["status","案件阶段"],["fee_type","费用类型"]],
@@ -2321,8 +2341,8 @@ export default function CaseCenterPage({
       )}
       {specialMode ? <Card className="panel case-original-panel case-special-panel" title={specialTitle[specialMode]} extra={specialMode==="execution"?<Space><Button type="link" onClick={()=>document.querySelector('.case-special-query')?.classList.remove('case-query-hidden')}>高级搜索</Button><Button type="link" onClick={()=>document.querySelector('.case-special-query')?.classList.add('case-query-hidden')}>普通搜索</Button></Space>:null}>
         {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
-        {specialMode!=="invoice"&&specialMode!=="stage"&&<Form form={caseQueryForm} className="case-special-query" onFinish={values=>setCaseQuery(values)}>
-          {(specialFilters[specialMode]||[]).map(([key,label,type])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker/>:type==="select"?<Select allowClear options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input/>}</Form.Item>)}
+        {specialMode!=="invoice"&&specialMode!=="stage"&&<Form form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>setCaseQuery(values)}>
+          {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
           <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </Form>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
