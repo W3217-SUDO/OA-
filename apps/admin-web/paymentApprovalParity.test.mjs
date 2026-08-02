@@ -117,7 +117,9 @@ test("refused settlement exposes clear/export and reapply-only row flow", () => 
 });
 
 test("archive settlement pending exposes clear/export controls", () => {
-  const expr = source.indexOf('clear: [', source.indexOf("const routeConfigs"));
+  const archiveMap = source.indexOf('...Object.fromEntries', source.indexOf('const routeConfigs'));
+  const archiveStart = source.indexOf('"finance-archive-fee-pending",', archiveMap);
+  const expr = source.indexOf('clear: [', archiveStart);
   assert.ok(expr >= 0, "archive pending route expression should exist");
   const block = source.slice(expr - 500, expr + 500);
   assert.match(block, /"finance-archive-fee-pending",[\s\S]*?"finance-archive-fee-payment"/);
@@ -130,7 +132,10 @@ test("archive settlement pending exposes clear/export controls", () => {
 });
 
 test("archive settlement routes expose scoped clear/export capability", () => {
-  const expr = source.slice(source.indexOf('clear: [', source.indexOf("const routeConfigs")), source.indexOf('headers:', source.indexOf('clear: [', source.indexOf("const routeConfigs"))));
+  const archiveMap = source.indexOf('...Object.fromEntries', source.indexOf('const routeConfigs'));
+  const archiveStart = source.indexOf('"finance-archive-fee-pending",', archiveMap);
+  const exprStart = source.indexOf('clear: [', archiveStart);
+  const expr = source.slice(exprStart, source.indexOf('headers:', exprStart));
   assert.match(expr, /finance-archive-fee-pending/);
   assert.match(expr, /finance-archive-fee-payment/);
   assert.match(expr, /finance-archive-fee-paid/);
@@ -138,7 +143,7 @@ test("archive settlement routes expose scoped clear/export capability", () => {
 });
 
 test("internal writeoff route exposes query clear without changing done route", () => {
-  assert.match(source, /clear: route === "finance-internal-writeoff"/);
+  assert.match(source, /clear: \["finance-internal-writeoff", "finance-internal-done"\]\.includes\(route\)/);
   assert.match(source, /\["finance-internal-writeoff", "finance-internal-done"\]/);
 });
 
