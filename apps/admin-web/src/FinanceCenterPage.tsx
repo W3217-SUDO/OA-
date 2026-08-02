@@ -4286,6 +4286,8 @@ export default function FinanceCenterPage({
       fields: settlementFields,
       source: "generalSettlements",
       selectable: true,
+      clear: true,
+      export: true,
       headers: [
         "操作",
         "客户名称",
