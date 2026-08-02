@@ -15172,7 +15172,14 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
 
 async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, identity: dict, db: AsyncSession) -> tuple[list[dict[str, object]], User | None]:
     """Return every conservative deletion blocker used by both HR preflight and delete."""
-    username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+    account_type = str((employee.data or {}).get("account_type") or "员工账号").strip()
+    username = str((employee.data or {}).get("username") or "").strip().lower()
+    # Customer/external HR profiles deliberately have no system login.  Their
+    # owner is the administrator who created the profile, not an account that
+    # belongs to the profile, so it must not trigger admin protection or a
+    # broad business-reference search during deletion.
+    if account_type == "员工账号" and not username:
+        username = str(employee.owner or "").strip().lower()
     blockers: list[dict[str, object]] = []
     user = await db.scalar(select(User).where(User.username == username)) if username else None
     if username == identity["username"].lower() or username == "admin" or (user and user.role == "admin"):
