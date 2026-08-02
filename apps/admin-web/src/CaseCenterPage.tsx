@@ -299,6 +299,8 @@ export default function CaseCenterPage({
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
+  const [paymentPackagePreview, setPaymentPackagePreview] = useState<any | null>(null);
+  const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
@@ -1466,6 +1468,28 @@ export default function CaseCenterPage({
     feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, expense_scope: row.data.expense_scope || "律所", expense_subtype: row.data.expense_subtype || "官费", fee_type: row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", description: row.description || "" });
     setEditingFeeRow(row);
   };
+  const previewInternalPayment = async (row: CaseRow) => {
+    if (row.status !== "已审批") return message.warning("仅已审批内部费用可以申请付款");
+    if (!counselDetailCapabilities.can_create_finance) return message.warning("当前账号没有申请付款权限");
+    setPaymentPackageLoading(true);
+    try {
+      const { data } = await api.post("/finance/payment-packages/preview", { fee_ids: [row.id] });
+      setPaymentPackagePreview({ ...data, source: { fee_id: row.id, request_no: row.serial_no, case_no: row.data.case_no || viewingCounselCase?.serial_no || "", customer: row.customer, amount: row.data.amount, title: row.title } });
+    } catch (error: any) { message.error(error?.response?.data?.detail || "付款申请预览失败"); }
+    finally { setPaymentPackageLoading(false); }
+  };
+  const submitInternalPayment = async () => {
+    if (!paymentPackagePreview || paymentPackageLoading) return;
+    setPaymentPackageLoading(true);
+    try {
+      const { data } = await api.post("/finance/payment-packages", { fee_ids: [paymentPackagePreview.source.fee_id], package_no: paymentPackagePreview.package_no, comment: `案件 ${paymentPackagePreview.source.case_no} 内部费用付款申请` });
+      message.success(`付款申请 ${data.serial_no || paymentPackagePreview.package_no} 已提交`);
+      setPaymentPackagePreview(null);
+      await load();
+      onNavigate?.("finance-payment-mine");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "付款申请提交失败"); }
+    finally { setPaymentPackageLoading(false); }
+  };
   const openProgress = (row: CaseRow) => {
     if (!getCaseCapability(row).can_update_progress) return message.warning("当前账号没有案件进展维护权限");
     progressForm.resetFields();
@@ -2580,6 +2604,22 @@ export default function CaseCenterPage({
           <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
+      <Modal
+        open={Boolean(paymentPackagePreview)}
+        title={`申请付款：${paymentPackagePreview?.source?.request_no || ""}`}
+        okText="提交付款申请"
+        cancelText="取消"
+        confirmLoading={paymentPackageLoading}
+        onOk={submitInternalPayment}
+        onCancel={() => setPaymentPackagePreview(null)}
+      >
+        <Alert type="info" showIcon title="请确认付款申请来源与金额" style={{ marginBottom: 12 }} />
+        <p>案件号：{paymentPackagePreview?.source?.case_no || "—"}</p>
+        <p>客户：{paymentPackagePreview?.source?.customer || "—"}</p>
+        <p>费用编号：{paymentPackagePreview?.source?.request_no || "—"}</p>
+        <p>金额：{paymentPackagePreview?.total_amount ?? paymentPackagePreview?.source?.amount ?? "—"}</p>
+        <p>付款包号：{paymentPackagePreview?.package_no || "—"}</p>
+      </Modal>
       <Modal open={Boolean(caseTaskCreateCase)} title={`发布案件任务：${caseTaskCreateCase?.serial_no || ""}`} okText="发布任务" cancelText="取消" onOk={createCaseTask} onCancel={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); }} destroyOnHidden>
         <Alert type="info" showIcon title="任务创建后会自动关联当前案件并即时回填到“案件任务”页签。" style={{ marginBottom: 16 }} />
         <Form form={taskForm} layout="vertical">
@@ -2697,7 +2737,7 @@ export default function CaseCenterPage({
               </>},
               {key:"firm-fees",label:"律所费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"律所")}>新增律所费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
               {key:"platform-fees",label:"平台费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&row.data.expense_scope==="平台")} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
-              {key:"internal-fees",label:"内部结算",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"内部")}>新增内部结算</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&(row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部")))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
+              {key:"internal-fees",label:"内部结算",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"内部")}>新增内部结算</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&(row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部")))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>((row.status==="草稿"||row.status==="已审批")&&counselDetailCapabilities.can_create_finance)?<Dropdown trigger={["click"]} menu={{items:row.status==="已审批"?[{key:"pay",label:"申请付款"}]:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="pay"?void previewInternalPayment(row):key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
               {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",dataIndex:"owner",width:110},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Button type="primary" style={{marginBottom:10}} onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",dataIndex:"operator",width:110}]}/></>},
               {key:"logs",label:"系统日志",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",dataIndex:"operator",width:110},{title:"说明",dataIndex:"comment"}]}/>},

@@ -13,6 +13,10 @@ test('案件费用草稿提供独立修改与删除确认入口', () => {
   assert.match(source, /<Dropdown trigger=\{\[\"click\"\]\} menu=\{\{items:\[\{key:\"edit\"/);
   assert.match(source, /key:\"platform-fees\"[\s\S]*?title:\"操作\"/);
   assert.match(source, /key:\"internal-fees\"[\s\S]*?title:\"操作\"/);
+  assert.match(source, /api\.post\("\/finance\/payment-packages\/preview"/);
+  assert.match(source, /api\.post\("\/finance\/payment-packages"/);
+  assert.match(source, /key:\"pay\",label:\"申请付款\"/);
+  assert.match(source, /仅已审批内部费用可以申请付款/);
   assert.match(source, /Modal\.confirm\(\{ title: `删除费用/);
   assert.match(source, /仅草稿费用可以修改/);
   assert.match(source, /仅草稿费用可以删除/);
