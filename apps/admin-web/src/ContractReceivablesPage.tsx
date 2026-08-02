@@ -34,7 +34,8 @@ type Contract = {
   data: Record<string, any>;
 };
 type Profile = { username: string; display_name: string; department: string };
-type ReceivableDetailContext = { contract_no: string; return_view: string };
+export type ReceivableDetailAmountFilter = "official-unreceived" | "official-loss" | "agency-due";
+type ReceivableDetailContext = { contract_no: string; return_view: string; amount_filter?: ReceivableDetailAmountFilter };
 
 const money = (value: unknown) => Number(value || 0).toFixed(2);
 export const shouldUseMyReceivablesPagination = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView);
@@ -43,6 +44,12 @@ export const receivablesDetailPageSizes = [10, 15, 20, 50, 100, 200];
 export const shouldShowReceivablesDetailSinglePageJumper = (rowCount: number, pageSize: number) => rowCount > 0 && rowCount <= pageSize;
 export const shouldShowReceivableCreateAction = (detailView: boolean) => !detailView;
 export const shouldShowReceivableResetAction = (detailView: boolean) => !detailView;
+export const shouldRenderReceivablesDetailSummary = (rowCount: number) => rowCount > 0;
+export const receivableDetailAmountFilters: Record<string, ReceivableDetailAmountFilter> = {
+  unCashedCaseOfficeFeeAmount: "official-unreceived",
+  deficitCaseOfficeFeeAmount: "official-loss",
+  unCashedCaseNonOfficeFeeAmount: "agency-due",
+};
 export const receivablesDetailSummaryKeys = ["official_paid", "official_received", "official_unreceived", "official_loss", "agency_total", "agency_received", "agency_due"];
 export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_id: number }>, contractById: Map<number, Contract>) => {
   const seen = new Set<number>();
@@ -56,13 +63,32 @@ export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_i
   return totals;
 };
 export const isRepeatedReceivableDetailRow = (rows: Array<{ contract_record_id: number }>, index: number) => index > 0 && rows[index - 1]?.contract_record_id === rows[index]?.contract_record_id;
+export const buildReceivableCaseDetailRoute = (record: { id: number; serial_no: string }) => `case-detail-${record.id}-${encodeURIComponent(record.serial_no)}`;
 export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
 export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
+export const buildReceivableDetailContext = (contractNo: unknown, initialView: string, amountFilter?: ReceivableDetailAmountFilter): ReceivableDetailContext => ({
+  contract_no: String(contractNo || "").trim(),
+  return_view: receivableDetailReturnView(initialView),
+  ...(amountFilter ? { amount_filter: amountFilter } : {}),
+});
+export const matchesReceivableDetailAmountFilter = (row: Pick<Receivable, "phase">, contract: Contract, amountFilter?: ReceivableDetailAmountFilter) => {
+  if (!amountFilter) return true;
+  const feeType = String(contract.data.fee_type || "代理费").trim();
+  const official = !["代理费", "律师代理费", "律师咨询费", "律师培训费", "律师见证费", "核定成本"].includes(feeType);
+  if (amountFilter === "agency-due") return !official;
+  if (amountFilter === "official-loss") return official && String(row.phase || "").includes("亏损");
+  return official;
+};
+export const calculateReceivablesListTotals = (rows: Contract[]) => {
+  const totals = Object.fromEntries(receivablesDetailSummaryKeys.map((key) => [key, 0])) as Record<string, number>;
+  rows.forEach((row) => receivablesDetailSummaryKeys.forEach((key) => { totals[key] += Number(row.data[key] || 0); }));
+  return totals;
+};
 
 const readReceivableDetailContext = (): ReceivableDetailContext | null => {
   try {
     const parsed = JSON.parse(sessionStorage.getItem("sunhold:receivable-detail-context") || "") as ReceivableDetailContext;
-    if (parsed?.contract_no && receivableDetailReturnView(parsed.return_view) === parsed.return_view) return parsed;
+    if ((parsed?.contract_no || parsed?.amount_filter) && receivableDetailReturnView(parsed.return_view) === parsed.return_view) return parsed;
   } catch {
     // A direct menu entry remains available when no short-lived navigation context exists.
   }
@@ -135,25 +161,39 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     rememberContractDetailTarget({ id: contract.id || contract.contract_record_id, serial_no: contract.serial_no || contract.contract_no });
     onNavigate?.("contract-my");
   };
-  const openReceivableDetail = (contract: { serial_no?: string; contract_no?: string }) => {
+  const openReceivableDetail = (contract: { serial_no?: string; contract_no?: string }, amountFilter?: ReceivableDetailAmountFilter) => {
     const contractNo = String(contract.serial_no || contract.contract_no || "").trim();
-    if (!contractNo) return;
-    setDetailContext({ contract_no: contractNo, return_view: receivableDetailReturnView(initialView) });
+    if (!contractNo && !amountFilter) return;
+    const context = buildReceivableDetailContext(contractNo, initialView, amountFilter);
+    setDetailContext(context);
     try {
-      sessionStorage.setItem("sunhold:receivable-detail-context", JSON.stringify({ contract_no: contractNo, return_view: receivableDetailReturnView(initialView) }));
+      sessionStorage.setItem("sunhold:receivable-detail-context", JSON.stringify(context));
     } catch {
       // The detail page can still open from its menu when session storage is unavailable.
     }
     onNavigate?.("contract-receivable-detail");
   };
-  const openCase = async (serialNo: unknown) => {
+  const openCase = async (serialNo: unknown, returnContractNo?: unknown) => {
     const value = String(serialNo || "").trim();
     if (!value) return;
     try {
       const record = await resolveDetailRelation("case", { serial_no: value });
       if (!record) return message.warning("未找到关联案件或当前账号无权查看");
       rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
-      onNavigate?.("case-company");
+      const contractNo = String(returnContractNo || detailContext?.contract_no || "").trim();
+      if (contractNo && detailContext?.return_view) {
+        try {
+          sessionStorage.setItem("sunhold:receivable-detail-context", JSON.stringify({ contract_no: contractNo, return_view: detailContext.return_view, amount_filter: detailContext.amount_filter }));
+        } catch {
+          // Returning to the unfiltered detail list remains available when session storage is unavailable.
+        }
+      }
+      try {
+        sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({ route: "contract-receivable-detail", page: 1, pageSize: 10 }));
+      } catch {
+        // The case detail can still be closed to the current case list.
+      }
+      onNavigate?.(buildReceivableCaseDetailRoute(record));
     } catch (error: any) { message.error(error?.response?.data?.detail || "关联案件加载失败"); }
   };
   const openCustomer = async (name: unknown) => {
@@ -175,10 +215,19 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     if (query.customer && !contract.customer.toLowerCase().includes(String(query.customer).toLowerCase())) return false;
     if (query.case_no && !String(contract.data.case_no || "").toLowerCase().includes(String(query.case_no).toLowerCase())) return false;
     if (query.source_person && !String(contract.data.source_person || contract.owner).toLowerCase().includes(String(query.source_person).toLowerCase())) return false;
+    if (!matchesReceivableDetailAmountFilter(item, contract, detailContext?.amount_filter)) return false;
     return true;
   }), [receivables, contractById, detailContext, query]);
   const detailSummary = useMemo(() => calculateReceivablesDetailTotals(detailRows, contractById), [detailRows, contractById]);
-  const renderDetailSummaryRow = (totals: Record<string, number>) => <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{money(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr>;
+  const listSummary = useMemo(() => calculateReceivablesListTotals(visibleContracts), [visibleContracts]);
+  const renderDetailSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{money(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr> : null;
+  const renderReceivablesListSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-list-summary-row"><td /><td /><td />
+    <td>{money(totals.official_paid)}</td><td>{money(totals.official_received)}</td>
+    <td><Button type="link" onClick={() => openReceivableDetail({}, "official-unreceived")}>{money(totals.official_unreceived)}</Button></td>
+    <td><Button type="link" onClick={() => openReceivableDetail({}, "official-loss")}>{money(totals.official_loss)}</Button></td>
+    <td>{money(totals.agency_total)}</td><td>{money(totals.agency_received)}</td>
+    <td><Button type="link" onClick={() => openReceivableDetail({}, "agency-due")}>{money(totals.agency_due)}</Button></td>
+    {Array.from({ length: 4 }, (_, index) => <td key={index} />)}</tr> : null;
 
   const openCreateReceivable = () => {
     receivableForm.resetFields();
@@ -206,11 +255,11 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     { title: "合同状态", dataIndex: "status", width: 90 },
     { title: "官费支付金额", key: "official_paid", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.official_paid) },
     { title: "官费到账金额", key: "official_received", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.official_received) },
-    { title: "官费未到金额", key: "official_unreceived", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.official_unreceived) },
-    { title: "官费亏损金额", key: "official_loss", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.official_loss) },
+    { title: "官费未到金额", key: "official_unreceived", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openReceivableDetail(row, "official-unreceived")}>{money(row.data.official_unreceived)}</Button> },
+    { title: "官费亏损金额", key: "official_loss", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openReceivableDetail(row, "official-loss")}>{money(row.data.official_loss)}</Button> },
     { title: "代理费总金额", key: "agency_total", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.agency_total) },
     { title: "代理费到账金额", key: "agency_received", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.agency_received) },
-    { title: "代理费待收金额", key: "agency_due", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.agency_due) },
+    { title: "代理费待收金额", key: "agency_due", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openReceivableDetail(row, "agency-due")}>{money(row.data.agency_due)}</Button> },
     { title: "案源人", key: "source", width: 90, render: (_: unknown, row: Contract) => row.data.source_person || row.owner },
     { title: "客户管理人", key: "manager", width: 100, render: (_: unknown, row: Contract) => row.data.customer_manager || "—" },
     { title: "签订日期", key: "signed_at", width: 105, render: (_: unknown, row: Contract) => row.data.signed_at || "—" },
@@ -228,7 +277,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
         { title: "代理费待收金额", key: "agency_due", width: 110, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(contractById.get(row.contract_record_id)?.data.agency_due) },
     { title: "案号", key: "case_no", width: 130, render: (_: unknown, row: Receivable) => {
       const caseNo = contractById.get(row.contract_record_id)?.data.case_no;
-      return caseNo ? <Button type="link" onClick={() => openCase(caseNo)}>{caseNo}</Button> : "—";
+              return caseNo ? <Button type="link" className="receivable-case-link" style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }} onClick={() => void openCase(caseNo, row.contract_no)}>{caseNo}</Button> : "—";
     } },
     { title: "案件阶段", dataIndex: "phase", width: 110 },
     { title: "案件类型", key: "case_type", width: 110, render: (_: unknown, row: Receivable) => contractById.get(row.contract_record_id)?.data.case_type || "—" },
@@ -272,10 +321,10 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
       </Form.Item>
     </Form>
     {detailView ? (
-      <><table className="contract-detail-summary-top"><tbody>{renderDetailSummaryRow(detailSummary)}</tbody></table><Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ current: detailPage, pageSize: detailPageSize, showSizeChanger: true, pageSizeOptions: receivablesDetailPageSizes, showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setDetailPage(page); setDetailPageSize(pageSize); }, showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderDetailSummaryRow(detailSummary)}</Table.Summary>} />
+      <>{shouldRenderReceivablesDetailSummary(detailRows.length) && <table className="contract-detail-summary-top"><tbody>{renderDetailSummaryRow(detailSummary, true)}</tbody></table>}<Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ current: detailPage, pageSize: detailPageSize, showSizeChanger: true, pageSizeOptions: receivablesDetailPageSizes, showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setDetailPage(page); setDetailPageSize(pageSize); }, showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderDetailSummaryRow(detailSummary, shouldRenderReceivablesDetailSummary(detailRows.length))}</Table.Summary>} />
       {shouldShowReceivablesDetailSinglePageJumper(detailRows.length, detailPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setDetailPage(1)}>GO</Button></Space>}</>
     ) : (
-      <><Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={shouldUseMyReceivablesPagination(initialView) ? [...listColumns, { title: "", key: "legacy-empty-operation", width: 80 }] : listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} />
+      <>{visibleContracts.length > 0 && <table className="contract-list-summary-top"><tbody>{renderReceivablesListSummaryRow(listSummary, true)}</tbody></table>}<Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={shouldUseMyReceivablesPagination(initialView) ? [...listColumns, { title: "", key: "legacy-empty-operation", width: 80 }] : listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderReceivablesListSummaryRow(listSummary, visibleContracts.length > 0)}</Table.Summary>} />
       {shouldShowMyReceivablesSinglePageJumper(initialView, visibleContracts.length, listPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setListPage(1)}>GO</Button></Space>}</>
     )}
     <div className="contract-bottom-actions">{shouldShowReceivableCreateAction(detailView) && <Button type="primary" onClick={openCreateReceivable}>新增应收计划</Button>}<Button onClick={exportExcel}>导出Excel</Button></div>

@@ -8,5 +8,5 @@ test('receivables detail totals seven amount columns once per contract and rende
   const totals = source.match(/export const calculateReceivablesDetailTotals = \(([^)]*)\) => ([\s\S]*?\n\};)/)
   assert.ok(totals, 'detail totals must aggregate unique contracts')
   assert.match(source, /const detailSummary = useMemo\(\(\) => calculateReceivablesDetailTotals\(detailRows, contractById\)/)
-  assert.match(source, /renderDetailSummaryRow\(detailSummary\)[\s\S]*?renderDetailSummaryRow\(detailSummary\)/)
+  assert.match(source, /renderDetailSummaryRow\(detailSummary[^)]*\)[\s\S]*?renderDetailSummaryRow\(detailSummary[^)]*\)/)
 })
