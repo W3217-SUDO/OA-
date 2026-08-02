@@ -327,6 +327,26 @@ const paymentPrintStatusField = (initialView: string) =>
 const paymentWriteoffClearQuery = (initialView: string) =>
   initialView === "finance-payment-writeoff" ? { status: "待核销" } : {};
 
+const paymentPackagePageSizeOptions = [10, 15, 20, 50, 100, 200];
+
+const paymentPackageRequestParams = (
+  initialView: string,
+  query: Record<string, any>,
+  page: number,
+  pageSize: number,
+) => {
+  const status = String(
+    initialView === "finance-internal-writeoff"
+      ? "待核销"
+      : query.status || query.routeField3 || "",
+  ).trim();
+  return {
+    page,
+    page_size: pageSize,
+    ...(status ? { status } : {}),
+  };
+};
+
 const paymentQueryQuickJumper = (initialView: string) =>
   initialView === "finance-payment-query" ? { goButton: "GO" } : undefined;
 
@@ -683,6 +703,11 @@ export default function FinanceCenterPage({
     useState("");
   const [refundReviewFees, setRefundReviewFees] = useState<Fee[]>([]);
   const [paymentPackages, setPaymentPackages] = useState<Fee[]>([]);
+  const [paymentPackageMeta, setPaymentPackageMeta] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 15,
+  });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [summary, setSummary] = useState<any>({
@@ -1378,6 +1403,22 @@ export default function FinanceCenterPage({
       },
     };
   };
+  const loadPaymentPackages = async (
+    query: Record<string, any>,
+    page = 1,
+    pageSize = paymentPackageMeta.pageSize,
+  ) => {
+    const response = await api.get("/finance/payment-packages", {
+      params: paymentPackageRequestParams(initialView, query, page, pageSize),
+    });
+    setPaymentPackages(response.data.items || []);
+    setPaymentPackageMeta({
+      total: Number(response.data.total || 0),
+      page: Number(response.data.page || page),
+      pageSize: Number(response.data.page_size || pageSize),
+    });
+    return response;
+  };
   const load = async () => {
     setLoading(true);
     setFinanceDataReady(false);
@@ -1441,7 +1482,16 @@ export default function FinanceCenterPage({
         api.get("/auth/me"),
         api.get("/finance/settlements/pending"),
         api.get("/finance/fees/refund-review-candidates"),
-        api.get("/finance/payment-packages"),
+        api.get("/finance/payment-packages", {
+          params: paymentPackageRequestParams(
+            initialView,
+            initialView === "finance-internal-writeoff"
+              ? { status: "待核销" }
+              : {},
+            1,
+            paymentPackageMeta.pageSize,
+          ),
+        }),
         isInternalDetailRoute
           ? api.get("/finance/internal-fees", {
               params: internalDetailParams(
@@ -1601,6 +1651,11 @@ export default function FinanceCenterPage({
       setPendingSettlements(settlementRes.data.items);
       setRefundReviewFees(refundReviewRes.data.items);
       setPaymentPackages(paymentPackageRes.data.items);
+      setPaymentPackageMeta({
+        total: Number(paymentPackageRes.data.total || 0),
+        page: Number(paymentPackageRes.data.page || 1),
+        pageSize: Number(paymentPackageRes.data.page_size || paymentPackageMeta.pageSize),
+      });
       if (isInternalDetailRoute) {
         setInternalDetailRows(internalDetailRes.data.items || []);
         setInternalDetailMeta({
@@ -1740,6 +1795,7 @@ export default function FinanceCenterPage({
     setPaymentPackagePreview(null);
     setPaymentPackageDetail(null);
     setPaymentPackageWriteoffTarget(null);
+    setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
     load();
   }, [initialView, contractPaymentSourceSearch]);
@@ -6057,6 +6113,11 @@ export default function FinanceCenterPage({
         })
         .catch(() => message.error(paymentQueryLegacyErrorMessage));
     }
+    if (activeRouteConfig?.source === "paymentPackages") {
+      void loadPaymentPackages(next, 1, paymentPackageMeta.pageSize).catch(
+        () => message.error("付款包查询失败"),
+      );
+    }
     if (isFeeQueryRoute) {
       void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: any) =>
         message.error(error?.response?.data?.detail || "费用查询失败"),
@@ -6137,6 +6198,19 @@ export default function FinanceCenterPage({
           });
         })
         .catch(() => message.error(paymentQueryLegacyErrorMessage));
+      return;
+    }
+    if (activeRouteConfig?.source === "paymentPackages") {
+      const next =
+        initialView === "finance-internal-writeoff"
+          ? { status: "待核销" }
+          : {};
+      setOriginalQueryDraft(next);
+      setOriginalQuery(next);
+      setSelectedOriginalRows([]);
+      void loadPaymentPackages(next, 1, paymentPackageMeta.pageSize).catch(
+        () => message.error("付款包查询清空失败"),
+      );
       return;
     }
     if (isFeeQueryRoute) {
@@ -8341,6 +8415,8 @@ export default function FinanceCenterPage({
                       ? feeQueryMeta.pageSize
                     : initialView === "finance-payment-audit"
                       ? paymentAuditPageSize
+                    : activeRouteConfig?.source === "paymentPackages"
+                      ? paymentPackageMeta.pageSize
                     : paymentQueryControlledPageSize(
                         initialView,
                         paymentQueryPageSize,
@@ -8370,7 +8446,9 @@ export default function FinanceCenterPage({
                       ? internalDetailMeta.pageSize
                       : 20),
                   pageSizeOptions:
-                    paymentQueryPageSizeOptions(initialView) ??
+                    activeRouteConfig?.source === "paymentPackages"
+                      ? paymentPackagePageSizeOptions
+                      : paymentQueryPageSizeOptions(initialView) ??
                     ([
                     "finance-payment-mine",
                     "finance-settlement-pending",
@@ -8418,6 +8496,16 @@ export default function FinanceCenterPage({
                         },
                       }
                     : {}),
+                  ...(activeRouteConfig?.source === "paymentPackages"
+                    ? {
+                        onShowSizeChange: (_page: number, pageSize: number) => {
+                          setSelectedOriginalRows([]);
+                          void loadPaymentPackages(originalQuery, 1, pageSize).catch(
+                            () => message.error("付款包查询失败"),
+                          );
+                        },
+                      }
+                    : {}),
                   ...(isFeeQueryRoute
                     ? {
                         current: feeQueryMeta.page,
@@ -8433,6 +8521,17 @@ export default function FinanceCenterPage({
                           );
                         },
                       }
+                    : activeRouteConfig?.source === "paymentPackages"
+                      ? {
+                          current: paymentPackageMeta.page,
+                          total: paymentPackageMeta.total,
+                          onChange: (page: number, pageSize: number) => {
+                            setSelectedOriginalRows([]);
+                            void loadPaymentPackages(originalQuery, page, pageSize).catch(
+                              () => message.error("付款包查询失败"),
+                            );
+                          },
+                        }
                     : initialView === "finance-payment-query"
                       ? {
                           current: paymentQueryMeta.page,
@@ -9825,7 +9924,12 @@ export default function FinanceCenterPage({
             name="amount"
             rules={[{ required: true, message: "请确认付款金额." }]}
           >
-            <InputNumber precision={2} style={{ width: "100%" }} />
+            <InputNumber
+              precision={2}
+              readOnly
+              controls={false}
+              style={{ width: "100%" }}
+            />
           </Form.Item>
           <Form.Item
             label="请输入付款日期"
