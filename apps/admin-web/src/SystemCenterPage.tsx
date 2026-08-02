@@ -619,9 +619,11 @@ export default function SystemCenterPage({
         >
           修改
         </Button>
-        <Popconfirm title="确认删除？" onConfirm={() => removeParameter(row)}>
-          <Button type="link" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
+        {category !== "case_type" && (
+          <Popconfirm title="确认删除？" onConfirm={() => removeParameter(row)}>
+            <Button type="link" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        )}
       </Space>
     ),
   };
