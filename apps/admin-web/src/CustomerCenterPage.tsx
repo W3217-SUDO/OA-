@@ -360,6 +360,24 @@ export default function CustomerCenterPage({
       setLoading(false);
     }
   };
+  const queryCustomerList = () => {
+    const requestKeyword = keyword;
+    const requestManagerKeyword = managerKeyword;
+    setSelectedRowKeys([]);
+    setPage(1);
+    setJumpPage("1");
+    void load({
+      keyword: requestKeyword,
+      customerType,
+      managerKeyword: requestManagerKeyword,
+      page: 1,
+    }).finally(() => {
+      if (initialView === "customer-company") {
+        setKeyword("");
+        setManagerKeyword("");
+      }
+    });
+  };
   useEffect(() => {
     load();
   }, [initialView, page, pageSize]);
@@ -1226,9 +1244,7 @@ export default function CustomerCenterPage({
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={() => {
-              void load();
-            }}
+            onPressEnter={queryCustomerList}
             allowClear
           />
           <label>客户/当事人</label>
@@ -1243,11 +1259,7 @@ export default function CustomerCenterPage({
             value={managerDisplay}
             onChange={(event) => setManagerKeyword(event.target.value)}
           />
-          <Button type="primary" icon={<SearchOutlined />} onClick={() => {
-            setSelectedRowKeys([]);
-            if (page === 1) void load();
-            else setPage(1);
-          }}>
+          <Button type="primary" icon={<SearchOutlined />} onClick={queryCustomerList}>
             查询
           </Button>
           <Button icon={<ReloadOutlined />} onClick={() => {
