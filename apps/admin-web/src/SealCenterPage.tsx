@@ -921,6 +921,7 @@ export default function SealCenterPage({
                 "seal-audit-stamping",
                 "seal-audit-refused",
                 "seal-admin-pending",
+                "seal-admin-used",
               ].includes(
                 initialView,
               )
