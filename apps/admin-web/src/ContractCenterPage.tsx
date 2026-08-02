@@ -33,6 +33,7 @@ import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./cus
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
 import { createContractCustomerContextConsumer, createContractNumber, type LinkedCustomerContext } from "./contractCreateContext";
+import { filterPendingContractApprovals } from "./contractAuditScope";
 import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
@@ -408,7 +409,7 @@ export default function ContractCenterPage({
   const rows = useMemo(() => {
     let list =
       initialView === "contract-audit-pending"
-        ? allRows.filter((x) => x.status === "审批中" && (profile.role === "admin" || x.data.current_approver === profile.username))
+        ? filterPendingContractApprovals(allRows, profile.username)
         : initialView === "contract-audit-refused"
           ? allRows.filter((x) => ["已拒绝", "已驳回"].includes(x.status))
           : initialView === "contract-audit-approved"
