@@ -302,6 +302,11 @@ const matchesContractPaymentSource = (
   String(item.customer || "").trim() === source.customer &&
   Number(item.data?.amount) === source.amount;
 
+const paymentPackageEmptySelectionMessage = (initialView: string) =>
+  initialView === "finance-payment-print"
+    ? "请选择需要导出的请款单."
+    : "请选择提成.";
+
 export default function FinanceCenterPage({
   initialView,
   platformMode = false,
@@ -5670,7 +5675,7 @@ export default function FinanceCenterPage({
     if (!targets.length) {
       Modal.info({
         title: "提示",
-        content: "请选择提成.",
+        content: paymentPackageEmptySelectionMessage(initialView),
         okText: "确定",
       });
       return;
