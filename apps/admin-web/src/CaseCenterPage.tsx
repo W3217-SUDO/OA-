@@ -46,6 +46,19 @@ import {
   getLegacyCaseListOperationLabels,
   getLegacyCaseListOperationState,
 } from "./caseLegacyParity";
+import {
+  buildCaseCreatePayload,
+  buildCaseDuplicateRequest,
+  buildCaseMergePayload,
+  buildCasePaymentContext,
+  buildCaseProgressPayload,
+  buildClueConversionPayload,
+  getCaseCreateValidationError,
+  getCaseEditValidationError,
+  getCaseMutationBlockReason,
+  getClueConversionIssues,
+  normalizeCaseEditPayload,
+} from "./caseSecondBatchParity";
 import "./case-center.css";
 
 type CaseRow = {
@@ -436,6 +449,7 @@ export default function CaseCenterPage({
   const [caseLogOpen, setCaseLogOpen] = useState(false);
   const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
   const [batchFeeOpen, setBatchFeeOpen] = useState(false);
+  const [clueConversionOpen, setClueConversionOpen] = useState(false);
   const [editingCounselCase, setEditingCounselCase] = useState<CaseRow | null>(null);
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
   const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
@@ -460,6 +474,7 @@ export default function CaseCenterPage({
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const [createForm] = Form.useForm();
+  const [clueConversionForm] = Form.useForm();
   const createCustomer = Form.useWatch("customer", createForm);
   const createContractId = Form.useWatch("contract_record_id", createForm);
   const selectedCreateContract = useMemo(() => contracts.find((row) => row.id === createContractId), [contracts, createContractId]);
@@ -694,43 +709,20 @@ export default function CaseCenterPage({
   const advanceCreateStep = async () => {
     if (createStep === 0) {
       const values = createForm.getFieldsValue(true);
-      const warning = !values.customer
-        ? "请选择客户."
-        : !values.contract_record_id
-          ? "请选择合同."
-          : isCounselCreate && !String(values.counsel_type || "").trim()
-            ? "请输入顾问类型."
-            : isCounselCreate && (!values.counsel_range?.[0] || !values.counsel_range?.[1])
-              ? "请选择顾问期限."
-              : !isCounselCreate && !String(values.cause_or_charge || "").trim()
-            ? "请输入案由."
-            : !String(values.title || "").trim()
-              ? "请输入案件名称."
-              : !(values.handling_lawyers || []).length
-                ? "请按顺序录入经办律师."
-                : "";
+      const warning = getCaseCreateValidationError(values, isCounselCreate ? "counsel" : "normal");
       if (warning) {
         Modal.info({ title: "提示", content: warning, okText: "确定" });
         return;
       }
       setCreateSubmitting(true);
       try {
-        const response = await api.post("/cases", {
-          contract_record_id: values.contract_record_id,
-          title: String(values.title || "").trim(),
-          status: "新案待分配",
-          owner: values.owner || profile.username || "admin",
-          case_type: values.case_type || createRouteType,
-          client_position: isCounselCreate ? "" : values.client_position || "",
-          cause_or_charge: isCounselCreate ? "" : String(values.cause_or_charge || "").trim(),
-          right_type: isCounselCreate ? "" : String(values.right_type || "").trim(),
-          source_person: String(values.source_person || "").trim(),
-          counsel_type: isCounselCreate ? String(values.counsel_type || "").trim() : "",
-          counsel_start: isCounselCreate ? values.counsel_range[0].format("YYYY-MM-DD") : null,
-          counsel_end: isCounselCreate ? values.counsel_range[1].format("YYYY-MM-DD") : null,
-          handling_lawyers: values.handling_lawyers || [],
-          assistant: values.assistant || "",
-        });
+        const response = await api.post("/cases", buildCaseCreatePayload(values, {
+          mode: isCounselCreate ? "counsel" : "normal",
+          routeType: createRouteType,
+          owner: profile.username || "admin",
+          counselStart: values.counsel_range?.[0],
+          counselEnd: values.counsel_range?.[1],
+        }));
         const newCaseId = Number(response.data?.id);
         if (!Number.isInteger(newCaseId) || newCaseId <= 0) {
           throw new Error("案件创建接口没有返回有效案件 ID");
@@ -1061,8 +1053,10 @@ export default function CaseCenterPage({
     }
   };
   const duplicateCase = async (row: CaseRow) => {
+    const blocked = getCaseMutationBlockReason(row.status);
+    if (blocked) return message.warning(blocked);
     try {
-      const { data } = await api.post(`/cases/${row.id}/duplicate`);
+      const { data } = await api.post(buildCaseDuplicateRequest(row).path);
       message.success(`已复制为新案件：${data.serial_no}`);
       await openCounselDetail(data);
       void load();
@@ -1072,9 +1066,11 @@ export default function CaseCenterPage({
   };
   const submitCaseMerge = async () => {
     if (!mergingCase) return;
+    const blocked = getCaseMutationBlockReason(mergingCase.status);
+    if (blocked) return message.warning(blocked);
     try {
       const values = await mergeCaseForm.validateFields();
-      const { data } = await api.post(`/cases/${mergingCase.id}/merge`, values);
+      const { data } = await api.post(`/cases/${mergingCase.id}/merge`, buildCaseMergePayload(values));
       message.success(`已合并案件 ${data.source.serial_no}：迁移费用 ${data.moved_fees} 条、案件文件 ${data.moved_attachments} 个`);
       setMergingCase(null);
       mergeCaseForm.resetFields();
@@ -1168,6 +1164,26 @@ export default function CaseCenterPage({
       return;
     }
     onNavigate?.("clue-company-draft");
+  };
+  const openClueConversion = () => {
+    clueConversionForm.resetFields();
+    clueConversionForm.setFieldsValue({ case_type: "民事案件" });
+    setClueConversionOpen(true);
+  };
+  const submitClueConversion = async () => {
+    const values = await clueConversionForm.validateFields();
+    const issues = getClueConversionIssues({ clueIds: values.clue_ids, contractRecordId: values.contract_record_id, clues: caseClues });
+    if (issues.length) return message.warning(issues[0]);
+    try {
+      const { data } = await api.post("/investigations/clues/batch-cases", buildClueConversionPayload(values));
+      setClueConversionOpen(false);
+      clueConversionForm.resetFields();
+      if (data.failed) message.warning(`已生成 ${data.created || 0} 件案件，${data.failed} 条线索未转案`);
+      else message.success(`已从线索生成 ${data.created || 0} 件案件`);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "线索转案件失败");
+    }
   };
   const openRelatedOriginalCase = (target: { id?: number; serial_no?: unknown }) => {
     const id = Number(target.id || 0) || undefined;
@@ -1463,20 +1479,10 @@ export default function CaseCenterPage({
   const saveNormalCaseBasic = async () => {
     if (!editingNormalCase) return;
     const values = await normalCaseEditForm.validateFields();
+    const validationError = getCaseEditValidationError(values);
+    if (validationError) return message.warning(validationError);
     try {
-      const { data } = await api.put(`/cases/${editingNormalCase.id}/normal-basic`, {
-        ...values,
-        title: values.title.trim(),
-        case_phase: values.case_phase.trim(),
-        cause_or_charge: values.cause_or_charge.trim(),
-        handling_lawyers: values.handling_lawyers || [],
-        assistant: values.assistant || "",
-        business_owner: values.business_owner || "",
-        investigator: values.investigator || "",
-        investigation_clue_ids: values.investigation_clue_ids || [],
-        right_type: values.right_type || "",
-        comment: values.comment || "",
-      });
+      const { data } = await api.put(`/cases/${editingNormalCase.id}/normal-basic`, normalizeCaseEditPayload(values, "normal"));
       message.success("案件基本信息已保存");
       setEditingNormalCase(null);
       setViewingCounselCase(data);
@@ -1499,8 +1505,10 @@ export default function CaseCenterPage({
   const saveArbitrationBasic = async () => {
     if (!editingArbitrationCase) return;
     const values = await arbitrationBasicForm.validateFields();
+    const validationError = getCaseEditValidationError(values);
+    if (validationError) return message.warning(validationError);
     try {
-      const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, {...values, title:values.title.trim(),case_phase:values.case_phase.trim(),cause_or_charge:values.cause_or_charge.trim(),handling_lawyers:values.handling_lawyers||[],assistant:values.assistant||"",investigator:values.investigator||"",investigation_clue_ids:values.investigation_clue_ids||[],comment:values.comment||""});
+      const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, normalizeCaseEditPayload(values, "arbitration"));
       message.success("仲裁案件基本信息已保存"); setEditingArbitrationCase(null); setViewingCounselCase(data); await load();
     } catch(error:any) { message.error(error?.response?.data?.detail||"仲裁案件基本信息保存失败"); }
   };
@@ -1647,7 +1655,13 @@ export default function CaseCenterPage({
     setPaymentPackageLoading(true);
     try {
       const { data } = await api.post("/finance/payment-packages/preview", { fee_ids: [row.id] });
-      setPaymentPackagePreview({ ...data, source: { fee_id: row.id, request_no: row.serial_no, case_no: row.data.case_no || viewingCounselCase?.serial_no || "", customer: row.customer, amount: row.data.amount, title: row.title } });
+      const caseContext = buildCasePaymentContext({
+        caseRecordId: row.data.case_id || row.data.case_record_id || viewingCounselCase?.id,
+        caseNo: row.data.case_no || viewingCounselCase?.serial_no,
+        feeId: row.id,
+        feeNo: row.serial_no,
+      });
+      setPaymentPackagePreview({ ...data, source: { ...caseContext, request_no: row.serial_no, customer: row.customer, amount: row.data.amount, title: row.title } });
     } catch (error: any) { message.error(error?.response?.data?.detail || "付款申请预览失败"); }
     finally { setPaymentPackageLoading(false); }
   };
@@ -1739,10 +1753,7 @@ export default function CaseCenterPage({
     if (!progressEditing) return;
     const v = await progressForm.validateFields();
     try {
-      await api.post(`/cases/${progressEditing.id}/progress`, {
-        ...v,
-        judgment_date: v.judgment_date?.format("YYYY-MM-DD"),
-      });
+      await api.post(`/cases/${progressEditing.id}/progress`, buildCaseProgressPayload(v));
       message.success("案件进展已保存，阶段已按要素自动更新");
       setProgressEditing(null);
       load();
@@ -2664,6 +2675,7 @@ export default function CaseCenterPage({
                 </Checkbox>
               </>
             )}
+            {tab === "cases" && <Button onClick={openClueConversion}>从线索转案件</Button>}
             <Button icon={<ReloadOutlined />} onClick={load}>
               刷新
             </Button>
@@ -2786,6 +2798,32 @@ export default function CaseCenterPage({
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        width={720}
+        open={clueConversionOpen}
+        title="从调查线索批量转案件"
+        okText="生成案件"
+        cancelText="取消"
+        onOk={submitClueConversion}
+        onCancel={() => { setClueConversionOpen(false); clueConversionForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Alert type="info" showIcon title="仅可选择已完成取证且尚未转案的线索；系统会校验线索客户与合同客户一致。" style={{ marginBottom: 12 }} />
+        <Form form={clueConversionForm} layout="vertical">
+          <Form.Item label="调查线索" name="clue_ids" rules={[{ required: true, message: "请选择至少一条调查线索" }]}>
+            <Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map((item) => ({ value: item.id, label: `${item.serial_no}｜${item.title}` }))} />
+          </Form.Item>
+          <Form.Item label="关联合同" name="contract_record_id" rules={[{ required: true, message: "请选择合同" }]}>
+            <Select showSearch optionFilterProp="label" options={createContractOptions} />
+          </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="案件类型" name="case_type" rules={[{ required: true }]}>
+              <Select options={caseTypeOptions.filter((item) => item.value !== "法律顾问")} />
+            </Form.Item>
+            <Form.Item label="法院" name="court"><Input /></Form.Item>
+          </div>
         </Form>
       </Modal>
       <Modal
