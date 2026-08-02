@@ -361,6 +361,12 @@ const paymentQueryPageSizeOptions = (initialView: string) =>
 const paymentQueryDefaultPageSize = (initialView: string) =>
   initialView === "finance-payment-query" ? 15 : undefined;
 
+const paymentQueryControlledPageSize = (
+  initialView: string,
+  selectedPageSize: number,
+) =>
+  initialView === "finance-payment-query" ? selectedPageSize : undefined;
+
 const paymentQueryFeeTypeControl = (initialView: string) =>
   initialView === "finance-payment-query" ? undefined : "feeType";
 
@@ -641,6 +647,9 @@ export default function FinanceCenterPage({
   const [originalQuery, setOriginalQuery] = useState<Record<string, any>>({});
   const [paymentAuditPageSize, setPaymentAuditPageSize] = useState(15);
   const [paymentQueryQuickPage, setPaymentQueryQuickPage] = useState("1");
+  const [paymentQueryPageSize, setPaymentQueryPageSize] = useState(
+    paymentQueryDefaultPageSize(initialView) ?? 15,
+  );
   const [internalDetailRows, setInternalDetailRows] = useState<Fee[]>([]);
   const [internalDetailMeta, setInternalDetailMeta] = useState({
     total: 0,
@@ -5693,7 +5702,10 @@ export default function FinanceCenterPage({
     feeQueryRows,
   ]);
   const submitPaymentQueryQuickPage = () => {
-    const pageSize = paymentQueryDefaultPageSize(initialView) ?? 15;
+    const pageSize =
+      paymentQueryControlledPageSize(initialView, paymentQueryPageSize) ??
+      paymentQueryDefaultPageSize(initialView) ??
+      15;
     const totalPages = Math.max(1, Math.ceil(configuredRows.length / pageSize));
     const result = paymentQueryQuickPageResult(
       paymentQueryQuickPage,
@@ -8071,7 +8083,10 @@ export default function FinanceCenterPage({
                       ? feeQueryMeta.pageSize
                     : initialView === "finance-payment-audit"
                       ? paymentAuditPageSize
-                    : paymentQueryDefaultPageSize(initialView) ??
+                    : paymentQueryControlledPageSize(
+                        initialView,
+                        paymentQueryPageSize,
+                      ) ?? paymentQueryDefaultPageSize(initialView) ??
                       ([
                     "finance-payment-mine",
                     "finance-internal-mine",
@@ -8128,6 +8143,14 @@ export default function FinanceCenterPage({
                       : undefined),
                   showQuickJumper: paymentQueryQuickJumper(initialView),
                   showSizeChanger: true,
+                  ...(initialView === "finance-payment-query"
+                    ? {
+                        onShowSizeChange: (_page: number, pageSize: number) => {
+                          setSelectedOriginalRows([]);
+                          setPaymentQueryPageSize(pageSize);
+                        },
+                      }
+                    : {}),
                   ...(initialView === "finance-payment-audit"
                     ? {
                         onShowSizeChange: (_page: number, pageSize: number) => {
@@ -8331,7 +8354,10 @@ export default function FinanceCenterPage({
               {paymentQueryShowsSinglePageGo(
                 initialView,
                 configuredRows.length,
-                paymentQueryDefaultPageSize(initialView) ?? 20,
+                paymentQueryControlledPageSize(
+                  initialView,
+                  paymentQueryPageSize,
+                ) ?? paymentQueryDefaultPageSize(initialView) ?? 20,
               ) && (
                 <div
                   className="finance-payment-query-single-page-go"
