@@ -1687,6 +1687,18 @@ class FinanceActionInput(BaseModel):
     comment: str = ""
 
 
+class FinancePaymentCancelInput(BaseModel):
+    """Reason required when an ordinary finance payment is withdrawn."""
+
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class FinancePaymentRollbackInput(BaseModel):
+    """Optional operator note for returning a pre-payment request to draft."""
+
+    comment: str = Field(default="", max_length=1000)
+
+
 class FinanceSettlementMarkInput(BaseModel):
     fee_ids: list[int] = Field(min_length=1, max_length=100)
     comment: str = Field(default="", max_length=500)
@@ -6608,6 +6620,40 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
         lines = (await db.scalars(select(ContractPaymentLine).where(ContractPaymentLine.payment_record_id == item.id).order_by(ContractPaymentLine.id))).all()
         result.append({**await _record_dict_for_identity(item, identity, db), "lines": [{"id": line.id, "contract_object_id": line.contract_object_id, "case_record_id": line.case_record_id, "fee_type": line.fee_type, "requested_amount": line.requested_amount} for line in lines]})
     return {"items": result, "total": len(result)}
+
+
+@app.get(f"{settings.api_prefix}/finance/payment-source/{{source_id}}")
+async def get_finance_payment_source(
+    source_id: int,
+    payment_no: str = Query(min_length=1, max_length=64),
+    contract_no: str = Query(min_length=1, max_length=64),
+    customer: str = Query(min_length=1, max_length=255),
+    amount: float = Query(gt=0),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a contract-payment source by primary key and verify every source field.
+
+    The source id is the indexed lookup key; the remaining values are an
+    identity check so a stale or cross-contract URL cannot silently fall back
+    to the ordinary payment list.
+    """
+    payment = await _ensure_record_module(source_id, "contract_payment", identity, db)
+    data = payment.data or {}
+    try:
+        stored_amount = float(data.get("amount") or 0)
+    except (TypeError, ValueError):
+        stored_amount = None
+    matches = (
+        payment.serial_no.strip() == payment_no.strip()
+        and str(data.get("contract_no") or "").strip() == contract_no.strip()
+        and (payment.customer or "").strip() == customer.strip()
+        and stored_amount is not None
+        and abs(stored_amount - float(amount)) <= 0.001
+    )
+    if not matches:
+        raise HTTPException(status_code=404, detail="合同付款来源不存在或字段不匹配")
+    return await _record_dict_for_identity(payment, identity, db)
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications", status_code=status.HTTP_201_CREATED)
@@ -11756,12 +11802,32 @@ def _new_internal_payment_package_no() -> str:
 
 
 @app.get(f"{settings.api_prefix}/finance/payment-packages")
-async def list_internal_payment_packages(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    items = (await db.scalars(select(BusinessRecord).where(
+async def list_internal_payment_packages(
+    page: int = Query(1, ge=1),
+    page_size: int | None = Query(None, ge=1, le=200),
+    status_filter: str = Query("", alias="status"),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    conditions = [
         BusinessRecord.module == "finance_package",
         *(await _record_scope_conditions(identity, db)),
-    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
-    return {"items": [await _record_dict_for_identity(item, identity, db) for item in items], "total": len(items)}
+    ]
+    if status_filter.strip():
+        conditions.append(BusinessRecord.status == status_filter.strip())
+    total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0
+    query = select(BusinessRecord).where(*conditions).order_by(
+        BusinessRecord.created_at.desc(), BusinessRecord.id.desc()
+    )
+    if page_size is not None:
+        query = query.offset((page - 1) * page_size).limit(page_size)
+    items = (await db.scalars(query)).all()
+    return {
+        "items": [await _record_dict_for_identity(item, identity, db) for item in items],
+        "total": int(total),
+        "page": page,
+        "page_size": page_size if page_size is not None else len(items),
+    }
 
 
 @app.post(f"{settings.api_prefix}/finance/payment-packages/preview")
@@ -11923,6 +11989,81 @@ async def finance_fee_readiness(fee_id: int, identity: dict = Depends(current_id
     return await _finance_fee_readiness(item, identity, db)
 
 
+FINANCE_PAYMENT_CANCELABLE_STATUSES = {"草稿", "待审批", "已审批", "待付款"}
+FINANCE_PAYMENT_ROLLBACKABLE_STATUSES = {"待审批", "已审批", "待付款"}
+
+
+@app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/cancel")
+async def cancel_finance_payment(
+    fee_id: int,
+    body: FinancePaymentCancelInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await _ensure_record_module(fee_id, "finance", identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status not in FINANCE_PAYMENT_CANCELABLE_STATUSES:
+        raise HTTPException(status_code=409, detail="当前付款申请状态不能撤回")
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="请输入撤回原因")
+    previous = item.status
+    changed_at = datetime.now().isoformat(timespec="seconds")
+    item.status = "已撤回"
+    item.data = {
+        **(item.data or {}),
+        "cancel_reason": reason,
+        "canceled_by": identity["username"],
+        "canceled_at": changed_at,
+    }
+    db.add(WorkflowEvent(
+        record_id=item.id,
+        action="付款申请撤回",
+        from_status=previous,
+        to_status=item.status,
+        operator=identity["username"],
+        comment=reason,
+    ))
+    await db.commit()
+    await db.refresh(item)
+    return await _record_dict_for_identity(item, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/rollback")
+async def rollback_finance_payment(
+    fee_id: int,
+    body: FinancePaymentRollbackInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有付款回滚权限")
+    item = await _ensure_record_module(fee_id, "finance", identity, db)
+    if item.status not in FINANCE_PAYMENT_ROLLBACKABLE_STATUSES:
+        raise HTTPException(status_code=409, detail="当前付款申请状态不能回滚")
+    previous = item.status
+    changed_at = datetime.now().isoformat(timespec="seconds")
+    comment = body.comment.strip()
+    item.status = "草稿"
+    item.data = {
+        **(item.data or {}),
+        "rollback_comment": comment,
+        "rolled_back_by": identity["username"],
+        "rolled_back_at": changed_at,
+    }
+    db.add(WorkflowEvent(
+        record_id=item.id,
+        action="付款申请回滚",
+        from_status=previous,
+        to_status=item.status,
+        operator=identity["username"],
+        comment=comment,
+    ))
+    await db.commit()
+    await db.refresh(item)
+    return await _record_dict_for_identity(item, identity, db)
+
+
 @app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/submit")
 async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _ensure_record_module(fee_id, "finance", identity, db)
@@ -12058,11 +12199,48 @@ async def writeoff_finance_fee(fee_id: int, body: FinanceWriteoffInput, identity
 
 
 @app.get(f"{settings.api_prefix}/finance/transactions")
-async def list_finance_transactions(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    items = (await db.scalars(select(FinanceTransaction).order_by(FinanceTransaction.transaction_date.desc(), FinanceTransaction.id.desc()))).all()
+async def list_finance_transactions(
+    page: int = Query(1, ge=1),
+    page_size: int | None = Query(None, ge=1, le=200),
+    finance_record_id: int | None = Query(None, ge=1),
+    transaction_type: str = "",
+    keyword: str = "",
+    date_from: date | None = None,
+    date_to: date | None = None,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    conditions = []
+    if finance_record_id is not None:
+        conditions.append(FinanceTransaction.finance_record_id == finance_record_id)
+    if transaction_type.strip():
+        conditions.append(FinanceTransaction.transaction_type == transaction_type.strip())
+    if keyword.strip():
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(
+            FinanceTransaction.voucher_no.ilike(like),
+            FinanceTransaction.counterparty.ilike(like),
+            FinanceTransaction.remark.ilike(like),
+        ))
+    if date_from:
+        conditions.append(FinanceTransaction.transaction_date >= date_from)
+    if date_to:
+        conditions.append(FinanceTransaction.transaction_date <= date_to)
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="流水开始日期不能晚于结束日期")
     if identity.get("role") != "admin":
         visible_record_ids = await _visible_record_ids(identity, db)
-        items = [item for item in items if (item.finance_record_id and item.finance_record_id in visible_record_ids) or (not item.finance_record_id and item.operator == identity["username"])]
+        conditions.append(or_(
+            and_(FinanceTransaction.finance_record_id.is_not(None), FinanceTransaction.finance_record_id.in_(visible_record_ids)),
+            and_(FinanceTransaction.finance_record_id.is_(None), FinanceTransaction.operator == identity["username"]),
+        ))
+    total = await db.scalar(select(func.count()).select_from(FinanceTransaction).where(*conditions)) or 0
+    query = select(FinanceTransaction).where(*conditions).order_by(
+        FinanceTransaction.transaction_date.desc(), FinanceTransaction.id.desc()
+    )
+    if page_size is not None:
+        query = query.offset((page - 1) * page_size).limit(page_size)
+    items = (await db.scalars(query)).all()
     ids = {item.finance_record_id for item in items if item.finance_record_id}
     records = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids)))).all()} if ids else {}
     transaction_ids = {item.id for item in items}
@@ -12071,7 +12249,12 @@ async def list_finance_transactions(identity: dict = Depends(current_identity), 
     for voucher in voucher_rows:
         vouchers.setdefault(int(voucher.finance_transaction_id or 0), []).append(voucher)
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
-    return {"items": [_finance_transaction_dict(item, records.get(item.finance_record_id), vouchers.get(item.id, []), show_amount=show_amount) for item in items], "total": len(items)}
+    return {
+        "items": [_finance_transaction_dict(item, records.get(item.finance_record_id), vouchers.get(item.id, []), show_amount=show_amount) for item in items],
+        "total": int(total),
+        "page": page,
+        "page_size": page_size if page_size is not None else len(items),
+    }
 
 
 @app.post(f"{settings.api_prefix}/finance/transactions", status_code=status.HTTP_201_CREATED)

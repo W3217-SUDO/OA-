@@ -172,3 +172,13 @@ test("source mode renders explicit invalid and missing-target failures plus exac
     /onNavigate\?\.\(contractPaymentSource\.returnPage\)/,
   );
 });
+
+test("source mode resolves the target through the bounded backend composite lookup", () => {
+  assert.match(
+    source,
+    /finance\/payment-source\/\$\{contractPaymentSource\.sourceId\}/,
+  );
+  assert.match(source, /payment_no:\s*contractPaymentSource\.paymentNo/);
+  assert.match(source, /contract_no:\s*contractPaymentSource\.contractNo/);
+  assert.match(source, /amount:\s*contractPaymentSource\.amount/);
+});

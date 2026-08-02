@@ -1419,6 +1419,15 @@ export default function FinanceCenterPage({
                 page_size: paymentQueryPageSize,
               },
             })
+          : contractPaymentSource.active && contractPaymentSource.ok
+            ? api.get(`/finance/payment-source/${contractPaymentSource.sourceId}`, {
+                params: {
+                  payment_no: contractPaymentSource.paymentNo,
+                  contract_no: contractPaymentSource.contractNo,
+                  customer: contractPaymentSource.customer,
+                  amount: contractPaymentSource.amount,
+                },
+              })
           : api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
         api.get("/records", { params: { module: "invoice", page_size: 100 } }),
         api.get("/records", { params: { module: "refund", page_size: 100 } }),
@@ -1560,8 +1569,11 @@ export default function FinanceCenterPage({
           pageSize: Number(feeRes.data.page_size || paymentQueryPageSize),
         });
       }
+      const contractPaymentItems = contractPaymentSource.active && contractPaymentSource.ok
+        ? [contractPaymentRes.data]
+        : contractPaymentRes.data.items || [];
       setContractPayments(
-        (contractPaymentRes.data.items || []).map((item: Fee) => ({
+        contractPaymentItems.map((item: Fee) => ({
           ...item,
           data: {
             ...(item.data || {}),
