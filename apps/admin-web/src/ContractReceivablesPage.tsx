@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Select, Table } from "antd";
+import { Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -36,6 +36,8 @@ type Contract = {
 type Profile = { username: string; display_name: string; department: string };
 
 const money = (value: unknown) => Number(value || 0).toFixed(2);
+export const shouldUseMyReceivablesPagination = (initialView: string) => initialView === "contract-receivable-mine";
+export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => initialView === "contract-receivable-mine" && rowCount > 0 && rowCount <= pageSize;
 
 export default function ContractReceivablesPage({ initialView, onNavigate }: { initialView: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
@@ -44,6 +46,8 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState<Record<string, any>>({});
   const [creating, setCreating] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(10);
   const [form] = Form.useForm();
   const [receivableForm] = Form.useForm();
   const detailView = initialView === "contract-receivable-detail";
@@ -212,7 +216,8 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     {detailView ? (
       <Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ pageSize: 15, showTotal: (total) => `共 ${total} 条` }} />
     ) : (
-      <Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ pageSize: 15, showTotal: (total) => `共 ${total} 条` }} />
+      <><Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} />
+      {shouldShowMyReceivablesSinglePageJumper(initialView, visibleContracts.length, listPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setListPage(1)}>GO</Button></Space>}</>
     )}
     <div className="contract-bottom-actions"><Button type="primary" onClick={openCreateReceivable}>新增应收计划</Button><Button onClick={exportExcel}>导出Excel</Button></div>
     <Modal
