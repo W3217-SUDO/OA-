@@ -446,7 +446,7 @@ export default function OrganizationCenterPage({
             scroll={{ x: 960 }}
             locale={{ emptyText: emptyContent }}
             pagination={{
-              pageSize: 20,
+              pageSize: 15,
               showTotal: (total) => `共 ${total} 条`,
             }}
           />
