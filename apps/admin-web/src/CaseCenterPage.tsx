@@ -47,10 +47,12 @@ import {
   getLegacyCaseListOperationState,
 } from "./caseLegacyParity";
 import {
+  CASE_EXECUTION_STATUSES,
   buildCaseCreatePayload,
   buildCaseDuplicateRequest,
   buildCaseMergePayload,
   buildCasePaymentContext,
+  buildCaseExecutionStatusPayload,
   buildCaseProgressPayload,
   buildClueConversionPayload,
   getCaseCreateValidationError,
@@ -425,6 +427,7 @@ export default function CaseCenterPage({
     approved: boolean;
   } | null>(null);
   const [progressEditing, setProgressEditing] = useState<CaseRow | null>(null);
+  const [executionStatusEditing, setExecutionStatusEditing] = useState<CaseRow[] | null>(null);
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
@@ -501,6 +504,7 @@ export default function CaseCenterPage({
   const [taskForm] = Form.useForm();
   const [feeForm] = Form.useForm();
   const [progressForm] = Form.useForm();
+  const [executionStatusForm] = Form.useForm();
   const [companyScheduleCourtInfoForm] = Form.useForm();
   const [counselEditForm] = Form.useForm();
   const [normalCaseEditForm] = Form.useForm();
@@ -1679,6 +1683,7 @@ export default function CaseCenterPage({
   };
   const openProgress = (row: CaseRow) => {
     if (!getCaseCapability(row).can_update_progress) return message.warning("当前账号没有案件进展维护权限");
+    if (["待归档审核", "已归档", "已合并"].includes(row.status)) return message.warning("归档中、已归档或已合并案件不能维护案件进展");
     progressForm.resetFields();
     progressForm.setFieldsValue({
       ...row.data,
@@ -1687,6 +1692,15 @@ export default function CaseCenterPage({
         : undefined,
     });
     setProgressEditing(row);
+  };
+  const openExecutionStatus = (rows: CaseRow[]) => {
+    const selected = rows.filter(Boolean);
+    if (!selected.length) return message.warning("请先选择执行案件");
+    if (selected.some((row) => !getCaseCapability(row).can_update_progress)) return message.warning("当前账号没有案件进展维护权限");
+    if (selected.some((row) => ["待归档审核", "已归档", "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改执行状态");
+    executionStatusForm.resetFields();
+    executionStatusForm.setFieldsValue({ execution_status: selected[0].data.execution_status || CASE_EXECUTION_STATUSES[0], comment: "" });
+    setExecutionStatusEditing(selected);
   };
   const openCompanyScheduleCourtInfo = (row: CaseRow, level: CompanyScheduleCourtLevel) => {
     if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有法院信息维护权限");
@@ -1759,6 +1773,20 @@ export default function CaseCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件进展保存失败");
+    }
+  };
+  const saveExecutionStatus = async () => {
+    if (!executionStatusEditing?.length) return;
+    const values = await executionStatusForm.validateFields();
+    try {
+      await api.post("/cases/execution-status", buildCaseExecutionStatusPayload(executionStatusEditing.map((row) => row.serial_no), values.execution_status, values.comment));
+      message.success("修改成功！");
+      setExecutionStatusEditing(null);
+      executionStatusForm.resetFields();
+      setSelectedCaseKeys([]);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "修改失败！");
     }
   };
   const caseColumns = useMemo(
@@ -2327,7 +2355,7 @@ export default function CaseCenterPage({
       {title:"经办律师",render:(_:unknown,row:any)=>(row.case?.data.handling_lawyers||[]).join(",")},
       {title:"律师助理",render:(_:unknown,row:any)=>row.case?.data.assistant||""},
     ],
-    execution:[{title:"基本信息",render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button></p><p>阶段:{row.status}</p></>},{title:"当事人信息",render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},{title:"法院信息",render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>案号:{row.data.court_case_no||""}</p></>},{title:"法官信息",render:(_:unknown,row:CaseRow)=>row.data.judge||""},{title:"委托律师",render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join(",")},{title:"判决信息",render:(_:unknown,row:CaseRow)=>row.data.judgment_result||""},{title:"进度时长",render:(_:unknown,row:CaseRow)=>row.data.execution_days??0},{title:"操作",render:(_:unknown,row:CaseRow)=>getCaseCapability(row).can_update_progress?<Button type="link" onClick={()=>openProgress(row)}>修改进度</Button>:null}],
+    execution:[{title:"基本信息",render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button></p><p>阶段:{row.status}</p><p>执行状态:{row.data.execution_status||"—"}</p></>},{title:"当事人信息",render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},{title:"法院信息",render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>案号:{row.data.court_case_no||""}</p></>},{title:"法官信息",render:(_:unknown,row:CaseRow)=>row.data.judge||""},{title:"委托律师",render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join(",")},{title:"判决信息",render:(_:unknown,row:CaseRow)=>row.data.judgment_result||""},{title:"进度时长",render:(_:unknown,row:CaseRow)=>row.data.execution_days??0},{title:"操作",render:(_:unknown,row:CaseRow)=>getCaseCapability(row).can_update_progress?<Space><Button type="link" onClick={()=>openProgress(row)}>修改进度</Button><Button type="link" onClick={()=>openExecutionStatus([row])}>执行状态</Button></Space>:null}],
     unclaimed:["案号","原告","被告","金额","回款单位","到账金额","到账时间","结算状态","案件阶段","案源人","开庭律师","律师助理","调查员","品管"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.amount,row.data.payer,row.data.received_amount,row.data.received_at,row.data.settlement_status,row.status,row.data.source_person,row.data.hearing_lawyer,row.data.assistant,row.data.investigator,row.data.quality_manager][i-1]||""})),
     stage:[{title:"姓名",dataIndex:"name"},{title:"日期",dataIndex:"date"},{title:"立案进度",dataIndex:"filing"},{title:"退费进度",dataIndex:"refund"},{title:"执行进度",dataIndex:"execution"},{title:"线索进度",dataIndex:"clue"}],
     refund:["案号","原告","被告","案件阶段","律师助理","开庭律师","费用类型","金额","退费金额","新建时间","法院名称","退费进度","进度时长","操作"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail({case_no:row.data.case_no||row.serial_no})}>{row.data.case_no||row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.case_stage||row.status,row.data.assistant,row.data.hearing_lawyer,row.data.fee_type,row.data.amount,row.data.refund_amount,row.data.created_at||"",row.data.court,row.data.refund_status,row.data.progress_days,"查看"][i-1]||""})),
@@ -2500,7 +2528,7 @@ export default function CaseCenterPage({
           {specialMode==="receipt"&&<Button onClick={()=>selectedCase?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}
           {specialMode==="unclaimed"&&<Button onClick={markCommissionPaid}>标识提成已发</Button>}
           {specialMode==="schedule"&&<Button onClick={()=>void openSelectedScheduleHearing()}>更多操作</Button>}
-          {specialMode==="execution"&&<Button onClick={()=>selectedCase?openProgress(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
+          {specialMode==="execution"&&<><Button onClick={()=>openExecutionStatus(specialRows.filter((row:CaseRow)=>selectedCaseKeys.includes(row.id)))}>修改执行状态</Button><Button onClick={()=>selectedSpecialRow?openProgress(selectedSpecialRow):message.warning("请先选择案件")}>更多操作</Button></>}
           {specialMode==="unclaimed"&&<Button onClick={()=>selectedCase?openCaseTasks(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
         </Space></div>}
       </Card> : originalArchiveMode ? <Card className="panel case-original-panel" title={archiveDone?"已审核":archiveRefused?"已拒绝":"待审核"}>

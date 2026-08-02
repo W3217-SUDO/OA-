@@ -1173,6 +1173,22 @@ class CaseProgressInput(BaseModel):
     comment: str = ""
 
 
+CASE_EXECUTION_STATUSES = (
+    "一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理",
+    "执行中止", "执行结案", "执行终本", "执行终结",
+    # Keep the local UI-only values accepted while aligning the legacy list.
+    "未开始", "执行中", "已执行",
+)
+
+
+class CaseExecutionStatusInput(BaseModel):
+    # The legacy dialog submits one comma-separated caseNos string; accepting
+    # a list as well keeps direct API clients compatible with the local UI.
+    case_nos: str | list[str] = Field(default="", max_length=6400)
+    execution_status: str = Field(default="", max_length=64)
+    comment: str = Field(default="", max_length=1000)
+
+
 class CaseCreateInput(BaseModel):
     contract_record_id: int = Field(gt=0)
     serial_no: str = Field(default="", max_length=64)
@@ -4433,7 +4449,7 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
             specs = [("准备资料进度案件数量", {"草稿", "准备资料", "待提交"}), ("客户盖章进度案件数量", {"客户盖章"}), ("提交法院进度案件数量", {"提交法院", "已提交法院"}), ("等待客户回款进度案件数量", {"等待客户回款", "待回款"})]
             charts = [{"title": title, "unit": "个/案", "items": [{"name": "案件数", "value": sum(item.status in statuses for item in refunds)}]} for title, statuses in specs]
         else:
-            execution_statuses = ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案", "执行终本", "执行终结", "执行中止"]
+            execution_statuses = list(CASE_EXECUTION_STATUSES)
             charts = [{"title": f"{status}案件数量", "unit": "个/案", "items": [{"name": "案件数", "value": sum(status in item.status for item in cases)}]} for status in execution_statuses]
         return {"view": view, "charts": charts, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
@@ -13391,6 +13407,22 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
     _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "已归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
+    if case_record.status == "已合并":
+        raise HTTPException(status_code=409, detail="已合并案件不能维护进展或开庭排期")
+
+
+def _normalize_case_numbers(values: str | list[str]) -> list[str]:
+    raw_values = values.split(",") if isinstance(values, str) else values
+    return list(dict.fromkeys(str(value or "").strip() for value in raw_values if str(value or "").strip()))
+
+
+def _validate_case_execution_status(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=422, detail="执行状态不能为空")
+    if normalized not in CASE_EXECUTION_STATUSES:
+        raise HTTPException(status_code=422, detail="执行状态无效")
+    return normalized
 
 
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
@@ -13474,6 +13506,40 @@ async def list_case_tasks(case_id: int, identity: dict = Depends(current_identit
     task_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task").order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
     items = [item for item in task_rows if _record_links_to_case(item, case_record)]
     return {"case": _record_dict(case_record), "items": [_task_dict(item) for item in items], "total": len(items)}
+
+
+@app.post(f"{settings.api_prefix}/cases/execution-status")
+async def update_case_execution_status(body: CaseExecutionStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_nos = _normalize_case_numbers(body.case_nos)
+    if not case_nos:
+        raise HTTPException(status_code=422, detail="至少选择一件案件")
+    execution_status = _validate_case_execution_status(body.execution_status)
+    scope = await _record_scope_conditions(identity, db)
+    # The legacy case_nos.in_(case_nos) filter is represented by the serial_no column below.
+    all_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", BusinessRecord.serial_no.in_(case_nos), *scope,
+    ))).all())
+    by_no = {case_record.serial_no: case_record for case_record in all_cases}
+    missing = [case_no for case_no in case_nos if case_no not in by_no]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"未找到案件或当前账号无权查看：{','.join(missing)}")
+    for case_record in all_cases:
+        await _require_case_progress_write_access(case_record, identity, db)
+    for case_record in all_cases:
+        previous_status = str((case_record.data or {}).get("execution_status") or "")
+        case_record.data = {**(case_record.data or {}), "execution_status": execution_status}
+        db.add(WorkflowEvent(
+            record_id=case_record.id, action="修改案件执行状态", from_status=case_record.status,
+            to_status=case_record.status, operator=identity["username"],
+            comment=body.comment.strip() or f"{previous_status or '未设置'} → {execution_status}",
+        ))
+    await db.commit()
+    for case_record in all_cases:
+        await db.refresh(case_record)
+    return {
+        "message": "修改成功！", "updated": len(all_cases), "case_nos": case_nos,
+        "execution_status": execution_status, "items": [_record_dict(case_record) for case_record in all_cases],
+    }
 
 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/progress")
