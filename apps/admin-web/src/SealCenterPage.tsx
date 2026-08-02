@@ -762,7 +762,12 @@ export default function SealCenterPage({
   );
   const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
   const routeStatuses = statusFromView(initialView);
-  const routeStatus = routeStatuses.length === 1 ? routeStatuses[0] : "";
+  const routeStatus =
+    routeStatuses.length === 1
+      ? routeStatuses[0]
+      : initialView === "seal-my-pending"
+        ? "待审批"
+        : "";
   const tabItems = [
     { key: "my", label: "我的申请" },
     { key: "audit", label: `用印审批（${summary.pending}）` },
