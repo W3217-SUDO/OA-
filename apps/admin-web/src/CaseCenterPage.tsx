@@ -159,6 +159,9 @@ export const shouldUseCompanyArbitrationQueryFields = (initialView: string) => i
 export const shouldUseCompanyArbitrationColumns = (initialView: string) => initialView === "case-company-arbitration";
 export const shouldUseCompanyScheduleQueryFields = (initialView: string) => initialView === "case-company-schedule";
 export const shouldShowCompanyScheduleActions = (initialView: string, rowCount: number) => initialView !== "case-company-schedule" || rowCount > 0;
+export const shouldUseCompanySchedulePagination = (initialView: string) => initialView === "case-company-schedule";
+export const getCompanySchedulePageSizeOptions = () => ["10","15","20","50","100","200"];
+export const shouldShowCompanyScheduleSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => initialView === "case-company-schedule" && rowCount > 0 && rowCount <= pageSize;
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -339,6 +342,8 @@ export default function CaseCenterPage({
   const [counselPageSize, setCounselPageSize] = useState(10);
   const [originalPage, setOriginalPage] = useState(caseListReturnContext?.page || 1);
   const [originalPageSize, setOriginalPageSize] = useState(caseListReturnContext?.pageSize || 10);
+  const [companySchedulePage, setCompanySchedulePage] = useState(1);
+  const [companySchedulePageSize, setCompanySchedulePageSize] = useState(20);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [caseCustomers, setCaseCustomers] = useState<CaseRow[]>([]);
   const [caseClues, setCaseClues] = useState<CaseRow[]>([]);
@@ -2348,7 +2353,8 @@ export default function CaseCenterPage({
         </Form>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode!=="invoice"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>} 
-        <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={{pageSize:20,showTotal:total=>`共有${total}条`}} />
+        <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={{...(shouldUseCompanySchedulePagination(initialView)?{defaultPageSize:20,showSizeChanger:true,pageSizeOptions:getCompanySchedulePageSizeOptions(),showQuickJumper:{goButton:<Button size="small">GO</Button>}}:{pageSize:20}),...(shouldUseCompanySchedulePagination(initialView)?{current:companySchedulePage,pageSize:companySchedulePageSize,onChange:(page:number,pageSize:number)=>{setCompanySchedulePage(page);setCompanySchedulePageSize(pageSize);}}:{}),showTotal:total=>`共有${total}条`}} />
+        {shouldShowCompanyScheduleSinglePageJumper(initialView,specialRows.length,companySchedulePageSize)&&<Space style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={()=>setCompanySchedulePage(1)}>GO</Button></Space>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}
           {specialMode==="refund"&&<Button onClick={()=>void exportSpecialRecords("refund","退费查询.csv")}>导出</Button>}
