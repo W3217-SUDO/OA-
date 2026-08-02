@@ -77,6 +77,18 @@ export const getCasePhaseDefinitions = (initialView: string, defaultItems: {labe
   ];
   return initialView.includes("criminal") ? criminalItems : defaultItems;
 };
+export const getCompanyCriminalQueryFields = () => [
+  ["prosecutor", "公诉机关", "公诉机关"],
+  ["serial_no", "案号", "案号"],
+  ["keyword", "关键字", "案号、法院号、案件名称、客户名称"],
+  ["defendant", "被告", "被告"],
+  ["notary_no", "公证书号", "公证书号"],
+  ["status", "案件阶段", "案件阶段"],
+  ["hearing_lawyer", "开庭律师", "开庭律师"],
+  ["handling_lawyer", "经办律师", "经办律师"],
+  ["court", "法院名称", "法院名称"],
+];
+export const shouldUseCompanyCriminalQueryFields = (initialView: string) => initialView === "case-company-criminal";
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -1851,6 +1863,7 @@ export default function CaseCenterPage({
       String(value || "").toLowerCase().includes(queryValue.toLowerCase());
     const mappings: [string, (row: CaseRow) => unknown][] = [
       ["plaintiff", (row) => row.data.plaintiff || row.customer],
+      ["prosecutor", (row) => row.data.prosecutor || row.data.first_procuratorate_name],
       ["customer", (row) => row.customer],
       ["counsel_type", (row) => row.data.counsel_type],
       ["serial_no", (row) => row.serial_no],
@@ -2313,6 +2326,8 @@ export default function CaseCenterPage({
             {counselListMode ? <>
               <Form.Item label="客户" name="customer"><Input placeholder="客户"/></Form.Item><Form.Item label="案号" name="serial_no"><Input placeholder="案号"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、案件名称、客户名称"/></Form.Item><Form.Item label="顾问期间" name="counsel_range"><DatePicker.RangePicker /></Form.Item>
               <Form.Item label="顾问类型" name="counsel_type"><Input placeholder="顾问类型"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
+            </> : shouldUseCompanyCriminalQueryFields(initialView) ? <>
+              {getCompanyCriminalQueryFields().map(([name,label,placeholder])=><Form.Item key={name} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
             </> : <>
               <Form.Item label="原告" name="plaintiff"><Input placeholder="原告"/></Form.Item><Form.Item label="案件编号" name="serial_no"><Input placeholder="案件编号"/></Form.Item><Form.Item label="取证机构" name="evidence_org"><Input placeholder="取证机构"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、法院号、案件名、客户名"/></Form.Item>
               <Form.Item label="被告" name="defendant"><Input placeholder="被告"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="公证书号" name="notary_no"><Input placeholder="公证书号"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item>
