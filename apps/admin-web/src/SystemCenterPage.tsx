@@ -1075,7 +1075,7 @@ export default function SystemCenterPage({
           ]}
           dataSource={caches}
           locale={{ emptyText: empty }}
-          pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showSizeChanger: true, onChange: (page, pageSize) => { setCachePage(page); setCachePageSize(pageSize); void loadCaches(page, pageSize); } }}
+          pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showTotal: (total) => `共有${total}条`, showSizeChanger: true, onChange: (page, pageSize) => { setCachePage(page); setCachePageSize(pageSize); void loadCaches(page, pageSize); } }}
         />
       </Card>
     );
