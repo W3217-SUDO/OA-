@@ -2,6 +2,28 @@ export const CONTRACT_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx
 export const CONTRACT_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["审批中", "已归档"];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
+export const contractAuditActionPolicy = (view) => {
+  const canReview = view === "contract-audit" || view === "contract-audit-pending";
+  return { canReview, canReviewChange: canReview, canExport: true };
+};
+export const contractAuditViewConfig = (view) => {
+  if (view === "contract-audit-pending") return { statuses: ["审批中"] };
+  if (view === "contract-audit-refused") return { statuses: ["已拒绝", "已驳回"] };
+  if (view === "contract-audit-approved") return { statuses: ["已通过", "履行中", "已完成", "已归档"] };
+  return { statuses: [] };
+};
+export const normalizeContractDetailReturnView = (view) => {
+  const allowed = new Set([
+    "contract-mine",
+    "contract-dept",
+    "contract-company",
+    "contract-audit",
+    "contract-audit-pending",
+    "contract-audit-refused",
+    "contract-audit-approved",
+  ]);
+  return allowed.has(view) ? view : "contract-mine";
+};
 
 export const buildContractDraftDefaults = ({ serialNo, profile, customer }) => ({
   serial_no: serialNo,

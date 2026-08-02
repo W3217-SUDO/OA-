@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   readContractListPagination,
   saveContractListPagination,
-} from "./src/contractListPagination.ts";
+} from "./src/contractListPagination.mjs";
 
 const memoryStorage = () => {
   const values = new Map();

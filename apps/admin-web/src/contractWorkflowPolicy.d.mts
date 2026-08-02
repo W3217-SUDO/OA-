@@ -2,6 +2,9 @@ export const CONTRACT_ATTACHMENT_ACCEPT: string;
 export const CONTRACT_ATTACHMENT_MAX_BYTES: number;
 export const CONTRACT_ATTACHMENT_LOCKED_STATUSES: readonly string[];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES: readonly string[];
+export function contractAuditActionPolicy(view: string): { canReview: boolean; canReviewChange: boolean; canExport: boolean };
+export function contractAuditViewConfig(view: string): { statuses: string[] };
+export function normalizeContractDetailReturnView(view: string): string;
 export function buildContractDraftDefaults(input: {
   serialNo: string;
   profile: { username?: string; department?: string };

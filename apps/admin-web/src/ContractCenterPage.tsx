@@ -35,14 +35,17 @@ import { openContractCustomerCreation } from "./contractCenterCustomerNavigation
 import { createContractCustomerContextConsumer, createContractNumber, type LinkedCustomerContext } from "./contractCreateContext";
 import { filterPendingContractApprovals } from "./contractAuditScope";
 import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
-import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
+import { readContractListPagination, saveContractListPagination } from "./contractListPagination.mjs";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import {
   buildContractApprovalPayload,
   buildContractDraftDefaults,
   canActOnContractApproval,
   canMutateContractAttachments,
+  contractAuditActionPolicy,
+  contractAuditViewConfig,
   filterContractCaseOptions,
+  normalizeContractDetailReturnView,
   resolveContractCustomerSelection,
   validateContractAttachment,
   validateContractDraftValues,
@@ -141,7 +144,7 @@ const consumeContractDetailReturnView = () => {
   try {
     const view = String(sessionStorage.getItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY) || "");
     sessionStorage.removeItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY);
-    if (view.startsWith("contract-") && !view.startsWith("contract-detail-") && view !== "contract-new") return view;
+    return normalizeContractDetailReturnView(view);
   } catch {
     // Detail pages can still close safely when session storage is unavailable.
   }
@@ -432,16 +435,15 @@ export default function ContractCenterPage({
     if (savedId) void recoverWizard(savedId);
     else startCreate();
   }, [initialView]);
+  const auditViewConfig = contractAuditViewConfig(initialView);
   const rows = useMemo(() => {
     let list =
       initialView === "contract-audit-pending"
         ? filterPendingContractApprovals(allRows, profile.username)
         : initialView === "contract-audit-refused"
-          ? allRows.filter((x) => ["已拒绝", "已驳回"].includes(x.status))
-          : initialView === "contract-audit-approved"
-            ? allRows.filter((x) =>
-                ["已通过", "履行中", "已完成", "已归档"].includes(x.status),
-              )
+          ? allRows.filter((x) => auditViewConfig.statuses.includes(x.status))
+        : initialView === "contract-audit-approved"
+            ? allRows.filter((x) => auditViewConfig.statuses.includes(x.status))
         : initialView === "contract-mine"
           ? allRows.filter((x) =>
               [profile.username, profile.display_name].includes(x.owner),
@@ -483,7 +485,7 @@ export default function ContractCenterPage({
           dayjs(x.data.signed_at).isBefore(query.signed_at[1].add(1, "day")),
       );
     return list;
-  }, [allRows, initialView, profile, query]);
+  }, [allRows, initialView, profile, query, auditViewConfig]);
   const getContractCustomerContext = (): LinkedCustomerContext | null => {
     return customerContextConsumerRef.current.consume();
   };
@@ -1333,6 +1335,7 @@ export default function ContractCenterPage({
     },
   ];
   const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
+  const auditActionPolicy = contractAuditActionPolicy(initialView);
   const stepItems = steps.map((s) => ({
     title: `第${s.step_order}级：${s.approver}`,
     description: (
@@ -1536,7 +1539,7 @@ export default function ContractCenterPage({
           <Button onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
           <Button onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
         </Space></div>}
-        {isAuditView && (!["contract-audit-pending", "contract-audit-refused", "contract-audit-approved"].includes(initialView) || rows.length > 0) && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button><Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></Space></div>}
+        {isAuditView && (!["contract-audit-pending", "contract-audit-refused", "contract-audit-approved"].includes(initialView) || rows.length > 0) && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>{auditActionPolicy.canReview && <Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button>}{auditActionPolicy.canReviewChange && <><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></>}</Space></div>}
       </Card>}
       {initialView === "contract-new" && (
         <Card className="panel contract-create-page" title="新建合同">
