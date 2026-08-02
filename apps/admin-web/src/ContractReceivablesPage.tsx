@@ -43,6 +43,18 @@ export const receivablesDetailPageSizes = [10, 15, 20, 50, 100, 200];
 export const shouldShowReceivablesDetailSinglePageJumper = (rowCount: number, pageSize: number) => rowCount > 0 && rowCount <= pageSize;
 export const shouldShowReceivableCreateAction = (detailView: boolean) => !detailView;
 export const shouldShowReceivableResetAction = (detailView: boolean) => !detailView;
+export const receivablesDetailSummaryKeys = ["official_paid", "official_received", "official_unreceived", "official_loss", "agency_total", "agency_received", "agency_due"];
+export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_id: number }>, contractById: Map<number, Contract>) => {
+  const seen = new Set<number>();
+  const totals = Object.fromEntries(receivablesDetailSummaryKeys.map((key) => [key, 0])) as Record<string, number>;
+  rows.forEach((row) => {
+    if (seen.has(row.contract_record_id)) return;
+    seen.add(row.contract_record_id);
+    const data = contractById.get(row.contract_record_id)?.data || {};
+    receivablesDetailSummaryKeys.forEach((key) => { totals[key] += Number(data[key] || 0); });
+  });
+  return totals;
+};
 export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
 export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
 
@@ -164,6 +176,8 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     if (query.source_person && !String(contract.data.source_person || contract.owner).toLowerCase().includes(String(query.source_person).toLowerCase())) return false;
     return true;
   }), [receivables, contractById, detailContext, query]);
+  const detailSummary = useMemo(() => calculateReceivablesDetailTotals(detailRows, contractById), [detailRows, contractById]);
+  const renderDetailSummaryRow = (totals: Record<string, number>) => <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{money(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr>;
 
   const openCreateReceivable = () => {
     receivableForm.resetFields();
@@ -257,7 +271,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
       </Form.Item>
     </Form>
     {detailView ? (
-      <><Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ current: detailPage, pageSize: detailPageSize, showSizeChanger: true, pageSizeOptions: receivablesDetailPageSizes, showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setDetailPage(page); setDetailPageSize(pageSize); }, showTotal: (total) => `共 ${total} 条` }} />
+      <><table className="contract-detail-summary-top"><tbody>{renderDetailSummaryRow(detailSummary)}</tbody></table><Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ current: detailPage, pageSize: detailPageSize, showSizeChanger: true, pageSizeOptions: receivablesDetailPageSizes, showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setDetailPage(page); setDetailPageSize(pageSize); }, showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderDetailSummaryRow(detailSummary)}</Table.Summary>} />
       {shouldShowReceivablesDetailSinglePageJumper(detailRows.length, detailPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setDetailPage(1)}>GO</Button></Space>}</>
     ) : (
       <><Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={shouldUseMyReceivablesPagination(initialView) ? [...listColumns, { title: "", key: "legacy-empty-operation", width: 80 }] : listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} />
