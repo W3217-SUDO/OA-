@@ -94,3 +94,23 @@ test("my used route shows the legacy locked status as 已用印", () => {
     "the disabled status filter should show the legacy 已用印 label",
   );
 });
+
+test("my withdrawn route keeps the legacy locked status unselected", () => {
+  const html = renderSealCenterPage("seal-my-withdrawn");
+  const statusStart = html.indexOf("用印状态");
+  const statusEnd = html.indexOf("用印类型", statusStart);
+  const statusMarkup = html.slice(statusStart, statusEnd);
+
+  assert.notEqual(statusStart, -1, "the rendered query form should contain 用印状态");
+  assert.notEqual(statusEnd, -1, "the rendered query form should contain 用印类型");
+  assert.match(
+    statusMarkup,
+    /请选择/,
+    "the disabled status filter should preserve the legacy placeholder",
+  );
+  assert.doesNotMatch(
+    statusMarkup,
+    /已撤回/,
+    "the legacy withdrawn page should not show a selected status label",
+  );
+});
