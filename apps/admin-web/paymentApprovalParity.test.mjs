@@ -116,6 +116,17 @@ test("refused settlement exposes clear/export and reapply-only row flow", () => 
   assert.match(operation[0], /openGeneralSettlementReapply\(\[row\]\)/);
 });
 
+test("archive settlement pending exposes clear/export controls", () => {
+  const expr = source.indexOf('clear: route === "finance-archive-fee-pending"');
+  assert.ok(expr >= 0, "archive pending route expression should exist");
+  const block = source.slice(expr - 500, expr + 500);
+  assert.match(block, /clear: route === "finance-archive-fee-pending"/);
+  assert.match(block, /export: route === "finance-archive-fee-pending"/);
+  assert.doesNotMatch(block, /clear: true/);
+  assert.doesNotMatch(block, /export: true/);
+  assert.match(source, /exportPendingArchiveSettlements/);
+});
+
 test("contract payment applications are loaded and reviewed through contract API", () => {
   assert.match(source, /module:\s*"contract_payment"/);
   assert.match(source, /_source_module:\s*"contract_payment"/);

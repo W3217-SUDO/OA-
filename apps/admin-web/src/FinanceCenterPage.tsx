@@ -4350,6 +4350,8 @@ export default function FinanceCenterPage({
               ? "archiveSettlements"
               : "fees",
           selectable: true,
+          clear: route === "finance-archive-fee-pending",
+          export: route === "finance-archive-fee-pending",
           headers: [
             "操作",
             "案号",
