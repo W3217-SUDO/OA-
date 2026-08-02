@@ -40,13 +40,20 @@ import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import {
   buildContractApprovalPayload,
   buildContractDraftDefaults,
+  buildContractListRequestParams,
   canActOnContractApproval,
+  canAccessContractView,
   canMutateContractAttachments,
+  contractAttachmentActionPolicy,
   contractAuditActionPolicy,
   contractAuditViewConfig,
+  contractListViewConfig,
+  extractContractErrorMessage,
   filterContractCaseOptions,
+  normalizeContractQuery,
   normalizeContractDetailReturnView,
   resolveContractCustomerSelection,
+  validateContractApprovalSubmission,
   validateContractAttachment,
   validateContractDraftValues,
 } from "./contractWorkflowPolicy.mjs";
@@ -249,6 +256,7 @@ export default function ContractCenterPage({
     [queryForm] = Form.useForm(),
     [eventForm] = Form.useForm(),
     [objectForm] = Form.useForm();
+  const listViewConfig = contractListViewConfig(initialView);
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
     setViewing(null);
@@ -366,7 +374,8 @@ export default function ContractCenterPage({
   const load = async () => {
     setLoading(true);
     const target = detailTarget || consumeContractDetailTarget() || contractDetailRouteTarget;
-    const recordsRequest = api.get("/records", { params: { module: "contract", page_size: 100 } });
+    const recordsParams = buildContractListRequestParams(initialView, listPagination, query);
+    const recordsRequest = api.get("/records", { params: { ...recordsParams, scope: listViewConfig.scope, page: 1, page_size: 100 } });
     const targetRequest = target ? resolveContractDetailTarget(target) : null;
     const auxiliaryRequests = Promise.allSettled([
       api.get("/auth/me"),
@@ -391,8 +400,8 @@ export default function ContractCenterPage({
         queryForm.setFieldsValue({ customer: customerKeyword });
         setQuery((value) => ({ ...value, customer: customerKeyword }));
       }
-    } catch {
-      message.error("合同数据加载失败");
+    } catch (error: any) {
+      message.error(extractContractErrorMessage(error, "合同数据加载失败"));
     } finally {
       setLoading(false);
     }
@@ -692,6 +701,19 @@ export default function ContractCenterPage({
     if (!wizardDraft) return;
     try {
       const values = await submitForm.validateFields();
+      const submissionErrors = validateContractApprovalSubmission(wizardDraft.status, values.approvers, attachments.length);
+      if (submissionErrors.includes("status")) {
+        message.warning("仅草稿或已拒绝合同可以提交审批");
+        return;
+      }
+      if (submissionErrors.includes("approver")) {
+        message.warning("请选择一名合同审批人");
+        return;
+      }
+      if (submissionErrors.includes("attachment")) {
+        message.warning("请先上传至少一份合同附件后再提交审批");
+        return;
+      }
       setSubmittingWizard(true);
       await api.post(`/contracts/${wizardDraft.id}/submit`, { approvers: values.approvers ? [values.approvers] : [], comment: values.comment || "" });
       const contract = await loadWizardContext(wizardDraft.id);
@@ -705,7 +727,7 @@ export default function ContractCenterPage({
       await load();
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(error?.response?.data?.detail || error?.message || "提交审批失败");
+      message.error(extractContractErrorMessage(error, "提交审批失败"));
     } finally {
       setSubmittingWizard(false);
     }
@@ -784,8 +806,8 @@ export default function ContractCenterPage({
       link.download = item.original_name;
       link.click();
       URL.revokeObjectURL(url);
-    } catch {
-      message.error("附件下载失败");
+    } catch (error: any) {
+      message.error(extractContractErrorMessage(error, "附件下载失败"));
     }
   };
   const previewAttachment = async (item: Attachment) => {
@@ -840,7 +862,8 @@ export default function ContractCenterPage({
       message.warning("请先选择合同附件");
       return;
     }
-    if (!canMutateContractAttachments(viewing.status)) {
+    const attachmentPolicy = contractAttachmentActionPolicy(viewing.status);
+    if (!attachmentPolicy.canUpload || !canMutateContractAttachments(viewing.status)) {
       message.warning("当前合同状态不允许修改附件");
       return;
     }
@@ -864,7 +887,7 @@ export default function ContractCenterPage({
       await openViewing(viewing);
       message.success("合同附件已上传");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同附件上传失败");
+      message.error(extractContractErrorMessage(error, "合同附件上传失败"));
     }
   };
   const deleteViewingAttachment = async (item: Attachment) => {
@@ -873,7 +896,7 @@ export default function ContractCenterPage({
       await openViewing(viewing!);
       message.success("合同附件已删除");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同附件删除失败");
+      message.error(extractContractErrorMessage(error, "合同附件删除失败"));
     }
   };
   const submit = async () => {
@@ -1335,7 +1358,9 @@ export default function ContractCenterPage({
     },
   ];
   const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
-  const auditActionPolicy = contractAuditActionPolicy(initialView);
+  const auditActionPolicy = canAccessContractView(initialView, profile)
+    ? contractAuditActionPolicy(initialView)
+    : { canReview: false, canReviewChange: false, canExport: false };
   const stepItems = steps.map((s) => ({
     title: `第${s.step_order}级：${s.approver}`,
     description: (
@@ -1463,8 +1488,9 @@ export default function ContractCenterPage({
     setListPagination(saveContractListPagination(sessionStorage, initialView, { current, pageSize }));
   };
   const applyQuery = (values: Record<string, any>) => {
-    saveContractListQuery(sessionStorage, initialView, values);
-    setQuery(values);
+    const normalized = normalizeContractQuery(values);
+    saveContractListQuery(sessionStorage, initialView, normalized);
+    setQuery(normalized);
     updateListPagination(1, listPagination.pageSize);
   };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());

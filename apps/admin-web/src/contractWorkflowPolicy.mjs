@@ -2,6 +2,65 @@ export const CONTRACT_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx
 export const CONTRACT_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["审批中", "已归档"];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
+export const CONTRACT_LIST_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
+export const CONTRACT_QUERY_FIELDS = ["title", "serial_no", "type", "customer", "case_no", "fee_type", "signed_at", "source_person", "contract_body"];
+const CONTRACT_LIST_ROUTES = new Set(["contract-mine", "contract-dept", "contract-company", "contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"]);
+export const contractMenuEntries = () => [
+  { key: "contract-mine", label: "我的合同", scope: "mine", legacyPath: "FCM/Contract/ContractList" },
+  { key: "contract-dept", label: "部门合同", scope: "department", legacyPath: "CMS/Contract/ContractList" },
+  { key: "contract-company", label: "公司合同", scope: "company", legacyPath: "CMS/Contract/GeneralLedgerList" },
+  { key: "contract-audit-pending", label: "待审批合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/2" },
+  { key: "contract-audit-refused", label: "已驳回合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/4" },
+  { key: "contract-audit-approved", label: "已审批合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/3" },
+];
+export const contractListViewConfig = (view) => {
+  const entry = contractMenuEntries().find((item) => item.key === view);
+  const audit = view.startsWith("contract-audit");
+  const statuses = contractAuditViewConfig(view).statuses;
+  return { scope: entry?.scope || "all", defaultPageSize: audit || view === "contract-dept" || view === "contract-company" ? 20 : 15, statuses, queryFields: CONTRACT_QUERY_FIELDS };
+};
+export const normalizeContractQuery = (values = {}) => {
+  const normalized = {};
+  for (const field of CONTRACT_QUERY_FIELDS) {
+    const value = values[field];
+    if (Array.isArray(value)) normalized[field] = value.length ? value : undefined;
+    else if (typeof value === "string") normalized[field] = value.trim() || undefined;
+    else if (value !== undefined && value !== null) normalized[field] = value;
+  }
+  return normalized;
+};
+export const buildContractListRequestParams = (view, pagination, query = {}) => {
+  const config = contractListViewConfig(view);
+  const normalized = normalizeContractQuery(query);
+  const current = Number(pagination?.current);
+  const selectedPageSize = Number(pagination?.pageSize);
+  const params = { module: "contract", scope: config.scope, page: Number.isInteger(current) && current > 0 ? current : 1, page_size: CONTRACT_LIST_PAGE_SIZES.includes(selectedPageSize) ? selectedPageSize : config.defaultPageSize };
+  for (const field of CONTRACT_QUERY_FIELDS) {
+    const value = normalized[field];
+    if (field === "signed_at" && Array.isArray(value) && value.length === 2) {
+      if (typeof value[0]?.format === "function") params.signed_at_start = value[0].format("YYYY-MM-DD");
+      if (typeof value[1]?.format === "function") params.signed_at_end = value[1].format("YYYY-MM-DD");
+    } else if (value !== undefined) params[field] = value;
+  }
+  if (config.statuses.length) params.statuses = config.statuses.join(",");
+  return params;
+};
+export const canAccessContractView = (view, profile = {}) => CONTRACT_LIST_ROUTES.has(view) && profile.role !== "guest";
+export const validateContractApprovalSubmission = (status, approvers, attachmentCount) => {
+  const errors = [];
+  if (!CONTRACT_DRAFT_EDITABLE_STATUSES.includes(status)) errors.push("status");
+  if (!String(approvers || "").trim()) errors.push("approver");
+  if (Number(attachmentCount) < 1) errors.push("attachment");
+  return errors;
+};
+export const contractAttachmentActionPolicy = (status) => {
+  const mutable = canMutateContractAttachments(status);
+  return { canUpload: mutable, canDelete: mutable, canDownload: true, canPreview: true };
+};
+export const extractContractErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message || error?.message;
+  return typeof detail === "string" && detail.trim() ? detail.trim() : fallback;
+};
 export const contractAuditActionPolicy = (view) => {
   const canReview = view === "contract-audit" || view === "contract-audit-pending";
   return { canReview, canReviewChange: canReview, canExport: true };
