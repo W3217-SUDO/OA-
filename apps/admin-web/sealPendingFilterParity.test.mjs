@@ -29,7 +29,7 @@ function executeTsx(source, filename, localRequire) {
   return module.exports;
 }
 
-test("my pending route shows the legacy locked status as 待审核", () => {
+function renderSealCenterPage(initialView) {
   const sourceDir = path.join(process.cwd(), "src");
   const mappingPath = path.join(sourceDir, "sealViewMapping.ts");
   const mapping = executeTsx(
@@ -56,8 +56,13 @@ test("my pending route shows the legacy locked status as 待审核", () => {
     (specifier) => localModules[specifier] ?? nativeRequire(specifier),
   );
   const html = renderToStaticMarkup(
-    React.createElement(page.default, { initialView: "seal-my-pending" }),
+    React.createElement(page.default, { initialView }),
   );
+  return html;
+}
+
+test("my pending route shows the legacy locked status as 待审核", () => {
+  const html = renderSealCenterPage("seal-my-pending");
   const statusStart = html.indexOf("用印状态");
 
   assert.notEqual(statusStart, -1, "the rendered query form should contain 用印状态");
@@ -65,5 +70,15 @@ test("my pending route shows the legacy locked status as 待审核", () => {
     html.slice(statusStart, statusStart + 2500),
     /待审核/,
     "the disabled status filter should show the legacy 待审核 label",
+  );
+});
+
+test("my stamping empty state ends with the legacy full stop", () => {
+  const html = renderSealCenterPage("seal-my-stamping");
+
+  assert.match(
+    html,
+    /没有查询到符合条件的记录。/,
+    "the empty state should preserve the legacy sentence punctuation",
   );
 });

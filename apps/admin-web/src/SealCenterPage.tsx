@@ -927,7 +927,7 @@ export default function SealCenterPage({
                     。
                   </span>
                 ) : (
-                  "没有查询到符合条件的记录"
+                  "没有查询到符合条件的记录。"
                 ),
             }}
             footer={
