@@ -172,6 +172,7 @@ export default function SealCenterPage({
   const [editAsset, setEditAsset] = useState<SealAsset | null>(null);
   const [detail, setDetail] = useState<SealRow | null>(null);
   const [history, setHistory] = useState<EventRow[]>([]);
+  const [auditListOpen, setAuditListOpen] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [action, setAction] = useState<{
     type: "approve" | "reject" | "stamp" | "archive";
@@ -1476,6 +1477,9 @@ export default function SealCenterPage({
             <h3 className="seal-history-title">
               <FileDoneOutlined /> 流程记录
             </h3>
+            <Button type="link" onClick={() => setAuditListOpen(true)}>
+              审核记录
+            </Button>
             <Timeline
               items={history.map((x) => ({
                 color: x.to_status === "已拒绝" ? "red" : "green",
@@ -1497,6 +1501,33 @@ export default function SealCenterPage({
           </>
         )}
       </Drawer>
+      <Modal
+        open={auditListOpen}
+        title="审批流程"
+        footer={<Button onClick={() => setAuditListOpen(false)}>关闭</Button>}
+        onCancel={() => setAuditListOpen(false)}
+      >
+        <Table
+          size="small"
+          rowKey="id"
+          pagination={false}
+          dataSource={history.filter((item) => item.action.includes("审批"))}
+          columns={[
+            { title: "审批人", dataIndex: "operator" },
+            { title: "审核状态", dataIndex: "to_status" },
+            {
+              title: "审核日期",
+              dataIndex: "created_at",
+              render: (value: string) => dayjs(value).format("YYYY-MM-DD"),
+            },
+            { title: "审批意见", dataIndex: "comment" },
+            {
+              title: "审批轮次",
+              render: (_: unknown, __: EventRow, index: number) => index + 1,
+            },
+          ]}
+        />
+      </Modal>
     </>
   );
 }
