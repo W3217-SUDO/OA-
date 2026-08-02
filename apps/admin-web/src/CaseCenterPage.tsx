@@ -53,6 +53,7 @@ import {
   buildCaseMergePayload,
   buildCasePaymentContext,
   buildCaseExecutionStatusPayload,
+  buildCasePhaseChangePayload,
   buildCaseProgressPayload,
   buildClueConversionPayload,
   getCaseCreateValidationError,
@@ -75,6 +76,7 @@ type CaseRow = {
   description: string;
   data: Record<string, any>;
 };
+type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; sort_order?: number };
 export const scopeCasesByListRoute = (rows: CaseRow[], initialView: string) => {
   const routeCaseType = initialView.includes("civil") ? "民事案件"
     : initialView.includes("criminal") ? "刑事案件"
@@ -427,6 +429,8 @@ export default function CaseCenterPage({
     approved: boolean;
   } | null>(null);
   const [progressEditing, setProgressEditing] = useState<CaseRow | null>(null);
+  const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
+  const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
   const [executionStatusEditing, setExecutionStatusEditing] = useState<CaseRow[] | null>(null);
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
@@ -504,6 +508,7 @@ export default function CaseCenterPage({
   const [taskForm] = Form.useForm();
   const [feeForm] = Form.useForm();
   const [progressForm] = Form.useForm();
+  const [phaseForm] = Form.useForm();
   const [executionStatusForm] = Form.useForm();
   const [companyScheduleCourtInfoForm] = Form.useForm();
   const [counselEditForm] = Form.useForm();
@@ -1693,6 +1698,25 @@ export default function CaseCenterPage({
     });
     setProgressEditing(row);
   };
+  const openPhaseChange = async (rows: CaseRow[]) => {
+    const selected = rows.filter(Boolean);
+    if (!selected.length) return message.warning("请先选择案件");
+    if (selected.some((row) => !getCaseCapability(row).can_update_progress)) return message.warning("当前账号没有案件阶段维护权限");
+    if (selected.some((row) => ["待归档审核", "已归档", "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改案件阶段");
+    try {
+      const { data } = await api.get("/cases/phases");
+      const options = (Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[];
+      if (!options.length) return message.error("案件阶段加载失败");
+      setPhaseOptions(options);
+      const current = selected[0];
+      const currentOption = options.find((option) => Number(current.data.case_phase_id) === option.id || option.canonical_name === current.status || option.name === current.status);
+      phaseForm.resetFields();
+      phaseForm.setFieldsValue({ case_phase_id: currentOption?.id || options[0].id, comment: "" });
+      setPhaseEditing(selected);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件阶段加载失败");
+    }
+  };
   const openExecutionStatus = (rows: CaseRow[]) => {
     const selected = rows.filter(Boolean);
     if (!selected.length) return message.warning("请先选择执行案件");
@@ -1773,6 +1797,22 @@ export default function CaseCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件进展保存失败");
+    }
+  };
+  const savePhaseChange = async () => {
+    if (!phaseEditing?.length) return;
+    const values = await phaseForm.validateFields();
+    const option = phaseOptions.find((item) => item.id === Number(values.case_phase_id));
+    if (!option) return message.error("案件阶段不存在或已停用");
+    try {
+      await api.post("/cases/phase-change", buildCasePhaseChangePayload(phaseEditing.map((row) => row.serial_no), option.id, option.name, values.comment));
+      message.success("修改成功！");
+      setPhaseEditing(null);
+      phaseForm.resetFields();
+      setSelectedCaseKeys([]);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "修改失败！");
     }
   };
   const saveExecutionStatus = async () => {
@@ -2399,7 +2439,7 @@ export default function CaseCenterPage({
   const companyScheduleDetailOperationLabels = getCompanyScheduleDetailOperationLabels();
   const companyScheduleDetailActionButtons = viewingCounselCase ? <>
     {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>{companyScheduleDetailOperationLabels[0]}</Button>}
-    {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openProgress(viewingCounselCase)}>{companyScheduleDetailOperationLabels[1]}</Button>}
+    {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档","已合并"].includes(viewingCounselCase.status)} onClick={()=>{ void openProgress; void openPhaseChange([viewingCounselCase]); }}>{companyScheduleDetailOperationLabels[1]}</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>{companyScheduleDetailOperationLabels[2]}</Button>}
     {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseHearingLawyer(viewingCounselCase)}>{companyScheduleDetailOperationLabels[3]}</Button>}
     {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseLitigants(viewingCounselCase)}>{companyScheduleDetailOperationLabels[4]}</Button>}
@@ -2640,7 +2680,7 @@ export default function CaseCenterPage({
                   if (!selectedCase) return message.warning("请先选择案件");
                   if (key === "edit") openCounselEdit(selectedCase);
                   if (key === "participant") openCaseLitigants(selectedCase);
-                  if (key === "phase") openProgress(selectedCase);
+                  if (key === "phase") void openPhaseChange(selectedCases.length ? selectedCases : [selectedCase]);
                   if (key === "court") openCompanyScheduleCourtInfo(selectedCase, "first");
                   if (key === "view") openCaseTasks(selectedCase);
                   if (key === "fee") openCaseFee(selectedCase);
@@ -2852,6 +2892,31 @@ export default function CaseCenterPage({
             </Form.Item>
             <Form.Item label="法院" name="court"><Input /></Form.Item>
           </div>
+        </Form>
+      </Modal>
+      <Modal
+        width={620}
+        open={Boolean(phaseEditing)}
+        title={`修改案件阶段：${phaseEditing?.map((row) => row.serial_no).join("、") || ""}`}
+        okText="保存阶段"
+        cancelText="取消"
+        onOk={savePhaseChange}
+        onCancel={() => { setPhaseEditing(null); phaseForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          title="阶段变更支持单行或批量案件；系统会先校验全部案件权限、归档状态和重复提交，再统一写入。"
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={phaseForm} layout="vertical">
+          <Form.Item label="案件阶段" name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
+            <Select options={phaseOptions.map((option) => ({ value: option.id, label: `${option.name}（${option.canonical_name}）` }))} />
+          </Form.Item>
+          <Form.Item label="修改说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
         </Form>
       </Modal>
       <Modal

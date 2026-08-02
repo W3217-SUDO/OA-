@@ -143,6 +143,13 @@ export const buildCaseExecutionStatusPayload = (caseNos: unknown, executionStatu
   comment: text(comment),
 });
 
+export const buildCasePhaseChangePayload = (caseNos: unknown, phaseId: unknown, phaseName: unknown, comment: unknown = "") => ({
+  case_nos: list(caseNos).join(","),
+  case_phase_id: Number(phaseId) || null,
+  case_phase_name: text(phaseName),
+  comment: text(comment),
+});
+
 export const buildCaseProgressPayload = (values: Record<string, unknown>) => ({
   first_instance_court: text(values.first_instance_court),
   first_instance_case_no: text(values.first_instance_case_no),

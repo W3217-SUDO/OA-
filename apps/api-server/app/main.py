@@ -1181,11 +1181,27 @@ CASE_EXECUTION_STATUSES = (
 )
 
 
+CASE_PHASE_STATUS_BY_CODE = {
+    "NEW": "新案待分配",
+    "DOCUMENT": "文书准备",
+    "FIRST": "一审立案受理",
+    "SECOND": "二审",
+    "EXECUTION": "执行",
+}
+
+
 class CaseExecutionStatusInput(BaseModel):
     # The legacy dialog submits one comma-separated caseNos string; accepting
     # a list as well keeps direct API clients compatible with the local UI.
     case_nos: str | list[str] = Field(default="", max_length=6400)
     execution_status: str = Field(default="", max_length=64)
+    comment: str = Field(default="", max_length=1000)
+
+
+class CasePhaseChangeInput(BaseModel):
+    case_nos: str | list[str] = Field(default="", max_length=6400)
+    case_phase_id: int | None = Field(default=None, gt=0)
+    case_phase_name: str = Field(default="", max_length=128)
     comment: str = Field(default="", max_length=1000)
 
 
@@ -13425,6 +13441,40 @@ def _validate_case_execution_status(value: str) -> str:
     return normalized
 
 
+def _case_phase_option(item: SystemParameter) -> dict:
+    return {
+        "id": item.id,
+        "code": item.code,
+        "name": item.name,
+        "canonical_name": CASE_PHASE_STATUS_BY_CODE.get(item.code, item.name),
+        "sort_order": item.sort_order,
+    }
+
+
+async def _resolve_case_phase(body: CasePhaseChangeInput, db: AsyncSession) -> dict:
+    phase_id = int(body.case_phase_id or 0)
+    phase_name = body.case_phase_name.strip()
+    phase = await db.get(SystemParameter, phase_id) if phase_id else None
+    if phase_id and (not phase or phase.category != "case_phase" or not phase.is_active):
+        raise HTTPException(status_code=422, detail="案件阶段不存在或已停用")
+    if phase_name:
+        named_phase = await db.scalar(select(SystemParameter).where(
+            SystemParameter.category == "case_phase", SystemParameter.name == phase_name,
+            SystemParameter.is_active.is_(True),
+        ))
+        if not named_phase:
+            raise HTTPException(status_code=422, detail="案件阶段不存在或已停用")
+        if phase and phase.id != named_phase.id:
+            raise HTTPException(status_code=422, detail="案件阶段 ID 与名称不匹配")
+        phase = named_phase
+    if not phase:
+        raise HTTPException(status_code=422, detail="阶段名称不能为空")
+    canonical_name = CASE_PHASE_STATUS_BY_CODE.get(phase.code, phase.name)
+    if canonical_name not in CASE_BASIC_EDITABLE_PHASES:
+        raise HTTPException(status_code=422, detail="案件阶段不是允许的办理阶段")
+    return {**_case_phase_option(phase), "canonical_name": canonical_name}
+
+
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
     role = await _case_team_role(case_record, identity, db)
     case_type = str((case_record.data or {}).get("case_type") or "").strip()
@@ -13539,6 +13589,67 @@ async def update_case_execution_status(body: CaseExecutionStatusInput, identity:
     return {
         "message": "修改成功！", "updated": len(all_cases), "case_nos": case_nos,
         "execution_status": execution_status, "items": [_record_dict(case_record) for case_record in all_cases],
+    }
+
+
+@app.get(f"{settings.api_prefix}/cases/phases")
+async def list_case_phases(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("case", identity, db, action="查看")
+    phases = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "case_phase", SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
+    return {"items": [_case_phase_option(item) for item in phases]}
+
+
+@app.post(f"{settings.api_prefix}/cases/phase-change")
+async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_nos = _normalize_case_numbers(body.case_nos)
+    if not case_nos:
+        raise HTTPException(status_code=422, detail="至少选择一件案件")
+    phase = await _resolve_case_phase(body, db)
+    scope = await _record_scope_conditions(identity, db)
+    # Preflight every selected case before changing any record, matching the legacy batch contract.
+    all_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", BusinessRecord.serial_no.in_(case_nos), *scope,
+    ))).all())
+    by_no = {case_record.serial_no: case_record for case_record in all_cases}
+    missing = [case_no for case_no in case_nos if case_no not in by_no]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"未找到案件或当前账号无权查看：{','.join(missing)}")
+    for case_record in all_cases:
+        if case_record.status == "已合并":
+            raise HTTPException(status_code=409, detail="已合并案件不能修改案件阶段")
+        await _require_case_progress_write_access(case_record, identity, db)
+        case_data = case_record.data or {}
+        if int(case_data.get("case_phase_id") or 0) == phase["id"] or case_record.status == phase["canonical_name"]:
+            raise HTTPException(status_code=409, detail="当前案件已处于所选阶段")
+    try:
+        changed_at = datetime.now().isoformat(timespec="seconds")
+        for case_record in all_cases:
+            previous_status = case_record.status
+            case_record.status = phase["canonical_name"]
+            case_record.data = {
+                **(case_record.data or {}),
+                "case_phase_id": phase["id"], "case_phase_code": phase["code"],
+                "case_phase_name": phase["name"], "phase_changed_at": changed_at,
+            }
+            db.add(WorkflowEvent(
+                record_id=case_record.id, action="修改案件阶段", from_status=previous_status,
+                to_status=case_record.status, operator=identity["username"],
+                comment=f"{phase['name']}（{phase['id']}）" + (f"｜{body.comment.strip()}" if body.comment.strip() else ""),
+            ))
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="修改失败！")
+    for case_record in all_cases:
+        await db.refresh(case_record)
+    return {
+        "message": "修改成功！", "updated": len(all_cases), "case_nos": case_nos,
+        "phase": phase, "items": [_record_dict(case_record) for case_record in all_cases],
     }
 
 
