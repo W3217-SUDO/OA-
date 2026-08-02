@@ -572,7 +572,8 @@ export default function CustomerCenterPage({
           restore: "客户已恢复",
         }[name],
       );
-      load();
+      setSelectedRowKeys([]);
+      await load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "操作失败");
     }
@@ -587,7 +588,8 @@ export default function CustomerCenterPage({
       });
       message.success("客户共享成功");
       setSharing(null);
-      load();
+      setSelectedRowKeys([]);
+      await load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "共享失败");
     }
