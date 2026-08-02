@@ -59,12 +59,6 @@ export default function CustomerConflictPage() {
 
   const search = async () => {
     const query = name.trim();
-    if (!query) {
-      resetResult();
-      message.warning("请输入企业名称.");
-      return;
-    }
-
     activeRequest.current?.abort();
     const controller = new AbortController();
     activeRequest.current = controller;
@@ -75,7 +69,7 @@ export default function CustomerConflictPage() {
     try {
       const { data } = await api.get<ConflictSearchResult>(
         "/customers/conflicts",
-        { params: { name: query }, signal: controller.signal },
+        { params: query ? { name: query } : {}, signal: controller.signal },
       );
       if (requestSequence.current === sequence) setResult(data);
     } catch (error: any) {

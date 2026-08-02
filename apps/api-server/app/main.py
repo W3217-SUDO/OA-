@@ -5235,24 +5235,20 @@ def _empty_customer_conflict_result(query: str) -> dict:
 
 @app.get(f"{settings.api_prefix}/customers/conflicts")
 async def customer_conflicts(
-    name: str = Query(min_length=1, max_length=100),
+    name: str | None = Query(default=None, max_length=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Return the latest case containing one exact, normalized enterprise party."""
     await _require_customer_conflict_permission(identity, db)
-    query = name.strip()
-    if not query:
-        raise HTTPException(status_code=422, detail="企业名称不能为空")
-    needle = _normalize_conflict_entity(query)
-    if not needle:
-        raise HTTPException(status_code=422, detail="企业名称不能为空")
+    query = (name or "").strip()
+    needle = _normalize_conflict_entity(query) if query else ""
 
     # Conflict checking deliberately spans the whole firm.  Only the minimum
     # original-page disclosure is returned and no source record id is exposed.
     cases = list((await db.scalars(
         select(BusinessRecord).where(BusinessRecord.module == "case")
     )).all())
-    matching_cases = [
+    matching_cases = cases if not needle else [
         case_record for case_record in cases
         if any(_normalize_conflict_entity(entity) == needle for entity in _case_conflict_entities(case_record))
     ]
@@ -5265,6 +5261,10 @@ async def customer_conflicts(
     data = latest_case.data or {}
     filing_date = _case_filing_date(latest_case)
     plaintiffs = _case_party_values(data, CASE_PLAINTIFF_FIELDS) or _conflict_entity_tokens(latest_case.customer)
+    # The legacy page resolves managers from the customer returned with the
+    # displayed case.  An empty search therefore must not look up a blank
+    # customer title, which could select an unrelated customer record.
+    manager_entity = latest_case.customer.strip() if not query else query
     return {
         "found": True,
         "query": query,
@@ -5275,7 +5275,7 @@ async def customer_conflicts(
         "defendants": _case_party_values(data, CASE_DEFENDANT_FIELDS),
         "third_parties": _case_party_values(data, CASE_THIRD_PARTY_FIELDS),
         "our_customer": latest_case.customer,
-        "customer_managers": await _conflict_customer_managers(query, db),
+        "customer_managers": await _conflict_customer_managers(manager_entity, db) if manager_entity else [],
     }
 
 
