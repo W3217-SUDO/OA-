@@ -898,7 +898,7 @@ export default function SystemCenterPage({
           )}
           {usesParentCode && (
             <label>
-              <span>上级代码</span>
+              <span>{category === "cause" ? "上级案由Id" : "上级代码"}</span>
               <Input
                 value={secondaryKeyword}
                 onChange={(e) => setSecondaryKeyword(e.target.value)}
