@@ -55,6 +55,18 @@ type CaseRow = {
   description: string;
   data: Record<string, any>;
 };
+export const scopeCasesByListRoute = (rows: CaseRow[], initialView: string) => {
+  const routeCaseType = initialView.includes("civil") ? "民事案件"
+    : initialView.includes("criminal") ? "刑事案件"
+      : initialView.includes("administrative") ? "行政案件及国家赔偿"
+        : initialView.includes("counsel") ? "法律顾问"
+          : initialView.includes("arbitration") ? "仲裁" : "";
+  return rows.filter((row) => !routeCaseType || (row.data.case_type || "民事案件") === routeCaseType);
+};
+export const buildCasePhaseItems = (rows: CaseRow[], initialView: string, items: {label:string;value:string}[]) => {
+  const routeCases = scopeCasesByListRoute(rows, initialView);
+  return items.map((item) => ({...item, count: routeCases.filter((row) => row.status === item.value).length}));
+};
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
   ["law-firm-letter", "律师事务所函"], ["identity-certificate", "主体身份证明"], ["settlement-list", "结算提成表"],
@@ -1821,13 +1833,9 @@ export default function CaseCenterPage({
       initialView.startsWith(prefix),
     );
   const counselListMode = originalListMode && initialView.includes("counsel");
+  const routeScopedCases = useMemo(() => scopeCasesByListRoute(scopedCases, initialView), [scopedCases, initialView]);
   const originalCases = useMemo(() => {
-    const routeCaseType = initialView.includes("civil") ? "民事案件"
-      : initialView.includes("criminal") ? "刑事案件"
-        : initialView.includes("administrative") ? "行政案件及国家赔偿"
-          : initialView.includes("counsel") ? "法律顾问"
-            : initialView.includes("arbitration") ? "仲裁" : "";
-    let list = scopedCases.filter((row) => !routeCaseType || (row.data.case_type || "民事案件") === routeCaseType);
+    let list = routeScopedCases;
     const includes = (value: unknown, queryValue: string) =>
       String(value || "").toLowerCase().includes(queryValue.toLowerCase());
     const mappings: [string, (row: CaseRow) => unknown][] = [
@@ -1869,7 +1877,7 @@ export default function CaseCenterPage({
       return start.isValid() && end.isValid() && !end.isBefore(caseQuery.counsel_range[0], "day") && !start.isAfter(caseQuery.counsel_range[1], "day");
     });
     return list;
-  }, [scopedCases, initialView, caseQuery, attachments]);
+  }, [routeScopedCases, caseQuery, attachments]);
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeys.includes(row.id));
   const selectedCaseCapability = getCaseCapability(selectedCase);
   const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeys.includes(row.id));
@@ -1995,7 +2003,7 @@ export default function CaseCenterPage({
   ];
   const phaseLabels=["等待公证书","审核公证书","待主体披露","新案待分配","文书准备","客户盖章","等待立案","补充取证","提交立案","一审阶段","二审阶段","再审阶段","执行阶段","归档阶段"];
   const criminalPhaseItems=[{label:"待分配",value:"新案待分配"},{label:"公安侦查",value:"公安侦查"},{label:"批捕",value:"批捕"},{label:"检察院审查起诉",value:"检察院审查起诉"},{label:"一审阶段",value:"一审阶段"},{label:"二审阶段",value:"二审阶段"},{label:"再审阶段",value:"再审阶段"},{label:"归档阶段",value:"归档阶段"}];
-  const phaseItems=(initialView.includes("criminal")?criminalPhaseItems:phaseLabels.map(value=>({label:value,value}))).map(item=>({...item,count:scopedCases.filter(row=>row.status===item.value).length}));
+  const phaseItems=buildCasePhaseItems(scopedCases,initialView,initialView.includes("criminal")?criminalPhaseItems:phaseLabels.map(value=>({label:value,value})));
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?row.status==="已归档":archiveRefused?Boolean(row.data.archive_reject_reason):row.status==="待归档审核").filter(row=>{

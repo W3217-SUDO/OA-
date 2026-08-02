@@ -16,7 +16,7 @@ test('我的案件查询支持重置并恢复第一页数据', () => {
   assert.match(source, /initialView\.startsWith\("case-mine"\)/);
   assert.match(source, /const exportCases = async \(\) => \{\s*if \(!originalCases\.length\) return message\.warning\("当前查询没有可导出的案件"\);/);
   assert.match(source, /const criminalPhaseItems=\[\{label:"待分配",value:"新案待分配"\}/);
-  assert.match(source, /scopedCases\.filter\(row=>row\.status===item\.value\)/);
+  assert.match(source, /buildCasePhaseItems\(scopedCases,initialView/);
   assert.match(source, /caseQueryForm\.setFieldValue\("status",value\);setCaseQuery\(\{\.\.\.caseQuery,status:value\}\)/);
 });
 
