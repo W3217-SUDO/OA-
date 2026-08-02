@@ -4350,8 +4350,14 @@ export default function FinanceCenterPage({
               ? "archiveSettlements"
               : "fees",
           selectable: true,
-          clear: route === "finance-archive-fee-pending",
-          export: route === "finance-archive-fee-pending",
+          clear: [
+            "finance-archive-fee-pending",
+            "finance-archive-fee-payment",
+          ].includes(route),
+          export: [
+            "finance-archive-fee-pending",
+            "finance-archive-fee-payment",
+          ].includes(route),
           headers: [
             "操作",
             "案号",

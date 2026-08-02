@@ -117,14 +117,23 @@ test("refused settlement exposes clear/export and reapply-only row flow", () => 
 });
 
 test("archive settlement pending exposes clear/export controls", () => {
-  const expr = source.indexOf('clear: route === "finance-archive-fee-pending"');
+  const expr = source.indexOf('clear: [', source.indexOf("const routeConfigs"));
   assert.ok(expr >= 0, "archive pending route expression should exist");
   const block = source.slice(expr - 500, expr + 500);
-  assert.match(block, /clear: route === "finance-archive-fee-pending"/);
-  assert.match(block, /export: route === "finance-archive-fee-pending"/);
+  assert.match(block, /"finance-archive-fee-pending",[\s\S]*?"finance-archive-fee-payment"/);
+  assert.match(block, /clear: \[[\s\S]*?\]\.includes\(route\)/);
+  assert.match(block, /export: \[[\s\S]*?\]\.includes\(route\)/);
   assert.doesNotMatch(block, /clear: true/);
   assert.doesNotMatch(block, /export: true/);
   assert.match(source, /exportPendingArchiveSettlements/);
+});
+
+test("archive settlement payment is the only next archive route enabled", () => {
+  const expr = source.slice(source.indexOf('clear: [', source.indexOf("const routeConfigs")), source.indexOf('headers:', source.indexOf('clear: [', source.indexOf("const routeConfigs"))));
+  assert.match(expr, /finance-archive-fee-pending/);
+  assert.match(expr, /finance-archive-fee-payment/);
+  assert.doesNotMatch(expr, /finance-archive-fee-paid/);
+  assert.doesNotMatch(expr, /finance-archive-fee-refused/);
 });
 
 test("contract payment applications are loaded and reviewed through contract API", () => {
