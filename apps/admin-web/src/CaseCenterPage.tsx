@@ -158,6 +158,7 @@ export const shouldUseCompanyCriminalQueryFields = (initialView: string) => init
 export const shouldUseCompanyArbitrationQueryFields = (initialView: string) => initialView === "case-company-arbitration";
 export const shouldUseCompanyArbitrationColumns = (initialView: string) => initialView === "case-company-arbitration";
 export const shouldUseCompanyScheduleQueryFields = (initialView: string) => initialView === "case-company-schedule";
+export const shouldShowCompanyScheduleActions = (initialView: string, rowCount: number) => initialView !== "case-company-schedule" || rowCount > 0;
 export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
@@ -2348,7 +2349,7 @@ export default function CaseCenterPage({
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode!=="invoice"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>} 
         <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={{pageSize:20,showTotal:total=>`共有${total}条`}} />
-        {specialMode!=="invoice"&&specialMode!=="stage"&&<div className="case-bottom-actions"><Space>
+        {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}
           {specialMode==="refund"&&<Button onClick={()=>void exportSpecialRecords("refund","退费查询.csv")}>导出</Button>}
           {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")void exportCases();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
