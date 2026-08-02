@@ -33,6 +33,7 @@ import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./cus
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
 import { createContractCustomerContextConsumer, createContractNumber, type LinkedCustomerContext } from "./contractCreateContext";
+import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import { formatRequiredDate } from "./formSafety";
@@ -124,15 +125,10 @@ const colors: Record<string, string> = {
   已拒绝: "red",
 };
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
-const CONTRACT_QUERY_STORAGE_KEY = "sunhold:contract-query";
-const readContractQuery = (): Record<string, any> => {
-  try {
-    const parsed = JSON.parse(sessionStorage.getItem(CONTRACT_QUERY_STORAGE_KEY) || "{}");
-    if (Array.isArray(parsed.signed_at)) parsed.signed_at = parsed.signed_at.map((value: string) => dayjs(value));
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+const readContractQuery = (view: string): Record<string, any> => {
+  const parsed = readContractListQuery(sessionStorage, view) as Record<string, any>;
+  if (Array.isArray(parsed.signed_at)) parsed.signed_at = parsed.signed_at.map((value: string) => dayjs(value));
+  return parsed;
 };
 const initialProfile = (): Profile => {
   try {
@@ -215,7 +211,7 @@ export default function ContractCenterPage({
   const [submittingWizard, setSubmittingWizard] = useState(false);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]),
-    [query, setQuery] = useState<Record<string, any>>(readContractQuery),
+    [query, setQuery] = useState<Record<string, any>>(() => readContractQuery(initialView)),
     [listPagination, setListPagination] = useState(() => readContractListPagination(sessionStorage, initialView));
   const [form] = Form.useForm(),
     [submitForm] = Form.useForm(),
@@ -249,7 +245,7 @@ export default function ContractCenterPage({
   const openViewing = async (contract: Contract) => {
     if (!isContractDetailView) {
       try {
-        sessionStorage.setItem(CONTRACT_QUERY_STORAGE_KEY, JSON.stringify(query));
+        saveContractListQuery(sessionStorage, initialView, query);
       } catch {
         // Session storage may be unavailable in embedded/private contexts.
       }
@@ -359,13 +355,6 @@ export default function ContractCenterPage({
     try {
       const recordsRes = await recordsRequest;
       setAllRows(recordsRes.data.items);
-      if (!isContractDetailView) {
-        const savedQuery = readContractQuery();
-        if (Object.keys(savedQuery).length) {
-          setQuery(savedQuery);
-          queryForm.setFieldsValue(savedQuery);
-        }
-      }
       const relationTarget = consumeCustomerRelationTarget();
       if (relationTarget?.target === "contracts") {
         const customerKeyword = relationTarget.title || relationTarget.serial_no || "";
@@ -389,6 +378,13 @@ export default function ContractCenterPage({
   useEffect(() => {
     load();
   }, [initialView, detailTarget?.id, detailTarget?.serial_no]);
+  useEffect(() => {
+    if (isContractDetailView || initialView === "contract-new") return;
+    const savedQuery = readContractQuery(initialView);
+    setQuery(savedQuery);
+    queryForm.resetFields();
+    queryForm.setFieldsValue(savedQuery);
+  }, [initialView]);
   useEffect(() => {
     setListPagination(readContractListPagination(sessionStorage, initialView));
   }, [initialView]);
@@ -1441,6 +1437,7 @@ export default function ContractCenterPage({
     setListPagination(saveContractListPagination(sessionStorage, initialView, { current, pageSize }));
   };
   const applyQuery = (values: Record<string, any>) => {
+    saveContractListQuery(sessionStorage, initialView, values);
     setQuery(values);
     updateListPagination(1, listPagination.pageSize);
   };
