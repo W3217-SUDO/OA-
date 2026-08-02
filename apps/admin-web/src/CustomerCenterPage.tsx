@@ -1214,7 +1214,7 @@ export default function CustomerCenterPage({
           />
           {canManageCurrentCustomer && detailTab === "notes" && (
             <div className="customer-detail-actions">
-              <Button type="link" onClick={() => openNewEditor("note")}>新建事项记录</Button>
+              <Button type="link" onClick={() => openNewEditor("note")}>{initialView === "customer-company" ? "新建" : "新建事项记录"}</Button>
               {(contacts.data.notes || []).map((note) => (
                 <Space key={note.id} size={0}>
                   <Button type="link" onClick={() => openNoteEdit(note)}>编辑事项记录</Button>
