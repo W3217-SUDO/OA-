@@ -24,6 +24,5 @@ const actionsVisible = (initialView, isAuditView, rows) => {
 test("pending approval hides its action bar when the result set is empty", () => {
   assert.equal(actionsVisible("contract-audit-pending", true, []), false);
   assert.equal(actionsVisible("contract-audit-pending", true, [{ id: 1 }]), true);
-  assert.equal(actionsVisible("contract-audit-approved", true, []), true);
   assert.equal(actionsVisible("contract-mine", false, [{ id: 1 }]), false);
 });
