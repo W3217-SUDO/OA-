@@ -8068,7 +8068,8 @@ export default function FinanceCenterPage({
                   activeRouteConfig?.selectable ||
                   initialView === "finance-payment-audit" ||
                   initialView === "finance-payment-waiting" ||
-                  initialView === "finance-payment-writeoff"
+                  initialView === "finance-payment-writeoff" ||
+                  initialView === "finance-payment-query"
                     ? {
                         selectedRowKeys: selectedOriginalRows,
                         onChange: (keys) =>
