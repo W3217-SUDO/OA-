@@ -49,14 +49,6 @@ export default function CustomerConflictPage() {
   const requestSequence = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
 
-  const resetResult = () => {
-    requestSequence.current += 1;
-    activeRequest.current?.abort();
-    activeRequest.current = null;
-    setLoading(false);
-    setResult(null);
-  };
-
   const search = async () => {
     const query = name.trim();
     activeRequest.current?.abort();
@@ -122,7 +114,6 @@ export default function CustomerConflictPage() {
               value={name}
               onChange={(event) => {
                 setName(event.target.value);
-                resetResult();
               }}
             />
             <Button loading={loading} onClick={search}>
