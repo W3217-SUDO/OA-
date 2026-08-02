@@ -173,6 +173,9 @@ export default function SealCenterPage({
   const [detail, setDetail] = useState<SealRow | null>(null);
   const [history, setHistory] = useState<EventRow[]>([]);
   const [auditListOpen, setAuditListOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [action, setAction] = useState<{
     type: "approve" | "reject" | "stamp" | "archive";
@@ -465,6 +468,22 @@ export default function SealCenterPage({
       URL.revokeObjectURL(url);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "用印文件下载失败");
+    }
+  };
+  const previewAttachment = async (item: AttachmentRow) => {
+    try {
+      const response = await api.get(`/attachments/${item.id}/preview`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      setPreviewUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return url;
+      });
+      setPreviewName(item.original_name);
+      setPreviewOpen(true);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "文件预览失败");
     }
   };
   const uploadSealFile = async (file: File) => {
@@ -1451,9 +1470,15 @@ export default function SealCenterPage({
                 {
                   title: "操作",
                   width: 130,
-                  render: (_: unknown, item: AttachmentRow) => (
-                    <Space size={0}>
-                      <Button
+                      render: (_: unknown, item: AttachmentRow) => (
+                        <Space size={0}>
+                          <Button
+                            type="link"
+                            onClick={() => void previewAttachment(item)}
+                          >
+                            预览
+                          </Button>
+                          <Button
                         type="link"
                         icon={<DownloadOutlined />}
                         onClick={() => void downloadAttachment(item)}
@@ -1527,6 +1552,31 @@ export default function SealCenterPage({
             },
           ]}
         />
+      </Modal>
+      <Modal
+        open={previewOpen}
+        title={`文件预览：${previewName}`}
+        width={900}
+        footer={<Button onClick={() => {
+          setPreviewOpen(false);
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          setPreviewUrl("");
+          setPreviewName("");
+        }}>关闭</Button>}
+        onCancel={() => {
+          setPreviewOpen(false);
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          setPreviewUrl("");
+          setPreviewName("");
+        }}
+      >
+        {previewUrl && (
+          <iframe
+            title={previewName}
+            src={previewUrl}
+            style={{ width: "100%", height: 620, border: 0 }}
+          />
+        )}
       </Modal>
     </>
   );
