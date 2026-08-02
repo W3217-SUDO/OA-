@@ -1641,6 +1641,11 @@ class FinanceFeeInput(BaseModel):
     case_record_id: int | None = None
 
 
+class FinanceFeeUpdateInput(FinanceFeeInput):
+    """Editable draft fee fields; lifecycle records are immutable."""
+    pass
+
+
 class FinanceActionInput(BaseModel):
     comment: str = ""
 
@@ -5945,6 +5950,46 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
     db.add(WorkflowEvent(record_id=item.id, action="创建合同草稿", to_status="草稿", operator=identity["username"], comment="通过合同专用入口创建"))
     await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
+
+
+async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    # Resolve the mutation target by id first so a visible finance row owned by
+    # another user returns the explicit 403 owner guard instead of being hidden
+    # as a generic 404 by the list data-scope filter.
+    item = await db.get(BusinessRecord, fee_id)
+    if not item or item.module != "finance":
+        raise HTTPException(status_code=404, detail="费用记录不存在")
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status != "草稿":
+        raise HTTPException(status_code=409, detail="仅草稿费用可以修改或删除")
+    case_id = int((item.data or {}).get("case_id") or 0)
+    if case_id:
+        case = await _ensure_record_visible(case_id, identity, db)
+        if case.status in {"待归档审核", "已归档"}:
+            raise HTTPException(status_code=409, detail="归档中的案件费用不可修改或删除")
+    return item
+
+
+@app.put(f"{settings.api_prefix}/finance/fees/{{fee_id}}")
+async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _editable_finance_fee(fee_id, identity, db)
+    amount = _round_fee_amount(body.amount)
+    data = dict(item.data or {})
+    data.update({"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "case_no": body.case_no, "case_id": body.case_record_id, "contract_id": body.contract_record_id, "is_refund": body.fee_type == "内部费用" and amount < 0})
+    item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
+    db.add(WorkflowEvent(record_id=item.id, action="修改费用草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
+    await db.commit(); await db.refresh(item)
+    return await _record_dict_for_identity(item, identity, db)
+
+
+@app.delete(f"{settings.api_prefix}/finance/fees/{{fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _editable_finance_fee(fee_id, identity, db)
+    db.add(WorkflowEvent(record_id=item.id, action="删除费用草稿", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
+    await db.flush()
+    await db.delete(item)
+    await db.commit()
+    return None
 
 
 @app.patch(f"{settings.api_prefix}/contracts/{{contract_id}}")
