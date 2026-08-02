@@ -327,6 +327,9 @@ const paymentPrintStatusField = (initialView: string) =>
 const paymentWriteoffClearQuery = (initialView: string) =>
   initialView === "finance-payment-writeoff" ? { status: "待核销" } : {};
 
+const paymentQueryFeeTypeControl = (initialView: string) =>
+  initialView === "finance-payment-query" ? undefined : "feeType";
+
 type PaymentPrintDocumentData = {
   documentTitle: string;
   packageNo: string;
@@ -2998,7 +3001,11 @@ export default function FinanceCenterPage({
     queryField("案件编号", "caseNo"),
     queryField("收款单位", "payee"),
     queryField("请款单号", "paymentNo"),
-    queryField("费用类型", "feeType", "feeType"),
+    queryField(
+      "费用类型",
+      "feeType",
+      paymentQueryFeeTypeControl(initialView),
+    ),
     queryField("客户名称", "customer"),
   ];
   const auditQueryFields = [
