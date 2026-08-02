@@ -127,6 +127,18 @@ function sealPackageDownloadFailureMessage(status?: number): string {
   if (status === 404) return "所选用印申请暂无可下载附件";
   return "打包下载失败";
 }
+function sealAttachmentDownloadFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权下载该用印文件";
+  if (status === 404) return "附件不存在或文件实体不存在";
+  if (status === 409) return "当前状态不允许下载该用印文件";
+  return "用印文件下载失败";
+}
+function sealAttachmentPreviewFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权预览该用印文件";
+  if (status === 404) return "附件不存在或文件实体不存在";
+  if (status === 409) return "当前状态不允许预览该用印文件";
+  return "文件预览失败";
+}
 type RelationRow = {
   id: number;
   serial_no: string;
@@ -514,7 +526,10 @@ export default function SealCenterPage({
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "用印文件下载失败");
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentDownloadFailureMessage(error?.response?.status),
+      );
     }
   };
   const openFileList = async (row: SealRow) => {
@@ -550,7 +565,10 @@ export default function SealCenterPage({
       setPreviewName(item.original_name);
       setPreviewOpen(true);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "文件预览失败");
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentPreviewFailureMessage(error?.response?.status),
+      );
     }
   };
   const uploadSealFile = async (file: File) => {
