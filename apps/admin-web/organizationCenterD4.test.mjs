@@ -75,6 +75,9 @@ test("permissions tree supports cancel/save and cannot downgrade SYSTEM-ADMIN", 
   assert.match(source, /checkable/);
   assert.match(source, /selectedRolePermissions/);
   assert.match(source, /onCancel=\{\(\) => setPermissionRole\(null\)\}/);
+  assert.match(source, /api\.get\(`\/hr\/job-roles\/\$\{row\.id\}\/permissions`\)/);
+  assert.match(source, /treeData=\{rolePermissionTreeData\}/);
+  assert.match(source, /api\.patch\(`\/hr\/job-roles\/\$\{permissionRole\.id\}\/permissions`/);
   assert.match(source, /api\.patch\(`\/hr\/job-roles\//);
   assert.match(source, /disabled=\{permissionRole\?\.code === "SYSTEM-ADMIN"\}/);
   assert.match(source, /系统管理员权限由系统强制保持完整/);

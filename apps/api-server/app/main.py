@@ -948,6 +948,10 @@ class JobRoleUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class JobRolePermissionUpdate(BaseModel):
+    permissions: list[str] = Field(default_factory=list, max_length=200)
+
+
 class WarehouseBorrowInput(BaseModel):
     borrower: str = Field(min_length=1, max_length=64)
     due_date: date
@@ -15475,8 +15479,48 @@ async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: 
     return {"deleted_ids": [employee.id for employee, _ in employees]}
 
 
+async def _record_organization_audit(
+    db: AsyncSession, identity: dict, action: str, target: str, detail: dict,
+) -> None:
+    """Persist organization mutations in the existing audit event stream."""
+    audit = BusinessRecord(
+        module="organization_audit",
+        serial_no=f"ORG-AUDIT-{uuid4().hex}",
+        title=target,
+        status="已记录",
+        owner=identity["username"],
+        department=str(identity.get("department") or ""),
+        data={"target": target, **detail},
+    )
+    db.add(audit)
+    await db.flush()
+    db.add(WorkflowEvent(
+        record_id=audit.id,
+        action=action,
+        from_status="",
+        to_status="已记录",
+        operator=identity["username"],
+        comment=json.dumps(detail, ensure_ascii=False, sort_keys=True),
+    ))
+
+
+def _organization_page(items: list, page: int | None, page_size: int | None) -> tuple[list, int, int, int]:
+    """Keep legacy full-list callers working while exposing server paging."""
+    total = len(items)
+    if page is None and page_size is None:
+        return items, 1, total or 15, total
+    effective_page = page or 1
+    effective_page_size = page_size or 15
+    start = (effective_page - 1) * effective_page_size
+    return items[start:start + effective_page_size], effective_page, effective_page_size, total
+
+
 @app.get(f"{settings.api_prefix}/hr/departments")
-async def list_departments(keyword: str = "", active_only: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_departments(
+    keyword: str = "", active_only: bool = False,
+    page: int | None = Query(default=None, ge=1), page_size: int | None = Query(default=None, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
     statement = select(Department)
     if keyword.strip():
         term = f"%{keyword.strip()}%"; statement = statement.where(or_(Department.code.ilike(term), Department.name.ilike(term), Department.manager.ilike(term)))
@@ -15485,7 +15529,11 @@ async def list_departments(keyword: str = "", active_only: bool = False, identit
     parent_ids = {item.parent_department_id for item in items if item.parent_department_id}
     parents = (await db.scalars(select(Department).where(Department.id.in_(parent_ids)))).all() if parent_ids else []
     names_by_id = {item.id: item.name for item in parents}
-    return {"items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, "")) for item in items], "total": len(items)}
+    page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
+    return {
+        "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, "")) for item in page_items],
+        "total": total, "page": effective_page, "page_size": effective_page_size,
+    }
 
 
 @app.post(f"{settings.api_prefix}/hr/departments", status_code=status.HTTP_201_CREATED)
@@ -15497,7 +15545,9 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
         parent = await db.get(Department, body.parent_department_id)
         if not parent or not parent.is_active: raise HTTPException(status_code=422, detail="上级部门不存在或已停用")
     item = Department(**body.model_dump(exclude={"code", "name", "manager"}), code=code, name=name, manager=body.manager.strip(), created_by=identity["username"], updated_by=identity["username"])
-    db.add(item); await db.commit(); await db.refresh(item); return _department_dict(item, parent.name if parent else "")
+    db.add(item); await db.flush()
+    await _record_organization_audit(db, identity, "创建部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
+    await db.commit(); await db.refresh(item); return _department_dict(item, parent.name if parent else "")
 
 
 @app.patch(f"{settings.api_prefix}/hr/departments/{{department_id}}")
@@ -15523,6 +15573,7 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     if item.name != old_name:
         await db.execute(update(User).where(User.department == old_name).values(department=item.name))
         await db.execute(update(BusinessRecord).where(BusinessRecord.department == old_name).values(department=item.name))
+    await _record_organization_audit(db, identity, "修改部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
     await db.commit(); await db.refresh(item)
     parent = await db.get(Department, item.parent_department_id) if item.parent_department_id else None
     return _department_dict(item, parent.name if parent else "")
@@ -15537,17 +15588,102 @@ async def delete_department(department_id: int, identity: dict = Depends(current
     child_count = await db.scalar(select(func.count()).select_from(Department).where(Department.parent_department_id == item.id))
     if (users or 0) + (records or 0) > 0: raise HTTPException(status_code=409, detail=f"部门仍被 {users or 0} 个账号和 {records or 0} 条业务记录使用，请先停用或迁移")
     if child_count: raise HTTPException(status_code=409, detail=f"部门仍有 {child_count} 个下级部门，请先调整其上级部门")
+    await _record_organization_audit(db, identity, "删除部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get(f"{settings.api_prefix}/hr/job-roles")
-async def list_job_roles(keyword: str = "", active_only: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_job_roles(
+    keyword: str = "", active_only: bool = False,
+    page: int | None = Query(default=None, ge=1), page_size: int | None = Query(default=None, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
     statement = select(JobRole)
     if keyword.strip():
         term = f"%{keyword.strip()}%"; statement = statement.where(or_(JobRole.code.ilike(term), JobRole.name.ilike(term), JobRole.description.ilike(term)))
     if active_only: statement = statement.where(JobRole.is_active.is_(True))
     items = (await db.scalars(statement.order_by(JobRole.sort_order, JobRole.id))).all()
-    return {"items": [_job_role_dict(item) for item in items], "total": len(items)}
+    page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
+    return {
+        "items": [_job_role_dict(item) for item in page_items],
+        "total": total, "page": effective_page, "page_size": effective_page_size,
+    }
+
+
+def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], selected: set[str]) -> list[dict]:
+    by_parent: dict[str, list[SystemMenu]] = {}
+    for menu in menus:
+        by_parent.setdefault(menu.parent_key or "", []).append(menu)
+
+    def build(parent_key: str, trail: set[str]) -> list[dict]:
+        nodes: list[dict] = []
+        for menu in by_parent.get(parent_key, []):
+            if menu.key in trail:
+                continue
+            children = build(menu.key, {*trail, menu.key})
+            nodes.append({
+                "key": f"menu:{menu.key}", "node_type": "M", "node_original_id": menu.id,
+                "node_id": menu.id, "node_code": menu.key, "text": menu.label,
+                "state": {"checked": menu.key in selected}, "children": children,
+            })
+        return nodes
+
+    tree = build("", set())
+    tree.append({
+        "key": "actions", "node_type": "M", "node_original_id": 0,
+        "node_id": 0, "node_code": "actions", "text": "业务动作",
+        "state": {"checked": False}, "children": [
+            {
+                "key": action, "node_type": "A", "node_original_id": action,
+                "node_id": action, "node_code": action, "text": action,
+                "state": {"checked": action in selected}, "children": [],
+            }
+            for action in actions
+        ],
+    })
+    return tree
+
+
+@app.get(f"{settings.api_prefix}/hr/job-roles/{{role_id}}/permissions")
+async def get_job_role_permissions(role_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    role = await db.get(JobRole, role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail="岗位角色不存在")
+    menus = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
+    role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
+    actions = sorted({action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS))
+    permissions = list(dict.fromkeys(value.strip() for value in (role.permissions or []) if value.strip()))
+    return {
+        "role_id": role.id, "role_code": role.code, "permissions": permissions,
+        "tree": _organization_permission_tree(menus, actions, set(permissions)),
+    }
+
+
+@app.patch(f"{settings.api_prefix}/hr/job-roles/{{role_id}}/permissions")
+async def update_job_role_permissions(
+    role_id: int, body: JobRolePermissionUpdate,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    _require_admin(identity)
+    role = await db.get(JobRole, role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail="岗位角色不存在")
+    permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
+    if role.code == "SYSTEM-ADMIN":
+        if set(permissions) != set(SYSTEM_ADMIN_JOB_PERMISSIONS):
+            raise HTTPException(status_code=422, detail="系统管理员角色权限不可修改")
+    else:
+        role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
+        allowed = {action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
+        invalid = sorted(set(permissions) - allowed)
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"无效业务动作权限：{', '.join(invalid)}")
+    role.permissions = permissions
+    role.updated_by = identity["username"]
+    await _record_organization_audit(db, identity, "修改岗位角色权限", f"岗位角色:{role.code}", {"role_id": role.id, "permissions": permissions})
+    await db.commit(); await db.refresh(role)
+    return _job_role_dict(role)
 
 
 @app.post(f"{settings.api_prefix}/hr/job-roles", status_code=status.HTTP_201_CREATED)
@@ -15556,7 +15692,9 @@ async def create_job_role(body: JobRoleInput, identity: dict = Depends(current_i
     if await db.scalar(select(JobRole.id).where(or_(JobRole.code == code, JobRole.name == name))): raise HTTPException(status_code=409, detail="岗位角色代码或名称已存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
     item = JobRole(**body.model_dump(exclude={"code", "name", "permissions", "description"}), code=code, name=name, permissions=permissions, description=body.description.strip(), created_by=identity["username"], updated_by=identity["username"])
-    db.add(item); await db.commit(); await db.refresh(item); return _job_role_dict(item)
+    db.add(item); await db.flush()
+    await _record_organization_audit(db, identity, "创建岗位角色", f"岗位角色:{item.code}", {"role_id": item.id, "code": item.code, "name": item.name})
+    await db.commit(); await db.refresh(item); return _job_role_dict(item)
 
 
 @app.patch(f"{settings.api_prefix}/hr/job-roles/{{role_id}}")
@@ -15581,6 +15719,7 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
         hr_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all()
         for record in hr_records:
             if (record.data or {}).get("position") == old_name: record.data = {**(record.data or {}), "position": item.name}
+    await _record_organization_audit(db, identity, "修改岗位角色", f"岗位角色:{item.code}", {"role_id": item.id, "code": item.code, "name": item.name})
     await db.commit(); await db.refresh(item); return _job_role_dict(item)
 
 
@@ -15593,6 +15732,7 @@ async def delete_job_role(role_id: int, identity: dict = Depends(current_identit
     hr_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all()
     used = sum(1 for record in hr_records if (record.data or {}).get("position") == item.name)
     if used: raise HTTPException(status_code=409, detail=f"岗位角色仍被 {used} 份员工档案使用，请先调整员工岗位")
+    await _record_organization_audit(db, identity, "删除岗位角色", f"岗位角色:{item.code}", {"role_id": item.id, "code": item.code, "name": item.name})
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

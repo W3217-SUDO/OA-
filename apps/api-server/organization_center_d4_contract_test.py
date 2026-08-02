@@ -22,6 +22,20 @@ def test_organization_routes_and_dtos_are_present() -> None:
         assert route in MAIN
     for dto in ("class DepartmentInput", "class DepartmentUpdate", "class JobRoleInput", "class JobRoleUpdate"):
         assert dto in MAIN
+    assert "page: int | None = Query(default=None" in MAIN
+    assert "page_size: int | None = Query(default=None" in MAIN
+    assert '"page": effective_page' in MAIN
+    assert '"page_size": effective_page_size' in MAIN
+
+
+def test_dynamic_role_permission_tree_matches_legacy_menu_action_shape() -> None:
+    assert '/hr/job-roles/{{role_id}}/permissions' in MAIN
+    assert 'node_type": "M"' in MAIN
+    assert 'node_type": "A"' in MAIN
+    assert 'RolePermissionUpdate' in MAIN
+    assert 'permissions' in MAIN
+    assert '系统管理员角色权限不可修改' in MAIN
+    assert '角色权限不存在' in MAIN or '岗位角色不存在' in MAIN
 
 
 def test_organization_contract_has_admin_guard_and_error_paths() -> None:
@@ -49,8 +63,8 @@ def test_organization_response_and_audit_fields_match_models() -> None:
     ):
         assert field in MODELS
         assert field in MAIN
-    assert 'return {"items": [_department_dict' in MAIN
-    assert 'return {"items": [_job_role_dict' in MAIN
+    assert '_department_dict(item' in MAIN
+    assert '_job_role_dict(item)' in MAIN
 
 
 def test_organization_transaction_and_identity_audit_are_explicit() -> None:
@@ -58,3 +72,5 @@ def test_organization_transaction_and_identity_audit_are_explicit() -> None:
     assert 'updated_by=identity["username"]' in MAIN
     assert "await db.commit(); await db.refresh(item)" in MAIN
     assert "await db.delete(item); await db.commit()" in MAIN
+    assert "_record_organization_audit" in MAIN
+    assert "record_id=audit.id" in MAIN

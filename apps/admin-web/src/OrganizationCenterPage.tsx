@@ -203,6 +203,8 @@ export default function OrganizationCenterPage({
     [editingRole, setEditingRole] = useState<JobRole | null>(null),
     [permissionRole, setPermissionRole] = useState<JobRole | null>(null),
     [selectedRolePermissions, setSelectedRolePermissions] = useState<string[]>([]);
+  const [rolePermissionTreeData, setRolePermissionTreeData] = useState<TreeDataNode[]>(permissionTreeData);
+  const [rolePermissionLoading, setRolePermissionLoading] = useState(false);
   const [departmentForm] = Form.useForm(),
     [roleForm] = Form.useForm();
   const load = async () => {
@@ -339,13 +341,24 @@ export default function OrganizationCenterPage({
       message.error(error?.response?.data?.detail || "删除失败.");
     }
   };
-  const openRolePermissions = (row: JobRole) => {
+  const openRolePermissions = async (row: JobRole) => {
     if (!canManageOrganization) {
       message.error("仅系统管理员可以设置角色权限");
       return;
     }
     setPermissionRole(row);
     setSelectedRolePermissions(row.permissions || []);
+    setRolePermissionTreeData(permissionTreeData);
+    setRolePermissionLoading(true);
+    try {
+      const { data } = await api.get(`/hr/job-roles/${row.id}/permissions`);
+      setSelectedRolePermissions(data.permissions || row.permissions || []);
+      setRolePermissionTreeData(data.tree || permissionTreeData);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "角色权限加载失败");
+    } finally {
+      setRolePermissionLoading(false);
+    }
   };
   const saveRolePermissions = async () => {
     if (!permissionRole) return;
@@ -358,7 +371,7 @@ export default function OrganizationCenterPage({
       return;
     }
     try {
-      await api.patch(`/hr/job-roles/${permissionRole.id}`, {
+      await api.patch(`/hr/job-roles/${permissionRole.id}/permissions`, {
         permissions: selectedRolePermissions,
       });
       message.success("角色权限已保存.");
@@ -628,8 +641,9 @@ export default function OrganizationCenterPage({
         title="角色维护"
         okText="确定"
         cancelText="取消"
-        onOk={() => void saveRolePermissions()}
-        onCancel={() => setPermissionRole(null)}
+            onOk={() => void saveRolePermissions()}
+            onCancel={() => setPermissionRole(null)}
+            confirmLoading={rolePermissionLoading}
         destroyOnHidden
         width={560}
       >
@@ -642,10 +656,10 @@ export default function OrganizationCenterPage({
               <Tree
                 checkable
                 defaultExpandAll
-                treeData={permissionTreeData}
-                checkedKeys={selectedRolePermissions}
+                    treeData={rolePermissionTreeData}
+                    checkedKeys={selectedRolePermissions}
                 disabled={permissionRole?.code === "SYSTEM-ADMIN"}
-                onCheck={(checked) => setSelectedRolePermissions((Array.isArray(checked) ? checked : checked.checked).filter((key): key is string => typeof key === "string" && !key.startsWith("group:")))}
+                    onCheck={(checked) => setSelectedRolePermissions((Array.isArray(checked) ? checked : checked.checked).filter((key): key is string => typeof key === "string" && !key.startsWith("group:") && !key.startsWith("menu:") && key !== "actions"))}
               />
             </div>
           </Form.Item>
