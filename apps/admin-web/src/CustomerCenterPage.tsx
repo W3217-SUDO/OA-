@@ -1547,7 +1547,7 @@ export default function CustomerCenterPage({
               name="title"
               rules={[{ required: true }]}
             >
-              <Input disabled={Boolean(editing)} />
+              <Input />
             </Form.Item>
             <Form.Item label="客户状态" name="status">
               <Select

@@ -9341,12 +9341,16 @@ async def list_customers(
     customer_name: str = "",
     customer_type: str = Query("客户", min_length=1, max_length=64),
     manager: str = "",
-    page: int = Query(1, ge=1),
-    page_size: int = Query(15, ge=1, le=200),
+    page: int = Query(1, ge=0),
+    page_size: int = Query(15, ge=0, le=200),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
     """Original customer-list scopes with authoritative server-side filtering and paging."""
+    # The legacy POST contract treats zero as an omitted pager value. Keep
+    # that compatibility at the API boundary while still rejecting negatives.
+    page = page or 1
+    page_size = page_size or 15
     current_user = await db.scalar(
         select(User).where(User.username == identity["username"], User.is_active.is_(True))
     )
