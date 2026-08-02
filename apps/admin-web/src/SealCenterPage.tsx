@@ -117,6 +117,16 @@ function sealActionFailureMessage(type: "approve" | "reject" | "stamp" | "archiv
     archive: "归档失败",
   }[type];
 }
+function sealAttachmentDeleteFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权删除该用印文件";
+  if (status === 409) return "仅草稿用印申请可以删除文件";
+  return "用印文件删除失败";
+}
+function sealPackageDownloadFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权下载所选用印附件";
+  if (status === 404) return "所选用印申请暂无可下载附件";
+  return "打包下载失败";
+}
 type RelationRow = {
   id: number;
   serial_no: string;
@@ -308,6 +318,9 @@ export default function SealCenterPage({
   useEffect(() => {
     setTab(tabFromView(initialView));
   }, [initialView]);
+  useEffect(() => {
+    setSelectedKeys([]);
+  }, [initialView, tab, query]);
   useEffect(() => {
     load();
   }, [tab, initialView, query]);
@@ -567,7 +580,10 @@ export default function SealCenterPage({
       if (detail) await loadDetailFiles(detail);
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "用印文件删除失败");
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentDeleteFailureMessage(error?.response?.status),
+      );
     }
   };
   useEffect(() => {
@@ -586,6 +602,10 @@ export default function SealCenterPage({
     })();
   }, []);
   const packageDownload = async (selected: SealRow[]) => {
+    if (!selected.length) {
+      message.warning("请选择用印文件");
+      return;
+    }
     try {
       const res = await api.post(
         "/seals/applications/package-download",
@@ -603,11 +623,14 @@ export default function SealCenterPage({
       if (error?.response?.data instanceof Blob) {
         try {
           const detail = JSON.parse(await error.response.data.text()).detail;
-          message.error(detail || "打包下载失败");
+          message.error(detail || sealPackageDownloadFailureMessage(error?.response?.status));
           return;
         } catch {}
       }
-      message.error(error?.response?.data?.detail || "打包下载失败");
+      message.error(
+        error?.response?.data?.detail ||
+          sealPackageDownloadFailureMessage(error?.response?.status),
+      );
     }
   };
   const saveAsset = async () => {
