@@ -2843,7 +2843,11 @@ export default function FinanceCenterPage({
           </Button>
         )}
       </Space>
-    ) : ["finance-payment-query", "finance-internal-mine"].includes(initialView) ? (
+    ) : [
+        "finance-payment-mine",
+        "finance-payment-query",
+        "finance-internal-mine",
+      ].includes(initialView) ? (
       <Space size={0}>
         <Button type="link" onClick={() => setFeeDetail(row)}>
           查看
@@ -7601,6 +7605,7 @@ export default function FinanceCenterPage({
                     : isFeeQueryRoute
                       ? feeQueryMeta.pageSize
                     : [
+                    "finance-payment-mine",
                     "finance-internal-mine",
                     "finance-internal-settle",
                     "finance-internal-refused",
@@ -7624,6 +7629,7 @@ export default function FinanceCenterPage({
                       ? internalDetailMeta.pageSize
                       : 20,
                   pageSizeOptions: [
+                    "finance-payment-mine",
                     "finance-settlement-pending",
                     "finance-settlement-audit",
                     "finance-archive-fee-pending",

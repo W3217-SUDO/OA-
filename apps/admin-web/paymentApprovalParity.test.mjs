@@ -58,7 +58,7 @@ test("payment query keeps date clear and read-only detail action", () => {
   assert.match(source, /\["finance-payment-query",\s*"finance-internal-mine"\]\.includes\(initialView\)[\s\S]*?setOriginalField\(key, undefined\)[\s\S]*?清空/);
   assert.match(
     source,
-    /\["finance-payment-query",\s*"finance-internal-mine"\]\.includes\(initialView\)\s*\?\s*\([\s\S]*?setFeeDetail\(row\)[\s\S]*?查看/,
+    /\[\s*"finance-payment-mine",\s*"finance-payment-query",\s*"finance-internal-mine",?\s*\]\.includes\(initialView\)\s*\?\s*\([\s\S]*?setFeeDetail\(row\)[\s\S]*?查看/,
   );
 });
 
