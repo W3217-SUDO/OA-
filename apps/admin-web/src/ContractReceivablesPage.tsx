@@ -42,6 +42,7 @@ export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, row
 export const receivablesDetailPageSizes = [10, 15, 20, 50, 100, 200];
 export const shouldShowReceivablesDetailSinglePageJumper = (rowCount: number, pageSize: number) => rowCount > 0 && rowCount <= pageSize;
 export const shouldShowReceivableCreateAction = (detailView: boolean) => !detailView;
+export const shouldShowReceivableResetAction = (detailView: boolean) => !detailView;
 export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
 export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
 
@@ -252,7 +253,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
       <Form.Item label="案源人" name="source_person"><Input /></Form.Item>
       <Form.Item className="contract-query-submit">
         <Button type="primary" htmlType="submit">查询</Button>
-        <Button onClick={() => { form.resetFields(); setQuery({}); }}>重置</Button>
+        {shouldShowReceivableResetAction(detailView) && <Button onClick={() => { form.resetFields(); setQuery({}); }}>重置</Button>}
       </Form.Item>
     </Form>
     {detailView ? (
