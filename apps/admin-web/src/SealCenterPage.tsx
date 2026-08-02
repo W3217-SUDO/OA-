@@ -770,8 +770,9 @@ export default function SealCenterPage({
         : initialView === "seal-my-pending"
           ? "待审批"
           : initialView === "seal-my-used"
-            ? "已用印"
-            : "";
+          ? "已用印"
+          : "";
+  const statusLocked = initialView !== "seal-admin-query";
   const tabItems = [
     { key: "my", label: "我的申请" },
     { key: "audit", label: `用印审批（${summary.pending}）` },
@@ -830,10 +831,14 @@ export default function SealCenterPage({
             <Form.Item label="客户名称" name="customer">
               <Input />
             </Form.Item>
-            <Form.Item label="用印状态">
+            <Form.Item
+              label="用印状态"
+              name={statusLocked ? undefined : "record_status"}
+            >
               <Select
-                disabled
-                value={routeStatus || undefined}
+                allowClear={!statusLocked}
+                disabled={statusLocked}
+                value={statusLocked ? routeStatus || undefined : undefined}
                 placeholder="请选择"
                 options={sealStatusOptions}
               />
@@ -922,6 +927,7 @@ export default function SealCenterPage({
                 "seal-audit-refused",
                 "seal-admin-pending",
                 "seal-admin-used",
+                "seal-admin-query",
               ].includes(
                 initialView,
               )
