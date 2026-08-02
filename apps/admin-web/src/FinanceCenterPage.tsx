@@ -191,6 +191,117 @@ const initialSessionUser = () => {
   }
 };
 
+const CONTRACT_PAYMENT_SOURCE_KEYS = [
+  ["payment_no", "请款单号"],
+  ["contract_no", "合同号"],
+  ["customer", "客户名称"],
+  ["amount", "金额"],
+  ["source_id", "来源ID"],
+  ["source_module", "来源模块"],
+  ["return_page", "返回路径"],
+] as const;
+
+type ContractPaymentSourceSuccess = {
+  active: true;
+  ok: true;
+  paymentNo: string;
+  contractNo: string;
+  customer: string;
+  amount: number;
+  sourceId: number;
+  sourceModule: "contract_payment";
+  returnPage: string;
+};
+
+type ContractPaymentSourceState =
+  | { active: false }
+  | { active: true; ok: false; error: string }
+  | ContractPaymentSourceSuccess;
+
+const parseContractPaymentSource = (
+  initialView: string,
+  search: string,
+): ContractPaymentSourceState => {
+  if (initialView !== "finance-payment-mine") return { active: false };
+  const params = new URLSearchParams(search);
+  if (!CONTRACT_PAYMENT_SOURCE_KEYS.some(([key]) => params.has(key))) {
+    return { active: false };
+  }
+  const duplicates = CONTRACT_PAYMENT_SOURCE_KEYS.filter(
+    ([key]) => params.getAll(key).length > 1,
+  ).map(([, label]) => label);
+  if (duplicates.length) {
+    return {
+      active: true,
+      ok: false,
+      error: `合同付款来源参数重复：${duplicates.join("、")}`,
+    };
+  }
+  const values = Object.fromEntries(
+    CONTRACT_PAYMENT_SOURCE_KEYS.map(([key]) => [
+      key,
+      String(params.get(key) || "").trim(),
+    ]),
+  );
+  const missing = CONTRACT_PAYMENT_SOURCE_KEYS.filter(
+    ([key]) => !values[key],
+  ).map(([, label]) => label);
+  if (missing.length) {
+    return {
+      active: true,
+      ok: false,
+      error: `合同付款来源缺少参数：${missing.join("、")}`,
+    };
+  }
+  if (values.source_module !== "contract_payment") {
+    return { active: true, ok: false, error: "合同付款来源模块无效" };
+  }
+  const sourceId = Number(values.source_id);
+  if (!Number.isInteger(sourceId) || sourceId <= 0) {
+    return { active: true, ok: false, error: "合同付款来源ID无效" };
+  }
+  const amount = Number(values.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { active: true, ok: false, error: "合同付款来源金额无效" };
+  }
+  const returnMatch = values.return_page.match(/^contract-detail-(\d+)-(.+)$/);
+  let returnContractNo = "";
+  try {
+    returnContractNo = returnMatch ? decodeURIComponent(returnMatch[2]) : "";
+  } catch {
+    returnContractNo = "";
+  }
+  if (
+    !returnMatch ||
+    Number(returnMatch[1]) <= 0 ||
+    returnContractNo !== values.contract_no
+  ) {
+    return { active: true, ok: false, error: "合同付款返回路径无效" };
+  }
+  return {
+    active: true,
+    ok: true,
+    paymentNo: values.payment_no,
+    contractNo: values.contract_no,
+    customer: values.customer,
+    amount,
+    sourceId,
+    sourceModule: "contract_payment",
+    returnPage: values.return_page,
+  };
+};
+
+const matchesContractPaymentSource = (
+  item: Fee,
+  source: ContractPaymentSourceSuccess,
+) =>
+  item.data?._source_module === source.sourceModule &&
+  Number(item.id) === source.sourceId &&
+  String(item.serial_no || "").trim() === source.paymentNo &&
+  String(item.data?.contract_no || "").trim() === source.contractNo &&
+  String(item.customer || "").trim() === source.customer &&
+  Number(item.data?.amount) === source.amount;
+
 export default function FinanceCenterPage({
   initialView,
   platformMode = false,
@@ -201,6 +312,15 @@ export default function FinanceCenterPage({
   onNavigate?: (route: string) => void;
 }) {
   const sessionUser = useMemo(initialSessionUser, []);
+  const contractPaymentSourceSearch =
+    initialView === "finance-payment-mine" && typeof window !== "undefined"
+      ? window.location.search
+      : "";
+  const contractPaymentSource = useMemo(
+    () =>
+      parseContractPaymentSource(initialView, contractPaymentSourceSearch),
+    [initialView, contractPaymentSourceSearch],
+  );
   const first = initialView.startsWith("finance-audit")
     ? "audit"
     : initialView.startsWith("finance-receipts")
@@ -361,6 +481,7 @@ export default function FinanceCenterPage({
     refund_amount: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [financeDataReady, setFinanceDataReady] = useState(false);
   const [role, setRole] = useState(sessionUser.role || "user");
   const [currentUser, setCurrentUser] = useState({
     username: sessionUser.username || "",
@@ -990,6 +1111,7 @@ export default function FinanceCenterPage({
   };
   const load = async () => {
     setLoading(true);
+    setFinanceDataReady(false);
     try {
       const [
         feeRes,
@@ -1274,12 +1396,19 @@ export default function FinanceCenterPage({
       message.error("财务中心数据加载失败");
     } finally {
       setLoading(false);
+      setFinanceDataReady(true);
     }
   };
   useEffect(() => {
     setTab(first);
     const defaults =
-      initialView === "finance-payment-audit"
+      contractPaymentSource.active && contractPaymentSource.ok
+        ? {
+            paymentNo: contractPaymentSource.paymentNo,
+            contractNo: contractPaymentSource.contractNo,
+            customer: contractPaymentSource.customer,
+          }
+      : initialView === "finance-payment-audit"
         ? { status: "待审批" }
         : initialView === "finance-payment-waiting"
           ? { status: "待付款" }
@@ -1313,7 +1442,7 @@ export default function FinanceCenterPage({
     setPaymentPackageWriteoffTarget(null);
     setGeneralSettlementDetails([]);
     load();
-  }, [initialView]);
+  }, [initialView, contractPaymentSourceSearch]);
   const createIncoming = async () => {
     const v = await incomingForm.validateFields();
     try {
@@ -2586,6 +2715,17 @@ export default function FinanceCenterPage({
       ...fees,
       ...(originalKind === "payment" ? contractPayments : []),
     ];
+    if (contractPaymentSource.active) {
+      if (!contractPaymentSource.ok) return [];
+      const identities = [currentUser.username, currentUser.displayName].filter(
+        Boolean,
+      );
+      return contractPayments.filter(
+        (item) =>
+          matchesContractPaymentSource(item, contractPaymentSource) &&
+          identities.includes(item.data.applicant || item.owner || ""),
+      );
+    }
     if (originalKind === "internal") {
       result = result.filter((item) => item.data.fee_type === "内部费用");
     }
@@ -2672,6 +2812,7 @@ export default function FinanceCenterPage({
     originalKind,
     initialView,
     currentUser,
+    contractPaymentSource,
   ]);
   const setOriginalField = (key: string, value: any) =>
     setOriginalQueryDraft((current) => ({ ...current, [key]: value }));
@@ -2687,7 +2828,7 @@ export default function FinanceCenterPage({
         <Select
           allowClear
           value={originalQueryDraft[key]}
-          disabled={disabled}
+          disabled={disabled || contractPaymentSource.active}
           placeholder="请选择"
           options={paymentStatuses.map((value) => ({ value, label: value }))}
           onChange={(value) => setOriginalField(key, value)}
@@ -2696,7 +2837,7 @@ export default function FinanceCenterPage({
         <Select
           allowClear
           value={originalQueryDraft[key]}
-          disabled={disabled}
+          disabled={disabled || contractPaymentSource.active}
           placeholder="请选择"
           options={[
             "官方费用",
@@ -2712,13 +2853,13 @@ export default function FinanceCenterPage({
           <DatePicker.RangePicker
             value={originalQueryDraft[key]}
             allowClear
-            disabled={disabled}
+            disabled={disabled || contractPaymentSource.active}
             onChange={(value) => setOriginalField(key, value)}
           />
           {["finance-payment-query", "finance-internal-mine"].includes(initialView) && (
             <Button
               size="small"
-              disabled={disabled}
+              disabled={disabled || contractPaymentSource.active}
               onClick={() => setOriginalField(key, undefined)}
             >
               清空
@@ -2730,6 +2871,7 @@ export default function FinanceCenterPage({
           <InputNumber
             min={0}
             precision={2}
+            disabled={contractPaymentSource.active}
             value={originalQueryDraft[key]?.[0]}
             placeholder="最小金额"
             onChange={(value) =>
@@ -2740,6 +2882,7 @@ export default function FinanceCenterPage({
           <InputNumber
             min={0}
             precision={2}
+            disabled={contractPaymentSource.active}
             value={originalQueryDraft[key]?.[1]}
             placeholder="最大金额"
             onChange={(value) =>
@@ -2750,7 +2893,7 @@ export default function FinanceCenterPage({
       ) : (
         <Input
           value={originalQueryDraft[key]}
-          disabled={disabled}
+          disabled={disabled || contractPaymentSource.active}
           onChange={(event) => setOriginalField(key, event.target.value)}
         />
       )}
@@ -6376,6 +6519,50 @@ export default function FinanceCenterPage({
         : initialView === "finance-payment-audit"
           ? auditQueryFields
           : paymentQueryFields;
+  const contractPaymentSourceNotice = !contractPaymentSource.active ? null : !contractPaymentSource.ok ? (
+    <Alert
+      type="error"
+      showIcon
+      message="合同付款来源定位失败"
+      description={contractPaymentSource.error}
+    />
+  ) : !financeDataReady || loading ? (
+    <Alert
+      type="info"
+      showIcon
+      message="正在定位合同付款来源"
+      description={`请款单 ${contractPaymentSource.paymentNo}｜合同 ${contractPaymentSource.contractNo}`}
+      action={
+        <Button onClick={() => onNavigate?.(contractPaymentSource.returnPage)}>
+          返回合同详情
+        </Button>
+      }
+    />
+  ) : originalFinanceRows.length ? (
+    <Alert
+      type="success"
+      showIcon
+      message="已定位合同付款来源"
+      description={`请款单 ${contractPaymentSource.paymentNo}｜合同 ${contractPaymentSource.contractNo}｜客户 ${contractPaymentSource.customer}｜金额 ${money(contractPaymentSource.amount)}｜来源ID ${contractPaymentSource.sourceId}`}
+      action={
+        <Button onClick={() => onNavigate?.(contractPaymentSource.returnPage)}>
+          返回合同详情
+        </Button>
+      }
+    />
+  ) : (
+    <Alert
+      type="error"
+      showIcon
+      message="合同付款来源定位失败"
+      description="未找到合同付款来源记录或当前账号无权查看"
+      action={
+        <Button onClick={() => onNavigate?.(contractPaymentSource.returnPage)}>
+          返回合同详情
+        </Button>
+      }
+    />
+  );
   const originalColumns = activeRouteConfig
     ? configuredColumns
     : originalKind === "internal"
@@ -6921,10 +7108,12 @@ export default function FinanceCenterPage({
             <div className="finance-original-title">
               <h5>{displayedOriginalTitle}</h5>
             </div>
+            {contractPaymentSourceNotice}
             <div className="finance-original-query-grid">{originalFields}</div>
             <div className="finance-original-query-actions">
               <Button
                 type="primary"
+                disabled={contractPaymentSource.active}
                 onClick={submitConfiguredQuery}
               >
                 查询
