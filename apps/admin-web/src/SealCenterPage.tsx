@@ -922,6 +922,7 @@ export default function SealCenterPage({
             scroll={{ x: 1850 }}
             pagination={
               [
+                "seal-my-pending",
                 "seal-audit-pending",
                 "seal-audit-stamping",
                 "seal-audit-refused",
@@ -934,7 +935,10 @@ export default function SealCenterPage({
                 ? {
                     defaultPageSize: 15,
                     showSizeChanger: true,
-                    showQuickJumper: true,
+                    showQuickJumper:
+                      initialView === "seal-my-pending"
+                        ? { goButton: "GO" }
+                        : true,
                     pageSizeOptions: [10, 15, 20, 50, 100, 200],
                     showTotal: (n) => `共 ${n} 条记录`,
                   }
@@ -967,6 +971,21 @@ export default function SealCenterPage({
               ].includes(initialView)
                 ? () => (
                     <div className="seal-table-actions">
+                      {initialView === "seal-my-pending" &&
+                        visibleRows.length <= 15 && (
+                          <Space size={4} aria-label="分页跳转">
+                            <InputNumber
+                              aria-label="跳转页码"
+                              min={1}
+                              max={1}
+                              defaultValue={1}
+                              controls={false}
+                              size="small"
+                              style={{ width: 52 }}
+                            />
+                            <Button size="small">GO</Button>
+                          </Space>
+                        )}
                       {initialView === "seal-my-pending" && (
                         <>
                           <Button onClick={() => openApplication()}>
