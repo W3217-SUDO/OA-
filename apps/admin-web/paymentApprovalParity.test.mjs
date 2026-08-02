@@ -83,7 +83,7 @@ test("unissued invoice empty-state export and more actions are gated", () => {
 });
 
 test("pending settlement exposes query clear control", () => {
-  assert.match(source, /initialView\s*===\s*"finance-settlement-pending"/);
+  assert.match(source, /\["finance-settlement-pending",\s*"finance-settlement-audit"\]\.includes\(initialView\)/);
   assert.match(source, /clearConfiguredQuery/);
 });
 
