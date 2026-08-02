@@ -324,6 +324,74 @@ const paymentPrintStatusField = (initialView: string) =>
       }
     : undefined;
 
+type PaymentPrintDocumentData = {
+  documentTitle: string;
+  packageNo: string;
+  serialNo: string;
+  paymentDate: string;
+  feeTitle: string;
+  attribute: string;
+  feeType: string;
+  customer: string;
+  caseNo: string;
+  contractNo: string;
+  contractTitle: string;
+  applicant: string;
+  payer: string;
+  payee: string;
+  amount: string;
+  voucherNo: string;
+  operator: string;
+  remark: string;
+  creator: string;
+  printTime: string;
+};
+
+const createPaymentPrintPreview = (
+  row: Fee,
+  transactions: Transaction[],
+  creator: string,
+  printTime: string,
+): PaymentPrintDocumentData | null => {
+  const payment = transactions
+    .filter(
+      (item) =>
+        item.finance_record_id === row.id && item.transaction_type === "付款",
+    )
+    .sort((a, b) =>
+      String(b.transaction_date).localeCompare(String(a.transaction_date)),
+    )[0];
+  if (!payment) return null;
+  return {
+    documentTitle: `${row.serial_no}付款单`,
+    packageNo:
+      row.data.payment_package_no || row.data.package_no || "",
+    serialNo: row.serial_no,
+    paymentDate: payment.transaction_date,
+    feeTitle: row.title,
+    attribute:
+      row.data.attribute || row.data.property || row.data.expense_subtype || "",
+    feeType:
+      row.data.fee_type_name ||
+      row.data.commission_type ||
+      row.data.fee_type ||
+      row.title,
+    customer: row.customer,
+    caseNo: row.data.case_no,
+    contractNo: row.data.contract_no,
+    contractTitle: row.data.contract_title || "",
+    applicant: row.data.applicant || row.owner || "",
+    payer: row.data.payer || row.data.payer_name || row.customer || "",
+    payee: payment.counterparty || row.data.payee,
+    amount: money(payment.amount || 0),
+    voucherNo: payment.voucher_no,
+    operator: payment.operator,
+    remark: payment.remark || row.data.description || row.data.remark,
+    creator,
+    printTime,
+  };
+};
+
 export default function FinanceCenterPage({
   initialView,
   platformMode = false,
@@ -581,6 +649,8 @@ export default function FinanceCenterPage({
   const [selectedOriginalRows, setSelectedOriginalRows] = useState<
     (string | number)[]
   >([]);
+  const [paymentPrintPreview, setPaymentPrintPreview] =
+    useState<PaymentPrintDocumentData | null>(null);
   const [paymentPackagePreview, setPaymentPackagePreview] =
     useState<PaymentPackagePreview | null>(null);
   const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
@@ -1459,6 +1529,7 @@ export default function FinanceCenterPage({
     setOriginalQueryDraft(defaults);
     setOriginalQuery(defaults);
     setSelectedOriginalRows([]);
+    setPaymentPrintPreview(null);
     setPaymentPackagePreview(null);
     setPaymentPackageDetail(null);
     setPaymentPackageWriteoffTarget(null);
@@ -1682,37 +1753,17 @@ export default function FinanceCenterPage({
     }
   };
   const printPayment = (row: Fee) => {
-    const payment = transactions
-      .filter(
-        (item) =>
-          item.finance_record_id === row.id && item.transaction_type === "付款",
-      )
-      .sort((a, b) =>
-        String(b.transaction_date).localeCompare(String(a.transaction_date)),
-      )[0];
-    if (!payment) {
+    const preview = createPaymentPrintPreview(
+      row,
+      transactions,
+      currentUser.displayName || currentUser.username,
+      dayjs().format("YYYY-MM-DD HH:mm"),
+    );
+    if (!preview) {
       message.warning("该请款单尚无付款流水，不能打印付款单");
       return;
     }
-    const escape = (value: unknown) =>
-      String(value ?? "—").replace(
-        /[&<>"']/g,
-        (char) =>
-          ({
-            "&": "&amp;",
-            "<": "&lt;",
-            ">": "&gt;",
-            '"': "&quot;",
-            "'": "&#39;",
-          })[char] || char,
-      );
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escape(row.serial_no)}付款单</title><style>body{font-family:Arial,"Microsoft YaHei",sans-serif;padding:32px;color:#222}h2{text-align:center}table{width:100%;border-collapse:collapse}th,td{padding:10px;border:1px solid #999;text-align:left}th{width:22%;background:#f5f5f5}.footer{margin-top:40px;display:flex;justify-content:space-between}</style></head><body><h2>付款单</h2><table><tr><th>请款单号</th><td>${escape(row.serial_no)}</td><th>付款日期</th><td>${escape(payment.transaction_date)}</td></tr><tr><th>费用名称</th><td colspan="3">${escape(row.title)}</td></tr><tr><th>客户</th><td>${escape(row.customer)}</td><th>案件编号</th><td>${escape(row.data.case_no)}</td></tr><tr><th>收款单位</th><td>${escape(payment.counterparty || row.data.payee)}</td><th>付款金额</th><td>${escape(money(payment.amount || 0))}</td></tr><tr><th>付款凭证号</th><td>${escape(payment.voucher_no)}</td><th>经办人</th><td>${escape(payment.operator)}</td></tr><tr><th>备注</th><td colspan="3">${escape(payment.remark || row.data.description || row.data.remark)}</td></tr></table><div class="footer"><span>制单：${escape(currentUser.displayName || currentUser.username)}</span><span>打印时间：${escape(dayjs().format("YYYY-MM-DD HH:mm"))}</span></div><script>window.onload=()=>window.print()<\/script></body></html>`;
-    const url = URL.createObjectURL(
-      new Blob([html], { type: "text/html;charset=utf-8" }),
-    );
-    const popup = window.open(url, "_blank", "noopener,noreferrer");
-    if (!popup) message.warning("浏览器拦截了打印窗口，请允许弹出窗口后重试");
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    setPaymentPrintPreview(preview);
   };
   const createInvoice = async () => {
     const v = await invoiceForm.validateFields();
@@ -6953,6 +7004,102 @@ export default function FinanceCenterPage({
       </div>
     </section>
   ) : null;
+  const paymentPrintPreviewPage = paymentPrintPreview ? (
+    <section className="finance-original-panel finance-payment-package-print">
+      <div className="finance-original-title finance-payment-package-actions">
+        <h5>付款单打印</h5>
+        <Space size={8}>
+          <Button type="link" onClick={() => window.print()}>
+            打印
+          </Button>
+          <Button size="small" onClick={() => setPaymentPrintPreview(null)}>
+            取消
+          </Button>
+        </Space>
+      </div>
+      <div className="finance-payment-print-sheet" aria-label="付款申请单">
+        <div className="finance-payment-print-heading">
+          <strong>上海申浩律师事务所</strong>
+          <h2>付款申请单</h2>
+        </div>
+        <table className="finance-payment-print-meta">
+          <tbody>
+            <tr>
+              <th>打包流水号：</th>
+              <td>{paymentPrintPreview.packageNo || "—"}</td>
+              <th>打印日期：</th>
+              <td>{paymentPrintPreview.printTime.slice(0, 10) || "—"}</td>
+              <th />
+              <td />
+            </tr>
+            <tr>
+              <th>收款单位：</th>
+              <td>{paymentPrintPreview.payee || "—"}</td>
+              <th>付款总金额：</th>
+              <td>{paymentPrintPreview.amount || "—"}</td>
+              <th>属性：</th>
+              <td>{paymentPrintPreview.attribute || "—"}</td>
+            </tr>
+            <tr>
+              <th>请款单号：</th>
+              <td>{paymentPrintPreview.serialNo || "—"}</td>
+              <th>合同编号：</th>
+              <td>{paymentPrintPreview.contractNo || "—"}</td>
+              <th>合同名称：</th>
+              <td>{paymentPrintPreview.contractTitle || "—"}</td>
+            </tr>
+            <tr>
+              <th>付款日期：</th>
+              <td>{paymentPrintPreview.paymentDate || "—"}</td>
+              <th>付款凭证号：</th>
+              <td>{paymentPrintPreview.voucherNo || "—"}</td>
+              <th>经办人：</th>
+              <td>{paymentPrintPreview.operator || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+        <table className="finance-payment-print-items">
+          <thead>
+            <tr>
+              <th>案号</th>
+              <th>付款金额</th>
+              <th>费用类型</th>
+              <th>费用名称</th>
+              <th>申请人</th>
+              <th>交款人</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{paymentPrintPreview.caseNo || "—"}</td>
+              <td>{paymentPrintPreview.amount || "—"}</td>
+              <td>{paymentPrintPreview.feeType || "—"}</td>
+              <td>{paymentPrintPreview.feeTitle || "—"}</td>
+              <td>{paymentPrintPreview.applicant || "—"}</td>
+              <td>{paymentPrintPreview.payer || "—"}</td>
+            </tr>
+            <tr>
+              <th>备注：</th>
+              <td colSpan={5}>{paymentPrintPreview.remark || "—"}</td>
+            </tr>
+            <tr className="finance-payment-print-subtotal">
+              <td colSpan={4}>
+                制单：{paymentPrintPreview.creator || "—"}　打印时间：
+                {paymentPrintPreview.printTime || "—"}
+              </td>
+              <th>小计</th>
+              <td>{paymentPrintPreview.amount || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="finance-payment-print-signatures">
+          <span>客户管理人签字：</span>
+          <span>审批人签字：</span>
+          <span>出纳签字：</span>
+        </div>
+      </div>
+    </section>
+  ) : null;
   const paymentPackagePrintData: PaymentPackagePreview | null =
     paymentPackagePreview ||
     (paymentPackageDetail
@@ -7062,6 +7209,7 @@ export default function FinanceCenterPage({
   return (
     <>
       {invoiceDetailPage ||
+        paymentPrintPreviewPage ||
         paymentPackagePrintPage ||
         internalPaymentDetail ||
         (originalMode ? (
