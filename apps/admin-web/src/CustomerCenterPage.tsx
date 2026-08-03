@@ -40,6 +40,11 @@ import {
   filterCustomerPatchData,
   buildContactStatusRequest,
   runContactStatusUpdate,
+  buildCustomerEventRequest,
+  buildCustomerEventListPath,
+  buildCustomerFileListPath,
+  buildCustomerFileDownloadPath,
+  getCustomerGuid,
   isCustomerPostalCodeSafe,
   isCustomerRegistrationAddressSafe,
   normalizeCustomerSummary,
@@ -86,8 +91,16 @@ type CustomerEvent = {
   comment: string;
   created_at: string;
 };
+type CustomerNotice = {
+  id: number;
+  action: string;
+  comment: string;
+  operator: string;
+  created_at: string;
+};
 type Customer = {
   id: number;
+  customer_guid?: string;
   serial_no: string;
   title: string;
   status: string;
@@ -97,6 +110,7 @@ type Customer = {
   created_at: string;
   updated_at: string;
   data: {
+    customer_guid?: string;
     contact?: string;
     phone?: string;
     level?: string;
@@ -250,6 +264,10 @@ export default function CustomerCenterPage({
   const [attachments, setAttachments] = useState<Attachment[]>([]),
     [events, setEvents] = useState<CustomerEvent[]>([]),
     [historyError, setHistoryError] = useState(""),
+    [customerEvents, setCustomerEvents] = useState<CustomerNotice[]>([]),
+    [customerEventError, setCustomerEventError] = useState(""),
+    [sharedObjects, setSharedObjects] = useState<string[]>([]),
+    [sharedObjectsError, setSharedObjectsError] = useState(""),
     [detailLoading, setDetailLoading] = useState(false),
     [detailTab, setDetailTab] = useState("contacts"),
     [documentFile, setDocumentFile] = useState<File | null>(null),
@@ -273,6 +291,7 @@ export default function CustomerCenterPage({
     [contactEditForm] = Form.useForm(),
     [noteForm] = Form.useForm(),
     [noteEditForm] = Form.useForm(),
+    [customerEventForm] = Form.useForm(),
     [levelForm] = Form.useForm(),
     [keyChangeForm] = Form.useForm(),
     [documentForm] = Form.useForm();
@@ -684,8 +703,15 @@ export default function CustomerCenterPage({
     setDetailLoading(true);
     let historyItems: CustomerEvent[] = [];
     let historyErrorMessage = "";
+    let customerEventItems: CustomerNotice[] = [];
+    let customerEventErrorMessage = "";
+    let sharedObjectItems: string[] = [];
+    let sharedObjectsErrorMessage = "";
+    const customerGuid = getCustomerGuid(target);
+    const customerEventListPath = buildCustomerEventListPath(customerGuid);
+    const customerFileListPath = buildCustomerFileListPath(customerGuid);
     try {
-      const [recordRes, fileRes, historyRes] = await Promise.all([
+      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes] = await Promise.all([
         api.get("/records", {
           params: {
             module: "customer",
@@ -693,21 +719,48 @@ export default function CustomerCenterPage({
             page_size: 10,
           },
         }),
-        api.get("/attachments", { params: { record_id: target.id } }),
+        customerFileListPath
+          ? api.get(customerFileListPath)
+          : api.get("/attachments", { params: { record_id: target.id } }),
         api.get(`/records/${target.id}/history`).catch((error) => {
           historyErrorMessage = error?.response?.data?.detail || "操作记录加载失败";
           return { data: { items: [] } };
         }),
+        customerEventListPath
+          ? api.get(customerEventListPath).catch((error) => {
+              customerEventErrorMessage = error?.response?.data?.detail || "客户注意事项加载失败";
+              return { data: { items: [] } };
+            })
+          : Promise.resolve({ data: { items: [] } }),
+        api.get(`/customers/${target.id}/shared-objects`).catch((error) => {
+          sharedObjectsErrorMessage = error?.response?.data?.detail || "共享对象加载失败";
+          return { data: { items: [] } };
+        }),
       ]);
-      setContacts(
-        recordRes.data.items.find((x: Customer) => x.id === target.id) ||
-          target,
-      );
+      const resolvedCustomer = recordRes.data.items.find((x: Customer) => x.id === target.id) || target;
+      setContacts(resolvedCustomer);
       setAttachments((fileRes.data.items || []).filter((item: Attachment) => item.category !== "客户联系人照片"));
       historyItems = historyRes.data.items || [];
+      customerEventItems = customerEventRes.data.items || [];
+      if (!customerEventListPath) {
+        const resolvedEventPath = buildCustomerEventListPath(getCustomerGuid(resolvedCustomer));
+        if (resolvedEventPath) {
+          try {
+            const resolvedEventRes = await api.get(resolvedEventPath);
+            customerEventItems = resolvedEventRes.data.items || [];
+          } catch (error: any) {
+            customerEventErrorMessage = error?.response?.data?.detail || "客户注意事项加载失败";
+          }
+        }
+      }
+      sharedObjectItems = normalizeSharedObjectValues(sharedObjectsRes.data.items || []);
     } finally {
       setEvents(historyItems);
       setHistoryError(historyErrorMessage);
+      setCustomerEvents(customerEventItems);
+      setCustomerEventError(customerEventErrorMessage);
+      setSharedObjects(sharedObjectItems);
+      setSharedObjectsError(sharedObjectsErrorMessage);
       setDetailLoading(false);
     }
   };
@@ -718,6 +771,10 @@ export default function CustomerCenterPage({
     setAttachments([]);
     setEvents([]);
     setHistoryError("");
+    setCustomerEvents([]);
+    setCustomerEventError("");
+    setSharedObjects([]);
+    setSharedObjectsError("");
     try {
       await refreshDetail(r);
     } catch (error: any) {
@@ -805,6 +862,25 @@ export default function CustomerCenterPage({
       message.error(error?.response?.data?.detail || "联系人状态更新失败");
     }
   };
+  const createCustomerEvent = async () => {
+    if (!contacts) return;
+    const request = buildCustomerEventRequest(
+      getCustomerGuid(contacts),
+      customerEventForm.getFieldValue("content"),
+    );
+    if (!request) {
+      message.warning(getCustomerGuid(contacts) ? "请输入客户注意事项" : "客户编号缺失，无法保存注意事项");
+      return;
+    }
+    try {
+      await api.post(request.url, request.data);
+      message.success("客户注意事项已保存");
+      customerEventForm.resetFields();
+      await refreshDetail();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "客户注意事项保存失败");
+    }
+  };
   const addNote = async () => {
     if (!contacts) return;
     const v = await noteForm.validateFields();
@@ -870,9 +946,10 @@ export default function CustomerCenterPage({
   };
   const downloadDocument = async (file: Attachment) => {
     try {
-      const res = await api.get(`/attachments/${file.id}/download`, {
-        responseType: "blob",
-      });
+      const guidDownloadPath = buildCustomerFileDownloadPath(getCustomerGuid(contacts), file.id);
+      const res = guidDownloadPath
+        ? await api.get(guidDownloadPath, { responseType: "blob" })
+        : await api.get(`/attachments/${file.id}/download`, { responseType: "blob" });
       const url = URL.createObjectURL(res.data),
         a = document.createElement("a");
       a.href = url;
@@ -1265,6 +1342,41 @@ export default function CustomerCenterPage({
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator"},{title:"操作日期",dataIndex:"created_at"},{title:"操作",render:()=>null},
                 ]} />,
+              },
+              {
+                key: "customer-events",
+                label: `客户注意事项（${customerEvents.length}）`,
+                children: (
+                  <>
+                    {customerEventError && <Alert type="warning" showIcon message={customerEventError} style={{ marginBottom: 8 }} />}
+                    <Table rowKey="id" size="small" pagination={false} dataSource={customerEvents} locale={{ emptyText: "暂无客户注意事项" }} columns={[
+                      { title: "事项", dataIndex: "action", width: 150 },
+                      { title: "内容", dataIndex: "comment" },
+                      { title: "操作人", dataIndex: "operator", width: 100 },
+                      { title: "时间", dataIndex: "created_at", width: 165 },
+                    ]} />
+                    {canManageCurrentCustomer && (
+                      <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
+                        <Form form={customerEventForm} layout="vertical">
+                          <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
+                            <Input.TextArea rows={3} maxLength={4000} />
+                          </Form.Item>
+                          <Button type="primary" onClick={createCustomerEvent}>保存客户注意事项</Button>
+                        </Form>
+                      </Card>
+                    )}
+                  </>
+                ),
+              },
+              {
+                key: "shared-objects",
+                label: `共享对象（${sharedObjects.length}）`,
+                children: (
+                  <>
+                    {sharedObjectsError && <Alert type="warning" showIcon message={sharedObjectsError} style={{ marginBottom: 8 }} />}
+                    <Table rowKey="value" size="small" pagination={false} dataSource={sharedObjects.map((value) => ({ value }))} locale={{ emptyText: "暂无共享对象" }} columns={[{ title: "共享接收人", dataIndex: "value" }]} />
+                  </>
+                ),
               },
               {
                 key: "events",
@@ -1988,6 +2100,41 @@ export default function CustomerCenterPage({
                       </Button>
                     </Form>
                   </Card>
+                </>
+              ),
+            },
+            {
+              key: "customer-events",
+              label: `客户注意事项（${customerEvents.length}）`,
+              children: (
+                <>
+                  {customerEventError && <Alert type="warning" showIcon message={customerEventError} style={{ marginBottom: 8 }} />}
+                  <Table rowKey="id" size="small" pagination={false} dataSource={customerEvents} locale={{ emptyText: "暂无客户注意事项" }} columns={[
+                    { title: "事项", dataIndex: "action", width: 150 },
+                    { title: "内容", dataIndex: "comment" },
+                    { title: "操作人", dataIndex: "operator", width: 100 },
+                    { title: "时间", dataIndex: "created_at", width: 165 },
+                  ]} />
+                  {canManageCurrentCustomer && (
+                    <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
+                      <Form form={customerEventForm} layout="vertical">
+                        <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
+                          <Input.TextArea rows={3} maxLength={4000} />
+                        </Form.Item>
+                        <Button type="primary" onClick={createCustomerEvent}>保存客户注意事项</Button>
+                      </Form>
+                    </Card>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: "shared-objects",
+              label: `共享对象（${sharedObjects.length}）`,
+              children: (
+                <>
+                  {sharedObjectsError && <Alert type="warning" showIcon message={sharedObjectsError} style={{ marginBottom: 8 }} />}
+                  <Table rowKey="value" size="small" pagination={false} dataSource={sharedObjects.map((value) => ({ value }))} locale={{ emptyText: "暂无共享对象" }} columns={[{ title: "共享接收人", dataIndex: "value" }]} />
                 </>
               ),
             },

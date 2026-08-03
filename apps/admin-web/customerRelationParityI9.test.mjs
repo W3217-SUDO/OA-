@@ -41,6 +41,8 @@ test('customer event detail keeps legacy content/operator/time columns and actio
   assert.match(localPage, /dataIndex:"created_at"/)
 })
 
-test('customer event and customerGuid backend gaps are not disguised as frontend capabilities', () => {
-  assert.doesNotMatch(localPage, /CustomerEventCreate|CustomerSharedObjects|customerGuid/)
+test('customer event and customerGuid routes are consumed only through the existing scoped APIs', () => {
+  assert.match(localPage, /buildCustomerEventListPath/)
+  assert.match(localPage, /buildCustomerFileListPath/)
+  assert.match(localPage, /customers\/\$\{target\.id\}\/shared-objects/)
 })

@@ -44,5 +44,16 @@ export const runContactStatusUpdate: (
   refreshDetail: () => Promise<unknown>,
   reloadList: () => Promise<unknown>,
 ) => Promise<boolean>;
+export const getCustomerGuid: (customer?: unknown) => string;
+export const buildCustomerEventListPath: (customerGuid?: unknown) => string | null;
+export const buildCustomerEventRequest: (
+  customerGuid?: unknown,
+  content?: unknown,
+) => { method: "post"; url: string; data: { action: string; comment: string } } | null;
+export const buildCustomerFileListPath: (customerGuid?: unknown) => string | null;
+export const buildCustomerFileDownloadPath: (
+  customerGuid?: unknown,
+  attachmentId?: unknown,
+) => string | null;
 export const isCustomerRegistrationAddressSafe: (value?: unknown) => boolean;
 export const isCustomerPostalCodeSafe: (value?: unknown) => boolean;

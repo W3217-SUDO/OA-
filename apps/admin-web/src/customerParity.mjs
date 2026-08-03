@@ -96,6 +96,38 @@ export const runContactStatusUpdate = async (request, patch, refreshDetail, relo
   return true
 }
 
+export const getCustomerGuid = (customer = {}) => {
+  const topLevel = String(customer?.customer_guid ?? "").trim()
+  return topLevel || String(customer?.data?.customer_guid ?? "").trim()
+}
+
+const customerGuidPath = (customerGuid, suffix) => {
+  const guid = String(customerGuid ?? "").trim()
+  return guid ? `/customers/guid/${encodeURIComponent(guid)}${suffix}` : null
+}
+
+export const buildCustomerEventListPath = (customerGuid) =>
+  customerGuidPath(customerGuid, "/events")
+
+export const buildCustomerEventRequest = (customerGuid, content) => {
+  const path = buildCustomerEventListPath(customerGuid)
+  const comment = String(content ?? "").trim()
+  if (!path || !comment) return null
+  return {
+    method: "post",
+    url: path,
+    data: { action: "客户注意事项", comment },
+  }
+}
+
+export const buildCustomerFileListPath = (customerGuid) =>
+  customerGuidPath(customerGuid, "/files")
+
+export const buildCustomerFileDownloadPath = (customerGuid, attachmentId) => {
+  const path = customerGuidPath(customerGuid, `/files/${attachmentId}/download`)
+  return path && attachmentId ? path : null
+}
+
 export const isCustomerRegistrationAddressSafe = (value) =>
   !/[\\'"<>|]/.test(String(value ?? ""))
 
