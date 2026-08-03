@@ -85,6 +85,10 @@ import {
   normalizeCustomerSharedObjectItems,
   getCustomerResponseMessage,
 } from "./customerUiBatchI16.mjs";
+import {
+  assertCustomerMutationSuccess,
+  getCustomerMutationErrorMessage as getCustomerMutationErrorMessageI17,
+} from "./customerUiBatchI17.mjs";
 import "./customer-center.css";
 type Contact = {
   id: string;
@@ -619,6 +623,7 @@ export default function CustomerCenterPage({
             customer_managers: managers,
             ...details,
           });
+      assertCustomerMutationSuccess(response?.data);
       message.success(editing ? "客户已更新" : "客户已创建");
       if (initialView === "customer-new") {
         setEditing(response.data);
@@ -629,7 +634,7 @@ export default function CustomerCenterPage({
       }
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "保存失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "保存失败"));
     }
   };
   const startAssign = (customer: Customer) => {
@@ -649,14 +654,15 @@ export default function CustomerCenterPage({
     try {
       const managerUrl = `/customers/${assigning.id}/managers`;
       const legacyManagersPayload = { managers: [values.manager] };
-      await api.put(request.url || managerUrl, request.data || legacyManagersPayload);
+      const response = await api.put(request.url || managerUrl, request.data || legacyManagersPayload);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户分配成功");
       setAssigning(null);
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
       const legacyError = error?.response?.data?.detail || "客户分配失败";
-      message.error(getCustomerMutationErrorMessage(error, legacyError));
+      message.error(getCustomerMutationErrorMessageI17(error, legacyError));
     }
   };
   const action = async (r: Customer, name: string) => {
@@ -667,13 +673,14 @@ export default function CustomerCenterPage({
     }
     const actionUrl = request.url || `/customers/${r.id}/${name}`;
     try {
-      await api.post(actionUrl, request.data);
+      const response = await api.post(actionUrl, request.data);
+      assertCustomerMutationSuccess(response?.data);
       message.success(getCustomerActionMessage(name, true));
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
       const legacyActionError = error?.response?.data?.detail || "操作失败";
-      message.error(error?.response?.data?.detail || getCustomerActionMessage(name, false) || legacyActionError);
+      message.error(getCustomerMutationErrorMessageI17(error, getCustomerActionMessage(name, false) || legacyActionError));
     }
   };
   const share = async () => {
@@ -687,74 +694,81 @@ export default function CustomerCenterPage({
     try {
       const shareUrl = `/customers/${sharing.id}/share`;
       const legacySharePayload = { recipients: v.recipients, comment: v.comment || "" };
-      await api.post(request.url || shareUrl, request.data || legacySharePayload);
+      const response = await api.post(request.url || shareUrl, request.data || legacySharePayload);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户共享成功");
       setSharing(null);
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
       const legacyError = error?.response?.data?.detail || "共享失败";
-      message.error(getCustomerMutationErrorMessage(error, legacyError));
+      message.error(getCustomerMutationErrorMessageI17(error, legacyError));
     }
   };
   const submitLevelChange = async () => {
     if (!levelCustomer) return;
     const values = await levelForm.validateFields();
     try {
-      await api.post(`/customers/${levelCustomer.id}/level-change`, values);
+      const response = await api.post(`/customers/${levelCustomer.id}/level-change`, values);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户分级调整已提交审批");
       setLevelCustomer(null);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户分级调整提交失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "客户分级调整提交失败"));
     }
   };
   const reviewLevelChange = async (customer: Customer, approved: boolean) => {
     try {
-      await api.post(`/customers/${customer.id}/level-change/review`, { approved, comment: approved ? "同意客户分级调整" : "客户资料需补充后重新提交" });
+      const response = await api.post(`/customers/${customer.id}/level-change/review`, { approved, comment: approved ? "同意客户分级调整" : "客户资料需补充后重新提交" });
+      assertCustomerMutationSuccess(response?.data);
       message.success(approved ? "客户分级调整已通过" : "客户分级调整已驳回");
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户分级审批失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "客户分级审批失败"));
     }
   };
   const submitKeyChange = async () => {
     if (!keyChangeCustomer) return;
     try {
       const values = await keyChangeForm.validateFields();
-      await api.post(`/customers/${keyChangeCustomer.id}/key-change`, values);
+      const response = await api.post(`/customers/${keyChangeCustomer.id}/key-change`, values);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户关键字段变更已提交审批");
       setKeyChangeCustomer(null);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户关键字段变更提交失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "客户关键字段变更提交失败"));
     }
   };
   const reviewKeyChange = async (customer: Customer, approved: boolean) => {
     try {
-      await api.post(`/customers/${customer.id}/key-change/review`, { approved, comment: approved ? "同意客户关键字段变更" : "客户关键资料需核实" });
+      const response = await api.post(`/customers/${customer.id}/key-change/review`, { approved, comment: approved ? "同意客户关键字段变更" : "客户关键资料需核实" });
+      assertCustomerMutationSuccess(response?.data);
       message.success(approved ? "客户关键字段变更已通过" : "客户关键字段变更已驳回");
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户关键字段审批失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "客户关键字段审批失败"));
     }
   };
   const openPortal = async (customer: Customer) => {
     try {
       const response = await api.post(`/customers/${customer.id}/portal/open`, { comment: "从客户管理开通" });
+      assertCustomerMutationSuccess(response?.data);
       setPortalResult(response.data);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户服务端开通失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "客户服务端开通失败"));
     }
   };
   const closePortal = async (customer: Customer) => {
     try {
-      await api.post(`/customers/${customer.id}/portal/close`, { comment: "从客户管理停用" });
+      const response = await api.post(`/customers/${customer.id}/portal/close`, { comment: "从客户管理停用" });
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户服务端已停用");
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户服务端停用失败");
+      message.error(getCustomerMutationErrorMessageI17(error, "客户服务端停用失败"));
     }
   };
   const refreshDetail = async (target = contacts) => {
