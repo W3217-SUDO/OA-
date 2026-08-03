@@ -13,3 +13,16 @@ export type CaseTaskPagination = {
 };
 
 export function getCaseTaskPagination(): CaseTaskPagination;
+export function getCaseArchivePagination(view: unknown): CaseTaskPagination;
+export function getCaseUnarchiveRequestValidationError(reason: unknown): string;
+
+export type CaseFileTypeOption = {
+  value: string;
+  label: string;
+  code?: string;
+  parent_code?: string;
+  options?: CaseFileTypeOption[];
+};
+
+export function buildCaseFileTypeTreeOptions(items: unknown): CaseFileTypeOption[];
+export function resolveCaseFileTypeSelection(value: unknown, options: CaseFileTypeOption[]): string;

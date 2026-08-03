@@ -32,3 +32,37 @@ test("案件任务详情保留旧系统默认 15 条分页", () => {
   assert.match(page, /getCaseTaskPagination/);
   assert.match(page, /pagination=\{getCaseTaskPagination\(\)\}/);
 });
+
+test("案件文件类型消费层按 parent_code 构造可选父子树", () => {
+  assert.ok(helper, "caseFifthBatchParity.mjs must be importable");
+  const tree = helper.buildCaseFileTypeTreeOptions([
+    { value: "CASE", label: "案件文件", code: "CASE", parent_code: "" },
+    { value: "SUBJECT", label: "主体及委托资料", code: "SUBJECT", parent_code: "CASE" },
+    { value: "COURT", label: "法院诉讼文书", code: "COURT", parent_code: "CASE" },
+    { value: "COMMON", label: "普通附件", code: "COMMON", parent_code: "" },
+  ]);
+  assert.equal(tree.length, 2);
+  assert.deepEqual(tree[0].options.map((item) => item.value), ["SUBJECT", "COURT"]);
+  assert.equal(helper.resolveCaseFileTypeSelection("COURT", tree), "COURT");
+  assert.equal(helper.resolveCaseFileTypeSelection("missing", tree), "CASE");
+  assert.match(page, /buildCaseFileTypeTreeOptions/);
+  assert.match(page, /resolveCaseFileTypeSelection/);
+});
+
+test("案件归档列表消费层按旧待审/已审/已拒绝分页默认值返回配置", () => {
+  assert.ok(helper, "caseFifthBatchParity.mjs must be importable");
+  assert.equal(helper.getCaseArchivePagination("case-archive-pending").pageSize, 15);
+  assert.equal(helper.getCaseArchivePagination("case-archive-done").pageSize, 10);
+  assert.equal(helper.getCaseArchivePagination("case-archive-refused").pageSize, 10);
+  assert.deepEqual(helper.getCaseArchivePagination("case-archive-pending").pageSizeOptions, [10, 15, 20, 50, 100]);
+  assert.equal(helper.getCaseArchivePagination("case-archive-pending").showTotal(3), "共有3条");
+  assert.match(page, /getCaseArchivePagination/);
+});
+
+test("解档申请消费层在请求前拒绝少于两个字的原因", () => {
+  assert.ok(helper, "caseFifthBatchParity.mjs must be importable");
+  assert.equal(helper.getCaseUnarchiveRequestValidationError(""), "请输入至少2个字的解档原因");
+  assert.equal(helper.getCaseUnarchiveRequestValidationError("退"), "请输入至少2个字的解档原因");
+  assert.equal(helper.getCaseUnarchiveRequestValidationError("补充材料"), "");
+  assert.match(page, /getCaseUnarchiveRequestValidationError/);
+});

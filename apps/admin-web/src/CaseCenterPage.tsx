@@ -62,7 +62,21 @@ import {
   getClueConversionIssues,
   normalizeCaseEditPayload,
 } from "./caseSecondBatchParity";
-import { getCaseReminderDateValidationError, getCaseTaskPagination } from "./caseFifthBatchParity.mjs";
+import {
+  buildCaseFileTypeTreeOptions,
+  getCaseArchivePagination,
+  getCaseReminderDateValidationError,
+  getCaseTaskPagination,
+  getCaseUnarchiveRequestValidationError,
+  resolveCaseFileTypeSelection,
+} from "./caseFifthBatchParity.mjs";
+import {
+  getCaseAttachmentSelectionValidationError,
+  getCaseAttachmentUploadValidationError,
+  getCaseFilePagination,
+  getCaseFileRenameValidationError,
+  hasCaseFileTypeOption,
+} from "./caseFileFrontendParity.mjs";
 import "./case-center.css";
 
 type CaseRow = {
@@ -259,6 +273,7 @@ type TaskRow = {
   collaborators?: string[];
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;created_at:string;size:number;remark?:string};
+type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;options?:CaseFileTypeOption[]};
 type AttachmentPreview = {name:string;kind:"image"|"pdf"|"text"|"docx";url?:string;text?:string};
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
 type CaseLogRow = {id:number;content:string;operator:string;created_at:string};
@@ -476,7 +491,7 @@ export default function CaseCenterPage({
   const legacyCaseListDefaults = getLegacyCaseListDefaults(initialView);
   const legacyCaseListOperationLabels = getLegacyCaseListOperationLabels();
   const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
-  const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<{value:string;label:string}[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
+  const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
   const [courtOptions, setCourtOptions] = useState<{value:string;label:string;code?:string}[]>([]);
   const [courtOfficerOptions, setCourtOfficerOptions] = useState<{value:string;label:string;court_code?:string;role?:string;phone?:string}[]>([]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
@@ -601,10 +616,10 @@ export default function CaseCenterPage({
       setCaseTypeOptions(referenceRes.data.case_types || []);
       setCauseOptions(referenceRes.data.causes || []);
       if ((referenceRes.data.case_file_types || []).length) {
-        const nextFileTypes = referenceRes.data.case_file_types;
+        const nextFileTypes = buildCaseFileTypeTreeOptions(referenceRes.data.case_file_types);
         setCaseFileTypeOptions(nextFileTypes);
-        setCaseUploadCategory((current) => nextFileTypes.some((item:{value:string}) => item.value === current) ? current : nextFileTypes[0].value);
-        setCounselUploadCategory((current) => nextFileTypes.some((item:{value:string}) => item.value === current) ? current : nextFileTypes[0].value);
+        setCaseUploadCategory((current) => resolveCaseFileTypeSelection(current, nextFileTypes));
+        setCounselUploadCategory((current) => resolveCaseFileTypeSelection(current, nextFileTypes));
       }
       setCourtOptions(referenceRes.data.courts || []);
       setCourtOfficerOptions(referenceRes.data.court_officers || []);
@@ -977,6 +992,11 @@ export default function CaseCenterPage({
       okText: "提交审批",
       cancelText: "取消",
       onOk: async () => {
+        const validationError = getCaseUnarchiveRequestValidationError(reason);
+        if (validationError) {
+          message.warning(validationError);
+          return Promise.reject(new Error(validationError));
+        }
         try {
           await api.post(`/cases/${row.id}/unarchive/request`, { reason });
           message.success("解档申请已提交特殊审批");
@@ -1301,7 +1321,8 @@ export default function CaseCenterPage({
     }catch(error:any){message.error(error?.response?.data?.detail||"批量新增费用失败");}
   };
   const downloadCounselAttachments = async () => {
-    if(!selectedCounselAttachmentKeys.length)return message.warning("请选择需要下载的案件文件");
+    const selectionValidationError = getCaseAttachmentSelectionValidationError(selectedCounselAttachmentKeys, "下载");
+    if(selectionValidationError)return message.warning(selectionValidationError);
     try{
       const response=await api.post("/cases/attachments/download",{attachment_ids:selectedCounselAttachmentKeys.map(Number)},{responseType:"blob"});
       const url=URL.createObjectURL(response.data),link=document.createElement("a");link.href=url;link.download="案件文件.zip";link.click();URL.revokeObjectURL(url);
@@ -1353,6 +1374,8 @@ export default function CaseCenterPage({
     }
   };
   const uploadCounselDetailAttachment = async (file?: File) => {
+    const uploadValidationError = getCaseAttachmentUploadValidationError(file);
+    if (uploadValidationError) return message.warning(uploadValidationError);
     if (!file || !viewingCounselCase) return message.warning("请先打开案件详情再上传文件");
     const data = new FormData();
     data.append("file", file);
@@ -1404,7 +1427,9 @@ export default function CaseCenterPage({
     setAttachmentPreview(null);
   };
   const deleteCounselAttachments = () => {
-    if(!viewingCounselCase||!selectedCounselAttachmentKeys.length)return message.warning("请选择需要删除的案件文件");
+    const selectionValidationError = getCaseAttachmentSelectionValidationError(selectedCounselAttachmentKeys, "删除");
+    if(selectionValidationError)return message.warning(selectionValidationError);
+    if(!viewingCounselCase)return message.warning("请先打开案件详情");
     Modal.confirm({title:"批量删除案件文件",content:`确认删除选中的 ${selectedCounselAttachmentKeys.length} 个文件吗？该操作会记录审计日志。`,okText:"删除",okButtonProps:{danger:true},onOk:async()=>{
       try{
         const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number)});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
@@ -1418,6 +1443,8 @@ export default function CaseCenterPage({
   const renameCounselAttachment = async () => {
     if (!renamingCounselAttachment || !viewingCounselCase) return;
     const values = await attachmentRenameForm.validateFields();
+    const renameValidationError = getCaseFileRenameValidationError(values.original_name, renamingCounselAttachment.original_name);
+    if (renameValidationError) return message.warning(renameValidationError);
     try {
       await api.put(`/cases/attachments/${renamingCounselAttachment.id}/rename`, { original_name: values.original_name.trim() });
       message.success("案件文件已重命名");
@@ -1430,6 +1457,11 @@ export default function CaseCenterPage({
   };
   const selectCounselDocCategory = (category: string) => {
     setActiveCounselDocCategory(category);
+    if (hasCaseFileTypeOption(category, caseFileTypeOptions)) {
+      setCounselUploadCategory(category);
+      setSelectedCounselAttachmentKeys([]);
+      return;
+    }
     setCounselUploadCategory(caseFileTypeOptions.some((item) => item.value === category) ? category : DEFAULT_CASE_ATTACHMENT_CATEGORY);
     setSelectedCounselAttachmentKeys([]);
   };
@@ -2214,6 +2246,8 @@ export default function CaseCenterPage({
     link.href = url; link.download = "案件阶段统计.csv"; link.click(); URL.revokeObjectURL(url);
   };
   const uploadCaseFile = async (file?: File) => {
+    const uploadValidationError = getCaseAttachmentUploadValidationError(file);
+    if (uploadValidationError) return message.warning(uploadValidationError);
     if (!file || !selectedCase) return message.warning("请先选择案件再上传文件");
     const category = initialView === "case-files-receipt" ? "案件票据文件" : caseUploadCategory;
     const data = new FormData(); data.append("file",file); data.append("record_id",String(selectedCase.id)); data.append("category",category); data.append("remark",initialView==="case-files-receipt"?"案件票据批量上传":`案件列表上传：${category}`);
@@ -2581,7 +2615,7 @@ export default function CaseCenterPage({
           <Form.Item label="第三人/受害人" name="third_party"><Input /></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input /></Form.Item><Form.Item label="提交人" name="submitter"><Input /></Form.Item><Form.Item label="提交时间" name="submit_range"><DatePicker.RangePicker /></Form.Item>
           <Form.Item className="case-archive-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>重置</Button></Space></Form.Item>
         </Form>
-        <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={{pageSize:20,showTotal:total=>`共有${total}条`}} />
+<Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={getCaseArchivePagination(initialView)} />
         <div className="case-bottom-actions"><Space wrap>
           <Button onClick={exportCases}>导出全部（CSV）</Button>
           <Button onClick={exportArchiveManifest}>导出选中归档清单（Excel）</Button>
@@ -3175,7 +3209,7 @@ export default function CaseCenterPage({
                   {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}
                 </Space>
-                <Table rowKey="id" size="small" pagination={false} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
+                <Table rowKey="id" size="small" pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
                   {title:"文件名称",dataIndex:"original_name",width:280,ellipsis:true},
                   {title:"分类",dataIndex:"category",width:150,ellipsis:true},
                   {title:"上传人",dataIndex:"uploader",width:110},
@@ -3221,7 +3255,7 @@ export default function CaseCenterPage({
       </Modal>
       <Modal open={Boolean(renamingCounselAttachment)} title={`重命名案件文件：${renamingCounselAttachment?.original_name || ""}`} okText="保存" cancelText="取消" onOk={renameCounselAttachment} onCancel={()=>{setRenamingCounselAttachment(null);attachmentRenameForm.resetFields();}}>
         <Form form={attachmentRenameForm} layout="vertical">
-          <Form.Item label="文件名称" name="original_name" rules={[{required:true,message:"请输入文件名称"},{max:255,message:"文件名称不能超过 255 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\\\/]/.test(name))throw new Error("文件名不能为空且不能包含路径");const currentSuffix=renamingCounselAttachment?.original_name.slice(renamingCounselAttachment.original_name.lastIndexOf("."))||"";const nextSuffix=name.slice(name.lastIndexOf("."));if(currentSuffix.toLowerCase()!==nextSuffix.toLowerCase())throw new Error("不能修改文件扩展名");}}]}><Input autoFocus /></Form.Item>
+          <Form.Item label="文件名称" name="original_name" rules={[{required:true,message:"请输入文件名称"},{max:255,message:"文件名称不能超过 255 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\\\/]/.test(name))throw new Error("文件名不能为空且不能包含路径");}}]}><Input autoFocus /></Form.Item>
           <Alert type="info" showIcon title="仅修改展示和下载文件名，不会移动或改写原文件内容；保存后会写入案件审计日志。"/>
         </Form>
       </Modal>
