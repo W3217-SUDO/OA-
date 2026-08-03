@@ -58,3 +58,46 @@ export const CUSTOMER_PATCH_SERVER_FIELDS = new Set([
 
 export const filterCustomerPatchData = (data = {}) =>
   Object.fromEntries(Object.entries(data).filter(([key]) => !CUSTOMER_PATCH_SERVER_FIELDS.has(key)))
+
+export const normalizeSharedObjectValues = (values = []) => {
+  if (!Array.isArray(values)) return []
+  const normalized = values.map((value) => {
+    if (typeof value === "string") return value.trim()
+    if (!value || typeof value !== "object") return ""
+    return String(
+      value.StaffName ?? value.staff_name ?? value.username ?? value.value ?? "",
+    ).trim()
+  }).filter(Boolean)
+  return [...new Set(normalized)]
+}
+
+export const buildContactStatusPatch = (contact, action) => {
+  if (!contact || typeof contact !== "object") return {}
+  if (action === "primary") return { is_primary: true }
+  if (action === "active") return { is_valid: true }
+  return {}
+}
+
+export const buildContactStatusRequest = (customerId, contactId, contact, action) => {
+  const patch = buildContactStatusPatch(contact, action)
+  if (!customerId || !contactId || !Object.keys(patch).length) return null
+  return {
+    method: "patch",
+    url: `/customers/${customerId}/contacts/${contactId}/status`,
+    data: patch,
+  }
+}
+
+export const runContactStatusUpdate = async (request, patch, refreshDetail, reloadList) => {
+  if (!request) return false
+  await patch(request.url, request.data)
+  await refreshDetail()
+  await reloadList()
+  return true
+}
+
+export const isCustomerRegistrationAddressSafe = (value) =>
+  !/[\\'"<>|]/.test(String(value ?? ""))
+
+export const isCustomerPostalCodeSafe = (value) =>
+  !/[-—\\'"<>|]/.test(String(value ?? ""))

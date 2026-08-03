@@ -25,3 +25,24 @@ export const CUSTOMER_PATCH_SERVER_FIELDS: ReadonlySet<string>;
 export const filterCustomerPatchData: (
   data?: Record<string, unknown>,
 ) => Record<string, unknown>;
+export const normalizeSharedObjectValues: (
+  values?: unknown,
+) => string[];
+export const buildContactStatusPatch: (
+  contact?: unknown,
+  action?: string,
+) => Record<string, boolean>;
+export const buildContactStatusRequest: (
+  customerId?: unknown,
+  contactId?: unknown,
+  contact?: unknown,
+  action?: string,
+) => { method: "patch"; url: string; data: Record<string, boolean> } | null;
+export const runContactStatusUpdate: (
+  request: { method: "patch"; url: string; data: Record<string, boolean> } | null,
+  patch: (url: string, data: Record<string, boolean>) => Promise<unknown>,
+  refreshDetail: () => Promise<unknown>,
+  reloadList: () => Promise<unknown>,
+) => Promise<boolean>;
+export const isCustomerRegistrationAddressSafe: (value?: unknown) => boolean;
+export const isCustomerPostalCodeSafe: (value?: unknown) => boolean;

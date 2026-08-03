@@ -36,7 +36,15 @@ import { api } from "./api";
 import { customerStatusLabel } from "./customerStatusLabel";
 import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
-import { filterCustomerPatchData, normalizeCustomerSummary } from "./customerParity.mjs";
+import {
+  filterCustomerPatchData,
+  buildContactStatusRequest,
+  runContactStatusUpdate,
+  isCustomerPostalCodeSafe,
+  isCustomerRegistrationAddressSafe,
+  normalizeCustomerSummary,
+  normalizeSharedObjectValues,
+} from "./customerParity.mjs";
 import type { CustomerListSummary } from "./customerParity.mjs";
 import "./customer-center.css";
 type Contact = {
@@ -69,6 +77,13 @@ type Attachment = {
   size: number;
   uploader: string;
   remark: string;
+  created_at: string;
+};
+type CustomerEvent = {
+  id: number;
+  action: string;
+  operator: string;
+  comment: string;
   created_at: string;
 };
 type Customer = {
@@ -155,6 +170,18 @@ type DirectoryUser = {
   display_name: string;
   department: string;
 };
+const customerRegistrationAddressRules = [{
+  validator: (_rule: unknown, value: unknown) =>
+    isCustomerRegistrationAddressSafe(value)
+      ? Promise.resolve()
+      : Promise.reject(new Error("注册地址禁止输入非法字符")),
+}];
+const customerPostalCodeRules = [{
+  validator: (_rule: unknown, value: unknown) =>
+    isCustomerPostalCodeSafe(value)
+      ? Promise.resolve()
+      : Promise.reject(new Error("邮编禁止输入非法字符")),
+}];
 const colors: Record<string, string> = {
   正常: "green",
   跟进中: "blue",
@@ -221,6 +248,8 @@ export default function CustomerCenterPage({
     [detailPageOpen, setDetailPageOpen] = useState(false),
     [newEditor, setNewEditor] = useState<"contact" | "note" | "document" | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]),
+    [events, setEvents] = useState<CustomerEvent[]>([]),
+    [historyError, setHistoryError] = useState(""),
     [detailLoading, setDetailLoading] = useState(false),
     [detailTab, setDetailTab] = useState("contacts"),
     [documentFile, setDocumentFile] = useState<File | null>(null),
@@ -653,8 +682,10 @@ export default function CustomerCenterPage({
   const refreshDetail = async (target = contacts) => {
     if (!target) return;
     setDetailLoading(true);
+    let historyItems: CustomerEvent[] = [];
+    let historyErrorMessage = "";
     try {
-      const [recordRes, fileRes] = await Promise.all([
+      const [recordRes, fileRes, historyRes] = await Promise.all([
         api.get("/records", {
           params: {
             module: "customer",
@@ -663,13 +694,20 @@ export default function CustomerCenterPage({
           },
         }),
         api.get("/attachments", { params: { record_id: target.id } }),
+        api.get(`/records/${target.id}/history`).catch((error) => {
+          historyErrorMessage = error?.response?.data?.detail || "操作记录加载失败";
+          return { data: { items: [] } };
+        }),
       ]);
       setContacts(
         recordRes.data.items.find((x: Customer) => x.id === target.id) ||
           target,
       );
       setAttachments((fileRes.data.items || []).filter((item: Attachment) => item.category !== "客户联系人照片"));
+      historyItems = historyRes.data.items || [];
     } finally {
+      setEvents(historyItems);
+      setHistoryError(historyErrorMessage);
       setDetailLoading(false);
     }
   };
@@ -678,6 +716,8 @@ export default function CustomerCenterPage({
     setDetailPageOpen(isReadOnlyCustomerList);
     setDetailTab(tab);
     setAttachments([]);
+    setEvents([]);
+    setHistoryError("");
     try {
       await refreshDetail(r);
     } catch (error: any) {
@@ -747,6 +787,22 @@ export default function CustomerCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "联系人更新失败");
+    }
+  };
+  const updateContactStatus = async (contact: Contact, action: "primary" | "active") => {
+    if (!contacts) return;
+    const request = buildContactStatusRequest(contacts.id, contact.id, contact, action);
+    if (!request) return;
+    try {
+      await runContactStatusUpdate(
+        request,
+        (url, data) => api.patch(url, data),
+        refreshDetail,
+        load,
+      );
+      message.success(action === "primary" ? "联系人已设为主要联系人" : "联系人已恢复有效");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "联系人状态更新失败");
     }
   };
   const addNote = async () => {
@@ -932,7 +988,10 @@ export default function CustomerCenterPage({
     if (key === "portal-open") void openPortal(target);
     if (key === "portal-close") void closePortal(target);
     if (key === "claim") void action(target, "claim");
-    if (key === "share") { shareForm.resetFields(); setSharing(target); }
+    if (key === "share") {
+      shareForm.setFieldsValue({ recipients: normalizeSharedObjectValues(target.data.shared_with) });
+      setSharing(target);
+    }
     if (["release", "recycle", "restore"].includes(key)) void action(target, key);
   };
   const managerLocked = [
@@ -1197,7 +1256,7 @@ export default function CustomerCenterPage({
                 key: "contacts",
                 label: "联系人",
                 children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ defaultPageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>:null},
+                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>{!row.is_primary&&<Button type="link" onClick={()=>void updateContactStatus(row,"primary")}>设为主要</Button>}{row.is_valid===false&&<Button type="link" onClick={()=>void updateContactStatus(row,"active")}>设为有效</Button>}</Space>:null},
                 ]} />,
               },
               {
@@ -1206,6 +1265,21 @@ export default function CustomerCenterPage({
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator"},{title:"操作日期",dataIndex:"created_at"},{title:"操作",render:()=>null},
                 ]} />,
+              },
+              {
+                key: "events",
+                label: `操作记录（${events.length}）`,
+                children: (
+                  <>
+                    {historyError && <Alert type="warning" showIcon message={historyError} style={{ marginBottom: 8 }} />}
+                    <Table rowKey="id" size="small" pagination={false} dataSource={events} locale={{emptyText:"暂无操作记录"}} columns={[
+                      { title: "动作", dataIndex: "action" },
+                      { title: "操作人", dataIndex: "operator" },
+                      { title: "说明", dataIndex: "comment" },
+                      { title: "时间", dataIndex: "created_at" },
+                    ]} />
+                  </>
+                ),
               },
               {
                 key: "documents",
@@ -1388,7 +1462,8 @@ export default function CustomerCenterPage({
                 <Form.Item label="客户编码" name="serial_no"><Input disabled placeholder="自动生成" /></Form.Item>
                 <Form.Item label="客户状态" name="status"><Select allowClear placeholder="请选择" options={["潜在","目标","立项","关怀","签约","谈判","价值"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions} /></Form.Item>
-                <Form.Item label="注册地址" name="registered_address"><Input /></Form.Item>
+                <Form.Item label="注册地址" name="registered_address" rules={customerRegistrationAddressRules}><Input /></Form.Item>
+                <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>
                 <Form.Item label="客户简称" name="short_name"><Input /></Form.Item>
                 <Form.Item label="电话" name="phone"><Input /></Form.Item>
                 <Form.Item label="传真" name="fax"><Input /></Form.Item>
@@ -1605,9 +1680,11 @@ export default function CustomerCenterPage({
               className="span-2"
               label="注册地址"
               name="registered_address"
+              rules={customerRegistrationAddressRules}
             >
               <Input />
             </Form.Item>
+            <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>
             <div className="span-2">
               <b>开票与银行资料</b>
             </div>
@@ -1780,7 +1857,9 @@ export default function CustomerCenterPage({
                         title: "操作",
                         render: (_: unknown, r: Contact) => canManageCurrentCustomer ? (
                           <Space size={0}>
-                            <Button type="link" onClick={() => openContactEdit(r)}>编辑</Button>
+                                <Button type="link" onClick={() => openContactEdit(r)}>编辑</Button>
+                                {!r.is_primary && <Button type="link" onClick={() => void updateContactStatus(r, "primary")}>设为主要</Button>}
+                                {r.is_valid === false && <Button type="link" onClick={() => void updateContactStatus(r, "active")}>设为有效</Button>}
                             <Popconfirm title="删除联系人？" onConfirm={() => deleteContact(r.id)}>
                               <Button type="link" danger>删除</Button>
                             </Popconfirm>
@@ -1909,6 +1988,21 @@ export default function CustomerCenterPage({
                       </Button>
                     </Form>
                   </Card>
+                </>
+              ),
+            },
+            {
+              key: "events",
+              label: `操作记录（${events.length}）`,
+              children: (
+                <>
+                  {historyError && <Alert type="warning" showIcon message={historyError} style={{ marginBottom: 8 }} />}
+                  <Table rowKey="id" size="small" pagination={false} dataSource={events} locale={{emptyText:"暂无操作记录"}} columns={[
+                    { title: "动作", dataIndex: "action" },
+                    { title: "操作人", dataIndex: "operator" },
+                    { title: "说明", dataIndex: "comment" },
+                    { title: "时间", dataIndex: "created_at" },
+                  ]} />
                 </>
               ),
             },

@@ -12,7 +12,7 @@ import re
 import unicodedata
 import zipfile
 from urllib.parse import quote
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 from xml.sax.saxutils import escape as xml_escape
 
 import httpx
@@ -2114,6 +2114,21 @@ class CustomerManagersInput(BaseModel):
     comment: str = ""
 
 
+class CustomerPatchInput(BaseModel):
+    description: str | None = Field(default=None, max_length=2000)
+    data: dict = Field(default_factory=dict)
+
+
+class CustomerEventInput(BaseModel):
+    action: str = Field(min_length=1, max_length=64)
+    comment: str = Field(default="", max_length=4000)
+
+
+class CustomerContactStatusInput(BaseModel):
+    is_valid: bool | None = None
+    is_primary: bool | None = None
+
+
 class CustomerNoteInput(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
     note_type: str = Field(default="跟进记录", max_length=32)
@@ -2420,19 +2435,28 @@ FIELD_PERMISSION_DATA_KEYS = {
 }
 
 
+def _customer_guid(record: BusinessRecord) -> str:
+    """Return a stable customer GUID, including for legacy rows without one."""
+    stored = str((record.data or {}).get("customer_guid") or "").strip()
+    return stored or str(uuid5(NAMESPACE_URL, f"customer:{record.id}"))
+
+
 def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None) -> dict:
     data = dict(record.data or {})
     if allowed_fields is not None:
         for permission, keys in FIELD_PERMISSION_DATA_KEYS.items():
             if permission not in allowed_fields:
                 for key in keys: data.pop(key, None)
-    return {
+    result = {
         "id": record.id, "module": record.module, "serial_no": record.serial_no,
         "title": record.title, "customer": record.customer, "status": record.status,
         "owner": record.owner, "department": record.department,
         "description": record.description, "data": data,
         "created_at": record.created_at, "updated_at": record.updated_at,
     }
+    if record.module == "customer":
+        result["customer_guid"] = _customer_guid(record)
+    return result
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord) -> dict:
@@ -5315,6 +5339,7 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
         data.pop(protected_customer_field, None)
     data["shared_with"] = []
     data["is_shared"] = "否"
+    data["customer_guid"] = str(uuid4())
     customer_type = str(data.get("customer_type") or "客户").strip()
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
@@ -5591,6 +5616,138 @@ def _customer_event(customer: BusinessRecord, action: str, identity: dict, comme
     return WorkflowEvent(record_id=customer.id, action=action, from_status=from_status or customer.status, to_status=customer.status, operator=identity["username"], comment=comment)
 
 
+async def _customer_by_guid(customer_guid: str, identity: dict, db: AsyncSession) -> BusinessRecord:
+    guid = str(customer_guid or "").strip()
+    if not guid:
+        raise HTTPException(status_code=422, detail="客户 Guid 不能为空")
+    customers = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all()
+    customer = next((item for item in customers if _customer_guid(item) == guid), None)
+    if not customer:
+        raise HTTPException(status_code=404, detail="客户不存在或无权访问")
+    return await _customer_or_404(customer.id, identity, db)
+
+
+@app.api_route(f"{settings.api_prefix}/customers/{{customer_id}}/shared-objects", methods=["GET", "POST"])
+async def list_customer_shared_objects(customer_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer = await _customer_or_404(customer_id, identity, db)
+    data = customer.data or {}
+    return {
+        "customer_id": customer.id, "customer_guid": _customer_guid(customer),
+        "items": list(data.get("shared_with") or [{}]),
+        "customer_managers": list(data.get("customer_managers") or [customer.owner]),
+        "is_shared": data.get("is_shared", "否"),
+    }
+
+
+@app.get(f"{settings.api_prefix}/customers/{{customer_id}}/assignment-history")
+async def list_customer_assignment_history(customer_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer = await _customer_or_404(customer_id, identity, db)
+    items = list((customer.data or {}).get("assignment_history") or [])
+    return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": items, "total": len(items)}
+
+
+@app.get(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/events")
+async def list_customer_events_by_guid(customer_guid: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer = await _customer_by_guid(customer_guid, identity, db)
+    events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == customer.id).order_by(WorkflowEvent.created_at, WorkflowEvent.id))).all()
+    return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": [{"id": event.id, "action": event.action, "comment": event.comment, "operator": event.operator, "from_status": event.from_status, "to_status": event.to_status, "created_at": event.created_at} for event in events], "total": len(events)}
+
+
+@app.post(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/events", status_code=status.HTTP_201_CREATED)
+async def create_customer_event_by_guid(customer_guid: str, body: CustomerEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer = await _customer_by_guid(customer_guid, identity, db)
+    event = _customer_event(customer, body.action.strip(), identity, body.comment.strip())
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return {"id": event.id, "customer_id": customer.id, "customer_guid": _customer_guid(customer), "action": event.action, "comment": event.comment, "operator": event.operator, "created_at": event.created_at}
+
+
+async def _customer_files_by_guid(customer_guid: str, identity: dict, db: AsyncSession) -> tuple[BusinessRecord, list[FileAttachment]]:
+    customer = await _customer_by_guid(customer_guid, identity, db)
+    files = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == customer.id).order_by(FileAttachment.created_at, FileAttachment.id))).all())
+    return customer, files
+
+
+@app.get(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/files")
+async def list_customer_files_by_guid(customer_guid: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer, files = await _customer_files_by_guid(customer_guid, identity, db)
+    return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": [{"id": item.id, "original_name": item.original_name, "content_type": item.content_type, "size": item.size, "category": item.category, "created_at": item.created_at} for item in files], "total": len(files)}
+
+
+@app.get(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/files/{{attachment_id}}/download")
+async def download_customer_file_by_guid(customer_guid: str, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer, _ = await _customer_files_by_guid(customer_guid, identity, db)
+    attachment = await db.get(FileAttachment, attachment_id)
+    if not attachment or attachment.record_id != customer.id:
+        raise HTTPException(status_code=404, detail="客户文件不存在")
+    path = Path(attachment.path)
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+        raise HTTPException(status_code=404, detail="客户文件不存在")
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+
+
+@app.get(f"{settings.api_prefix}/customers/{{customer_id}}/contacts")
+async def list_customer_contacts(customer_id: int, page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer = await _customer_or_404(customer_id, identity, db)
+    contacts = list((customer.data or {}).get("contacts") or [])
+    total = len(contacts); start = (page - 1) * page_size
+    return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": contacts[start:start + page_size], "total": total, "page": page, "page_size": page_size}
+
+
+@app.patch(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}/status")
+async def update_customer_contact_status(customer_id: int, contact_id: str, body: CustomerContactStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if body.is_valid is None and body.is_primary is None:
+        raise HTTPException(status_code=422, detail="联系人状态至少指定一项")
+    customer = await _customer_or_404(customer_id, identity, db)
+    await _require_record_owner_or_manager(customer, identity, db)
+    data = customer.data or {}; contacts = list(data.get("contacts") or [])
+    index = next((i for i, item in enumerate(contacts) if item.get("id") == contact_id), None)
+    if index is None:
+        raise HTTPException(status_code=404, detail="联系人不存在")
+    previous = contacts[index]
+    changes_valid = body.is_valid is not None and body.is_valid != previous.get("is_valid")
+    changes_primary = body.is_primary is True and not previous.get("is_primary")
+    if not changes_valid and not changes_primary:
+        raise HTTPException(status_code=422, detail="联系人状态未发生变化")
+    updated = {**previous}
+    if body.is_valid is not None:
+        updated["is_valid"] = body.is_valid
+    if body.is_primary:
+        contacts = [{**item, "is_primary": item.get("id") == contact_id} for item in contacts]
+    else:
+        contacts[index] = updated
+    if body.is_primary:
+        contacts[index] = {**updated, "is_primary": True}
+    customer.data = {**data, "contacts": contacts}
+    db.add(_customer_event(customer, "设置联系人状态", identity, f"联系人：{contact_id}"))
+    await db.commit()
+    return contacts[index]
+
+
+@app.patch(f"{settings.api_prefix}/customers/{{customer_id}}")
+async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    customer = await _customer_or_404(customer_id, identity, db)
+    await _require_record_owner_or_manager(customer, identity, db)
+    allowed_fields = await _allowed_field_keys(identity, db)
+    current = dict(customer.data or {})
+    accepted: dict[str, object] = {}
+    for key, value in (body.data or {}).items():
+        if key not in CUSTOMER_CREATE_DATA_FIELDS:
+            continue
+        permission = next((permission for permission, keys in FIELD_PERMISSION_DATA_KEYS.items() if key in keys), None)
+        if permission and permission not in allowed_fields:
+            continue
+        accepted[key] = value
+    customer.data = {**current, **accepted}
+    if body.description is not None:
+        customer.description = body.description.strip()
+    db.add(_customer_event(customer, "更新客户资料", identity, f"更新字段：{'、'.join(accepted) or '无可写字段'}"))
+    await db.commit()
+    await db.refresh(customer)
+    return await _record_dict_for_identity(customer, identity, db)
+
+
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/claim")
 async def claim_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager", "user"}:
@@ -5819,8 +5976,18 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
     if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取后才能分配管理人")
     await _require_record_owner_or_manager(customer, identity, db)
     managers = await _resolve_active_customer_managers(body.managers, db)
+    data = dict(customer.data or {})
+    history = list(data.get("assignment_history") or [])
+    history.append({
+        "from_owner": customer.owner,
+        "to_owner": managers[0],
+        "managers": managers,
+        "operator": identity["username"],
+        "comment": body.comment.strip(),
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    })
     customer.owner = managers[0]
-    customer.data = {**(customer.data or {}), "customer_managers": managers}
+    customer.data = {**data, "customer_managers": managers, "assignment_history": history}
     db.add(_customer_event(customer, "更新客户管理人", identity, body.comment or f"客户管理人：{'、'.join(managers)}"))
     await db.commit(); await db.refresh(customer)
     return await _record_dict_for_identity(customer, identity, db)
