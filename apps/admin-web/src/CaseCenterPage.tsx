@@ -41,6 +41,7 @@ import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions } from "./caseContractPrefill";
+import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
   getLegacyCaseListDefaults,
   getLegacyCaseListOperationLabels,
@@ -647,23 +648,8 @@ export default function CaseCenterPage({
     }
   };
   const counselScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
-  const counselSearchPayload = (values:Record<string,any>, page:number, pageSize:number, extra:Record<string,any>={}) => ({
-    scope: counselScope,
-    customer: values.customer || "",
-    serial_no: values.serial_no || "",
-    keyword: values.keyword || "",
-    counsel_start: values.counsel_range?.[0]?.format("YYYY-MM-DD") || null,
-    counsel_end: values.counsel_range?.[1]?.format("YYYY-MM-DD") || null,
-    counsel_type: values.counsel_type || "",
-    case_status: values.status || "",
-    handling_lawyer: values.handling_lawyer || "",
-    assistant: values.assistant || "",
-    document_name: values.document_name || "",
-    sort_order: values.sort_order || "updated_desc",
-    page,
-    page_size: pageSize,
-    ...extra,
-  });
+  const counselSearchPayload = (values:Record<string,any>, page:number, pageSize:number, extra:Record<string,any>={}) =>
+    buildCaseCounselSearchPayload(values, counselScope, page, pageSize, extra);
   const loadCounselCases = async (values:Record<string,any>=caseQuery, page=1, pageSize=counselPageSize) => {
     setLoading(true);
     try {
