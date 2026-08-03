@@ -28,7 +28,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { resolveDetailRelation } from "./detailRelationResolver";
-import { consumeContractDetailTarget, type ContractDetailNavigationContext } from "./contractDetailNavigation";
+import { buildContractDetailRoute, consumeContractDetailTarget, sortContractObjectLogs, type ContractDetailNavigationContext } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
@@ -62,6 +62,7 @@ import {
   contractAuditViewConfig,
   contractListActionPolicy,
   contractListViewConfig,
+  contractSecondaryActionPolicy,
   extractContractErrorMessage,
   filterContractCaseOptions,
   filterContractLinkedRows,
@@ -202,11 +203,14 @@ export default function ContractCenterPage({
   onDetailTargetHandled?: () => void;
 }) {
   const customerContextConsumerRef = useRef(createContractCustomerContextConsumer(sessionStorage));
-  const isContractDetailView = initialView.startsWith("contract-detail-");
+  const isContractDetailView = initialView.startsWith("contract-detail-") || initialView.startsWith("contract-preview-");
   const contractDetailRouteMatch = initialView.match(/^contract-detail-(\d+)-(.+)$/);
+  const contractPreviewRouteMatch = initialView.match(/^contract-preview-(.+)$/);
   const contractDetailRouteTarget: ContractDetailNavigationContext | null = contractDetailRouteMatch
     ? { id: Number(contractDetailRouteMatch[1]), serial_no: decodeURIComponent(contractDetailRouteMatch[2]), at: Date.now() }
-    : null;
+    : contractPreviewRouteMatch
+      ? { serial_no: decodeURIComponent(contractPreviewRouteMatch[1]), at: Date.now() }
+      : null;
   const [allRows, setAllRows] = useState<Contract[]>([]),
     [loading, setLoading] = useState(false),
     [open, setOpen] = useState(initialView === "contract-new"),
@@ -302,7 +306,8 @@ export default function ContractCenterPage({
       } catch {
         // Session storage may be unavailable in embedded/private contexts.
       }
-      onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
+      const route = buildContractDetailRoute(contract);
+      if (route) onNavigate?.(route);
       return;
     }
     const requestId = ++viewingAttachmentRequest.current;
@@ -340,7 +345,9 @@ export default function ContractCenterPage({
         setContractEvents([...manualEvents, ...workflowEvents].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
         setObjectPage(1);
         setObjectPageSize(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
-        setContractObjects(objectResult.status === "fulfilled" ? sortContractObjectRows(objectResult.value.data.items || []) : []);
+        setContractObjects(objectResult.status === "fulfilled"
+          ? sortContractObjectRows((objectResult.value.data.items || []).map((item: ContractObjectRow) => ({ ...item, logs: sortContractObjectLogs(item.logs || []) })))
+          : []);
         setObjectCases(caseResult.status === "fulfilled" ? (caseResult.value.data.items || []) : []);
         setDetailReceipts(receiptResult.status === "fulfilled"
           ? sortContractRecordRows((receiptResult.value.data.items || []).filter((item: any) => item.contract_record_id === contract.id || item.contract_no === contract.serial_no))
@@ -1245,6 +1252,7 @@ export default function ContractCenterPage({
     selected ? action() : message.warning("请先选择一份合同");
   const selected = rows.find((row) => row.id === Number(selectedRowKeys[0]));
   const selectedActionPolicy = contractListActionPolicy(selected?.status);
+  const selectedSecondaryActionPolicy = contractSecondaryActionPolicy(selected?.status);
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const moneyKeys = [
     "official_paid",
@@ -1593,13 +1601,13 @@ export default function ContractCenterPage({
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
           <RecordImportButton module="contract" onImported={load} /><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
-          <Button onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
+          <Button disabled={!selectedSecondaryActionPolicy.canEdit} onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
           <Button disabled={!selectedActionPolicy.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
           <Button disabled={!selectedActionPolicy.canInvoice} onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
           <Button disabled={!selectedActionPolicy.canCreateCase} onClick={()=>needSelected(()=>startCaseFromContract(selected!))}>新建案件</Button>
-          <Button onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
-          <Button onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
+          <Button disabled={!selectedSecondaryActionPolicy.canInvestigation} onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
+          <Button disabled={!selectedSecondaryActionPolicy.canArchive} onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
         </Space></div>}
         {isAuditView && (!["contract-audit-pending", "contract-audit-refused", "contract-audit-approved"].includes(initialView) || rows.length > 0) && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>{auditActionPolicy.canReview && <Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button>}{auditActionPolicy.canReviewChange && <><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></>}</Space></div>}
       </Card>}

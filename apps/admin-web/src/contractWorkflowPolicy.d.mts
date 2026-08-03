@@ -14,6 +14,7 @@ export function contractAttachmentActionPolicy(status: string): { canUpload: boo
 export function extractContractErrorMessage(error: unknown, fallback: string): string;
 export function contractAuditActionPolicy(view: string): { canReview: boolean; canReviewChange: boolean; canExport: boolean };
 export function contractListActionPolicy(status: string | null | undefined): { canPayment: boolean; canInvoice: boolean; canCreateCase: boolean };
+export function contractSecondaryActionPolicy(status: string | null | undefined): { canEdit: boolean; canInvestigation: boolean; canArchive: boolean };
 export function contractAuditViewConfig(view: string): { statuses: string[] };
 export function normalizeContractDetailReturnView(view: string): string;
 export function buildContractDraftDefaults(input: {

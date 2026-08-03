@@ -8,6 +8,20 @@ const STORAGE_KEY = "sunhold:contract-detail-context";
 const MAX_AGE_MS = 60 * 60 * 1000;
 export const CONTRACT_DETAIL_TARGET_EVENT = "sunhold:contract-detail-target";
 
+export const buildContractDetailRoute = (target: { id?: number; serial_no?: string }) => {
+  const serialNo = String(target.serial_no || "").trim();
+  const id = Number(target.id || 0);
+  if (Number.isFinite(id) && id > 0 && serialNo) return `contract-detail-${id}-${encodeURIComponent(serialNo)}`;
+  if (serialNo) return `contract-preview-${encodeURIComponent(serialNo)}`;
+  return null;
+};
+
+export const sortContractObjectLogs = <T extends { id?: number; created_at?: string }>(rows: readonly T[] = []) => [...rows].sort((left, right) => {
+  const idDelta = Number(right.id || 0) - Number(left.id || 0);
+  if (idDelta) return idDelta;
+  return String(right.created_at || "").localeCompare(String(left.created_at || ""));
+});
+
 export const rememberContractDetailTarget = (target: { id?: number; serial_no?: string }) => {
   const serialNo = String(target.serial_no || "").trim();
   const id = Number(target.id || 0) || undefined;
