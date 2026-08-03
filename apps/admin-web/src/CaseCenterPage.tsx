@@ -43,6 +43,11 @@ import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions } from "./caseContractPrefill";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
+  buildCaseOrdinarySearchPayload,
+  createLatestRequestGuard,
+  parseOrdinarySearchResult,
+} from "./caseOrdinarySearchParity.mjs";
+import {
   getLegacyCaseListDefaults,
   getLegacyCaseListOperationLabels,
   getLegacyCaseListOperationState,
@@ -113,6 +118,8 @@ export const buildCasePhaseItems = (rows: CaseRow[], initialView: string, items:
   const routeCases = scopeCasesByListRoute(rows, initialView);
   return items.map((item) => ({...item, count: routeCases.filter((row) => row.status === item.value).length}));
 };
+export const buildCasePhaseItemsFromCounts = (counts: Record<string, number>, items: {label:string;value:string}[]) =>
+  items.map((item) => ({...item, count: Number(counts[item.value] || 0)}));
 export const getCasePhaseDefinitions = (initialView: string, defaultItems: {label:string;value:string}[], criminalItems: {label:string;value:string}[]) => {
   if (initialView === "case-company-arbitration") return [
     {label:"待分配",value:"新案待分配"},
@@ -402,12 +409,16 @@ export default function CaseCenterPage({
   });
   const [tab, setTab] = useState(first);
   const [cases, setCases] = useState<CaseRow[]>([]);
+  const [ordinaryCases, setOrdinaryCases] = useState<CaseRow[]>([]);
+  const [ordinaryTotal, setOrdinaryTotal] = useState(0);
+  const [ordinaryPhaseCounts, setOrdinaryPhaseCounts] = useState<Record<string, number>>({});
+  const ordinaryRequestGuard = useRef(createLatestRequestGuard()).current;
   const [counselCases, setCounselCases] = useState<CaseRow[]>([]);
   const [counselTotal, setCounselTotal] = useState(0);
   const [counselPage, setCounselPage] = useState(1);
   const [counselPageSize, setCounselPageSize] = useState(10);
   const [originalPage, setOriginalPage] = useState(caseListReturnContext?.page || 1);
-  const [originalPageSize, setOriginalPageSize] = useState(caseListReturnContext?.pageSize || 10);
+  const [originalPageSize, setOriginalPageSize] = useState(caseListReturnContext?.pageSize || 15);
   const [companySchedulePage, setCompanySchedulePage] = useState(1);
   const [companySchedulePageSize, setCompanySchedulePageSize] = useState(20);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
@@ -650,6 +661,36 @@ export default function CaseCenterPage({
   const counselScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
   const counselSearchPayload = (values:Record<string,any>, page:number, pageSize:number, extra:Record<string,any>={}) =>
     buildCaseCounselSearchPayload(values, counselScope, page, pageSize, extra);
+  const ordinaryScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
+  const ordinaryCaseTypes = initialView.includes("civil") ? ["民事案件"]
+    : initialView.includes("criminal") ? ["刑事案件"]
+      : initialView.includes("administrative") ? ["行政案件及国家赔偿"]
+        : initialView.includes("arbitration") ? ["仲裁"] : [];
+  const loadOrdinaryCases = async (values:Record<string,any>=caseQuery, page=1, pageSize=originalPageSize) => {
+    const requestId = ordinaryRequestGuard.begin();
+    setLoading(true);
+    try {
+      const { data } = await api.post("/cases/search", buildCaseOrdinarySearchPayload(values, ordinaryScope, ordinaryCaseTypes, page, pageSize));
+      if (!ordinaryRequestGuard.isLatest(requestId)) return;
+      const result = parseOrdinarySearchResult(data, page, pageSize);
+      setOrdinaryCases(result.items as CaseRow[]);
+      void loadCaseCapabilities(result.items as CaseRow[]);
+      setOrdinaryTotal(result.total);
+      setOrdinaryPhaseCounts(result.phaseCounts);
+      setOriginalPage(result.page);
+      setOriginalPageSize(result.pageSize);
+      setSelectedCaseKeys([]);
+    } catch (error:any) {
+      if (!ordinaryRequestGuard.isLatest(requestId)) return;
+      setOrdinaryCases([]);
+      setOrdinaryTotal(0);
+      setOrdinaryPhaseCounts({});
+      setSelectedCaseKeys([]);
+      message.error(error?.response?.data?.detail || "案件查询失败");
+    } finally {
+      if (ordinaryRequestGuard.isLatest(requestId)) setLoading(false);
+    }
+  };
   const loadCounselCases = async (values:Record<string,any>=caseQuery, page=1, pageSize=counselPageSize) => {
     setLoading(true);
     try {
@@ -665,6 +706,16 @@ export default function CaseCenterPage({
     } finally {
       setLoading(false);
     }
+  };
+  const searchByPhase = (status: string) => {
+    const nextQuery = { ...caseQuery, status, sort_order: "updated_desc" };
+    caseQueryForm.setFieldValue("status", status);
+    setCaseQuery(nextQuery);
+    setOriginalPage(1);
+    if (initialView.includes("counsel")) {
+      return loadCounselCases(nextQuery, 1, counselPageSize);
+    }
+    return loadOrdinaryCases(nextQuery, 1, originalPageSize);
   };
   const startCreate = () => {
     const operator = profile.display_name || profile.username || "管理者";
@@ -694,6 +745,7 @@ export default function CaseCenterPage({
     if (isCreateView) startCreate();
     const relationTarget = consumeCustomerRelationTarget();
     const relationQuery = relationTarget?.target === "civil-cases" ? { customer: relationTarget.title || relationTarget.serial_no || "" } : {};
+    let initialListQuery: Record<string, any> = relationQuery;
     if (relationQuery.customer) {
       caseQueryForm.setFieldsValue(relationQuery);
       setCaseQuery(relationQuery);
@@ -701,10 +753,18 @@ export default function CaseCenterPage({
     if (!isCreateView && !isCaseDetailView && caseListReturnContext?.query) {
       caseQueryForm.setFieldsValue(caseListReturnContext.query);
       setCaseQuery(caseListReturnContext.query);
+      initialListQuery = caseListReturnContext.query;
       sessionStorage.removeItem("sunhold:case-list-return");
     }
-    load();
-    if (!isCreateView && initialView.includes("counsel")) void loadCounselCases(relationQuery,1,10);
+    void (async () => {
+      await load();
+      if (isCreateView || isCaseDetailView) return;
+      if (initialView.includes("counsel")) {
+        await loadCounselCases(initialListQuery, 1, 10);
+      } else if (initialView.startsWith("case-mine") || initialView.startsWith("case-dept") || initialView.startsWith("case-company")) {
+        await loadOrdinaryCases(initialListQuery, 1, originalPageSize);
+      }
+    })();
   }, [initialView]);
   const returnToCaseList = () => {
     let route = caseListReturnContext?.route || "case-mine";
@@ -2200,52 +2260,7 @@ export default function CaseCenterPage({
       initialView.startsWith(prefix),
     );
   const counselListMode = originalListMode && initialView.includes("counsel");
-  const routeScopedCases = useMemo(() => scopeCasesByListRoute(scopedCases, initialView), [scopedCases, initialView]);
-  const originalCases = useMemo(() => {
-    let list = routeScopedCases;
-    const includes = (value: unknown, queryValue: string) =>
-      String(value || "").toLowerCase().includes(queryValue.toLowerCase());
-    const mappings: [string, (row: CaseRow) => unknown][] = [
-      ["plaintiff", (row) => row.data.plaintiff || row.customer],
-      ["prosecutor", (row) => row.data.prosecutor || row.data.first_procuratorate_name],
-      ["customer", (row) => row.customer],
-      ["counsel_type", (row) => row.data.counsel_type],
-      ["serial_no", (row) => row.serial_no],
-      ["evidence_org", (row) => row.data.evidence_org],
-      ["keyword", (row) => `${row.serial_no}${row.title}${row.customer}${row.data.opponent}`],
-      ["defendant", (row) => row.data.opponent],
-      ["handling_lawyer", (row) => (row.data.handling_lawyers || []).join(",")],
-      ["notary_no", (row) => row.data.notary_no],
-      ["status", (row) => row.status],
-      ["hearing_lawyer", (row) => row.data.hearing_lawyer],
-      ["assistant", (row) => row.data.assistant],
-      ["investigator", (row) => row.data.investigator],
-      ["court", (row) => row.data.court],
-      ["channel", (row) => row.data.channel],
-      ["warehouse", (row) => row.data.warehouse],
-      ["document_name", (row) => attachments.filter((item) => item.record_id === row.id).map((item) => item.original_name).join(",")],
-      ["area", (row) => row.data.area],
-      ["location", (row) => row.data.location],
-      ["log_content", (row) => row.data.log_content || row.description],
-    ];
-    for (const [key, getter] of mappings) {
-      if (caseQuery[key]) list = list.filter((row) => includes(getter(row), String(caseQuery[key])));
-    }
-    const withinRange = (value: unknown, range: any) => {
-      if (!range?.[0] || !range?.[1]) return true;
-      const date = dayjs(String(value || ""));
-      return date.isValid() && !date.isBefore(range[0], "day") && !date.isAfter(range[1], "day");
-    };
-    if (caseQuery.source_range) list = list.filter((row) => withinRange(row.data.source_date || row.data.source_at || row.data.created_at, caseQuery.source_range));
-    if (caseQuery.hearing_range) list = list.filter((row) => withinRange(row.data.hearing_date, caseQuery.hearing_range));
-    if (caseQuery.counsel_range) list = list.filter((row) => {
-      if (!caseQuery.counsel_range?.[0] || !caseQuery.counsel_range?.[1]) return true;
-      const start = dayjs(String(row.data.counsel_start || ""));
-      const end = dayjs(String(row.data.counsel_end || ""));
-      return start.isValid() && end.isValid() && !end.isBefore(caseQuery.counsel_range[0], "day") && !start.isAfter(caseQuery.counsel_range[1], "day");
-    });
-    return list;
-  }, [routeScopedCases, caseQuery, attachments]);
+  const originalCases = ordinaryCases;
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeys.includes(row.id));
   const selectedCaseCapability = getCaseCapability(selectedCase);
   const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeys.includes(row.id));
@@ -2399,7 +2414,10 @@ export default function CaseCenterPage({
   ];
   const phaseLabels=["等待公证书","审核公证书","待主体披露","新案待分配","文书准备","客户盖章","等待立案","补充取证","提交立案","一审阶段","二审阶段","再审阶段","执行阶段","归档阶段"];
   const criminalPhaseItems=[{label:"待分配",value:"新案待分配"},{label:"公安侦查",value:"公安侦查"},{label:"批捕",value:"批捕"},{label:"检察院审查起诉",value:"检察院审查起诉"},{label:"一审阶段",value:"一审阶段"},{label:"二审阶段",value:"二审阶段"},{label:"再审阶段",value:"再审阶段"},{label:"归档阶段",value:"归档阶段"}];
-  const phaseItems=buildCasePhaseItems(scopedCases,initialView,getCasePhaseDefinitions(initialView,phaseLabels.map(value=>({label:value,value})),criminalPhaseItems));
+  const phaseDefinitions=getCasePhaseDefinitions(initialView,phaseLabels.map(value=>({label:value,value})),criminalPhaseItems);
+  const phaseItems = counselListMode
+    ? buildCasePhaseItems(scopedCases,initialView,phaseDefinitions)
+    : buildCasePhaseItemsFromCounts(ordinaryPhaseCounts,phaseDefinitions);
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?row.status==="已归档":archiveRefused?Boolean(row.data.archive_reject_reason):row.status==="待归档审核").filter(row=>{
@@ -2731,9 +2749,9 @@ export default function CaseCenterPage({
           }}>解档审批</Button>}
         </Space></div>
       </Card> : originalListMode && <div className="case-original-layout">
-        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(({label,value,count})=><button key={value} type="button" onClick={()=>{caseQueryForm.setFieldValue("status",value);setCaseQuery({...caseQuery,status:value})}}>📁 {label}【{count}】</button>)}</aside>
+        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(({label,value,count})=><button key={value} type="button" onClick={()=>void searchByPhase(value)}>📁 {label}【{count}】</button>)}</aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
-          <Form form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);}}>
+          <Form form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>
             {counselListMode ? <>
               <Form.Item label="客户" name="customer"><Input placeholder="客户"/></Form.Item><Form.Item label="案号" name="serial_no"><Input placeholder="案号"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、案件名称、客户名称"/></Form.Item><Form.Item label="顾问期间" name="counsel_range"><DatePicker.RangePicker /></Form.Item>
               <Form.Item label="顾问类型" name="counsel_type"><Input placeholder="顾问类型"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
@@ -2748,10 +2766,10 @@ export default function CaseCenterPage({
               <Form.Item label="案源时间" name="source_range"><DatePicker.RangePicker /></Form.Item><Form.Item label="侵权渠道" name="channel"><Input placeholder="侵权渠道"/></Form.Item><Form.Item label="仓库" name="warehouse"><Input placeholder="仓库"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
               <Form.Item label="开庭时间" name="hearing_range"><DatePicker.RangePicker /></Form.Item><Form.Item label="侵权区域" name="area"><Input placeholder="侵权区域"/></Form.Item><Form.Item label="库位" name="location"><Input placeholder="库位"/></Form.Item><Form.Item label="日志内容" name="log_content"><Input placeholder="日志内容"/></Form.Item>
             </>}
-            <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">{legacyCaseListOperationLabels.query}</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setOriginalPage(1);if(counselListMode)void loadCounselCases({},1,counselPageSize);}}>{legacyCaseListOperationLabels.reset}</Button></Space></Form.Item>
+            <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">{legacyCaseListOperationLabels.query}</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setOriginalPage(1);if(counselListMode)void loadCounselCases({},1,counselPageSize);else void loadOrdinaryCases({},1,originalPageSize);}}>{legacyCaseListOperationLabels.reset}</Button></Space></Form.Item>
           </Form>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
-          <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:caseQuery}));return;}const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           {shouldShowCaseListActions(counselListMode?counselCases.length:originalCases.length)&&<div className="case-bottom-actions"><Space size={5} wrap>
             {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<><Button onClick={()=>exportSelectedCasesExcel(true)}>导出选中（Excel）</Button><Button onClick={()=>exportSelectedCasesExcel(false)}>导出当前查询（Excel）</Button><Button onClick={exportCaseQrWord}>导出选中二维码（Word）</Button><Button onClick={exportCases}>导出全部（CSV）</Button></>}
             {selectedCaseCapability.can_upload_attachment && <Select

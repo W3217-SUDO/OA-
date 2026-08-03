@@ -1490,19 +1490,40 @@ class CriminalCourtMaintenanceInput(BaseModel):
 class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
     case_types: list[str] = Field(default_factory=list, max_length=20)
+    case_type: str = Field(default="", max_length=128)
     customer: str = Field(default="", max_length=256)
     serial_no: str = Field(default="", max_length=128)
     keyword: str = Field(default="", max_length=256)
+    # Ordinary CaseSearchCondition fields.  Keep them explicit so unknown
+    # frontend keys cannot be silently discarded by the API.
+    plaintiff: str = Field(default="", max_length=256)
+    prosecutor: str = Field(default="", max_length=256)
+    defendant: str = Field(default="", max_length=256)
+    evidence_org: str = Field(default="", max_length=256)
+    notary_no: str = Field(default="", max_length=128)
+    hearing_lawyer: str = Field(default="", max_length=128)
+    investigator: str = Field(default="", max_length=128)
+    court: str = Field(default="", max_length=256)
+    source_from: date | None = None
+    source_to: date | None = None
+    hearing_from: date | None = None
+    hearing_to: date | None = None
+    channel: str = Field(default="", max_length=128)
+    warehouse: str = Field(default="", max_length=128)
+    area: str = Field(default="", max_length=128)
+    location: str = Field(default="", max_length=256)
+    log_content: str = Field(default="", max_length=1000)
     counsel_start: date | None = None
     counsel_end: date | None = None
     counsel_type: str = Field(default="", max_length=128)
     case_status: str = Field(default="", max_length=64)
+    status: str = Field(default="", max_length=64)
     handling_lawyer: str = Field(default="", max_length=128)
     assistant: str = Field(default="", max_length=128)
     document_name: str = Field(default="", max_length=255)
     sort_order: str = "updated_desc"
     page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=10, ge=1, le=200)
+    page_size: int = Field(default=15, ge=1, le=200)
     selected_ids: list[int] = Field(default_factory=list, max_length=200)
     selected_only: bool = False
     # 旧 CaseSearchCondition 的资助/财务/文档高级条件。布尔 not 字段保留旧端的“排除”语义。
@@ -12130,6 +12151,14 @@ async def list_general_settlement_applications(
     filtered: list[BusinessRecord] = []
     for record in records:
         data = record.data or {}
+        # CaseCenter writes handling_lawyers as an array, while older rows
+        # may contain a singular string.  Normalize before any legacy join so
+        # a string is never iterated character-by-character.
+        handling_values = data.get("handling_lawyers")
+        if isinstance(handling_values, str):
+            data = {**data, "handling_lawyers": [handling_values]}
+        elif not handling_values and isinstance(data.get("handling_lawyer"), str):
+            data = {**data, "handling_lawyers": [data["handling_lawyer"]]}
         if not contains(record.customer, customer) or not contains(data.get("case_nos"), case_no):
             continue
         if not contains(data.get("customer_manager"), customer_manager):
@@ -13354,13 +13383,15 @@ async def import_case_invoice_files(identity: dict = Depends(current_identity), 
 async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db: AsyncSession, *, counsel_only: bool = True) -> list[BusinessRecord]:
     if body.scope not in {"mine", "department", "company"}:
         raise HTTPException(status_code=422, detail="法律顾问案件查询范围无效")
-    if body.sort_order not in {"updated_desc", "case_no_asc", "case_no_desc"}:
+    if body.sort_order not in {"updated_desc", "updated_asc", "created_desc", "created_asc", "status_asc", "case_no_asc", "case_no_desc"}:
         raise HTTPException(status_code=422, detail="法律顾问案件排序方式无效")
     logic_aliases = {"and": "and", "or": "or", "intersection": "and", "union": "or", "交集": "and", "并集": "or"}
     advanced_logic = logic_aliases.get(str(body.advanced_logic or "").strip().casefold())
     if not advanced_logic:
         raise HTTPException(status_code=422, detail="高级查询组合方式无效")
     date_ranges = (
+        ("source date", body.source_from, body.source_to),
+        ("hearing date", body.hearing_from, body.hearing_to),
         ("资助申请日期", body.assisted_request_date_from, body.assisted_request_date_to),
         ("资助办理日期", body.assisted_response_date_from, body.assisted_response_date_to),
         ("费用通知日期", body.finance_inform_date_from, body.finance_inform_date_to),
@@ -13376,6 +13407,8 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
         *(await _record_scope_conditions(identity, db)),
     ))).all())
     requested_types = {str(item).strip() for item in body.case_types if str(item).strip()}
+    if body.case_type.strip():
+        requested_types.add(body.case_type.strip())
     if counsel_only:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") == "法律顾问"]
     elif requested_types:
@@ -13391,6 +13424,7 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
 
     document_names: dict[int, str] = {}
     record_attachments: dict[int, list[FileAttachment]] = {}
+    log_content_by_record: dict[int, str] = {}
     finance_by_case_id: dict[int, list[BusinessRecord]] = {}
     finance_by_case_no: dict[str, list[BusinessRecord]] = {}
     record_ids = [record.id for record in records]
@@ -13400,6 +13434,10 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
             if attachment.record_id is not None:
                 record_attachments.setdefault(attachment.record_id, []).append(attachment)
                 document_names[attachment.record_id] = f"{document_names.get(attachment.record_id, '')} {attachment.original_name}".strip()
+        events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id.in_(record_ids)))).all()
+        for event in events:
+            event_text = " ".join(part for part in (event.action, event.comment, event.operator) if part)
+            log_content_by_record[event.record_id] = f"{log_content_by_record.get(event.record_id, '')} {event_text}".strip()
     finance_records: list[BusinessRecord] = []
     if record_ids:
         candidate_serial_nos = [record.serial_no for record in records if record.serial_no]
@@ -13447,10 +13485,17 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
         except ValueError:
             return None
 
+    def searchable_text(raw: object) -> str:
+        if isinstance(raw, dict):
+            return " ".join(searchable_text(item) for item in raw.values())
+        if isinstance(raw, (list, tuple, set)):
+            return " ".join(searchable_text(item) for item in raw)
+        return str(raw or "")
+
     def text_condition(raw: object, expected: str, negate: bool = False) -> bool:
         if not expected.strip():
             return True
-        found = expected.strip().casefold() in str(raw or "").casefold()
+        found = expected.strip().casefold() in searchable_text(raw).casefold()
         return not found if negate else found
 
     def list_condition(raw: object, expected: list[str], negate: bool = False) -> bool:
@@ -13474,8 +13519,24 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
         if not contains(record.customer, body.customer): continue
         if not contains(record.serial_no, body.serial_no): continue
         if body.keyword and not contains(f"{record.serial_no} {record.title} {record.customer}", body.keyword): continue
+        if not contains(value(data, "plaintiff", "plaintiffs") or record.customer, body.plaintiff): continue
+        if not contains(value(data, "prosecutor", "procuratorate", "first_procuratorate_name"), body.prosecutor): continue
+        if not contains(value(data, "defendant", "defendants", "opponent"), body.defendant): continue
+        if not contains(value(data, "evidence_org", "evidence_organization"), body.evidence_org): continue
+        if not contains(value(data, "notary_no", "notary_nos", "certificate_no"), body.notary_no): continue
+        if not contains(value(data, "hearing_lawyer", "hearing_lawyers", "court_lawyer"), body.hearing_lawyer): continue
+        if not contains(value(data, "investigator", "investigators", "investigation_user"), body.investigator): continue
+        if not contains(value(data, "court", "court_name", "first_court_name"), body.court): continue
+        if not contains(value(data, "channel", "case_channel"), body.channel): continue
+        if not contains(value(data, "warehouse", "evidence_warehouse"), body.warehouse): continue
+        if not contains(value(data, "area", "case_area"), body.area): continue
+        if not contains(value(data, "location", "case_location"), body.location): continue
+        if not contains(log_content_by_record.get(record.id, "") + " " + str(data.get("log_content") or ""), body.log_content): continue
+        if not date_condition(value(data, "source_date", "source_at"), body.source_from, body.source_to): continue
+        hearing_dates = [data.get(key) for key in ("hearing_date", "first_court_hearing_date", "second_court_hearing_date", "retrial_court_hearing_date")]
+        if (body.hearing_from or body.hearing_to) and not any(date_condition(candidate, body.hearing_from, body.hearing_to) for candidate in hearing_dates): continue
         if not contains(data.get("counsel_type"), body.counsel_type): continue
-        if not contains(record.status, body.case_status): continue
+        if not contains(record.status, body.case_status or body.status): continue
         if not contains("、".join(data.get("handling_lawyers") or []), body.handling_lawyer): continue
         if not contains(data.get("assistant"), body.assistant): continue
         if not contains(document_names.get(record.id, ""), body.document_name): continue
@@ -13544,6 +13605,14 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
         filtered.sort(key=lambda item: (item.serial_no, item.id))
     elif body.sort_order == "case_no_desc":
         filtered.sort(key=lambda item: (item.serial_no, item.id), reverse=True)
+    elif body.sort_order == "created_asc":
+        filtered.sort(key=lambda item: (item.created_at or datetime.min, item.id))
+    elif body.sort_order == "created_desc":
+        filtered.sort(key=lambda item: (item.created_at or datetime.min, item.id), reverse=True)
+    elif body.sort_order == "updated_asc":
+        filtered.sort(key=lambda item: (item.updated_at or item.created_at or datetime.min, item.id))
+    elif body.sort_order == "status_asc":
+        filtered.sort(key=lambda item: (item.status or "", item.serial_no, item.id))
     else:
         filtered.sort(key=lambda item: (item.updated_at or item.created_at, item.id), reverse=True)
     return filtered
@@ -13569,6 +13638,10 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
     """Server-side ordinary-case search; unlike the legacy UI it never truncates to the first 100 rows."""
     records = await _query_counsel_cases(body, identity, db, counsel_only=False)
     total = len(records)
+    phase_counts: dict[str, int] = {}
+    for record in records:
+        phase = str(record.status or "")
+        phase_counts[phase] = phase_counts.get(phase, 0) + 1
     start = (body.page - 1) * body.page_size
     allowed_fields = await _allowed_field_keys(identity, db)
     return {
@@ -13577,6 +13650,7 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
         "page": body.page,
         "page_size": body.page_size,
         "pages": (total + body.page_size - 1) // body.page_size if total else 0,
+        "phase_counts": phase_counts,
     }
 
 

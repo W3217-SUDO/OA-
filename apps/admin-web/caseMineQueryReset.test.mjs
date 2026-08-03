@@ -8,7 +8,7 @@ test('我的案件查询支持重置并恢复第一页数据', () => {
   assert.match(source, /caseQueryForm\.resetFields\(\);setCaseQuery\(\{\}\);setOriginalPage\(1\);if\(counselListMode\)void loadCounselCases\(\{\},1,counselPageSize\)/);
   assert.match(source, /pageSizeOptions:\[10,15,20,50,100,200\]/);
   assert.match(source, /const \[originalPage, setOriginalPage\] = useState\(caseListReturnContext\?\.page \|\| 1\)/);
-  assert.match(source, /const \[originalPageSize, setOriginalPageSize\] = useState\(caseListReturnContext\?\.pageSize \|\| 10\)/);
+  assert.match(source, /const \[originalPageSize, setOriginalPageSize\] = useState\(caseListReturnContext\?\.pageSize \|\| 15\)/);
   assert.match(source, /current:originalPage,pageSize:originalPageSize/);
   assert.match(source, /setOriginalPage\(nextPage\);setOriginalPageSize\(nextPageSize\);sessionStorage\.setItem\("sunhold:case-list-return"/);
   assert.match(source, /if \(!isCreateView && !isCaseDetailView && caseListReturnContext\?\.query\)/);
@@ -17,7 +17,9 @@ test('我的案件查询支持重置并恢复第一页数据', () => {
   assert.match(source, /const exportCases = async \(\) => \{\s*if \(!originalCases\.length\) return message\.warning\("当前查询没有可导出的案件"\);/);
   assert.match(source, /const criminalPhaseItems=\[\{label:"待分配",value:"新案待分配"\}/);
   assert.match(source, /buildCasePhaseItems\(scopedCases,initialView/);
-  assert.match(source, /caseQueryForm\.setFieldValue\("status",value\);setCaseQuery\(\{\.\.\.caseQuery,status:value\}\)/);
+  assert.match(source, /onClick=\{\(\)=>void searchByPhase\(value\)\}/);
+  assert.match(source, /const searchByPhase = \(status: string\)/);
+  assert.match(source, /return loadOrdinaryCases\(nextQuery, 1, originalPageSize\)/);
 });
 
 test('我的案件列表保留详情入口与导出/批量操作', () => {
