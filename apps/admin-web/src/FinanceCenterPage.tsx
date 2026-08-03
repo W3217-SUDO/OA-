@@ -45,6 +45,7 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
+import { createFinanceActionGate } from "./financeActionGate.mjs";
 import {
   normalizeRefundResponse,
   refundAmountUpdateRequest,
@@ -580,6 +581,14 @@ export default function FinanceCenterPage({
   onNavigate?: (route: string) => void;
 }) {
   const sessionUser = useMemo(initialSessionUser, []);
+  const financeActionGates = useMemo(
+    () => ({
+      archiveSettlement: createFinanceActionGate(),
+      generalSettlement: createFinanceActionGate(),
+      paymentPackage: createFinanceActionGate(),
+    }),
+    [],
+  );
   const contractPaymentSourceSearch =
     initialView === "finance-payment-mine" && typeof window !== "undefined"
       ? window.location.search
@@ -2138,6 +2147,10 @@ export default function FinanceCenterPage({
   const writeoffPaymentPackage = async () => {
     if (!paymentPackageWriteoffTarget) return;
     const values = await paymentPackageWriteoffForm.validateFields();
+    if (!financeActionGates.paymentPackage.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
     setPaymentPackageLoading(true);
     try {
       await api.post(
@@ -2153,6 +2166,7 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "付款包核销失败");
     } finally {
+      financeActionGates.paymentPackage.leave();
       setPaymentPackageLoading(false);
     }
   };
@@ -3631,6 +3645,10 @@ export default function FinanceCenterPage({
   };
   const submitGeneralSettlementReview = async () => {
     if (!generalSettlementReviewTargets.length) return;
+    if (!financeActionGates.generalSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
     setGeneralSettlementBusy(true);
     try {
       const response = await api.post(
@@ -3659,6 +3677,7 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "结算审核失败");
       throw error;
     } finally {
+      financeActionGates.generalSettlement.leave();
       setGeneralSettlementBusy(false);
     }
   };
@@ -3685,6 +3704,10 @@ export default function FinanceCenterPage({
       !generalSettlementPaymentComment.trim()
     ) {
       message.warning("请输入审核备注.");
+      return;
+    }
+    if (!financeActionGates.generalSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
       return;
     }
     setGeneralSettlementBusy(true);
@@ -3717,6 +3740,7 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "结算付款处理失败");
       throw error;
     } finally {
+      financeActionGates.generalSettlement.leave();
       setGeneralSettlementBusy(false);
     }
   };
@@ -3736,6 +3760,10 @@ export default function FinanceCenterPage({
     if (!generalSettlementReapplyTargets.length) return;
     if (!generalSettlementReapplyComment.trim()) {
       message.warning("请输入备注.");
+      return;
+    }
+    if (!financeActionGates.generalSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
       return;
     }
     setGeneralSettlementBusy(true);
@@ -3763,6 +3791,7 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "重新申请结算失败");
       throw error;
     } finally {
+      financeActionGates.generalSettlement.leave();
       setGeneralSettlementBusy(false);
     }
   };
@@ -3851,6 +3880,7 @@ export default function FinanceCenterPage({
           title={isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚归档费结算"}
           aria-label={isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚归档费结算"}
           icon={<RollbackOutlined />}
+          disabled={archiveSettlementBusy}
           onClick={() => openArchiveSettlementRollback([row])}
         />
       ) : (
@@ -3862,6 +3892,7 @@ export default function FinanceCenterPage({
             title="同意结算"
             aria-label="同意结算"
             icon={<CheckCircleOutlined />}
+            disabled={archiveSettlementBusy}
             onClick={() => openArchiveSettlementReview([row], true)}
           />
           <Button
@@ -3869,6 +3900,7 @@ export default function FinanceCenterPage({
             title="拒绝结算"
             aria-label="拒绝结算"
             icon={<DeleteOutlined />}
+            disabled={archiveSettlementBusy}
             onClick={() => openArchiveSettlementReview([row], false)}
           />
             </>
@@ -3887,12 +3919,19 @@ export default function FinanceCenterPage({
   );
   const paymentPackageOperation = (_: unknown, row: Fee) =>
     initialView === "finance-internal-done" ? (
-      <Button type="link" onClick={() => setPaymentPackageDetail(row)}>
+      <Button
+        type="link"
+        loading={paymentPackageLoading}
+        disabled={paymentPackageLoading}
+        onClick={() => setPaymentPackageDetail(row)}
+      >
         查看
       </Button>
     ) : (
       <Button
         type="link"
+        loading={paymentPackageLoading}
+        disabled={paymentPackageLoading}
         onClick={() => {
           paymentPackageWriteoffForm.setFieldsValue({
             package_no: row.serial_no,
@@ -6285,6 +6324,10 @@ export default function FinanceCenterPage({
       });
       return;
     }
+    if (!financeActionGates.paymentPackage.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
     setPaymentPackageLoading(true);
     try {
       const { data } = await api.post("/finance/payment-packages/preview", {
@@ -6294,11 +6337,16 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "付款包预览生成失败");
     } finally {
+      financeActionGates.paymentPackage.leave();
       setPaymentPackageLoading(false);
     }
   };
   const submitInternalPaymentPackage = async () => {
     if (!paymentPackagePreview || paymentPackagePreview.submitted) return;
+    if (!financeActionGates.paymentPackage.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
     setPaymentPackageLoading(true);
     try {
       await api.post("/finance/payment-packages", {
@@ -6314,6 +6362,7 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "付款包提交失败");
     } finally {
+      financeActionGates.paymentPackage.leave();
       setPaymentPackageLoading(false);
     }
   };
@@ -6739,6 +6788,10 @@ export default function FinanceCenterPage({
       });
       return;
     }
+    if (!financeActionGates.archiveSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
     setArchiveSettlementBusy(true);
     try {
       const response = await api.get(
@@ -6772,6 +6825,7 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "导出失败");
     } finally {
+      financeActionGates.archiveSettlement.leave();
       setArchiveSettlementBusy(false);
     }
   };
@@ -6792,6 +6846,10 @@ export default function FinanceCenterPage({
     if (!archiveSettlementReviewTargets.length) return;
     if (!archiveSettlementReviewApproved && !archiveSettlementReviewComment.trim()) {
       message.warning("请输入备注.");
+      return;
+    }
+    if (!financeActionGates.archiveSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
       return;
     }
     setArchiveSettlementBusy(true);
@@ -6825,6 +6883,7 @@ export default function FinanceCenterPage({
             : "拒绝结算出错."),
       );
     } finally {
+      financeActionGates.archiveSettlement.leave();
       setArchiveSettlementBusy(false);
     }
   };
@@ -6846,6 +6905,10 @@ export default function FinanceCenterPage({
       message.warning(
         isArchiveSettlementRejectedRoute ? "请输入审核备注." : "请输入备注.",
       );
+      return;
+    }
+    if (!financeActionGates.archiveSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
       return;
     }
     setArchiveSettlementBusy(true);
@@ -6875,6 +6938,7 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "归档费回滚出错.");
     } finally {
+      financeActionGates.archiveSettlement.leave();
       setArchiveSettlementBusy(false);
     }
   };
@@ -6892,6 +6956,10 @@ export default function FinanceCenterPage({
   };
   const submitArchiveSettlementReapply = async () => {
     if (!archiveSettlementReapplyTargets.length) return;
+    if (!financeActionGates.archiveSettlement.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
     setArchiveSettlementBusy(true);
     try {
       const response = await api.post(
@@ -6913,6 +6981,7 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "归档费重新申请失败");
     } finally {
+      financeActionGates.archiveSettlement.leave();
       setArchiveSettlementBusy(false);
     }
   };
