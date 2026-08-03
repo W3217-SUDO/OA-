@@ -3848,8 +3848,8 @@ export default function FinanceCenterPage({
       {isArchiveSettlementPaidRoute || isArchiveSettlementRejectedRoute ? (
         <Button
           type="link"
-          title="回滚归档费"
-          aria-label="回滚归档费"
+          title={isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚归档费结算"}
+          aria-label={isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚归档费结算"}
           icon={<RollbackOutlined />}
           onClick={() => openArchiveSettlementRollback([row])}
         />
@@ -3859,15 +3859,15 @@ export default function FinanceCenterPage({
             <>
           <Button
             type="link"
-            title="同意支付"
-            aria-label="同意支付"
+            title="同意结算"
+            aria-label="同意结算"
             icon={<CheckCircleOutlined />}
             onClick={() => openArchiveSettlementReview([row], true)}
           />
           <Button
             type="link"
-            title="拒绝支付"
-            aria-label="拒绝支付"
+            title="拒绝结算"
+            aria-label="拒绝结算"
             icon={<DeleteOutlined />}
             onClick={() => openArchiveSettlementReview([row], false)}
           />
@@ -6806,8 +6806,8 @@ export default function FinanceCenterPage({
       );
       message.success(
         archiveSettlementReviewApproved
-          ? `已同意支付 ${response.data.reviewed} 条归档费`
-          : `已拒绝支付 ${response.data.reviewed} 条归档费`,
+          ? `同意结算 ${response.data.reviewed} 条归档费`
+          : `拒绝结算 ${response.data.reviewed} 条归档费`,
       );
       setArchiveSettlementReviewTargets([]);
       setArchiveSettlementReviewComment("");
@@ -6818,7 +6818,12 @@ export default function FinanceCenterPage({
         archiveSettlementMeta.pageSize,
       );
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "归档费支付审核失败");
+      message.error(
+        error?.response?.data?.detail ||
+          (archiveSettlementReviewApproved
+            ? "标识已结算出错."
+            : "拒绝结算出错."),
+      );
     } finally {
       setArchiveSettlementBusy(false);
     }
@@ -6857,7 +6862,7 @@ export default function FinanceCenterPage({
       message.success(
         isArchiveSettlementRejectedRoute
           ? `已恢复 ${response.data.rolled_back} 条已拒绝归档费`
-          : `已回滚 ${response.data.rolled_back} 条归档费支付`,
+          : `已回滚 ${response.data.rolled_back} 条归档费结算`,
       );
       setArchiveSettlementRollbackTargets([]);
       setArchiveSettlementRollbackComment("");
@@ -6868,7 +6873,7 @@ export default function FinanceCenterPage({
         archiveSettlementMeta.pageSize,
       );
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "归档费支付回滚失败");
+      message.error(error?.response?.data?.detail || "归档费回滚出错.");
     } finally {
       setArchiveSettlementBusy(false);
     }
@@ -11221,7 +11226,7 @@ export default function FinanceCenterPage({
       <Modal
         className="finance-settlement-review-modal"
         open={archiveSettlementReviewTargets.length > 0}
-        title={archiveSettlementReviewApproved ? "同意支付" : "拒绝支付"}
+        title={archiveSettlementReviewApproved ? "同意结算" : "拒绝结算"}
         okText={archiveSettlementReviewApproved ? "同意" : "提交"}
         cancelText="取消"
         confirmLoading={archiveSettlementBusy}
@@ -11246,7 +11251,7 @@ export default function FinanceCenterPage({
       <Modal
         className="finance-settlement-review-modal"
         open={archiveSettlementRollbackTargets.length > 0}
-        title={isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚支付"}
+        title={isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚归档费结算"}
         okText="回滚"
         cancelText="取消"
         confirmLoading={archiveSettlementBusy}

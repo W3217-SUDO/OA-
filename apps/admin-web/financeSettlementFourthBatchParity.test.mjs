@@ -61,6 +61,18 @@ test("archive review and rollback preserve route-specific payloads", () => {
   assert.match(source, /record_ids: archiveSettlementRollbackTargets\.map/);
 });
 
+test("archive settlement review keeps legacy action wording and failure fallbacks", () => {
+  assert.match(source, /title="同意结算"/);
+  assert.match(source, /title="拒绝结算"/);
+  assert.match(source, /同意结算 \$\{response\.data\.reviewed\} 条归档费/);
+  assert.match(source, /拒绝结算 \$\{response\.data\.reviewed\} 条归档费/);
+  assert.match(source, /标识已结算出错\./);
+  assert.match(source, /拒绝结算出错\./);
+  assert.match(source, /归档费回滚出错\./);
+  assert.match(source, /isArchiveSettlementRejectedRoute \? "回滚归档费" : "回滚归档费结算"/);
+  assert.match(source, /已回滚 \$\{response\.data\.rolled_back\} 条归档费结算/);
+});
+
 test("archive reapply remains available for rejected settlements", () => {
   assert.match(source, /\/finance\/archive-settlements\/rejected\/reapply/);
   assert.match(source, /archiveSettlementReapplyTargets\.map/);
