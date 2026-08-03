@@ -1486,6 +1486,7 @@ class CriminalCourtMaintenanceInput(BaseModel):
 
 class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
+    case_types: list[str] = Field(default_factory=list, max_length=20)
     customer: str = Field(default="", max_length=256)
     serial_no: str = Field(default="", max_length=128)
     keyword: str = Field(default="", max_length=256)
@@ -1501,6 +1502,40 @@ class CounselCaseSearchInput(BaseModel):
     page_size: int = Field(default=10, ge=1, le=200)
     selected_ids: list[int] = Field(default_factory=list, max_length=200)
     selected_only: bool = False
+    # 旧 CaseSearchCondition 的资助/财务/文档高级条件。布尔 not 字段保留旧端的“排除”语义。
+    advanced_logic: str = "and"
+    assisted_response_user: str = Field(default="", max_length=128)
+    assisted_response_user_not: bool = False
+    assisted_request_date_from: date | None = None
+    assisted_request_date_to: date | None = None
+    assisted_request_date_not: bool = False
+    assisted_response_date_from: date | None = None
+    assisted_response_date_to: date | None = None
+    assisted_response_date_not: bool = False
+    finance_inform_date_from: date | None = None
+    finance_inform_date_to: date | None = None
+    finance_inform_date_not: bool = False
+    finance_gained_date_from: date | None = None
+    finance_gained_date_to: date | None = None
+    finance_gained_date_not: bool = False
+    finance_response_user: str = Field(default="", max_length=128)
+    finance_response_user_not: bool = False
+    finance_bill_no: str = Field(default="", max_length=128)
+    finance_bill_no_not: bool = False
+    finance_bill_statuses: list[str] = Field(default_factory=list, max_length=50)
+    finance_bill_status_not: bool = False
+    finance_bill_date_from: date | None = None
+    finance_bill_date_to: date | None = None
+    finance_bill_date_not: bool = False
+    finance_fee_type_ids: list[str] = Field(default_factory=list, max_length=50)
+    finance_fee_type_not: bool = False
+    file_uploading_user: str = Field(default="", max_length=128)
+    file_uploading_user_not: bool = False
+    file_uploading_time_from: date | None = None
+    file_uploading_time_to: date | None = None
+    file_uploading_time_not: bool = False
+    file_type_ids: list[str] = Field(default_factory=list, max_length=50)
+    file_type_not: bool = False
 
 
 class CaseJudicialInput(BaseModel):
@@ -6458,7 +6493,8 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
     data = _normalize_external_contract_numbers(dict(body.data or {}))
     customer = await _resolve_contract_customer(body.customer, data, identity, db)
     customer_data = customer.data or {}
-    data = {**data, "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
+    # GUID is a server-owned identity; never accept a client-supplied value.
+    data = {**data, "contract_guid": str(uuid4()), "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
     if float(data.get("amount") or 0) < 0:
         raise HTTPException(status_code=422, detail="合同金额不能小于零")
     owner = body.owner.strip()
@@ -6526,7 +6562,8 @@ async def update_contract_draft(contract_id: int, body: ContractDraftInput, iden
     data = _normalize_external_contract_numbers(dict(body.data or {}))
     customer = await _resolve_contract_customer(body.customer, data, identity, db)
     customer_data = customer.data or {}
-    data = {**data, "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
+    # Updates preserve the persisted GUID even when a malicious replacement is sent.
+    data = {**data, "contract_guid": str((item.data or {}).get("contract_guid") or uuid4()), "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
     if float(data.get("amount") or 0) < 0: raise HTTPException(status_code=422, detail="合同金额不能小于零")
     owner = body.owner.strip(); department = body.department.strip()
     if identity.get("role") != "admin":
@@ -6818,22 +6855,55 @@ def _contract_event_dict(event: ContractEvent) -> dict:
     }
 
 
-@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/events")
-async def list_contract_events(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_record_visible(contract_id, identity, db)
-    if contract.module != "contract":
+def _stored_contract_guid(contract: BusinessRecord) -> str:
+    return str((contract.data or {}).get("contract_guid") or "").strip()
+
+
+async def _ensure_contract_by_guid(contract_guid: str, identity: dict, db: AsyncSession) -> BusinessRecord:
+    guid = str(contract_guid or "").strip()
+    if not guid:
         raise HTTPException(status_code=404, detail="合同不存在")
-    events = (await db.scalars(
+    contract = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "contract",
+        BusinessRecord.data["contract_guid"].as_string() == guid,
+        *(await _record_scope_conditions(identity, db)),
+    ))
+    if not contract:
+        raise HTTPException(status_code=404, detail="合同不存在")
+    return contract
+
+
+async def _contract_events_payload(
+    contract: BusinessRecord,
+    *,
+    page: int | None,
+    page_size: int | None,
+    keyword: str,
+    db: AsyncSession,
+) -> dict:
+    events = list((await db.scalars(
         select(ContractEvent)
         .where(ContractEvent.contract_record_id == contract.id)
         .order_by(ContractEvent.created_at.desc(), ContractEvent.id.desc())
-    )).all()
-    return {"items": [_contract_event_dict(event) for event in events], "total": len(events)}
+    )).all())
+    if keyword.strip():
+        needle = keyword.strip().casefold()
+        events = [item for item in events if needle in f"{item.content} {item.operator}".casefold()]
+    total = len(events)
+    result = {"items": [_contract_event_dict(event) for event in events], "total": total}
+    if page is not None or page_size is not None or keyword.strip():
+        current_page, current_size = page or 1, page_size or 15
+        start = (current_page - 1) * current_size
+        result.update({
+            "items": [_contract_event_dict(event) for event in events[start:start + current_size]],
+            "page": current_page, "page_size": current_size,
+            "pages": (total + current_size - 1) // current_size if total else 0,
+        })
+    result["contract_guid"] = _stored_contract_guid(contract)
+    return result
 
 
-@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/events", status_code=status.HTTP_201_CREATED)
-async def create_contract_event(contract_id: int, body: ContractEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+async def _create_contract_event_for_record(contract: BusinessRecord, body: ContractEventInput, identity: dict, db: AsyncSession) -> dict:
     await _require_record_owner_or_manager(contract, identity, db)
     if contract.status == "已归档":
         raise HTTPException(status_code=409, detail="已归档合同不可新增事项记录")
@@ -6852,7 +6922,41 @@ async def create_contract_event(contract_id: int, body: ContractEventInput, iden
     ))
     await db.commit()
     await db.refresh(event)
-    return _contract_event_dict(event)
+    result = _contract_event_dict(event)
+    result["contract_guid"] = _stored_contract_guid(contract)
+    return result
+
+
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/events")
+async def list_contract_events(
+    contract_id: int, page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), keyword: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    contract = await _ensure_record_visible(contract_id, identity, db)
+    if contract.module != "contract":
+        raise HTTPException(status_code=404, detail="合同不存在")
+    return await _contract_events_payload(contract, page=page, page_size=page_size, keyword=keyword, db=db)
+
+
+@app.get(f"{settings.api_prefix}/contracts/guid/{{contract_guid}}/events")
+async def list_contract_events_by_guid(
+    contract_guid: str, page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), keyword: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    contract = await _ensure_contract_by_guid(contract_guid, identity, db)
+    return await _contract_events_payload(contract, page=page, page_size=page_size, keyword=keyword, db=db)
+
+
+@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/events", status_code=status.HTTP_201_CREATED)
+async def create_contract_event(contract_id: int, body: ContractEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    return await _create_contract_event_for_record(contract, body, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/contracts/guid/{{contract_guid}}/events", status_code=status.HTTP_201_CREATED)
+async def create_contract_event_by_guid(contract_guid: str, body: ContractEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_contract_by_guid(contract_guid, identity, db)
+    return await _create_contract_event_for_record(contract, body, identity, db)
 
 
 async def _contract_object_payload(item: ContractObject, identity: dict, db: AsyncSession) -> dict:
@@ -13218,16 +13322,37 @@ async def import_case_invoice_files(identity: dict = Depends(current_identity), 
     return {"processed": len(pending), "matched": matched, "unmatched": unmatched}
 
 
-async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db: AsyncSession) -> list[BusinessRecord]:
+async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db: AsyncSession, *, counsel_only: bool = True) -> list[BusinessRecord]:
     if body.scope not in {"mine", "department", "company"}:
         raise HTTPException(status_code=422, detail="法律顾问案件查询范围无效")
     if body.sort_order not in {"updated_desc", "case_no_asc", "case_no_desc"}:
         raise HTTPException(status_code=422, detail="法律顾问案件排序方式无效")
+    logic_aliases = {"and": "and", "or": "or", "intersection": "and", "union": "or", "交集": "and", "并集": "or"}
+    advanced_logic = logic_aliases.get(str(body.advanced_logic or "").strip().casefold())
+    if not advanced_logic:
+        raise HTTPException(status_code=422, detail="高级查询组合方式无效")
+    date_ranges = (
+        ("资助申请日期", body.assisted_request_date_from, body.assisted_request_date_to),
+        ("资助办理日期", body.assisted_response_date_from, body.assisted_response_date_to),
+        ("费用通知日期", body.finance_inform_date_from, body.finance_inform_date_to),
+        ("费用到账日期", body.finance_gained_date_from, body.finance_gained_date_to),
+        ("账单日期", body.finance_bill_date_from, body.finance_bill_date_to),
+        ("文档上传日期", body.file_uploading_time_from, body.file_uploading_time_to),
+    )
+    for label, start_date, end_date in date_ranges:
+        if start_date and end_date and start_date > end_date:
+            raise HTTPException(status_code=422, detail=f"{label}范围无效")
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case",
         *(await _record_scope_conditions(identity, db)),
     ))).all())
-    records = [record for record in records if str((record.data or {}).get("case_type") or "") == "法律顾问"]
+    requested_types = {str(item).strip() for item in body.case_types if str(item).strip()}
+    if counsel_only:
+        records = [record for record in records if str((record.data or {}).get("case_type") or "") == "法律顾问"]
+    elif requested_types:
+        records = [record for record in records if str((record.data or {}).get("case_type") or "") in requested_types]
+    else:
+        records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
     if body.scope == "mine":
         identity_names = {str(identity.get("username") or ""), str(identity.get("display_name") or "")}
         records = [record for record in records if record.owner in identity_names]
@@ -13236,15 +13361,83 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
         records = [record for record in records if department and record.department == department]
 
     document_names: dict[int, str] = {}
+    record_attachments: dict[int, list[FileAttachment]] = {}
+    finance_by_case_id: dict[int, list[BusinessRecord]] = {}
+    finance_by_case_no: dict[str, list[BusinessRecord]] = {}
     record_ids = [record.id for record in records]
     if record_ids:
         attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(record_ids)))).all()
         for attachment in attachments:
             if attachment.record_id is not None:
+                record_attachments.setdefault(attachment.record_id, []).append(attachment)
                 document_names[attachment.record_id] = f"{document_names.get(attachment.record_id, '')} {attachment.original_name}".strip()
+    finance_records: list[BusinessRecord] = []
+    if record_ids:
+        candidate_serial_nos = [record.serial_no for record in records if record.serial_no]
+        finance_link = or_(
+            BusinessRecord.data["case_id"].as_integer().in_(record_ids),
+            BusinessRecord.data["case_no"].as_string().in_(candidate_serial_nos),
+        )
+        finance_records = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance",
+            finance_link,
+            *(await _record_scope_conditions(identity, db)),
+        ))).all())
+    for finance_record in finance_records:
+        finance_data = finance_record.data or {}
+        linked_case_id = finance_data.get("case_id")
+        try:
+            if linked_case_id is not None:
+                finance_by_case_id.setdefault(int(linked_case_id), []).append(finance_record)
+        except (TypeError, ValueError):
+            pass
+        linked_case_no = str(finance_data.get("case_no") or "").strip()
+        if linked_case_no:
+            finance_by_case_no.setdefault(linked_case_no, []).append(finance_record)
 
     def contains(value: object, expected: str) -> bool:
         return not expected.strip() or expected.strip().casefold() in str(value or "").casefold()
+
+    def value(data: dict, *keys: str) -> object:
+        for key in keys:
+            candidate = data.get(key)
+            if candidate not in (None, "", []):
+                return candidate
+        return ""
+
+    def parse_value_date(raw: object) -> date | None:
+        if isinstance(raw, datetime):
+            return raw.date()
+        if isinstance(raw, date):
+            return raw
+        text_value = str(raw or "").strip()
+        if not text_value:
+            return None
+        try:
+            return date.fromisoformat(text_value[:10])
+        except ValueError:
+            return None
+
+    def text_condition(raw: object, expected: str, negate: bool = False) -> bool:
+        if not expected.strip():
+            return True
+        found = expected.strip().casefold() in str(raw or "").casefold()
+        return not found if negate else found
+
+    def list_condition(raw: object, expected: list[str], negate: bool = False) -> bool:
+        wanted = {str(item).strip().casefold() for item in expected if str(item).strip()}
+        if not wanted:
+            return True
+        values = raw if isinstance(raw, (list, tuple, set)) else [raw]
+        found = bool(wanted.intersection({str(item).strip().casefold() for item in values if str(item).strip()}))
+        return not found if negate else found
+
+    def date_condition(raw: object, start_date: date | None, end_date: date | None, negate: bool = False) -> bool:
+        if not start_date and not end_date:
+            return True
+        candidate = parse_value_date(raw)
+        found = candidate is not None and (not start_date or candidate >= start_date) and (not end_date or candidate <= end_date)
+        return not found if negate else found
 
     filtered: list[BusinessRecord] = []
     for record in records:
@@ -13264,6 +13457,59 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
             record_start = record_end = None
         if body.counsel_start and (not record_end or record_end < body.counsel_start): continue
         if body.counsel_end and (not record_start or record_start > body.counsel_end): continue
+        attachments_for_record = record_attachments.get(record.id, [])
+        linked_finance = list(finance_by_case_id.get(record.id, []))
+        for finance_record in finance_by_case_no.get(record.serial_no, []):
+            if finance_record not in linked_finance:
+                linked_finance.append(finance_record)
+        finance_data_rows = [item.data or {} for item in linked_finance]
+
+        def finance_text_condition(*keys: str, expected: str, negate: bool = False) -> bool:
+            found = any(text_condition(value(row, *keys), expected) for row in finance_data_rows)
+            return not found if negate else found
+
+        def finance_date_condition(*keys: str, start_date: date | None, end_date: date | None, negate: bool = False) -> bool:
+            found = any(date_condition(value(row, *keys), start_date, end_date) for row in finance_data_rows)
+            return not found if negate else found
+
+        def finance_list_condition(*keys: str, expected: list[str], negate: bool = False) -> bool:
+            found = any(list_condition(value(row, *keys), expected) for row in finance_data_rows)
+            return not found if negate else found
+
+        advanced_conditions: list[bool] = []
+        if body.assisted_response_user.strip():
+            advanced_conditions.append(text_condition(value(data, "assisted_response_user", "response_user"), body.assisted_response_user, body.assisted_response_user_not))
+        if body.assisted_request_date_from or body.assisted_request_date_to:
+            advanced_conditions.append(date_condition(value(data, "assisted_request_date", "request_date"), body.assisted_request_date_from, body.assisted_request_date_to, body.assisted_request_date_not))
+        if body.assisted_response_date_from or body.assisted_response_date_to:
+            advanced_conditions.append(date_condition(value(data, "assisted_response_date", "response_date"), body.assisted_response_date_from, body.assisted_response_date_to, body.assisted_response_date_not))
+        if body.finance_inform_date_from or body.finance_inform_date_to:
+            advanced_conditions.append(finance_date_condition("inform_date", "fee_inform_date", "finance_inform_date", start_date=body.finance_inform_date_from, end_date=body.finance_inform_date_to, negate=body.finance_inform_date_not))
+        if body.finance_gained_date_from or body.finance_gained_date_to:
+            advanced_conditions.append(finance_date_condition("gained_date", "fee_gained_date", "finance_gained_date", start_date=body.finance_gained_date_from, end_date=body.finance_gained_date_to, negate=body.finance_gained_date_not))
+        if body.finance_response_user.strip():
+            advanced_conditions.append(finance_text_condition("response_user", "fee_response_user", "finance_response_user", expected=body.finance_response_user, negate=body.finance_response_user_not))
+        if body.finance_bill_no.strip():
+            advanced_conditions.append(finance_text_condition("bill_no", "fee_bill_no", "finance_bill_no", expected=body.finance_bill_no, negate=body.finance_bill_no_not))
+        if body.finance_bill_statuses:
+            advanced_conditions.append(finance_list_condition("bill_status", "fee_bill_status", "finance_bill_status", expected=body.finance_bill_statuses, negate=body.finance_bill_status_not))
+        if body.finance_bill_date_from or body.finance_bill_date_to:
+            advanced_conditions.append(finance_date_condition("bill_date", "fee_bill_date", "finance_bill_date", start_date=body.finance_bill_date_from, end_date=body.finance_bill_date_to, negate=body.finance_bill_date_not))
+        if body.finance_fee_type_ids:
+            advanced_conditions.append(finance_list_condition("fee_type_ids", "finance_fee_type_ids", "fee_type_id", expected=body.finance_fee_type_ids, negate=body.finance_fee_type_not))
+        if body.file_uploading_user.strip():
+            found_uploader = any(text_condition(item.uploader, body.file_uploading_user) for item in attachments_for_record)
+            advanced_conditions.append(not found_uploader if body.file_uploading_user_not else found_uploader)
+        if body.file_uploading_time_from or body.file_uploading_time_to:
+            found_upload_time = any(date_condition(item.created_at, body.file_uploading_time_from, body.file_uploading_time_to) for item in attachments_for_record)
+            advanced_conditions.append(not found_upload_time if body.file_uploading_time_not else found_upload_time)
+        if body.file_type_ids:
+            found_file_type = any(list_condition(item.file_type_code or item.category, body.file_type_ids) for item in attachments_for_record)
+            advanced_conditions.append(not found_file_type if body.file_type_not else found_file_type)
+        if advanced_conditions:
+            advanced_passed = all(advanced_conditions) if advanced_logic == "and" else any(advanced_conditions)
+            if not advanced_passed:
+                continue
         filtered.append(record)
     if body.sort_order == "case_no_asc":
         filtered.sort(key=lambda item: (item.serial_no, item.id))
@@ -13285,6 +13531,23 @@ async def search_counsel_cases(body: CounselCaseSearchInput, identity: dict = De
         "total": total,
         "page": body.page,
         "page_size": body.page_size,
+        "pages": (total + body.page_size - 1) // body.page_size if total else 0,
+    }
+
+
+@app.post(f"{settings.api_prefix}/cases/search")
+async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Server-side ordinary-case search; unlike the legacy UI it never truncates to the first 100 rows."""
+    records = await _query_counsel_cases(body, identity, db, counsel_only=False)
+    total = len(records)
+    start = (body.page - 1) * body.page_size
+    allowed_fields = await _allowed_field_keys(identity, db)
+    return {
+        "items": [_record_dict(record, allowed_fields) for record in records[start:start + body.page_size]],
+        "total": total,
+        "page": body.page,
+        "page_size": body.page_size,
+        "pages": (total + body.page_size - 1) // body.page_size if total else 0,
     }
 
 
