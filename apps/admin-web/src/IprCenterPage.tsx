@@ -20,6 +20,17 @@ import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { formatRequiredDate } from "./formSafety";
+import {
+  buildIprCaseActionPayload,
+  getIprCaseActionValidationError,
+} from "./iprCaseWorkflowParity.mjs";
+import {
+  buildIprCaseContactPayload,
+  buildIprCaseCustomerPayload,
+  buildIprCaseLawFirmPayload,
+  getIprCaseCustomerValidationError,
+  getIprCaseDeletionConfirmation,
+} from "./iprCaseDetailParity.mjs";
 
 type IprRecord = {
   id: number;
@@ -330,7 +341,7 @@ export default function IprCenterPage({
   const saveCaseLawFirms = async () => {
     if (!detail) return;
     try {
-      await api.put(`/ipr/cases/${detail.id}/law-firms`, { law_firm_ids: lawFirmSelection });
+      await api.put(`/ipr/cases/${detail.id}/law-firms`, buildIprCaseLawFirmPayload({ lawFirmIds: lawFirmSelection }));
       message.success("协作律所已保存");
       setLawFirmOpen(false);
       await loadCaseLawFirms(detail.id);
@@ -408,12 +419,11 @@ export default function IprCenterPage({
     }
   };
   const saveCaseCustomers = async () => {
-    if (!detail || !customerSelection.length || !primaryCustomerId) {
-      message.warning("请至少选择一个客户并指定主客户");
-      return;
-    }
+    if (!detail) return;
+    const validationError = getIprCaseCustomerValidationError({ customerIds: customerSelection, primaryCustomerId });
+    if (validationError) { message.warning(validationError); return; }
     try {
-      await api.put(`/ipr/cases/${detail.id}/customers`, { customer_ids: customerSelection, primary_customer_id: primaryCustomerId });
+      await api.put(`/ipr/cases/${detail.id}/customers`, buildIprCaseCustomerPayload({ customerIds: customerSelection, primaryCustomerId }));
       message.success("案件客户已保存");
       setCustomerOpen(false);
       await Promise.all([loadCaseCustomers(detail.id), loadCaseContacts(detail.id)]);
@@ -437,7 +447,7 @@ export default function IprCenterPage({
   const saveCaseContacts = async () => {
     if (!detail || !contactCustomer) return;
     try {
-      await api.put(`/ipr/cases/${detail.id}/customer-contacts`, { customer_id: contactCustomer.customer_id, document_contact_ids: documentContactIds, technology_contact_ids: technologyContactIds });
+      await api.put(`/ipr/cases/${detail.id}/customer-contacts`, buildIprCaseContactPayload({ customerId: contactCustomer.customer_id, documentContactIds, technologyContactIds }));
       message.success("案件联系人已保存");
       setContactOpen(false);
       await loadCaseContacts(detail.id);
@@ -692,6 +702,10 @@ export default function IprCenterPage({
       message.error(e?.response?.data?.detail || "删除案件提醒失败");
     }
   };
+  const confirmIprDeletion = (kind: string, label: string, operation: () => Promise<void>) => {
+    const prompt = getIprCaseDeletionConfirmation(kind, label);
+    Modal.confirm({ ...prompt, onOk: operation });
+  };
   const saveSuppressions = async () => {
     if (!detail) return;
     try {
@@ -806,15 +820,29 @@ export default function IprCenterPage({
     name: "submit" | "close" | "reopen" | "review",
     approved?: boolean,
   ) => {
+    let comment = "";
+    if (name === "review" && !approved) {
+      const prompted = window.prompt("请填写驳回原因");
+      if (prompted === null) return;
+      comment = prompted;
+    }
+    const validationError = getIprCaseActionValidationError({
+      action: name,
+      role: profile.role,
+      status: record.status,
+      applicationNo: record.data?.application_no,
+      approved,
+      comment,
+    });
+    if (validationError) {
+      message.warning(validationError);
+      return;
+    }
+    const payload = buildIprCaseActionPayload({ action: name, approved, comment });
     try {
-      let comment = "";
-      if (name === "review" && !approved) {
-        comment = window.prompt("请填写驳回原因") || "";
-        if (!comment) return;
-      }
       await api.post(
         `/ipr/cases/${record.id}/${name}`,
-        name === "review" ? { approved, comment } : { comment },
+        payload,
       );
       message.success("操作成功");
       setDetail(null);
@@ -1160,7 +1188,7 @@ export default function IprCenterPage({
                   { title: "内容", dataIndex: "content", ellipsis: true },
                   { title: "创建人", dataIndex: "created_by", width: 110 },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
-                  { title: "操作", width: 90, render: (_, row) => row.created_by === profile.username || ["admin", "manager"].includes(profile.role || "") ? <Button danger type="link" size="small" onClick={() => void deleteIprLog(row.id)}>删除</Button> : "—" },
+                  { title: "操作", width: 90, render: (_, row) => row.created_by === profile.username || ["admin", "manager"].includes(profile.role || "") ? <Button danger type="link" size="small" onClick={() => confirmIprDeletion("log", row.content, () => deleteIprLog(row.id))}>删除</Button> : "—" },
                 ]}
               />
               <Table
@@ -1334,7 +1362,7 @@ export default function IprCenterPage({
                   title: "操作",
                   fixed: "right",
                   width: 150,
-                  render: (_, row: Attachment) => <Space size={0}>{detail.status === "在办" && row.requires_transmission && !row.is_transmitted && <Button type="link" onClick={() => void markIprFileTransmitted(row)}>标记已转</Button>}{detail.status === "在办" && <Button type="link" danger onClick={() => void deleteIprFile(row)}>删除</Button>}</Space>,
+                  render: (_, row: Attachment) => <Space size={0}>{detail.status === "在办" && row.requires_transmission && !row.is_transmitted && <Button type="link" onClick={() => void markIprFileTransmitted(row)}>标记已转</Button>}{detail.status === "在办" && <Button type="link" danger onClick={() => confirmIprDeletion("file", row.original_name, () => deleteIprFile(row))}>删除</Button>}</Space>,
                 },
               ]}
             />
@@ -1431,7 +1459,7 @@ export default function IprCenterPage({
                           <Button
                             type="link"
                             danger
-                            onClick={() => void deleteAssistedFee(row)}
+                            onClick={() => confirmIprDeletion("assisted-fee", row.assisted_type, () => deleteAssistedFee(row))}
                           >
                             删除
                           </Button>
@@ -1495,7 +1523,7 @@ export default function IprCenterPage({
                         <Button
                           type="link"
                           danger
-                          onClick={() => void deleteReminder(row)}
+                          onClick={() => confirmIprDeletion("reminder", row.content, () => deleteReminder(row))}
                         >
                           删除
                         </Button>
