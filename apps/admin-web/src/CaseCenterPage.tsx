@@ -77,6 +77,14 @@ import {
   getCaseFileRenameValidationError,
   hasCaseFileTypeOption,
 } from "./caseFileFrontendParity.mjs";
+import {
+  buildCaseHearingPayload,
+  buildCaseUnarchiveReviewPayload,
+  getCaseArchiveReviewValidationError,
+  getCaseHearingDeleteValidationError,
+  getCaseHearingValidationError,
+  getCaseUnarchiveReviewValidationError,
+} from "./caseWorkflowFrontendParity.mjs";
 import "./case-center.css";
 
 type CaseRow = {
@@ -904,12 +912,15 @@ export default function CaseCenterPage({
   };
   const createHearing = async () => {
     const v = await hearingForm.validateFields();
+    const hearingValidationError = getCaseHearingValidationError(v);
+    if (hearingValidationError) return message.warning(hearingValidationError);
+    const hearingPayload = buildCaseHearingPayload({
+      ...v,
+      hearing_date: formatRequiredDate(v.hearing_date, "开庭日期"),
+      hearing_time: formatRequiredDate(v.hearing_time, "开庭时间", "HH:mm"),
+    });
     try {
-      await api.post("/hearings", {
-        ...v,
-        hearing_date: formatRequiredDate(v.hearing_date, "开庭日期"),
-        hearing_time: formatRequiredDate(v.hearing_time, "开庭时间", "HH:mm"),
-      });
+      await api.post("/hearings", hearingPayload);
       message.success("开庭排期已创建");
       setHearingOpen(false);
       hearingForm.resetFields();
@@ -917,6 +928,26 @@ export default function CaseCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "排期失败");
     }
+  };
+  const deleteHearing = (row: Hearing) => {
+    const permissionError = getCaseHearingDeleteValidationError(profile.role);
+    if (permissionError) return message.warning(permissionError);
+    Modal.confirm({
+      title: `确认删除开庭排期：${row.case_no || row.id}`,
+      content: "删除后不可恢复，并会刷新案件排期列表。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.delete(`/hearings/${row.id}`);
+          message.success("排期已删除");
+          await load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "排期删除失败");
+        }
+      },
+    });
   };
   const openArchive = async (row: CaseRow) => {
     if (!getCaseCapability(row).can_archive) return message.warning("当前账号没有案件归档权限");
@@ -960,6 +991,8 @@ export default function CaseCenterPage({
   };
   const reviewArchive = async () => {
     if (!reviewing) return;
+    const permissionError = getCaseArchiveReviewValidationError({ role: profile.role, status: reviewing.row.status });
+    if (permissionError) return message.warning(permissionError);
     const v = await reviewForm.validateFields();
     try {
       await api.post(`/cases/${reviewing.row.id}/archive/review`, {
@@ -1008,15 +1041,59 @@ export default function CaseCenterPage({
       },
     });
   };
-  const reviewUnarchive = async (row: CaseRow, approved: boolean) => {
+  const reviewUnarchive = async (row: CaseRow, approved: boolean, comment = "") => {
+    const reviewPayload = buildCaseUnarchiveReviewPayload({
+      approved,
+      comment: approved ? "同意解档并恢复办理" : comment,
+    });
+    const permissionError = getCaseUnarchiveReviewValidationError({
+      role: profile.role,
+      status: row.status,
+      requestStatus: row.data.unarchive_request?.status,
+      requestedBy: row.data.unarchive_request?.requested_by,
+      currentUsername: profile.username,
+      approved,
+      comment: reviewPayload.comment,
+    });
+    if (permissionError) return message.warning(permissionError);
     try {
-      await api.post(`/cases/${row.id}/unarchive/review`, { approved, comment: approved ? "同意解档并恢复办理" : "不同意解档" });
+      await api.post(`/cases/${row.id}/unarchive/review`, reviewPayload);
       message.success(approved ? "解档审批已通过" : "解档审批已驳回");
       setSelectedCaseKeys([]);
       await load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "解档审批失败");
     }
+  };
+  const openUnarchiveReview = (row: CaseRow, approved: boolean) => {
+    if (approved) {
+      void reviewUnarchive(row, true);
+      return;
+    }
+    let comment = "";
+    Modal.confirm({
+      title: `驳回解档申请：${row.serial_no}`,
+      content: <Input.TextArea rows={4} placeholder="请填写驳回解档的具体原因（至少2个字）" onChange={(event) => { comment = event.target.value; }} />,
+      okText: "确认驳回",
+      cancelText: "取消",
+      onOk: async () => {
+        const reviewPayload = buildCaseUnarchiveReviewPayload({ approved: false, comment });
+        const validationError = getCaseUnarchiveReviewValidationError({
+          role: profile.role,
+          status: row.status,
+          requestStatus: row.data.unarchive_request?.status,
+          requestedBy: row.data.unarchive_request?.requested_by,
+          currentUsername: profile.username,
+          approved: false,
+          comment: reviewPayload.comment,
+        });
+        if (validationError) {
+          message.warning(validationError);
+          return Promise.reject(new Error(validationError));
+        }
+        await reviewUnarchive(row, false, reviewPayload.comment);
+      },
+    });
   };
   const openAssign = (row: CaseRow) => {
     if (!getCaseCapability(row).can_assign_team) return message.warning("当前账号没有案件人员分配权限");
@@ -2012,6 +2089,14 @@ export default function CaseCenterPage({
       width: 90,
       render: (v: string) => <Tag color="green">{v}</Tag>,
     },
+    {
+      title: "操作",
+      key: "actions",
+      width: 80,
+      render: (_: unknown, row: Hearing) => profile.role === "admin"
+        ? <Button type="link" danger onClick={() => deleteHearing(row)}>删除</Button>
+        : null,
+    },
   ];
   const canReview = ["admin", "manager"].includes(profile.role || "");
   const archiveColumns = [
@@ -2642,7 +2727,7 @@ export default function CaseCenterPage({
                 if (key === "unarchive-approve" || key === "unarchive-reject") {
                   if (!isArchiveManager) return message.warning("当前账号没有解档审批权限");
                   if (selectedCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
-                  void reviewUnarchive(selectedCase, key === "unarchive-approve");
+                  void openUnarchiveReview(selectedCase, key === "unarchive-approve");
                 }
               },
             }}
