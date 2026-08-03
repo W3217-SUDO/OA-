@@ -30,6 +30,8 @@ const {
   canSealWithdraw,
   createSealActionGate,
   sealFilePagination,
+  sealAttachmentListFailureMessage,
+  sealQueryFailureMessage,
   selectedSealRows,
   compareSealDateValues,
   toSealAuditRows,
@@ -88,6 +90,13 @@ test("seal batch stamp and withdraw gates require compatible pending states", ()
 test("seal date sorter compares legacy application and audit timestamps", () => {
   assert.equal(compareSealDateValues("2026-08-02", "2026-08-01") > 0, true);
   assert.equal(compareSealDateValues("", "2026-08-01") < 0, true);
+});
+
+test("seal query and attachment list failures retain explicit status semantics", () => {
+  assert.equal(sealQueryFailureMessage(403), "当前账号无权查询用印记录");
+  assert.equal(sealQueryFailureMessage(409), "用印查询条件已失效，请刷新后重试");
+  assert.equal(sealAttachmentListFailureMessage(404), "用印申请或文件列表不存在");
+  assert.equal(sealAttachmentListFailureMessage(409), "当前状态不允许查看文件列表");
 });
 
 test("seal action controls retain state gates while backend owns permission checks", () => {

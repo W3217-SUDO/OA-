@@ -46,6 +46,8 @@ import {
   canSealAction,
   createSealActionGate,
   sealFilePagination,
+  sealAttachmentListFailureMessage,
+  sealQueryFailureMessage,
   compareSealDateValues,
   selectedSealRows,
   toSealAuditRows,
@@ -260,6 +262,10 @@ export default function SealCenterPage({
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const actionGate = useMemo(() => createSealActionGate(), []);
   const selectedUseType = Form.useWatch("use_type", createForm);
+  const clearQuery = () => {
+    queryForm.resetFields();
+    setQuery({});
+  };
   const load = async () => {
     setLoading(true);
     try {
@@ -305,7 +311,10 @@ export default function SealCenterPage({
       setContracts(contractResult.data.items);
       setCustomers(customerResult.data.items);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "用印中心数据加载失败");
+      message.error(
+        error?.response?.data?.detail ||
+          sealQueryFailureMessage(error?.response?.status),
+      );
     } finally {
       setLoading(false);
     }
@@ -384,8 +393,22 @@ export default function SealCenterPage({
   }, [rows, initialView, query]);
   const auditRows = useMemo(() => toSealAuditRows(history), [history]);
   const createApplication = async () => {
+    let v: Record<string, any>;
     try {
-      const v = await createForm.validateFields();
+      v = await createForm.validateFields();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(
+        error?.response?.data?.detail || error?.message || "申请保存失败",
+      );
+      return;
+    }
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
       const data = {
         ...(editingApplication?.data || {}),
         ...v,
@@ -402,10 +425,12 @@ export default function SealCenterPage({
       createForm.resetFields();
       load();
     } catch (error: any) {
-      if (error?.errorFields) return;
       message.error(
         error?.response?.data?.detail || error?.message || "申请保存失败",
       );
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
     }
   };
   const openApplication = (row?: SealRow) => {
@@ -431,6 +456,11 @@ export default function SealCenterPage({
     setCreateOpen(true);
   };
   const submit = async (row: SealRow) => {
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
     try {
       await api.post(`/seals/applications/${row.id}/submit`, {
         comment: "申请人确认材料无误并提交",
@@ -439,6 +469,9 @@ export default function SealCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "提交失败");
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
     }
   };
   const withdraw = async (row: SealRow) => {
@@ -449,6 +482,11 @@ export default function SealCenterPage({
       cancelText: "取消",
       okButtonProps: { danger: true },
       async onOk() {
+        if (!actionGate.tryEnter()) {
+          message.info("操作正在提交，请勿重复点击");
+          return;
+        }
+        setActionSubmitting(true);
         try {
           await api.post(`/seals/applications/${row.id}/withdraw`, {
             comment: "申请人撤回待审批用印申请",
@@ -457,6 +495,9 @@ export default function SealCenterPage({
           load();
         } catch (error: any) {
           message.error(error?.response?.data?.detail || "撤回失败");
+        } finally {
+          actionGate.leave();
+          setActionSubmitting(false);
         }
       },
     });
@@ -575,9 +616,13 @@ export default function SealCenterPage({
       });
       setAttachments(data.items);
       setAttachmentSelectedKeys([]);
-    } catch {
+    } catch (error: any) {
       setAttachments([]);
       setAttachmentSelectedKeys([]);
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentListFailureMessage(error?.response?.status),
+      );
     }
   };
   const openDetail = async (row: SealRow) => {
@@ -620,7 +665,10 @@ export default function SealCenterPage({
       setFileListAttachments(data.items);
       setFileListOpen(true);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "文件列表加载失败");
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentListFailureMessage(error?.response?.status),
+      );
     }
   };
   const previewAttachment = async (item: AttachmentRow) => {
@@ -671,6 +719,11 @@ export default function SealCenterPage({
     }
   };
   const removeSealFile = async (item: AttachmentRow) => {
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
     try {
       await api.delete(`/attachments/${item.id}`);
       message.success("用印文件已删除");
@@ -681,6 +734,9 @@ export default function SealCenterPage({
         error?.response?.data?.detail ||
           sealAttachmentDeleteFailureMessage(error?.response?.status),
       );
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
     }
   };
   const removeSealFiles = async () => {
@@ -748,7 +804,19 @@ export default function SealCenterPage({
     }
   };
   const saveAsset = async () => {
-    const v = await assetForm.validateFields();
+    let v: Record<string, any>;
+    try {
+      v = await assetForm.validateFields();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.message || "印章保存失败");
+      return;
+    }
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
     try {
       if (editAsset) await api.patch(`/seals/assets/${editAsset.id}`, v);
       else await api.post("/seals/assets", v);
@@ -759,15 +827,26 @@ export default function SealCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "印章保存失败");
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
     }
   };
   const removeAsset = async (item: SealAsset) => {
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
     try {
       await api.delete(`/seals/assets/${item.id}`);
       message.success("印章资产已删除");
       void load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "印章资产删除失败");
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
     }
   };
   const openAsset = (item?: SealAsset) => {
@@ -1086,6 +1165,7 @@ export default function SealCenterPage({
               <Button type="primary" htmlType="submit">
                 查询
               </Button>
+              <Button onClick={clearQuery}>清空</Button>
             </div>
           </Form>
         )}
@@ -1304,6 +1384,7 @@ export default function SealCenterPage({
         width={760}
         okText="保存草稿"
         cancelText="取消"
+        confirmLoading={actionSubmitting}
         onOk={createApplication}
         onCancel={() => {
           setCreateOpen(false);
@@ -1430,6 +1511,7 @@ export default function SealCenterPage({
         title={editAsset ? "维护印章资料" : "新增印章入库"}
         okText="保存"
         cancelText="取消"
+        confirmLoading={actionSubmitting}
         onOk={saveAsset}
         onCancel={() => setAssetOpen(false)}
       >

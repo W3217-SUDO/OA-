@@ -89,6 +89,20 @@ export function compareSealDateValues(left: unknown, right: unknown): number {
   return leftValue.localeCompare(rightValue);
 }
 
+export function sealQueryFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权查询用印记录";
+  if (status === 404) return "用印记录不存在或已被移除";
+  if (status === 409) return "用印查询条件已失效，请刷新后重试";
+  return "用印中心数据加载失败";
+}
+
+export function sealAttachmentListFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权查看用印文件";
+  if (status === 404) return "用印申请或文件列表不存在";
+  if (status === 409) return "当前状态不允许查看文件列表";
+  return "文件列表加载失败";
+}
+
 export function createSealActionGate(): { tryEnter: () => boolean; leave: () => void } {
   let inFlight = false;
   return {
