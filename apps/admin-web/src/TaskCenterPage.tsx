@@ -30,6 +30,7 @@ import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { consumeTaskDetailTarget } from "./taskDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
+import { getCaseTaskCreateDefaults } from "./taskCaseCreateDefaults.mjs";
 import "./task-center.css";
 
 type TaskRow = {
@@ -1089,13 +1090,14 @@ export default function TaskCenterPage({
     try {
       const context = JSON.parse(raw) as { case_no?: string; customer?: string; title?: string };
       if (!context.case_no) return;
+      const caseTaskDefaults = getCaseTaskCreateDefaults();
       createForm.setFieldsValue({
         title: context.title || `案件任务—${context.case_no}`,
         owner: profile.username || "admin",
-        priority: "普通",
+        priority: caseTaskDefaults.priority,
         source: "案件任务",
         collaborators: [],
-        deadline: dayjs().add(7, "day"),
+        deadline: caseTaskDefaults.deadline,
         case_no: context.case_no,
         customer: context.customer || "",
       });
