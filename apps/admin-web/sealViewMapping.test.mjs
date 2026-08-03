@@ -1,6 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sealViewMapping, sealViewSpec } from './src/sealViewMapping.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { createRequire } from 'node:module';
+import ts from 'typescript';
+
+const mappingPath = path.join(process.cwd(), 'src', 'sealViewMapping.ts');
+const javascript = ts.transpileModule(fs.readFileSync(mappingPath, 'utf8'), {
+  fileName: mappingPath,
+  compilerOptions: {
+    esModuleInterop: true,
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText;
+const module = { exports: {} };
+const wrapper = vm.runInThisContext(
+  `(function (require, module, exports, __filename, __dirname) { ${javascript}\n})`,
+  { filename: mappingPath },
+);
+wrapper(createRequire(import.meta.url), module, module.exports, mappingPath, path.dirname(mappingPath));
+const { sealViewMapping, sealViewSpec } = module.exports;
 
 test('every declared route maps to its exact API view and statuses', () => {
   const expected = {

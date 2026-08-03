@@ -111,3 +111,19 @@ test("package download keeps explicit 403/404 semantics", () => {
   assert.match(local, /所选用印申请暂无可下载附件/);
   assert.match(local, /当前账号无权下载所选用印附件/);
 });
+
+test("local detail file list keeps legacy fifteen-row paging", () => {
+  assert.match(local, /sealFilePagination/);
+  assert.match(local, /pagination=\{sealFilePagination\}/);
+});
+
+test("local draft file list exposes atomic batch delete", () => {
+  assert.match(local, /attachmentSelectedKeys/);
+  assert.match(local, /\/seals\/applications\/batch\/files\/delete/);
+  assert.match(local, /批量删除/);
+  assert.match(local, /attachment_ids: attachmentSelectedKeys/);
+});
+
+test("unsupported backend scopes stay out of production wiring", () => {
+  assert.doesNotMatch(local, /seal_type_mask|sealHistoryRequest|audit_only/);
+});

@@ -24,10 +24,12 @@ function renderPaginationProbe() {
   const sourceDir = path.join(process.cwd(), "src");
   const mappingPath = path.join(sourceDir, "sealViewMapping.ts");
   const mapping = executeTsx(fs.readFileSync(mappingPath, "utf8"), mappingPath, nativeRequire);
+  const policyPath = path.join(sourceDir, "sealWorkflowPolicy.ts");
+  const policy = executeTsx(fs.readFileSync(policyPath, "utf8"), policyPath, nativeRequire);
   const TableProbe = ({ pagination }) => React.createElement("output", { "data-page-size": pagination?.defaultPageSize ?? pagination?.pageSize, "data-page-options": (pagination?.pageSizeOptions ?? []).join(","), "data-size-changer": String(Boolean(pagination?.showSizeChanger)), "data-quick-jumper-go": String(pagination?.showQuickJumper?.goButton ?? "") });
   const pagePath = path.join(sourceDir, "SealCenterPage.tsx");
   const page = executeTsx(fs.readFileSync(pagePath, "utf8"), pagePath, (specifier) => ({
-    antd: { ...nativeRequire("antd"), Table: TableProbe }, "./sealViewMapping": mapping, "./api": { api: {} }, "./caseDetailNavigation": { rememberCaseDetailTarget() {} }, "./contractDetailNavigation": { rememberContractDetailTarget() {} }, "./customerDetailNavigation": { rememberCustomerDetailTarget() {} }, "./detailRelationResolver": { resolveDetailRelation() {} }, "./businessRecordDetailNavigation": { consumeBusinessRecordDetailTarget() {} }, "./formSafety": { formatRequiredDate() {} }, "./RecordImportButton": { __esModule: true, default: () => null }, "./seal-center.css": {},
+    antd: { ...nativeRequire("antd"), Table: TableProbe }, "./sealViewMapping": mapping, "./sealWorkflowPolicy": policy, "./api": { api: {} }, "./caseDetailNavigation": { rememberCaseDetailTarget() {} }, "./contractDetailNavigation": { rememberContractDetailTarget() {} }, "./customerDetailNavigation": { rememberCustomerDetailTarget() {} }, "./detailRelationResolver": { resolveDetailRelation() {} }, "./businessRecordDetailNavigation": { consumeBusinessRecordDetailTarget() {} }, "./formSafety": { formatRequiredDate() {} }, "./RecordImportButton": { __esModule: true, default: () => null }, "./seal-center.css": {},
   })[specifier] ?? nativeRequire(specifier));
   return renderToStaticMarkup(React.createElement(page.default, { initialView: "seal-my-pending" }));
 }

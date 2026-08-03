@@ -45,10 +45,17 @@ function renderSealCenterPage(initialView, rows = []) {
     mappingPath,
     nativeRequire,
   );
+  const policyPath = path.join(sourceDir, "sealWorkflowPolicy.ts");
+  const policy = executeTsx(
+    fs.readFileSync(policyPath, "utf8"),
+    policyPath,
+    nativeRequire,
+  );
   const pagePath = path.join(sourceDir, "SealCenterPage.tsx");
   const localModules = {
     react: pageReact,
     "./sealViewMapping": mapping,
+    "./sealWorkflowPolicy": policy,
     "./api": { api: {} },
     "./caseDetailNavigation": { rememberCaseDetailTarget() {} },
     "./contractDetailNavigation": { rememberContractDetailTarget() {} },

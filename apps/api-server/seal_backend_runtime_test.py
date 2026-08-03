@@ -31,10 +31,11 @@ from app.main import (
     batch_withdraw_seal_applications,
     create_seal_application,
 )
-from app.models import BusinessRecord, FileAttachment, SealAsset, SealAssetAudit, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 ADMIN = {"username": "admin", "role": "admin", "department": "上海分所"}
+STAFF = {"username": "bob", "role": "staff", "department": "上海分所"}
 
 
 class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
@@ -52,6 +53,8 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
             SealAsset.__table__,
             SealAssetAudit.__table__,
             FileAttachment.__table__,
+            User.__table__,
+            RolePermission.__table__,
         ]
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
@@ -257,6 +260,33 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(rollback_path.exists())
         self.assertEqual(await self.event_count([rollback_record_id]), 0)
         self.assertFalse(any(self.upload_root.glob(".seal-delete-*")))
+
+    async def test_batch_attachment_delete_rejects_invalid_or_forbidden_atomically(self) -> None:
+        record = await self.add_record("草稿", suffix="FILES-ATOMIC")
+        item = await self.add_attachment(record, "runtime-atomic")
+        await self.db.commit()
+        item_path = Path(item.path)
+
+        with self.assertRaisesRegex(HTTPException, "选中的用印附件不存在") as missing:
+            await batch_delete_seal_attachments(
+                AttachmentBatchInput(attachment_ids=[item.id, 999999]), ADMIN, self.db
+            )
+        self.assertEqual(missing.exception.status_code, 404)
+        self.assertIsNotNone(await self.db.get(FileAttachment, item.id))
+        self.assertTrue(item_path.exists())
+        self.assertEqual(await self.event_count([record.id]), 0)
+
+        with self.assertRaises(HTTPException) as forbidden:
+            self.db.add(User(username="bob", display_name="bob", password_hash="test", role="staff", department="上海分所"))
+            self.db.add(RolePermission(role="staff", display_name="staff", data_scope="本人及共享数据"))
+            await self.db.commit()
+            await batch_delete_seal_attachments(
+                AttachmentBatchInput(attachment_ids=[item.id]), STAFF, self.db
+            )
+        self.assertEqual(forbidden.exception.status_code, 404)
+        self.assertIsNotNone(await self.db.get(FileAttachment, item.id))
+        self.assertTrue(item_path.exists())
+        self.assertEqual(await self.event_count([record.id]), 0)
 
 
 if __name__ == "__main__":

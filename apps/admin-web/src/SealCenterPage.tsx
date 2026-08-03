@@ -39,6 +39,15 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { resolveDetailRelation } from "./detailRelationResolver";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import {
+  canBatchDeleteSealFiles,
+  canSealAction,
+  canSealWithdraw,
+  createSealActionGate,
+  sealFilePagination,
+  selectedSealRows,
+  toSealAuditRows,
+} from "./sealWorkflowPolicy";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./seal-center.css";
@@ -83,6 +92,10 @@ type EventRow = {
   operator: string;
   comment: string;
   created_at: string;
+  audit_status?: string;
+  audit_date?: string;
+  audit_content?: string;
+  audit_round?: number;
 };
 type AttachmentRow = {
   id: number;
@@ -228,6 +241,7 @@ export default function SealCenterPage({
   const [previewDetail, setPreviewDetail] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
+  const [attachmentSelectedKeys, setAttachmentSelectedKeys] = useState<number[]>([]);
   const [fileListOpen, setFileListOpen] = useState(false);
   const [fileListRow, setFileListRow] = useState<SealRow | null>(null);
   const [fileListAttachments, setFileListAttachments] = useState<AttachmentRow[]>([]);
@@ -239,6 +253,8 @@ export default function SealCenterPage({
   const [assetForm] = Form.useForm();
   const [actionForm] = Form.useForm();
   const [queryForm] = Form.useForm();
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+  const actionGate = useMemo(() => createSealActionGate(), []);
   const selectedUseType = Form.useWatch("use_type", createForm);
   const load = async () => {
     setLoading(true);
@@ -362,6 +378,7 @@ export default function SealCenterPage({
             r.created_at.slice(0, 10) <= dates[1].format("YYYY-MM-DD"))),
     );
   }, [rows, initialView, query]);
+  const auditRows = useMemo(() => toSealAuditRows(history), [history]);
   const createApplication = async () => {
     try {
       const v = await createForm.validateFields();
@@ -462,6 +479,11 @@ export default function SealCenterPage({
   const runAction = async () => {
     if (!action) return;
     const v = await actionForm.validateFields();
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
     try {
       if (action.type === "approve" || action.type === "reject")
         await api.post(`/seals/applications/${action.row.id}/approve`, {
@@ -489,6 +511,9 @@ export default function SealCenterPage({
       message.error(
         error?.response?.data?.detail || sealActionFailureMessage(action.type),
       );
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
     }
   };
   const loadDetailFiles = async (row: SealRow) => {
@@ -497,8 +522,10 @@ export default function SealCenterPage({
         params: { record_id: row.id, category: "用印文件" },
       });
       setAttachments(data.items);
+      setAttachmentSelectedKeys([]);
     } catch {
       setAttachments([]);
+      setAttachmentSelectedKeys([]);
     }
   };
   const openDetail = async (row: SealRow) => {
@@ -596,6 +623,23 @@ export default function SealCenterPage({
       await api.delete(`/attachments/${item.id}`);
       message.success("用印文件已删除");
       if (detail) await loadDetailFiles(detail);
+      load();
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentDeleteFailureMessage(error?.response?.status),
+      );
+    }
+  };
+  const removeSealFiles = async () => {
+    if (!detail || !attachmentSelectedKeys.length) return;
+    try {
+      await api.post("/seals/applications/batch/files/delete", {
+        attachment_ids: attachmentSelectedKeys,
+      });
+      message.success(`已删除 ${attachmentSelectedKeys.length} 个用印文件`);
+      setAttachmentSelectedKeys([]);
+      await loadDetailFiles(detail);
       load();
     } catch (error: any) {
       message.error(
@@ -798,7 +842,7 @@ export default function SealCenterPage({
               </Button>
             </>
           )}
-          {tab === "audit" && r.status === "待审批" && (
+          {tab === "audit" && canSealAction("approve", r) && (
             <>
               <Button
                 type="link"
@@ -821,7 +865,7 @@ export default function SealCenterPage({
               </Button>
             </>
           )}
-          {tab === "admin" && r.status === "已用印" && (
+          {tab === "admin" && canSealAction("archive", r) && (
             <Button
               type="link"
               onClick={() => {
@@ -839,7 +883,12 @@ export default function SealCenterPage({
   const assetColumns = [
     { title: "印章编号", dataIndex: "code", width: 130 },
     { title: "印章名称", dataIndex: "name", width: 240 },
-    { title: "类别", dataIndex: "seal_type", width: 110 },
+    {
+      title: "类别",
+      dataIndex: "seal_type",
+      width: 160,
+      render: (value: string) => value || "—",
+    },
     { title: "保管人", dataIndex: "custodian", width: 100 },
     { title: "存放位置", dataIndex: "location", width: 190 },
     {
@@ -882,9 +931,7 @@ export default function SealCenterPage({
       ),
     },
   ];
-  const selectedRows = visibleRows.filter((row) =>
-    selectedKeys.includes(row.id),
-  );
+  const selectedRows = selectedSealRows(visibleRows, selectedKeys);
   const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
   const routeStatuses = statusFromView(initialView);
   const routeStatus =
@@ -1135,9 +1182,7 @@ export default function SealCenterPage({
                             提交
                           </Button>
                           <Button
-                            disabled={
-                              !selectedRow || selectedRow.status !== "待审批"
-                            }
+                            disabled={!selectedRow || !canSealWithdraw(selectedRow)}
                             onClick={() => selectedRow && withdraw(selectedRow)}
                           >
                             撤回
@@ -1146,7 +1191,7 @@ export default function SealCenterPage({
                       )}
                       {initialView === "seal-my-stamping" && (
                         <Button
-                          disabled={!selectedRow}
+                          disabled={!selectedRow || !canSealWithdraw(selectedRow)}
                           onClick={() => selectedRow && withdraw(selectedRow)}
                         >
                           撤回
@@ -1155,7 +1200,7 @@ export default function SealCenterPage({
                       {initialView === "seal-admin-pending" && (
                         <>
                           <Button
-                            disabled={!selectedRow}
+                            disabled={!selectedRow || !canSealAction("stamp", selectedRow)}
                             onClick={() => {
                               if (selectedRow) {
                                 setAction({ type: "stamp", row: selectedRow });
@@ -1373,6 +1418,7 @@ export default function SealCenterPage({
         }
         okText="确认"
         cancelText="取消"
+        confirmLoading={actionSubmitting}
         onOk={runAction}
         onCancel={() => setAction(null)}
       >
@@ -1538,27 +1584,50 @@ export default function SealCenterPage({
               <FileDoneOutlined /> 用印文件
             </h3>
             {detail.status === "草稿" && (
-              <Upload
-                multiple
-                    showUploadList={false}
-                    beforeUpload={(file) => {
-                      const validationError = validateSealUploadFile(file as File);
-                      if (validationError) {
-                        message.error(validationError);
-                        return Upload.LIST_IGNORE;
-                      }
-                      void uploadSealFile(file as File);
-                  return Upload.LIST_IGNORE;
-                }}
-              >
-                <Button icon={<UploadOutlined />}>上传用印文件</Button>
-              </Upload>
+              <Space>
+                <Upload
+                  multiple
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    const validationError = validateSealUploadFile(file as File);
+                    if (validationError) {
+                      message.error(validationError);
+                      return Upload.LIST_IGNORE;
+                    }
+                    void uploadSealFile(file as File);
+                    return Upload.LIST_IGNORE;
+                  }}
+                >
+                  <Button icon={<UploadOutlined />}>上传用印文件</Button>
+                </Upload>
+                <Button
+                  danger
+                  disabled={
+                    !canBatchDeleteSealFiles(
+                      detail.status,
+                      attachmentSelectedKeys,
+                    )
+                  }
+                  onClick={() => void removeSealFiles()}
+                >
+                  批量删除
+                </Button>
+              </Space>
             )}
             <Table
               size="small"
               rowKey="id"
               style={{ marginTop: 10 }}
-              pagination={false}
+              rowSelection={
+                detail.status === "草稿"
+                  ? {
+                      selectedRowKeys: attachmentSelectedKeys,
+                      onChange: (keys) =>
+                        setAttachmentSelectedKeys(keys as number[]),
+                    }
+                  : undefined
+              }
+              pagination={sealFilePagination}
               locale={{
                 emptyText: "暂无用印文件；提交审批前请上传至少一个文件",
               }}
@@ -1580,15 +1649,15 @@ export default function SealCenterPage({
                 {
                   title: "操作",
                   width: 130,
-                      render: (_: unknown, item: AttachmentRow) => (
-                        <Space size={0}>
-                          <Button
-                            type="link"
-                            onClick={() => void previewAttachment(item)}
-                          >
-                            预览
-                          </Button>
-                          <Button
+                  render: (_: unknown, item: AttachmentRow) => (
+                    <Space size={0}>
+                      <Button
+                        type="link"
+                        onClick={() => void previewAttachment(item)}
+                      >
+                        预览
+                      </Button>
+                      <Button
                         type="link"
                         icon={<DownloadOutlined />}
                         onClick={() => void downloadAttachment(item)}
@@ -1647,19 +1716,19 @@ export default function SealCenterPage({
           rowKey="id"
           pagination={false}
           locale={{ emptyText: "" }}
-          dataSource={history.filter((item) => item.action.includes("审批"))}
+          dataSource={auditRows}
           columns={[
-            { title: "审批人", dataIndex: "operator" },
-            { title: "审核状态", dataIndex: "to_status" },
+            { title: "审批人", dataIndex: "auditor" },
+            { title: "审核状态", dataIndex: "audit_status" },
             {
               title: "审核日期",
-              dataIndex: "created_at",
+              dataIndex: "audit_date",
               render: (value: string) => dayjs(value).format("YYYY-MM-DD"),
             },
-            { title: "审批意见", dataIndex: "comment" },
+            { title: "审批意见", dataIndex: "audit_content" },
             {
               title: "审批轮次",
-              render: (_: unknown, __: EventRow, index: number) => index + 1,
+              dataIndex: "audit_round",
             },
           ]}
         />

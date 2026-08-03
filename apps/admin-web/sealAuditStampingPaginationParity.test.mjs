@@ -37,6 +37,12 @@ function renderPaginationProbe(initialView) {
     mappingPath,
     nativeRequire,
   );
+  const policyPath = path.join(sourceDir, "sealWorkflowPolicy.ts");
+  const policy = executeTsx(
+    fs.readFileSync(policyPath, "utf8"),
+    policyPath,
+    nativeRequire,
+  );
   const realAntd = nativeRequire("antd");
   const TableProbe = ({ pagination }) =>
     React.createElement("output", {
@@ -49,6 +55,7 @@ function renderPaginationProbe(initialView) {
   const localModules = {
     antd: { ...realAntd, Table: TableProbe },
     "./sealViewMapping": mapping,
+    "./sealWorkflowPolicy": policy,
     "./api": { api: {} },
     "./caseDetailNavigation": { rememberCaseDetailTarget() {} },
     "./contractDetailNavigation": { rememberContractDetailTarget() {} },
