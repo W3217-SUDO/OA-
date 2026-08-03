@@ -45,6 +45,8 @@ import {
   canBatchWithdrawSealRows,
   canSealAction,
   createSealActionGate,
+  formatSealAttachmentSize,
+  getSealAttachmentExtension,
   sealFilePagination,
   sealAttachmentListFailureMessage,
   sealQueryFailureMessage,
@@ -1684,6 +1686,16 @@ export default function SealCenterPage({
                   children: detail.customer ? <Button type="link" onClick={() => openCustomerDetail(detail.customer, detail.data.customer_no)}>{detail.customer}</Button> : "—",
                 },
                 {
+                  key: "customer_no",
+                  label: "\u5ba2\u6237\u7f16\u53f7",
+                  children: detail.data.customer_no || "—",
+                },
+                {
+                  key: "use_type",
+                  label: "\u7528\u5370\u7c7b\u578b",
+                  children: detail.data.use_type || "—",
+                },
+                {
                   key: "case",
                   label: "关联案号",
                   children: detail.data.case_no ? (
@@ -1724,6 +1736,11 @@ export default function SealCenterPage({
                   children: detail.data.copies,
                 },
                 {
+                  key: "print_quantity",
+                  label: "\u76d6\u7ae0\u4efd\u6570",
+                  children: detail.data.print_quantity ?? detail.data.copies ?? "—",
+                },
+                {
                   key: "electronic",
                   label: "电子印章",
                   children: detail.data.is_electronic_seal ? "是" : "否",
@@ -1737,6 +1754,12 @@ export default function SealCenterPage({
                   key: "purpose",
                   label: "用途",
                   children: detail.data.purpose,
+                  span: 2,
+                },
+                {
+                  key: "remark",
+                  label: "\u7528\u5370\u5907\u6ce8",
+                  children: detail.data.remark || detail.description || "—",
                   span: 2,
                 },
                 {
@@ -1828,6 +1851,18 @@ export default function SealCenterPage({
                   title: "文件名称",
                   dataIndex: "original_name",
                   ellipsis: true,
+                },
+                {
+                  title: "类型",
+                  width: 70,
+                  render: (_: unknown, item: AttachmentRow) =>
+                    getSealAttachmentExtension(item.original_name) || "—",
+                },
+                {
+                  title: "大小",
+                  width: 90,
+                  dataIndex: "size",
+                  render: (value: number) => formatSealAttachmentSize(value),
                 },
                 { title: "上传人", dataIndex: "uploader", width: 90 },
                 {
@@ -1947,6 +1982,18 @@ export default function SealCenterPage({
           columns={[
             { title: "上传人", dataIndex: "uploader" },
             { title: "文件名称", dataIndex: "original_name" },
+            {
+              title: "类型",
+              width: 70,
+              render: (_: unknown, item: AttachmentRow) =>
+                getSealAttachmentExtension(item.original_name) || "—",
+            },
+            {
+              title: "大小",
+              width: 90,
+              dataIndex: "size",
+              render: (value: number) => formatSealAttachmentSize(value),
+            },
             {
               title: "文件日期",
               dataIndex: "created_at",

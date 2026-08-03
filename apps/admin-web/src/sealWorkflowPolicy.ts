@@ -103,6 +103,21 @@ export function sealAttachmentListFailureMessage(status?: number): string {
   return "文件列表加载失败";
 }
 
+export function formatSealAttachmentSize(value: unknown): string {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace(/\.0$/, "")} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1).replace(/\.0$/, "")} GB`;
+}
+
+export function getSealAttachmentExtension(name: unknown): string {
+  const value = String(name || "");
+  const index = value.lastIndexOf(".");
+  return index > -1 ? value.slice(index + 1).toUpperCase() : "";
+}
+
 export function createSealActionGate(): { tryEnter: () => boolean; leave: () => void } {
   let inFlight = false;
   return {

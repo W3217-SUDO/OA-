@@ -33,6 +33,20 @@ test("seal query reset and status-aware detail loading are wired", () => {
   assert.match(local, /const \[historyResult\] = await Promise\.all/);
 });
 
+test("seal preview keeps legacy customer, type, print and remark fields", () => {
+  assert.match(local, /key: "customer_no"/);
+  assert.match(local, /key: "use_type"/);
+  assert.match(local, /key: "print_quantity"/);
+  assert.match(local, /key: "remark"/);
+});
+
+test("seal file lists expose legacy uploader, date, type and size metadata", () => {
+  assert.match(local, /formatSealAttachmentSize/);
+  assert.match(local, /getSealAttachmentExtension/);
+  assert.match(local, /dataIndex: "size"/);
+  assert.match(local, /dataIndex: "created_at"/);
+});
+
 test("single seal mutations reuse the in-flight action gate", () => {
   assert.match(local, /const createApplication = async[\s\S]*?actionGate\.tryEnter/);
   assert.match(local, /const submit = async[\s\S]*?actionGate\.tryEnter/);
