@@ -347,6 +347,28 @@ const paymentPackageRequestParams = (
   };
 };
 
+const normalizePaymentPackageResponse = (
+  data: Record<string, any> | undefined,
+  fallbackPage = 1,
+  fallbackPageSize = 15,
+) => ({
+  items: Array.isArray(data?.items) ? data.items : [],
+  total: Number(data?.total || 0),
+  page: Number(data?.page || fallbackPage),
+  pageSize: Number(data?.page_size || fallbackPageSize),
+});
+
+const paymentPackageWriteoffPayload = (
+  values: Record<string, any>,
+  formatDate: (value: any) => any = (value) => value,
+) => ({
+  amount: values.amount,
+  paid_date: formatDate(values.paid_date),
+  payment_method: values.payment_method,
+  invoice_no: values.invoice_no,
+  remark: values.remark || "",
+});
+
 const paymentQueryQuickJumper = (initialView: string) =>
   initialView === "finance-payment-query" ? { goButton: "GO" } : undefined;
 
@@ -1411,12 +1433,9 @@ export default function FinanceCenterPage({
     const response = await api.get("/finance/payment-packages", {
       params: paymentPackageRequestParams(initialView, query, page, pageSize),
     });
-    setPaymentPackages(response.data.items || []);
-    setPaymentPackageMeta({
-      total: Number(response.data.total || 0),
-      page: Number(response.data.page || page),
-      pageSize: Number(response.data.page_size || pageSize),
-    });
+    const normalized = normalizePaymentPackageResponse(response.data, page, pageSize);
+    setPaymentPackages(normalized.items);
+    setPaymentPackageMeta(normalized);
     return response;
   };
   const load = async () => {
@@ -1650,12 +1669,13 @@ export default function FinanceCenterPage({
       });
       setPendingSettlements(settlementRes.data.items);
       setRefundReviewFees(refundReviewRes.data.items);
-      setPaymentPackages(paymentPackageRes.data.items);
-      setPaymentPackageMeta({
-        total: Number(paymentPackageRes.data.total || 0),
-        page: Number(paymentPackageRes.data.page || 1),
-        pageSize: Number(paymentPackageRes.data.page_size || paymentPackageMeta.pageSize),
-      });
+      const normalizedPaymentPackages = normalizePaymentPackageResponse(
+        paymentPackageRes.data,
+        1,
+        paymentPackageMeta.pageSize,
+      );
+      setPaymentPackages(normalizedPaymentPackages.items);
+      setPaymentPackageMeta(normalizedPaymentPackages);
       if (isInternalDetailRoute) {
         setInternalDetailRows(internalDetailRes.data.items || []);
         setInternalDetailMeta({
@@ -1997,13 +2017,9 @@ export default function FinanceCenterPage({
     try {
       await api.post(
         `/finance/payment-packages/${paymentPackageWriteoffTarget.id}/writeoff`,
-        {
-          amount: values.amount,
-          paid_date: formatRequiredDate(values.paid_date, "付款日期"),
-          payment_method: values.payment_method,
-          invoice_no: values.invoice_no,
-          remark: values.remark || "",
-        },
+        paymentPackageWriteoffPayload(values, (value) =>
+          formatRequiredDate(value, "付款日期"),
+        ),
       );
       message.success("核销成功.");
       setPaymentPackageWriteoffTarget(null);

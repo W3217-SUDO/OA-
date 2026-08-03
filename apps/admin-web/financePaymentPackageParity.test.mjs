@@ -34,18 +34,57 @@ test("payment package requests use bounded page coordinates and route status", (
   );
 });
 
+test("payment package response normalization keeps bounded runtime metadata", () => {
+  const normalize = evaluateHelper("normalizePaymentPackageResponse");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(normalize({ items: [{ id: 7 }], total: 31, page: 3, page_size: 10 }, 1, 15))),
+    { items: [{ id: 7 }], total: 31, page: 3, pageSize: 10 },
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(normalize(undefined, 2, 20))),
+    { items: [], total: 0, page: 2, pageSize: 20 },
+  );
+});
+
+test("payment package writeoff payload preserves the server contract fields", () => {
+  const payload = evaluateHelper("paymentPackageWriteoffPayload");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(payload({
+      amount: 125.5,
+      paid_date: "2026-08-03",
+      payment_method: "bank",
+      invoice_no: "INV-001",
+      remark: "writeoff",
+    }))),
+    {
+      amount: 125.5,
+      paid_date: "2026-08-03",
+      payment_method: "bank",
+      invoice_no: "INV-001",
+      remark: "writeoff",
+    },
+  );
+});
+
 test("payment package list exposes server total/current pagination and six legacy sizes", () => {
+  const pageSizes = evaluateHelper("paymentPackagePageSizeOptions");
+  assert.deepEqual(Array.from(pageSizes), [10, 15, 20, 50, 100, 200]);
   assert.match(source, /paymentPackageMeta/);
   assert.match(source, /current: paymentPackageMeta\.page/);
   assert.match(source, /total: paymentPackageMeta\.total/);
-  assert.match(source, /paymentPackagePageSizeOptions/);
-  for (const size of [10, 15, 20, 50, 100, 200]) {
-    assert.match(source, new RegExp(`\\b${size}\\b`));
-  }
 });
 
 test("payment package writeoff keeps the confirmed amount read-only", () => {
   assert.match(source, /name="amount"[\s\S]*?readOnly/);
+});
+
+test("payment package writeoff does not fake atomic voucher attachment", () => {
+  const start = source.indexOf("const writeoffPaymentPackage");
+  const end = source.indexOf("const printPayment", start);
+  assert.notEqual(start, -1, "writeoff handler should exist");
+  assert.notEqual(end, -1, "writeoff handler boundary should exist");
+  const writeoff = source.slice(start, end);
+  assert.doesNotMatch(writeoff, /paymentPackageVoucherFile|FormData|\/attachments/);
 });
 
 test("payment package writeoff resets its form on cancel and success", () => {
