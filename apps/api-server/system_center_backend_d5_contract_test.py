@@ -20,6 +20,7 @@ from app.security import current_identity
 
 
 ADMIN = {"username": "contract-admin", "role": "admin", "display_name": "契约管理员", "department": "系统"}
+USER = {"username": "contract-user", "role": "user", "display_name": "契约用户", "department": "业务"}
 API = settings.api_prefix
 
 
@@ -67,6 +68,8 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
                 SystemMenu(key="system-management-menu", parent_key="system-management", label="菜单管理", description="菜单维护"),
                 SystemMenu(key="system-management-config", parent_key="system-management", label="系统配置", description="配置维护"),
                 RolePermission(role="user", display_name="普通用户", data_scope="本人及共享数据", menu_keys=["user-center"], field_keys=[]),
+                RolePermission(role="manager", display_name="部门负责人", data_scope="本部门数据", menu_keys=["user-center"], field_keys=[]),
+                RolePermission(role="auditor", display_name="审批人员", data_scope="授权审批数据", menu_keys=["user-center"], field_keys=[]),
             ])
             await db.commit()
 
@@ -125,6 +128,31 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(legacy.json()["pages"], 1)
                 self.assertIn("total", legacy.json())
 
+    async def test_role_list_supports_legacy_and_paged_keyword_shapes(self):
+        legacy = await self.client.get(f"{API}/system/role-permissions")
+        self.assertEqual(legacy.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(legacy.json()["items"]), 3)
+        self.assertNotIn("page", legacy.json())
+
+        paged = await self.client.get(
+            f"{API}/system/role-permissions",
+            params={"page": 1, "page_size": 1, "keyword": "负责人"},
+        )
+        self.assertEqual(paged.status_code, status.HTTP_200_OK)
+        self.assertEqual((paged.json()["total"], paged.json()["page"], paged.json()["page_size"], paged.json()["pages"]), (1, 1, 1, 1))
+        self.assertEqual([item["role"] for item in paged.json()["items"]], ["manager"])
+
+        invalid = await self.client.get(f"{API}/system/role-permissions", params={"page_size": 201})
+        self.assertEqual(invalid.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    async def test_role_and_audit_reads_keep_admin_boundary(self):
+        app.dependency_overrides[current_identity] = lambda: USER
+        role_response = await self.client.get(f"{API}/system/role-permissions")
+        audit_response = await self.client.get(f"{API}/audit/events")
+        self.assertEqual(role_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(audit_response.status_code, status.HTTP_403_FORBIDDEN)
+        app.dependency_overrides[current_identity] = lambda: ADMIN
+
     async def test_parameter_parent_missing_self_and_ancestor_cycle_are_422(self):
         for category in ("fee_type", "case_phase", "cause"):
             missing = await self.client.post(
@@ -163,6 +191,7 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(nodes)
         self.assertTrue(all(node["node_type"] in {"M", "A"} for node in nodes))
         self.assertTrue(all(node["node_code"] and "state" in node and "checked" in node["state"] for node in nodes))
+        self.assertTrue(all("node_original_id" in node for node in nodes))
         menu_nodes = [node for node in nodes if node["node_type"] == "M"]
         action_nodes = [node for node in nodes if node["node_type"] == "A"]
         self.assertTrue(menu_nodes)
@@ -224,6 +253,7 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
 
         events = await self.client.get(f"{API}/audit/events", params={"module": "system_audit", "page_size": 100})
         self.assertEqual(events.status_code, status.HTTP_200_OK)
+        self.assertEqual(events.json()["pages"], 1)
         actions = {item["action"] for item in events.json()["items"]}
         self.assertTrue({"创建系统参数", "创建系统菜单", "更新系统菜单", "删除系统菜单", "更新系统配置", "清理系统缓存", "更新角色权限"} <= actions)
 

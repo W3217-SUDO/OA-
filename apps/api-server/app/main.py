@@ -2823,12 +2823,14 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
         children = [build(child) for child in children_by_parent.get(item.key, [])]
         for definition in action_by_menu.get(item.key, []):
             children.append({
-                "node_type": "A", "node_id": f"action:{definition['code']}",
+                "node_type": "A", "node_original_id": f"action:{definition['code']}",
+                "node_id": f"action:{definition['code']}",
                 "node_code": definition["code"], "text": definition["label"],
                 "state": {"checked": definition["code"] in action_keys}, "children": [],
             })
         return {
-            "node_type": "M", "node_id": str(item.id), "node_code": item.key, "text": item.label,
+            "node_type": "M", "node_original_id": item.id, "node_id": str(item.id),
+            "node_code": item.key, "text": item.label,
             "state": {"checked": item.key in menu_keys}, "children": children,
         }
 
@@ -2839,11 +2841,13 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
     for definition in action_definitions:
         if definition["menu_key"] not in by_key and definition["menu_key"] not in known:
             roots.append({
-                "node_type": "M", "node_id": f"menu:{definition['menu_key']}",
+                "node_type": "M", "node_original_id": f"menu:{definition['menu_key']}",
+                "node_id": f"menu:{definition['menu_key']}",
                 "node_code": definition["menu_key"], "text": definition["menu_key"],
                 "state": {"checked": definition["menu_key"] in menu_keys},
                 "children": [{
-                    "node_type": "A", "node_id": f"action:{definition['code']}",
+                    "node_type": "A", "node_original_id": f"action:{definition['code']}",
+                    "node_id": f"action:{definition['code']}",
                     "node_code": definition["code"], "text": definition["label"],
                     "state": {"checked": definition["code"] in action_keys}, "children": [],
                 }],
@@ -4151,12 +4155,31 @@ def _role_permission_dict(item: RolePermission) -> dict:
 
 
 @app.get(f"{settings.api_prefix}/system/role-permissions")
-async def list_role_permissions(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_role_permissions(
+    keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
     _require_admin(identity)
-    items = (await db.scalars(select(RolePermission).order_by(RolePermission.id))).all()
+    all_items = list((await db.scalars(select(RolePermission).order_by(RolePermission.id))).all())
+    items = all_items
+    if keyword.strip():
+        needle = keyword.strip().casefold()
+        items = [item for item in items if needle in " ".join((item.role, item.display_name, item.data_scope)).casefold()]
+    response_items = [_role_permission_dict(item) for item in items]
+    response = {"items": response_items}
+    if page is not None or page_size is not None or keyword.strip():
+        current_page, current_size = page or 1, page_size or 15
+        total = len(items)
+        start = (current_page - 1) * current_size
+        response.update({
+            "items": response_items[start:start + current_size], "total": total,
+            "page": current_page, "page_size": current_size,
+            "pages": (total + current_size - 1) // current_size if total else 0,
+        })
     legacy_keys = list((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
-    tree_permission = next((item for item in items if item.role == identity.get("role")), items[0] if items else None)
-    return {"items": [_role_permission_dict(item) for item in items], "available_menu_keys": [*MENU_KEYS, *legacy_keys], "available_field_keys": FIELD_KEYS, "permission_tree": await _system_permission_tree(db, tree_permission)}
+    tree_permission = next((item for item in all_items if item.role == identity.get("role")), all_items[0] if all_items else None)
+    response.update({"available_menu_keys": [*MENU_KEYS, *legacy_keys], "available_field_keys": FIELD_KEYS, "permission_tree": await _system_permission_tree(db, tree_permission)})
+    return response
 
 
 @app.patch(f"{settings.api_prefix}/system/role-permissions/{{role}}")
@@ -4841,7 +4864,11 @@ async def list_audit_events(module: str = "", keyword: str = "", page: int = Que
     base = select(WorkflowEvent, BusinessRecord).join(BusinessRecord, BusinessRecord.id == WorkflowEvent.record_id).where(*conditions)
     total = int(await db.scalar(select(func.count()).select_from(WorkflowEvent).join(BusinessRecord, BusinessRecord.id == WorkflowEvent.record_id).where(*conditions)) or 0)
     result = (await db.execute(base.order_by(WorkflowEvent.created_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
-    return {"items": [{"id": event.id, "record_id": record.id, "module": record.module, "serial_no": record.serial_no, "title": record.title, "action": event.action, "from_status": event.from_status, "to_status": event.to_status, "operator": event.operator, "comment": event.comment, "created_at": event.created_at} for event, record in result], "total": total, "page": page, "page_size": page_size}
+    return {
+        "items": [{"id": event.id, "record_id": record.id, "module": record.module, "serial_no": record.serial_no, "title": record.title, "action": event.action, "from_status": event.from_status, "to_status": event.to_status, "operator": event.operator, "comment": event.comment, "created_at": event.created_at} for event, record in result],
+        "total": total, "page": page, "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
 
 
 @app.get(f"{settings.api_prefix}/records/export")
