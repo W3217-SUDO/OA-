@@ -71,6 +71,12 @@ import {
   validateCustomerPhotoFile,
   validateCustomerUploadFile,
 } from "./customerUiBatchI14.mjs";
+import {
+  CUSTOMER_CONTACT_FORM_DEFAULTS,
+  CUSTOMER_DOCUMENT_FORM_DEFAULTS,
+  canDeleteCustomerAttachment,
+  getCustomerAttachmentDate,
+} from "./customerUiBatchI15.mjs";
 import "./customer-center.css";
 type Contact = {
   id: string;
@@ -103,6 +109,7 @@ type Attachment = {
   uploader: string;
   remark: string;
   created_at: string;
+  document_date?: string | null;
 };
 type CustomerEvent = {
   id: number;
@@ -897,7 +904,8 @@ export default function CustomerCenterPage({
       await refreshDetail();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "联系人添加失败");
+      const legacyError = error?.response?.data?.detail || "联系人添加失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const deleteContact = async (id: string) => {
@@ -908,7 +916,8 @@ export default function CustomerCenterPage({
       await refreshDetail();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "删除失败");
+      const legacyError = error?.response?.data?.detail || "删除失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const uploadContactPhoto = async (contact: Contact, option: any) => {
@@ -950,7 +959,8 @@ export default function CustomerCenterPage({
       await refreshDetail();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "联系人更新失败");
+      const legacyError = error?.response?.data?.detail || "联系人更新失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const updateContactStatus = async (contact: Contact, action: "primary" | "active" | "inactive") => {
@@ -985,7 +995,8 @@ export default function CustomerCenterPage({
       customerEventForm.resetFields();
       await refreshDetail();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户注意事项保存失败");
+      const legacyError = error?.response?.data?.detail || "客户注意事项保存失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const addNote = async () => {
@@ -999,7 +1010,8 @@ export default function CustomerCenterPage({
       await refreshDetail();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "跟进记录保存失败");
+      const legacyError = error?.response?.data?.detail || "跟进记录保存失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const deleteNote = async (id: string) => {
@@ -1028,7 +1040,8 @@ export default function CustomerCenterPage({
       await refreshDetail();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "事项记录更新失败");
+      const legacyError = error?.response?.data?.detail || "事项记录更新失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const uploadDocument = async () => {
@@ -1061,7 +1074,7 @@ export default function CustomerCenterPage({
       if (documentFileRef.current) documentFileRef.current.value = "";
       await refreshDetail();
     } catch (error: any) {
-      message.error(getCustomerDocumentUploadError(error));
+      message.error(getCustomerMutationErrorMessage(error, getCustomerDocumentUploadError(error)));
     }
   };
   const downloadDocument = async (file: Attachment) => {
@@ -1077,7 +1090,8 @@ export default function CustomerCenterPage({
       a.click();
       URL.revokeObjectURL(url);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "下载失败");
+      const legacyError = error?.response?.data?.detail || "下载失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const openNewEditor = (type: "contact" | "note" | "document") => {
@@ -1091,7 +1105,7 @@ export default function CustomerCenterPage({
     }
     if (type === "contact") contactForm.resetFields();
     if (type === "note") noteForm.setFieldsValue({ note_type: "跟进记录", content: "" });
-    if (type === "document") documentForm.setFieldsValue({ category: "客户资料", remark: "" });
+    if (type === "document") documentForm.setFieldsValue(CUSTOMER_DOCUMENT_FORM_DEFAULTS);
     setNewEditor(type);
   };
   const deleteDocument = async (id: number) => {
@@ -1100,7 +1114,8 @@ export default function CustomerCenterPage({
       message.success("客户文档已删除");
       await refreshDetail();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "删除失败");
+      const legacyError = error?.response?.data?.detail || "删除失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const selected = rows.find((row) => selectedRowKeys.includes(row.id));
@@ -1450,7 +1465,7 @@ export default function CustomerCenterPage({
                 key: "contacts",
                 label: "联系人",
                 children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>{!row.is_primary&&<Button type="link" onClick={()=>void updateContactStatus(row,"primary")}>设为主要</Button>}{row.is_valid===false&&<Button type="link" onClick={()=>void updateContactStatus(row,"active")}>设为有效</Button>}</Space>:null},
+                  {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>{!row.is_primary&&<Button type="link" onClick={()=>void updateContactStatus(row,"primary")}>设为主要</Button>}{row.is_valid===false&&<Button type="link" onClick={()=>void updateContactStatus(row,"active")}>设为有效</Button>}{row.is_valid!==false&&<Button type="link" onClick={()=>void updateContactStatus(row,"inactive")}>设为无效</Button>}</Space>:null},
                 ]} />,
               },
               {
@@ -1514,7 +1529,7 @@ export default function CustomerCenterPage({
                 key: "documents",
                 label: "客户文档",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",dataIndex:"created_at"},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
+                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
                 ]} />,
               },
             ]}
@@ -1535,7 +1550,7 @@ export default function CustomerCenterPage({
           {canManageCurrentCustomer && detailTab === "documents" && (
             <div className="customer-detail-actions">
               <Button type="link" onClick={() => openNewEditor("document")}>上传客户文件</Button>
-              {attachments.map((attachment) => (
+              {canDeleteCustomerAttachment(canManageCurrentCustomer) && attachments.map((attachment) => (
                 <Popconfirm key={attachment.id} title="删除客户文档？" onConfirm={() => deleteDocument(attachment.id)}>
                   <Button type="link" danger>删除客户文档</Button>
                 </Popconfirm>
@@ -1762,8 +1777,8 @@ export default function CustomerCenterPage({
                 label:"客户文档",
                 children:<>
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",dataIndex:"created_at",width:170},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},
-                    {title:"操作",render:(_:unknown,row:Attachment)=><Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
+                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},
+                    {title:"操作",render:(_:unknown,row:Attachment)=>canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null}
                   ]} />
                   {attachments.length > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button>}
                 </>
@@ -1774,7 +1789,8 @@ export default function CustomerCenterPage({
       )}
       <Modal open={Boolean(contactPhotoPreview)} title={contactPhotoPreview?.name || "联系人照片"} footer={null} onCancel={()=>{if(contactPhotoPreview)URL.revokeObjectURL(contactPhotoPreview.url);setContactPhotoPreview(null);}} destroyOnHidden><img src={contactPhotoPreview?.url} alt={contactPhotoPreview?.name || "联系人照片"} style={{display:"block",maxWidth:"100%",maxHeight:560,margin:"0 auto"}} /></Modal>
       <Modal open={newEditor === "contact"} title="新建联系人" okText="保存" cancelText="取消" onOk={addContact} onCancel={()=>setNewEditor(null)} destroyOnHidden>
-        <Form form={contactForm} layout="vertical">
+        <Form form={contactForm} layout="vertical" initialValues={CUSTOMER_CONTACT_FORM_DEFAULTS}>
+          <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
           <div className="form-grid">
             <Form.Item name="name" label="姓名" rules={[{required:true}]}><Input /></Form.Item>
             <Form.Item name="position" label="职务"><Input /></Form.Item>
@@ -1820,9 +1836,9 @@ export default function CustomerCenterPage({
         </Form>
       </Modal>
       <Modal open={newEditor === "document"} title="上传客户文件" okText="上传" cancelText="取消" onOk={uploadDocument} onCancel={()=>setNewEditor(null)} destroyOnHidden>
-        <Form form={documentForm} layout="vertical" initialValues={{category:"客户资料"}}>
+        <Form form={documentForm} layout="vertical" initialValues={CUSTOMER_DOCUMENT_FORM_DEFAULTS}>
           <Form.Item name="category" label="文档类别"><Select options={["客户资料","工商材料","授权委托","沟通记录","开票资料","其他材料"].map(value=>({value,label:value}))} /></Form.Item>
-          <Form.Item label="选择文件"><input ref={documentFileRef} type="file" onChange={event=>setDocumentFile(event.target.files?.[0] || null)} /></Form.Item>
+          <Form.Item label="选择文件"><input ref={documentFileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" onChange={event=>setDocumentFile(event.target.files?.[0] || null)} /></Form.Item>
           <Form.Item name="remark" label="说明"><Input /></Form.Item>
         </Form>
       </Modal>
@@ -2103,7 +2119,8 @@ export default function CustomerCenterPage({
                     title="新增联系人"
                     style={{ marginTop: 16 }}
                   >
-                    <Form form={contactForm} layout="vertical">
+                    <Form form={contactForm} layout="vertical" initialValues={CUSTOMER_CONTACT_FORM_DEFAULTS}>
+                      <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
                       <div className="form-grid">
                         <Form.Item
                           label="姓名"
@@ -2303,6 +2320,7 @@ export default function CustomerCenterPage({
                         render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
                       },
                       { title: "上传人", dataIndex: "uploader", width: 80 },
+                      { title: "文档日期", render: (_: unknown, r: Attachment) => getCustomerAttachmentDate(r) },
                       {
                         title: "操作",
                         width: 130,
@@ -2314,7 +2332,7 @@ export default function CustomerCenterPage({
                             >
                               下载
                             </Button>
-                            {profile.role === "admin" && (
+                            {canDeleteCustomerAttachment(canManageCurrentCustomer) && (
                               <Popconfirm
                                 title="删除客户文档？"
                                 onConfirm={() => deleteDocument(r.id)}
@@ -2337,7 +2355,7 @@ export default function CustomerCenterPage({
                     <Form
                       form={documentForm}
                       layout="vertical"
-                      initialValues={{ category: "客户资料" }}
+                      initialValues={CUSTOMER_DOCUMENT_FORM_DEFAULTS}
                     >
                       <div className="form-grid">
                         <Form.Item
@@ -2360,6 +2378,7 @@ export default function CustomerCenterPage({
                           <input
                             ref={documentFileRef}
                             type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar"
                             onChange={(e) =>
                               setDocumentFile(e.target.files?.[0] || null)
                             }
