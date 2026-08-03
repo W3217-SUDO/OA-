@@ -16012,6 +16012,10 @@ def _seal_asset_dict(item: SealAsset) -> dict:
     return {"id": item.id, "code": item.code, "name": item.name, "seal_type": item.seal_type, "custodian": item.custodian, "location": item.location, "status": item.status, "usage_count": item.usage_count, "last_used_at": item.last_used_at, "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
+def _seal_asset_audit_dict(item: SealAssetAudit) -> dict:
+    return {"id": item.id, "asset_id": item.asset_id, "asset_code": item.asset_code, "asset_name": item.asset_name, "action": item.action, "operator": item.operator, "comment": item.comment, "created_at": item.created_at}
+
+
 async def _seal_record_dict(record: BusinessRecord, db: AsyncSession) -> dict:
     result = _record_dict(record)
     result["file_count"] = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
@@ -16326,6 +16330,44 @@ async def list_seal_assets(keyword: str = "", identity: dict = Depends(current_i
         like = f"%{keyword.strip()}%"; conditions.append(or_(SealAsset.code.ilike(like), SealAsset.name.ilike(like), SealAsset.seal_type.ilike(like), SealAsset.custodian.ilike(like)))
     items = (await db.scalars(select(SealAsset).where(*conditions).order_by(SealAsset.code))).all()
     return {"items": [_seal_asset_dict(x) for x in items], "total": len(items)}
+
+
+@app.get(f"{settings.api_prefix}/seals/assets/{{asset_id}}/audit")
+async def list_seal_asset_audit(
+    asset_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    action: str = "",
+    operator: str = "",
+    keyword: str = "",
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only, bounded history for one seal asset."""
+    if identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="仅管理员或部门负责人可查看印章资产审计")
+    asset = await db.get(SealAsset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="印章不存在")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="审计日期范围无效")
+    conditions = [SealAssetAudit.asset_id == asset_id]
+    if action.strip():
+        conditions.append(SealAssetAudit.action.ilike(f"%{action.strip()}%"))
+    if operator.strip():
+        conditions.append(SealAssetAudit.operator.ilike(f"%{operator.strip()}%"))
+    if keyword.strip():
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(SealAssetAudit.action.ilike(like), SealAssetAudit.operator.ilike(like), SealAssetAudit.comment.ilike(like)))
+    if date_from:
+        conditions.append(SealAssetAudit.created_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to:
+        conditions.append(SealAssetAudit.created_at < datetime.combine(date_to + timedelta(days=1), datetime.min.time()))
+    total = int(await db.scalar(select(func.count()).select_from(SealAssetAudit).where(*conditions)) or 0)
+    rows = (await db.scalars(select(SealAssetAudit).where(*conditions).order_by(SealAssetAudit.created_at.desc(), SealAssetAudit.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
+    return {"items": [_seal_asset_audit_dict(item) for item in rows], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
 
 
 @app.post(f"{settings.api_prefix}/seals/assets", status_code=status.HTTP_201_CREATED)
