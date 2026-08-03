@@ -68,6 +68,8 @@ import {
   filterContractCaseOptions,
   filterContractLinkedRows,
   normalizeContractActionResponse,
+  normalizeContractApprovalHistory,
+  normalizeContractAttachment,
   normalizeContractQuery,
   normalizeContractDetailReturnView,
   resolveContractCustomerSelection,
@@ -147,7 +149,7 @@ type Change = {
 type Profile = { username: string; display_name: string; department: string; role: string };
 type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
 type ApproverSetting = { username: string; display_name: string; department: string; position: string; selected: boolean };
-type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string };
+type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string; uploader?: string };
 type AttachmentPreview = { name: string; kind: "image" | "pdf" | "text" | "docx"; url?: string; text?: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
 type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string };
@@ -333,7 +335,7 @@ export default function ContractCenterPage({
         api.get(`/contracts/${contract.id}/approvals`),
       ]);
       if (requestId === viewingAttachmentRequest.current) {
-        setViewingAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
+        setViewingAttachments(attachmentResult.status === "fulfilled" ? (attachmentResult.value.data.items || []).map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) })) : []);
         const manualEvents = eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : [];
         const workflowEvents = workflowHistoryResult.status === "fulfilled"
           ? (workflowHistoryResult.value.data.items || []).map((event: HistoryEvent) => ({
@@ -360,9 +362,10 @@ export default function ContractCenterPage({
         setDetailPayments(paymentResult.status === "fulfilled"
           ? sortContractRecordRows(filterContractLinkedRows(paymentResult.value.data.items || [], contract))
           : []);
-        setDetailApprovals(approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : []);
-        if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || workflowHistoryResult.status === "rejected" || objectResult.status === "rejected") {
-          message.warning("合同基础信息已打开，部分附件、事项或合同标的暂时加载失败");
+        const approvalItems = approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : [];
+        setDetailApprovals(normalizeContractApprovalHistory(approvalItems).map((item, index) => ({ ...item, step_order: Number(approvalItems[index]?.step_order || index + 1) })) as Step[]);
+        if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || workflowHistoryResult.status === "rejected" || objectResult.status === "rejected" || approvalResult.status === "rejected") {
+          message.warning("合同基础信息已打开，部分附件、事项、合同标的或审批信息暂时加载失败");
         }
       }
     } catch (error: any) {
@@ -598,7 +601,8 @@ export default function ContractCenterPage({
       api.get("/attachments", { params: { record_id: contractId } }),
       api.get(`/records/${contractId}/history`),
     ]);
-    setAttachments(attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : []);
+    const attachmentItems = attachmentResult.status === "fulfilled" ? attachmentResult.value.data.items || [] : [];
+    setAttachments(attachmentItems.map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) })));
     setHistory(historyResult.status === "fulfilled" ? historyResult.value.data.items || [] : []);
     if (attachmentResult.status === "rejected" || historyResult.status === "rejected") {
       message.warning("合同主体已加载，部分附件或历史记录暂时不可用");
@@ -1905,6 +1909,7 @@ export default function ContractCenterPage({
                     { title: "客户管理人", dataIndex: "customer_manager", width: 120 },
                     { title: "备注", dataIndex: "remark", width: 180 },
                     { title: "操作", width: 176, fixed: "right", render: (_: unknown, row: ContractObjectRow) => <Space size={0}>
+                      <Button type="link" onClick={() => setObjectLogTarget(row)}>日志</Button>
                       <Button type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
                       <Popconfirm title="确认删除该合同标的？" disabled={!viewing || !contractObjectPolicy.canDelete} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || !contractObjectPolicy.canDelete}>删除</Button></Popconfirm>
                     </Space> },
@@ -1928,6 +1933,8 @@ export default function ContractCenterPage({
                     { title: "序号", width: 64, render: (_: unknown, __: Attachment, index: number) => index + 1 },
                     { title: "文件名称", dataIndex: "original_name" },
                     { title: "分类", dataIndex: "category", width: 160 },
+                    { title: "上传人", dataIndex: "uploader", width: 120, render: (value: string) => value || "—" },
+                    { title: "上传日期", dataIndex: "created_at", width: 140, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD") : "—" },
                     { title: "操作", width: 180, render: (_: unknown, item: Attachment) => <Space size={0}><Button type="link" onClick={() => downloadAttachment(item)}>下载</Button><Button type="link" onClick={() => void previewAttachment(item)}>预览</Button><Popconfirm title="确认删除该合同附件？" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onConfirm={() => void deleteViewingAttachment(item)}><Button type="link" danger disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}>删除</Button></Popconfirm></Space> },
                   ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />}
                   </>,
@@ -1938,7 +1945,8 @@ export default function ContractCenterPage({
                   children: <Table size="small" rowKey="id" pagination={false} dataSource={detailApprovals} locale={{ emptyText: "暂无审批信息" }} columns={[
                     { title: "审批顺序", dataIndex: "step_order", width: 100 },
                     { title: "审批人", dataIndex: "approver" },
-                    { title: "状态", dataIndex: "status", width: 120 },
+                    { title: "审批日期", dataIndex: "acted_at", width: 140, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD") : "—" },
+                    { title: "状态", dataIndex: "status", width: 120, render: (value: string) => <Tag>{value || "—"}</Tag> },
                     { title: "审批意见", dataIndex: "comment" },
                   ]} />,
                 },
@@ -2019,9 +2027,11 @@ export default function ContractCenterPage({
         ) : viewingAttachments.length ? (
           <Space direction="vertical" size={2}>
             {viewingAttachments.map((item) => (
-              <Button key={item.id} type="link" onClick={() => downloadAttachment(item)}>
-                {item.original_name}
-              </Button>
+              <Space key={item.id} size={4}>
+                <Button type="link" onClick={() => downloadAttachment(item)}>{item.original_name}</Button>
+                <Button type="link" onClick={() => void previewAttachment(item)}>预览</Button>
+                <small>{item.uploader || "—"} · {item.created_at ? dayjs(item.created_at).format("YYYY-MM-DD") : "—"}</small>
+              </Space>
             ))}
           </Space>
         ) : (

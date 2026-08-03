@@ -8,6 +8,8 @@ export function contractMenuEntries(): Array<{ key: string; label: string; scope
 export function contractListViewConfig(view: string): { scope: string; defaultPageSize: number; statuses: string[]; queryFields: readonly string[] };
 export function normalizeContractQuery(values?: Record<string, unknown>): Record<string, unknown>;
 export function normalizeContractActionResponse(response: unknown, fallback: string): { ok: boolean; message: string };
+export function normalizeContractAttachment(item: unknown): { id: number; original_name: string; uploader: string; created_at: string };
+export function normalizeContractApprovalHistory<T extends Record<string, unknown>>(rows: T[]): Array<{ id: number; approver: string; acted_at: string; status: string; comment: string }>;
 export function buildContractListRequestParams(view: string, pagination: { current: number; pageSize: number }, query?: Record<string, unknown>): Record<string, unknown>;
 export function canAccessContractView(view: string, profile?: { role?: string }): boolean;
 export function validateContractApprovalSubmission(status: string, approvers: string, attachmentCount: number): string[];

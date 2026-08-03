@@ -36,6 +36,22 @@ export const normalizeContractActionResponse = (response, fallback) => {
   const message = String(payload.message ?? payload.Message ?? fallback);
   return { ok, message: message.trim() || fallback };
 };
+export const normalizeContractAttachment = (item) => {
+  const source = item || {};
+  return {
+    id: Number(source.id || source.FileId || 0),
+    original_name: String(source.original_name || source.FileName || ""),
+    uploader: String(source.uploader || source.UploadUserName || source.UploadUser || ""),
+    created_at: String(source.created_at || source.UploadTime || source.upload_time || ""),
+  };
+};
+export const normalizeContractApprovalHistory = (rows = []) => rows.map((item) => ({
+  id: Number(item?.id || item?.AuditId || 0),
+  approver: String(item?.approver || item?.AuditorName || ""),
+  acted_at: String(item?.acted_at || item?.AuditDate || item?.audit_date || item?.created_at || ""),
+  status: String(item?.status || item?.AuditStatus || ""),
+  comment: String(item?.comment ?? item?.AuditContent ?? ""),
+}));
 export const buildContractListRequestParams = (view, pagination, query = {}) => {
   const config = contractListViewConfig(view);
   const normalized = normalizeContractQuery(query);
