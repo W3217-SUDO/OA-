@@ -3,6 +3,7 @@ export const CONTRACT_ATTACHMENT_MAX_BYTES: number;
 export const CONTRACT_ATTACHMENT_LOCKED_STATUSES: readonly string[];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES: readonly string[];
 export const CONTRACT_LIST_PAGE_SIZES: readonly number[];
+export const CONTRACT_EVENT_PAGE_SIZES: readonly number[];
 export const CONTRACT_QUERY_FIELDS: readonly string[];
 export function contractMenuEntries(): Array<{ key: string; label: string; scope: string; legacyPath: string }>;
 export function contractListViewConfig(view: string): { scope: string; defaultPageSize: number; statuses: string[]; queryFields: readonly string[] };
@@ -10,6 +11,10 @@ export function normalizeContractQuery(values?: Record<string, unknown>): Record
 export function normalizeContractActionResponse(response: unknown, fallback: string): { ok: boolean; message: string };
 export function normalizeContractAttachment(item: unknown): { id: number; original_name: string; uploader: string; created_at: string };
 export function normalizeContractApprovalHistory<T extends Record<string, unknown>>(rows: T[]): Array<{ id: number; approver: string; acted_at: string; status: string; comment: string }>;
+export function buildContractEventsRequest(contract: { id?: number; contract_guid?: string; data?: { contract_guid?: string; contractGuid?: string } }, options?: { page?: number; pageSize?: number; keyword?: string }): { path: string | null; params: { page: number; page_size: number; keyword?: string } };
+export function createContractEventRequestTracker(): { next(): number; isCurrent(requestId: number): boolean };
+export function createContractEventSubmitGate(): { tryEnter(): boolean; leave(): void };
+export function normalizeContractEventsResponse(response: unknown): { items: Array<Record<string, unknown> & { id: number; content: string; operator: string; created_at: string; contract_guid: string }>; total: number; page: number; pageSize: number; contractGuid: string };
 export function buildContractListRequestParams(view: string, pagination: { current: number; pageSize: number }, query?: Record<string, unknown>): Record<string, unknown>;
 export function canAccessContractView(view: string, profile?: { role?: string }): boolean;
 export function validateContractApprovalSubmission(status: string, approvers: string, attachmentCount: number): string[];

@@ -3,6 +3,7 @@ export const CONTRACT_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["审批中", "已归档"];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
 export const CONTRACT_LIST_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
+export const CONTRACT_EVENT_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
 export const CONTRACT_QUERY_FIELDS = ["title", "serial_no", "type", "customer", "case_no", "fee_type", "signed_at", "source_person", "contract_body"];
 const CONTRACT_LIST_ROUTES = new Set(["contract-mine", "contract-dept", "contract-company", "contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"]);
 export const contractMenuEntries = () => [
@@ -52,6 +53,67 @@ export const normalizeContractApprovalHistory = (rows = []) => rows.map((item) =
   status: String(item?.status || item?.AuditStatus || ""),
   comment: String(item?.comment ?? item?.AuditContent ?? ""),
 }));
+const contractEventGuid = (contract = {}) => String(
+  contract?.contract_guid
+  || contract?.data?.contract_guid
+  || contract?.data?.contractGuid
+  || "",
+).trim();
+export const buildContractEventsRequest = (contract = {}, options = {}) => {
+  const page = Number.isInteger(Number(options.page)) && Number(options.page) > 0 ? Number(options.page) : 1;
+  const requestedPageSize = Number(options.pageSize);
+  const pageSize = CONTRACT_EVENT_PAGE_SIZES.includes(requestedPageSize)
+    ? requestedPageSize
+    : requestedPageSize > 200 ? 200 : 15;
+  const keyword = String(options.keyword || "").trim();
+  const guid = contractEventGuid(contract);
+  const path = guid
+    ? `/contracts/guid/${encodeURIComponent(guid)}/events`
+    : Number(contract?.id) > 0 ? `/contracts/${Number(contract.id)}/events` : null;
+  return { path, params: { page, page_size: pageSize, ...(keyword ? { keyword } : {}) } };
+};
+export const createContractEventRequestTracker = () => {
+  let current = 0;
+  return {
+    next: () => ++current,
+    isCurrent: (requestId) => requestId === current,
+  };
+};
+export const createContractEventSubmitGate = () => {
+  let entered = false;
+  return {
+    tryEnter: () => {
+      if (entered) return false;
+      entered = true;
+      return true;
+    },
+    leave: () => { entered = false; },
+  };
+};
+export const normalizeContractEventsResponse = (response) => {
+  const payload = response?.data ?? response ?? {};
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  const items = rawItems.map((item) => ({
+    ...item,
+    id: Number(item?.id ?? item?.EventId ?? 0),
+    content: String(item?.content ?? item?.Content ?? ""),
+    operator: String(item?.operator ?? item?.Operator ?? item?.OperateUserName ?? ""),
+    created_at: String(item?.created_at ?? item?.CreatedAt ?? item?.OperateTime ?? ""),
+    contract_guid: String(item?.contract_guid ?? item?.ContractGuid ?? payload.contract_guid ?? ""),
+  }));
+  const numberOr = (value, fallback) => Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : fallback;
+  const requestedPageSize = numberOr(payload.page_size, 15);
+  const pageSize = CONTRACT_EVENT_PAGE_SIZES.includes(requestedPageSize)
+    ? requestedPageSize
+    : requestedPageSize > 200 ? 200 : 15;
+  return {
+    items,
+    total: numberOr(payload.total, items.length),
+    page: Math.max(1, numberOr(payload.page, 1)),
+    pageSize,
+    contractGuid: String(payload.contract_guid ?? payload.ContractGuid ?? ""),
+  };
+};
 export const buildContractListRequestParams = (view, pagination, query = {}) => {
   const config = contractListViewConfig(view);
   const normalized = normalizeContractQuery(query);

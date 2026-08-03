@@ -22,6 +22,7 @@ import {
   Tag,
   Timeline,
   Popconfirm,
+  Pagination,
 } from "antd";
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -52,7 +53,10 @@ import {
 } from "./contractObjectPresentation.mjs";
 import {
   CONTRACT_ATTACHMENT_ACCEPT,
+  CONTRACT_EVENT_PAGE_SIZES,
   buildContractApprovalPayload,
+  createContractEventRequestTracker,
+  createContractEventSubmitGate,
   buildContractDraftDefaults,
   buildContractListRequestParams,
   canActOnContractApproval,
@@ -70,6 +74,8 @@ import {
   normalizeContractActionResponse,
   normalizeContractApprovalHistory,
   normalizeContractAttachment,
+  buildContractEventsRequest,
+  normalizeContractEventsResponse,
   normalizeContractQuery,
   normalizeContractDetailReturnView,
   resolveContractCustomerSelection,
@@ -82,6 +88,7 @@ import RecordImportButton from "./RecordImportButton";
 import "./contract-center.css";
 type Contract = {
   id: number;
+  contract_guid?: string;
   serial_no: string;
   title: string;
   customer: string;
@@ -128,6 +135,8 @@ type Contract = {
     sync_seal?: boolean;
     /** 合同审批通过时，是否仍需在用印中心补传真实用印文件。 */
     sync_seal_file_required?: boolean;
+    contract_guid?: string;
+    contractGuid?: string;
   };
 };
 type Step = {
@@ -152,7 +161,7 @@ type ApproverSetting = { username: string; display_name: string; department: str
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string; uploader?: string };
 type AttachmentPreview = { name: string; kind: "image" | "pdf" | "text" | "docx"; url?: string; text?: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
-type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string };
+type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string; contract_guid?: string };
 type SealAsset = { id: number; code: string; name: string; seal_type: string; status: string };
 type CustomerRef = { id: number; serial_no: string; title: string; owner: string; data: { customer_managers?: string[] } };
 type ContractPaymentCandidate = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; fee_type:string; contract_amount:number; reserved_amount:number; remaining_amount:number; remark:string };
@@ -232,7 +241,15 @@ export default function ContractCenterPage({
     [viewing, setViewing] = useState<Contract | null>(null),
     [changes, setChanges] = useState<Change[]>([]),
     [contractEvents, setContractEvents] = useState<ContractEvent[]>([]),
-    [eventTarget, setEventTarget] = useState<Contract | null>(null);
+    [contractWorkflowEvents, setContractWorkflowEvents] = useState<ContractEvent[]>([]),
+    [contractEventPage, setContractEventPage] = useState(1),
+    [contractEventPageSize, setContractEventPageSize] = useState(15),
+    [contractEventTotal, setContractEventTotal] = useState(0),
+    [contractEventKeyword, setContractEventKeyword] = useState(""),
+    [contractEventsLoading, setContractEventsLoading] = useState(false),
+    [contractEventsError, setContractEventsError] = useState<string | null>(null),
+    [eventTarget, setEventTarget] = useState<Contract | null>(null),
+    [eventSaving, setEventSaving] = useState(false);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [approverSettingsOpen, setApproverSettingsOpen] = useState(false);
   const [approverSettings, setApproverSettings] = useState<ApproverSetting[]>([]);
@@ -245,6 +262,7 @@ export default function ContractCenterPage({
   const [detailInvoices, setDetailInvoices] = useState<Contract[]>([]);
   const [detailPayments, setDetailPayments] = useState<Contract[]>([]);
   const [detailApprovals, setDetailApprovals] = useState<Step[]>([]);
+  const [detailApprovalsError, setDetailApprovalsError] = useState<string | null>(null);
   type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
   const [contractObjects, setContractObjects] = useState<ContractObjectRow[]>([]);
   const [objectPage, setObjectPage] = useState<number>(1);
@@ -257,8 +275,11 @@ export default function ContractCenterPage({
   const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);
   const [objectLogTarget, setObjectLogTarget] = useState<ContractObjectRow | null>(null);
   const [viewingAttachmentsLoading, setViewingAttachmentsLoading] = useState(false);
+  const [viewingAttachmentsError, setViewingAttachmentsError] = useState<string | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const viewingAttachmentRequest = useRef(0);
+  const contractEventRequestTracker = useRef(createContractEventRequestTracker());
+  const contractEventSubmitGate = useRef(createContractEventSubmitGate());
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
@@ -284,6 +305,7 @@ export default function ContractCenterPage({
   const listViewConfig = contractListViewConfig(initialView);
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
+    contractEventRequestTracker.current.next();
     setViewing(null);
     setViewingAttachments([]);
     setContractObjects([]);
@@ -296,6 +318,15 @@ export default function ContractCenterPage({
     setSelectedPaymentObjectKeys([]);
     setPaymentAmounts({});
     setContractEvents([]);
+    setContractWorkflowEvents([]);
+    setContractEventPage(1);
+    setContractEventPageSize(15);
+    setContractEventTotal(0);
+    setContractEventKeyword("");
+    setContractEventsLoading(false);
+    setContractEventsError(null);
+    setDetailApprovalsError(null);
+    setViewingAttachmentsError(null);
     setDetailReceipts([]);
     setDetailInvoices([]);
     setDetailPayments([]);
@@ -315,13 +346,18 @@ export default function ContractCenterPage({
       return;
     }
     const requestId = ++viewingAttachmentRequest.current;
+    const eventRequestId = contractEventRequestTracker.current.next();
     setViewing(contract);
     setViewingAttachments([]);
     setViewingAttachmentsLoading(true);
+    setViewingAttachmentsError(null);
+    setContractEventsLoading(true);
+    setContractEventsError(null);
     try {
+      const eventRequest = buildContractEventsRequest(contract, { page: 1, pageSize: 15 });
       const [attachmentResult, eventResult, workflowHistoryResult, objectResult, caseResult, receiptResult, invoiceResult, paymentResult, approvalResult] = await Promise.allSettled([
         api.get("/attachments", { params: { record_id: contract.id } }),
-        api.get(`/contracts/${contract.id}/events`),
+        eventRequest.path ? api.get(eventRequest.path, { params: eventRequest.params }) : Promise.resolve({ data: { items: [] } }),
         api.get(`/records/${contract.id}/history`),
         api.get(`/contracts/${contract.id}/objects`),
         api.get(`/contracts/${contract.id}/object-cases`),
@@ -336,7 +372,9 @@ export default function ContractCenterPage({
       ]);
       if (requestId === viewingAttachmentRequest.current) {
         setViewingAttachments(attachmentResult.status === "fulfilled" ? (attachmentResult.value.data.items || []).map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) })) : []);
-        const manualEvents = eventResult.status === "fulfilled" ? eventResult.value.data.items || [] : [];
+        setViewingAttachmentsError(attachmentResult.status === "rejected" ? extractContractErrorMessage(attachmentResult.reason, "合同附件加载失败") : null);
+        const eventPayload = eventResult.status === "fulfilled" ? normalizeContractEventsResponse(eventResult.value.data) : null;
+        const manualEvents = eventPayload?.items.map((event) => ({ ...event, contract_record_id: contract.id })) || [];
         const workflowEvents = workflowHistoryResult.status === "fulfilled"
           ? (workflowHistoryResult.value.data.items || []).map((event: HistoryEvent) => ({
             id: -event.id,
@@ -346,7 +384,15 @@ export default function ContractCenterPage({
             created_at: event.created_at,
           }))
           : [];
-        setContractEvents([...manualEvents, ...workflowEvents].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
+        if (contractEventRequestTracker.current.isCurrent(eventRequestId)) {
+          setContractEvents(manualEvents);
+          setContractWorkflowEvents(workflowEvents);
+          setContractEventPage(eventPayload?.page || 1);
+          setContractEventPageSize(eventPayload?.pageSize || 15);
+          setContractEventTotal(eventPayload?.total || 0);
+          setContractEventKeyword("");
+          setContractEventsError(eventResult.status === "rejected" ? extractContractErrorMessage(eventResult.reason, "合同事项加载失败") : null);
+        }
         setObjectPage(1);
         setObjectPageSize(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
         setContractObjects(objectResult.status === "fulfilled"
@@ -364,7 +410,8 @@ export default function ContractCenterPage({
           : []);
         const approvalItems = approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : [];
         setDetailApprovals(normalizeContractApprovalHistory(approvalItems).map((item, index) => ({ ...item, step_order: Number(approvalItems[index]?.step_order || index + 1) })) as Step[]);
-        if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || workflowHistoryResult.status === "rejected" || objectResult.status === "rejected" || approvalResult.status === "rejected") {
+        setDetailApprovalsError(approvalResult.status === "rejected" ? extractContractErrorMessage(approvalResult.reason, "合同审批信息加载失败") : null);
+        if (attachmentResult.status === "rejected" || (contractEventRequestTracker.current.isCurrent(eventRequestId) && (eventResult.status === "rejected" || workflowHistoryResult.status === "rejected")) || objectResult.status === "rejected" || approvalResult.status === "rejected") {
           message.warning("合同基础信息已打开，部分附件、事项、合同标的或审批信息暂时加载失败");
         }
       }
@@ -375,7 +422,60 @@ export default function ContractCenterPage({
     } finally {
       if (requestId === viewingAttachmentRequest.current) {
         setViewingAttachmentsLoading(false);
+        if (contractEventRequestTracker.current.isCurrent(eventRequestId)) setContractEventsLoading(false);
       }
+    }
+  };
+  const reloadContractEvents = async (contract: Contract, page = 1, keyword = contractEventKeyword, pageSize = contractEventPageSize) => {
+    const eventRequestId = contractEventRequestTracker.current.next();
+    const eventRequest = buildContractEventsRequest(contract, { page, pageSize, keyword });
+    if (!eventRequest.path) {
+      if (contractEventRequestTracker.current.isCurrent(eventRequestId)) {
+        setContractEvents([]);
+        setContractEventTotal(0);
+        setContractEventsError(null);
+        setContractEventsLoading(false);
+      }
+      return;
+    }
+    setContractEventsLoading(true);
+    setContractEventsError(null);
+    try {
+      const response = await api.get(eventRequest.path, { params: eventRequest.params });
+      const payload = normalizeContractEventsResponse(response.data);
+      if (contractEventRequestTracker.current.isCurrent(eventRequestId)) {
+        setContractEvents(payload.items.map((event) => ({ ...event, contract_record_id: contract.id })));
+        setContractEventPage(payload.page);
+        setContractEventPageSize(payload.pageSize);
+        setContractEventTotal(payload.total);
+        setContractEventKeyword(String(keyword || "").trim());
+      }
+    } catch (error: any) {
+      if (contractEventRequestTracker.current.isCurrent(eventRequestId)) setContractEventsError(extractContractErrorMessage(error, "合同事项加载失败"));
+    } finally {
+      if (contractEventRequestTracker.current.isCurrent(eventRequestId)) setContractEventsLoading(false);
+    }
+  };
+  const reloadViewingAttachments = async (contract: Contract) => {
+    setViewingAttachmentsLoading(true);
+    setViewingAttachmentsError(null);
+    try {
+      const response = await api.get("/attachments", { params: { record_id: contract.id } });
+      setViewingAttachments((response.data.items || []).map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) })));
+    } catch (error: any) {
+      setViewingAttachmentsError(extractContractErrorMessage(error, "合同附件加载失败"));
+    } finally {
+      setViewingAttachmentsLoading(false);
+    }
+  };
+  const reloadDetailApprovals = async (contract: Contract) => {
+    setDetailApprovalsError(null);
+    try {
+      const response = await api.get(`/contracts/${contract.id}/approvals`);
+      const items = response.data.items || [];
+      setDetailApprovals(normalizeContractApprovalHistory(items).map((item: any, index: number) => ({ ...item, step_order: Number(items[index]?.step_order || index + 1) })) as Step[]);
+    } catch (error: any) {
+      setDetailApprovalsError(extractContractErrorMessage(error, "合同审批信息加载失败"));
     }
   };
   const returnFromDetail = () => {
@@ -1040,16 +1140,24 @@ export default function ContractCenterPage({
     setEventTarget(contract);
   };
   const createContractEvent = async () => {
-    if (!eventTarget) return;
+    if (!eventTarget || !contractEventSubmitGate.current.tryEnter()) return;
+    setEventSaving(true);
     try {
       const values = await eventForm.validateFields();
-      await api.post(`/contracts/${eventTarget.id}/events`, { content: values.content });
+      const eventRequest = buildContractEventsRequest(eventTarget, { page: 1, pageSize: 15 });
+      if (!eventRequest.path) throw new Error("合同事项缺少合同标识");
+      const response = await api.post(eventRequest.path, { content: values.content });
+      const feedback = normalizeContractActionResponse(response, "合同事项记录失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       message.success("合同事项已记录");
       setEventTarget(null);
       eventForm.resetFields();
       if (viewing?.id === eventTarget.id) await openViewing(eventTarget);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同事项记录失败");
+      message.error(extractContractErrorMessage(error, "合同事项记录失败"));
+    } finally {
+      contractEventSubmitGate.current.leave();
+      setEventSaving(false);
     }
   };
   const revokeDraft = (contract: Contract) => {
@@ -1464,6 +1572,7 @@ export default function ContractCenterPage({
     const item = normalizePaidObject(row);
     return { ...row, serial_no: item.applicationNo, data: { ...row.data, applicant: item.applicant, pending_amount: item.pendingAmount, payment_date: item.paymentDate, payment_reference: item.packageNo, amount: item.paidAmount, payment_type: item.paymentType, official_amount: item.officialAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
   });
+  const viewingHasEventEndpoint = Boolean(viewing && buildContractEventsRequest(viewing, { page: contractEventPage, pageSize: contractEventPageSize, keyword: contractEventKeyword }).path);
   const objectPageData = paginateContractObjectRows(contractObjects, objectPage, objectPageSize);
   const approvalOptions = directory.filter((user) => user.can_approve_contract).map((user) => ({
     value: user.username,
@@ -1919,7 +2028,19 @@ export default function ContractCenterPage({
                 {
                   key: "events",
                   label: "事项记录",
-                  children: contractEvents.length ? <Timeline items={contractEvents.map((event) => ({ children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div> }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />,
+                  children: <>
+                    <Space wrap style={{ marginBottom: 8 }}>
+                      <Input.Search allowClear value={contractEventKeyword} loading={contractEventsLoading} placeholder="搜索事项内容" onChange={(event) => setContractEventKeyword(event.target.value)} onSearch={(value) => { setContractEventKeyword(value.trim()); setContractEventPage(1); if (viewing) void reloadContractEvents(viewing, 1, value.trim(), contractEventPageSize); }} />
+                      {contractEventsError && <Button type="link" onClick={() => viewing && void reloadContractEvents(viewing, contractEventPage, contractEventKeyword, contractEventPageSize)}>重试</Button>}
+                    </Space>
+                    {contractEventsError ? <Alert type="error" showIcon message={contractEventsError} /> : contractEvents.length ? <Timeline items={contractEvents.map((event) => ({ children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div> }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
+                    {viewingHasEventEndpoint && <Pagination size="small" current={contractEventPage} pageSize={contractEventPageSize} total={contractEventTotal} showSizeChanger pageSizeOptions={CONTRACT_EVENT_PAGE_SIZES.map(String)} showQuickJumper={{ goButton: <Button size="small">GO</Button> }} onChange={(page, pageSize) => { setContractEventPage(page); setContractEventPageSize(pageSize); if (viewing) void reloadContractEvents(viewing, page, contractEventKeyword, pageSize); }} />}
+                  </>,
+                },
+                {
+                  key: "workflow",
+                  label: "流程记录",
+                  children: contractWorkflowEvents.length ? <Timeline items={contractWorkflowEvents.map((event) => ({ children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div> }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无流程记录" />,
                 },
                 {
                   key: "attachments",
@@ -1929,7 +2050,7 @@ export default function ContractCenterPage({
                       <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
                       <Button onClick={() => void uploadViewingAttachment()} disabled={!contractFile || !viewing || ["审批中", "已归档"].includes(viewing.status)}>上传附件</Button>
                     </Space>
-                    {viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} columns={[
+                    {viewingAttachmentsError ? <Alert type="error" showIcon message={viewingAttachmentsError} action={<Button size="small" onClick={() => viewing && void reloadViewingAttachments(viewing)}>重试</Button>} /> : viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: Attachment, index: number) => index + 1 },
                     { title: "文件名称", dataIndex: "original_name" },
                     { title: "分类", dataIndex: "category", width: 160 },
@@ -1942,13 +2063,13 @@ export default function ContractCenterPage({
                 {
                   key: "approvals",
                   label: "审批信息",
-                  children: <Table size="small" rowKey="id" pagination={false} dataSource={detailApprovals} locale={{ emptyText: "暂无审批信息" }} columns={[
+                  children: <>{detailApprovalsError ? <Alert type="error" showIcon message={detailApprovalsError} action={<Button size="small" onClick={() => viewing && void reloadDetailApprovals(viewing)}>重试</Button>} /> : <Table size="small" rowKey="id" pagination={false} dataSource={detailApprovals} locale={{ emptyText: "暂无审批信息" }} columns={[
                     { title: "审批顺序", dataIndex: "step_order", width: 100 },
                     { title: "审批人", dataIndex: "approver" },
                     { title: "审批日期", dataIndex: "acted_at", width: 140, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD") : "—" },
                     { title: "状态", dataIndex: "status", width: 120, render: (value: string) => <Tag>{value || "—"}</Tag> },
                     { title: "审批意见", dataIndex: "comment" },
-                  ]} />,
+                  ]} />}</>,
                 },
               ]}
             />
@@ -2022,7 +2143,9 @@ export default function ContractCenterPage({
           ] : []}
         />
         <Divider>合同附件</Divider>
-        {viewingAttachmentsLoading ? (
+        {viewingAttachmentsError ? (
+          <Alert type="error" showIcon message={viewingAttachmentsError} action={<Button size="small" onClick={() => viewing && void reloadViewingAttachments(viewing)}>重试</Button>} />
+        ) : viewingAttachmentsLoading ? (
           <span>正在加载合同附件…</span>
         ) : viewingAttachments.length ? (
           <Space direction="vertical" size={2}>
@@ -2038,11 +2161,21 @@ export default function ContractCenterPage({
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />
         )}
         <Divider>事项记录</Divider>
+        <Space wrap style={{ marginBottom: 8 }}>
+          <Input.Search allowClear value={contractEventKeyword} loading={contractEventsLoading} placeholder="搜索事项内容" onChange={(event) => setContractEventKeyword(event.target.value)} onSearch={(value) => { setContractEventKeyword(value.trim()); setContractEventPage(1); if (viewing) void reloadContractEvents(viewing, 1, value.trim(), contractEventPageSize); }} />
+          {contractEventsError && <Button type="link" onClick={() => viewing && void reloadContractEvents(viewing, contractEventPage, contractEventKeyword, contractEventPageSize)}>重试</Button>}
+        </Space>
+        {contractEventsError ? <Alert type="error" showIcon message={contractEventsError} /> : null}
+        {viewingHasEventEndpoint && <Pagination size="small" current={contractEventPage} pageSize={contractEventPageSize} total={contractEventTotal} showSizeChanger pageSizeOptions={CONTRACT_EVENT_PAGE_SIZES.map(String)} showQuickJumper={{ goButton: <Button size="small">GO</Button> }} onChange={(page, pageSize) => { setContractEventPage(page); setContractEventPageSize(pageSize); if (viewing) void reloadContractEvents(viewing, page, contractEventKeyword, pageSize); }} />}
         {contractEvents.length ? (
           <Timeline items={contractEvents.map((event) => ({
             children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,
           }))} />
         ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
+        <Divider>流程记录</Divider>
+        {contractWorkflowEvents.length ? <Timeline items={contractWorkflowEvents.map((event) => ({
+          children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,
+        }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无流程记录" />}
         <Divider>合同标的 <Button size="small" type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={()=>{objectForm.resetFields();setObjectEditing({})}}>新增标的</Button></Divider>
         {contractObjects.length ? <Table size="small" rowKey="id" scroll={{x:940}} columns={[
           {title:"案件类型",dataIndex:"case_type",width:100},
@@ -2074,8 +2207,11 @@ export default function ContractCenterPage({
         title={`新增合同事项：${eventTarget?.serial_no || ""}`}
         okText="保存"
         cancelText="取消"
+        confirmLoading={eventSaving}
+        cancelButtonProps={{ disabled: eventSaving }}
+        closable={!eventSaving}
         onOk={() => void createContractEvent()}
-        onCancel={() => { setEventTarget(null); eventForm.resetFields(); }}
+        onCancel={() => { if (eventSaving) return; setEventTarget(null); eventForm.resetFields(); }}
         destroyOnHidden
       >
         <Form form={eventForm} layout="vertical">
