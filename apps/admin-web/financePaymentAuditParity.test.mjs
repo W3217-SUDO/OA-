@@ -51,3 +51,22 @@ test("payment approval empty selection keeps the legacy failure prompt", () => {
     /initialView\s*===\s*"finance-payment-audit"[\s\S]*?Modal\.info\(\{[\s\S]*?title:\s*"提示"[\s\S]*?content:\s*"请选择审批项\."[\s\S]*?okText:\s*"确定"/,
   );
 });
+
+test("ordinary payment rows expose dedicated cancel and rollback contracts", () => {
+  assert.match(source, /finance\/fees\/\$\{paymentCancelTarget\.id\}\/cancel/);
+  assert.match(source, /finance\/fees\/\$\{paymentRollbackTarget\.id\}\/rollback/);
+  assert.match(source, /api\.post\([\s\S]*?paymentCancelTarget[\s\S]*?reason/);
+  assert.match(source, /api\.post\([\s\S]*?paymentRollbackTarget[\s\S]*?comment/);
+  assert.match(source, /const reason = paymentCancelReason\.trim\(\)/);
+  assert.match(source, /if \(!reason\)[\s\S]*?请输入撤回原因/);
+  assert.match(source, /comment: paymentRollbackComment\.trim\(\)/);
+  assert.match(source, /error\?\.response\?\.data\?\.detail/);
+  assert.match(source, /撤销请款|付款撤销/);
+  assert.match(source, /回滚请款|付款回滚/);
+  assert.match(source, /撤销成功！/);
+  assert.match(source, /撤销失败！/);
+  assert.match(source, /回滚成功！/);
+  assert.match(source, /回滚失败！/);
+  assert.match(source, /open=\{Boolean\(paymentCancelTarget\)\}/);
+  assert.match(source, /open=\{Boolean\(paymentRollbackTarget\)\}/);
+});

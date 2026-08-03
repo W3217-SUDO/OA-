@@ -709,6 +709,10 @@ export default function FinanceCenterPage({
     useState(true);
   const [generalSettlementReviewComment, setGeneralSettlementReviewComment] =
     useState("");
+  const [generalSettlementApplyTargets, setGeneralSettlementApplyTargets] =
+    useState<(string | number)[]>([]);
+  const [generalSettlementApplyComment, setGeneralSettlementApplyComment] =
+    useState("");
   const [generalSettlementPaymentTargets, setGeneralSettlementPaymentTargets] =
     useState<Fee[]>([]);
   const [generalSettlementPaymentAction, setGeneralSettlementPaymentAction] =
@@ -866,6 +870,13 @@ export default function FinanceCenterPage({
   const [feeReviewTargets, setFeeReviewTargets] = useState<Fee[]>([]);
   const [feeReviewComment, setFeeReviewComment] = useState("");
   const [feeReviewLoading, setFeeReviewLoading] = useState(false);
+  const [paymentCancelTarget, setPaymentCancelTarget] = useState<Fee | null>(
+    null,
+  );
+  const [paymentCancelReason, setPaymentCancelReason] = useState("");
+  const [paymentRollbackTarget, setPaymentRollbackTarget] =
+    useState<Fee | null>(null);
+  const [paymentRollbackComment, setPaymentRollbackComment] = useState("");
   const [settlementBatchAction, setSettlementBatchAction] = useState<
     "hearing_lawyer" | "handling_lawyers" | "assistant" | "case_stage" | null
   >(null);
@@ -2034,6 +2045,47 @@ export default function FinanceCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "操作失败");
+    }
+  };
+  const openPaymentCancel = (row: Fee) => {
+    setPaymentCancelReason("");
+    setPaymentCancelTarget(row);
+  };
+  const submitPaymentCancel = async () => {
+    if (!paymentCancelTarget) return;
+    const reason = paymentCancelReason.trim();
+    if (!reason) {
+      message.warning("请输入撤回原因.");
+      return;
+    }
+    try {
+      await api.post(`/finance/fees/${paymentCancelTarget.id}/cancel`, {
+        reason,
+      });
+      message.success("撤销成功！");
+      setPaymentCancelTarget(null);
+      setPaymentCancelReason("");
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "撤销失败！");
+    }
+  };
+  const openPaymentRollback = (row: Fee) => {
+    setPaymentRollbackComment("");
+    setPaymentRollbackTarget(row);
+  };
+  const submitPaymentRollback = async () => {
+    if (!paymentRollbackTarget) return;
+    try {
+      await api.post(`/finance/fees/${paymentRollbackTarget.id}/rollback`, {
+        comment: paymentRollbackComment.trim(),
+      });
+      message.success("回滚成功！");
+      setPaymentRollbackTarget(null);
+      setPaymentRollbackComment("");
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "回滚失败！");
     }
   };
   const voidRejectedInternalFee = (row: Fee) => {
@@ -3545,6 +3597,18 @@ export default function FinanceCenterPage({
           付款
         </Button>
       )}
+      {["草稿", "待审批", "已审批", "待付款"].includes(row.status) &&
+        (canManage || row.owner === currentUser.username) && (
+          <Button type="link" danger onClick={() => openPaymentCancel(row)}>
+            撤销请款
+          </Button>
+        )}
+      {["待审批", "已审批", "待付款"].includes(row.status) &&
+        ["admin", "manager", "auditor"].includes(role) && (
+          <Button type="link" onClick={() => openPaymentRollback(row)}>
+            回滚请款
+          </Button>
+        )}
       {!isInternalApprovalRoute && (
         <Button type="link" onClick={() => openRecordFiles(row, "付款凭证")}>
           附件
@@ -6618,8 +6682,17 @@ export default function FinanceCenterPage({
     kind: "settlement" | "receipt" | "case",
     ids?: (string | number)[],
   ) => {
-    const selectedIds = ids || selectedOriginalRows;
-    if (!selectedIds.length) {
+    const selectedOnly = ids !== undefined;
+    const selectedIds = ids ?? selectedOriginalRows;
+    if (!isGeneralSettlementPendingRoute && !selectedOnly) {
+      Modal.info({
+        title: "提示",
+        content: "请选择需要导出的结算申请.",
+        okText: "确定",
+      });
+      return;
+    }
+    if (selectedOnly && !selectedIds.length) {
       Modal.info({
         title: "提示",
         content: "请选择需要导出的回款.",
@@ -6630,9 +6703,11 @@ export default function FinanceCenterPage({
     setGeneralSettlementBusy(true);
     try {
       const response = await api.get("/finance/general-settlements/export", {
-        params: isGeneralSettlementPendingRoute
-          ? { kind, ids: selectedIds.join(",") }
-          : { kind, application_ids: selectedIds.join(",") },
+        params: selectedOnly
+          ? isGeneralSettlementPendingRoute
+            ? { kind, ids: selectedIds.join(",") }
+            : { kind, application_ids: selectedIds.join(",") }
+          : { kind },
         responseType: "blob",
       });
       const names = {
@@ -6836,8 +6911,8 @@ export default function FinanceCenterPage({
       setArchiveSettlementBusy(false);
     }
   };
-  const applyGeneralSettlementRows = async (ids?: (string | number)[]) => {
-    const selectedIds = ids || selectedOriginalRows;
+  const applyGeneralSettlementRows = (ids?: (string | number)[]) => {
+    const selectedIds = ids ?? selectedOriginalRows;
     if (!selectedIds.length) {
       Modal.info({
         title: "提示",
@@ -6846,34 +6921,36 @@ export default function FinanceCenterPage({
       });
       return;
     }
-    Modal.confirm({
-      title: "申请结算",
-      content: `确认将选中的 ${selectedIds.length} 条回款提交结算审批？`,
-      okText: "申请结算",
-      cancelText: "取消",
-      onOk: async () => {
-        setGeneralSettlementBusy(true);
-        try {
-          const response = await api.post(
-            "/finance/general-settlements/apply",
-            { receipt_ids: selectedIds.map(Number), comment: "待结算页面提交" },
-          );
-          message.success(`已生成 ${response.data.created} 条结算申请`);
-          setSelectedOriginalRows([]);
-          setGeneralSettlementDetails([]);
-          await loadGeneralSettlements(
-            originalQuery,
-            1,
-            generalSettlementMeta.pageSize,
-          );
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "申请结算失败");
-          throw error;
-        } finally {
-          setGeneralSettlementBusy(false);
-        }
-      },
-    });
+    setGeneralSettlementApplyComment("");
+    setGeneralSettlementApplyTargets([...selectedIds]);
+  };
+  const submitGeneralSettlementApply = async () => {
+    if (!generalSettlementApplyTargets.length) return;
+    setGeneralSettlementBusy(true);
+    try {
+      const response = await api.post(
+        "/finance/general-settlements/apply",
+        {
+          receipt_ids: generalSettlementApplyTargets.map(Number),
+          comment: generalSettlementApplyComment,
+        },
+      );
+      message.success(`已生成 ${response.data.created} 条结算申请`);
+      setGeneralSettlementApplyTargets([]);
+      setGeneralSettlementApplyComment("");
+      setSelectedOriginalRows([]);
+      setGeneralSettlementDetails([]);
+      await loadGeneralSettlements(
+        originalQuery,
+        1,
+        generalSettlementMeta.pageSize,
+      );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "申请结算失败");
+      throw error;
+    } finally {
+      setGeneralSettlementBusy(false);
+    }
   };
   const exportConfiguredRows = (selectedOnly: boolean) => {
     if (!activeRouteConfig) return;
@@ -10151,6 +10228,45 @@ export default function FinanceCenterPage({
         </Form>
       </Modal>
       <Modal
+        open={Boolean(paymentCancelTarget)}
+        title={`撤销请款单：${paymentCancelTarget?.serial_no || ""}`}
+        okText="撤销"
+        okButtonProps={{ danger: true }}
+        cancelText="取消"
+        onOk={() => void submitPaymentCancel()}
+        onCancel={() => {
+          setPaymentCancelTarget(null);
+          setPaymentCancelReason("");
+        }}
+      >
+        <Input.TextArea
+          rows={4}
+          value={paymentCancelReason}
+          onChange={(event) => setPaymentCancelReason(event.target.value)}
+          placeholder="请输入撤回原因"
+          aria-label="撤回原因"
+        />
+      </Modal>
+      <Modal
+        open={Boolean(paymentRollbackTarget)}
+        title={`回滚请款单：${paymentRollbackTarget?.serial_no || ""}`}
+        okText="回滚"
+        cancelText="取消"
+        onOk={() => void submitPaymentRollback()}
+        onCancel={() => {
+          setPaymentRollbackTarget(null);
+          setPaymentRollbackComment("");
+        }}
+      >
+        <Input.TextArea
+          rows={4}
+          value={paymentRollbackComment}
+          onChange={(event) => setPaymentRollbackComment(event.target.value)}
+          placeholder="请输入回滚备注（可选）"
+          aria-label="回滚备注"
+        />
+      </Modal>
+      <Modal
         className="finance-payment-package-writeoff-modal"
         width={600}
         style={{ top: 30 }}
@@ -11018,6 +11134,31 @@ export default function FinanceCenterPage({
             上传凭证
           </Button>
         </Form>
+      </Modal>
+      <Modal
+        className="finance-settlement-review-modal"
+        open={generalSettlementApplyTargets.length > 0}
+        title="申请结算"
+        okText="申请结算"
+        cancelText="取消"
+        confirmLoading={generalSettlementBusy}
+        onOk={() => void submitGeneralSettlementApply()}
+        onCancel={() => {
+          setGeneralSettlementApplyTargets([]);
+          setGeneralSettlementApplyComment("");
+        }}
+        destroyOnHidden
+      >
+        <label className="finance-settlement-review-field">
+          <span>备注:</span>
+          <Input
+            value={generalSettlementApplyComment}
+            maxLength={2000}
+            onChange={(event) =>
+              setGeneralSettlementApplyComment(event.target.value)
+            }
+          />
+        </label>
       </Modal>
       <Modal
         className="finance-settlement-review-modal"

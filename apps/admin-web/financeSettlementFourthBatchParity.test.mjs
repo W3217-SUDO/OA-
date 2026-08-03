@@ -85,6 +85,35 @@ test("settlement export routes remain available for selected and full lists", ()
   assert.match(source, /selectedOriginalRows/);
 });
 
+test("general settlement export only permits backend-supported full exports", () => {
+  const start = source.indexOf("const exportGeneralSettlement");
+  const end = source.indexOf("const exportPendingArchiveSettlements", start);
+  assert.ok(start >= 0 && end > start, "general settlement export handler should exist");
+  const block = source.slice(start, end);
+  assert.match(block, /selectedOnly/);
+  assert.match(block, /application_ids: selectedIds\.join/);
+  assert.match(block, /ids: selectedIds\.join/);
+  assert.match(block, /if \(!isGeneralSettlementPendingRoute && !selectedOnly\)/);
+  assert.match(block, /请选择需要导出的结算申请/);
+  assert.match(
+    block,
+    /selectedOnly\s*\?[\s\S]*isGeneralSettlementPendingRoute[\s\S]*\{ kind \}[\s\S]*responseType/,
+  );
+  assert.match(block, /selectedOnly\s*&&\s*!selectedIds\.length/);
+});
+
+test("general settlement apply captures an operator remark instead of hardcoding one", () => {
+  const start = source.indexOf("const applyGeneralSettlementRows");
+  const end = source.indexOf("const exportConfiguredRows", start);
+  assert.ok(start >= 0 && end > start, "general settlement apply handler should exist");
+  const block = source.slice(start, end);
+  assert.match(block, /generalSettlementApplyTargets/);
+  assert.match(block, /submitGeneralSettlementApply/);
+  assert.match(block, /comment: generalSettlementApplyComment/);
+  assert.doesNotMatch(block, /comment:\s*["']寰呯粨绠楅〉闈㈡彁浜?["']/);
+  assert.match(source, /open=\{generalSettlementApplyTargets\.length > 0\}/);
+});
+
 test("settlement request paths remain bounded and avoid fetch-all", () => {
   assert.doesNotMatch(source, /loadGeneralSettlementAll|loadArchiveSettlementAll|fetch-all/);
   assert.match(source, /page_size: pageSize/);
