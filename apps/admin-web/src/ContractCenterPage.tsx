@@ -38,6 +38,12 @@ import { readContractListQuery, saveContractListQuery } from "./contractListQuer
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination.mjs";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import {
+  contractObjectActionPolicy,
+  normalizeIncomingPayment,
+  normalizeInvoiceObject,
+  normalizePaidObject,
+} from "./contractObjectPresentation.mjs";
+import {
   buildContractApprovalPayload,
   buildContractDraftDefaults,
   buildContractListRequestParams,
@@ -1395,6 +1401,19 @@ export default function ContractCenterPage({
   }));
   const currentApproval = steps.find((step) => step.status === "待审批");
   const canActOnCurrentApproval = Boolean(currentApproval && canActOnContractApproval("审批中", currentApproval.approver, profile.username, profile.role));
+  const contractObjectPolicy = contractObjectActionPolicy(viewing?.status);
+  const presentedReceipts = detailReceipts.map((row) => {
+    const item = normalizeIncomingPayment(row);
+    return { ...row, receipt_no: item.sequenceNo, received_date: item.receivedDate, bank_reference: item.bankReference, amount: item.amount, official_amount: item.officialAmount, agency_amount: item.agencyAmount, other_amount: item.otherAmount, payment_method: item.paymentMethod, claimant: item.claimant };
+  });
+  const presentedInvoices = detailInvoices.map((row) => {
+    const item = normalizeInvoiceObject(row);
+    return { ...row, serial_no: item.applicationNo, status: item.status, description: item.remark, data: { ...row.data, invoice_no: item.invoiceNo, invoice_date: item.invoiceDate, amount: item.amount, official_amount: item.officialAmount, agency_amount: item.agencyAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
+  });
+  const presentedPayments = detailPayments.map((row) => {
+    const item = normalizePaidObject(row);
+    return { ...row, serial_no: item.applicationNo, data: { ...row.data, applicant: item.applicant, pending_amount: item.pendingAmount, payment_date: item.paymentDate, payment_reference: item.packageNo, amount: item.paidAmount, payment_type: item.paymentType, official_amount: item.officialAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
+  });
   const approvalOptions = directory.filter((user) => user.can_approve_contract).map((user) => ({
     value: user.username,
     label: user.display_name || user.username,
@@ -1824,7 +1843,7 @@ export default function ContractCenterPage({
                   label: "合同标的",
                   children: <>
                     <Space style={{ marginBottom: 8 }}>
-                      <Button size="small" type="primary" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onClick={() => { objectForm.resetFields(); setObjectEditing({}); }}>新增标的</Button>
+                      <Button size="small" type="primary" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.resetFields(); setObjectEditing({}); }}>新增标的</Button>
                     </Space>
                     <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={contractObjects} locale={{ emptyText: "暂无合同标的" }} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: ContractObjectRow, index: number) => index + 1 },
@@ -1837,8 +1856,8 @@ export default function ContractCenterPage({
                     { title: "客户管理人", dataIndex: "customer_manager", width: 120 },
                     { title: "备注", dataIndex: "remark", width: 180 },
                     { title: "操作", width: 176, fixed: "right", render: (_: unknown, row: ContractObjectRow) => <Space size={0}>
-                      <Button type="link" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
-                      <Popconfirm title="确认删除该合同标的？" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}>删除</Button></Popconfirm>
+                      <Button type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
+                      <Popconfirm title="确认删除该合同标的？" disabled={!viewing || !contractObjectPolicy.canDelete} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || !contractObjectPolicy.canDelete}>删除</Button></Popconfirm>
                     </Space> },
                   ]} />
                   </>,
@@ -1878,7 +1897,7 @@ export default function ContractCenterPage({
             />
             <section className="contract-record-section">
               <h3>回款记录</h3>
-              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1180 }} dataSource={detailReceipts} locale={{ emptyText: "暂无回款记录" }} columns={[
+              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1180 }} dataSource={presentedReceipts} locale={{ emptyText: "暂无回款记录" }} columns={[
                 { title: "序号", width: 64, render: (_: unknown, __: any, index: number) => index + 1 },
                 { title: "回款单号", dataIndex: "receipt_no", width: 150 },
                 { title: "回款日期", dataIndex: "received_date", width: 120 },
@@ -1893,7 +1912,7 @@ export default function ContractCenterPage({
             </section>
             <section className="contract-record-section">
               <h3>开票记录</h3>
-              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={detailInvoices} locale={{ emptyText: "暂无开票记录" }} columns={[
+              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={presentedInvoices} rowClassName={(row: any) => row.data?.__lineThrough ? "contract-line-through" : ""} locale={{ emptyText: "暂无开票记录" }} columns={[
                 { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
                 { title: "请票单号", dataIndex: "serial_no", width: 150 },
                 { title: "发票号码", width: 150, render: (_: unknown, row: Contract) => (row.data as any).invoice_no || "—" },
@@ -1908,7 +1927,7 @@ export default function ContractCenterPage({
             </section>
             <section className="contract-record-section">
               <h3>付款记录</h3>
-              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={detailPayments} locale={{ emptyText: "暂无付款记录" }} columns={[
+              <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={presentedPayments} rowClassName={(row: any) => row.data?.__lineThrough ? "contract-line-through" : ""} locale={{ emptyText: "暂无付款记录" }} columns={[
                 { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
                 { title: "申请单号", dataIndex: "serial_no", width: 150, render: (value: string, row: Contract) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedPayment(row)}>{value}</Button> : "—" },
                 { title: "申请人", width: 120, render: (_: unknown, row: Contract) => (row.data as any).applicant || row.owner || "—" },
@@ -1965,7 +1984,7 @@ export default function ContractCenterPage({
             children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,
           }))} />
         ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
-        <Divider>合同标的 <Button size="small" type="link" disabled={!viewing || ["审批中","已归档"].includes(viewing.status)} onClick={()=>{objectForm.resetFields();setObjectEditing({})}}>新增标的</Button></Divider>
+        <Divider>合同标的 <Button size="small" type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={()=>{objectForm.resetFields();setObjectEditing({})}}>新增标的</Button></Divider>
         {contractObjects.length ? <Table size="small" rowKey="id" pagination={false} scroll={{x:940}} columns={[
           {title:"案件类型",dataIndex:"case_type",width:100},
           {title:"案号",dataIndex:"case_no",width:155,render:(value:string)=><Button type="link" className="contract-cell-link" onClick={()=>openRelatedCase(value)}>{value}</Button>},
@@ -1975,7 +1994,7 @@ export default function ContractCenterPage({
           {title:"费用金额",dataIndex:"amount",width:110,render:(value:number)=>amount(value)},
           {title:"客户管理人",dataIndex:"customer_manager",width:120},
           {title:"备注",dataIndex:"remark",width:180,ellipsis:true},
-          {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}><Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>{!viewing||["审批中","已归档"].includes(viewing.status)?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger>删除</Button></Popconfirm></>}</Space>},
+          {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}><Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>{!viewing||!contractObjectPolicy.canEdit?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" disabled={!contractObjectPolicy.canDelete} onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger disabled={!contractObjectPolicy.canDelete}>删除</Button></Popconfirm></>}</Space>},
         ]} dataSource={contractObjects} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的" />}
           </>
         )}

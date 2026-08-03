@@ -17,7 +17,7 @@ export const contractListViewConfig = (view) => {
   const entry = contractMenuEntries().find((item) => item.key === view);
   const audit = view.startsWith("contract-audit");
   const statuses = contractAuditViewConfig(view).statuses;
-  return { scope: entry?.scope || "all", defaultPageSize: audit || view === "contract-dept" || view === "contract-company" ? 20 : 15, statuses, queryFields: CONTRACT_QUERY_FIELDS };
+  return { scope: entry?.scope || "all", defaultPageSize: 15, statuses, queryFields: CONTRACT_QUERY_FIELDS };
 };
 export const normalizeContractQuery = (values = {}) => {
   const normalized = {};

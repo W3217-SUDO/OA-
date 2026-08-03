@@ -84,6 +84,7 @@
   background: #fafafa !important;
 }
 .contract-original-table .ant-table-row-selected > td { background: #e6f7f2 !important; }
+.contract-line-through > td { text-decoration: line-through; }
 .contract-cell-link.ant-btn-link { display: inline-block; max-width: 100%; height: auto; overflow: hidden; padding: 0; color: #136fae; font-size: 12px; line-height: 20px; text-align: left; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
 .contract-cell-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .contract-bottom-actions { min-height: 34px; margin-top: 8px; padding-left: 0; overflow-x: auto; }
