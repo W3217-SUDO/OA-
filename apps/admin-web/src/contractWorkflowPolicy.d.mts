@@ -7,6 +7,7 @@ export const CONTRACT_QUERY_FIELDS: readonly string[];
 export function contractMenuEntries(): Array<{ key: string; label: string; scope: string; legacyPath: string }>;
 export function contractListViewConfig(view: string): { scope: string; defaultPageSize: number; statuses: string[]; queryFields: readonly string[] };
 export function normalizeContractQuery(values?: Record<string, unknown>): Record<string, unknown>;
+export function normalizeContractActionResponse(response: unknown, fallback: string): { ok: boolean; message: string };
 export function buildContractListRequestParams(view: string, pagination: { current: number; pageSize: number }, query?: Record<string, unknown>): Record<string, unknown>;
 export function canAccessContractView(view: string, profile?: { role?: string }): boolean;
 export function validateContractApprovalSubmission(status: string, approvers: string, attachmentCount: number): string[];

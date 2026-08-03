@@ -51,6 +51,7 @@ import {
   normalizePaidObject,
 } from "./contractObjectPresentation.mjs";
 import {
+  CONTRACT_ATTACHMENT_ACCEPT,
   buildContractApprovalPayload,
   buildContractDraftDefaults,
   buildContractListRequestParams,
@@ -66,6 +67,7 @@ import {
   extractContractErrorMessage,
   filterContractCaseOptions,
   filterContractLinkedRows,
+  normalizeContractActionResponse,
   normalizeContractQuery,
   normalizeContractDetailReturnView,
   resolveContractCustomerSelection,
@@ -662,6 +664,11 @@ export default function ContractCenterPage({
       message.warning("请输入客户关键字，并从匹配结果中选择客户");
       return;
     }
+    const contractFileError = validateContractAttachment(contractFile);
+    if (contractFile && contractFileError) {
+      message.warning(contractFileError);
+      return;
+    }
     setSavingContract(true);
     try {
       const target = editing || wizardDraft;
@@ -707,7 +714,9 @@ export default function ContractCenterPage({
         attachment.append("record_id", String(response.data.id));
         attachment.append("category", "合同附件");
         attachment.append("remark", "合同起草时上传");
-        await api.post("/attachments", attachment);
+        const attachmentResponse = await api.post("/attachments", attachment);
+        const attachmentFeedback = normalizeContractActionResponse(attachmentResponse, "合同附件上传失败");
+        if (!attachmentFeedback.ok) throw new Error(attachmentFeedback.message);
       }
       message.success(editing ? "合同已更新" : "合同草稿已保存，进入提交审批");
       sessionStorage.removeItem("sunhold:contract-customer");
@@ -743,7 +752,9 @@ export default function ContractCenterPage({
         return;
       }
       setSubmittingWizard(true);
-      await api.post(`/contracts/${wizardDraft.id}/submit`, { approvers: values.approvers ? [values.approvers] : [], comment: values.comment || "" });
+      const response = await api.post(`/contracts/${wizardDraft.id}/submit`, { approvers: values.approvers ? [values.approvers] : [], comment: values.comment || "" });
+      const feedback = normalizeContractActionResponse(response, "提交审批失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       const contract = await loadWizardContext(wizardDraft.id);
       message.success(`合同已进入 ${values.approvers} 的待审批列表`);
       // Contract approval and seal usage are separate workflows. Once the
@@ -787,7 +798,9 @@ export default function ContractCenterPage({
       return;
     }
     try {
-      await api.post(`/contracts/${wizardDraft.id}/approve`, buildContractApprovalPayload(approved, values.comment));
+      const response = await api.post(`/contracts/${wizardDraft.id}/approve`, buildContractApprovalPayload(approved, values.comment));
+      const feedback = normalizeContractActionResponse(response, "审批失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       reviewForm.resetFields();
       const contract = await loadWizardContext(wizardDraft.id);
       if (contract.status === "已通过") {
@@ -876,7 +889,9 @@ export default function ContractCenterPage({
     attachment.append("category", "合同附件");
     attachment.append("remark", "合同草稿补传附件");
     try {
-      await api.post("/attachments", attachment);
+      const response = await api.post("/attachments", attachment);
+      const feedback = normalizeContractActionResponse(response, "合同附件上传失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       setContractFile(null);
       await loadWizardContext(wizardDraft.id);
       message.success("合同附件已上传");
@@ -910,7 +925,9 @@ export default function ContractCenterPage({
     attachment.append("category", "合同附件");
     attachment.append("remark", "合同详情补传附件");
     try {
-      await api.post("/attachments", attachment);
+      const response = await api.post("/attachments", attachment);
+      const feedback = normalizeContractActionResponse(response, "合同附件上传失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       setContractFile(null);
       await openViewing(viewing);
       message.success("合同附件已上传");
@@ -931,7 +948,9 @@ export default function ContractCenterPage({
     if (!submitting) return;
     const v = await submitForm.validateFields();
     try {
-      await api.post(`/contracts/${submitting.id}/submit`, { approvers: v.approvers ? [v.approvers] : [], comment: v.comment || "" });
+      const response = await api.post(`/contracts/${submitting.id}/submit`, { approvers: v.approvers ? [v.approvers] : [], comment: v.comment || "" });
+      const feedback = normalizeContractActionResponse(response, "提交审批失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       message.success("已提交至指定审批人的待审批列表");
       setSubmitting(null);
       load();
@@ -952,7 +971,9 @@ export default function ContractCenterPage({
     if (!reviewing) return;
     const v = await reviewForm.validateFields();
     try {
-      await api.post(`/contracts/${reviewing.id}/approve`, buildContractApprovalPayload(approved, v.comment));
+      const response = await api.post(`/contracts/${reviewing.id}/approve`, buildContractApprovalPayload(approved, v.comment));
+      const feedback = normalizeContractActionResponse(response, "审批失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       message.success(approved ? "当前审批节点已通过" : "合同已拒绝");
       reviewForm.resetFields();
       const { data } = await api.get(`/contracts/${reviewing.id}/approvals`);
@@ -991,7 +1012,9 @@ export default function ContractCenterPage({
   };
   const reviewChange = async (contract: Contract, approved: boolean) => {
     try {
-      await api.post(`/contracts/${contract.id}/changes/review`, { approved, comment: approved ? "同意合同变更" : "变更内容需补充后重新提交" });
+      const response = await api.post(`/contracts/${contract.id}/changes/review`, { approved, comment: approved ? "同意合同变更" : "变更内容需补充后重新提交" });
+      const feedback = normalizeContractActionResponse(response, "合同变更审批失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       message.success(approved ? "合同变更已审批通过" : "合同变更已驳回");
       setSelectedRowKeys([]);
       await load();
@@ -1632,10 +1655,12 @@ export default function ContractCenterPage({
               <Form.Item label="合同类别" name="type" rules={[{ required: true }]}><Select options={["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"].map((v) => ({ value: v, label: v }))} /></Form.Item>
               <Form.Item label="收费模式" name="fee_type" rules={[{ required: true }]}><Select options={["固定收费", "固定+后期", "免费代理", "法律援助", "计时收费", "全风险代理"].map((v) => ({ value: v, label: v }))} /></Form.Item>
               <Form.Item label="合同名称" name="title" rules={[{ required: true }]}><Input placeholder="合同名称" /></Form.Item>
-              <Form.Item label="外部合同号（可多个）" name="external_contract_numbers"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入客户方合同编号后回车" /></Form.Item>
+              <Form.Item label="外部合同号（可多个）" name="external_contract_numbers">
+                <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入客户方合同编号后回车" />
+              </Form.Item>
               <Form.Item label="备注" name="description" rules={[{ required: true }]}><Input.TextArea rows={4} placeholder="备注" /></Form.Item>
               <Form.Item label="合同附件" extra="起草阶段可跳过；提交审批前须上传至少一份合同附件">
-                <input type="file" onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
+                <input type="file" accept={CONTRACT_ATTACHMENT_ACCEPT} onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
                 <div className="contract-upload-tip">附件支持常用图片、压缩包、Office 文档及 PDF 格式</div>
               </Form.Item>
             </Form>
@@ -2150,7 +2175,7 @@ export default function ContractCenterPage({
             ] : []} />
             <Form.Item label="合同附件" extra="可在草稿阶段补传；未上传时提交审批会被阻断">
               <Space wrap>
-                <input type="file" onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
+                <input type="file" accept={CONTRACT_ATTACHMENT_ACCEPT} onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
                 <Button onClick={uploadDraftContractAttachment} disabled={!contractFile}>上传附件</Button>
               </Space>
             </Form.Item>

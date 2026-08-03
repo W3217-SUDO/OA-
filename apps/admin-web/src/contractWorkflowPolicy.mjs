@@ -29,6 +29,13 @@ export const normalizeContractQuery = (values = {}) => {
   }
   return normalized;
 };
+export const normalizeContractActionResponse = (response, fallback) => {
+  const payload = response?.data ?? response ?? {};
+  const explicit = payload.is_success ?? payload.IsSuccess ?? payload.success;
+  const ok = explicit === undefined ? true : Boolean(explicit);
+  const message = String(payload.message ?? payload.Message ?? fallback);
+  return { ok, message: message.trim() || fallback };
+};
 export const buildContractListRequestParams = (view, pagination, query = {}) => {
   const config = contractListViewConfig(view);
   const normalized = normalizeContractQuery(query);
