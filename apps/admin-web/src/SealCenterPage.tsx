@@ -47,6 +47,9 @@ import {
   canViewSealAssetAudit,
   createSealActionGate,
   createSealAssetAuditRequestTracker,
+  createSealDetailRequestTracker,
+  createSealFileListRequestTracker,
+  createSealPreviewRequestTracker,
   mergeSealAssetSnapshot,
   formatSealAttachmentSize,
   getSealAttachmentExtension,
@@ -269,6 +272,9 @@ export default function SealCenterPage({
   const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [attachmentSelectedKeys, setAttachmentSelectedKeys] = useState<number[]>([]);
+  const detailRequestTracker = useMemo(() => createSealDetailRequestTracker(), []);
+  const fileListRequestTracker = useMemo(() => createSealFileListRequestTracker(), []);
+  const previewRequestTracker = useMemo(() => createSealPreviewRequestTracker(), []);
   const [fileListOpen, setFileListOpen] = useState(false);
   const [fileListRow, setFileListRow] = useState<SealRow | null>(null);
   const [fileListAttachments, setFileListAttachments] = useState<AttachmentRow[]>([]);
@@ -743,13 +749,16 @@ export default function SealCenterPage({
     }
   };
   const loadDetailFiles = async (row: SealRow) => {
+    const requestId = detailRequestTracker.next();
     try {
       const { data } = await api.get("/attachments", {
         params: { record_id: row.id, category: "用印文件" },
       });
+      if (!detailRequestTracker.isCurrent(requestId)) return;
       setAttachments(data.items);
       setAttachmentSelectedKeys([]);
     } catch (error: any) {
+      if (!detailRequestTracker.isCurrent(requestId)) return;
       setAttachments([]);
       setAttachmentSelectedKeys([]);
       message.error(
@@ -759,16 +768,35 @@ export default function SealCenterPage({
     }
   };
   const openDetail = async (row: SealRow) => {
+    const requestId = detailRequestTracker.next();
     setDetail(row);
+    setHistory([]);
     setAttachments([]);
-    try {
-      const [historyResult] = await Promise.all([
-        api.get(`/records/${row.id}/history`),
-        loadDetailFiles(row),
-      ]);
-      setHistory(historyResult.data.items);
-    } catch {
+    setAttachmentSelectedKeys([]);
+    const [historyResult, filesResult] = await Promise.allSettled([
+      api.get(`/records/${row.id}/history`),
+      api.get("/attachments", {
+        params: { record_id: row.id, category: "用印文件" },
+      }),
+    ]);
+    if (!detailRequestTracker.isCurrent(requestId)) return;
+    if (historyResult.status === "fulfilled") {
+      setHistory(historyResult.value.data.items || []);
+    } else {
       setHistory([]);
+      message.error(
+        historyResult.reason?.response?.data?.detail ||
+          sealQueryFailureMessage(historyResult.reason?.response?.status),
+      );
+    }
+    if (filesResult.status === "fulfilled") {
+      setAttachments(filesResult.value.data.items || []);
+    } else {
+      setAttachments([]);
+      message.error(
+        filesResult.reason?.response?.data?.detail ||
+          sealAttachmentListFailureMessage(filesResult.reason?.response?.status),
+      );
     }
   };
   const downloadAttachment = async (item: AttachmentRow) => {
@@ -790,14 +818,23 @@ export default function SealCenterPage({
     }
   };
   const openFileList = async (row: SealRow) => {
+    const requestId = fileListRequestTracker.next();
+    setFileListRow(null);
+    setFileListAttachments([]);
+    setFileListOpen(false);
     try {
       const { data } = await api.get("/attachments", {
         params: { record_id: row.id, category: "用印文件" },
       });
+      if (!fileListRequestTracker.isCurrent(requestId)) return;
       setFileListRow(row);
-      setFileListAttachments(data.items);
+      setFileListAttachments(data.items || []);
       setFileListOpen(true);
     } catch (error: any) {
+      if (!fileListRequestTracker.isCurrent(requestId)) return;
+      setFileListRow(null);
+      setFileListAttachments([]);
+      setFileListOpen(false);
       message.error(
         error?.response?.data?.detail ||
           sealAttachmentListFailureMessage(error?.response?.status),
@@ -805,8 +842,19 @@ export default function SealCenterPage({
     }
   };
   const previewAttachment = async (item: AttachmentRow) => {
+    const requestId = previewRequestTracker.next();
+    setPreviewOpen(false);
+    setPreviewName("");
+    setPreviewText("");
+    setPreviewDetail("");
+    setPreviewMode("unsupported");
+    setPreviewUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return "";
+    });
     try {
       const { data } = await api.get(`/attachments/${item.id}/preview`);
+      if (!previewRequestTracker.isCurrent(requestId)) return;
       const mode = getSealPreviewMode(data);
       setPreviewMode(mode);
       setPreviewText(data.text || "");
@@ -820,11 +868,17 @@ export default function SealCenterPage({
           responseType: "blob",
         });
         const url = URL.createObjectURL(response.data);
+        if (!previewRequestTracker.isCurrent(requestId)) {
+          URL.revokeObjectURL(url);
+          return;
+        }
         setPreviewUrl(url);
       }
+      if (!previewRequestTracker.isCurrent(requestId)) return;
       setPreviewName(item.original_name);
       setPreviewOpen(true);
     } catch (error: any) {
+      if (!previewRequestTracker.isCurrent(requestId)) return;
       message.error(
         error?.response?.data?.detail ||
           sealAttachmentPreviewFailureMessage(error?.response?.status),
@@ -1886,8 +1940,11 @@ export default function SealCenterPage({
         size={640}
         title={`用印详情：${detail?.serial_no || ""}`}
         onClose={() => {
+          detailRequestTracker.invalidate();
           setDetail(null);
+          setHistory([]);
           setAttachments([]);
+          setAttachmentSelectedKeys([]);
         }}
       >
         {detail && (
@@ -2186,14 +2243,18 @@ export default function SealCenterPage({
         open={fileListOpen}
         title="文件列表"
         onCancel={() => {
+          fileListRequestTracker.invalidate();
           setFileListOpen(false);
           setFileListRow(null);
           setFileListAttachments([]);
+          setAttachmentSelectedKeys([]);
         }}
         footer={<Button onClick={() => {
+          fileListRequestTracker.invalidate();
           setFileListOpen(false);
           setFileListRow(null);
           setFileListAttachments([]);
+          setAttachmentSelectedKeys([]);
         }}>关闭</Button>}
       >
         <Table
@@ -2240,6 +2301,7 @@ export default function SealCenterPage({
         title={`文件预览：${previewName}`}
         width={900}
         footer={<Button onClick={() => {
+          previewRequestTracker.invalidate();
           setPreviewOpen(false);
           if (previewUrl) URL.revokeObjectURL(previewUrl);
           setPreviewUrl("");
@@ -2248,6 +2310,7 @@ export default function SealCenterPage({
           setPreviewName("");
         }}>关闭</Button>}
         onCancel={() => {
+          previewRequestTracker.invalidate();
           setPreviewOpen(false);
           if (previewUrl) URL.revokeObjectURL(previewUrl);
           setPreviewUrl("");

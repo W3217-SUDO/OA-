@@ -93,6 +93,32 @@ export function createSealAssetAuditRequestTracker() {
   };
 }
 
+export function createSealDetailRequestTracker() {
+  let current = 0;
+  return {
+    next: () => ++current,
+    invalidate: () => ++current,
+    isCurrent: (requestId: number) => requestId === current,
+  };
+}
+
+function createSealRequestTracker() {
+  let current = 0;
+  return {
+    next: () => ++current,
+    invalidate: () => ++current,
+    isCurrent: (requestId: number) => requestId === current,
+  };
+}
+
+export function createSealFileListRequestTracker() {
+  return createSealRequestTracker();
+}
+
+export function createSealPreviewRequestTracker() {
+  return createSealRequestTracker();
+}
+
 export function mergeSealAssetSnapshot<T extends { id: SealSelectionKey }>(
   assets: readonly T[],
   latest: T | null | undefined,

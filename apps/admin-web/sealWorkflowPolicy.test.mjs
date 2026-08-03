@@ -30,6 +30,9 @@ const {
   canSealWithdraw,
   createSealActionGate,
   createSealAssetAuditRequestTracker,
+  createSealDetailRequestTracker,
+  createSealFileListRequestTracker,
+  createSealPreviewRequestTracker,
   mergeSealAssetSnapshot,
   sealFilePagination,
   sealAttachmentListFailureMessage,
@@ -87,6 +90,34 @@ test("seal asset snapshot merge replaces only the matching asset and preserves m
     { id: 3, code: "A-3", usage_count: 6 },
   ]);
   assert.deepEqual(mergeSealAssetSnapshot(current, null), current);
+});
+
+test("seal detail request tracker invalidates stale detail responses", () => {
+  const tracker = createSealDetailRequestTracker();
+  const firstRequest = tracker.next();
+  const secondRequest = tracker.next();
+  assert.equal(tracker.isCurrent(firstRequest), false);
+  assert.equal(tracker.isCurrent(secondRequest), true);
+  tracker.invalidate();
+  assert.equal(tracker.isCurrent(secondRequest), false);
+});
+
+test("file-list and preview trackers reject A-late/B-fast and closed responses", () => {
+  const fileListTracker = createSealFileListRequestTracker();
+  const fileA = fileListTracker.next();
+  const fileB = fileListTracker.next();
+  assert.equal(fileListTracker.isCurrent(fileA), false);
+  assert.equal(fileListTracker.isCurrent(fileB), true);
+  fileListTracker.invalidate();
+  assert.equal(fileListTracker.isCurrent(fileB), false);
+
+  const previewTracker = createSealPreviewRequestTracker();
+  const previewA = previewTracker.next();
+  const previewB = previewTracker.next();
+  assert.equal(previewTracker.isCurrent(previewA), false);
+  assert.equal(previewTracker.isCurrent(previewB), true);
+  previewTracker.invalidate();
+  assert.equal(previewTracker.isCurrent(previewB), false);
 });
 
 test("seal audit projection preserves persisted fields and derives fallback round", () => {

@@ -30,7 +30,7 @@ test("seal query reset and status-aware detail loading are wired", () => {
   assert.match(local, /queryForm\.resetFields\(\)/);
   assert.match(local, /sealQueryFailureMessage/);
   assert.match(local, /sealAttachmentListFailureMessage/);
-  assert.match(local, /const \[historyResult\] = await Promise\.all/);
+  assert.match(local, /const \[historyResult, filesResult\] = await Promise\.allSettled/);
 });
 
 test("seal preview keeps legacy customer, type, print and remark fields", () => {
