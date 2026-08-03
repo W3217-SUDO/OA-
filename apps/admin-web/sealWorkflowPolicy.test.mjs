@@ -29,10 +29,16 @@ const {
   canSealAction,
   canSealWithdraw,
   createSealActionGate,
+  createSealAssetAuditRequestTracker,
+  mergeSealAssetSnapshot,
   sealFilePagination,
   sealAttachmentListFailureMessage,
   formatSealAttachmentSize,
   getSealAttachmentExtension,
+  canViewSealAssetAudit,
+  shouldCloseSealAssetAuditAfterDelete,
+  sealAssetAuditFailureMessage,
+  sealAssetAuditPagination,
   sealQueryFailureMessage,
   selectedSealRows,
   compareSealDateValues,
@@ -43,6 +49,44 @@ test("seal file pagination keeps the legacy default, six options and GO", () => 
   assert.equal(sealFilePagination.defaultPageSize, 15);
   assert.deepEqual(sealFilePagination.pageSizeOptions, [10, 15, 20, 50, 100, 200]);
   assert.equal(sealFilePagination.showQuickJumper.goButton, "GO");
+});
+
+test("seal asset audit pagination and permission helper match the backend contract", () => {
+  assert.equal(sealAssetAuditPagination.defaultPageSize, 15);
+  assert.deepEqual(sealAssetAuditPagination.pageSizeOptions, [10, 15, 20, 50, 100, 200]);
+  assert.equal(sealAssetAuditPagination.showQuickJumper.goButton, "GO");
+  assert.equal(canViewSealAssetAudit("admin"), true);
+  assert.equal(canViewSealAssetAudit("manager"), true);
+  assert.equal(canViewSealAssetAudit("user"), false);
+  assert.equal(canViewSealAssetAudit(""), false);
+  assert.equal(shouldCloseSealAssetAuditAfterDelete(7, 7), true);
+  assert.equal(shouldCloseSealAssetAuditAfterDelete(7, 8), false);
+  assert.equal(shouldCloseSealAssetAuditAfterDelete(7, null), false);
+  const tracker = createSealAssetAuditRequestTracker();
+  const firstRequest = tracker.next();
+  const secondRequest = tracker.next();
+  assert.equal(tracker.isCurrent(firstRequest), false);
+  assert.equal(tracker.isCurrent(secondRequest), true);
+  tracker.invalidate();
+  assert.equal(tracker.isCurrent(secondRequest), false);
+  assert.equal(sealAssetAuditFailureMessage(403), "当前账号无权查看印章资产审计");
+  assert.equal(sealAssetAuditFailureMessage(404), "印章不存在");
+  assert.equal(sealAssetAuditFailureMessage(422), "审计日期范围无效");
+});
+
+test("seal asset snapshot merge replaces only the matching asset and preserves misses", () => {
+  const current = [
+    { id: 1, code: "A-1", usage_count: 2 },
+    { id: 2, code: "A-2", usage_count: 4 },
+    { id: 3, code: "A-3", usage_count: 6 },
+  ];
+  const latest = { id: 2, code: "A-2", usage_count: 5 };
+  assert.deepEqual(mergeSealAssetSnapshot(current, latest), [
+    { id: 1, code: "A-1", usage_count: 2 },
+    { id: 2, code: "A-2", usage_count: 5 },
+    { id: 3, code: "A-3", usage_count: 6 },
+  ]);
+  assert.deepEqual(mergeSealAssetSnapshot(current, null), current);
 });
 
 test("seal audit projection preserves persisted fields and derives fallback round", () => {

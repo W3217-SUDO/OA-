@@ -44,16 +44,23 @@ import {
   canBatchStampSealRows,
   canBatchWithdrawSealRows,
   canSealAction,
+  canViewSealAssetAudit,
   createSealActionGate,
+  createSealAssetAuditRequestTracker,
+  mergeSealAssetSnapshot,
   formatSealAttachmentSize,
   getSealAttachmentExtension,
+  sealAssetAuditFailureMessage,
+  sealAssetAuditPagination,
   sealFilePagination,
   sealAttachmentListFailureMessage,
   sealQueryFailureMessage,
   compareSealDateValues,
   selectedSealRows,
+  shouldCloseSealAssetAuditAfterDelete,
   toSealAuditRows,
 } from "./sealWorkflowPolicy";
+import type { SealAssetAuditRow } from "./sealWorkflowPolicy";
 import { formatRequiredDate } from "./formSafety";
 import RecordImportButton from "./RecordImportButton";
 import "./seal-center.css";
@@ -218,6 +225,20 @@ export default function SealCenterPage({
   const [tab, setTab] = useState(tabFromView(initialView));
   const [rows, setRows] = useState<SealRow[]>([]);
   const [assets, setAssets] = useState<SealAsset[]>([]);
+  const [assetAuditOpen, setAssetAuditOpen] = useState(false);
+  const [assetAuditAsset, setAssetAuditAsset] = useState<SealAsset | null>(null);
+  const [assetAuditRows, setAssetAuditRows] = useState<SealAssetAuditRow[]>([]);
+  const [assetAuditTotal, setAssetAuditTotal] = useState(0);
+  const [assetAuditPage, setAssetAuditPage] = useState(1);
+  const [assetAuditPageSize, setAssetAuditPageSize] = useState(sealAssetAuditPagination.defaultPageSize);
+  const [assetAuditLoading, setAssetAuditLoading] = useState(false);
+  const [assetAuditFilters, setAssetAuditFilters] = useState({
+    action: "",
+    operator: "",
+    keyword: "",
+    date_from: "",
+    date_to: "",
+  });
   const [cases, setCases] = useState<RelationRow[]>([]);
   const [contracts, setContracts] = useState<RelationRow[]>([]);
   const [customers, setCustomers] = useState<RelationRow[]>([]);
@@ -263,6 +284,15 @@ export default function SealCenterPage({
   const [queryForm] = Form.useForm();
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const actionGate = useMemo(() => createSealActionGate(), []);
+  const assetAuditRequestTracker = useMemo(() => createSealAssetAuditRequestTracker(), []);
+  const sessionRole = useMemo(() => {
+    try {
+      return String((JSON.parse(localStorage.getItem("user") || "{}") as { role?: string }).role || "");
+    } catch {
+      return "";
+    }
+  }, []);
+  const canReadAssetAudit = canViewSealAssetAudit(sessionRole);
   const selectedUseType = Form.useWatch("use_type", createForm);
   const clearQuery = () => {
     queryForm.resetFields();
@@ -320,6 +350,105 @@ export default function SealCenterPage({
     } finally {
       setLoading(false);
     }
+  };
+  const clearAssetAudit = () => {
+    assetAuditRequestTracker.invalidate();
+    setAssetAuditLoading(false);
+    setAssetAuditOpen(false);
+    setAssetAuditAsset(null);
+    setAssetAuditRows([]);
+    setAssetAuditTotal(0);
+    setAssetAuditPage(1);
+  };
+  const loadAssetAudit = async (
+    assetId: number,
+    nextPage = assetAuditPage,
+    nextPageSize = assetAuditPageSize,
+    filters = assetAuditFilters,
+  ) => {
+    if (!canReadAssetAudit) return;
+    const requestId = assetAuditRequestTracker.next();
+    setAssetAuditLoading(true);
+    try {
+      const { data } = await api.get(`/seals/assets/${assetId}/audit`, {
+        params: {
+          page: nextPage,
+          page_size: nextPageSize,
+          action: filters.action || undefined,
+          operator: filters.operator || undefined,
+          keyword: filters.keyword || undefined,
+          date_from: filters.date_from || undefined,
+          date_to: filters.date_to || undefined,
+        },
+      });
+      if (!assetAuditRequestTracker.isCurrent(requestId)) return;
+      setAssetAuditRows(Array.isArray(data.items) ? data.items : []);
+      setAssetAuditTotal(Number(data.total) || 0);
+      setAssetAuditPage(Number(data.page) || nextPage);
+      setAssetAuditPageSize(Number(data.page_size) || nextPageSize);
+    } catch (error: any) {
+      if (!assetAuditRequestTracker.isCurrent(requestId)) return;
+      message.error(
+        error?.response?.data?.detail ||
+          sealAssetAuditFailureMessage(error?.response?.status),
+      );
+    } finally {
+      if (assetAuditRequestTracker.isCurrent(requestId)) setAssetAuditLoading(false);
+    }
+  };
+  const refreshAssetAudit = async () => {
+    if (!assetAuditOpen || !assetAuditAsset || !canReadAssetAudit) return;
+    const target = assetAuditAsset;
+    const requestId = assetAuditRequestTracker.next();
+    setAssetAuditLoading(true);
+    try {
+      const [inventoryResult, auditResult] = await Promise.all([
+        api.get("/seals/assets", { params: { keyword: target.code } }),
+        api.get(`/seals/assets/${target.id}/audit`, {
+          params: {
+            page: assetAuditPage,
+            page_size: assetAuditPageSize,
+            action: assetAuditFilters.action || undefined,
+            operator: assetAuditFilters.operator || undefined,
+            keyword: assetAuditFilters.keyword || undefined,
+            date_from: assetAuditFilters.date_from || undefined,
+            date_to: assetAuditFilters.date_to || undefined,
+          },
+        }),
+      ]);
+      if (!assetAuditRequestTracker.isCurrent(requestId)) return;
+      const latest = (inventoryResult.data.items || []).find((item: SealAsset) => item.id === target.id);
+      if (!latest) {
+        clearAssetAudit();
+        return;
+      }
+      setAssets((currentAssets) => mergeSealAssetSnapshot(currentAssets, latest));
+      setAssetAuditAsset(latest);
+      setAssetAuditRows(Array.isArray(auditResult.data.items) ? auditResult.data.items : []);
+      setAssetAuditTotal(Number(auditResult.data.total) || 0);
+      setAssetAuditPage(Number(auditResult.data.page) || assetAuditPage);
+      setAssetAuditPageSize(Number(auditResult.data.page_size) || assetAuditPageSize);
+    } catch (error: any) {
+      if (!assetAuditRequestTracker.isCurrent(requestId)) return;
+      message.error(
+        error?.response?.data?.detail ||
+          sealAssetAuditFailureMessage(error?.response?.status),
+      );
+    } finally {
+      if (assetAuditRequestTracker.isCurrent(requestId)) setAssetAuditLoading(false);
+    }
+  };
+  const openAssetAudit = (asset: SealAsset) => {
+    if (!canReadAssetAudit) return;
+    assetAuditRequestTracker.invalidate();
+    const filters = { action: "", operator: "", keyword: "", date_from: "", date_to: "" };
+    const pageSize = sealAssetAuditPagination.defaultPageSize;
+    setAssetAuditAsset(asset);
+    setAssetAuditFilters(filters);
+    setAssetAuditPage(1);
+    setAssetAuditPageSize(pageSize);
+    setAssetAuditOpen(true);
+    void loadAssetAudit(asset.id, 1, pageSize, filters);
   };
   const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
@@ -576,6 +705,7 @@ export default function SealCenterPage({
       setAction(null);
       actionForm.resetFields();
       load();
+      if (action.type === "stamp") void refreshAssetAudit();
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail || sealActionFailureMessage(action.type),
@@ -604,6 +734,7 @@ export default function SealCenterPage({
       setSelectedKeys([]);
       batchStampForm.resetFields();
       load();
+      void refreshAssetAudit();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "批量登记实际用印失败");
     } finally {
@@ -827,6 +958,7 @@ export default function SealCenterPage({
       setEditAsset(null);
       assetForm.resetFields();
       load();
+      void refreshAssetAudit();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "印章保存失败");
     } finally {
@@ -844,6 +976,11 @@ export default function SealCenterPage({
       await api.delete(`/seals/assets/${item.id}`);
       message.success("印章资产已删除");
       void load();
+      if (shouldCloseSealAssetAuditAfterDelete(item.id, assetAuditAsset?.id ?? null)) {
+        clearAssetAudit();
+      } else {
+        void refreshAssetAudit();
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "印章资产删除失败");
     } finally {
@@ -1050,6 +1187,11 @@ export default function SealCenterPage({
       fixed: "right" as const,
       render: (_: unknown, r: SealAsset) => (
         <Space size={0}>
+          {canReadAssetAudit && (
+            <Button type="link" onClick={() => openAssetAudit(r)}>
+              审计
+            </Button>
+          )}
           <Button type="link" onClick={() => openAsset(r)}>
             维护
           </Button>
@@ -1559,6 +1701,87 @@ export default function SealCenterPage({
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={assetAuditOpen && canReadAssetAudit}
+        width={920}
+        title={assetAuditAsset ? `印章详情与审计：${assetAuditAsset.name}（${assetAuditAsset.code}）` : "印章详情与审计"}
+        footer={<Button onClick={clearAssetAudit}>关闭</Button>}
+        onCancel={clearAssetAudit}
+      >
+        {assetAuditAsset && (
+          <>
+            <Descriptions
+              bordered
+              size="small"
+              column={3}
+              items={[
+                { key: "code", label: "印章编号", children: assetAuditAsset.code },
+                { key: "name", label: "印章名称", children: assetAuditAsset.name },
+                { key: "type", label: "印章类别", children: assetAuditAsset.seal_type },
+                { key: "custodian", label: "保管人", children: assetAuditAsset.custodian },
+                { key: "location", label: "存放位置", children: assetAuditAsset.location || "—" },
+                { key: "status", label: "状态", children: <Tag color={assetColors[assetAuditAsset.status] || "blue"}>{assetAuditAsset.status}</Tag> },
+                { key: "usage", label: "累计用印", children: `${assetAuditAsset.usage_count} 份` },
+                { key: "last_used", label: "最近使用", children: assetAuditAsset.last_used_at ? dayjs(assetAuditAsset.last_used_at).format("YYYY-MM-DD HH:mm") : "—" },
+                { key: "remark", label: "备注", children: assetAuditAsset.remark || "—", span: 3 },
+              ]}
+            />
+            <Space wrap style={{ margin: "12px 0" }}>
+              <Input
+                placeholder="动作"
+                value={assetAuditFilters.action}
+                onChange={(event) => setAssetAuditFilters((current) => ({ ...current, action: event.target.value }))}
+                style={{ width: 150 }}
+              />
+              <Input
+                placeholder="操作人"
+                value={assetAuditFilters.operator}
+                onChange={(event) => setAssetAuditFilters((current) => ({ ...current, operator: event.target.value }))}
+                style={{ width: 130 }}
+              />
+              <Input
+                placeholder="关键词（动作/操作人/备注）"
+                value={assetAuditFilters.keyword}
+                onChange={(event) => setAssetAuditFilters((current) => ({ ...current, keyword: event.target.value }))}
+                style={{ width: 220 }}
+              />
+              <DatePicker.RangePicker
+                value={assetAuditFilters.date_from && assetAuditFilters.date_to ? [dayjs(assetAuditFilters.date_from), dayjs(assetAuditFilters.date_to)] : null}
+                onChange={(values) => setAssetAuditFilters((current) => ({ ...current, date_from: values?.[0]?.format("YYYY-MM-DD") || "", date_to: values?.[1]?.format("YYYY-MM-DD") || "" }))}
+              />
+              <Button type="primary" onClick={() => { setAssetAuditPage(1); if (assetAuditAsset) void loadAssetAudit(assetAuditAsset.id, 1, assetAuditPageSize, assetAuditFilters); }}>查询</Button>
+              <Button onClick={() => { const filters = { action: "", operator: "", keyword: "", date_from: "", date_to: "" }; setAssetAuditFilters(filters); setAssetAuditPage(1); if (assetAuditAsset) void loadAssetAudit(assetAuditAsset.id, 1, assetAuditPageSize, filters); }}>清空</Button>
+            </Space>
+            <Table
+              rowKey="id"
+              size="small"
+              loading={assetAuditLoading}
+              dataSource={assetAuditRows}
+              locale={{ emptyText: "暂无审计记录" }}
+              columns={[
+                { title: "动作", dataIndex: "action", width: 150 },
+                { title: "操作人", dataIndex: "operator", width: 110 },
+                { title: "备注", dataIndex: "comment", ellipsis: true },
+                { title: "时间", dataIndex: "created_at", width: 170, render: (value: string) => dayjs(value).format("YYYY-MM-DD HH:mm:ss") },
+              ]}
+              pagination={{
+                current: assetAuditPage,
+                pageSize: assetAuditPageSize,
+                total: assetAuditTotal,
+                showSizeChanger: sealAssetAuditPagination.showSizeChanger,
+                pageSizeOptions: sealAssetAuditPagination.pageSizeOptions.map(String),
+                showQuickJumper: sealAssetAuditPagination.showQuickJumper,
+                showTotal: sealAssetAuditPagination.showTotal,
+                onChange: (page, pageSize) => {
+                  setAssetAuditPage(page);
+                  setAssetAuditPageSize(pageSize);
+                  if (assetAuditAsset) void loadAssetAudit(assetAuditAsset.id, page, pageSize);
+                },
+              }}
+            />
+          </>
+        )}
       </Modal>
       <Modal
         open={Boolean(action)}

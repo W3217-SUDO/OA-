@@ -57,6 +57,63 @@ export const sealFilePagination = {
   showTotal: (total: number) => `共 ${total} 个文件`,
 };
 
+export type SealAssetAuditRow = {
+  id: number;
+  asset_id: number;
+  asset_code: string;
+  asset_name: string;
+  action: string;
+  operator: string;
+  comment: string;
+  created_at: string;
+};
+
+export const sealAssetAuditPagination = {
+  defaultPageSize: 15,
+  showSizeChanger: true,
+  pageSizeOptions: [10, 15, 20, 50, 100, 200],
+  showQuickJumper: { goButton: "GO" },
+  showTotal: (total: number) => `共 ${total} 条审计记录`,
+};
+
+export function canViewSealAssetAudit(role: unknown): boolean {
+  return role === "admin" || role === "manager";
+}
+
+export function shouldCloseSealAssetAuditAfterDelete(assetId: number, openAssetId: number | null): boolean {
+  return openAssetId !== null && assetId === openAssetId;
+}
+
+export function createSealAssetAuditRequestTracker() {
+  let current = 0;
+  return {
+    next: () => ++current,
+    invalidate: () => ++current,
+    isCurrent: (requestId: number) => requestId === current,
+  };
+}
+
+export function mergeSealAssetSnapshot<T extends { id: SealSelectionKey }>(
+  assets: readonly T[],
+  latest: T | null | undefined,
+): T[] {
+  if (!latest) return [...assets];
+  let replaced = false;
+  const merged = assets.map((asset) => {
+    if (asset.id !== latest.id) return asset;
+    replaced = true;
+    return latest;
+  });
+  return replaced ? merged : [...assets];
+}
+
+export function sealAssetAuditFailureMessage(status?: number): string {
+  if (status === 403) return "当前账号无权查看印章资产审计";
+  if (status === 404) return "印章不存在";
+  if (status === 422) return "审计日期范围无效";
+  return "印章资产审计加载失败";
+}
+
 export function selectedSealRows<T extends { id: SealSelectionKey }>(
   rows: readonly T[],
   selectedKeys: readonly SealSelectionKey[],

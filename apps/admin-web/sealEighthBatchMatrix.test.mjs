@@ -47,6 +47,30 @@ test("seal file lists expose legacy uploader, date, type and size metadata", () 
   assert.match(local, /dataIndex: "created_at"/);
 });
 
+test("seal asset audit detail consumes the paged backend contract behind an admin-manager gate", () => {
+  assert.match(local, /canViewSealAssetAudit/);
+  assert.match(local, /canReadAssetAudit && \(/);
+  assert.match(local, /openAssetAudit\(r\)/);
+  assert.match(local, /`\/seals\/assets\/\$\{assetId\}\/audit`/);
+  assert.match(local, /page_size: nextPageSize/);
+  assert.match(local, /date_from: filters\.date_from/);
+  assert.match(local, /date_to: filters\.date_to/);
+  assert.match(local, /sealAssetAuditPagination\.pageSizeOptions/);
+  assert.match(local, /assetAuditTotal/);
+  assert.match(local, /refreshAssetAudit/);
+  assert.match(local, /shouldCloseSealAssetAuditAfterDelete/);
+  assert.match(local, /setAssetAuditOpen\(false\)/);
+  assert.match(local, /setAssetAuditRows\(\[\]\)/);
+  assert.match(local, /assetAuditRequestTracker\.next\(\)/);
+  assert.match(local, /assetAuditRequestTracker\.isCurrent\(requestId\)/);
+  assert.match(local, /const latest = .*find\(.*target\.id/);
+  assert.match(local, /setAssetAuditAsset\(latest\)/);
+  assert.match(local, /mergeSealAssetSnapshot\(currentAssets, latest\)/);
+  assert.doesNotMatch(local, /setAssets\(inventoryResult\.data\.items/);
+  assert.match(local, /Promise\.all\(\[/);
+  assert.match(local, /clearAssetAudit\(\)/);
+});
+
 test("single seal mutations reuse the in-flight action gate", () => {
   assert.match(local, /const createApplication = async[\s\S]*?actionGate\.tryEnter/);
   assert.match(local, /const submit = async[\s\S]*?actionGate\.tryEnter/);
