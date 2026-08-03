@@ -69,3 +69,50 @@ test("contract payment detail refuses an unresolvable finance target", () => {
     { ok: false, message: "当前付款记录缺少有效金额" },
   );
 });
+
+test("contract payment detail refuses a row whose persisted contract reference conflicts", () => {
+  assert.deepEqual(
+    buildContractPaymentNavigation({
+      pathname: "/workspace",
+      payment: {
+        id: 806,
+        serial_no: "FK20260802001",
+        customer: "CODEX-H2客户",
+        data: { contract_id: 596, contract_no: "SHHT2510027", amount: 1250.5 },
+      },
+      contract: { id: 595, serial_no: "SHHT2510026", customer: "CODEX-H2客户" },
+    }),
+    { ok: false, message: "当前付款记录关联合同不一致" },
+  );
+
+  assert.deepEqual(
+    buildContractPaymentNavigation({
+      pathname: "/workspace",
+      payment: {
+        id: 806,
+        serial_no: "FK20260802001",
+        customer: "CODEX-H2客户",
+        contract_record_id: 595,
+        contract_id: 596,
+        data: { amount: 1250.5 },
+      },
+      contract: { id: 595, serial_no: "SHHT2510026", customer: "CODEX-H2客户" },
+    }),
+    { ok: false, message: "当前付款记录关联合同不一致" },
+  );
+
+  assert.deepEqual(
+    buildContractPaymentNavigation({
+      pathname: "/workspace",
+      payment: {
+        id: 806,
+        serial_no: "FK20260802001",
+        customer: "CODEX-H2客户",
+        contract_no: "SHHT2510026",
+        data: { contract_no: "SHHT2510027", amount: 1250.5 },
+      },
+      contract: { id: 595, serial_no: "SHHT2510026", customer: "CODEX-H2客户" },
+    }),
+    { ok: false, message: "当前付款记录关联合同不一致" },
+  );
+});

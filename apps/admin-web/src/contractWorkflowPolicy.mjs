@@ -227,9 +227,22 @@ export const filterContractLinkedRows = (rows = [], contract = {}) => {
   const contractNo = String(contract?.serial_no || "").trim();
   return rows.filter((item) => {
     const data = item?.data || {};
-    const linkedId = Number(item?.contract_record_id || data.contract_record_id || data.contract_id || 0);
-    const linkedNo = String(item?.contract_no || data.contract_no || "").trim();
-    return (contractId > 0 && linkedId === contractId) || (Boolean(contractNo) && linkedNo === contractNo);
+    const linkedIds = [item?.contract_record_id, item?.contract_id, data.contract_record_id, data.contract_id]
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const linkedNos = [item?.contract_no, data.contract_no]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const uniqueIds = [...new Set(linkedIds)];
+    const uniqueNos = [...new Set(linkedNos)];
+    if (uniqueIds.length > 1 || uniqueNos.length > 1) return false;
+    const linkedId = uniqueIds[0] || 0;
+    const linkedNo = uniqueNos[0] || "";
+    const hasId = linkedId > 0;
+    const hasNo = Boolean(linkedNo);
+    if (hasId && hasNo) return contractId > 0 && Boolean(contractNo) && linkedId === contractId && linkedNo === contractNo;
+    if (hasId) return contractId > 0 && linkedId === contractId;
+    return hasNo && Boolean(contractNo) && linkedNo === contractNo;
   });
 };
 

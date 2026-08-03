@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   CONTRACT_ATTACHMENT_ACCEPT,
+  extractContractErrorMessage,
   normalizeContractActionResponse,
   validateContractAttachment,
 } from "./src/contractWorkflowPolicy.mjs";
+
+const contractCenterSource = fs.readFileSync(new URL("./src/ContractCenterPage.tsx", import.meta.url), "utf8");
 
 test("contract attachment inputs retain the legacy accepted file formats and validation", () => {
   for (const extension of [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"]) {
@@ -27,4 +31,17 @@ test("contract action feedback keeps server failure messages instead of hiding t
 
 test("contract action feedback treats ordinary local resource responses as successful", () => {
   assert.deepEqual(normalizeContractActionResponse({ data: { id: 42 } }, "操作失败"), { ok: true, message: "操作失败" });
+});
+
+test("mutation handlers preserve legacy server messages and keep validation UX", () => {
+  assert.equal(extractContractErrorMessage(new Error("旧 PostResponse Message"), "固定失败文案"), "旧 PostResponse Message");
+  for (const handler of ["submit", "createContractPayment", "createContractInvoice", "approve"]) {
+    const start = contractCenterSource.indexOf(`const ${handler} =`);
+    assert.ok(start >= 0, `${handler} handler is wired`);
+    const end = contractCenterSource.indexOf("\n  };", start);
+    const source = contractCenterSource.slice(start, end < 0 ? undefined : end);
+    assert.match(source, /normalizeContractActionResponse\(/);
+    assert.match(source, /extractContractErrorMessage\(error/);
+  }
+  assert.match(contractCenterSource, /if \(error\?\.errorFields\) return;/);
 });

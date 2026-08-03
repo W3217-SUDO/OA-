@@ -8,7 +8,7 @@ const source = fs.readFileSync(new URL('./src/ContractCenterPage.tsx', import.me
 test('contract details load finance invoices and keep only the exact contract number', () => {
   assert.match(source, /api\.get\("\/finance\/invoices",\s*\{\s*params:\s*\{\s*scope:\s*"company",\s*customer:\s*contract\.customer,\s*page:\s*1,\s*page_size:\s*100\s*\}\s*\}\)/)
   assert.match(source, /filterContractLinkedRows\(invoiceResult\.value\.data\.items\s*\|\|\s*\[\],\s*contract\)/)
-  assert.match(source, /filterContractLinkedRows\(paymentResult\.value\.data\.items\s*\|\|\s*\[\],\s*contract\)/)
+  assert.match(source, /normalizeContractPaymentApplications\(paymentResult\.value\.data,\s*contract\)/)
   assert.doesNotMatch(source, /item\.title\?\.includes\(contract\.serial_no\)/)
   assert.doesNotMatch(source, /module:\s*"invoice",\s*keyword:\s*contract\.serial_no/)
 })

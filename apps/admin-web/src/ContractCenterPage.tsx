@@ -38,6 +38,9 @@ import { filterPendingContractApprovals } from "./contractAuditScope";
 import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination.mjs";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
+import { selectContractCurrentApprovalStep } from "./contractApprovalCurrentStep.mjs";
+import { normalizeContractPaymentApplications } from "./contractPaymentApplicationPresentation.mjs";
+import { createContractMutationGate } from "./contractMutationGate.mjs";
 import {
   CONTRACT_OBJECT_DEFAULT_PAGE_SIZE,
   CONTRACT_OBJECT_PAGE_SIZES,
@@ -235,6 +238,7 @@ export default function ContractCenterPage({
     [submitting, setSubmitting] = useState<Contract | null>(null),
     [reviewing, setReviewing] = useState<Contract | null>(null),
     [steps, setSteps] = useState<Step[]>([]),
+    [reviewCurrentStep, setReviewCurrentStep] = useState<Step | null>(null),
     [changing, setChanging] = useState<Contract | null>(null),
     [changeHistory, setChangeHistory] = useState<Contract | null>(null),
     [investigating, setInvestigating] = useState<Contract | null>(null),
@@ -252,6 +256,9 @@ export default function ContractCenterPage({
     [contractEventsError, setContractEventsError] = useState<string | null>(null),
     [eventTarget, setEventTarget] = useState<Contract | null>(null),
     [eventSaving, setEventSaving] = useState(false);
+  const [submitSaving, setSubmitSaving] = useState(false);
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [invoiceSaving, setInvoiceSaving] = useState(false);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [approverSettingsOpen, setApproverSettingsOpen] = useState(false);
   const [approverSettings, setApproverSettings] = useState<ApproverSetting[]>([]);
@@ -282,6 +289,11 @@ export default function ContractCenterPage({
   const viewingAttachmentRequest = useRef(0);
   const contractEventRequestTracker = useRef(createContractEventRequestTracker());
   const contractEventSubmitGate = useRef(createContractEventSubmitGate());
+  const contractMutationGates = useRef({
+    submit: createContractMutationGate(),
+    payment: createContractMutationGate(),
+    invoice: createContractMutationGate(),
+  });
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
@@ -369,7 +381,7 @@ export default function ContractCenterPage({
         // finance invoice projection so issued applications reappear in the
         // contract detail instead of falling through to an empty table.
         api.get("/finance/invoices", { params: { scope: "company", customer: contract.customer, page: 1, page_size: 100 } }),
-        api.get("/records", { params: { module: "contract_payment", keyword: contract.serial_no, page: 1, page_size: 100 } }),
+        api.get(`/contracts/${contract.id}/payment-applications`),
         api.get(`/contracts/${contract.id}/approvals`),
       ]);
       if (requestId === viewingAttachmentRequest.current) {
@@ -408,7 +420,7 @@ export default function ContractCenterPage({
           ? sortContractRecordRows(filterContractLinkedRows(invoiceResult.value.data.items || [], contract))
           : []);
         setDetailPayments(paymentResult.status === "fulfilled"
-          ? sortContractRecordRows(filterContractLinkedRows(paymentResult.value.data.items || [], contract))
+          ? normalizeContractPaymentApplications(paymentResult.value.data, contract).slice().sort((left, right) => left.id - right.id)
           : []);
         const approvalItems = approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : [];
         setDetailApprovals(normalizeContractApprovalHistory(approvalItems).map((item, index) => ({ ...item, step_order: Number(approvalItems[index]?.step_order || index + 1) })) as Step[]);
@@ -643,6 +655,7 @@ export default function ContractCenterPage({
     setWizardStep(0);
     setContractFile(null);
     setSteps([]);
+    setReviewCurrentStep(null);
     setAttachments([]);
     setHistory([]);
     form.resetFields();
@@ -923,7 +936,7 @@ export default function ContractCenterPage({
       message.success(approved ? "当前审批节点已通过" : "合同审批已拒绝");
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "审批失败");
+      message.error(extractContractErrorMessage(error, "审批失败"));
     }
   };
   const createSealApplication = async () => {
@@ -1043,7 +1056,9 @@ export default function ContractCenterPage({
   };
   const deleteViewingAttachment = async (item: Attachment) => {
     try {
-      await api.delete(`/attachments/${item.id}`);
+      const response = await api.delete(`/attachments/${item.id}`);
+      const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       await openViewing(viewing!);
       message.success("合同附件已删除");
     } catch (error: any) {
@@ -1051,17 +1066,22 @@ export default function ContractCenterPage({
     }
   };
   const submit = async () => {
-    if (!submitting) return;
-    const v = await submitForm.validateFields();
+    if (!submitting || !contractMutationGates.current.submit.tryEnter()) return;
+    setSubmitSaving(true);
     try {
+      const v = await submitForm.validateFields();
       const response = await api.post(`/contracts/${submitting.id}/submit`, { approvers: v.approvers ? [v.approvers] : [], comment: v.comment || "" });
       const feedback = normalizeContractActionResponse(response, "提交审批失败");
       if (!feedback.ok) throw new Error(feedback.message);
       message.success("已提交至指定审批人的待审批列表");
       setSubmitting(null);
-      load();
+      await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "提交失败");
+      if (error?.errorFields) return;
+      message.error(extractContractErrorMessage(error, "提交失败"));
+    } finally {
+      contractMutationGates.current.submit.leave();
+      setSubmitSaving(false);
     }
   };
   const openReview = async (r: Contract) => {
@@ -1069,6 +1089,7 @@ export default function ContractCenterPage({
       const { data } = await api.get(`/contracts/${r.id}/approvals`);
       setReviewing(r);
       setSteps(data.items);
+      setReviewCurrentStep(selectContractCurrentApprovalStep<Step>(data));
     } catch {
       message.error("审批节点加载失败");
     }
@@ -1085,9 +1106,10 @@ export default function ContractCenterPage({
       const { data } = await api.get(`/contracts/${reviewing.id}/approvals`);
       setSteps(data.items);
       setReviewing(data.contract);
+      setReviewCurrentStep(selectContractCurrentApprovalStep<Step>(data));
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "审批失败");
+      message.error(extractContractErrorMessage(error, "审批失败"));
     }
   };
   const openChange = (r: Contract) => {
@@ -1125,7 +1147,7 @@ export default function ContractCenterPage({
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同变更审批失败");
+      message.error(extractContractErrorMessage(error, "合同变更审批失败"));
     }
   };
   const openChanges = async (r: Contract) => {
@@ -1244,20 +1266,25 @@ export default function ContractCenterPage({
     }
   };
   const createContractPayment = async () => {
-    if (!paymentTarget) return;
-    const values = await paymentForm.validateFields();
-    const lines = selectedPaymentObjectKeys.map((key) => ({ contract_object_id: Number(key), amount: Number(paymentAmounts[Number(key)] || 0) }));
-    if (!lines.length) { message.error("请至少选择一条合同标的"); return; }
-    if (lines.some((line) => !line.amount || line.amount <= 0)) { message.error("请选择合同标的并填写本次支付金额"); return; }
-    const exceeding = lines.find((line) => line.amount > Number(paymentCandidates.find((item) => item.contract_object_id === line.contract_object_id)?.remaining_amount || 0) + 0.0001);
-    if (exceeding) { message.error("本次支付金额不能超过待付余额"); return; }
+    if (!paymentTarget || !contractMutationGates.current.payment.tryEnter()) return;
+    setPaymentSaving(true);
     try {
-      const { data } = await api.post(`/contracts/${paymentTarget.id}/payment-applications`, {
+      const values = await paymentForm.validateFields();
+      const lines = selectedPaymentObjectKeys.map((key) => ({ contract_object_id: Number(key), amount: Number(paymentAmounts[Number(key)] || 0) }));
+      if (!lines.length) { message.error("请至少选择一条合同标的"); return; }
+      if (lines.some((line) => !line.amount || line.amount <= 0)) { message.error("请选择合同标的并填写本次支付金额"); return; }
+      const exceeding = lines.find((line) => line.amount > Number(paymentCandidates.find((item) => item.contract_object_id === line.contract_object_id)?.remaining_amount || 0) + 0.0001);
+      if (exceeding) { message.error("本次支付金额不能超过待付余额"); return; }
+      const response = await api.post(`/contracts/${paymentTarget.id}/payment-applications`, {
         ...values,
         application_date: formatRequiredDate(values.application_date, "申请日期"),
         lines,
       });
+      const feedback = normalizeContractActionResponse(response, "合同付款申请创建失败");
+      if (!feedback.ok) throw new Error(feedback.message);
+      const { data } = response;
       message.success(`合同付款申请 ${data.serial_no} 已提交审批`);
+      if (viewing?.id === paymentTarget.id) await openViewing(paymentTarget);
       setPaymentTarget(null);
       paymentForm.resetFields();
       setPaymentCandidates([]);
@@ -1265,7 +1292,11 @@ export default function ContractCenterPage({
       setSelectedPaymentObjectKeys([]);
       setPaymentAmounts({});
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同付款申请创建失败");
+      if (error?.errorFields) return;
+      message.error(extractContractErrorMessage(error, "合同付款申请创建失败"));
+    } finally {
+      contractMutationGates.current.payment.leave();
+      setPaymentSaving(false);
     }
   };
   const openContractInvoice = (contract: Contract) => {
@@ -1281,21 +1312,30 @@ export default function ContractCenterPage({
     setInvoiceTarget(contract);
   };
   const createContractInvoice = async () => {
-    if (!invoiceTarget) return;
-    const values = await invoiceForm.validateFields();
+    if (!invoiceTarget || !contractMutationGates.current.invoice.tryEnter()) return;
+    setInvoiceSaving(true);
     try {
-      const { data } = await api.post("/finance/invoices", {
+      const values = await invoiceForm.validateFields();
+      const response = await api.post("/finance/invoices", {
         ...values,
         customer: invoiceTarget.customer,
         case_no: invoiceTarget.data.case_no || "",
         contract_record_id: invoiceTarget.id,
         remark: `来源合同 ${invoiceTarget.serial_no}${values.remark ? `；${values.remark}` : ""}`,
       });
+      const feedback = normalizeContractActionResponse(response, "合同开票申请创建失败");
+      if (!feedback.ok) throw new Error(feedback.message);
+      const { data } = response;
       message.success(`发票申请 ${data.serial_no} 已创建并关联合同`);
+      if (viewing?.id === invoiceTarget.id) await openViewing(invoiceTarget);
       setInvoiceTarget(null);
       invoiceForm.resetFields();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同开票申请创建失败");
+      if (error?.errorFields) return;
+      message.error(extractContractErrorMessage(error, "合同开票申请创建失败"));
+    } finally {
+      contractMutationGates.current.invoice.leave();
+      setInvoiceSaving(false);
     }
   };
   const startSelectedSeal = async (contract: Contract) => {
@@ -1559,7 +1599,9 @@ export default function ContractCenterPage({
           ? "error"
           : "wait") as "finish" | "process" | "error" | "wait",
   }));
-  const currentApproval = steps.find((step) => step.status === "待审批");
+  const currentApproval = reviewing
+    ? (reviewCurrentStep || steps.find((step) => step.status === "待审批"))
+    : steps.find((step) => step.status === "待审批");
   const canActOnCurrentApproval = Boolean(currentApproval && canActOnContractApproval("审批中", currentApproval.approver, profile.username, profile.role));
   const contractObjectPolicy = contractObjectActionPolicy(viewing?.status);
   const presentedReceipts = detailReceipts.map((row) => {
@@ -1871,8 +1913,11 @@ export default function ContractCenterPage({
         width={980}
         okText="提交合同付款申请"
         cancelText="取消"
+        confirmLoading={paymentSaving}
+        closable={!paymentSaving}
         onOk={createContractPayment}
-        onCancel={() => { setPaymentTarget(null); setSelectedPaymentObjectKeys([]); setPaymentAmounts({}); }}
+        cancelButtonProps={{ disabled: paymentSaving }}
+        onCancel={() => { if (paymentSaving) return; setPaymentTarget(null); setSelectedPaymentObjectKeys([]); setPaymentAmounts({}); }}
       >
         <Form form={paymentForm} layout="vertical">
           <div className="form-grid">
@@ -1907,8 +1952,11 @@ export default function ContractCenterPage({
         title={`合同开票：${invoiceTarget?.serial_no || ""}`}
         okText="创建开票申请"
         cancelText="取消"
+        confirmLoading={invoiceSaving}
+        closable={!invoiceSaving}
         onOk={createContractInvoice}
-        onCancel={() => setInvoiceTarget(null)}
+        cancelButtonProps={{ disabled: invoiceSaving }}
+        onCancel={() => { if (invoiceSaving) return; setInvoiceTarget(null); }}
       >
         <Form form={invoiceForm} layout="vertical">
           <div className="form-grid">
@@ -2117,6 +2165,7 @@ export default function ContractCenterPage({
                 { title: "付款单据", width: 140, render: (_: unknown, row: Contract) => (row.data as any).payment_reference || "—" },
                 { title: "付款金额", width: 110, render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0) },
                 { title: "付款类型", width: 120, render: (_: unknown, row: Contract) => (row.data as any).payment_type || "—" },
+                { title: "付款标的", width: 260, dataIndex: "line_summary", render: (value: string) => value || "—" },
                 { title: "官费", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0) },
                 { title: "其他费用", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0) },
               ]} />
@@ -2405,8 +2454,11 @@ export default function ContractCenterPage({
         open={Boolean(submitting)}
         title={`配置审批流程：${submitting?.title || ""}`}
         okText="提交审批"
+        confirmLoading={submitSaving}
+        closable={!submitSaving}
         onOk={submit}
-        onCancel={() => setSubmitting(null)}
+        cancelButtonProps={{ disabled: submitSaving }}
+        onCancel={() => { if (submitSaving) return; setSubmitting(null); }}
       >
         <Form form={submitForm} layout="vertical">
           <Form.Item

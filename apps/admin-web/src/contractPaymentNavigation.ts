@@ -2,7 +2,12 @@ type PaymentRecord = {
   id?: number;
   serial_no?: string;
   customer?: string;
+  contract_record_id?: number;
+  contract_id?: number;
+  contract_no?: string;
   data?: {
+    contract_record_id?: number;
+    contract_id?: number;
     contract_no?: string;
     amount?: number;
     pending_amount?: number;
@@ -41,7 +46,28 @@ export const buildContractPaymentNavigation = ({
   }
 
   const contractId = Number(contract.id || 0);
-  const contractNo = String(payment.data?.contract_no || contract.serial_no || "").trim();
+  const paymentData = payment.data || {};
+  const linkedIds = [payment.contract_record_id, payment.contract_id, paymentData.contract_record_id, paymentData.contract_id]
+    .map((value) => Number(value || 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const uniqueIds = [...new Set(linkedIds)];
+  const linkedNos = [payment.contract_no, paymentData.contract_no]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const uniqueNos = [...new Set(linkedNos)];
+  if (uniqueIds.length > 1 || uniqueNos.length > 1) {
+    return { ok: false, message: "当前付款记录关联合同不一致" };
+  }
+  const paymentContractId = uniqueIds[0] || 0;
+  const paymentContractNo = uniqueNos[0] || "";
+  const currentContractNo = String(contract.serial_no || "").trim();
+  if (paymentContractId > 0 && (!Number.isFinite(contractId) || paymentContractId !== contractId)) {
+    return { ok: false, message: "当前付款记录关联合同不一致" };
+  }
+  if (paymentContractNo && (!currentContractNo || paymentContractNo !== currentContractNo)) {
+    return { ok: false, message: "当前付款记录关联合同不一致" };
+  }
+  const contractNo = paymentContractNo || currentContractNo;
   if (!Number.isFinite(contractId) || contractId <= 0 || !contractNo) {
     return { ok: false, message: "当前付款记录缺少关联合同" };
   }
