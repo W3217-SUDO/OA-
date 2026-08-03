@@ -61,6 +61,16 @@ import {
   normalizeSharedObjectValues,
 } from "./customerParity.mjs";
 import type { CustomerListSummary } from "./customerParity.mjs";
+import {
+  OLD_CUSTOMER_EMAIL_PATTERN,
+  buildCustomerContactStatusRequest,
+  buildCustomerManagerRequest,
+  buildCustomerShareRequest,
+  getCustomerMutationErrorMessage,
+  normalizeCustomerManager,
+  validateCustomerPhotoFile,
+  validateCustomerUploadFile,
+} from "./customerUiBatchI14.mjs";
 import "./customer-center.css";
 type Contact = {
   id: string;
@@ -614,14 +624,22 @@ export default function CustomerCenterPage({
   const assignCustomer = async () => {
     if (!assigning) return;
     const values = await assignForm.validateFields();
+    const request = buildCustomerManagerRequest(assigning.id, normalizeCustomerManager(values.manager));
+    if (!request) {
+      message.warning("请选择有效的客户管理人");
+      return;
+    }
     try {
-      await api.put(`/customers/${assigning.id}/managers`, { managers: [values.manager] });
+      const managerUrl = `/customers/${assigning.id}/managers`;
+      const legacyManagersPayload = { managers: [values.manager] };
+      await api.put(request.url || managerUrl, request.data || legacyManagersPayload);
       message.success("客户分配成功");
       setAssigning(null);
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户分配失败");
+      const legacyError = error?.response?.data?.detail || "客户分配失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const action = async (r: Customer, name: string) => {
@@ -644,17 +662,22 @@ export default function CustomerCenterPage({
   const share = async () => {
     if (!sharing) return;
     const v = await shareForm.validateFields();
+    const request = buildCustomerShareRequest(sharing.id, v.recipients, v.comment);
+    if (!request) {
+      message.warning("请先添加至少一位共享人员");
+      return;
+    }
     try {
-      await api.post(`/customers/${sharing.id}/share`, {
-        recipients: v.recipients,
-        comment: v.comment || "",
-      });
+      const shareUrl = `/customers/${sharing.id}/share`;
+      const legacySharePayload = { recipients: v.recipients, comment: v.comment || "" };
+      await api.post(request.url || shareUrl, request.data || legacySharePayload);
       message.success("客户共享成功");
       setSharing(null);
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "共享失败");
+      const legacyError = error?.response?.data?.detail || "共享失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const submitLevelChange = async () => {
@@ -862,6 +885,10 @@ export default function CustomerCenterPage({
   const addContact = async () => {
     if (!contacts) return;
     const v = await contactForm.validateFields();
+    if (v.email && !OLD_CUSTOMER_EMAIL_PATTERN.test(String(v.email))) {
+      message.error("请填写正确联系邮件.");
+      return;
+    }
     try {
       await api.post(`/customers/${contacts.id}/contacts`, v);
       message.success("联系人已添加");
@@ -886,11 +913,17 @@ export default function CustomerCenterPage({
   };
   const uploadContactPhoto = async (contact: Contact, option: any) => {
     if (!contacts) return;
+    const validation = validateCustomerPhotoFile(option.file);
+    if (!validation.ok) {
+      option.onError?.(validation);
+      message.error(validation.code === "empty" ? "照片文件为空" : validation.code === "size" ? "联系人照片不能超过 10MB" : "联系人照片仅支持 JPG、PNG、GIF 或 WEBP 图片");
+      return;
+    }
     try {
       const data = new FormData(); data.append("file", option.file as Blob);
       await api.post(`/customers/${contacts.id}/contacts/${contact.id}/photo`, data, {headers:{"Content-Type":"multipart/form-data"}});
       option.onSuccess?.({}); message.success("联系人照片已上传"); await refreshDetail(); load();
-    } catch (error: any) { option.onError?.(error); message.error(error?.response?.data?.detail || "联系人照片上传失败"); }
+    } catch (error: any) { option.onError?.(error); message.error(getCustomerMutationErrorMessage(error, "联系人照片上传失败")); }
   };
   const viewContactPhoto = async (contact: Contact) => {
     if (!contacts || !contact.photo_attachment_id) return message.info("该联系人尚未上传照片");
@@ -905,6 +938,10 @@ export default function CustomerCenterPage({
   const updateContact = async () => {
     if (!contacts || !editingContact) return;
     const values = await contactEditForm.validateFields();
+    if (values.email && !OLD_CUSTOMER_EMAIL_PATTERN.test(String(values.email))) {
+      message.error("请填写正确联系邮件.");
+      return;
+    }
     try {
       await api.put(`/customers/${contacts.id}/contacts/${editingContact.id}`, values);
       message.success("联系人已更新");
@@ -916,9 +953,9 @@ export default function CustomerCenterPage({
       message.error(error?.response?.data?.detail || "联系人更新失败");
     }
   };
-  const updateContactStatus = async (contact: Contact, action: "primary" | "active") => {
+  const updateContactStatus = async (contact: Contact, action: "primary" | "active" | "inactive") => {
     if (!contacts) return;
-    const request = buildContactStatusRequest(contacts.id, contact.id, contact, action);
+    const request = buildCustomerContactStatusRequest(contacts.id, contact.id, action) || buildContactStatusRequest(contacts.id, contact.id, contact, action);
     if (!request) return;
     try {
       await runContactStatusUpdate(
@@ -927,9 +964,9 @@ export default function CustomerCenterPage({
         refreshDetail,
         load,
       );
-      message.success(action === "primary" ? "联系人已设为主要联系人" : "联系人已恢复有效");
+      message.success(action === "primary" ? "联系人已设为主要联系人" : action === "active" ? "联系人已恢复有效" : "联系人已设为无效");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "联系人状态更新失败");
+      message.error(getCustomerMutationErrorMessage(error, "联系人状态更新失败"));
     }
   };
   const createCustomerEvent = async () => {
@@ -996,6 +1033,11 @@ export default function CustomerCenterPage({
   };
   const uploadDocument = async () => {
     if (!contacts || !documentFile) return message.warning("请选择客户文档");
+    const validation = validateCustomerUploadFile(documentFile);
+    if (!validation.ok) {
+      message.error(validation.code === "empty" ? "文件没有任何内容" : validation.code === "size" ? "单个文件不能超过 20MB" : "不支持的文件格式");
+      return;
+    }
     const v = await documentForm.validateFields();
     const data = new FormData();
     data.append("file", documentFile);
@@ -2047,6 +2089,7 @@ export default function CustomerCenterPage({
                                 <Button type="link" onClick={() => openContactEdit(r)}>编辑</Button>
                                 {!r.is_primary && <Button type="link" onClick={() => void updateContactStatus(r, "primary")}>设为主要</Button>}
                                 {r.is_valid === false && <Button type="link" onClick={() => void updateContactStatus(r, "active")}>设为有效</Button>}
+                                {r.is_valid !== false && <Button type="link" onClick={() => void updateContactStatus(r, "inactive")}>设为无效</Button>}
                             <Popconfirm title="删除联系人？" onConfirm={() => deleteContact(r.id)}>
                               <Button type="link" danger>删除</Button>
                             </Popconfirm>
