@@ -104,7 +104,7 @@ test("refund pagination failure preserves list coordinates and exposes API detai
   assert.equal(failure.message, "退款查询权限不足");
   assert.equal(refundListErrorMessage(new Error("network")), "退款列表查询出错.");
   assert.match(pageSource, /refundLoadFailure\(/);
-  assert.match(pageSource, /loadRefunds\(page, size, refundStatusFilter, true\)/);
+  assert.match(pageSource, /loadRefunds\(\s*page\s*,\s*size\s*,\s*refundStatusFilter\s*,\s*true(?:\s*,\s*refundGroupFilter)?/);
 });
 
 test("refund production wiring keeps selection, pagination, exports, and source navigation", () => {

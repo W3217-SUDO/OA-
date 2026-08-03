@@ -49,6 +49,8 @@ import { createFinanceActionGate } from "./financeActionGate.mjs";
 import {
   normalizeRefundResponse,
   caseFeeRefundStatusLabel,
+  createLatestRequestGuard,
+  refreshRefundListWithFallback,
   refundAmountUpdateRequest,
   refundBatchStatusRequest,
   refundExportRequestParams,
@@ -590,6 +592,7 @@ export default function FinanceCenterPage({
     }),
     [],
   );
+  const refundRequestGuard = useMemo(() => createLatestRequestGuard(), []);
   const contractPaymentSourceSearch =
     initialView === "finance-payment-mine" && typeof window !== "undefined"
       ? window.location.search
@@ -1504,15 +1507,22 @@ export default function FinanceCenterPage({
     preserveOnError = false,
     group = refundGroupFilter,
   ) => {
+    const requestToken = refundRequestGuard.begin();
     try {
       const request = refundListRequest(page, pageSize, status, group);
       const response = await api.get(request.url, { params: request.params });
+      if (!refundRequestGuard.isLatest(requestToken)) {
+        return { applied: false, response: null };
+      }
       const normalized = normalizeRefundResponse(response.data, page, pageSize);
       setRefunds(normalized.items);
       setRefundMeta(normalized);
       setSelectedRefundRows([]);
-      return response;
+      return { applied: true, response };
     } catch (error: any) {
+      if (!refundRequestGuard.isLatest(requestToken)) {
+        return { applied: false, response: null };
+      }
       const failure = refundLoadFailure(
         {
           items: refunds,
@@ -1524,8 +1534,17 @@ export default function FinanceCenterPage({
       );
       message.error(failure.message);
       if (!preserveOnError) throw error;
-      return null as never;
+      return { applied: false, response: null };
     }
+  };
+  const refreshRefundList = async (page = refundMeta.page) => {
+    return refreshRefundListWithFallback({
+      load: loadRefunds,
+      page,
+      pageSize: refundMeta.pageSize,
+      status: refundStatusFilter,
+      group: refundGroupFilter,
+    });
   };
   const load = async () => {
     setLoading(true);
@@ -1743,14 +1762,16 @@ export default function FinanceCenterPage({
         })),
       );
       setInvoices(invoiceRes.data.items);
-      const normalizedRefunds = normalizeRefundResponse(
-        refundRes.data,
-        1,
-        refundMeta.pageSize,
-      );
-      setRefunds(normalizedRefunds.items);
-      setRefundMeta(normalizedRefunds);
-      setSelectedRefundRows([]);
+      if (refundRes?.applied && refundRes.response) {
+        const normalizedRefunds = normalizeRefundResponse(
+          refundRes.response.data,
+          1,
+          refundMeta.pageSize,
+        );
+        setRefunds(normalizedRefunds.items);
+        setRefundMeta(normalizedRefunds);
+        setSelectedRefundRows([]);
+      }
       setCases(caseRes.data.items);
       setCustomers(customerRes.data.items);
       setReceivables(receivableRes.data.items);
@@ -2208,7 +2229,7 @@ export default function FinanceCenterPage({
       message.success("诉讼费退款草稿已创建");
       setRefundOpen(false);
       refundForm.resetFields();
-      load();
+      await refreshRefundList(1);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "退款申请创建失败");
     }
@@ -2232,6 +2253,7 @@ export default function FinanceCenterPage({
         refundMeta.pageSize,
         refundStatusFilter,
         true,
+        refundGroupFilter,
       );
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "退款金额修改失败");
@@ -2255,6 +2277,7 @@ export default function FinanceCenterPage({
         refundMeta.pageSize,
         refundStatusFilter,
         true,
+        refundGroupFilter,
       );
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "退费进度修改失败");
@@ -2268,7 +2291,11 @@ export default function FinanceCenterPage({
         comment: "提交财务审批",
       });
       message.success("已提交审批");
-      load();
+      if (kind === "refunds") {
+        await refreshRefundList();
+      } else {
+        await load();
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "提交失败");
     }
@@ -2292,7 +2319,11 @@ export default function FinanceCenterPage({
             comment: approved ? "财务审核通过" : "资料不完整，退回修改",
           });
           message.success(approved ? "审批已通过" : "申请已驳回");
-          load();
+          if (kind === "refunds") {
+            await refreshRefundList();
+          } else {
+            await load();
+          }
         } catch (error: any) {
           message.error(error?.response?.data?.detail || "审核失败");
           throw error;
@@ -2364,7 +2395,7 @@ export default function FinanceCenterPage({
       message.success("退款到账已登记");
       setRefundCompleteTarget(null);
       refundCompleteForm.resetFields();
-      load();
+      await refreshRefundList();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "退款到账登记失败");
     }
@@ -9836,10 +9867,22 @@ export default function FinanceCenterPage({
                     showSizeChanger: true,
                     pageSizeOptions: refundPageSizeOptions,
                     onShowSizeChange: (_current, size) => {
-                      void loadRefunds(1, size, refundStatusFilter, true);
+                      void loadRefunds(
+                        1,
+                        size,
+                        refundStatusFilter,
+                        true,
+                        refundGroupFilter,
+                      );
                     },
                     onChange: (page, size) => {
-                      void loadRefunds(page, size, refundStatusFilter, true);
+                      void loadRefunds(
+                        page,
+                        size,
+                        refundStatusFilter,
+                        true,
+                        refundGroupFilter,
+                      );
                     },
                   }}
                   scroll={{ x: 1700 }}

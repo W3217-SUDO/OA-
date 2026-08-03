@@ -81,3 +81,45 @@ export const caseFeeRefundStatusLabel = (row) => {
   if (requested > 0 || refunded > 0) return "\u672a\u9000";
   return "\u672a\u9000";
 };
+
+export const createLatestRequestGuard = () => {
+  let latest = 0;
+  return {
+    begin: () => ++latest,
+    isLatest: (token) => token === latest,
+  };
+};
+
+export const refundFallbackPage = ({
+  requestedPage,
+  pageSize,
+  total,
+  items,
+}) => {
+  const numericTotal = Number(total || 0);
+  if (numericTotal <= 0) return null;
+  const pages = Math.max(1, Math.ceil(numericTotal / Math.max(1, pageSize)));
+  const empty = Array.isArray(items) && items.length === 0;
+  return requestedPage > pages || empty ? pages : null;
+};
+
+export const refreshRefundListWithFallback = async ({
+  load,
+  page,
+  pageSize,
+  status,
+  group,
+}) => {
+  const result = await load(page, pageSize, status, true, group);
+  if (!result?.applied) return result;
+  const response = result.response;
+  const fallbackPage = refundFallbackPage({
+    requestedPage: page,
+    pageSize,
+    total: Number(response?.data?.total || 0),
+    items: response?.data?.items,
+  });
+  if (fallbackPage === null) return result;
+  const fallback = await load(fallbackPage, pageSize, status, true, group);
+  return fallback?.applied ? fallback : result;
+};

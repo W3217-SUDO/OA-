@@ -61,3 +61,26 @@ export declare const normalizeRefundResponse: (
   pageSize: number;
 };
 export declare const caseFeeRefundStatusLabel: (row: any) => string;
+export declare const createLatestRequestGuard: () => {
+  begin: () => number;
+  isLatest: (token: number) => boolean;
+};
+export declare const refundFallbackPage: (input: {
+  requestedPage: number;
+  pageSize: number;
+  total: number;
+  items?: any[];
+}) => number | null;
+export declare const refreshRefundListWithFallback: (input: {
+  load: (
+    page: number,
+    pageSize: number,
+    status: string,
+    preserveOnError: boolean,
+    group: string,
+  ) => Promise<{ applied: boolean; response: any } | null>;
+  page: number;
+  pageSize: number;
+  status: string;
+  group: string;
+}) => Promise<{ applied: boolean; response: any } | null>;
