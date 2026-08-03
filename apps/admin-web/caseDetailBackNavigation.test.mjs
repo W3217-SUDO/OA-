@@ -66,7 +66,7 @@ test("case detail records its source context and wires both close actions to the
   );
   assert.match(
     source,
-    /useState\(caseListReturnContext\?\.pageSize \|\| 10\)/,
+    /useState\(caseListReturnContext\?\.pageSize \|\| 15\)/,
   );
 });
 
