@@ -11,6 +11,9 @@ export type PaidPresentation = {
   paidAmount: number; paymentType: string; officialAmount: number; otherAmount: number; lineThrough: boolean;
 };
 export declare const normalizeIncomingPayment: (row?: unknown) => IncomingPaymentPresentation;
+export declare const filterContractIncomingPayments: (rows?: unknown[], contract?: { id?: number; serial_no?: string }) => unknown[];
+export declare const normalizeIncomingPaymentForContract: (row?: unknown, contract?: { id?: number; serial_no?: string }) => IncomingPaymentPresentation | null;
 export declare const normalizeInvoiceObject: (row?: unknown) => InvoicePresentation;
 export declare const normalizePaidObject: (row?: unknown) => PaidPresentation;
 export declare const contractObjectActionPolicy: (status?: string) => { canEdit: boolean; canDelete: boolean; canLog: boolean };
+export declare const contractObjectHasLogs: (logs?: unknown) => boolean;

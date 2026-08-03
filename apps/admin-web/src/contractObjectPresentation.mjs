@@ -39,6 +39,29 @@ const allocationFeeTotals = (allocations) => {
   return totals;
 };
 
+const contractMatches = (row, contract = {}) => {
+  const contractId = Number(contract?.id || 0);
+  const contractNo = String(contract?.serial_no || "").trim();
+  const rowId = Number(row?.contract_record_id || row?.data?.contract_record_id || row?.data?.contract_id || 0);
+  const rowNo = String(row?.contract_no || row?.data?.contract_no || "").trim();
+  const rowHasId = rowId > 0;
+  const rowHasNo = Boolean(rowNo);
+  if ((rowHasId && rowHasNo && contractId > 0 && contractNo && rowId === contractId && rowNo === contractNo)
+    || (rowHasId && !rowHasNo && contractId > 0 && rowId === contractId)
+    || (!rowHasId && rowHasNo && Boolean(contractNo) && rowNo === contractNo)) return true;
+  return (Array.isArray(row?.allocations) ? row.allocations : []).some((allocation) => {
+    const allocationId = Number(allocation?.contract_id || allocation?.contract_record_id || 0);
+    const allocationNo = String(allocation?.contract_no || "").trim();
+    const hasId = allocationId > 0;
+    const hasNo = Boolean(allocationNo);
+    return (hasId && hasNo && contractId > 0 && contractNo && allocationId === contractId && allocationNo === contractNo)
+      || (hasId && !hasNo && contractId > 0 && allocationId === contractId)
+      || (!hasId && hasNo && Boolean(contractNo) && allocationNo === contractNo);
+  });
+};
+
+export const filterContractIncomingPayments = (rows = [], contract = {}) => rows.filter((row) => contractMatches(row, contract));
+
 export const normalizeIncomingPayment = (row = {}) => {
   const payment = nested(row, "payment_basic");
   const allocations = allocationFeeTotals(row.allocations);
@@ -52,6 +75,27 @@ export const normalizeIncomingPayment = (row = {}) => {
     otherAmount: firstNumber([numeric(row, ["other_amount"]), numeric(payment, ["case_commission_fee_applied_amount", "CaseCommissionFeeAppliedAmount"]), allocations.other]),
     paymentMethod: first([row, payment], ["payment_method", "payment_mode_name", "PaymentModeName"], ""),
     claimant: first([row, payment], ["claimant", "applied_operator_name", "AppliedOperatorName"], ""),
+  };
+};
+
+export const normalizeIncomingPaymentForContract = (row = {}, contract = {}) => {
+  if (!contractMatches(row, contract)) return null;
+  const base = normalizeIncomingPayment(row);
+  const allocations = Array.isArray(row?.allocations) ? row.allocations : [];
+  const explicitAllocations = allocations.filter((allocation) => Number(allocation?.contract_id || allocation?.contract_record_id || 0) > 0 || String(allocation?.contract_no || "").trim());
+  const matchedAllocations = explicitAllocations.length
+    ? explicitAllocations.filter((allocation) => contractMatches({ allocations: [allocation] }, contract))
+    : allocations;
+  if (!matchedAllocations.length) return base;
+  const amounts = matchedAllocations.map((allocation) => Number(allocation?.amount)).filter((value) => Number.isFinite(value));
+  const hasSettlementItems = matchedAllocations.some((allocation) => Array.isArray(allocation?.settlement_items) && allocation.settlement_items.length > 0);
+  const feeTotals = allocationFeeTotals(matchedAllocations);
+  return {
+    ...base,
+    amount: amounts.length ? amounts.reduce((sum, value) => sum + value, 0) : base.amount,
+    officialAmount: hasSettlementItems ? feeTotals.official : base.officialAmount,
+    agencyAmount: hasSettlementItems ? feeTotals.agency : base.agencyAmount,
+    otherAmount: hasSettlementItems ? feeTotals.other : base.otherAmount,
   };
 };
 
@@ -104,3 +148,4 @@ export const contractObjectActionPolicy = (status) => {
   const mutable = !["审批中", "已归档"].includes(String(status || ""));
   return { canEdit: mutable, canDelete: mutable, canLog: true };
 };
+export const contractObjectHasLogs = (logs) => Array.isArray(logs) && logs.length > 0;

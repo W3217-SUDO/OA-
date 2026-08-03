@@ -47,9 +47,11 @@ import {
 } from "./contractObjectListPolicy.mjs";
 import {
   contractObjectActionPolicy,
-  normalizeIncomingPayment,
+  filterContractIncomingPayments,
+  normalizeIncomingPaymentForContract,
   normalizeInvoiceObject,
   normalizePaidObject,
+  contractObjectHasLogs,
 } from "./contractObjectPresentation.mjs";
 import {
   CONTRACT_ATTACHMENT_ACCEPT,
@@ -400,7 +402,7 @@ export default function ContractCenterPage({
           : []);
         setObjectCases(caseResult.status === "fulfilled" ? (caseResult.value.data.items || []) : []);
         setDetailReceipts(receiptResult.status === "fulfilled"
-          ? sortContractRecordRows((receiptResult.value.data.items || []).filter((item: any) => item.contract_record_id === contract.id || item.contract_no === contract.serial_no))
+          ? sortContractRecordRows(filterContractIncomingPayments(receiptResult.value.data.items || [], contract) as any[])
           : []);
         setDetailInvoices(invoiceResult.status === "fulfilled"
           ? sortContractRecordRows(filterContractLinkedRows(invoiceResult.value.data.items || [], contract))
@@ -1561,9 +1563,10 @@ export default function ContractCenterPage({
   const canActOnCurrentApproval = Boolean(currentApproval && canActOnContractApproval("审批中", currentApproval.approver, profile.username, profile.role));
   const contractObjectPolicy = contractObjectActionPolicy(viewing?.status);
   const presentedReceipts = detailReceipts.map((row) => {
-    const item = normalizeIncomingPayment(row);
+    const item = normalizeIncomingPaymentForContract(row, viewing || {});
+    if (!item) return null;
     return { ...row, receipt_no: item.sequenceNo, received_date: item.receivedDate, bank_reference: item.bankReference, amount: item.amount, official_amount: item.officialAmount, agency_amount: item.agencyAmount, other_amount: item.otherAmount, payment_method: item.paymentMethod, claimant: item.claimant };
-  });
+  }).filter(Boolean);
   const presentedInvoices = detailInvoices.map((row) => {
     const item = normalizeInvoiceObject(row);
     return { ...row, serial_no: item.applicationNo, status: item.status, description: item.remark, data: { ...row.data, invoice_no: item.invoiceNo, invoice_date: item.invoiceDate, amount: item.amount, official_amount: item.officialAmount, agency_amount: item.agencyAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
@@ -2018,7 +2021,7 @@ export default function ContractCenterPage({
                     { title: "客户管理人", dataIndex: "customer_manager", width: 120 },
                     { title: "备注", dataIndex: "remark", width: 180 },
                     { title: "操作", width: 176, fixed: "right", render: (_: unknown, row: ContractObjectRow) => <Space size={0}>
-                      <Button type="link" onClick={() => setObjectLogTarget(row)}>日志</Button>
+                      {contractObjectHasLogs(row.logs) && <Button type="link" onClick={() => setObjectLogTarget(row)}>日志</Button>}
                       <Button type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
                       <Popconfirm title="确认删除该合同标的？" disabled={!viewing || !contractObjectPolicy.canDelete} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || !contractObjectPolicy.canDelete}>删除</Button></Popconfirm>
                     </Space> },
@@ -2186,7 +2189,7 @@ export default function ContractCenterPage({
           {title:"费用金额",dataIndex:"amount",width:110,render:(value:number)=>amount(value)},
           {title:"客户管理人",dataIndex:"customer_manager",width:120},
           {title:"备注",dataIndex:"remark",width:180,ellipsis:true},
-          {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}><Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>{!viewing||!contractObjectPolicy.canEdit?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" disabled={!contractObjectPolicy.canDelete} onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger disabled={!contractObjectPolicy.canDelete}>删除</Button></Popconfirm></>}</Space>},
+          {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}>{contractObjectHasLogs(row.logs) && <Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>}{!viewing||!contractObjectPolicy.canEdit?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" disabled={!contractObjectPolicy.canDelete} onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger disabled={!contractObjectPolicy.canDelete}>删除</Button></Popconfirm></>}</Space>},
         ]} dataSource={objectPageData.items} pagination={{ current: objectPageData.current, pageSize: objectPageData.pageSize, total: objectPageData.total, showSizeChanger: true, pageSizeOptions: [...CONTRACT_OBJECT_PAGE_SIZES], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setObjectPage(page); setObjectPageSize(pageSize); } }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的" />}
           </>
         )}

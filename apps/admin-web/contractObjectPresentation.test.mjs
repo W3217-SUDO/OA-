@@ -1,15 +1,60 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   normalizeIncomingPayment,
+  filterContractIncomingPayments,
+  normalizeIncomingPaymentForContract,
   normalizeInvoiceObject,
   normalizePaidObject,
   contractObjectActionPolicy,
+  contractObjectHasLogs,
 } from "./src/contractObjectPresentation.mjs";
+
+const contractCenterSource = fs.readFileSync(new URL("./src/ContractCenterPage.tsx", import.meta.url), "utf8");
 
 test("incoming payment presentation maps the legacy sequence and date fields", () => {
   const row = normalizeIncomingPayment({ payment_basic: { SequenceNo: "SK-1", CashedDate: "2026-07-01" } });
   assert.deepEqual({ sequenceNo: row.sequenceNo, receivedDate: row.receivedDate }, { sequenceNo: "SK-1", receivedDate: "2026-07-01" });
+});
+
+test("incoming payments linked through allocations match the exact contract only", () => {
+  const rows = filterContractIncomingPayments([
+    { id: 1, contract_record_id: null, contract_no: "", allocations: [{ contract_id: 41, contract_no: "HT-041", amount: 25 }] },
+    { id: 2, contract_record_id: null, contract_no: "", allocations: [{ contract_id: 41, contract_no: "HT-0410", amount: 30 }] },
+    { id: 3, contract_record_id: null, contract_no: "", allocations: [{ contract_id: 99, contract_no: "HT-099", amount: 40 }] },
+  ], { id: 41, serial_no: "HT-041" });
+  assert.deepEqual(rows.map((row) => row.id), [1]);
+});
+
+test("contract detail receipt presentation uses only matched allocation amount and fee totals", () => {
+  const row = normalizeIncomingPaymentForContract({
+    id: 1,
+    amount: 100,
+    allocations: [
+      { contract_id: 41, contract_no: "HT-041", amount: 25, settlement_items: [{ fee_type: "官方费用", settlement_amount: 10 }] },
+      { contract_id: 42, contract_no: "HT-042", amount: 75, settlement_items: [{ fee_type: "代理费", settlement_amount: 75 }] },
+    ],
+  }, { id: 41, serial_no: "HT-041" });
+  assert.equal(row.amount, 25);
+  assert.equal(row.officialAmount, 10);
+  assert.equal(row.agencyAmount, 0);
+});
+
+test("contract detail receipt presentation keeps a top-level contract payment when allocations are absent", () => {
+  const row = normalizeIncomingPaymentForContract({ id: 2, contract_record_id: 41, amount: 60 }, { id: 41, serial_no: "HT-041" });
+  assert.equal(row.amount, 60);
+});
+
+test("contract object log action is shown only when the row has real logs", () => {
+  assert.equal(contractObjectHasLogs([]), false);
+  assert.equal(contractObjectHasLogs([{ id: 1 }]), true);
+});
+
+test("contract center consumes allocation-aware receipts and hides empty object-log actions", () => {
+  assert.match(contractCenterSource, /filterContractIncomingPayments\(receiptResult\.value\.data\.items/);
+  assert.match(contractCenterSource, /normalizeIncomingPaymentForContract\(row, viewing \|\| \{\}\)/);
+  assert.match(contractCenterSource, /contractObjectHasLogs\(row\.logs\)/);
 });
 
 test("incoming payment presentation maps bank reference and amount", () => {
