@@ -77,6 +77,14 @@ import {
   canDeleteCustomerAttachment,
   getCustomerAttachmentDate,
 } from "./customerUiBatchI15.mjs";
+import {
+  normalizeCustomerAttachmentItems,
+  normalizeCustomerCollectionItems,
+  normalizeCustomerEventItems,
+  normalizeCustomerHistoryItems,
+  normalizeCustomerSharedObjectItems,
+  getCustomerResponseMessage,
+} from "./customerUiBatchI16.mjs";
 import "./customer-center.css";
 type Contact = {
   id: string;
@@ -289,8 +297,10 @@ export default function CustomerCenterPage({
     [detailPageOpen, setDetailPageOpen] = useState(false),
     [newEditor, setNewEditor] = useState<"contact" | "note" | "document" | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]),
+    [attachmentError, setAttachmentError] = useState(""),
     [events, setEvents] = useState<CustomerEvent[]>([]),
     [historyError, setHistoryError] = useState(""),
+    [recordError, setRecordError] = useState(""),
     [customerEvents, setCustomerEvents] = useState<CustomerNotice[]>([]),
     [customerEventError, setCustomerEventError] = useState(""),
     [sharedObjects, setSharedObjects] = useState<string[]>([]),
@@ -752,6 +762,8 @@ export default function CustomerCenterPage({
     setDetailLoading(true);
     let historyItems: CustomerEvent[] = [];
     let historyErrorMessage = "";
+    let recordErrorMessage = "";
+    let attachmentErrorMessage = "";
     let customerEventItems: CustomerNotice[] = [];
     let customerEventErrorMessage = "";
     let sharedObjectItems: string[] = [];
@@ -776,10 +788,19 @@ export default function CustomerCenterPage({
             keyword: target.serial_no,
             page_size: 10,
           },
+        }).catch((error) => {
+          recordErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u8bb0\u5f55\u52a0\u8f7d\u5931\u8d25");
+          return { data: { items: [] } };
         }),
         customerFileListPath
-          ? api.get(customerFileListPath)
-          : api.get("/attachments", { params: { record_id: target.id } }),
+          ? api.get(customerFileListPath).catch((error) => {
+              attachmentErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u6587\u6863\u52a0\u8f7d\u5931\u8d25");
+              return { data: { items: [] } };
+            })
+          : api.get("/attachments", { params: { record_id: target.id } }).catch((error) => {
+              attachmentErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u6587\u6863\u52a0\u8f7d\u5931\u8d25");
+              return { data: { items: [] } };
+            }),
         api.get(`/records/${target.id}/history`).catch((error) => {
           historyErrorMessage = error?.response?.data?.detail || "操作记录加载失败";
           return { data: { items: [] } };
@@ -798,31 +819,55 @@ export default function CustomerCenterPage({
           ? api.get(contactListRequest.url, { params: contactListRequest.params }).catch(() => fallbackContactResponse)
           : Promise.resolve(fallbackContactResponse),
       ]);
-      const resolvedCustomer = recordRes.data.items.find((x: Customer) => x.id === target.id) || target;
+      let resolvedCustomer = target;
+      try {
+        resolvedCustomer = (normalizeCustomerCollectionItems(recordRes.data) as Customer[]).find((x) => x?.id === target.id) || target;
+      } catch (error: any) {
+        recordErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u8bb0\u5f55\u52a0\u8f7d\u5931\u8d25");
+      }
       const contactPageData = normalizeCustomerContactPage(contactRes.data);
       setContactTotal(contactPageData.total);
       setContacts({
         ...resolvedCustomer,
         data: { ...resolvedCustomer.data, contacts: contactPageData.items },
       });
-      setAttachments((fileRes.data.items || []).filter((item: Attachment) => item.category !== "客户联系人照片"));
-      historyItems = historyRes.data.items || [];
-      customerEventItems = customerEventRes.data.items || [];
+      try {
+        setAttachments((normalizeCustomerAttachmentItems(fileRes.data) as Attachment[]).filter((item) => item.category !== "客户联系人照片"));
+      } catch (error: any) {
+        attachmentErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u6587\u6863\u52a0\u8f7d\u5931\u8d25");
+        setAttachments([]);
+      }
+      try {
+        historyItems = normalizeCustomerHistoryItems(historyRes.data) as CustomerEvent[];
+      } catch (error: any) {
+        historyErrorMessage = getCustomerResponseMessage(error, "\u64cd\u4f5c\u8bb0\u5f55\u52a0\u8f7d\u5931\u8d25");
+      }
+      try {
+        customerEventItems = normalizeCustomerEventItems(customerEventRes.data) as CustomerNotice[];
+      } catch (error: any) {
+        customerEventErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u6ce8\u610f\u4e8b\u9879\u52a0\u8f7d\u5931\u8d25");
+      }
       if (!customerEventListPath) {
         const resolvedEventPath = buildCustomerEventListPath(getCustomerGuid(resolvedCustomer));
         if (resolvedEventPath) {
           try {
             const resolvedEventRes = await api.get(resolvedEventPath);
-            customerEventItems = resolvedEventRes.data.items || [];
+            customerEventItems = normalizeCustomerEventItems(resolvedEventRes.data) as CustomerNotice[];
           } catch (error: any) {
-            customerEventErrorMessage = error?.response?.data?.detail || "客户注意事项加载失败";
+            customerEventErrorMessage = getCustomerResponseMessage(error, "\u5ba2\u6237\u6ce8\u610f\u4e8b\u9879\u52a0\u8f7d\u5931\u8d25");
           }
         }
       }
-      sharedObjectItems = normalizeSharedObjectValues(sharedObjectsRes.data.items || []);
+      try {
+        sharedObjectItems = normalizeCustomerSharedObjectItems(sharedObjectsRes.data);
+      } catch (error: any) {
+        sharedObjectsErrorMessage = getCustomerResponseMessage(error, "\u5171\u4eab\u5bf9\u8c61\u52a0\u8f7d\u5931\u8d25");
+      }
     } finally {
       setEvents(historyItems);
       setHistoryError(historyErrorMessage);
+      setRecordError(recordErrorMessage);
+      setAttachmentError(attachmentErrorMessage);
       setCustomerEvents(customerEventItems);
       setCustomerEventError(customerEventErrorMessage);
       setSharedObjects(sharedObjectItems);
@@ -855,8 +900,10 @@ export default function CustomerCenterPage({
     setDetailPageOpen(isReadOnlyCustomerList);
     setDetailTab(tab);
     setAttachments([]);
+    setAttachmentError("");
     setEvents([]);
     setHistoryError("");
+    setRecordError("");
     setCustomerEvents([]);
     setCustomerEventError("");
     setSharedObjects([]);
@@ -1416,6 +1463,7 @@ export default function CustomerCenterPage({
             <span>{initialView === "customer-company-recycle" ? "公司回收站" : initialView === "customer-recent-update" ? "最近更新的客户" : initialView === "customer-recent-contact" ? "最近联系的客户" : initialView === "customer-shared" ? "我的共享客户" : initialView === "customer-public" ? "公海客户" : initialView === "customer-company" ? "公司客户" : initialView === "customer-dept" ? "部门客户" : initialView === "customer-dept-recycle" ? "部门回收站" : initialView === "customer-recycle" ? "个人回收站" : "我的客户"}</span>
             <Button type="text" aria-label="关闭客户查看" onClick={() => { setDetailPageOpen(false); setContacts(null); }}>×</Button>
           </div>
+          {recordError && <Alert type="warning" showIcon message={recordError} style={{ marginBottom: 8 }} />}
           <section>
             <h3>基本信息</h3>
             <div className="customer-view-fields customer-view-fields-four">
@@ -1776,6 +1824,7 @@ export default function CustomerCenterPage({
                 key:"documents",
                 label:"客户文档",
                 children:<>
+                  {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},
                     {title:"操作",render:(_:unknown,row:Attachment)=>canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null}
@@ -2293,6 +2342,7 @@ export default function CustomerCenterPage({
               label: `客户文档（${attachments.length}）`,
               children: (
                 <>
+                  {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
                   <Alert
                     type="info"
                     showIcon
