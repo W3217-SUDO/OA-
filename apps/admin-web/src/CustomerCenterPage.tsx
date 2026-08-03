@@ -38,16 +38,26 @@ import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
 import {
   filterCustomerPatchData,
+  buildCustomerActionConfirmation,
+  buildCustomerActionRequest,
+  buildCustomerContactListRequest,
+  buildCustomerDocumentUploadFields,
+  buildCustomerDetailReturnState,
+  buildCustomerListParams,
   buildContactStatusRequest,
   runContactStatusUpdate,
   buildCustomerEventRequest,
   buildCustomerEventListPath,
   buildCustomerFileListPath,
   buildCustomerFileDownloadPath,
+  getCustomerActionMessage,
+  getCustomerDocumentUploadError,
   getCustomerGuid,
+  isCustomerDetailManageable,
   isCustomerPostalCodeSafe,
   isCustomerRegistrationAddressSafe,
   normalizeCustomerSummary,
+  normalizeCustomerContactPage,
   normalizeSharedObjectValues,
 } from "./customerParity.mjs";
 import type { CustomerListSummary } from "./customerParity.mjs";
@@ -281,6 +291,9 @@ export default function CustomerCenterPage({
   }));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+  const [contactPage, setContactPage] = useState(1);
+  const [contactPageSize, setContactPageSize] = useState(15);
+  const [contactTotal, setContactTotal] = useState(0);
   const [total, setTotal] = useState(0);
   const [jumpPage, setJumpPage] = useState("1");
   const [listSummary, setListSummary] = useState<CustomerListSummary>(() => normalizeCustomerSummary());
@@ -337,13 +350,19 @@ export default function CustomerCenterPage({
     setLoading(true);
     try {
       const recordsRequest = isOriginalCustomerList
-        ? api.get("/customers", {
+      ? api.get("/customers", {
             params: {
-              scope: originalCustomerScope,
+              ...buildCustomerListParams({
+                scope: originalCustomerScope,
+                keyword: requestKeyword,
+                customerType: requestCustomerType,
+                manager: requestManagerKeyword,
+                page: requestPage,
+                pageSize,
+              }),
               customer_name: requestKeyword,
               customer_type: requestCustomerType,
               ...(["customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) ? {} : { manager: requestManagerKeyword }),
-              page: requestPage,
               page_size: pageSize,
             },
           })
@@ -606,20 +625,20 @@ export default function CustomerCenterPage({
     }
   };
   const action = async (r: Customer, name: string) => {
+    const request = buildCustomerActionRequest(r.id, name, "");
+    if (!request) {
+      message.error("客户操作不受支持");
+      return;
+    }
+    const actionUrl = request.url || `/customers/${r.id}/${name}`;
     try {
-      await api.post(`/customers/${r.id}/${name}`, { comment: "" });
-      message.success(
-        {
-          claim: "客户领取成功",
-          release: "已释放到公海",
-          recycle: "已移入回收站",
-          restore: "客户已恢复",
-        }[name],
-      );
+      await api.post(actionUrl, request.data);
+      message.success(getCustomerActionMessage(name, true));
       setSelectedRowKeys([]);
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "操作失败");
+      const legacyActionError = error?.response?.data?.detail || "操作失败";
+      message.error(error?.response?.data?.detail || getCustomerActionMessage(name, false) || legacyActionError);
     }
   };
   const share = async () => {
@@ -710,8 +729,17 @@ export default function CustomerCenterPage({
     const customerGuid = getCustomerGuid(target);
     const customerEventListPath = buildCustomerEventListPath(customerGuid);
     const customerFileListPath = buildCustomerFileListPath(customerGuid);
+    const contactListRequest = buildCustomerContactListRequest(target.id, contactPage, contactPageSize);
+    const fallbackContactResponse = {
+      data: {
+        items: target.data.contacts || [],
+        total: (target.data.contacts || []).length,
+        page: contactPage,
+        page_size: contactPageSize,
+      },
+    };
     try {
-      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes] = await Promise.all([
+      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes] = await Promise.all([
         api.get("/records", {
           params: {
             module: "customer",
@@ -736,9 +764,17 @@ export default function CustomerCenterPage({
           sharedObjectsErrorMessage = error?.response?.data?.detail || "共享对象加载失败";
           return { data: { items: [] } };
         }),
+        contactListRequest
+          ? api.get(contactListRequest.url, { params: contactListRequest.params }).catch(() => fallbackContactResponse)
+          : Promise.resolve(fallbackContactResponse),
       ]);
       const resolvedCustomer = recordRes.data.items.find((x: Customer) => x.id === target.id) || target;
-      setContacts(resolvedCustomer);
+      const contactPageData = normalizeCustomerContactPage(contactRes.data);
+      setContactTotal(contactPageData.total);
+      setContacts({
+        ...resolvedCustomer,
+        data: { ...resolvedCustomer.data, contacts: contactPageData.items },
+      });
       setAttachments((fileRes.data.items || []).filter((item: Attachment) => item.category !== "客户联系人照片"));
       historyItems = historyRes.data.items || [];
       customerEventItems = customerEventRes.data.items || [];
@@ -764,7 +800,27 @@ export default function CustomerCenterPage({
       setDetailLoading(false);
     }
   };
+  const loadContactPage = async (target = contacts, nextPage = contactPage, nextPageSize = contactPageSize) => {
+    if (!target) return;
+    const request = buildCustomerContactListRequest(target.id, nextPage, nextPageSize);
+    if (!request) return;
+    try {
+      const response = await api.get(request.url, { params: request.params });
+      const pageData = normalizeCustomerContactPage(response.data);
+      setContactPage(pageData.page);
+      setContactPageSize(pageData.pageSize);
+      setContactTotal(pageData.total);
+      setContacts((current) => current && current.id === target.id
+        ? { ...current, data: { ...current.data, contacts: pageData.items } }
+        : current);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "联系人加载失败");
+    }
+  };
   const openDetail = async (r: Customer, tab = "contacts") => {
+    setContactPage(1);
+    setContactPageSize(15);
+    setContactTotal(0);
     setContacts(r);
     setDetailPageOpen(isReadOnlyCustomerList);
     setDetailTab(tab);
@@ -782,10 +838,24 @@ export default function CustomerCenterPage({
     }
   };
   const openCustomerContracts = (customer: Customer) => {
+    sessionStorage.setItem("sunhold:customer-return", JSON.stringify(buildCustomerDetailReturnState({
+      scope: originalCustomerScope,
+      page,
+      pageSize,
+      keyword,
+      managerKeyword,
+    })));
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "contracts" });
     onNavigate?.("contract-company");
   };
   const openCustomerCivilCases = (customer: Customer) => {
+    sessionStorage.setItem("sunhold:customer-return", JSON.stringify(buildCustomerDetailReturnState({
+      scope: originalCustomerScope,
+      page,
+      pageSize,
+      keyword,
+      managerKeyword,
+    })));
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "civil-cases" });
     onNavigate?.("case-company-civil");
   };
@@ -929,9 +999,17 @@ export default function CustomerCenterPage({
     const v = await documentForm.validateFields();
     const data = new FormData();
     data.append("file", documentFile);
+    const fields = buildCustomerDocumentUploadFields({
+      customerId: contacts.id,
+      customerGuid: getCustomerGuid(contacts),
+      category: v.category,
+      remark: v.remark,
+      isLicense: Boolean(v.is_license),
+    });
     data.append("record_id", String(contacts.id));
-    data.append("category", v.category || "客户资料");
-    data.append("remark", v.remark || "");
+    Object.entries(fields)
+      .filter(([key]) => key !== "record_id")
+      .forEach(([key, value]) => data.append(key, value));
     try {
       await api.post("/attachments", data);
       message.success("客户文档已上传");
@@ -941,7 +1019,7 @@ export default function CustomerCenterPage({
       if (documentFileRef.current) documentFileRef.current.value = "";
       await refreshDetail();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "上传失败");
+      message.error(getCustomerDocumentUploadError(error));
     }
   };
   const downloadDocument = async (file: Attachment) => {
@@ -992,22 +1070,24 @@ export default function CustomerCenterPage({
     return selected;
   };
   const recycleCustomer = (row: Customer) => {
+    const confirmation = buildCustomerActionConfirmation("recycle", row.title);
+    if (!confirmation) return;
     Modal.confirm({
-      title: `确认删除客户“${row.title}”？`,
+      title: `确认删除客户“${confirmation.title}”？`,
       content: "删除后客户将进入回收站，可在回收站恢复或进入公海。",
       okText: "确认删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: async () => {
+        const request = buildCustomerActionRequest(row.id, confirmation.action, `${initialView === "customer-company" ? "公司客户" : "客户"}：客户删除`);
+        if (!request) return;
         try {
-          await api.post(`/customers/${row.id}/recycle`, {
-            comment: `${initialView === "customer-company" ? "公司客户" : "客户"}：客户删除`,
-          });
-          message.success("客户已移入回收站");
+          await api.post(`/customers/${row.id}/recycle`, request.data);
+          message.success(getCustomerActionMessage(confirmation.action, true));
           setSelectedRowKeys([]);
           await load();
         } catch (error: any) {
-          message.error(error?.response?.data?.detail || "删除失败");
+          message.error(error?.response?.data?.detail || getCustomerActionMessage(confirmation.action, false));
         }
       },
     });
@@ -1092,12 +1172,7 @@ export default function CustomerCenterPage({
   const userLabel = (username: string) =>
     directory.find((user) => user.username === username)?.display_name || username;
   const canManageCurrentCustomer = Boolean(contacts && (
-    profile.role === "admin" ||
-    // admin 是不可降级的最高权限账号；历史账号资料的角色展示不应遮蔽其客户办理能力。
-    profile.username === "admin" ||
-    contacts.owner === profile.username ||
-    (contacts.data.customer_managers || []).includes(profile.username) ||
-    (profile.role === "manager" && contacts.department === profile.department)
+    isCustomerDetailManageable(contacts, profile)
   ));
   const columns = [
     {
@@ -1332,7 +1407,7 @@ export default function CustomerCenterPage({
               {
                 key: "contacts",
                 label: "联系人",
-                children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ defaultPageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
+                children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>{!row.is_primary&&<Button type="link" onClick={()=>void updateContactStatus(row,"primary")}>设为主要</Button>}{row.is_valid===false&&<Button type="link" onClick={()=>void updateContactStatus(row,"active")}>设为有效</Button>}</Space>:null},
                 ]} />,
               },
@@ -1359,7 +1434,7 @@ export default function CustomerCenterPage({
                       <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
                         <Form form={customerEventForm} layout="vertical">
                           <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
-                            <Input.TextArea rows={3} maxLength={4000} />
+                            <Input.TextArea rows={3} maxLength={1000} showCount />
                           </Form.Item>
                           <Button type="primary" onClick={createCustomerEvent}>保存客户注意事项</Button>
                         </Form>
@@ -1621,7 +1696,7 @@ export default function CustomerCenterPage({
                 key:"contacts",
                 label:"联系人",
                 children:<>
-                  <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ defaultPageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showTotal: (count) => `共有${count}条` }} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
+                  <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
                     {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
                     {title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
@@ -1942,7 +2017,7 @@ export default function CustomerCenterPage({
                     rowKey="id"
                     size="small"
                     tableLayout="fixed"
-                    pagination={{ defaultPageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showTotal: (count) => `共有${count}条` }}
+                    pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }}
                     dataSource={contacts?.data.contacts || []}
                     scroll={{ x: 1170 }}
                     columns={[
@@ -2119,7 +2194,7 @@ export default function CustomerCenterPage({
                     <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
                       <Form form={customerEventForm} layout="vertical">
                         <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
-                          <Input.TextArea rows={3} maxLength={4000} />
+                          <Input.TextArea rows={3} maxLength={1000} showCount />
                         </Form.Item>
                         <Button type="primary" onClick={createCustomerEvent}>保存客户注意事项</Button>
                       </Form>

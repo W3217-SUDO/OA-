@@ -17,6 +17,9 @@ export type CustomerListSummary = {
   total_un_invoiced_amount: number;
 };
 
+export const CUSTOMER_LIST_PAGE_SIZES: readonly number[];
+export const CUSTOMER_EVENT_MAX_LENGTH: number;
+
 export const CUSTOMER_SUMMARY_FIELDS: readonly string[];
 export const normalizeCustomerSummary: (
   summary?: Record<string, unknown>,
@@ -50,6 +53,36 @@ export const buildCustomerEventRequest: (
   customerGuid?: unknown,
   content?: unknown,
 ) => { method: "post"; url: string; data: { action: string; comment: string } } | null;
+export const buildCustomerActionRequest: (
+  customerId?: unknown,
+  action?: string,
+  comment?: unknown,
+) => { method: "post"; url: string; data: { comment: string } } | null;
+export const buildCustomerActionConfirmation: (
+  action?: string,
+  title?: unknown,
+) => { action: string; title: string; danger: boolean; requiresConfirm: boolean } | null;
+export const getCustomerActionMessage: (action?: string, success?: boolean) => string;
+export const buildCustomerListParams: (options?: {
+  scope?: unknown; keyword?: unknown; customerType?: unknown; manager?: unknown; page?: unknown; pageSize?: unknown;
+}) => Record<string, unknown>;
+export const normalizeCustomerListPagination: (
+  total?: unknown, page?: unknown, pageSize?: unknown,
+) => { page: number; pageSize: number; lastPage: number };
+export const buildCustomerContactListRequest: (
+  customerId?: unknown, page?: unknown, pageSize?: unknown,
+) => { method: "get"; url: string; params: { page: number; page_size: number } } | null;
+export const normalizeCustomerContactPage: (payload?: unknown) => {
+  items: any[]; total: number; page: number; pageSize: number;
+};
+export const buildCustomerDocumentUploadFields: (options?: {
+  customerId?: unknown; customerGuid?: unknown; category?: unknown; remark?: unknown; isLicense?: boolean;
+}) => Record<string, string>;
+export const getCustomerDocumentUploadError: (error?: unknown) => string;
+export const isCustomerDetailManageable: (customer?: unknown, profile?: unknown) => boolean;
+export const buildCustomerDetailReturnState: (options?: {
+  scope?: unknown; page?: unknown; pageSize?: unknown; keyword?: unknown; managerKeyword?: unknown;
+}) => { scope: string; page: number; pageSize: number; keyword: string; managerKeyword: string };
 export const buildCustomerFileListPath: (customerGuid?: unknown) => string | null;
 export const buildCustomerFileDownloadPath: (
   customerGuid?: unknown,

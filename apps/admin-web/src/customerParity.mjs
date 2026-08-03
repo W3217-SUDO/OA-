@@ -24,6 +24,11 @@ export const CUSTOMER_SUMMARY_FIELDS = [
   "total_un_invoiced_amount",
 ]
 
+export const CUSTOMER_LIST_PAGE_SIZES = [10, 15, 20, 50, 100, 200]
+export const CUSTOMER_EVENT_MAX_LENGTH = 1000
+const CUSTOMER_ACTION_NAMES = new Set(["claim", "release", "recycle", "restore"])
+const CUSTOMER_SCOPE_OMIT_MANAGER = new Set(["shared", "recent_contact", "recent_update"])
+
 const summaryAliases = Object.fromEntries(
   CUSTOMER_SUMMARY_FIELDS.map((key) => [key, [key, toLowerCamel(key), toPascal(key)]]),
 )
@@ -112,13 +117,125 @@ export const buildCustomerEventListPath = (customerGuid) =>
 export const buildCustomerEventRequest = (customerGuid, content) => {
   const path = buildCustomerEventListPath(customerGuid)
   const comment = String(content ?? "").trim()
-  if (!path || !comment) return null
+  if (!path || !comment || comment.length > CUSTOMER_EVENT_MAX_LENGTH) return null
   return {
     method: "post",
     url: path,
     data: { action: "客户注意事项", comment },
   }
 }
+
+export const buildCustomerActionRequest = (customerId, action, comment = "") => {
+  const id = String(customerId ?? "").trim()
+  if (!id || Number(id) <= 0 || !CUSTOMER_ACTION_NAMES.has(action)) return null
+  return {
+    method: "post",
+    url: `/customers/${encodeURIComponent(id)}/${action}`,
+    data: { comment: String(comment ?? "").trim() },
+  }
+}
+
+export const buildCustomerActionConfirmation = (action, title = "") => {
+  if (!CUSTOMER_ACTION_NAMES.has(action)) return null
+  return {
+    action,
+    title: String(title ?? ""),
+    danger: action === "recycle",
+    requiresConfirm: true,
+  }
+}
+
+const CUSTOMER_ACTION_MESSAGES = {
+  claim: ["客户领取成功", "领取失败"],
+  release: ["已释放到公海", "释放失败"],
+  recycle: ["已移入回收站", "删除失败"],
+  restore: ["客户已恢复", "恢复失败"],
+}
+
+export const getCustomerActionMessage = (action, success = true) =>
+  CUSTOMER_ACTION_MESSAGES[action]?.[success ? 0 : 1] || (success ? "操作成功" : "操作失败")
+
+export const buildCustomerListParams = ({
+  scope = "company",
+  keyword = "",
+  customerType = "客户",
+  manager = "",
+  page = 1,
+  pageSize = 15,
+} = {}) => {
+  const normalizedPageSize = CUSTOMER_LIST_PAGE_SIZES.includes(Number(pageSize)) ? Number(pageSize) : 15
+  const normalizedPage = Number.isInteger(Number(page)) && Number(page) > 0 ? Number(page) : 1
+  const normalizedScope = String(scope ?? "").trim()
+  const params = {
+    scope: normalizedScope,
+    customer_name: String(keyword ?? "").trim(),
+    customer_type: String(customerType ?? "客户").trim() || "客户",
+    page: normalizedPage,
+    page_size: normalizedPageSize,
+  }
+  if (!CUSTOMER_SCOPE_OMIT_MANAGER.has(normalizedScope)) params.manager = String(manager ?? "").trim()
+  return params
+}
+
+export const normalizeCustomerListPagination = (total = 0, page = 1, pageSize = 15) => {
+  const safeTotal = Math.max(0, Number(total) || 0)
+  const safePageSize = CUSTOMER_LIST_PAGE_SIZES.includes(Number(pageSize)) ? Number(pageSize) : 15
+  const lastPage = Math.max(1, Math.ceil(safeTotal / safePageSize))
+  const safePage = Math.min(Math.max(1, Number(page) || 1), lastPage)
+  return { page: safePage, pageSize: safePageSize, lastPage }
+}
+
+export const buildCustomerContactListRequest = (customerId, page = 1, pageSize = 15) => {
+  const id = String(customerId ?? "").trim()
+  if (!id || Number(id) <= 0) return null
+  const pagination = normalizeCustomerListPagination(Number.MAX_SAFE_INTEGER, page, pageSize)
+  return {
+    method: "get",
+    url: `/customers/${encodeURIComponent(id)}/contacts`,
+    params: { page: pagination.page, page_size: pagination.pageSize },
+  }
+}
+
+export const normalizeCustomerContactPage = (payload = {}) => {
+  const items = Array.isArray(payload?.items) ? payload.items : []
+  const total = Math.max(items.length, Number(payload?.total) || 0)
+  const pageSize = CUSTOMER_LIST_PAGE_SIZES.includes(Number(payload?.page_size)) ? Number(payload.page_size) : 15
+  const page = Math.max(1, Number(payload?.page) || 1)
+  return { items, total, page, pageSize }
+}
+
+export const buildCustomerDocumentUploadFields = ({ customerId, customerGuid, category, remark, isLicense = false } = {}) => ({
+  record_id: String(customerId ?? "").trim(),
+  customer_guid: String(customerGuid ?? "").trim(),
+  category: String(category ?? "客户资料").trim() || "客户资料",
+  remark: String(remark ?? "").trim(),
+  is_license: String(Boolean(isLicense)),
+})
+
+export const getCustomerDocumentUploadError = (error = {}) => {
+  const status = Number(error?.response?.status)
+  if (status === 413) return "文件不能超过 20MB"
+  if (error?.code === "empty") return "文件没有任何内容"
+  if (error?.code === "type") return "上传文件类型不正确"
+  return error?.response?.data?.detail || "上传失败"
+}
+
+export const isCustomerDetailManageable = (customer = {}, profile = {}) => {
+  const username = String(profile?.username ?? "")
+  if (!username) return false
+  if (profile?.role === "admin" || username === "admin") return true
+  if (String(customer?.owner ?? "") === username) return true
+  if (Array.isArray(customer?.data?.customer_managers) && customer.data.customer_managers.includes(username)) return true
+  return profile?.role === "manager" && String(customer?.department ?? "") === String(profile?.department ?? "")
+}
+
+export const buildCustomerDetailReturnState = ({ scope, page = 1, pageSize = 15, keyword = "", managerKeyword = "" } = {}) => ({
+  scope: String(scope ?? ""),
+  page: Math.max(1, Number(page) || 1),
+  pageSize: CUSTOMER_LIST_PAGE_SIZES.includes(Number(pageSize)) ? Number(pageSize) : 15,
+  keyword: String(keyword ?? ""),
+  managerKeyword: String(managerKeyword ?? ""),
+})
 
 export const buildCustomerFileListPath = (customerGuid) =>
   customerGuidPath(customerGuid, "/files")
