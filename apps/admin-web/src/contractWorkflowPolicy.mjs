@@ -65,6 +65,12 @@ export const contractAuditActionPolicy = (view) => {
   const canReview = view === "contract-audit" || view === "contract-audit-pending";
   return { canReview, canReviewChange: canReview, canExport: true };
 };
+export const contractListActionPolicy = (status) => {
+  const normalized = String(status || "").trim();
+  const archived = ["已归档", "Archived", "archived"].includes(normalized);
+  const approved = ["已通过", "A", "Approved", "approved"].includes(normalized);
+  return { canPayment: approved && !archived, canInvoice: !archived, canCreateCase: !archived };
+};
 export const contractAuditViewConfig = (view) => {
   if (view === "contract-audit-pending") return { statuses: ["审批中"] };
   if (view === "contract-audit-refused") return { statuses: ["已拒绝", "已驳回"] };

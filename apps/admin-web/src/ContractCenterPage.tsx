@@ -38,6 +38,13 @@ import { readContractListQuery, saveContractListQuery } from "./contractListQuer
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination.mjs";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import {
+  CONTRACT_OBJECT_DEFAULT_PAGE_SIZE,
+  CONTRACT_OBJECT_PAGE_SIZES,
+  paginateContractObjectRows,
+  sortContractObjectRows,
+  sortContractRecordRows,
+} from "./contractObjectListPolicy.mjs";
+import {
   contractObjectActionPolicy,
   normalizeIncomingPayment,
   normalizeInvoiceObject,
@@ -53,6 +60,7 @@ import {
   contractAttachmentActionPolicy,
   contractAuditActionPolicy,
   contractAuditViewConfig,
+  contractListActionPolicy,
   contractListViewConfig,
   extractContractErrorMessage,
   filterContractCaseOptions,
@@ -231,6 +239,8 @@ export default function ContractCenterPage({
   const [detailApprovals, setDetailApprovals] = useState<Step[]>([]);
   type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
   const [contractObjects, setContractObjects] = useState<ContractObjectRow[]>([]);
+  const [objectPage, setObjectPage] = useState<number>(1);
+  const [objectPageSize, setObjectPageSize] = useState<number>(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
   const [paymentCandidates, setPaymentCandidates] = useState<ContractPaymentCandidate[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentTypeOption[]>([]);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
@@ -269,6 +279,8 @@ export default function ContractCenterPage({
     setViewing(null);
     setViewingAttachments([]);
     setContractObjects([]);
+    setObjectPage(1);
+    setObjectPageSize(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
     setObjectEditing(null);
     setObjectLogTarget(null);
     setPaymentCandidates([]);
@@ -326,16 +338,18 @@ export default function ContractCenterPage({
           }))
           : [];
         setContractEvents([...manualEvents, ...workflowEvents].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
-        setContractObjects(objectResult.status === "fulfilled" ? objectResult.value.data.items || [] : []);
+        setObjectPage(1);
+        setObjectPageSize(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
+        setContractObjects(objectResult.status === "fulfilled" ? sortContractObjectRows(objectResult.value.data.items || []) : []);
         setObjectCases(caseResult.status === "fulfilled" ? (caseResult.value.data.items || []) : []);
         setDetailReceipts(receiptResult.status === "fulfilled"
-          ? (receiptResult.value.data.items || []).filter((item: any) => item.contract_record_id === contract.id || item.contract_no === contract.serial_no)
+          ? sortContractRecordRows((receiptResult.value.data.items || []).filter((item: any) => item.contract_record_id === contract.id || item.contract_no === contract.serial_no))
           : []);
         setDetailInvoices(invoiceResult.status === "fulfilled"
-          ? filterContractLinkedRows(invoiceResult.value.data.items || [], contract)
+          ? sortContractRecordRows(filterContractLinkedRows(invoiceResult.value.data.items || [], contract))
           : []);
         setDetailPayments(paymentResult.status === "fulfilled"
-          ? filterContractLinkedRows(paymentResult.value.data.items || [], contract)
+          ? sortContractRecordRows(filterContractLinkedRows(paymentResult.value.data.items || [], contract))
           : []);
         setDetailApprovals(approvalResult.status === "fulfilled" ? approvalResult.value.data.items || [] : []);
         if (attachmentResult.status === "rejected" || eventResult.status === "rejected" || workflowHistoryResult.status === "rejected" || objectResult.status === "rejected") {
@@ -1230,6 +1244,7 @@ export default function ContractCenterPage({
   const needSelected = (action: () => void) =>
     selected ? action() : message.warning("请先选择一份合同");
   const selected = rows.find((row) => row.id === Number(selectedRowKeys[0]));
+  const selectedActionPolicy = contractListActionPolicy(selected?.status);
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const moneyKeys = [
     "official_paid",
@@ -1414,6 +1429,7 @@ export default function ContractCenterPage({
     const item = normalizePaidObject(row);
     return { ...row, serial_no: item.applicationNo, data: { ...row.data, applicant: item.applicant, pending_amount: item.pendingAmount, payment_date: item.paymentDate, payment_reference: item.packageNo, amount: item.paidAmount, payment_type: item.paymentType, official_amount: item.officialAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
   });
+  const objectPageData = paginateContractObjectRows(contractObjects, objectPage, objectPageSize);
   const approvalOptions = directory.filter((user) => user.can_approve_contract).map((user) => ({
     value: user.username,
     label: user.display_name || user.username,
@@ -1579,9 +1595,9 @@ export default function ContractCenterPage({
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
-          <Button onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
-          <Button onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
-          <Button onClick={()=>needSelected(()=>startCaseFromContract(selected!))}>新建案件</Button>
+          <Button disabled={!selectedActionPolicy.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
+          <Button disabled={!selectedActionPolicy.canInvoice} onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
+          <Button disabled={!selectedActionPolicy.canCreateCase} onClick={()=>needSelected(()=>startCaseFromContract(selected!))}>新建案件</Button>
           <Button onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
           <Button onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
         </Space></div>}
@@ -1663,7 +1679,7 @@ export default function ContractCenterPage({
                   { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                   { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}` },
                   { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已生成真实用印申请</Tag>, span: 2 },
-                ]} />
+                    ]} />
               ) : (
                 <Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">
@@ -1845,7 +1861,7 @@ export default function ContractCenterPage({
                     <Space style={{ marginBottom: 8 }}>
                       <Button size="small" type="primary" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.resetFields(); setObjectEditing({}); }}>新增标的</Button>
                     </Space>
-                    <Table size="small" rowKey="id" pagination={false} scroll={{ x: 1120 }} dataSource={contractObjects} locale={{ emptyText: "暂无合同标的" }} columns={[
+                    <Table size="small" rowKey="id" scroll={{ x: 1120 }} dataSource={objectPageData.items} locale={{ emptyText: "暂无合同标的" }} pagination={{ current: objectPageData.current, pageSize: objectPageData.pageSize, total: objectPageData.total, showSizeChanger: true, pageSizeOptions: [...CONTRACT_OBJECT_PAGE_SIZES], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setObjectPage(page); setObjectPageSize(pageSize); } }} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: ContractObjectRow, index: number) => index + 1 },
                     { title: "案件类型", dataIndex: "case_type", width: 110 },
                     { title: "案号", dataIndex: "case_no", width: 160, render: (value: string) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCase(value)}>{value}</Button> : "—" },
@@ -1985,7 +2001,7 @@ export default function ContractCenterPage({
           }))} />
         ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
         <Divider>合同标的 <Button size="small" type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={()=>{objectForm.resetFields();setObjectEditing({})}}>新增标的</Button></Divider>
-        {contractObjects.length ? <Table size="small" rowKey="id" pagination={false} scroll={{x:940}} columns={[
+        {contractObjects.length ? <Table size="small" rowKey="id" scroll={{x:940}} columns={[
           {title:"案件类型",dataIndex:"case_type",width:100},
           {title:"案号",dataIndex:"case_no",width:155,render:(value:string)=><Button type="link" className="contract-cell-link" onClick={()=>openRelatedCase(value)}>{value}</Button>},
           {title:"案件名称",dataIndex:"case_title",width:170,ellipsis:true},
@@ -1995,7 +2011,7 @@ export default function ContractCenterPage({
           {title:"客户管理人",dataIndex:"customer_manager",width:120},
           {title:"备注",dataIndex:"remark",width:180,ellipsis:true},
           {title:"操作",width:176,fixed:"right",render:(_:unknown,row:ContractObjectRow)=><Space size={0}><Button type="link" onClick={()=>setObjectLogTarget(row)}>日志</Button>{!viewing||!contractObjectPolicy.canEdit?null:<><Button type="link" onClick={()=>{objectForm.setFieldsValue({case_record_id:row.case_record_id,fee_type:row.fee_type,amount:row.amount,remark:row.remark});setObjectEditing({id:row.id})}}>编辑</Button><Popconfirm title="确认删除该合同标的？" disabled={!contractObjectPolicy.canDelete} onConfirm={()=>void deleteContractObject(row.id)}><Button type="link" danger disabled={!contractObjectPolicy.canDelete}>删除</Button></Popconfirm></>}</Space>},
-        ]} dataSource={contractObjects} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的" />}
+        ]} dataSource={objectPageData.items} pagination={{ current: objectPageData.current, pageSize: objectPageData.pageSize, total: objectPageData.total, showSizeChanger: true, pageSizeOptions: [...CONTRACT_OBJECT_PAGE_SIZES], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setObjectPage(page); setObjectPageSize(pageSize); } }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同标的" />}
           </>
         )}
       </Modal>

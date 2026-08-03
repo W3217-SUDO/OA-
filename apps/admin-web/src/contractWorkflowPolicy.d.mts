@@ -13,6 +13,7 @@ export function validateContractApprovalSubmission(status: string, approvers: st
 export function contractAttachmentActionPolicy(status: string): { canUpload: boolean; canDelete: boolean; canDownload: boolean; canPreview: boolean };
 export function extractContractErrorMessage(error: unknown, fallback: string): string;
 export function contractAuditActionPolicy(view: string): { canReview: boolean; canReviewChange: boolean; canExport: boolean };
+export function contractListActionPolicy(status: string | null | undefined): { canPayment: boolean; canInvoice: boolean; canCreateCase: boolean };
 export function contractAuditViewConfig(view: string): { statuses: string[] };
 export function normalizeContractDetailReturnView(view: string): string;
 export function buildContractDraftDefaults(input: {
