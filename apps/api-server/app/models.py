@@ -346,6 +346,7 @@ class FileAttachment(Base):
     remark: Mapped[str] = mapped_column(Text, default="")
     # IPR 案件文件沿用附件存储，但其日期和转文状态必须可审计，不能只靠备注文本。
     document_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    is_license: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     requires_transmission: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     is_transmitted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     transmitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

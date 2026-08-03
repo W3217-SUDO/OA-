@@ -332,6 +332,9 @@ def _upgrade_schema(connection) -> None:
     if "document_date" not in columns:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN document_date DATE"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_document_date ON file_attachments (document_date)"))
+    if "is_license" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN is_license BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_is_license ON file_attachments (is_license)"))
     if "file_type_code" not in columns:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN file_type_code VARCHAR(64) NOT NULL DEFAULT ''"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_file_type_code ON file_attachments (file_type_code)"))
@@ -2152,6 +2155,9 @@ class CustomerContactInput(BaseModel):
     contact_status: str = "正常联系"
     is_valid: bool = True
     is_primary: bool = False
+    is_received_email: bool = True
+    is_contacted: bool = True
+    is_people_base: bool = True
     remark: str = ""
 
 
@@ -2487,8 +2493,19 @@ def _customer_guid(record: BusinessRecord) -> str:
     return stored or str(uuid5(NAMESPACE_URL, f"customer:{record.id}"))
 
 
+def _customer_contact_dict(contact: dict) -> dict:
+    """Project legacy contacts with explicit independent boolean state fields."""
+    projected = dict(contact or {})
+    projected.setdefault("is_received_email", True)
+    projected.setdefault("is_contacted", True)
+    projected.setdefault("is_people_base", True)
+    return projected
+
+
 def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None) -> dict:
     data = dict(record.data or {})
+    if record.module == "customer":
+        data["contacts"] = [_customer_contact_dict(item) for item in list(data.get("contacts") or [])]
     if allowed_fields is not None:
         for permission, keys in FIELD_PERMISSION_DATA_KEYS.items():
             if permission not in allowed_fields:
@@ -2628,11 +2645,12 @@ async def _delete_task_notifications(task_id: int, db: AsyncSession) -> None:
 def _attachment_dict(item: FileAttachment, record: BusinessRecord | None = None) -> dict:
     return {
         "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
+        "customer_guid": _customer_guid(record) if record and record.module == "customer" else "",
         "record_no": record.serial_no if record else "",
         "record_title": record.title if record else "", "category": item.category, "file_type_code": item.file_type_code,
         "original_name": item.original_name, "content_type": item.content_type,
         "size": item.size, "uploader": item.uploader, "remark": item.remark,
-        "document_date": item.document_date, "requires_transmission": item.requires_transmission, "is_transmitted": item.is_transmitted,
+        "document_date": item.document_date, "is_license": bool(item.is_license), "requires_transmission": item.requires_transmission, "is_transmitted": item.is_transmitted,
         "transmitted_at": item.transmitted_at, "transmitted_by": item.transmitted_by,
         "created_at": item.created_at, "download_url": f"{settings.api_prefix}/attachments/{item.id}/download",
     }
@@ -5745,7 +5763,7 @@ async def _customer_files_by_guid(customer_guid: str, identity: dict, db: AsyncS
 @app.get(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/files")
 async def list_customer_files_by_guid(customer_guid: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     customer, files = await _customer_files_by_guid(customer_guid, identity, db)
-    return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": [{"id": item.id, "original_name": item.original_name, "content_type": item.content_type, "size": item.size, "category": item.category, "created_at": item.created_at} for item in files], "total": len(files)}
+    return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": [_attachment_dict(item, customer) for item in files], "total": len(files)}
 
 
 @app.get(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/files/{{attachment_id}}/download")
@@ -5763,7 +5781,7 @@ async def download_customer_file_by_guid(customer_guid: str, attachment_id: int,
 @app.get(f"{settings.api_prefix}/customers/{{customer_id}}/contacts")
 async def list_customer_contacts(customer_id: int, page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     customer = await _customer_or_404(customer_id, identity, db)
-    contacts = list((customer.data or {}).get("contacts") or [])
+    contacts = [_customer_contact_dict(item) for item in list((customer.data or {}).get("contacts") or [])]
     total = len(contacts); start = (page - 1) * page_size
     return {"customer_id": customer.id, "customer_guid": _customer_guid(customer), "items": contacts[start:start + page_size], "total": total, "page": page, "page_size": page_size}
 
@@ -5774,7 +5792,7 @@ async def update_customer_contact_status(customer_id: int, contact_id: str, body
         raise HTTPException(status_code=422, detail="联系人状态至少指定一项")
     customer = await _customer_or_404(customer_id, identity, db)
     await _require_record_owner_or_manager(customer, identity, db)
-    data = customer.data or {}; contacts = list(data.get("contacts") or [])
+    data = customer.data or {}; contacts = [_customer_contact_dict(item) for item in list(data.get("contacts") or [])]
     index = next((i for i, item in enumerate(contacts) if item.get("id") == contact_id), None)
     if index is None:
         raise HTTPException(status_code=404, detail="联系人不存在")
@@ -5927,6 +5945,9 @@ async def add_customer_contact(customer_id: int, body: CustomerContactInput, ide
         "contact_status": body.contact_status.strip() or "正常联系",
         "is_valid": body.is_valid,
         "is_primary": body.is_primary,
+        "is_received_email": body.is_received_email,
+        "is_contacted": body.is_contacted,
+        "is_people_base": body.is_people_base,
         "remark": body.remark.strip(),
     }
     contacts.append(contact); customer.data = {**data, "contacts": contacts}
@@ -5963,6 +5984,9 @@ async def update_customer_contact(customer_id: int, contact_id: str, body: Custo
         "contact_status": body.contact_status.strip() or "正常联系",
         "is_valid": body.is_valid,
         "is_primary": body.is_primary,
+        "is_received_email": body.is_received_email,
+        "is_contacted": body.is_contacted,
+        "is_people_base": body.is_people_base,
         "remark": body.remark.strip(),
     }
     if body.is_primary:
@@ -5974,6 +5998,11 @@ async def update_customer_contact(customer_id: int, contact_id: str, body: Custo
         "office_phone": "办公电话", "im_account": "IM", "email": "邮箱",
         "contact_status": "联系状态", "is_valid": "有效状态", "is_primary": "主要联系人", "remark": "备注",
     }
+    changed_labels.update({
+        "is_received_email": "is_received_email",
+        "is_contacted": "is_contacted",
+        "is_people_base": "is_people_base",
+    })
     changed = [label for key, label in changed_labels.items() if previous.get(key) != updated.get(key)]
     customer.data = {**data, "contacts": contacts}
     if changed:
@@ -15642,11 +15671,15 @@ async def upload_official_document(
 async def upload_attachment(
     file: UploadFile = File(...), record_id: int | None = Form(None),
     finance_transaction_id: int | None = Form(None),
+    customer_guid: str | None = Form(None), is_license: bool | None = Form(None), document_date: date | None = Form(None),
     category: str = Form("普通附件"), remark: str = Form(""),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     record = None
     transaction = None
+    customer_metadata_provided = customer_guid is not None or is_license is not None or document_date is not None
+    if customer_metadata_provided and record_id is None:
+        raise HTTPException(status_code=422, detail="客户专属附件字段只能用于客户记录")
     if finance_transaction_id is not None:
         transaction = await db.get(FinanceTransaction, finance_transaction_id)
         if not transaction:
@@ -15662,6 +15695,17 @@ async def upload_attachment(
             raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if customer_metadata_provided:
+            if record.module != "customer":
+                raise HTTPException(status_code=422, detail="客户专属附件字段只能用于客户记录")
+            normalized_customer_guid = str(customer_guid or "").strip()
+            if not normalized_customer_guid:
+                raise HTTPException(status_code=422, detail="客户 Guid 不能为空")
+            stored_customer_guid = (record.data or {}).get("customer_guid")
+            if "customer_guid" in (record.data or {}) and not str(stored_customer_guid or "").strip():
+                raise HTTPException(status_code=422, detail="客户记录 customer_guid 不能为空")
+            if normalized_customer_guid != _customer_guid(record):
+                raise HTTPException(status_code=409, detail="附件 customer_guid 与客户记录不一致")
         await _require_hr_attachment_write_access(record, category, identity, db)
         if record.module == "ipr_case":
             raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
@@ -15715,7 +15759,7 @@ async def upload_attachment(
     stored_name = f"{uuid4().hex}{suffix}"
     target = UPLOAD_ROOT / stored_name
     target.write_bytes(content)
-    item = FileAttachment(record_id=record_id, finance_transaction_id=finance_transaction_id, category=category, original_name=Path(file.filename or stored_name).name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=remark)
+    item = FileAttachment(record_id=record_id, finance_transaction_id=finance_transaction_id, category=category, original_name=Path(file.filename or stored_name).name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=remark, is_license=bool(is_license), document_date=document_date)
     db.add(item)
     await db.flush()
     if record and record.module == "case":
@@ -17551,7 +17595,7 @@ async def _ipr_case_contact_candidates(case_record: BusinessRecord, customer_id:
     if customer_id not in {item.customer_record_id for item in links}:
         raise HTTPException(status_code=422, detail="该客户尚未关联到当前知识产权案件")
     customer = await _customer_or_404(customer_id, identity, db)
-    contacts = [item for item in list((customer.data or {}).get("contacts", [])) if item.get("id") and item.get("is_valid", True)]
+    contacts = [_customer_contact_dict(item) for item in list((customer.data or {}).get("contacts", [])) if item.get("id") and item.get("is_valid", True)]
     return customer, contacts
 
 
@@ -17606,7 +17650,8 @@ async def list_ipr_case_customer_contacts(case_id: int, identity: dict = Depends
         for link in [item for item in links if item.customer_record_id == customer.id]:
             contact = contacts.get(link.contact_id)
             if contact:
-                result.append({"id": link.id, "customer_id": customer.id, "customer_name": customer.title, "contact_id": link.contact_id, "contact_role": link.contact_role, "name": contact.get("name", ""), "phone": contact.get("phone", ""), "email": contact.get("email", ""), "position": contact.get("position", ""), "is_valid": bool(contact.get("is_valid", True))})
+                projected = _customer_contact_dict(contact)
+                result.append({"id": link.id, "customer_id": customer.id, "customer_name": customer.title, "contact_id": link.contact_id, "contact_role": link.contact_role, "name": projected.get("name", ""), "phone": projected.get("phone", ""), "email": projected.get("email", ""), "position": projected.get("position", ""), "is_valid": bool(projected.get("is_valid", True)), "is_received_email": bool(projected.get("is_received_email", True)), "is_contacted": bool(projected.get("is_contacted", True)), "is_people_base": bool(projected.get("is_people_base", True))})
     return {"items": result, "total": len(result)}
 
 
