@@ -2001,6 +2001,7 @@ class RolePermissionUpdate(BaseModel):
     data_scope: str = Field(min_length=1, max_length=64)
     menu_keys: list[str]
     field_keys: list[str]
+    action_keys: list[str] | None = None
 
 
 class SecurityPolicyUpdate(BaseModel):
@@ -2693,6 +2694,127 @@ def _stored_menu_permission_keys(menu_keys: list[str]) -> list[str]:
     return list(dict.fromkeys(result))
 
 
+SYSTEM_ACTION_OPERATION_LABELS = {
+    "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
+    "clear": "清理", "reset": "重置", "permissions": "维护权限",
+}
+
+
+def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) -> list[dict]:
+    """Build the M/A catalog from local system menu capabilities.
+
+    The legacy RoleController obtained actions dynamically from ActionService and
+    MenuService.GetMenuActionList. The local service has no action table, so its
+    endpoint capabilities are the maintainable source of truth.
+    """
+    keys = sorted(set(menu_keys or SYSTEM_MENU_ROUTE_KEYS))
+    definitions: list[dict] = []
+    for menu_key in keys:
+        if menu_key == "system":
+            operations = ("query", "permissions")
+        elif menu_key == "system-management-cache":
+            operations = ("query", "clear")
+        elif menu_key == "system-management-menu":
+            operations = ("query", "create", "update", "delete", "reset")
+        elif menu_key == "system-management-config":
+            operations = ("query", "update")
+        elif menu_key == "system-parameters" or menu_key.startswith("system-parameters-"):
+            operations = ("query", "create", "update", "delete")
+        elif menu_key == "system-law-firms":
+            operations = ("query", "create", "update", "delete")
+        elif menu_key.startswith("system-"):
+            operations = ("query",)
+        else:
+            continue
+        definitions.extend(
+            {"code": f"{menu_key}.{operation}", "menu_key": menu_key, "label": SYSTEM_ACTION_OPERATION_LABELS[operation]}
+            for operation in operations
+        )
+    return definitions
+
+
+SYSTEM_ACTION_DEFINITIONS = _system_action_definitions()
+SYSTEM_ACTION_BY_CODE = {item["code"]: item for item in SYSTEM_ACTION_DEFINITIONS}
+
+
+def _split_role_permission_keys(menu_keys: list[str] | None) -> tuple[list[str], list[str]]:
+    menus: list[str] = []
+    actions: list[str] = []
+    for key in menu_keys or []:
+        value = str(key)
+        if value.startswith("@action:"):
+            actions.append(value.removeprefix("@action:"))
+        else:
+            menus.append(value)
+    return list(dict.fromkeys(menus)), list(dict.fromkeys(actions))
+
+
+async def _system_audit(db: AsyncSession, identity: dict, action: str, target: str, detail: dict | None = None) -> None:
+    """Write system-center audit rows in the caller's transaction."""
+    record = BusinessRecord(
+        module="system_audit",
+        serial_no=f"SYS-AUDIT-{uuid4().hex}",
+        title=target,
+        status="已完成",
+        owner=str(identity.get("username") or "system"),
+        department="系统",
+        data=detail or {},
+    )
+    db.add(record)
+    await db.flush()
+    db.add(WorkflowEvent(
+        record_id=record.id,
+        action=action,
+        from_status="",
+        to_status="已完成",
+        operator=str(identity.get("username") or "system"),
+        comment=json.dumps(detail or {}, ensure_ascii=False, separators=(",", ":")),
+    ))
+
+
+async def _system_permission_tree(db: AsyncSession, permission: RolePermission | None) -> list[dict]:
+    menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else [])
+    rows = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
+    by_key = {item.key: item for item in rows}
+    action_definitions = _system_action_definitions(set(by_key))
+    action_by_menu: dict[str, list[dict]] = {}
+    for definition in action_definitions:
+        action_by_menu.setdefault(definition["menu_key"], []).append(definition)
+    children_by_parent: dict[str, list[SystemMenu]] = {}
+    for item in rows:
+        children_by_parent.setdefault(item.parent_key or "", []).append(item)
+
+    def build(item: SystemMenu) -> dict:
+        children = [build(child) for child in children_by_parent.get(item.key, [])]
+        for definition in action_by_menu.get(item.key, []):
+            children.append({
+                "node_type": "A", "node_id": f"action:{definition['code']}",
+                "node_code": definition["code"], "text": definition["label"],
+                "state": {"checked": definition["code"] in action_keys}, "children": [],
+            })
+        return {
+            "node_type": "M", "node_id": str(item.id), "node_code": item.key, "text": item.label,
+            "state": {"checked": item.key in menu_keys}, "children": children,
+        }
+
+    # Include configured menu rows and synthetic action roots even when an isolated
+    # database has not seeded every default menu.
+    roots = [build(item) for item in children_by_parent.get("", [])]
+    known = {node["node_code"] for node in roots}
+    for definition in action_definitions:
+        if definition["menu_key"] not in by_key and definition["menu_key"] not in known:
+            roots.append({
+                "node_type": "M", "node_id": f"menu:{definition['menu_key']}",
+                "node_code": definition["menu_key"], "text": definition["menu_key"],
+                "state": {"checked": definition["menu_key"] in menu_keys},
+                "children": [{
+                    "node_type": "A", "node_id": f"action:{definition['code']}",
+                    "node_code": definition["code"], "text": definition["label"],
+                    "state": {"checked": definition["code"] in action_keys}, "children": [],
+                }],
+            })
+    return roots
+
 async def _permission_payload(role: str, db: AsyncSession) -> dict:
     permission = await db.scalar(select(RolePermission).where(RolePermission.role == role))
     config = DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"])
@@ -2702,8 +2824,9 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
             "data_scope": config["data_scope"],
             "field_keys": list(FIELD_KEYS),
         }
+    menu_keys, _ = _split_role_permission_keys(permission.menu_keys if permission else config["menu_keys"])
     return {
-        "menu_keys": _expand_menu_permission_keys(list(permission.menu_keys if permission else config["menu_keys"])),
+        "menu_keys": _expand_menu_permission_keys(menu_keys),
         "data_scope": permission.data_scope if permission else config["data_scope"],
         "field_keys": list(permission.field_keys if permission else config["field_keys"]),
     }
@@ -3376,13 +3499,30 @@ async def list_system_parameter_categories(identity: dict = Depends(current_iden
     return {"items": [{"key": key, "name": name} for key, name in SYSTEM_PARAMETER_CATEGORIES.items()]}
 
 
+@app.get(f"{settings.api_prefix}/system/parameters/cause/autocomplete")
+async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, ge=1, le=50), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return cause nodes for case forms without exposing unrelated parameters."""
+    statement = select(SystemParameter).where(SystemParameter.category == "cause", SystemParameter.is_active.is_(True))
+    if keyword.strip():
+        term = f"%{keyword.strip()}%"
+        statement = statement.where(or_(SystemParameter.code.ilike(term), SystemParameter.name.ilike(term)))
+    items = (await db.scalars(statement.order_by(SystemParameter.sort_order, SystemParameter.id).limit(limit))).all()
+    return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
+
+
 @app.get(f"{settings.api_prefix}/system/parameters")
-async def list_system_parameters(category: str = "", keyword: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_system_parameters(category: str = "", keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     if category and category not in SYSTEM_PARAMETER_CATEGORIES: raise HTTPException(status_code=422, detail="参数分类无效")
     cache_key = category or "__all__"
     if not keyword.strip() and cache_key in SYSTEM_PARAMETER_CACHE:
-        return {"items": SYSTEM_PARAMETER_CACHE[cache_key], "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": True}
+        result = SYSTEM_PARAMETER_CACHE[cache_key]
+        if page is None and page_size is None:
+            return {"items": result, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": True}
+        current_page, current_size = page or 1, page_size or 15
+        total = len(result)
+        start = (current_page - 1) * current_size
+        return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": True}
     statement = select(SystemParameter)
     if category: statement = statement.where(SystemParameter.category == category)
     if keyword.strip():
@@ -3391,7 +3531,12 @@ async def list_system_parameters(category: str = "", keyword: str = "", identity
     items = (await db.scalars(statement.order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     result = [_system_parameter_dict(item) for item in items]
     if not keyword.strip(): SYSTEM_PARAMETER_CACHE[cache_key] = result
-    return {"items": result, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": False}
+    if page is None and page_size is None:
+        return {"items": result, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": False}
+    current_page, current_size = page or 1, page_size or 15
+    total = len(result)
+    start = (current_page - 1) * current_size
+    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": False}
 
 
 async def _validate_parameter_references(category: str, extra: dict, db: AsyncSession) -> None:
@@ -3419,6 +3564,32 @@ async def _validate_parameter_references(category: str, extra: dict, db: AsyncSe
     ))
     if not court:
         raise HTTPException(status_code=422, detail="关联法院不存在或已停用")
+
+
+async def _validate_parameter_parent(category: str, code: str, extra: dict, db: AsyncSession, current_id: int | None = None) -> None:
+    """Validate hierarchical parameter links without allowing orphan or cyclic trees."""
+    if category not in {"fee_type", "case_phase", "cause"}:
+        return
+    parent_code = str((extra or {}).get("parent_code") or "").strip()
+    if not parent_code:
+        return
+    if parent_code == code:
+        raise HTTPException(status_code=422, detail="父级参数不能引用自身")
+    parent = await db.scalar(select(SystemParameter).where(SystemParameter.category == category, SystemParameter.code == parent_code))
+    if not parent or (current_id is not None and parent.id == current_id):
+        raise HTTPException(status_code=422, detail="父级参数不存在")
+    seen = {code}
+    cursor = parent
+    while cursor:
+        if cursor.code in seen:
+            raise HTTPException(status_code=422, detail="参数父级关系存在循环引用")
+        seen.add(cursor.code)
+        next_code = str((cursor.extra or {}).get("parent_code") or "").strip()
+        if not next_code:
+            break
+        cursor = await db.scalar(select(SystemParameter).where(SystemParameter.category == category, SystemParameter.code == next_code))
+        if cursor is None:
+            raise HTTPException(status_code=422, detail="父级参数不存在")
 
 
 PARAMETER_REFERENCE_FIELDS: dict[str, dict[str, set[str]]] = {
@@ -3467,9 +3638,12 @@ async def create_system_parameter(body: SystemParameterInput, identity: dict = D
     code, name = body.code.strip(), body.name.strip()
     duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == body.category, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
+    await _validate_parameter_parent(body.category, code, body.extra, db)
     await _validate_parameter_references(body.category, body.extra, db)
     item = SystemParameter(**body.model_dump(exclude={"code", "name"}), code=code, name=name, created_by=identity["username"], updated_by=identity["username"])
-    db.add(item); await db.commit(); await db.refresh(item); _clear_parameter_cache(body.category, identity["username"])
+    db.add(item); await db.flush()
+    await _system_audit(db, identity, "创建系统参数", f"系统参数:{item.category}/{item.code}", {"id": item.id, "category": item.category, "code": item.code})
+    await db.commit(); await db.refresh(item); _clear_parameter_cache(body.category, identity["username"])
     return _system_parameter_dict(item)
 
 
@@ -3482,9 +3656,12 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
     name = body.name.strip() if body.name is not None else item.name
     duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
-    await _validate_parameter_references(item.category, body.extra if body.extra is not None else (item.extra or {}), db)
+    next_extra = body.extra if body.extra is not None else (item.extra or {})
+    await _validate_parameter_parent(item.category, code, next_extra, db, current_id=item.id)
+    await _validate_parameter_references(item.category, next_extra, db)
     for key, value in body.model_dump(exclude_unset=True).items(): setattr(item, key, value.strip() if key in {"code", "name"} else value)
     item.updated_by = identity["username"]
+    await _system_audit(db, identity, "更新系统参数", f"系统参数:{item.category}/{item.code}", {"id": item.id, "category": item.category, "code": item.code})
     await db.commit(); await db.refresh(item); _clear_parameter_cache(item.category, identity["username"])
     return _system_parameter_dict(item)
 
@@ -3498,6 +3675,7 @@ async def delete_system_parameter(parameter_id: int, identity: dict = Depends(cu
     if references:
         raise HTTPException(status_code=409, detail=f"参数“{item.name}”已被业务记录引用（{ '、'.join(references) }），不能删除；请停用以保留历史数据")
     category = item.category
+    await _system_audit(db, identity, "删除系统参数", f"系统参数:{category}/{item.code}", {"id": item.id, "category": category, "code": item.code})
     await db.delete(item); await db.commit(); _clear_parameter_cache(category, identity["username"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -3523,10 +3701,18 @@ def _validate_system_config(key: str, value: dict) -> dict:
 
 
 @app.get(f"{settings.api_prefix}/system/configs")
-async def list_system_configs(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_system_configs(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
-    return {"items": [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at} for item in items]}
+    result = [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at} for item in items]
+    if keyword.strip():
+        needle = keyword.strip().lower()
+        result = [item for item in result if needle in " ".join([item["key"], item["label"], item["group"], item["description"], json.dumps(item["value"], ensure_ascii=False)]).lower()]
+    if page is None and page_size is None:
+        return {"items": result}
+    current_page, current_size = page or 1, page_size or 15
+    total = len(result); start = (current_page - 1) * current_size
+    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size}
 
 
 @app.patch(f"{settings.api_prefix}/system/configs/{{config_key}}")
@@ -3535,6 +3721,7 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     item = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key))
     if not item: raise HTTPException(status_code=404, detail="系统配置不存在")
     item.value = _validate_system_config(config_key, body.value); item.updated_by = identity["username"]
+    await _system_audit(db, identity, "更新系统配置", f"系统配置:{item.key}", {"key": item.key})
     await db.commit(); await db.refresh(item)
     return {"key": item.key, "label": item.label, "group": item.group, "value": item.value, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at}
 
@@ -3557,7 +3744,7 @@ def _clear_registered_cache(cache_key: str, operator: str) -> None:
 
 
 @app.get(f"{settings.api_prefix}/system/caches")
-async def list_system_caches(page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_system_caches(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     # system-parameters is retained as a backwards-compatible clear alias, but the
     # visible registry mirrors the legacy eight cache rows.
@@ -3566,9 +3753,14 @@ async def list_system_caches(page: int = Query(1, ge=1), page_size: int = Query(
     for key in keys:
         definition = SYSTEM_CACHE_REGISTRY[key]
         rows.append({"key": key, "name": definition["name"], "description": definition["description"], "entry_count": await _system_cache_entry_count(key, definition, db), "bucket_count": 1, **SYSTEM_CACHE_META[key]})
-    total = len(rows)
-    start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size}
+    if keyword.strip():
+        needle = keyword.strip().lower()
+        rows = [row for row in rows if needle in f"{row['key']} {row['name']} {row['description']}".lower()]
+    # Keep the legacy cache-list contract when callers omit pagination: the old
+    # endpoint defaulted to page 1 with 15 rows and always returned metadata.
+    current_page, current_size = page or 1, page_size or 15
+    total = len(rows); start = (current_page - 1) * current_size
+    return {"items": rows[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "pages": (total + current_size - 1) // current_size}
 
 
 @app.post(f"{settings.api_prefix}/system/caches/clear")
@@ -3580,6 +3772,8 @@ async def clear_system_caches(body: CacheBatchClearInput, identity: dict = Depen
     keys = list(dict.fromkeys(body.cache_keys))
     for key in keys:
         _clear_registered_cache(key, identity["username"])
+    await _system_audit(db, identity, "清理系统缓存", "系统缓存:批量", {"cache_keys": keys})
+    await db.commit()
     return {"cleared": keys, "items": [{"key": key, "entry_count": await _system_cache_entry_count(key, SYSTEM_CACHE_REGISTRY[key], db), **SYSTEM_CACHE_META[key]} for key in keys]}
 
 
@@ -3588,6 +3782,8 @@ async def clear_system_cache(cache_key: str, identity: dict = Depends(current_id
     _require_admin(identity)
     if cache_key not in SYSTEM_CACHE_REGISTRY: raise HTTPException(status_code=404, detail="缓存不存在")
     _clear_registered_cache(cache_key, identity["username"])
+    await _system_audit(db, identity, "清理系统缓存", f"系统缓存:{cache_key}", {"cache_key": cache_key})
+    await db.commit()
     definition = SYSTEM_CACHE_REGISTRY[cache_key]
     return {"key": cache_key, "cleared": True, "entry_count": await _system_cache_entry_count(cache_key, definition, db), **SYSTEM_CACHE_META[cache_key]}
 
@@ -3812,10 +4008,18 @@ async def navigation_menus(identity: dict = Depends(current_identity), db: Async
 
 
 @app.get(f"{settings.api_prefix}/system/menus")
-async def list_system_menus(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_system_menus(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     items = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
-    return {"items": [_system_menu_dict(item) for item in items], "total": len(items)}
+    result = [_system_menu_dict(item) for item in items]
+    if keyword.strip():
+        needle = keyword.strip().lower()
+        result = [item for item in result if needle in " ".join(str(item.get(key) or "") for key in ("key", "parent_key", "label", "description")).lower()]
+    if page is None and page_size is None:
+        return {"items": result, "total": len(result)}
+    current_page, current_size = page or 1, page_size or 15
+    total = len(result); start = (current_page - 1) * current_size
+    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size}
 
 
 @app.post(f"{settings.api_prefix}/system/menus", status_code=status.HTTP_201_CREATED)
@@ -3843,6 +4047,8 @@ async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(cur
     if hasattr(item, "description"):
         item.description = body.description.strip()
     db.add(item)
+    await db.flush()
+    await _system_audit(db, identity, "创建系统菜单", f"系统菜单:{item.key}", {"id": item.id, "key": item.key})
     await db.commit()
     await db.refresh(item)
     return _system_menu_dict(item)
@@ -3859,6 +4065,7 @@ async def update_system_menu(menu_id: int, body: SystemMenuUpdate, identity: dic
     for key, value in changes.items():
         setattr(item, key, value.strip() if isinstance(value, str) else value)
     item.updated_by = identity["username"]
+    await _system_audit(db, identity, "更新系统菜单", f"系统菜单:{item.key}", {"id": item.id, "key": item.key})
     await db.commit(); await db.refresh(item)
     return _system_menu_dict(item)
 
@@ -3873,6 +4080,7 @@ async def delete_system_menu(menu_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=422, detail="系统预置菜单不能删除")
     if await db.scalar(select(SystemMenu.id).where(SystemMenu.parent_key == item.key)):
         raise HTTPException(status_code=409, detail="请先删除该菜单的子菜单")
+    await _system_audit(db, identity, "删除系统菜单", f"系统菜单:{item.key}", {"id": item.id, "key": item.key})
     await db.delete(item)
     await db.commit()
 
@@ -3893,16 +4101,18 @@ async def reset_system_menus(identity: dict = Depends(current_identity), db: Asy
             continue
         item.parent_key = parent_key; item.label = label; item.icon = icon; item.sort_order = sort_order
         item.is_visible = True; item.is_active = True; item.updated_by = identity["username"]
+    await _system_audit(db, identity, "重置系统菜单", "系统菜单:重置", {"count": len(defaults)})
     await db.commit()
     refreshed = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
     return {"items": [_system_menu_dict(item) for item in refreshed], "total": len(refreshed)}
 
 
 def _role_permission_dict(item: RolePermission) -> dict:
+    menu_keys, action_keys = _split_role_permission_keys(item.menu_keys)
     if item.role == "admin":
         config = DEFAULT_ROLE_PERMISSIONS["admin"]
-        return {"role": item.role, "display_name": config["display_name"], "data_scope": config["data_scope"], "menu_keys": list(MENU_KEYS), "field_keys": list(FIELD_KEYS), "updated_at": item.updated_at}
-    return {"role": item.role, "display_name": item.display_name, "data_scope": item.data_scope, "menu_keys": item.menu_keys, "field_keys": item.field_keys, "updated_at": item.updated_at}
+        return {"role": item.role, "display_name": config["display_name"], "data_scope": config["data_scope"], "menu_keys": list(MENU_KEYS), "action_keys": [item["code"] for item in SYSTEM_ACTION_DEFINITIONS], "field_keys": list(FIELD_KEYS), "updated_at": item.updated_at}
+    return {"role": item.role, "display_name": item.display_name, "data_scope": item.data_scope, "menu_keys": menu_keys, "action_keys": action_keys, "field_keys": item.field_keys, "updated_at": item.updated_at}
 
 
 @app.get(f"{settings.api_prefix}/system/role-permissions")
@@ -3910,7 +4120,8 @@ async def list_role_permissions(identity: dict = Depends(current_identity), db: 
     _require_admin(identity)
     items = (await db.scalars(select(RolePermission).order_by(RolePermission.id))).all()
     legacy_keys = list((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
-    return {"items": [_role_permission_dict(item) for item in items], "available_menu_keys": [*MENU_KEYS, *legacy_keys], "available_field_keys": FIELD_KEYS}
+    tree_permission = next((item for item in items if item.role == identity.get("role")), items[0] if items else None)
+    return {"items": [_role_permission_dict(item) for item in items], "available_menu_keys": [*MENU_KEYS, *legacy_keys], "available_field_keys": FIELD_KEYS, "permission_tree": await _system_permission_tree(db, tree_permission)}
 
 
 @app.patch(f"{settings.api_prefix}/system/role-permissions/{{role}}")
@@ -3927,6 +4138,12 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     if invalid:
         raise HTTPException(status_code=422, detail=f"无效菜单权限：{', '.join(invalid)}")
     menu_keys = list(dict.fromkeys(body.menu_keys))
+    item = await db.scalar(select(RolePermission).where(RolePermission.role == role))
+    _, existing_actions = _split_role_permission_keys(item.menu_keys if item else [])
+    action_keys = list(dict.fromkeys(body.action_keys if body.action_keys is not None else (existing_actions or ([item["code"] for item in SYSTEM_ACTION_DEFINITIONS] if role == "admin" else []))))
+    invalid_actions = sorted(set(action_keys) - set(SYSTEM_ACTION_BY_CODE))
+    if invalid_actions:
+        raise HTTPException(status_code=422, detail=f"无效动作权限：{', '.join(invalid_actions)}")
     if "user-center" not in menu_keys:
         raise HTTPException(status_code=422, detail="用户中心为基础权限，不能移除")
     if role == "admin" and set(menu_keys) != all_menu_keys:
@@ -3937,15 +4154,18 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     if invalid_fields: raise HTTPException(status_code=422, detail=f"无效字段权限：{', '.join(invalid_fields)}")
     field_keys = list(dict.fromkeys(body.field_keys))
     if role == "admin" and set(field_keys) != set(FIELD_KEYS): raise HTTPException(status_code=422, detail="系统管理员必须保留全部字段权限")
-    item = await db.scalar(select(RolePermission).where(RolePermission.role == role))
+    if role == "admin" and body.action_keys is not None and set(action_keys) != set(SYSTEM_ACTION_BY_CODE):
+        raise HTTPException(status_code=422, detail="系统管理员必须保留全部动作权限")
+    stored_menu_keys = menu_keys + [f"@action:{key}" for key in action_keys]
     if not item:
         config = DEFAULT_ROLE_PERMISSIONS[role]
-        item = RolePermission(role=role, display_name=config["display_name"], data_scope=data_scope, menu_keys=menu_keys, field_keys=field_keys)
+        item = RolePermission(role=role, display_name=config["display_name"], data_scope=data_scope, menu_keys=stored_menu_keys, field_keys=field_keys)
         db.add(item)
     else:
         item.data_scope = data_scope
-        item.menu_keys = menu_keys
+        item.menu_keys = stored_menu_keys
         item.field_keys = field_keys
+    await _system_audit(db, identity, "更新角色权限", f"角色权限:{role}", {"role": role, "menu_keys": menu_keys, "action_keys": action_keys})
     await db.commit(); await db.refresh(item)
     return _role_permission_dict(item)
 
