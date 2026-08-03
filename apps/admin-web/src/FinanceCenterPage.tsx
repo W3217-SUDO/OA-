@@ -45,6 +45,17 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
+import {
+  normalizeRefundResponse,
+  refundAmountUpdateRequest,
+  refundBatchStatusRequest,
+  refundExportRequestParams,
+  refundListRequest,
+  refundLoadFailure,
+  refundPageSizeOptions,
+  refundSelectedExportRequestParams,
+  refundStatusOptions,
+} from "./financeRefundHelpers.mjs";
 import RecordImportButton from "./RecordImportButton";
 import { ReceiptCreatePage } from "./PlatformFinancePage";
 import "./finance-center.css";
@@ -596,6 +607,13 @@ export default function FinanceCenterPage({
   const [contractPayments, setContractPayments] = useState<Fee[]>([]);
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
+  const [refundMeta, setRefundMeta] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 15,
+  });
+  const [selectedRefundRows, setSelectedRefundRows] = useState<number[]>([]);
+  const [refundStatusFilter, setRefundStatusFilter] = useState("全部");
   const [cases, setCases] = useState<Fee[]>([]);
   const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
@@ -815,6 +833,11 @@ export default function FinanceCenterPage({
   const [invoiceExportLoading, setInvoiceExportLoading] = useState(false);
   const [invoiceDetail, setInvoiceDetail] = useState<FinanceFlow | null>(null);
   const [refundDetail, setRefundDetail] = useState<FinanceFlow | null>(null);
+  const [refundAmountTarget, setRefundAmountTarget] =
+    useState<FinanceFlow | null>(null);
+  const [refundBatchStatusOpen, setRefundBatchStatusOpen] = useState(false);
+  const [refundBatchStatus, setRefundBatchStatus] = useState("待审批");
+  const [refundMutationLoading, setRefundMutationLoading] = useState(false);
   const [invoiceProcess, setInvoiceProcess] = useState<FinanceFlow | null>(null);
   const [invoiceCancel, setInvoiceCancel] = useState<FinanceFlow | null>(null);
   const [invoiceCancelReason, setInvoiceCancelReason] = useState("");
@@ -872,6 +895,19 @@ export default function FinanceCenterPage({
       );
     }
   };
+  const openRefundDetail = async (row: FinanceFlow) => {
+    try {
+      const { data } = await api.get(`/records/${row.id}`);
+      if (!data || data.module !== "refund") {
+        throw new Error("退款详情记录无效");
+      }
+      setRefundDetail(data);
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail || error?.message || "退款详情加载失败",
+      );
+    }
+  };
   useEffect(() => {
     const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund", "finance_package", "finance_settlement", "finance_archive_settlement"]);
     if (!target) return;
@@ -923,6 +959,7 @@ export default function FinanceCenterPage({
   const [invoiceNumberForm] = Form.useForm();
   const [invoiceDateForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
+  const [refundAmountForm] = Form.useForm();
   const [transactionForm] = Form.useForm();
   const [reconcileForm] = Form.useForm();
   const [voucherForm] = Form.useForm();
@@ -1438,6 +1475,35 @@ export default function FinanceCenterPage({
     setPaymentPackageMeta(normalized);
     return response;
   };
+  const loadRefunds = async (
+    page = 1,
+    pageSize = refundMeta.pageSize,
+    status = refundStatusFilter,
+    preserveOnError = false,
+  ) => {
+    try {
+      const request = refundListRequest(page, pageSize, status);
+      const response = await api.get(request.url, { params: request.params });
+      const normalized = normalizeRefundResponse(response.data, page, pageSize);
+      setRefunds(normalized.items);
+      setRefundMeta(normalized);
+      setSelectedRefundRows([]);
+      return response;
+    } catch (error: any) {
+      const failure = refundLoadFailure(
+        {
+          items: refunds,
+          total: refundMeta.total,
+          page: refundMeta.page,
+          pageSize: refundMeta.pageSize,
+        },
+        error,
+      );
+      message.error(failure.message);
+      if (!preserveOnError) throw error;
+      return null as never;
+    }
+  };
   const load = async () => {
     setLoading(true);
     setFinanceDataReady(false);
@@ -1490,7 +1556,7 @@ export default function FinanceCenterPage({
               })
           : api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
         api.get("/records", { params: { module: "invoice", page_size: 100 } }),
-        api.get("/records", { params: { module: "refund", page_size: 100 } }),
+        loadRefunds(1, refundMeta.pageSize),
         api.get("/records", { params: { module: "case", page_size: 100 } }),
         api.get("/records", { params: { module: "customer", page_size: 100 } }),
         api.get("/receivables"),
@@ -1654,7 +1720,14 @@ export default function FinanceCenterPage({
         })),
       );
       setInvoices(invoiceRes.data.items);
-      setRefunds(refundRes.data.items);
+      const normalizedRefunds = normalizeRefundResponse(
+        refundRes.data,
+        1,
+        refundMeta.pageSize,
+      );
+      setRefunds(normalizedRefunds.items);
+      setRefundMeta(normalizedRefunds);
+      setSelectedRefundRows([]);
       setCases(caseRes.data.items);
       setCustomers(customerRes.data.items);
       setReceivables(receivableRes.data.items);
@@ -2069,6 +2142,55 @@ export default function FinanceCenterPage({
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "退款申请创建失败");
+    }
+  };
+  const updateRefundAmount = async () => {
+    if (!refundAmountTarget) return;
+    const values = await refundAmountForm.validateFields();
+    const request = refundAmountUpdateRequest(
+      refundAmountTarget.id,
+      Number(values.amount),
+      String(values.comment || ""),
+    );
+    setRefundMutationLoading(true);
+    try {
+      await api.patch(request.url, request.body);
+      message.success("退款金额已修改");
+      setRefundAmountTarget(null);
+      refundAmountForm.resetFields();
+      await loadRefunds(
+        refundMeta.page,
+        refundMeta.pageSize,
+        refundStatusFilter,
+        true,
+      );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "退款金额修改失败");
+    } finally {
+      setRefundMutationLoading(false);
+    }
+  };
+  const updateRefundBatchStatus = async () => {
+    const request = refundBatchStatusRequest(
+      selectedRefundRows,
+      refundBatchStatus,
+      "批量修改退费进度",
+    );
+    setRefundMutationLoading(true);
+    try {
+      await api.post(request.url, request.body);
+      message.success("退费进度已批量修改");
+      setRefundBatchStatusOpen(false);
+      await loadRefunds(
+        refundMeta.page,
+        refundMeta.pageSize,
+        refundStatusFilter,
+        true,
+      );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "退费进度修改失败");
+    } finally {
+      setRefundMutationLoading(false);
     }
   };
   const submitFlow = async (kind: "invoices" | "refunds", row: FinanceFlow) => {
@@ -2619,6 +2741,9 @@ export default function FinanceCenterPage({
       width: 205,
       render: (_: unknown, r: FinanceFlow) => (
         <Space wrap>
+          <Button type="link" onClick={() => void openRefundDetail(r)}>
+            详情
+          </Button>
           {["草稿", "已驳回"].includes(r.status) && (
             <Button type="link" onClick={() => submitFlow("invoices", r)}>
               提交
@@ -2702,6 +2827,19 @@ export default function FinanceCenterPage({
       render: (_: unknown, r: FinanceFlow) => r.data.expected_date || "—",
     },
     {
+      title: "实际到账",
+      key: "actual",
+      width: 110,
+      render: (_: unknown, r: FinanceFlow) => r.data.actual_date || "—",
+    },
+    {
+      title: "退款凭证号",
+      key: "voucher",
+      width: 135,
+      render: (_: unknown, r: FinanceFlow) =>
+        r.data.refund_voucher_no || r.data.voucher_no || "—",
+    },
+    {
       title: "状态",
       dataIndex: "status",
       width: 105,
@@ -2730,6 +2868,20 @@ export default function FinanceCenterPage({
       width: 205,
       render: (_: unknown, r: FinanceFlow) => (
         <Space wrap>
+          {['草稿', '已驳回'].includes(r.status) && (
+            <Button
+              type="link"
+              onClick={() => {
+                refundAmountForm.setFieldsValue({
+                  amount: r.data.amount,
+                  comment: "",
+                });
+                setRefundAmountTarget(r);
+              }}
+            >
+              修改金额
+            </Button>
+          )}
           {["草稿", "已驳回"].includes(r.status) && (
             <Button type="link" onClick={() => submitFlow("refunds", r)}>
               提交
@@ -6754,6 +6906,39 @@ export default function FinanceCenterPage({
     anchor.click();
     URL.revokeObjectURL(url);
   };
+  const exportRefunds = async (selectedOnly: boolean) => {
+    if (selectedOnly && !selectedRefundRows.length) {
+      message.warning("请先选择需要导出的退款记录");
+      return;
+    }
+    try {
+      const response = await api.get(
+        selectedOnly
+          ? "/finance/refunds/export-selected"
+          : "/finance/refunds/export",
+        {
+          params: selectedOnly
+            ? refundSelectedExportRequestParams(
+                selectedRefundRows,
+                refundStatusFilter,
+              )
+            : refundExportRequestParams(refundStatusFilter),
+          responseType: "blob",
+        },
+      );
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `诉讼费退款-${selectedOnly ? "选中" : "全部"}-${dayjs().format("YYYY-MM-DD")}.xls`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail ||
+          (selectedOnly ? "退款选中导出失败" : "退款全量导出失败"),
+      );
+    }
+  };
   const selectedSettlementRows = configuredRows.filter((row) =>
     selectedOriginalRows.includes(row.id),
   );
@@ -9299,6 +9484,41 @@ export default function FinanceCenterPage({
                     </Button>
                   )}
                   {tab === "refunds" && (
+                    <>
+                      <Select
+                        aria-label="退款状态筛选"
+                        value={refundStatusFilter}
+                        options={refundStatusOptions.map((value) => ({
+                          label: value,
+                          value,
+                        }))}
+                        onChange={(value) => {
+                          setRefundStatusFilter(value);
+                          void loadRefunds(1, refundMeta.pageSize, value, true);
+                        }}
+                        style={{ minWidth: 130 }}
+                      />
+                      <Button onClick={() => void exportRefunds(false)}>
+                        导出全部
+                      </Button>
+                      <Button
+                        disabled={!selectedRefundRows.length}
+                        onClick={() => void exportRefunds(true)}
+                      >
+                        导出选中
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (!selectedRefundRows.length) {
+                            message.warning("请选择需要修改退费进度的记录");
+                            return;
+                          }
+                          setRefundBatchStatus("待审批");
+                          setRefundBatchStatusOpen(true);
+                        }}
+                      >
+                        退费进度修改
+                      </Button>
                     <Button
                       type="primary"
                       icon={<PlusOutlined />}
@@ -9315,6 +9535,7 @@ export default function FinanceCenterPage({
                     >
                       退款申请
                     </Button>
+                    </>
                   )}
                   {tab === "reconcile" && canApprove && (
                     <Button
@@ -9397,6 +9618,23 @@ export default function FinanceCenterPage({
                   size="small"
                   columns={refundColumns}
                   dataSource={refunds}
+                  rowSelection={{
+                    selectedRowKeys: selectedRefundRows,
+                    onChange: (keys) => setSelectedRefundRows(keys as number[]),
+                  }}
+                  pagination={{
+                    current: refundMeta.page,
+                    pageSize: refundMeta.pageSize,
+                    total: refundMeta.total,
+                    showSizeChanger: true,
+                    pageSizeOptions: refundPageSizeOptions,
+                    onShowSizeChange: (_current, size) => {
+                      void loadRefunds(1, size, refundStatusFilter, true);
+                    },
+                    onChange: (page, size) => {
+                      void loadRefunds(page, size, refundStatusFilter, true);
+                    },
+                  }}
                   scroll={{ x: 1700 }}
                 />
               ) : tab === "transactions" ? (
@@ -10468,6 +10706,51 @@ export default function FinanceCenterPage({
             <Input.TextArea rows={4} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={Boolean(refundAmountTarget)}
+        title={`修改退款金额：${refundAmountTarget?.serial_no || ""}`}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={refundMutationLoading}
+        onOk={updateRefundAmount}
+        onCancel={() => {
+          setRefundAmountTarget(null);
+          refundAmountForm.resetFields();
+        }}
+      >
+        <Form form={refundAmountForm} layout="vertical">
+          <Form.Item
+            label="退款金额"
+            name="amount"
+            rules={[{ required: true, type: "number", min: 0.01 }]}
+          >
+            <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="修改说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={refundBatchStatusOpen}
+        title={`退费进度修改（已选 ${selectedRefundRows.length} 条）`}
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={refundMutationLoading}
+        onOk={updateRefundBatchStatus}
+        onCancel={() => setRefundBatchStatusOpen(false)}
+      >
+        <Select
+          aria-label="批量退费进度"
+          value={refundBatchStatus}
+          onChange={setRefundBatchStatus}
+          options={["待审批", "退款办理中", "已驳回"].map((value) => ({
+            value,
+            label: value,
+          }))}
+          style={{ width: "100%" }}
+        />
       </Modal>
       <Modal
         open={Boolean(refundCompleteTarget)}

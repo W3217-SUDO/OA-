@@ -1803,6 +1803,17 @@ class RefundCompleteInput(BaseModel):
     comment: str = ""
 
 
+class RefundAmountUpdateInput(BaseModel):
+    amount: float = Field(gt=0)
+    comment: str = ""
+
+
+class RefundBatchStatusInput(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    status: str = Field(min_length=2, max_length=32)
+    comment: str = ""
+
+
 class FinanceTransactionInput(BaseModel):
     finance_record_id: int | None = None
     transaction_type: str
@@ -10258,6 +10269,197 @@ async def change_invoice_date(invoice_id: int, body: InvoiceDateChangeInput, ide
     return await _record_dict_for_identity(item, identity, db)
 
 
+REFUND_LIST_STATUSES = {"草稿", "待审批", "退款办理中", "已退款", "已驳回"}
+REFUND_PAGE_SIZES = {10, 15, 20, 50, 100, 200}
+REFUND_GROUP_ALIASES = {"lawfirm": "lawfirm", "trad": "trad", "1": "lawfirm", "2": "trad", "律所": "lawfirm", "商标": "trad"}
+
+
+def _refund_group(value: str) -> str:
+    normalized = str(value or "").strip().casefold()
+    if not normalized:
+        return ""
+    if normalized not in REFUND_GROUP_ALIASES:
+        raise HTTPException(status_code=422, detail="退款业务组无效")
+    return REFUND_GROUP_ALIASES[normalized]
+
+
+async def _refund_identity_department(identity: dict, db: AsyncSession) -> str:
+    department = str(identity.get("department") or "").strip()
+    if not department:
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        department = str(user.department or "").strip() if user else ""
+    if not department:
+        raise HTTPException(status_code=401, detail="当前用户所属单位不存在")
+    return department
+
+
+async def _ensure_refund_company_record(
+    refund_id: int,
+    identity: dict,
+    db: AsyncSession,
+) -> BusinessRecord:
+    item = await _ensure_record_module(refund_id, "refund", identity, db)
+    if str(item.department or "").strip() != await _refund_identity_department(identity, db):
+        raise HTTPException(status_code=404, detail="退款记录不存在")
+    return item
+
+
+async def _refund_query_rows(
+    identity: dict,
+    db: AsyncSession,
+    *,
+    status_filter: str = "",
+    group: str = "",
+    scope: str = "company",
+    ids: set[int] | None = None,
+) -> list[dict]:
+    if status_filter == "全部":
+        status_filter = ""
+    if status_filter and status_filter not in REFUND_LIST_STATUSES:
+        raise HTTPException(status_code=422, detail="退款状态无效")
+    if scope not in {"mine", "company"}:
+        raise HTTPException(status_code=422, detail="退款数据范围无效")
+    group_value = _refund_group(group)
+    conditions = [BusinessRecord.module == "refund", *(await _record_scope_conditions(identity, db))]
+    if scope == "mine":
+        conditions.append(BusinessRecord.owner == identity["username"])
+    else:
+        conditions.append(BusinessRecord.department == await _refund_identity_department(identity, db))
+    if ids is not None:
+        conditions.append(BusinessRecord.id.in_(ids))
+    if status_filter:
+        conditions.append(BusinessRecord.status == status_filter)
+    records = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    allowed_fields = await _allowed_field_keys(identity, db)
+    rows = []
+    for item in records:
+        data = item.data or {}
+        item_group = str(data.get("group_id") or data.get("group") or "").strip().casefold()
+        item_group = REFUND_GROUP_ALIASES.get(item_group, item_group)
+        if group_value and item_group != group_value:
+            continue
+        row = _record_dict(item, allowed_fields)
+        visible = dict(row.get("data") or {})
+        visible.update({
+            "case_no": data.get("case_no", ""),
+            "court": data.get("court", ""),
+            "original_payment_no": data.get("original_payment_no", ""),
+            "amount": _round_fee_amount(float(data.get("amount") or 0)) if "finance.amount" in allowed_fields else None,
+            "expected_date": data.get("expected_date", ""),
+            "actual_date": data.get("actual_date", ""),
+            "voucher_no": data.get("refund_voucher_no") or data.get("voucher_no", ""),
+            "group_id": item_group,
+        })
+        row["data"] = visible
+        rows.append(row)
+    return rows
+
+
+async def _refund_export_response(rows: list[dict], filename: str) -> Response:
+    headers = ["申请编号", "案号", "客户", "法院", "原缴费票号", "退款金额", "状态", "预计到账", "实际到账", "退款凭证号"]
+    export_rows: list[list[object]] = []
+    for row in rows:
+        data = row.get("data") or {}
+        export_rows.append([
+            row.get("serial_no", ""), data.get("case_no", ""), row.get("customer", ""),
+            data.get("court", ""), data.get("original_payment_no", ""), data.get("amount"),
+            row.get("status", ""), data.get("expected_date", ""), data.get("actual_date", ""),
+            data.get("voucher_no", ""),
+        ])
+    # The legacy CaseFeeController generates an Excel workbook and then serves
+    # an .xls download.  Reuse the existing SpreadsheetML helper so refund
+    # exports are a real, parseable workbook rather than CSV with an Excel name.
+    return _excel_response(f"{filename}-{date.today()}.xls", headers, export_rows)
+
+
+@app.get(f"{settings.api_prefix}/finance/refunds/query")
+async def query_refund_applications(
+    status_filter: str = Query("", alias="status"), group: str = "", scope: str = Query("company", pattern="^(mine|company)$"),
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=10, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    if page_size not in REFUND_PAGE_SIZES:
+        raise HTTPException(status_code=422, detail="退款列表页长必须为 10、15、20、50、100 或 200")
+    rows = await _refund_query_rows(identity, db, status_filter=status_filter, group=group, scope=scope)
+    start = (page - 1) * page_size
+    total = len(rows)
+    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
+
+
+async def _refund_export_request(
+    *, ids: str, selected_only: bool, status_filter: str, group: str, scope: str, identity: dict, db: AsyncSession,
+) -> Response:
+    selected = set(_export_ids(ids)) if ids.strip() else None
+    if selected_only and not selected:
+        raise HTTPException(status_code=422, detail="请选择需要导出的退款记录")
+    rows = await _refund_query_rows(identity, db, status_filter=status_filter, group=group, scope=scope, ids=selected)
+    if selected is not None and len(rows) != len(selected):
+        raise HTTPException(status_code=422, detail="部分退款记录不存在或无权导出")
+    if not rows:
+        raise HTTPException(status_code=422, detail="当前没有可导出的退款记录")
+    return await _refund_export_response(rows, "诉讼费退款")
+
+
+@app.get(f"{settings.api_prefix}/finance/refunds/export")
+async def export_refund_applications(
+    status_filter: str = Query("", alias="status"), group: str = "", scope: str = Query("company", pattern="^(mine|company)$"),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    return await _refund_export_request(ids="", selected_only=False, status_filter=status_filter, group=group, scope=scope, identity=identity, db=db)
+
+
+@app.get(f"{settings.api_prefix}/finance/refunds/export-selected")
+async def export_selected_refund_applications(
+    ids: str = "", status_filter: str = Query("", alias="status"), group: str = "", scope: str = Query("company", pattern="^(mine|company)$"),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    return await _refund_export_request(ids=ids, selected_only=True, status_filter=status_filter, group=group, scope=scope, identity=identity, db=db)
+
+
+@app.patch(f"{settings.api_prefix}/finance/refunds/{{refund_id}}/amount")
+async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _ensure_refund_company_record(refund_id, identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status not in {"草稿", "已驳回"}:
+        raise HTTPException(status_code=409, detail="当前退款状态不能修改金额")
+    data = dict(item.data or {})
+    fee_id = int(data.get("fee_record_id") or 0)
+    if fee_id:
+        fee = await _ensure_record_visible(fee_id, identity, db)
+        if fee.module != "finance":
+            raise HTTPException(status_code=404, detail="关联费用不存在")
+        original_amount = float((fee.data or {}).get("amount") or 0)
+        if body.amount > original_amount:
+            raise HTTPException(status_code=422, detail="退款金额不能超过原费用金额")
+    old_amount = float(data.get("amount") or 0)
+    item.data = {**data, "amount": _round_fee_amount(body.amount), "amount_updated_by": identity["username"], "amount_updated_at": datetime.now().isoformat(timespec="seconds")}
+    db.add(WorkflowEvent(record_id=item.id, action="修改退款金额", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{old_amount:.2f} → {body.amount:.2f}；{body.comment}"))
+    await db.commit(); await db.refresh(item)
+    return await _record_dict_for_identity(item, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/finance/refunds/status")
+async def batch_refund_status(body: RefundBatchStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    ids = list(dict.fromkeys(body.ids))
+    if body.status not in {"待审批", "退款办理中", "已驳回"}:
+        raise HTTPException(status_code=422, detail="退款批量状态无效")
+    items = [await _ensure_refund_company_record(record_id, identity, db) for record_id in ids]
+    if body.status in {"退款办理中", "已驳回"} and identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有退款审批权限")
+    for item in items:
+        await _require_record_owner_or_manager(item, identity, db) if body.status == "待审批" else None
+        allowed = {"待审批": {"草稿", "已驳回"}, "退款办理中": {"待审批"}, "已驳回": {"待审批"}}[body.status]
+        if item.status not in allowed:
+            raise HTTPException(status_code=409, detail=f"退款 {item.serial_no} 当前状态不能变更为 {body.status}")
+    for item in items:
+        previous = item.status; item.status = body.status
+        db.add(WorkflowEvent(record_id=item.id, action="批量退款状态变更", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment))
+    await db.commit()
+    for item in items:
+        await db.refresh(item)
+    return {"items": [await _record_dict_for_identity(item, identity, db) for item in items], "status": body.status, "count": len(items)}
+
+
 @app.post(f"{settings.api_prefix}/finance/refunds", status_code=status.HTTP_201_CREATED)
 async def create_litigation_refund(body: LitigationRefundInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _finance_linked_case(body.case_no, identity, db)
@@ -10278,7 +10480,7 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
 
 @app.post(f"{settings.api_prefix}/finance/refunds/{{refund_id}}/submit")
 async def submit_litigation_refund(refund_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item = await _ensure_record_module(refund_id, "refund", identity, db); await _require_record_owner_or_manager(item, identity, db)
+    item = await _ensure_refund_company_record(refund_id, identity, db); await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "已驳回"}: raise HTTPException(status_code=409, detail="当前退款申请不能提交")
     data = item.data or {}; required = {"法院": data.get("court"), "原缴费票号": data.get("original_payment_no"), "申请人": data.get("applicant"), "退款账户名": data.get("refund_account_name"), "退款银行": data.get("refund_bank"), "退款账号": data.get("refund_account")}
     missing = [name for name, value in required.items() if not value]
@@ -10290,7 +10492,7 @@ async def submit_litigation_refund(refund_id: int, body: FinanceActionInput, ide
 @app.post(f"{settings.api_prefix}/finance/refunds/{{refund_id}}/review")
 async def review_litigation_refund(refund_id: int, body: FinanceReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有退款审批权限")
-    item = await _ensure_record_module(refund_id, "refund", identity, db)
+    item = await _ensure_refund_company_record(refund_id, identity, db)
     if item.status != "待审批": raise HTTPException(status_code=409, detail="只有待审批退款申请可以审核")
     item.status = "退款办理中" if body.approved else "已驳回"; item.data = {**(item.data or {}), "reviewer": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment}
     db.add(WorkflowEvent(record_id=item.id, action="退款审批通过" if body.approved else "退款审批驳回", from_status="待审批", to_status=item.status, operator=identity["username"], comment=body.comment))
@@ -10300,7 +10502,7 @@ async def review_litigation_refund(refund_id: int, body: FinanceReviewInput, ide
 @app.post(f"{settings.api_prefix}/finance/refunds/{{refund_id}}/complete")
 async def complete_litigation_refund(refund_id: int, body: RefundCompleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记退款到账")
-    item = await _ensure_record_module(refund_id, "refund", identity, db)
+    item = await _ensure_refund_company_record(refund_id, identity, db)
     if item.status != "退款办理中": raise HTTPException(status_code=409, detail="退款审批通过后才能登记到账")
     data = item.data or {}; tx = FinanceTransaction(finance_record_id=item.id, transaction_type="退费", amount=float(data.get("amount", 0)), transaction_date=body.actual_date, voucher_no=body.voucher_no.strip(), counterparty=str(data.get("court", item.customer)), operator=identity["username"], remark=f"诉讼费退款 {item.serial_no}；{body.comment}")
     db.add(tx); await db.flush(); item.status = "已退款"; item.data = {**data, "actual_date": str(body.actual_date), "refund_voucher_no": body.voucher_no.strip(), "refund_transaction_id": tx.id, "completed_by": identity["username"], "completed_at": datetime.now().isoformat(timespec="seconds")}
