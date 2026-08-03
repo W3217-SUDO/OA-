@@ -24,11 +24,14 @@ wrapper(createRequire(import.meta.url), module, module.exports, policyPath, path
 
 const {
   canBatchDeleteSealFiles,
+  canBatchStampSealRows,
+  canBatchWithdrawSealRows,
   canSealAction,
   canSealWithdraw,
   createSealActionGate,
   sealFilePagination,
   selectedSealRows,
+  compareSealDateValues,
   toSealAuditRows,
 } = module.exports;
 
@@ -72,6 +75,19 @@ test("seal selection and draft batch-delete gate are runtime helpers", () => {
   assert.equal(canBatchDeleteSealFiles("草稿", [1]), true);
   assert.equal(canBatchDeleteSealFiles("待审批", [1]), false);
   assert.equal(canBatchDeleteSealFiles("草稿", []), false);
+});
+
+test("seal batch stamp and withdraw gates require compatible pending states", () => {
+  assert.equal(canBatchStampSealRows([{ status: "待用印" }, { status: "待用印" }]), true);
+  assert.equal(canBatchStampSealRows([{ status: "待用印" }, { status: "已用印" }]), false);
+  assert.equal(canBatchStampSealRows([]), false);
+  assert.equal(canBatchWithdrawSealRows([{ status: "待审批" }, { status: "待用印" }]), true);
+  assert.equal(canBatchWithdrawSealRows([{ status: "待审批" }, { status: "草稿" }]), false);
+});
+
+test("seal date sorter compares legacy application and audit timestamps", () => {
+  assert.equal(compareSealDateValues("2026-08-02", "2026-08-01") > 0, true);
+  assert.equal(compareSealDateValues("", "2026-08-01") < 0, true);
 });
 
 test("seal action controls retain state gates while backend owns permission checks", () => {

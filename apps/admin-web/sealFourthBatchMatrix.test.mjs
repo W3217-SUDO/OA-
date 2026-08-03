@@ -127,3 +127,12 @@ test("local draft file list exposes atomic batch delete", () => {
 test("unsupported backend scopes stay out of production wiring", () => {
   assert.doesNotMatch(local, /seal_type_mask|sealHistoryRequest|audit_only/);
 });
+
+test("selected stamp and withdraw actions reuse guarded batch endpoints and date sorters", () => {
+  assert.match(local, /\/seals\/applications\/batch-stamp/);
+  assert.match(local, /\/seals\/applications\/batch\/withdraw/);
+  assert.match(local, /canBatchStampSealRows/);
+  assert.match(local, /canBatchWithdrawSealRows/);
+  assert.match(local, /batchWithdraw[\s\S]*actionGate\.tryEnter/);
+  assert.match(local, /compareSealDateValues/);
+});

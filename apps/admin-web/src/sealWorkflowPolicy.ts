@@ -72,6 +72,23 @@ export function canBatchDeleteSealFiles(
   return status === "草稿" && selectedKeys.length > 0;
 }
 
+export function canBatchStampSealRows(rows: readonly SealActionRow[]): boolean {
+  return rows.length > 0 && rows.every((row) => row.status === "待用印");
+}
+
+export function canBatchWithdrawSealRows(rows: readonly SealActionRow[]): boolean {
+  return rows.length > 0 && rows.every((row) => row.status === "待审批" || row.status === "待用印");
+}
+
+export function compareSealDateValues(left: unknown, right: unknown): number {
+  const leftValue = String(left || "");
+  const rightValue = String(right || "");
+  if (!leftValue && !rightValue) return 0;
+  if (!leftValue) return -1;
+  if (!rightValue) return 1;
+  return leftValue.localeCompare(rightValue);
+}
+
 export function createSealActionGate(): { tryEnter: () => boolean; leave: () => void } {
   let inFlight = false;
   return {

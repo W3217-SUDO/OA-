@@ -41,10 +41,12 @@ import { resolveDetailRelation } from "./detailRelationResolver";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import {
   canBatchDeleteSealFiles,
+  canBatchStampSealRows,
+  canBatchWithdrawSealRows,
   canSealAction,
-  canSealWithdraw,
   createSealActionGate,
   sealFilePagination,
+  compareSealDateValues,
   selectedSealRows,
   toSealAuditRows,
 } from "./sealWorkflowPolicy";
@@ -249,9 +251,11 @@ export default function SealCenterPage({
     type: "approve" | "reject" | "stamp" | "archive";
     row: SealRow;
   } | null>(null);
+  const [batchStampOpen, setBatchStampOpen] = useState(false);
   const [createForm] = Form.useForm();
   const [assetForm] = Form.useForm();
   const [actionForm] = Form.useForm();
+  const [batchStampForm] = Form.useForm();
   const [queryForm] = Form.useForm();
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const actionGate = useMemo(() => createSealActionGate(), []);
@@ -457,6 +461,28 @@ export default function SealCenterPage({
       },
     });
   };
+  const batchWithdraw = async (selected: SealRow[]) => {
+    if (!canBatchWithdrawSealRows(selected)) return;
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      await api.post("/seals/applications/batch/withdraw", {
+        application_ids: selected.map((row) => row.id),
+        comment: "申请人批量撤回待审批用印申请",
+      });
+      message.success(`已撤回 ${selected.length} 条用印申请`);
+      setSelectedKeys([]);
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量撤回失败");
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
+    }
+  };
   const removeDraft = async (row: SealRow) => {
     Modal.confirm({
       title: "删除用印草稿",
@@ -511,6 +537,32 @@ export default function SealCenterPage({
       message.error(
         error?.response?.data?.detail || sealActionFailureMessage(action.type),
       );
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
+    }
+  };
+  const runBatchStamp = async () => {
+    const selected = selectedSealRows(visibleRows, selectedKeys);
+    if (!canBatchStampSealRows(selected)) return;
+    const values = await batchStampForm.validateFields();
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      await api.post("/seals/applications/batch-stamp", {
+        application_ids: selected.map((row) => row.id),
+        ...values,
+      });
+      message.success(`已完成 ${selected.length} 条实际用印登记`);
+      setBatchStampOpen(false);
+      setSelectedKeys([]);
+      batchStampForm.resetFields();
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量登记实际用印失败");
     } finally {
       actionGate.leave();
       setActionSubmitting(false);
@@ -743,6 +795,7 @@ export default function SealCenterPage({
       title: "申请时间",
       dataIndex: "created_at",
       width: 110,
+      sorter: (a: SealRow, b: SealRow) => compareSealDateValues(a.created_at, b.created_at),
       render: (v: string) => dayjs(v).format("YYYY-M-D"),
     },
     {
@@ -816,6 +869,7 @@ export default function SealCenterPage({
     {
       title: "审核时间",
       width: 110,
+      sorter: (a: SealRow, b: SealRow) => compareSealDateValues(a.data.approved_at, b.data.approved_at),
       render: (_: unknown, r: SealRow) => r.data.approved_at || "—",
     },
     {
@@ -1182,8 +1236,12 @@ export default function SealCenterPage({
                             提交
                           </Button>
                           <Button
-                            disabled={!selectedRow || !canSealWithdraw(selectedRow)}
-                            onClick={() => selectedRow && withdraw(selectedRow)}
+                            disabled={!canBatchWithdrawSealRows(selectedRows)}
+                            onClick={() =>
+                              selectedRows.length > 1
+                                ? void batchWithdraw(selectedRows)
+                                : selectedRow && void withdraw(selectedRow)
+                            }
                           >
                             撤回
                           </Button>
@@ -1191,8 +1249,12 @@ export default function SealCenterPage({
                       )}
                       {initialView === "seal-my-stamping" && (
                         <Button
-                          disabled={!selectedRow || !canSealWithdraw(selectedRow)}
-                          onClick={() => selectedRow && withdraw(selectedRow)}
+                          disabled={!canBatchWithdrawSealRows(selectedRows)}
+                          onClick={() =>
+                            selectedRows.length > 1
+                              ? void batchWithdraw(selectedRows)
+                              : selectedRow && void withdraw(selectedRow)
+                          }
                         >
                           撤回
                         </Button>
@@ -1200,14 +1262,22 @@ export default function SealCenterPage({
                       {initialView === "seal-admin-pending" && (
                         <>
                           <Button
-                            disabled={!selectedRow || !canSealAction("stamp", selectedRow)}
+                            disabled={!canBatchStampSealRows(selectedRows)}
                             onClick={() => {
-                              if (selectedRow) {
+                              if (selectedRows.length === 1 && selectedRow) {
                                 setAction({ type: "stamp", row: selectedRow });
                                 actionForm.setFieldsValue({
                                   actual_copies: selectedRow.data.copies,
                                   operator: "admin",
                                 });
+                              } else if (selectedRows.length > 1) {
+                                batchStampForm.setFieldsValue({
+                                  actual_copies: Math.min(
+                                    ...selectedRows.map((row) => Number(row.data.copies) || 0),
+                                  ),
+                                  operator: "admin",
+                                });
+                                setBatchStampOpen(true);
                               }
                             }}
                           >
@@ -1461,6 +1531,45 @@ export default function SealCenterPage({
                 : []
             }
           >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={batchStampOpen}
+        title="批量登记实际用印"
+        okText="确认"
+        cancelText="取消"
+        confirmLoading={actionSubmitting}
+        onOk={runBatchStamp}
+        onCancel={() => {
+          setBatchStampOpen(false);
+          batchStampForm.resetFields();
+        }}
+      >
+        <Form form={batchStampForm} layout="vertical">
+          <Form.Item
+            label="实际用印份数"
+            name="actual_copies"
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={1} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            label="用印操作人"
+            name="operator"
+            rules={[{ required: true }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label="归档号"
+            name="archive_no"
+            rules={[{ required: true }]}
+          >
+            <Input placeholder="例如：YY-2026-0042" />
+          </Form.Item>
+          <Form.Item label="审批/操作意见" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
