@@ -60,3 +60,4 @@ export declare const normalizeRefundResponse: (
   page: number;
   pageSize: number;
 };
+export declare const caseFeeRefundStatusLabel: (row: any) => string;

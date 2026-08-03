@@ -48,6 +48,7 @@ import { formatRequiredDate } from "./formSafety";
 import { createFinanceActionGate } from "./financeActionGate.mjs";
 import {
   normalizeRefundResponse,
+  caseFeeRefundStatusLabel,
   refundAmountUpdateRequest,
   refundBatchStatusRequest,
   refundExportRequestParams,
@@ -623,6 +624,7 @@ export default function FinanceCenterPage({
   });
   const [selectedRefundRows, setSelectedRefundRows] = useState<number[]>([]);
   const [refundStatusFilter, setRefundStatusFilter] = useState("全部");
+  const [refundGroupFilter, setRefundGroupFilter] = useState("");
   const [cases, setCases] = useState<Fee[]>([]);
   const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
@@ -1500,9 +1502,10 @@ export default function FinanceCenterPage({
     pageSize = refundMeta.pageSize,
     status = refundStatusFilter,
     preserveOnError = false,
+    group = refundGroupFilter,
   ) => {
     try {
-      const request = refundListRequest(page, pageSize, status);
+      const request = refundListRequest(page, pageSize, status, group);
       const response = await api.get(request.url, { params: request.params });
       const normalized = normalizeRefundResponse(response.data, page, pageSize);
       setRefunds(normalized.items);
@@ -5364,6 +5367,9 @@ export default function FinanceCenterPage({
       <Button type="link" onClick={() => setInvoiceDetail(row)}>
         查看
       </Button>
+      <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
+        附件
+      </Button>
       {["草稿", "待审批", "待开票", "已驳回"].includes(row.status) && (
         <Button
           type="link"
@@ -5410,9 +5416,17 @@ export default function FinanceCenterPage({
     setInvoiceProcess(row);
   };
   const invoicePendingOperation = (_: unknown, row: FinanceFlow) => (
-    <Button type="link" onClick={() => openInvoiceProcess(row)}>
-      开票
-    </Button>
+    <Space size={0}>
+      <Button type="link" onClick={() => setInvoiceDetail(row)}>
+        查看
+      </Button>
+      <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
+        附件
+      </Button>
+      <Button type="link" onClick={() => openInvoiceProcess(row)}>
+        开票
+      </Button>
+    </Space>
   );
   const openInvoiceNumberChange = (row: FinanceFlow) => {
     invoiceNumberForm.setFieldsValue({
@@ -5536,6 +5550,9 @@ export default function FinanceCenterPage({
       <Button type="link" onClick={() => setInvoiceDetail(row)}>
         查看
       </Button>
+      <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
+        附件
+      </Button>
       {!['已撤回', '已作废'].includes(row.status) && <>
         <Button
           type="link"
@@ -5580,7 +5597,7 @@ export default function FinanceCenterPage({
           : isInternalDetailRoute
             ? data.payment_status || "未付"
           : data.payment_status || row.status,
-      票据状态: row.status,
+      票据状态: isFeeQueryRoute ? caseFeeRefundStatusLabel(row) : row.status,
       客户: row.customer || row.claimed_customer,
       客户名称: row.customer || row.claimed_customer,
       客户管理人: data.customer_manager || linkedCaseData.customer_manager,
@@ -7072,8 +7089,9 @@ export default function FinanceCenterPage({
             ? refundSelectedExportRequestParams(
                 selectedRefundRows,
                 refundStatusFilter,
+                refundGroupFilter,
               )
-            : refundExportRequestParams(refundStatusFilter),
+            : refundExportRequestParams(refundStatusFilter, refundGroupFilter),
           responseType: "blob",
         },
       );
@@ -9637,6 +9655,28 @@ export default function FinanceCenterPage({
                   {tab === "refunds" && (
                     <>
                       <Select
+                        aria-label="退款业务组筛选"
+                        value={refundGroupFilter || undefined}
+                        placeholder="全部业务组"
+                        allowClear
+                        options={[
+                          { label: "律所", value: "lawfirm" },
+                          { label: "商标", value: "trad" },
+                        ]}
+                        onChange={(value) => {
+                          const nextGroup = value || "";
+                          setRefundGroupFilter(nextGroup);
+                          void loadRefunds(
+                            1,
+                            refundMeta.pageSize,
+                            refundStatusFilter,
+                            true,
+                            nextGroup,
+                          );
+                        }}
+                        style={{ minWidth: 130 }}
+                      />
+                      <Select
                         aria-label="退款状态筛选"
                         value={refundStatusFilter}
                         options={refundStatusOptions.map((value) => ({
@@ -9645,10 +9685,26 @@ export default function FinanceCenterPage({
                         }))}
                         onChange={(value) => {
                           setRefundStatusFilter(value);
-                          void loadRefunds(1, refundMeta.pageSize, value, true);
+                          void loadRefunds(
+                            1,
+                            refundMeta.pageSize,
+                            value,
+                            true,
+                            refundGroupFilter,
+                          );
                         }}
                         style={{ minWidth: 130 }}
                       />
+                      <Button
+                        onClick={() => {
+                          setRefundStatusFilter("全部");
+                          setRefundGroupFilter("");
+                          setSelectedRefundRows([]);
+                          void loadRefunds(1, refundMeta.pageSize, "", true, "");
+                        }}
+                      >
+                        清空
+                      </Button>
                       <Button onClick={() => void exportRefunds(false)}>
                         导出全部
                       </Button>

@@ -63,3 +63,21 @@ export const normalizeRefundResponse = (data, fallbackPage = 1, fallbackPageSize
   page: Number(data?.page || fallbackPage),
   pageSize: Number(data?.page_size || fallbackPageSize),
 });
+
+// The legacy CaseFee partial renders the refund progress separately from the
+// refund application workflow status. Keep that distinction when a fee row is
+// displayed in the query/print tables.
+export const caseFeeRefundStatusLabel = (row) => {
+  const data = row?.data || row || {};
+  const status = String(
+    data.refund_status ?? data.refundStatus ?? row?.refund_status ?? "",
+  );
+  if (status === "R100") return "\u4e0d\u518d\u529e\u7406";
+  const requested = Number(
+    data.refund_requested_amount ?? data.refund_amount ?? 0,
+  );
+  const refunded = Number(data.refunded_amount ?? 0);
+  if (requested > 0 && refunded >= requested) return "\u5df2\u9000";
+  if (requested > 0 || refunded > 0) return "\u672a\u9000";
+  return "\u672a\u9000";
+};
