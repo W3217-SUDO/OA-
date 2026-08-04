@@ -1074,24 +1074,46 @@ export default function ContractCenterPage({
   const batchDeleteViewingAttachments = async () => {
     const target = viewing;
     const deletePlan = buildContractAttachmentDeletePlan(selectedAttachmentKeys);
-    if (!target || !deletePlan.length || !contractAttachmentActionPolicy(target.status).canDelete || !contractMutationGates.current.attachment.tryEnter()) return;
-    setAttachmentBatchSaving(true);
-    try {
-      const results = await Promise.allSettled(deletePlan.map(async (attachmentId) => {
-        const response = await api.delete(`/attachments/${attachmentId}`);
-        const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
-        if (!feedback.ok) throw new Error(feedback.message);
-        return attachmentId;
-      }));
-      const summary = summarizeContractAttachmentDeleteResults(results.map((result, index) => ({ ...result, id: deletePlan[index] })));
-      if (summary.deleted) await reloadViewingAttachments(target);
-      setSelectedAttachmentKeys([]);
-      if (summary.failed.length) message.warning(`${summary.deleted} 个附件已删除；${summary.failed.map((item) => item.message).join("；")}`);
-      else message.success(`已删除 ${summary.deleted} 个合同附件`);
-    } finally {
-      contractMutationGates.current.attachment.leave();
-      setAttachmentBatchSaving(false);
+    if (!target) return;
+    if (!deletePlan.length) {
+      message.warning("请先选择要删除的合同附件");
+      return;
     }
+    if (!contractAttachmentActionPolicy(target.status).canDelete) {
+      message.warning("当前合同状态不允许删除附件");
+      return;
+    }
+    Modal.confirm({
+      title: "确认批量删除合同附件？",
+      content: `将删除已选择的 ${deletePlan.length} 个合同附件。若后端返回失败，失败项会保留选中并显示原始失败消息。`,
+      okText: "确认删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        if (!contractMutationGates.current.attachment.tryEnter()) return;
+        setAttachmentBatchSaving(true);
+        try {
+          const results = await Promise.allSettled(deletePlan.map(async (attachmentId) => {
+            const response = await api.delete(`/attachments/${attachmentId}`);
+            const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
+            if (!feedback.ok) throw new Error(feedback.message);
+            return attachmentId;
+          }));
+          const summary = summarizeContractAttachmentDeleteResults(results.map((result, index) => ({ ...result, id: deletePlan[index] })));
+          if (summary.deleted) await reloadViewingAttachments(target);
+          if (summary.failed.length) {
+            setSelectedAttachmentKeys(summary.failed.map((item) => item.id).filter(Boolean));
+            message.error(`合同附件批量删除未完成：${summary.failed.map((item) => item.message).join("；")}`);
+            return;
+          }
+          setSelectedAttachmentKeys([]);
+          message.success(`已删除 ${summary.deleted} 个合同附件`);
+        } finally {
+          contractMutationGates.current.attachment.leave();
+          setAttachmentBatchSaving(false);
+        }
+      },
+    });
   };
   const submit = async () => {
     if (!submitting || !contractMutationGates.current.submit.tryEnter()) return;
