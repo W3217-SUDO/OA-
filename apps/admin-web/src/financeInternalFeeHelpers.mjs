@@ -3,6 +3,9 @@ const listValue = (value) =>
 
 const internalFeePageIdByRoute = {
   "finance-internal-archive": "5001004005",
+  "finance-internal-audit": "5001004002",
+  "finance-internal-fee-audit": "5001004002",
+  "finance-internal-refused": "5001004001",
 };
 
 export const internalFeeExportRequestParams = ({

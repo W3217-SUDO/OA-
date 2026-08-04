@@ -146,6 +146,49 @@ test("invoice scanned-file detail request is guarded by module, category, and 40
   );
 });
 
+test("my invoice draft and rejected rows expose the legacy edit entry", () => {
+  const invoiceMineOperation = sliceBetween(
+    "const invoiceMineOperation = (_: unknown, row: FinanceFlow)",
+    "\n  const openInvoiceProcess",
+    "invoiceMineOperation",
+  );
+  assert.match(
+    invoiceMineOperation,
+    /\["草稿",\s*"已驳回"\]\.includes\(row\.status\)[\s\S]*openInvoiceEdit\(row\)[\s\S]*>\s*编辑\s*</,
+    "my invoice rows in draft/rejected status should keep the old edit jump",
+  );
+});
+
+test("invoice detail received amount links to existing receipt detail with a disabled fallback", () => {
+  const openInvoiceReceivedDetail = sliceBetween(
+    "const openInvoiceReceivedDetail = (row: FinanceFlow | null)",
+    "\n  const invoiceDisplay",
+    "openInvoiceReceivedDetail",
+  );
+  assert.match(
+    openInvoiceReceivedDetail,
+    /receiptId[\s\S]*message\.warning\("当前发票未关联到账记录"\)/,
+    "received amount link should warn instead of navigating without a receipt id",
+  );
+  assert.match(openInvoiceReceivedDetail, /onNavigate\?\.\("finance-receipts-query"\)/);
+  assert.match(
+    openInvoiceReceivedDetail,
+    /const nextQuery = \{[\s\S]*routeField[0-9]+:\s*receiptId[\s\S]*\};[\s\S]*setOriginalQueryDraft\(nextQuery\)/,
+    "received detail should carry the receipt id through nextQuery before routing",
+  );
+
+  const invoiceDetailPage = sliceBetween(
+    "const invoiceDetailPage = invoiceDisplay ? (",
+    "\n  const paymentPrintPreviewPage",
+    "invoiceDetailPage",
+  );
+  assert.match(
+    invoiceDetailPage,
+    /<Button\s+type="link"\s+onClick=\{\(\) => openInvoiceReceivedDetail\(invoiceDisplay\)\}/,
+    "received amount cell should be clickable from invoice details",
+  );
+});
+
 test("payment print package lookup rejects cross-module package matches and handles 404 without stale fields", () => {
   const openPaymentDetail = sliceBetween(
     "const openPaymentDetail = async (row: Fee)",

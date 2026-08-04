@@ -30,6 +30,13 @@ const handlerSource = (name) => {
   return pageSource.slice(start, next.length ? Math.min(...next) : pageSource.length)
 }
 
+const sourceUntilNextConst = (name) => {
+  const start = pageSource.indexOf(`const ${name} =`)
+  assert.ok(start >= 0, `${name} handler is present`)
+  const next = pageSource.indexOf("\n  const ", start + 1)
+  return pageSource.slice(start, next < 0 ? pageSource.length : next)
+}
+
 test("legacy HTTP200 mutation failure reaches the UI error message", () => {
   let failure
   try {
@@ -80,4 +87,23 @@ test("contact default and active status requests keep exact runtime payloads", (
     buildCustomerContactStatusRequest(7, "c-1", "inactive"),
     { method: "patch", url: "/customers/7/contacts/c-1/status", data: { is_valid: false } },
   )
+})
+
+test("customer peripheral mutations preserve legacy failure envelopes before success UI", () => {
+  for (const name of ["uploadContactPhoto", "recycleCustomer"]) {
+    const source = sourceUntilNextConst(name)
+    const assertion = source.indexOf("assertCustomerMutationSuccess(response?.data)")
+    assert.ok(assertion >= 0, `${name} validates response.data`)
+    assert.ok(assertion < source.indexOf("message.success"), `${name} validates before success UI`)
+    assert.match(source, /catch \(error: any\)/, `${name} keeps a failure path`)
+    assert.match(source, /getCustomerMutationErrorMessage(?:I17)?\(error/, `${name} preserves legacy Message in catch`)
+  }
+})
+
+test("customer detail loaders preserve legacy response messages", () => {
+  for (const name of ["loadContactPage", "openDetail"]) {
+    const source = sourceUntilNextConst(name)
+    assert.match(source, /catch \(error: any\)/, `${name} keeps a failure path`)
+    assert.match(source, /getCustomerResponseMessage\(error/, `${name} consumes legacy response Message`)
+  }
 })

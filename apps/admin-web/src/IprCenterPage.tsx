@@ -259,14 +259,14 @@ export default function IprCenterPage({
   };
   const handledDetailTarget = useRef("");
   const reviewView = initialView === "ipr-review";
-  const load = async (nextPage = page, nextPageSize = pageSize) => {
+  const load = async (nextPage = page, nextPageSize = pageSize, nextKeyword = keyword) => {
     setLoading(true);
     try {
       const { data } = await api.get("/ipr/cases", {
         params: {
           case_kind: kind,
           record_status: reviewView ? "待立案审核" : "",
-          keyword,
+          keyword: nextKeyword,
           annual_fee_monitoring: annualFeeMonitoringFilter || undefined,
           page: nextPage,
           page_size: nextPageSize,
@@ -574,6 +574,12 @@ export default function IprCenterPage({
       message.error(e?.response?.data?.detail || "关联客户加载失败");
     }
   };
+  const openLinkedCaseCustomerCases = (customer: IprCaseCustomer) => {
+    const customerKeyword = customer.customer_no || customer.name || "";
+    setDetail(null);
+    setKeyword(customerKeyword);
+    void load(1, pageSize, customerKeyword);
+  };
   const openContactSelector = async (customer: IprCaseCustomer) => {
     if (!detail) return;
     try {
@@ -638,15 +644,24 @@ export default function IprCenterPage({
     }
   };
   useEffect(() => {
-    const targetId = Number(
-      new URLSearchParams(window.location.search).get("record_id") || 0,
-    );
+    const params = new URLSearchParams(window.location.search);
+    const legacyRecordId = new URLSearchParams(window.location.search).get("record_id");
+    const targetId = Number(legacyRecordId || 0);
+    const shouldOpenLog = params.get("open_log") === "1";
+    const logContent = params.get("log_content") || "";
     const targetKey = `${initialView}:${targetId}`;
     if (!targetId || handledDetailTarget.current === targetKey) return;
     handledDetailTarget.current = targetKey;
+    const openDetailAndMaybeLog = async (record: IprRecord) => {
+      await openDetail(record);
+      if (shouldOpenLog) {
+        iprLogForm.setFieldsValue({ content: logContent });
+        setIprLogOpen(true);
+      }
+    };
     const listed = items.find((item) => item.id === targetId);
     if (listed) {
-      void openDetail(listed);
+      void openDetailAndMaybeLog(listed);
       return;
     }
     void api
@@ -656,7 +671,7 @@ export default function IprCenterPage({
           message.warning("关联案件类型与当前页面不一致");
           return;
         }
-        void openDetail(data);
+        void openDetailAndMaybeLog(data);
       })
       .catch((error: any) =>
         message.warning(
@@ -1468,7 +1483,7 @@ export default function IprCenterPage({
                 dataSource={caseCustomers}
                 columns={[
                   { title: "客户编号", dataIndex: "customer_no", width: 150, render: (value, row) => <Button type="link" size="small" onClick={() => void openLinkedCaseCustomer(row)}>{value || "—"}</Button> },
-                  { title: "客户名称", dataIndex: "name", render: (value, row) => <Space><Button type="link" size="small" onClick={() => void openLinkedCaseCustomer(row)}>{value || "—"}</Button>{row.is_primary ? <Tag color="blue">主客户</Tag> : null}</Space> },
+                  { title: "客户名称", dataIndex: "name", render: (value, row) => <Space><Button type="link" size="small" onClick={() => openLinkedCaseCustomerCases(row)}>{value || "—"}</Button>{row.is_primary ? <Tag color="blue">主客户</Tag> : null}</Space> },
                   { title: "状态", dataIndex: "status", width: 110 },
                   { title: "联系人", width: 130, render: (_, row) => <Button type="link" size="small" onClick={() => void openContactSelector(row)}>维护联系人</Button> },
                 ]}

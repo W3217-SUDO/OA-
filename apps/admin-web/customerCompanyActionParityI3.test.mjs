@@ -11,7 +11,7 @@ const actionsSource = source.slice(
 test('company customers expose assignment plus guarded edit/delete actions', () => {
   assert.match(
     actionsSource,
-    /initialView === "customer-company"\s*\?\s*\[\s*\{ key: "edit", label: "客户编辑" \}, \{ key: "delete", label: "客户删除" \}, \{ key: "assign", label: "分配客户" \}\s*\]\s*:/,
+    /initialView === "customer-company"\s*\?\s*\[\s*\{ key: "edit", label: "客户编辑" \}, \{ key: "delete", label: "客户删除" \}, \{ key: "assign", label: "分配客户" \}, \.\.\.customerNavigationActions\s*\]\s*:/,
   )
 
   const companyStart = actionsSource.indexOf('initialView === "customer-company"')
@@ -22,4 +22,6 @@ test('company customers expose assignment plus guarded edit/delete actions', () 
     companyActions,
     /level-review|key-change-review|portal-open|portal-close/,
   )
+  assert.match(companyActions, /key: "assign", label: "分配客户"/)
+  assert.match(companyActions, /\.\.\.customerNavigationActions/)
 })

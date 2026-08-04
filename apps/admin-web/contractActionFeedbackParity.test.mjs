@@ -53,6 +53,14 @@ const contractObjectHandlerSource = (name) => {
   return contractCenterSource.slice(start, next < 0 ? undefined : next);
 };
 
+const topLevelHandlerSource = (name, nextName) => {
+  const start = contractCenterSource.indexOf("const " + name + " =");
+  assert.ok(start >= 0, name + " handler is wired");
+  const next = contractCenterSource.indexOf("\n  const " + nextName + " =", start + 1);
+  assert.ok(next > start, nextName + " handler follows " + name);
+  return contractCenterSource.slice(start, next);
+};
+
 test("contract object save and delete consume legacy PostResponse failures before success UI", () => {
   const saveSource = contractObjectHandlerSource("saveContractObject");
   const deleteSource = contractObjectHandlerSource("deleteContractObject");
@@ -64,5 +72,39 @@ test("contract object save and delete consume legacy PostResponse failures befor
       source.indexOf("normalizeContractActionResponse(") < source.indexOf("message.success("),
       "legacy envelope must be checked before success message",
     );
+  }
+});
+
+test("contract draft save and archive consume legacy PostResponse failures before success UI", () => {
+  const saveSource = topLevelHandlerSource("save", "submitWizard");
+  const archiveSource = topLevelHandlerSource("archive", "openInvestigation");
+
+  for (const source of [saveSource, archiveSource]) {
+    assert.match(source, /normalizeContractActionResponse\(response,/);
+    assert.match(source, /if \(!feedback\.ok\) throw new Error\(feedback\.message\)/);
+    assert.ok(
+      source.indexOf("normalizeContractActionResponse(response,") < source.indexOf("message.success("),
+      "legacy envelope must be checked before success message",
+    );
+    assert.match(source, /extractContractErrorMessage\(error/);
+  }
+});
+
+test("contract secondary mutations consume legacy PostResponse failures before success UI", () => {
+  const handlers = [
+    topLevelHandlerSource("saveChange", "reviewChange"),
+    topLevelHandlerSource("revokeDraft", "archive"),
+    topLevelHandlerSource("uploadDraftContractAttachment", "uploadViewingAttachment"),
+    topLevelHandlerSource("saveApproverSettings", "contractApproverLabel"),
+  ];
+
+  for (const source of handlers) {
+    assert.match(source, /normalizeContractActionResponse\(response,/);
+    assert.match(source, /if \(!feedback\.ok\) throw new Error\(feedback\.message\)/);
+    assert.ok(
+      source.indexOf("normalizeContractActionResponse(response,") < source.indexOf("message.success("),
+      "legacy envelope must be checked before success message",
+    );
+    assert.match(source, /extractContractErrorMessage\(error/);
   }
 });

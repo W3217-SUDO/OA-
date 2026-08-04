@@ -1049,6 +1049,8 @@ export default function FinanceCenterPage({
     })();
   }, []);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [invoiceEditTarget, setInvoiceEditTarget] =
+    useState<FinanceFlow | null>(null);
   const [refundOpen, setRefundOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
@@ -2385,9 +2387,9 @@ export default function FinanceCenterPage({
       setPaymentPackageLoading(false);
     }
   };
-  const downloadPaymentPrintWord = async () => {
-    if (!paymentPrintPreview) return;
-    const packageNo = String(paymentPrintPreview.packageNo || "").trim();
+  const downloadPaymentPrintWord = async (packageNoOverride?: string) => {
+    if (!paymentPrintPreview && !packageNoOverride) return;
+    const packageNo = String(packageNoOverride || paymentPrintPreview?.packageNo || "").trim();
     if (!packageNo) {
       message.warning("付款包号不能为空，不能导出 Word");
       return;
@@ -2497,14 +2499,43 @@ export default function FinanceCenterPage({
       return;
     }
     try {
-      await api.post("/finance/invoices", linked.payload);
-      message.success("发票申请草稿已创建");
+      if (invoiceEditTarget) {
+        await api.patch(
+          `/finance/invoices/${invoiceEditTarget.id}`,
+          linked.payload,
+        );
+        message.success("发票申请草稿已更新");
+      } else {
+        await api.post("/finance/invoices", linked.payload);
+        message.success("发票申请草稿已创建");
+      }
       setInvoiceOpen(false);
+      setInvoiceEditTarget(null);
       invoiceForm.resetFields();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "发票申请创建失败");
+      message.error(
+        error?.response?.data?.detail ||
+          (invoiceEditTarget
+            ? "发票申请更新失败，请确认后端已提供 PATCH /finance/invoices/{id}"
+            : "发票申请创建失败"),
+      );
     }
+  };
+  const openInvoiceEdit = (row: FinanceFlow) => {
+    setInvoiceEditTarget(row);
+    invoiceForm.setFieldsValue({
+      ...row.data,
+      customer: row.customer || row.data?.customer,
+      amount: Number(row.data?.amount || 0),
+      extra_amount: Number(row.data?.extra_amount || 0),
+      case_fee_ids: Array.isArray(row.data?.case_fee_ids)
+        ? row.data.case_fee_ids
+        : row.data?.case_fee_id
+          ? [Number(row.data.case_fee_id)]
+          : [],
+    });
+    setInvoiceOpen(true);
   };
   const createRefund = async () => {
     const v = await refundForm.validateFields();
@@ -5699,6 +5730,11 @@ export default function FinanceCenterPage({
       <Button type="link" onClick={() => setInvoiceDetail(row)}>
         查看
       </Button>
+      {["草稿", "已驳回"].includes(row.status) && (
+        <Button type="link" onClick={() => openInvoiceEdit(row)}>
+          编辑
+        </Button>
+      )}
       <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
         附件
       </Button>
@@ -7946,6 +7982,41 @@ export default function FinanceCenterPage({
         />
       </section>
     ) : null;
+  const invoiceReceivedReceiptId = (row: FinanceFlow | null) => {
+    const data = row?.data || {};
+    return (
+      data.receipt_id ||
+      data.received_payment_id ||
+      data.incoming_payment_id ||
+      data.receipt_record_id ||
+      data.receipt_no ||
+      data.received_payment_no ||
+      data.incoming_payment_no ||
+      ""
+    );
+  };
+  const openInvoiceReceivedDetail = (row: FinanceFlow | null) => {
+    const data = row?.data || {};
+    const receiptId = invoiceReceivedReceiptId(row);
+    if (!receiptId) {
+      message.warning("当前发票未关联到账记录");
+      return;
+    }
+    const nextQuery = {
+      routeField13: receiptId,
+      receipt_id: receiptId,
+      incoming_payment_id: receiptId,
+      receipt_no:
+        data.receipt_no ||
+        data.received_payment_no ||
+        data.incoming_payment_no ||
+        String(receiptId),
+    };
+    setOriginalQueryDraft(nextQuery);
+    setOriginalQuery(nextQuery);
+    setSelectedOriginalRows([]);
+    onNavigate?.("finance-receipts-query");
+  };
   const invoiceDisplay = invoiceProcess || invoiceCancel || invoiceDetail;
   const invoiceDetailData = invoiceDisplay?.data || {};
   const invoiceDetailCase = invoiceDisplay
@@ -8158,7 +8229,20 @@ export default function FinanceCenterPage({
                 )}
             <td>{invoiceDetailData.fee_type || "律师代理费"}</td>
             <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
-            <td>{Number(invoiceDetailData.received_amount || 0).toFixed(2)}</td>
+            <td>
+              <Button
+                type="link"
+                onClick={() => openInvoiceReceivedDetail(invoiceDisplay)}
+                disabled={!invoiceReceivedReceiptId(invoiceDisplay)}
+                title={
+                  invoiceReceivedReceiptId(invoiceDisplay)
+                    ? undefined
+                    : "当前发票未关联到账记录"
+                }
+              >
+                {Number(invoiceDetailData.received_amount || 0).toFixed(2)}
+              </Button>
+            </td>
             <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
             {invoiceCancel && <td />}
           </tr>
@@ -8309,6 +8393,15 @@ export default function FinanceCenterPage({
                 {paymentPackagePreview.submitted ? "已提交" : "提交并打印"}
               </Button>
             ) : (
+              <Button
+                type="link"
+                loading={paymentWordExportLoading}
+                onClick={() => void downloadPaymentPrintWord(paymentPackagePrintData.package_no)}
+              >
+                下载 Word
+              </Button>
+            )}
+            {!paymentPackagePreview && (
               <Button type="link" onClick={() => window.print()}>
                 打印
               </Button>
@@ -11084,11 +11177,15 @@ export default function FinanceCenterPage({
       <Modal
         width={760}
         open={invoiceOpen}
-        title="新增发票申请"
-        okText="保存草稿"
+        title={invoiceEditTarget ? "编辑发票申请" : "新增发票申请"}
+        okText={invoiceEditTarget ? "保存修改" : "保存草稿"}
         cancelText="取消"
         onOk={createInvoice}
-        onCancel={() => setInvoiceOpen(false)}
+        onCancel={() => {
+          setInvoiceOpen(false);
+          setInvoiceEditTarget(null);
+          invoiceForm.resetFields();
+        }}
       >
         <Form form={invoiceForm} layout="vertical">
           <div className="form-grid">

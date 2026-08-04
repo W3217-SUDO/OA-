@@ -13,6 +13,7 @@ import {
   message,
   Modal,
   Popconfirm,
+  Popover,
   Select,
   Space,
   Statistic,
@@ -256,6 +257,36 @@ const sealTypes = [
   "财务三排章",
 ];
 
+const listSealRowFileNames = (row: SealRow): string[] => {
+  const names: string[] = [];
+  const append = (value: unknown) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(append);
+      return;
+    }
+    if (typeof value === "object") {
+      const item = value as Record<string, unknown>;
+      append(item.original_name || item.file_name || item.FileName || item.name);
+      return;
+    }
+    String(value)
+      .split(/[\n\r,;；、|]+/)
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .forEach((name) => names.push(name));
+  };
+
+  append(row.data.document_names);
+  append(row.data.documentNames);
+  append(row.data.file_names);
+  append(row.data.fileNames);
+  append(row.data.attachments);
+  append(row.data.files);
+
+  return Array.from(new Set(names)).slice(0, 5);
+};
+
 export default function SealCenterPage({
   initialView,
   onNavigate,
@@ -333,6 +364,10 @@ export default function SealCenterPage({
   const [fileListTotal, setFileListTotal] = useState(0);
   const [stampAttachments, setStampAttachments] = useState<AttachmentRow[]>([]);
   const [stampAttachmentId, setStampAttachmentId] = useState<number | null>(null);
+  const [stampAttachmentLoading, setStampAttachmentLoading] = useState(false);
+  const [stampAttachmentPage, setStampAttachmentPage] = useState(1);
+  const [stampAttachmentPageSize, setStampAttachmentPageSize] = useState(sealFilePagination.defaultPageSize);
+  const [stampAttachmentTotal, setStampAttachmentTotal] = useState(0);
   const [stampAttachmentUploading, setStampAttachmentUploading] = useState(false);
   const [sourceAttachments, setSourceAttachments] = useState<AttachmentRow[]>([]);
   const [sourceAttachmentLoading, setSourceAttachmentLoading] = useState(false);
@@ -887,27 +922,51 @@ export default function SealCenterPage({
   const resetStampAttachmentState = () => {
     setStampAttachments([]);
     setStampAttachmentId(null);
+    setStampAttachmentLoading(false);
+    setStampAttachmentPage(1);
+    setStampAttachmentPageSize(sealFilePagination.defaultPageSize);
+    setStampAttachmentTotal(0);
     actionForm.setFieldValue("stamp_attachment_id", undefined);
   };
-  const loadStampAttachments = async (row: SealRow) => {
+  const loadStampAttachments = async (
+    row: SealRow,
+    nextPage = 1,
+    nextPageSize = sealFilePagination.defaultPageSize,
+    append = false,
+  ) => {
+    setStampAttachmentLoading(true);
     try {
       const { data } = await api.get("/attachments", {
         params: {
           record_id: row.id,
           category: "用印文件",
-          page: 1,
-          page_size: 200,
+          page: nextPage,
+          page_size: nextPageSize,
         },
       });
       const items = Array.isArray(data.items) ? data.items : [];
-      setStampAttachments(items);
-      return items;
+      const total = Number(data.total ?? items.length);
+      setStampAttachmentPage(Number(data.page) || nextPage);
+      setStampAttachmentPageSize(Number(data.page_size) || nextPageSize);
+      setStampAttachmentTotal(total);
+      setStampAttachments((current) => {
+        if (!append) return items;
+        const seen = new Set(current.map((item) => Number(item.id)));
+        return [
+          ...current,
+          ...items.filter((item: AttachmentRow) => !seen.has(Number(item.id))),
+        ];
+      });
+      return { items, total };
     } catch (error: any) {
       setStampAttachments([]);
+      setStampAttachmentTotal(0);
       message.error(
         sealErrorMessage(error, sealAttachmentListFailureMessage(error?.response?.status)),
       );
-      return [];
+      return { items: [], total: 0 };
+    } finally {
+      setStampAttachmentLoading(false);
     }
   };
   const openStampAction = async (row: SealRow) => {
@@ -918,11 +977,21 @@ export default function SealCenterPage({
       operator: "admin",
       stamp_attachment_id: undefined,
     });
-    const files = await loadStampAttachments(row);
-    if (files.length === 1) {
-      setStampAttachmentId(files[0].id);
-      actionForm.setFieldValue("stamp_attachment_id", files[0].id);
+    const { items, total } = await loadStampAttachments(row);
+    if (items.length === 1 && total === 1) {
+      setStampAttachmentId(items[0].id);
+      actionForm.setFieldValue("stamp_attachment_id", items[0].id);
     }
+  };
+  const loadMoreStampAttachments = async () => {
+    if (!action || action.type !== "stamp" || stampAttachmentLoading) return;
+    if (stampAttachmentTotal > 0 && stampAttachments.length >= stampAttachmentTotal) return;
+    await loadStampAttachments(
+      action.row,
+      stampAttachmentPage + 1,
+      stampAttachmentPageSize,
+      true,
+    );
   };
   const uploadStampAttachment = async (file: File, row: SealRow): Promise<number | null> => {
     const validationError = validateSealUploadFile(file);
@@ -1218,6 +1287,35 @@ export default function SealCenterPage({
       );
     }
   };
+  const previewListAttachmentByName = async (row: SealRow, fileName?: string) => {
+    try {
+      const { data } = await api.get("/attachments", {
+        params: {
+          record_id: row.id,
+          category: "用印文件",
+          page: 1,
+          page_size: sealFilePagination.defaultPageSize,
+        },
+      });
+      const items = Array.isArray(data.items) ? data.items : [];
+      const target =
+        items.find((item: AttachmentRow) => item.original_name === fileName) ||
+        items.find((item: AttachmentRow) =>
+          fileName
+            ? item.original_name.includes(fileName) ||
+              fileName.includes(item.original_name)
+            : false,
+        ) ||
+        items[0];
+      if (target) {
+        await previewAttachment(target);
+        return;
+      }
+      await openFileList(row);
+    } catch {
+      await openFileList(row);
+    }
+  };
   const uploadSealFiles = async (files: File[]) => {
     if (!detail) return;
     const validFiles = files.filter(Boolean);
@@ -1435,13 +1533,60 @@ export default function SealCenterPage({
     },
     {
       title: "文件数",
-      width: 70,
+      width: 145,
       dataIndex: "file_count",
-      render: (value: number, r: SealRow) => (
-        <Button type="link" onClick={() => void openFileList(r)}>
-          {value || 0}
-        </Button>
-      ),
+      render: (value: number, r: SealRow) => {
+        const names = listSealRowFileNames(r);
+        const hasFiles = Number(value || 0) > 0 || names.length > 0;
+        return (
+          <Space size={4} wrap>
+            <Button type="link" onClick={() => void openFileList(r)}>
+              {value || 0}
+            </Button>
+            {hasFiles && (
+              <Popover
+                trigger="click"
+                title="用印文件"
+                content={
+                  <Space direction="vertical" size={0}>
+                    {names.length ? (
+                      names.map((name) => (
+                        <Button
+                          key={name}
+                          type="link"
+                          size="small"
+                          onClick={() => void previewListAttachmentByName(r, name)}
+                        >
+                          {name}
+                        </Button>
+                      ))
+                    ) : (
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => void openFileList(r)}
+                      >
+                        打开文件列表
+                      </Button>
+                    )}
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => void openFileList(r)}
+                    >
+                      全部用印文件
+                    </Button>
+                  </Space>
+                }
+              >
+                <Button type="link" size="small">
+                  用印文件
+                </Button>
+              </Popover>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: "案号",
@@ -2297,13 +2442,31 @@ export default function SealCenterPage({
               >
                 <Select
                   allowClear
-                  loading={stampAttachmentUploading}
+                  loading={stampAttachmentLoading || stampAttachmentUploading}
                   placeholder="选择已上传盖章附件"
                   options={stampAttachments.map((file) => ({
                     value: file.id,
                     label: file.original_name + "｜" + file.uploader,
                   }))}
                   onChange={(value) => setStampAttachmentId(Number(value) || null)}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      {stampAttachmentTotal > stampAttachments.length && (
+                        <div style={{ padding: 8, textAlign: "center" }}>
+                          <Button
+                            type="link"
+                            size="small"
+                            loading={stampAttachmentLoading}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => void loadMoreStampAttachments()}
+                          >
+                            加载更多盖章附件（{stampAttachments.length}/{stampAttachmentTotal}）
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 />
               </Form.Item>
               <Upload

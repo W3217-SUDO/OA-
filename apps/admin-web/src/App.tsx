@@ -494,6 +494,7 @@ export function routeForMenuOpenChange(
   return toggled && !alreadyInsideSection ? route : null;
 }
 function canonicalRoute(route: string): string {
+  if (route === "contract-approver-settings") return "system-users";
   if (route.endsWith("-schedule") && route.startsWith("case-"))
     return "case-schedule";
   if (route.endsWith("-execution") && route.startsWith("case-"))
@@ -621,6 +622,7 @@ function replaceWithRootRoute() {
 }
 const routePageLabels: Record<string, string> = {
   "system-audit": "操作日志",
+  "contract-approver-settings": "审批关系",
   "documents-agent": "AI 智能文档",
   "notary-import-info": "公证信息导入",
   "notary-import-storage": "取证信息文件导入",
@@ -1312,6 +1314,14 @@ export default function App() {
       <CustomerConflictPage />
     ) : route.startsWith("customer-") ? (
       <CustomerCenterPage initialView={route} onNavigate={navigate} />
+    ) : route === "system-law-firms" ? (
+      <LawFirmPage />
+    ) : route === "system-audit" ? (
+      <AuditLogPage onNavigate={navigate} />
+    ) : route === "system-parameters-ipr-case-file-type" ? (
+      <IprFileTypeSettingsPage />
+    ) : route.startsWith("system-") ? (
+      <SystemCenterPage initialView={route} />
     ) : route === "contract-receivable" ? (
       <ContractReceivablesPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("contract-") ? (
@@ -1356,14 +1366,6 @@ export default function App() {
       <UserCenterPage />
     ) : route.startsWith("finance-") ? (
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
-    ) : route === "system-law-firms" ? (
-      <LawFirmPage />
-    ) : route === "system-audit" ? (
-      <AuditLogPage onNavigate={navigate} />
-    ) : route === "system-parameters-ipr-case-file-type" ? (
-      <IprFileTypeSettingsPage />
-    ) : route.startsWith("system-") ? (
-      <SystemCenterPage initialView={route} />
     ) : ["hr-departments", "hr-roles"].includes(route) ? (
       <OrganizationCenterPage initialView={route} />
     ) : route.startsWith("hr-") ? (

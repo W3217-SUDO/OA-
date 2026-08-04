@@ -15,6 +15,10 @@ const oldOfficialDocumentController = fs.readFileSync(
   path.join(oldRoot, "Areas", "AWS", "Controllers", "OfficialDocumentController.cs"),
   "utf8",
 );
+const oldOfficialDocumentFileController = fs.readFileSync(
+  path.join(oldRoot, "Areas", "AWS", "Controllers", "OfficialDocumentFileController.cs"),
+  "utf8",
+);
 
 function sourceHas(source, pattern) {
   return pattern.test(source);
@@ -74,6 +78,48 @@ test("waiting-stamp action exposes a stamp attachment upload or selection before
   assert.ok(
     sourceHas(actionModal, /(盖章附件|上传盖章文件|已盖章文件|stamp attachment|stamped file)/i),
     "the stamp action UI should distinguish stamped attachments from the draft-stage source seal files",
+  );
+});
+
+test("stamp attachment selector consumes paged seal files instead of hard-capping the first page", () => {
+  assert.ok(
+    sourceHas(
+      oldOfficialDocumentFileController,
+      /OfficialDocumentFiles\(string officialDocumentGuid, int\? pageNo, int\? pageSize\)[\s\S]*?result\.PageNo = pageNo > 0 \? pageNo\.Value : 1;[\s\S]*?result\.PageSize = pageSize > 0 \? pageSize\.Value : 15;/,
+    ),
+    "legacy official document file list defaulted to server-side 15-row paging",
+  );
+
+  const stampAttachmentLoader = sliceBetween(
+    page,
+    "const resetStampAttachmentState = () =>",
+    "const runAction = async",
+  );
+  const actionModal = sliceBetween(page, "open={Boolean(action)}", "</Modal>");
+
+  assert.ok(
+    sourceHas(stampAttachmentLoader, /stampAttachmentPage/),
+    "stamp attachment selector must track the current attachment page",
+  );
+  assert.ok(
+    sourceHas(stampAttachmentLoader, /stampAttachmentPageSize/),
+    "stamp attachment selector must track page_size for attachment requests",
+  );
+  assert.ok(
+    sourceHas(stampAttachmentLoader, /stampAttachmentTotal/),
+    "stamp attachment selector must preserve response.total",
+  );
+  assert.ok(
+    sourceHas(stampAttachmentLoader, /api\.get\("\/attachments"[\s\S]*?page:\s*nextPage[\s\S]*?page_size:\s*nextPageSize/),
+    "stamp attachment loader must request /attachments with explicit page and page_size",
+  );
+  assert.ok(
+    !sourceHas(stampAttachmentLoader, /page_size:\s*200/),
+    "stamp attachment selector must not hard-cap choices at the first 200 rows",
+  );
+  assert.ok(
+    sourceHas(actionModal, /(loadMoreStampAttachments|stampAttachmentTotal|stampAttachmentPage)/),
+    "stamp action modal must expose a way to consume additional stamp attachment pages",
   );
 });
 

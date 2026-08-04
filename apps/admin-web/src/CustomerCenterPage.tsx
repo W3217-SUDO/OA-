@@ -165,6 +165,7 @@ type Customer = {
     contact_count?: number;
     contract_count?: number;
     civil_case_count?: number;
+    ipr_case_count?: number;
     agency_fee_due?: number;
     official_fee_unreceived?: number;
     credit_code?: string;
@@ -904,7 +905,7 @@ export default function CustomerCenterPage({
         ? { ...current, data: { ...current.data, contacts: pageData.items } }
         : current);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "联系人加载失败");
+      message.error(getCustomerResponseMessage(error, "联系人加载失败"));
     }
   };
   const openDetail = async (r: Customer, tab = "contacts") => {
@@ -926,7 +927,7 @@ export default function CustomerCenterPage({
     try {
       await refreshDetail(r);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户详情加载失败");
+      message.error(getCustomerResponseMessage(error, "客户详情加载失败"));
     }
   };
   const openCustomerContracts = (customer: Customer) => {
@@ -950,6 +951,32 @@ export default function CustomerCenterPage({
     })));
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "civil-cases" });
     onNavigate?.("case-company-civil");
+  };
+  const openCustomerIprCases = (customer: Customer) => {
+    sessionStorage.setItem("sunhold:customer-return", JSON.stringify(buildCustomerDetailReturnState({
+      scope: originalCustomerScope,
+      page,
+      pageSize,
+      keyword,
+      managerKeyword,
+    })));
+    sessionStorage.setItem("sunhold:customer-ipr-relation", JSON.stringify({
+      id: customer.id,
+      serial_no: customer.serial_no,
+      title: customer.title,
+      target: "ipr-cases",
+      at: Date.now(),
+    }));
+    onNavigate?.("ipr-patent");
+  };
+  const openCustomerCommunication = (customer: Customer) => {
+    sessionStorage.setItem("sunhold:communication-customer", JSON.stringify({
+      id: customer.id,
+      serial_no: customer.serial_no,
+      name: customer.title,
+      at: Date.now(),
+    }));
+    onNavigate?.("user-communications");
   };
   const addContact = async () => {
     if (!contacts) return;
@@ -998,7 +1025,8 @@ export default function CustomerCenterPage({
     }
     try {
       const data = new FormData(); data.append("file", option.file as Blob);
-      await api.post(`/customers/${contacts.id}/contacts/${contact.id}/photo`, data, {headers:{"Content-Type":"multipart/form-data"}});
+      const response = await api.post(`/customers/${contacts.id}/contacts/${contact.id}/photo`, data, {headers:{"Content-Type":"multipart/form-data"}});
+      assertCustomerMutationSuccess(response?.data);
       option.onSuccess?.({}); message.success("联系人照片已上传"); await refreshDetail(); load();
     } catch (error: any) { option.onError?.(error); message.error(getCustomerMutationErrorMessage(error, "联系人照片上传失败")); }
   };
@@ -1218,21 +1246,29 @@ export default function CustomerCenterPage({
         const request = buildCustomerActionRequest(row.id, confirmation.action, `${initialView === "customer-company" ? "公司客户" : "客户"}：客户删除`);
         if (!request) return;
         try {
-          await api.post(`/customers/${row.id}/recycle`, request.data);
+          const response = await api.post(`/customers/${row.id}/recycle`, request.data);
+          assertCustomerMutationSuccess(response?.data);
           message.success(getCustomerActionMessage(confirmation.action, true));
           setSelectedRowKeys([]);
           await load();
         } catch (error: any) {
-          message.error(error?.response?.data?.detail || getCustomerActionMessage(confirmation.action, false));
+          message.error(getCustomerMutationErrorMessageI17(error, getCustomerActionMessage(confirmation.action, false)));
         }
       },
     });
   };
   const originalActionItems =
+    (() => {
+      const customerNavigationActions = [
+        { key: "communication", label: "新增沟通记录" },
+        { key: "contact-management", label: "联系人管理" },
+      ];
+      return (
     initialView === "customer-mine"
       ? [
           { key: "edit", label: "客户编辑" },
           { key: "contract", label: "新增合同" },
+          ...customerNavigationActions,
           { key: "level", label: "申请客户分级调整" },
           { key: "key-change", label: "申请关键字段变更" },
           { key: "share", label: "共享客户" },
@@ -1240,24 +1276,28 @@ export default function CustomerCenterPage({
           { key: "portal-close", label: "停用客户服务端" },
         ]
       : initialView === "customer-dept"
-        ? [{ key: "assign", label: "分配客户" }]
+        ? [{ key: "assign", label: "分配客户" }, ...customerNavigationActions]
       : initialView === "customer-company"
-        ? [{ key: "edit", label: "客户编辑" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }]
+        ? [{ key: "edit", label: "客户编辑" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }, ...customerNavigationActions]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"
-            ? []
+            ? [...customerNavigationActions]
         : initialView === "customer-public"
           ? [{ key: "claim", label: "拾回" }]
           : ["customer-recent-contact", "customer-recent-update"].includes(initialView)
-            ? [{ key: "edit", label: "客户编辑" }]
-            : [];
+            ? [{ key: "edit", label: "客户编辑" }, ...customerNavigationActions]
+            : []
+      );
+    })();
   const runOriginalAction = (key: string) => {
     const target = requireSingleSelected();
     if (!target) return;
     if (key === "delete") recycleCustomer(target);
     if (key === "edit") startEdit(target);
     if (key === "assign") startAssign(target);
+    if (key === "communication") openCustomerCommunication(target);
+    if (key === "contact-management") void openDetail(target, "contacts");
     if (key === "contract") {
       sessionStorage.setItem("sunhold:contract-customer", JSON.stringify({
         id: target.id,
@@ -1427,6 +1467,21 @@ export default function CustomerCenterPage({
           onClick={() => openCustomerCivilCases(r)}
         >
           {r.data.civil_case_count ?? 0}
+        </Button>
+      ),
+    },
+    {
+      title: "知识产权案件数量",
+      key: "iprCaseCount",
+      width: 140,
+      align: "center" as const,
+      render: (_: unknown, r: Customer) => (
+        <Button
+          type="link"
+          className="customer-cell-link"
+          onClick={() => openCustomerIprCases(r)}
+        >
+          {r.data.ipr_case_count ?? 0}
         </Button>
       ),
     },

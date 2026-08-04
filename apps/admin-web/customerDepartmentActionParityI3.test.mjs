@@ -8,10 +8,10 @@ const actionsSource = source.slice(
   source.indexOf('const runOriginalAction'),
 )
 
-test('department customers expose only the legacy assignment action', () => {
+test('department customers expose assignment plus navigation actions', () => {
   assert.match(
     actionsSource,
-    /initialView === "customer-dept"\s*\?\s*\[\s*\{ key: "assign", label: "分配客户" \}\s*\]\s*:/,
+    /initialView === "customer-dept"\s*\?\s*\[\s*\{ key: "assign", label: "分配客户" \}, \.\.\.customerNavigationActions\s*\]\s*:/,
   )
 
   const departmentStart = actionsSource.indexOf('initialView === "customer-dept"')
@@ -22,4 +22,6 @@ test('department customers expose only the legacy assignment action', () => {
     departmentActions,
     /level-review|key-change-review|portal-open|portal-close/,
   )
+  assert.match(departmentActions, /key: "assign", label: "分配客户"/)
+  assert.match(departmentActions, /\.\.\.customerNavigationActions/)
 })

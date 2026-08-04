@@ -35,8 +35,14 @@ assert.match(
 
 assert.match(
   center,
-  /title: "客户名称",[\s\S]*?dataIndex: "name",[\s\S]*?render: \(value, row\) => <Space><Button type="link" size="small" onClick=\{\(\) => void openLinkedCaseCustomer\(row\)\}>\{value \|\| "—"\}<\/Button>\{row\.is_primary \? <Tag color="blue">主客户<\/Tag> : null\}<\/Space>/,
-  "IPR detail customer name should remain visibly marked as primary while linking to customer detail.",
+  /const openLinkedCaseCustomerCases = \(customer: IprCaseCustomer\) => \{[\s\S]*?const customerKeyword = customer\.customer_no \|\| customer\.name \|\| "";[\s\S]*?setDetail\(null\);[\s\S]*?setKeyword\(customerKeyword\);[\s\S]*?void load\(1, pageSize, customerKeyword\)/,
+  "IPR detail customer name should navigate back to the IPR case list filtered for that customer.",
+);
+
+assert.match(
+  center,
+  /title: "客户名称",[\s\S]*?dataIndex: "name",[\s\S]*?render: \(value, row\) => <Space><Button type="link" size="small" onClick=\{\(\) => openLinkedCaseCustomerCases\(row\)\}>\{value \|\| "—"\}<\/Button>\{row\.is_primary \? <Tag color="blue">主客户<\/Tag> : null\}<\/Space>/,
+  "IPR detail customer name should remain visibly marked as primary while linking to that customer's IPR case list.",
 );
 
 console.log("ipr case customer navigation parity: PASS");

@@ -257,6 +257,84 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             ]
         self.assertIn("编辑", actions)
 
+    async def test_customer_list_summary_returns_full_legacy_monetary_projection(self):
+        async with self.sessions() as db:
+            first = await db.get(BusinessRecord, self.customer_id)
+            first.data = {
+                **(first.data or {}),
+                "agency_fee_due": 10.5,
+                "official_fee_unreceived": 20,
+                "total_paid_case_office_fee_amount": 30,
+                "total_cashed_case_office_fee_amount": 40,
+                "total_un_cashed_case_office_fee_amount": 50,
+                "total_deficit_case_office_fee_amount": -5,
+                "total_case_non_office_fee_amount": 60,
+                "total_cashed_case_non_office_fee_amount": 70,
+                "total_un_cashed_case_non_office_fee_amount": 80,
+                "total_case_commission_fee_amount": 90,
+                "total_cashed_case_commission_fee_amount": 100,
+                "total_paid_case_commission_fee_amount": 110,
+                "total_un_paid_case_commission_fee_amount": 120,
+                "total_invoiced_amount": 130,
+                "total_invoice_over_amount": 140,
+                "total_un_invoiced_amount": 150,
+            }
+            db.add(BusinessRecord(
+                module="customer", serial_no="KH-D6-SUMMARY-002", title="D6 摘要客户二", customer="D6 摘要客户二",
+                status="正常", owner="customer-admin", department="上海分所",
+                data={
+                    "customer_type": "客户",
+                    "customer_managers": ["customer-admin"],
+                    "agency_fee_due": 1.25,
+                    "official_fee_unreceived": 2.5,
+                    "total_paid_case_office_fee_amount": 3.75,
+                    "total_cashed_case_office_fee_amount": 4.25,
+                    "total_un_cashed_case_office_fee_amount": 5.5,
+                    "total_deficit_case_office_fee_amount": 6,
+                    "total_case_non_office_fee_amount": 7,
+                    "total_cashed_case_non_office_fee_amount": 8,
+                    "total_un_cashed_case_non_office_fee_amount": 9,
+                    "total_case_commission_fee_amount": 10,
+                    "total_cashed_case_commission_fee_amount": 11,
+                    "total_paid_case_commission_fee_amount": 12,
+                    "total_un_paid_case_commission_fee_amount": 13,
+                    "total_invoiced_amount": 14,
+                    "total_invoice_over_amount": 15,
+                    "total_un_invoiced_amount": 16,
+                },
+            ))
+            await db.commit()
+
+        response = await self.client.get(
+            f"{API}/customers",
+            params={"scope": "company", "customer_type": "客户", "page": 1, "page_size": 1},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        payload = response.json()
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(len(payload["items"]), 1)
+        summary = payload["summary"]
+        expected = {
+            "agency_fee_due": 11.75,
+            "official_fee_unreceived": 22.5,
+            "total_paid_case_office_fee_amount": 33.75,
+            "total_cashed_case_office_fee_amount": 44.25,
+            "total_un_cashed_case_office_fee_amount": 55.5,
+            "total_deficit_case_office_fee_amount": 1,
+            "total_case_non_office_fee_amount": 67,
+            "total_cashed_case_non_office_fee_amount": 78,
+            "total_un_cashed_case_non_office_fee_amount": 89,
+            "total_case_commission_fee_amount": 100,
+            "total_cashed_case_commission_fee_amount": 111,
+            "total_paid_case_commission_fee_amount": 122,
+            "total_un_paid_case_commission_fee_amount": 133,
+            "total_invoiced_amount": 144,
+            "total_invoice_over_amount": 155,
+            "total_un_invoiced_amount": 166,
+        }
+        self.assertEqual(set(summary), set(expected))
+        self.assertEqual(summary, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

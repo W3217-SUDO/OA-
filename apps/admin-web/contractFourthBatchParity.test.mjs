@@ -92,7 +92,8 @@ test("approval and attachment action policies expose safe failure recovery", () 
 
 test("contract center integrates the fourth-batch route, query, approval, attachment, and recovery policies", () => {
   assert.match(pageSource, /contractListViewConfig\(initialView\)/);
-  assert.match(pageSource, /buildContractListRequestParams\(initialView, listPagination, query\)/);
+  assert.match(pageSource, /const effectiveQuery = relationQuery \? \{ \.\.\.query, \.\.\.relationQuery \} : query/);
+  assert.match(pageSource, /buildContractListRequestParams\(initialView, listPagination, effectiveQuery\)/);
   assert.match(pageSource, /normalizeContractQuery\(values\)/);
   assert.match(pageSource, /validateContractApprovalSubmission\(/);
   assert.match(pageSource, /contractAttachmentActionPolicy\(/);

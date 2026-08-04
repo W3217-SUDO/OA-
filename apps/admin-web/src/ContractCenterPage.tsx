@@ -184,6 +184,21 @@ const CONTRACT_CREATE_STEP_TITLES = ["合同基本信息", "提交审批"];
 const CONTRACT_SEAL_READY_STATUSES = ["已通过", "履行中", "已完成"];
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
 const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-return-view";
+const CONTRACT_DETAIL_TAB_STORAGE_KEY = "sunhold:contract-detail-active-tab";
+const normalizeContractDetailTabKey = (tab?: string | null) =>
+  ["objects", "events", "workflow", "attachments", "approvals"].includes(String(tab || ""))
+    ? String(tab)
+    : "objects";
+const consumeContractDetailTabKey = () => {
+  try {
+    const tab = sessionStorage.getItem(CONTRACT_DETAIL_TAB_STORAGE_KEY);
+    sessionStorage.removeItem(CONTRACT_DETAIL_TAB_STORAGE_KEY);
+    return tab ? normalizeContractDetailTabKey(tab) : null;
+  } catch {
+    // Detail pages should still open when session storage is unavailable.
+  }
+  return null;
+};
 const consumeContractDetailReturnView = () => {
   try {
     const view = String(sessionStorage.getItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY) || "");
@@ -270,6 +285,7 @@ export default function ContractCenterPage({
   const [approverSettingsSaving, setApproverSettingsSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
+  const [detailActiveTab, setDetailActiveTab] = useState("objects");
   const [selectedAttachmentKeys, setSelectedAttachmentKeys] = useState<Key[]>([]);
   const [attachmentBatchSaving, setAttachmentBatchSaving] = useState(false);
   const [detailReceipts, setDetailReceipts] = useState<any[]>([]);
@@ -354,12 +370,18 @@ export default function ContractCenterPage({
     setDetailPayments([]);
     setDetailApprovals([]);
     setViewingAttachmentsLoading(false);
+    setDetailActiveTab("objects");
   };
-  const openViewing = async (contract: Contract) => {
+  const openViewing = async (contract: Contract, options: { detailTab?: string } = {}) => {
     if (!isContractDetailView) {
       try {
         saveContractListQuery(sessionStorage, initialView, query);
         sessionStorage.setItem(CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY, initialView);
+        if (options.detailTab) {
+          sessionStorage.setItem(CONTRACT_DETAIL_TAB_STORAGE_KEY, normalizeContractDetailTabKey(options.detailTab));
+        } else {
+          sessionStorage.removeItem(CONTRACT_DETAIL_TAB_STORAGE_KEY);
+        }
       } catch {
         // Session storage may be unavailable in embedded/private contexts.
       }
@@ -367,6 +389,9 @@ export default function ContractCenterPage({
       if (route) onNavigate?.(route);
       return;
     }
+    const pendingDetailTab = options.detailTab ? normalizeContractDetailTabKey(options.detailTab) : consumeContractDetailTabKey();
+    if (pendingDetailTab) setDetailActiveTab(pendingDetailTab);
+    else if (viewing?.id !== contract.id) setDetailActiveTab("objects");
     const requestId = ++viewingAttachmentRequest.current;
     const eventRequestId = contractEventRequestTracker.current.next();
     setViewing(contract);
@@ -768,6 +793,27 @@ export default function ContractCenterPage({
     });
     setOpen(true);
   };
+  const canOpenSubmitWizard = (contract?: Contract | null) => ["草稿", "已拒绝"].includes(contract?.status || "");
+  const openSubmitWizardFromList = async (contract: Contract) => {
+    if (!canOpenSubmitWizard(contract)) {
+      message.warning("仅草稿或已拒绝合同可以提交审批");
+      return;
+    }
+    try {
+      setEditing(null);
+      setSubmitting(null);
+      setChanging(null);
+      await loadWizardContext(contract.id);
+      localStorage.setItem(WIZARD_STORAGE_KEY, String(contract.id));
+      setWizardStep(1);
+      setOpen(true);
+    } catch (error: any) {
+      message.error(extractContractErrorMessage(error, "合同提交审批信息加载失败"));
+    }
+  };
+  const openContractAttachments = (contract: Contract) => {
+    void openViewing(contract, { detailTab: "attachments" });
+  };
   const save = async () => {
     let v: any;
     try {
@@ -829,6 +875,8 @@ export default function ContractCenterPage({
       const response = target
         ? await api.patch(`/contracts/${target.id}`, payload)
         : await api.post("/contracts", payload);
+      const feedback = normalizeContractActionResponse(response, "保存失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       if (!editing) {
         setWizardDraft(response.data);
         localStorage.setItem(WIZARD_STORAGE_KEY, String(response.data.id));
@@ -854,7 +902,7 @@ export default function ContractCenterPage({
       }
       await load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "保存失败");
+      message.error(extractContractErrorMessage(error, "保存失败"));
     } finally {
       setSavingContract(false);
     }
@@ -1035,7 +1083,7 @@ export default function ContractCenterPage({
       await loadWizardContext(wizardDraft.id);
       message.success("合同附件已上传");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同附件上传失败");
+      message.error(extractContractErrorMessage(error, "合同附件上传失败"));
     }
   };
   const uploadViewingAttachment = async () => {
@@ -1109,14 +1157,26 @@ export default function ContractCenterPage({
         try {
           const response = await api.post(`/contracts/${target.id}/attachments/delete`, { fileIds: deletePlan });
           const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
-          if (!feedback.ok) {
-            setSelectedAttachmentKeys(deletePlan);
-            message.error(`合同附件批量删除未完成：${feedback.message}`);
+          const rawFailed = Array.isArray(response.data?.failed) ? response.data.failed : [];
+          const summary: { deleted: number; failed: { id: number; message: string }[] } = {
+            deleted: Number(response.data?.deleted || 0),
+            failed: rawFailed.map((item: any, index: number) => ({
+              id: Number(item.id ?? item.file_id ?? item.fileId ?? deletePlan[index]) || 0,
+              message: String(item.message || item.detail || feedback.message),
+            })),
+          };
+          if (!feedback.ok && !summary.failed.length) {
+            summary.failed = deletePlan.map((id) => ({ id: Number(id), message: feedback.message }));
+          }
+          if (summary.failed.length) {
+            setSelectedAttachmentKeys(summary.failed.map((item) => item.id).filter(Boolean));
+            if (summary.deleted) await reloadViewingAttachments(target);
+            message.error(`合同附件批量删除未完成：${summary.failed.map((item) => item.message).join("；")}`);
             return;
           }
-          await reloadViewingAttachments(target);
+          if (summary.deleted) await reloadViewingAttachments(target);
           setSelectedAttachmentKeys([]);
-          message.success(`已删除 ${response.data?.deleted ?? deletePlan.length} 个合同附件`);
+          message.success(`已删除 ${summary.deleted || deletePlan.length} 个合同附件`);
         } finally {
           contractMutationGates.current.attachment.leave();
           setAttachmentBatchSaving(false);
@@ -1196,15 +1256,17 @@ export default function ContractCenterPage({
     if (!changing) return;
     const v = await changeForm.validateFields();
     try {
-      await api.post(`/contracts/${changing.id}/changes`, {
+      const response = await api.post(`/contracts/${changing.id}/changes`, {
         ...v,
         end_date: v.end_date?.format("YYYY-MM-DD"),
       });
+      const feedback = normalizeContractActionResponse(response, "合同变更失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       message.success("合同变更已提交审批");
       setChanging(null);
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同变更失败");
+      message.error(extractContractErrorMessage(error, "合同变更失败"));
     }
   };
   const reviewChange = async (contract: Contract, approved: boolean) => {
@@ -1262,7 +1324,9 @@ export default function ContractCenterPage({
       cancelText: "保留草稿",
       onOk: async () => {
         try {
-          await api.delete(`/contracts/${contract.id}/draft`);
+          const response = await api.delete(`/contracts/${contract.id}/draft`);
+          const feedback = normalizeContractActionResponse(response, "合同草稿撤销失败");
+          if (!feedback.ok) throw new Error(feedback.message);
           localStorage.removeItem(WIZARD_STORAGE_KEY);
           setContractFile(null);
           setSelectedAttachmentKeys([]);
@@ -1275,7 +1339,7 @@ export default function ContractCenterPage({
           message.success("合同草稿已撤销，附件和事项记录已一并清理");
           await load();
         } catch (error: any) {
-          message.error(error?.response?.data?.detail || "合同草稿撤销失败");
+          message.error(extractContractErrorMessage(error, "合同草稿撤销失败"));
           throw error;
         }
       },
@@ -1283,12 +1347,14 @@ export default function ContractCenterPage({
   };
   const archive = async (r: Contract) => {
     try {
-      await api.post(`/contracts/${r.id}/archive`);
+      const response = await api.post(`/contracts/${r.id}/archive`);
+      const feedback = normalizeContractActionResponse(response, "合同归档失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       message.success("合同已归档");
       setSelectedRowKeys([]);
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同归档失败");
+      message.error(extractContractErrorMessage(error, "合同归档失败"));
     }
   };
   const openInvestigation = (r: Contract) => {
@@ -1591,6 +1657,18 @@ export default function ContractCenterPage({
     moneyColumn("发票|已开金额", "invoice_opened"),
     moneyColumn("发票|应开金额", "invoice_should"),
     moneyColumn("发票|高开金额", "invoice_excess"),
+    {
+      title: "操作",
+      key: "operations",
+      width: 150,
+      fixed: "right" as const,
+      render: (_: unknown, r: Contract) => (
+        <Space size={0}>
+          <Button type="link" onClick={() => openContractAttachments(r)}>合同附件</Button>
+          {canOpenSubmitWizard(r) && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>提交审批</Button>}
+        </Space>
+      ),
+    },
   ];
   const auditColumns = [
     columns[0],
@@ -1717,13 +1795,15 @@ export default function ContractCenterPage({
   const saveApproverSettings = async () => {
     setApproverSettingsSaving(true);
     try {
-      await api.put("/contracts/approver-settings", { usernames: selectedApproverUsernames });
+      const response = await api.put("/contracts/approver-settings", { usernames: selectedApproverUsernames });
+      const feedback = normalizeContractActionResponse(response, "合同审批人设置保存失败");
+      if (!feedback.ok) throw new Error(feedback.message);
       const directoryResponse = await api.get("/users/directory");
       setDirectory((directoryResponse.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
       setApproverSettingsOpen(false);
       message.success("合同审批人设置已保存");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同审批人设置保存失败");
+      message.error(extractContractErrorMessage(error, "合同审批人设置保存失败"));
     } finally {
       setApproverSettingsSaving(false);
     }
@@ -2125,6 +2205,8 @@ export default function ContractCenterPage({
             </section>
             <Tabs
               className="contract-detail-tabs"
+              activeKey={detailActiveTab}
+              onChange={setDetailActiveTab}
               items={[
                 {
                   key: "objects",

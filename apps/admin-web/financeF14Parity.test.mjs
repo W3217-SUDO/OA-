@@ -142,6 +142,30 @@ test("F14-18 internal export helper keeps scope, filters and selected ids", () =
   assert.equal(params.ids, "4,9");
 });
 
+test("F14-18 internal export helper carries legacy audit and refused PageIds", () => {
+  assert.equal(
+    internalFeeExportRequestParams({
+      initialView: "finance-internal-audit",
+      query: { routeField7: "待审批" },
+    }).page_id,
+    "5001004002",
+  );
+  assert.equal(
+    internalFeeExportRequestParams({
+      initialView: "finance-internal-fee-audit",
+      query: { routeField7: "待审批" },
+    }).page_id,
+    "5001004002",
+  );
+  assert.equal(
+    internalFeeExportRequestParams({
+      initialView: "finance-internal-refused",
+      query: { routeField7: "已拒绝" },
+    }).page_id,
+    "5001004001",
+  );
+});
+
 test("F14-19 archive route title and pending-archive default are explicit", () => {
   assert.match(source, /finance-internal-archive["']\s*:\s*["']内部提成-待归档/);
   assert.match(source, /finance-internal-archive[\s\S]{0,1000}待归档/);

@@ -10,7 +10,7 @@ test('employee list requests the dedicated server-side page and all legacy filte
   assert.match(frontend, /api\.get\('\/hr\/employees',\{params:\{page:requestedPage,page_size:15,company,department,username,name,mobile,enabled\}\}\)/)
   assert.match(frontend, /dataSource=\{rows\}/)
   assert.match(frontend, /pagination=\{\{current:employeePage,pageSize:15,total:employeeTotal/)
-  assert.match(frontend, /onChange:\(page\)=>void load\(page\)/)
+  assert.match(frontend, /onChange:\(page\)=>changeEmployeePage\(page\)/)
 })
 
 test('employee list preserves the API total and requested page when moving to page two and back', () => {

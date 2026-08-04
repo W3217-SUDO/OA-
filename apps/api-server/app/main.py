@@ -2535,6 +2535,12 @@ def _legacy_contract_business_failure_response(exc: HTTPException) -> dict:
     raise exc
 
 
+def _legacy_finance_business_failure_response(exc: HTTPException) -> dict:
+    if exc.status_code in {status.HTTP_409_CONFLICT, status.HTTP_422_UNPROCESSABLE_ENTITY}:
+        return _legacy_failure_response(str(exc.detail or "操作失败"))
+    raise exc
+
+
 FIELD_PERMISSION_DATA_KEYS = {
     "customer.billing": {"invoice_title", "taxpayer_id", "invoice_address", "invoice_phone"},
     "customer.bank": {"bank_name", "bank_account"},
@@ -10143,6 +10149,81 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     return await _record_dict_for_identity(item, identity, db)
 
 
+async def _editable_invoice_application(invoice_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    item = await db.get(BusinessRecord, invoice_id)
+    if not item or item.module != "invoice":
+        raise HTTPException(status_code=404, detail="发票申请不存在")
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status not in {"草稿", "已驳回"}:
+        raise HTTPException(status_code=409, detail="仅草稿或已驳回发票申请可以修改")
+    return item
+
+
+@app.put(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}")
+@app.patch(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}")
+async def update_invoice_application(invoice_id: int, body: InvoiceApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    try:
+        item = await _editable_invoice_application(invoice_id, identity, db)
+        case_record = await _finance_linked_case(body.case_no, identity, db)
+        if body.case_record_id:
+            linked_case = await _ensure_record_visible(body.case_record_id, identity, db)
+            if linked_case.module != "case":
+                raise HTTPException(status_code=422, detail="关联记录不是案件")
+            if case_record and case_record.id != linked_case.id:
+                raise HTTPException(status_code=409, detail="案件编号与案件记录不一致")
+            case_record = linked_case
+        contract_record = None
+        if body.contract_record_id:
+            contract_record = await _ensure_record_visible(body.contract_record_id, identity, db)
+            if contract_record.module != "contract":
+                raise HTTPException(status_code=422, detail="关联记录不是合同")
+        case_fee_ids = list(dict.fromkeys(body.case_fee_ids))
+        if case_fee_ids:
+            case_fees = list((await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.id.in_(case_fee_ids), BusinessRecord.module == "finance",
+                *(await _record_scope_conditions(identity, db)),
+            ))).all())
+            if len(case_fees) != len(case_fee_ids):
+                raise HTTPException(status_code=404, detail="部分案件费用不存在或无权访问")
+            linked_case_nos = {str((fee.data or {}).get("case_no") or "").strip() for fee in case_fees} - {""}
+            if len(linked_case_nos) > 1:
+                raise HTTPException(status_code=409, detail="同一张发票只能关联同一案件的费用")
+            if case_record and linked_case_nos and case_record.serial_no not in linked_case_nos:
+                raise HTTPException(status_code=409, detail="发票案件与所选案件费用不一致")
+            if not case_record and linked_case_nos:
+                case_record = await _finance_linked_case(next(iter(linked_case_nos)), identity, db)
+        existing_data = dict(item.data or {})
+        data = {**existing_data, **body.model_dump()}
+        data["case_fee_ids"] = case_fee_ids
+        data["amount"] = _round_fee_amount(body.amount)
+        data["extra_amount"] = _round_fee_amount(body.extra_amount)
+        data["applicant"] = existing_data.get("applicant") or identity.get("display_name") or identity["username"]
+        data["case_id"] = case_record.id if case_record else None
+        data["contract_id"] = contract_record.id if contract_record else None
+        if case_record:
+            data["case_no"] = case_record.serial_no
+        if contract_record:
+            data["contract_no"] = contract_record.serial_no
+        previous_status = item.status
+        item.title = f"{body.customer}发票申请"
+        item.customer = body.customer.strip()
+        item.description = body.remark
+        item.data = data
+        db.add(WorkflowEvent(
+            record_id=item.id,
+            action="修改发票申请",
+            from_status=previous_status,
+            to_status=item.status,
+            operator=identity["username"],
+            comment=f"{body.invoice_type}：{data['amount']:.2f} 元",
+        ))
+        await db.commit(); await db.refresh(item)
+        return await _record_dict_for_identity(item, identity, db)
+    except HTTPException as exc:
+        await db.rollback()
+        return _legacy_finance_business_failure_response(exc)
+
+
 @app.get(f"{settings.api_prefix}/customers/reference-options")
 async def customer_reference_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return customer-facing dictionaries without granting system-parameter administration."""
@@ -10426,19 +10507,41 @@ async def list_customers(
             **relationship_counts[item.id],
         }
         response_items.append(row)
+    legacy_summary_fields = [
+        "agency_fee_due",
+        "official_fee_unreceived",
+        "total_paid_case_office_fee_amount",
+        "total_cashed_case_office_fee_amount",
+        "total_un_cashed_case_office_fee_amount",
+        "total_deficit_case_office_fee_amount",
+        "total_case_non_office_fee_amount",
+        "total_cashed_case_non_office_fee_amount",
+        "total_un_cashed_case_non_office_fee_amount",
+        "total_case_commission_fee_amount",
+        "total_cashed_case_commission_fee_amount",
+        "total_paid_case_commission_fee_amount",
+        "total_un_paid_case_commission_fee_amount",
+        "total_invoiced_amount",
+        "total_invoice_over_amount",
+        "total_un_invoiced_amount",
+    ]
+
+    def legacy_summary_value(item: BusinessRecord, key: str) -> float:
+        try:
+            return float((item.data or {}).get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    summary = {
+        key: round(sum(legacy_summary_value(item, key) for item in candidate_rows), 2)
+        for key in legacy_summary_fields
+    }
     return {
         "items": response_items,
         "total": total,
         "page": page,
         "page_size": page_size,
-        "summary": {
-            "agency_fee_due": round(
-                sum(float((item.data or {}).get("agency_fee_due") or 0) for item in candidate_rows), 2
-            ),
-            "official_fee_unreceived": round(
-                sum(float((item.data or {}).get("official_fee_unreceived") or 0) for item in candidate_rows), 2
-            ),
-        },
+        "summary": summary,
     }
 
 
