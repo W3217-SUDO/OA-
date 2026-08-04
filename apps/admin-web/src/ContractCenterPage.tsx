@@ -814,6 +814,13 @@ export default function ContractCenterPage({
   const openContractAttachments = (contract: Contract) => {
     void openViewing(contract, { detailTab: "attachments" });
   };
+  const openContractApprovalInfo = (contract: Contract) => {
+    void openViewing(contract, { detailTab: "approvals" });
+  };
+  const openContractRelatedCaseFromList = (contract: Contract) => {
+    const data = contract.data as Record<string, unknown>;
+    void openRelatedCase(data.case_no || data.case_serial_no || data.related_case_no);
+  };
   const save = async () => {
     let v: any;
     try {
@@ -1665,6 +1672,9 @@ export default function ContractCenterPage({
       render: (_: unknown, r: Contract) => (
         <Space size={0}>
           <Button type="link" onClick={() => openContractAttachments(r)}>合同附件</Button>
+          <Button type="link" onClick={() => openContractApprovalInfo(r)}>审批信息</Button>
+          <Button type="link" onClick={() => openContractRelatedCaseFromList(r)}>关联案件</Button>
+          {canOpenSubmitWizard(r) && <Button type="link" onClick={() => { startEdit(r); setWizardStep(0); }}>重新上传</Button>}
           {canOpenSubmitWizard(r) && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>提交审批</Button>}
         </Space>
       ),

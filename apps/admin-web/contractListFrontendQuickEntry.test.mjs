@@ -65,3 +65,31 @@ test("contract list opens the detail page directly on the attachment tab", () =>
     "the contract detail Tabs should honor the requested attachment tab",
   );
 });
+
+test("contract list restores legacy approval, related case, and re-upload shortcuts", () => {
+  assert.match(
+    source,
+    /const openContractApprovalInfo = \(contract: Contract\) => \{[\s\S]*openViewing\(contract, \{ detailTab: "approvals" \}\);[\s\S]*\};/,
+    "contract rows should open approval information directly",
+  );
+  assert.match(
+    source,
+    /const openContractRelatedCaseFromList = \(contract: Contract\) => \{[\s\S]*const data = contract\.data as Record<string, unknown>;[\s\S]*openRelatedCase\(data\.case_no \|\| data\.case_serial_no \|\| data\.related_case_no\);[\s\S]*\};/,
+    "contract rows should preserve the old related-case shortcut",
+  );
+  assert.match(
+    columnsSource,
+    /openContractApprovalInfo\(r\)[\s\S]*审批信息/,
+    "each contract row should expose 审批信息",
+  );
+  assert.match(
+    columnsSource,
+    /openContractRelatedCaseFromList\(r\)[\s\S]*关联案件/,
+    "each contract row should expose 关联案件",
+  );
+  assert.match(
+    columnsSource,
+    /canOpenSubmitWizard\(r\)[\s\S]*startEdit\(r\); setWizardStep\(0\);[\s\S]*重新上传/,
+    "draft/refused rows should expose the old re-upload entry",
+  );
+});

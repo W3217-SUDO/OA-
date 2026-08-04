@@ -137,6 +137,9 @@ type NavItem = {
   label: string;
   badge?: string;
   disabled?: boolean;
+  link_url?: string;
+  menu_type_id?: number;
+  open_target?: string;
   children?: NavItem[];
 };
 type NavConfig = {
@@ -149,6 +152,12 @@ type NavConfig = {
   is_visible: boolean;
   is_active: boolean;
   is_system?: boolean;
+  link_url?: string;
+  LinkUrl?: string;
+  menu_type_id?: number;
+  menu_type?: number;
+  MenuTypeId?: number;
+  open_target?: string;
 };
 
 const menuItems: NavItem[] = [
@@ -433,8 +442,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     (item) =>
       item.is_visible &&
       item.is_active &&
-      item.key !== "task-reminders" &&
-      item.key !== "system-users",
+      item.key !== "task-reminders",
   ).sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
   );
@@ -443,10 +451,15 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       .filter((item) => item.parent_key === parentKey)
       .map((item) => {
         const children = build(item.key);
+        const linkUrl = item.link_url || item.LinkUrl || "";
+        const menuTypeId = Number(item.menu_type_id ?? item.menu_type ?? item.MenuTypeId ?? 0);
         return {
           key: item.key,
           label: item.label,
-          disabled: item.key.startsWith("legacy-menu-"),
+          disabled: item.key.startsWith("legacy-menu-") && !linkUrl,
+          link_url: linkUrl || undefined,
+          menu_type_id: menuTypeId || undefined,
+          open_target: item.open_target,
           icon: parentKey ? undefined : icon(item.icon),
           badge: item.key === "dashboard" ? "hot" : undefined,
           children: children.length ? children : undefined,
@@ -1232,6 +1245,18 @@ export default function App() {
     if (normalizedRoute === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: normalizedRoute }));
     setActive(normalizedRoute);
   };
+  const openLegacyMenuItem = (item: NavItem) => {
+    const rawUrl = String(item.link_url || "").trim();
+    if (!rawUrl) return;
+    const target = item.open_target || (item.menu_type_id === 4 ? "_blank" : "_self");
+    if (/^https?:\/\//i.test(rawUrl)) {
+      window.open(rawUrl, target, "noopener,noreferrer");
+      return;
+    }
+    const url = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl.replace(/^\/+/, "")}`;
+    if (target === "_blank") window.open(url, target, "noopener,noreferrer");
+    else window.location.assign(url);
+  };
   useEffect(() => {
     const effectiveLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
     setOpenPages((current) => {
@@ -1467,7 +1492,15 @@ export default function App() {
               setOpenMenuKeys(nextKeys);
               if (parentRoute) navigate(parentRoute);
             }}
-            onClick={({ key }) => { const item = flattenMenu(sideMenuItems).find(entry => entry.key === key); if (!item?.disabled) navigate(key) }}
+            onClick={({ key }) => {
+              const item = flattenMenu(sideMenuItems).find(entry => entry.key === key);
+              if (!item || item.disabled) return;
+              if (item.link_url) {
+                openLegacyMenuItem(item);
+                return;
+              }
+              navigate(key);
+            }}
           />
           {!collapsed && (
             <div className="support-tools">
