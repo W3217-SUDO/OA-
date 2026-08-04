@@ -32,7 +32,7 @@ import { resolveDetailRelation } from "./detailRelationResolver";
 import { buildContractDetailRoute, consumeContractDetailTarget, sortContractObjectLogs, type ContractDetailNavigationContext } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
-import { openContractCustomerCreation } from "./contractCenterCustomerNavigation";
+import { buildContractCustomerQueryFromRelation, openContractCustomerCreation } from "./contractCenterCustomerNavigation";
 import { createContractCustomerContextConsumer, createContractNumber, type LinkedCustomerContext } from "./contractCreateContext";
 import { filterPendingContractApprovals } from "./contractAuditScope";
 import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
@@ -531,7 +531,13 @@ export default function ContractCenterPage({
   const load = async () => {
     setLoading(true);
     const target = detailTarget || consumeContractDetailTarget() || contractDetailRouteTarget;
-    const recordsParams = buildContractListRequestParams(initialView, listPagination, query);
+    const relationQuery = buildContractCustomerQueryFromRelation(consumeCustomerRelationTarget());
+    const effectiveQuery = relationQuery ? { ...query, ...relationQuery } : query;
+    if (relationQuery) {
+      queryForm.setFieldsValue(relationQuery);
+      setQuery(effectiveQuery);
+    }
+    const recordsParams = buildContractListRequestParams(initialView, listPagination, effectiveQuery);
     const recordsRequest = api.get("/records", { params: { ...recordsParams, scope: listViewConfig.scope, page: 1, page_size: 100 } });
     const targetRequest = target ? resolveContractDetailTarget(target) : null;
     const auxiliaryRequests = Promise.allSettled([
@@ -551,12 +557,6 @@ export default function ContractCenterPage({
     try {
       const recordsRes = await recordsRequest;
       setAllRows(recordsRes.data.items);
-      const relationTarget = consumeCustomerRelationTarget();
-      if (relationTarget?.target === "contracts") {
-        const customerKeyword = relationTarget.title || relationTarget.serial_no || "";
-        queryForm.setFieldsValue({ customer: customerKeyword });
-        setQuery((value) => ({ ...value, customer: customerKeyword }));
-      }
     } catch (error: any) {
       message.error(extractContractErrorMessage(error, "合同数据加载失败"));
     } finally {
