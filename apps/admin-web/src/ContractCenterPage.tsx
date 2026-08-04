@@ -625,10 +625,14 @@ export default function ContractCenterPage({
         text(x.serial_no).includes(text(query.serial_no)),
       );
     if (query.type) list = list.filter((x) => x.data.type === query.type);
-    if (query.customer)
+    if (query.customer_no)
+      list = list.filter((x) => text(x.data.customer_no) === text(query.customer_no));
+    else if (query.customer)
       list = list.filter((x) =>
         text(x.customer).includes(text(query.customer)),
       );
+    if (query.exclude_archived)
+      list = list.filter((x) => !["已归档", "Archived", "archived"].includes(String(x.status || "").trim()));
     if (query.case_no)
       list = list.filter((x) =>
         text(x.data.case_no).includes(text(query.case_no)),
