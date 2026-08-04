@@ -6,6 +6,7 @@ import {
   DatePicker,
   Descriptions,
   Drawer,
+  Alert,
   Form,
   Input,
   InputNumber,
@@ -28,8 +29,12 @@ import {
   buildIprCaseContactPayload,
   buildIprCaseCustomerPayload,
   buildIprCaseLawFirmPayload,
+  buildIprDeadlineFromOffset,
+  getIprApiErrorMessage,
+  getIprCompatibleFileCategory,
   getIprCaseCustomerValidationError,
   getIprCaseDeletionConfirmation,
+  getIprSectionLoadError,
 } from "./iprCaseDetailParity.mjs";
 
 type IprRecord = {
@@ -124,6 +129,12 @@ export default function IprCenterPage({
     [detail, setDetail] = useState<IprRecord | null>(null),
     [editing, setEditing] = useState<IprRecord | null>(null),
     [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [iprSectionErrors, setIprSectionErrors] = useState({
+    files: "",
+    logs: "",
+    reminders: "",
+    assistedFees: "",
+  });
   const [customers, setCustomers] = useState<Customer[]>([]),
     [profile, setProfile] = useState<{ role?: string; username?: string }>({}),
     [maintenanceTarget, setMaintenanceTarget] = useState<IprRecord | null>(
@@ -175,6 +186,8 @@ export default function IprCenterPage({
     [iprHistory, setIprHistory] = useState<IprHistoryItem[]>([]),
     [iprLogOpen, setIprLogOpen] = useState(false),
     [iprLogForm] = Form.useForm();
+  const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
+  const [deadlineOffsetForm] = Form.useForm();
   const batchCaseIds = Form.useWatch("case_ids", iprBatchForm) as number[] | undefined;
   const batchSelectedKinds = useMemo(() => {
     const ids = new Set((batchCaseIds || []).map(Number));
@@ -186,10 +199,35 @@ export default function IprCenterPage({
   }), [iprFileTypes, batchSelectedKinds]);
   useEffect(() => {
     const selectedType = iprBatchForm.getFieldValue("category");
-    if (selectedType && !batchAvailableFileTypes.some((item) => item.name === selectedType)) {
+    const compatibleType = getIprCompatibleFileCategory({
+      category: selectedType,
+      caseKinds: batchSelectedKinds,
+      fileTypes: batchAvailableFileTypes,
+    });
+    if (selectedType && !compatibleType) {
       iprBatchForm.setFieldValue("category", undefined);
     }
-  }, [batchAvailableFileTypes, iprBatchForm]);
+  }, [batchAvailableFileTypes, batchSelectedKinds, iprBatchForm]);
+  useEffect(() => {
+    const selectedType = iprFileForm.getFieldValue("category");
+    const compatibleType = getIprCompatibleFileCategory({
+      category: selectedType,
+      caseKinds: [String(detail?.data?.case_kind || "")],
+      fileTypes: iprFileTypes,
+    });
+    if (selectedType && !compatibleType) {
+      iprFileForm.setFieldValue("category", undefined);
+    }
+  }, [detail, iprFileForm, iprFileTypes]);
+  const clearIprSectionError = (section: keyof typeof iprSectionErrors) => {
+    setIprSectionErrors((current) => ({ ...current, [section]: "" }));
+  };
+  const setIprSectionError = (section: keyof typeof iprSectionErrors, error: unknown) => {
+    setIprSectionErrors((current) => ({
+      ...current,
+      [section]: getIprSectionLoadError(section, error),
+    }));
+  };
   const handledDetailTarget = useRef("");
   const reviewView = initialView === "ipr-review";
   const load = async () => {
@@ -250,6 +288,25 @@ export default function IprCenterPage({
     });
     setCreateOpen(true);
   };
+  const applyDeadlineOffset = async () => {
+    try {
+      const values = await deadlineOffsetForm.validateFields();
+      const deadline = buildIprDeadlineFromOffset({
+        baseDate: values.base_date?.format("YYYY-MM-DD"),
+        years: values.years,
+        months: values.months,
+        days: values.days,
+      });
+      if (!deadline) {
+        message.warning("请选择基准日期");
+        return;
+      }
+      form.setFieldValue("deadline", dayjs(deadline));
+      setDeadlineOffsetOpen(false);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(getIprApiErrorMessage(error, "截止日期计算失败"));
+    }
+  };
   const create = async () => {
     try {
       const values = await form.validateFields();
@@ -282,8 +339,9 @@ export default function IprCenterPage({
         `/ipr/cases/${caseId}/assisted-fees`,
       );
       setAssistedFees(data.items || []);
-    } catch {
-      setAssistedFees([]);
+      clearIprSectionError("assistedFees");
+    } catch (error) {
+      setIprSectionError("assistedFees", error);
     }
   };
   const loadReminders = async (caseId: number) => {
@@ -292,8 +350,9 @@ export default function IprCenterPage({
         `/ipr/cases/${caseId}/reminders`,
       );
       setReminders(data.items || []);
-    } catch {
-      setReminders([]);
+      clearIprSectionError("reminders");
+    } catch (error) {
+      setIprSectionError("reminders", error);
     }
   };
   const loadReminderSuppressions = async (caseId: number) => {
@@ -315,8 +374,9 @@ export default function IprCenterPage({
         `/ipr/cases/${caseId}/files`,
       );
       setAttachments(data.items || []);
-    } catch {
-      setAttachments([]);
+      clearIprSectionError("files");
+    } catch (error) {
+      setIprSectionError("files", error);
     }
   };
   const loadCaseLawFirms = async (caseId: number) => {
@@ -370,9 +430,9 @@ export default function IprCenterPage({
       const { data } = await api.get<{ business_logs: IprBusinessLog[]; operation_logs: IprOperationLog[] }>(`/ipr/cases/${caseId}/logs`);
       setIprBusinessLogs(data.business_logs || []);
       setIprOperationLogs(data.operation_logs || []);
-    } catch {
-      setIprBusinessLogs([]);
-      setIprOperationLogs([]);
+      clearIprSectionError("logs");
+    } catch (error) {
+      setIprSectionError("logs", error);
     }
   };
   const loadIprHistory = async (caseId: number) => {
@@ -469,6 +529,12 @@ export default function IprCenterPage({
   };
   const openDetail = async (record: IprRecord) => {
     setDetail(record);
+    setAttachments([]);
+    setIprBusinessLogs([]);
+    setIprOperationLogs([]);
+    setAssistedFees([]);
+    setReminders([]);
+    setIprSectionErrors({ files: "", logs: "", reminders: "", assistedFees: "" });
     try {
       await Promise.all([
         loadIprFiles(record.id),
@@ -481,17 +547,8 @@ export default function IprCenterPage({
         loadReminders(record.id),
         loadReminderSuppressions(record.id),
       ]);
-    } catch {
-      setAttachments([]);
-      setCaseLawFirms([]);
-      setCaseCustomers([]);
-      setCaseContacts([]);
-      setIprBusinessLogs([]);
-      setIprOperationLogs([]);
-      setAssistedFees([]);
-      setReminders([]);
-      setReminderEventTypes([]);
-      setSuppressedIds([]);
+    } catch (error) {
+      message.error(getIprApiErrorMessage(error, "案件详情加载失败"));
     }
   };
   useEffect(() => {
@@ -573,7 +630,7 @@ export default function IprCenterPage({
       await loadIprFiles(detail.id);
     } catch (e: any) {
       if (!e?.errorFields)
-        message.error(e?.response?.data?.detail || "上传案件文档失败");
+        message.error(getIprApiErrorMessage(e, "上传案件文档失败"));
     }
   };
   const uploadIprBatchFile = async () => {
@@ -618,7 +675,7 @@ export default function IprCenterPage({
       message.success("案件文档已删除");
       await loadIprFiles(detail.id);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || "删除案件文档失败");
+      message.error(getIprApiErrorMessage(e, "删除案件文档失败"));
     }
   };
   const createAssistedFee = async () => {
@@ -1080,6 +1137,16 @@ export default function IprCenterPage({
             <Form.Item name="deadline" label="办理期限">
               <DatePicker style={{ width: "100%" }} />
             </Form.Item>
+            <Button
+              type="link"
+              onClick={() => {
+                deadlineOffsetForm.resetFields();
+                deadlineOffsetForm.setFieldValue("base_date", dayjs());
+                setDeadlineOffsetOpen(true);
+              }}
+            >
+              按基准日计算截止日期
+            </Button>
             <Form.Item name="annual_fee_year" label="年费年度">
               <InputNumber min={1} max={100} style={{ width: "100%" }} />
             </Form.Item>
@@ -1095,6 +1162,30 @@ export default function IprCenterPage({
           <Form.Item name="description" label="说明">
             <Input.TextArea rows={3} />
           </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={deadlineOffsetOpen}
+        title="案件截止日期设定"
+        onCancel={() => setDeadlineOffsetOpen(false)}
+        onOk={() => void applyDeadlineOffset()}
+        okText="确定"
+      >
+        <Form form={deadlineOffsetForm} layout="vertical">
+          <Form.Item name="base_date" label="基准日期" rules={[{ required: true }]}>
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Space.Compact block>
+            <Form.Item name="years" label="年" initialValue={0} style={{ flex: 1 }}>
+              <InputNumber style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="months" label="月" initialValue={0} style={{ flex: 1 }}>
+              <InputNumber style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="days" label="日" initialValue={0} style={{ flex: 1 }}>
+              <InputNumber style={{ width: "100%" }} />
+            </Form.Item>
+          </Space.Compact>
         </Form>
       </Modal>
       <Drawer
@@ -1178,6 +1269,7 @@ export default function IprCenterPage({
               style={{ marginTop: 16 }}
               extra={detail.status === "草稿" || detail.status === "已驳回" || detail.status === "在办" ? <Button size="small" onClick={() => { iprLogForm.resetFields(); setIprLogOpen(true); }}>新增业务日志</Button> : null}
             >
+              {iprSectionErrors.logs ? <Alert type="error" showIcon message={iprSectionErrors.logs} style={{ marginBottom: 12 }} /> : null}
               <Table
                 rowKey="id"
                 size="small"
@@ -1280,7 +1372,8 @@ export default function IprCenterPage({
                 ]}
               /> : "暂未选择协作律所"}
             </Card>
-            <Card size="small" title="案件文书与附件" style={{ marginTop: 16 }}>
+          <Card size="small" title="案件文书与附件" style={{ marginTop: 16 }}>
+              {iprSectionErrors.files ? <Alert type="error" showIcon message={iprSectionErrors.files} style={{ marginBottom: 12 }} /> : null}
               <Space wrap>
                 {detail.status !== "草稿" &&
                   detail.status !== "待立案审核" &&
@@ -1335,6 +1428,7 @@ export default function IprCenterPage({
               detail.status === "在办" ? <Space><Button disabled={!selectedIprFileIds.length} onClick={() => void markSelectedIprFilesTransmitted()}>批量标记已转</Button><Button size="small" type="primary" onClick={() => { iprFileForm.resetFields(); iprFileForm.setFieldsValue({ document_date: dayjs() }); setIprUploadFile(null); void loadIprFileTypes(String(detail.data?.case_kind || "")); setIprFileOpen(true); }}>上传文档</Button></Space> : null
             }
           >
+            {iprSectionErrors.files ? <Alert type="error" showIcon message={iprSectionErrors.files} style={{ marginBottom: 12 }} /> : null}
             <Table
               rowKey="id"
               size="small"
@@ -1386,6 +1480,7 @@ export default function IprCenterPage({
                 ) : null
               }
             >
+              {iprSectionErrors.assistedFees ? <Alert type="error" showIcon message={iprSectionErrors.assistedFees} style={{ marginBottom: 12 }} /> : null}
               <Table
                 rowKey="id"
                 size="small"
@@ -1504,6 +1599,7 @@ export default function IprCenterPage({
                 </Space>
               }
             >
+              {iprSectionErrors.reminders ? <Alert type="error" showIcon message={iprSectionErrors.reminders} style={{ marginBottom: 12 }} /> : null}
               <Table
                 rowKey="id"
                 size="small"
