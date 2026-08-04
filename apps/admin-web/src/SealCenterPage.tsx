@@ -1185,6 +1185,14 @@ export default function SealCenterPage({
       );
     }
   };
+  const openSealNumber = (row: SealRow) => {
+    if (tab === "audit" && canSealAction("approve", row)) {
+      setAction({ type: "approve", row });
+      actionForm.resetFields();
+      return;
+    }
+    void openDetail(row);
+  };
   const downloadAttachment = async (item: AttachmentRow) => {
     try {
       const response = await api.get(`/attachments/${item.id}/download`, {
@@ -1493,7 +1501,7 @@ export default function SealCenterPage({
       dataIndex: "serial_no",
       width: 175,
       render: (v: string, r: SealRow) => (
-        <Button type="link" onClick={() => openDetail(r)}>
+        <Button type="link" onClick={() => openSealNumber(r)}>
           {v}
         </Button>
       ),
