@@ -582,17 +582,20 @@ export default function SealCenterPage({
             params: { module: "customer", page_size: 100 },
           }),
         ]);
-      setRows(apps.data.items);
+      const items = Array.isArray(apps.data.items) ? apps.data.items : [];
+      setRows(items);
       setSummary(apps.data.summary);
       setAssets(inventory.data.items);
       setCases(caseResult.data.items);
       setContracts(contractResult.data.items);
       setCustomers(customerResult.data.items);
+      return items as SealRow[];
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail ||
           sealQueryFailureMessage(error?.response?.status),
       );
+      return undefined;
     } finally {
       setLoading(false);
     }
@@ -1278,6 +1281,13 @@ export default function SealCenterPage({
           sealAttachmentListFailureMessage(filesResult.reason?.response?.status),
       );
     }
+  };
+  const refreshDetail = async () => {
+    if (!detail) return;
+    const latestRows = await load();
+    const latestRow =
+      latestRows?.find((item: SealRow) => item.id === detail.id) || detail;
+    await openDetail(latestRow);
   };
   const openSealNumber = (row: SealRow) => {
     if (tab === "audit" && canSealAction("approve", row)) {
@@ -2531,6 +2541,18 @@ export default function SealCenterPage({
           resetStampAttachmentState();
         }}
       >
+        {(action?.type === "approve" || action?.type === "reject") && (
+          <Button
+            type="link"
+            onClick={() => {
+              if (!action) return;
+              setAction(null);
+              void openDetail(action.row);
+            }}
+          >
+            查看用印文件
+          </Button>
+        )}
         <Form form={actionForm} layout="vertical">
           {action?.type === "stamp" && (
             <>
@@ -2664,7 +2686,7 @@ export default function SealCenterPage({
         open={Boolean(detail)}
         size={640}
         title={`用印详情：${detail?.serial_no || ""}`}
-        extra={detail ? <Button icon={<ReloadOutlined />} onClick={() => void openDetail(detail)}>刷新</Button> : null}
+        extra={detail ? <Button icon={<ReloadOutlined />} onClick={() => void refreshDetail()}>刷新</Button> : null}
         onClose={() => {
           detailRequestTracker.invalidate();
           setDetail(null);

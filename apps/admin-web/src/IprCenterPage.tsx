@@ -216,6 +216,8 @@ export default function IprCenterPage({
     [iprHistory, setIprHistory] = useState<IprHistoryItem[]>([]),
     [iprLogOpen, setIprLogOpen] = useState(false),
     [iprBusinessLogDetail, setIprBusinessLogDetail] = useState<IprBusinessLog | null>(null),
+    [iprOperationLogDetail, setIprOperationLogDetail] = useState<IprOperationLog | null>(null),
+    [iprHistoryDetail, setIprHistoryDetail] = useState<IprHistoryItem | null>(null),
     [iprLogForm] = Form.useForm();
   const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
   const [deadlineOffsetForm] = Form.useForm();
@@ -1506,7 +1508,16 @@ export default function IprCenterPage({
                 locale={{ emptyText: "暂未产生操作日志" }}
                 dataSource={iprOperationLogs}
                 columns={[
-                  { title: "操作", dataIndex: "action", width: 180 },
+                  {
+                    title: "操作",
+                    dataIndex: "action",
+                    width: 180,
+                    render: (action: string, row: IprOperationLog) => (
+                      <Button type="link" onClick={() => setIprOperationLogDetail(row)}>
+                        {action}
+                      </Button>
+                    ),
+                  },
                   { title: "说明", dataIndex: "comment", ellipsis: true, render: (value) => value || "—" },
                   { title: "操作人", dataIndex: "operator", width: 110 },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
@@ -1525,7 +1536,16 @@ export default function IprCenterPage({
                 dataSource={iprHistory}
                 locale={{ emptyText: "暂无案件事项记录" }}
                 columns={[
-                  { title: "事项", dataIndex: "action", width: 160 },
+                  {
+                    title: "事项",
+                    dataIndex: "action",
+                    width: 160,
+                    render: (action: string, row: IprHistoryItem) => (
+                      <Button type="link" onClick={() => setIprHistoryDetail(row)}>
+                        {action}
+                      </Button>
+                    ),
+                  },
                   { title: "状态变化", width: 180, render: (_, row: IprHistoryItem) => row.from_status || row.to_status ? `${row.from_status || "—"} → ${row.to_status || "—"}` : "—" },
                   { title: "说明", dataIndex: "comment", ellipsis: true },
                   { title: "操作人", dataIndex: "operator", width: 110 },
@@ -2094,6 +2114,43 @@ export default function IprCenterPage({
             <Descriptions.Item label="日志内容">{iprBusinessLogDetail.content}</Descriptions.Item>
             <Descriptions.Item label="创建人">{iprBusinessLogDetail.created_by}</Descriptions.Item>
             <Descriptions.Item label="创建时间">{iprBusinessLogDetail.created_at}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+      <Modal
+        open={!!iprOperationLogDetail}
+        title="案件操作日志详情"
+        footer={null}
+        onCancel={() => setIprOperationLogDetail(null)}
+      >
+        {iprOperationLogDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="操作">{iprOperationLogDetail.action}</Descriptions.Item>
+            <Descriptions.Item label="说明">{iprOperationLogDetail.comment || "—"}</Descriptions.Item>
+            <Descriptions.Item label="操作人">{iprOperationLogDetail.operator}</Descriptions.Item>
+            <Descriptions.Item label="原状态">{iprOperationLogDetail.from_status || "—"}</Descriptions.Item>
+            <Descriptions.Item label="目标状态">{iprOperationLogDetail.to_status || "—"}</Descriptions.Item>
+            <Descriptions.Item label="时间">{iprOperationLogDetail.created_at}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+      <Modal
+        open={!!iprHistoryDetail}
+        title="案件事项详情"
+        footer={null}
+        onCancel={() => setIprHistoryDetail(null)}
+      >
+        {iprHistoryDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="事项">{iprHistoryDetail.action}</Descriptions.Item>
+            <Descriptions.Item label="状态变化">
+              {iprHistoryDetail.from_status || iprHistoryDetail.to_status
+                ? `${iprHistoryDetail.from_status || "—"} → ${iprHistoryDetail.to_status || "—"}`
+                : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="说明">{iprHistoryDetail.comment || "—"}</Descriptions.Item>
+            <Descriptions.Item label="操作人">{iprHistoryDetail.operator}</Descriptions.Item>
+            <Descriptions.Item label="时间">{iprHistoryDetail.created_at}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

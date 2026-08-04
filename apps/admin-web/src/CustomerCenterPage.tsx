@@ -298,6 +298,7 @@ export default function CustomerCenterPage({
     [keyChangeCustomer, setKeyChangeCustomer] = useState<Customer | null>(null),
     [portalResult, setPortalResult] = useState<{ account: string; activation_code: string } | null>(null),
     [contacts, setContacts] = useState<Customer | null>(null),
+    [viewingContact, setViewingContact] = useState<Contact | null>(null),
     [editingContact, setEditingContact] = useState<Contact | null>(null),
     [editingNote, setEditingNote] = useState<Note | null>(null),
     [detailPageOpen, setDetailPageOpen] = useState(false),
@@ -1620,7 +1621,8 @@ export default function CustomerCenterPage({
                 label: "联系人",
                 children: <><Space style={{ marginBottom: 8 }}>{canManageCurrentCustomer && <Button size="small" type="primary" onClick={() => openNewEditor("contact")}>新建联系人</Button>}<Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space><Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>{!row.is_primary&&<Button type="link" onClick={()=>void updateContactStatus(row,"primary")}>设为主要</Button>}{row.is_valid===false&&<Button type="link" onClick={()=>void updateContactStatus(row,"active")}>设为有效</Button>}{row.is_valid!==false&&<Button type="link" onClick={()=>void updateContactStatus(row,"inactive")}>设为无效</Button>}</Space>:null},
-                ]} /></>,
+                  {title:"查看",render:(_:unknown,row:Contact)=><Button type="link" onClick={()=>setViewingContact(row)}>查看</Button>},
+                  ]} /></>,
               },
               {
                 key: "contracts",
@@ -1953,6 +1955,19 @@ export default function CustomerCenterPage({
           />
         </Card>
       )}
+      <Modal open={Boolean(viewingContact)} title={`查看联系人：${viewingContact?.name || ""}`} footer={<Button onClick={() => setViewingContact(null)}>关闭</Button>} onCancel={() => setViewingContact(null)} destroyOnHidden>
+        <div className="customer-contact-view-fields">
+          <p><b>姓名：</b>{viewingContact?.name || ""}</p>
+          <p><b>职务：</b>{viewingContact?.position || ""}</p>
+          <p><b>项目角色：</b>{viewingContact?.project_role || ""}</p>
+          <p><b>办公电话：</b>{viewingContact?.office_phone || ""}</p>
+          <p><b>移动电话：</b>{viewingContact?.phone || ""}</p>
+          <p><b>IM：</b>{viewingContact?.im_account || ""}</p>
+          <p><b>邮箱：</b>{viewingContact?.email || ""}</p>
+          <p><b>联系状态：</b>{viewingContact?.contact_status || ""}</p>
+          <p><b>是否有效：</b>{viewingContact?.is_valid === false ? "否" : "是"}</p>
+        </div>
+      </Modal>
       <Modal open={Boolean(contactPhotoPreview)} title={contactPhotoPreview?.name || "联系人照片"} footer={null} onCancel={()=>{if(contactPhotoPreview)URL.revokeObjectURL(contactPhotoPreview.url);setContactPhotoPreview(null);}} destroyOnHidden><img src={contactPhotoPreview?.url} alt={contactPhotoPreview?.name || "联系人照片"} style={{display:"block",maxWidth:"100%",maxHeight:560,margin:"0 auto"}} /></Modal>
       <Modal open={Boolean(customerDocumentPreview)} title={customerDocumentPreview?.name || "客户文档预览"} footer={null} width={960} onCancel={()=>{if(customerDocumentPreview)URL.revokeObjectURL(customerDocumentPreview.url);setCustomerDocumentPreview(null);}} destroyOnHidden><iframe title={customerDocumentPreview?.name || "客户文档预览"} src={customerDocumentPreview?.url} style={{display:"block",width:"100%",height:"72vh",border:0}} /></Modal>
       <Modal open={newEditor === "contact"} title="新建联系人" okText="保存" cancelText="取消" onOk={addContact} onCancel={()=>setNewEditor(null)} destroyOnHidden>
@@ -2270,6 +2285,7 @@ export default function CustomerCenterPage({
                         title: "操作",
                         render: (_: unknown, r: Contact) => canManageCurrentCustomer ? (
                           <Space size={0}>
+                                <Button type="link" onClick={() => setViewingContact(r)}>查看</Button>
                                 <Button type="link" onClick={() => openContactEdit(r)}>编辑</Button>
                                 {!r.is_primary && <Button type="link" onClick={() => void updateContactStatus(r, "primary")}>设为主要</Button>}
                                 {r.is_valid === false && <Button type="link" onClick={() => void updateContactStatus(r, "active")}>设为有效</Button>}
@@ -2510,6 +2526,12 @@ export default function CustomerCenterPage({
                               onClick={() => downloadDocument(row)}
                             >
                               下载
+                            </Button>
+                            <Button
+                              type="link"
+                              onClick={() => void viewDocument(row)}
+                            >
+                              预览
                             </Button>
                             {canDeleteCustomerAttachment(canManageCurrentCustomer) && (
                               <Popconfirm

@@ -35,6 +35,7 @@ import {
   HomeOutlined,
   LinkOutlined,
   MenuFoldOutlined,
+  MessageOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
   ReloadOutlined,
@@ -1133,6 +1134,7 @@ export default function App() {
   const [contractDetailTarget, setContractDetailTarget] = useState<ContractDetailNavigationContext | null>(null);
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
+  const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
@@ -1519,6 +1521,14 @@ export default function App() {
             </Button>
           </Dropdown>
           <NotificationCenter onNavigate={navigate} />
+          <Tooltip title="任务消息">
+            <Button
+              type="text"
+              aria-label="任务消息"
+              icon={<MessageOutlined />}
+              onClick={() => navigate("task-reminders")}
+            />
+          </Tooltip>
           <Tooltip title={isFullscreen ? "退出全屏" : "全屏"}>
             <Button
               type="text"
@@ -1537,6 +1547,18 @@ export default function App() {
             menu={{
               items: [
                 { key: "profile", label: "个人资料" },
+                {
+                  key: "official-site",
+                  label: <a href="http://www.idchien.com" target="_blank" rel="noreferrer">官网</a>,
+                },
+                {
+                  key: "forum",
+                  label: <a href="http://forum.idchien.com" target="_blank" rel="noreferrer">论坛</a>,
+                },
+                {
+                  key: "documentation",
+                  label: <a href="http://doc.idchien.com" target="_blank" rel="noreferrer">文档</a>,
+                },
                 { type: "divider" },
                 { key: "logout", label: "退出", danger: true },
               ],
@@ -1569,7 +1591,9 @@ export default function App() {
         <Sider
           width={230}
           collapsedWidth={50}
-          collapsed={collapsed}
+          collapsed={collapsed && !sidebarHoverExpanded}
+          onMouseEnter={() => collapsed && setSidebarHoverExpanded(true)}
+          onMouseLeave={() => setSidebarHoverExpanded(false)}
           className="sidebar"
         >
           {!collapsed && (

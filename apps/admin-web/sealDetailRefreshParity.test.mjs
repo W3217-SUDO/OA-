@@ -4,7 +4,7 @@ import test from "node:test";
 
 const source = fs.readFileSync("src/SealCenterPage.tsx", "utf8");
 
-test("seal detail exposes the legacy reopen-as-refresh action", () => {
+test("seal detail refreshes the row before reloading history and attachments", () => {
   const drawerStart = source.indexOf("<Drawer");
   assert.notEqual(drawerStart, -1, "seal detail drawer should exist");
   const drawerEnd = source.indexOf("</Drawer>", drawerStart);
@@ -13,7 +13,7 @@ test("seal detail exposes the legacy reopen-as-refresh action", () => {
 
   assert.match(
     drawer,
-    /extra=\{detail \? <Button icon=\{<ReloadOutlined \/>\} onClick=\{\(\) => void openDetail\(detail\)\}>刷新<\/Button> : null\}/,
-    "detail should let users reload the existing history and attachment queries without reopening the list",
+    /extra=\{detail \? <Button icon=\{<ReloadOutlined \/>\} onClick=\{\(\) => void refreshDetail\(\)\}>刷新<\/Button> : null\}/,
+    "detail should reload the latest application row before history and attachment queries",
   );
 });

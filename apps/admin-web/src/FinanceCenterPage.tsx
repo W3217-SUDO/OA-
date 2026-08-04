@@ -3994,6 +3994,21 @@ export default function FinanceCenterPage({
               撤回请款
             </Button>
           )}
+        {initialView === "finance-payment-mine" &&
+          ["待审批", "已审批", "待付款"].includes(row.status) &&
+          ["admin", "manager", "auditor"].includes(role) && (
+            <Button type="link" onClick={() => openPaymentRollback(row)}>
+              回滚请款
+            </Button>
+          )}
+      </Space>
+    ) : initialView === "finance-payment-waiting" ? (
+      <Space size={0}>
+        {latestTransaction(row) && (
+          <Button type="link" onClick={() => void printPayment(row)}>
+            打印
+          </Button>
+        )}
       </Space>
     ) : <Space size={0}>
       {initialView === "finance-payment-writeoff" &&
