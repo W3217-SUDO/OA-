@@ -122,6 +122,9 @@ export default function IprCenterPage({
   const [items, setItems] = useState<IprRecord[]>([]),
     [total, setTotal] = useState(0),
     [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [pages, setPages] = useState(0);
   const [keyword, setKeyword] = useState(""),
     [annualFeeMonitoringFilter, setAnnualFeeMonitoringFilter] = useState<"" | "true" | "false">(""),
     [form] = Form.useForm(),
@@ -230,7 +233,7 @@ export default function IprCenterPage({
   };
   const handledDetailTarget = useRef("");
   const reviewView = initialView === "ipr-review";
-  const load = async () => {
+  const load = async (nextPage = page, nextPageSize = pageSize) => {
     setLoading(true);
     try {
       const { data } = await api.get("/ipr/cases", {
@@ -239,11 +242,15 @@ export default function IprCenterPage({
           record_status: reviewView ? "待立案审核" : "",
           keyword,
           annual_fee_monitoring: annualFeeMonitoringFilter || undefined,
-          page_size: 100,
+          page: nextPage,
+          page_size: nextPageSize,
         },
       });
-      setItems(data.items);
+      setItems(data.items || []);
       setTotal(data.total);
+      setPage(data.page ?? nextPage);
+      setPageSize(data.page_size ?? nextPageSize);
+      setPages(data.pages ?? (data.total ? Math.ceil(data.total / nextPageSize) : 0));
     } catch (e: any) {
       message.error(e?.response?.data?.detail || "知识产权案件加载失败");
     } finally {
@@ -251,7 +258,7 @@ export default function IprCenterPage({
     }
   };
   useEffect(() => {
-    void load();
+    void load(1, pageSize);
     void api
       .get<{ items: Customer[] }>("/customers", { params: { page_size: 100 } })
       .then(({ data }) => setCustomers(data.items || []))
@@ -1019,10 +1026,10 @@ export default function IprCenterPage({
                 placeholder="编号、名称、客户、申请号"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                onPressEnter={load}
+                onPressEnter={() => void load(1, pageSize)}
                 style={{ width: 220 }}
               />
-              <Button onClick={load}>查询</Button>
+              <Button onClick={() => void load(1, pageSize)}>查询</Button>
               <Select
                 value={annualFeeMonitoringFilter}
                 onChange={setAnnualFeeMonitoringFilter}
@@ -1051,7 +1058,13 @@ export default function IprCenterPage({
           dataSource={items}
           rowSelection={{ selectedRowKeys: selectedIprCaseIds, onChange: (keys) => setSelectedIprCaseIds(keys.map(Number)) }}
           scroll={{ x: 1250 }}
-          pagination={{ pageSize: 20, total, showTotal: (t) => `共 ${t} 条` }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total,
+            showTotal: (t) => "共 " + t + " 条" + (pages ? " / " + pages + " 页" : ""),
+            onChange: (nextPage, nextPageSize) => void load(nextPage, nextPageSize),
+          }}
         />
       </Card>
       <Modal open={iprBatchOpen} title="批量上传知识产权案件文档" onCancel={() => setIprBatchOpen(false)} onOk={() => void uploadIprBatchFile()} okText="批量上传">
