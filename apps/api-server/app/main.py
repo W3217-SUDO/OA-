@@ -20223,7 +20223,7 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
         db.add(WorkflowEvent(record_id=record.id, action="编辑", from_status=record.status, to_status=record.status, operator=identity["username"], comment="修改业务资料"))
     await db.commit()
     await db.refresh(record)
-    return _record_dict(record)
+    return await _record_dict_for_identity(record, identity, db)
 
 
 @app.post(f"{settings.api_prefix}/records/{{record_id}}/transition")

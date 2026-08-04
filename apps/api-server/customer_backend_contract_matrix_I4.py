@@ -41,7 +41,6 @@ KNOWN_BACKEND_GAPS = (
     "legacy customerGuid-based CustomerFiles/CustomerFileDownloadByGuid contract is represented only by generic record_id attachments",
     "legacy CustomerEvents/CustomerEventCreate contract has no customer-specific local route",
     "legacy PostResponse 200/IsSuccess failure envelope differs from local HTTP error status/detail contract",
-    "customer PATCH /records/{record_id} returns unfiltered _record_dict instead of the field-filtered identity projection",
 )
 
 
@@ -130,7 +129,9 @@ class CustomerBackendContractMatrixI4(unittest.TestCase):
         self.assertNotIn("CustomerEvents", LOCAL_MAIN)
         update_start = LOCAL_MAIN.index("async def update_record")
         update_block = LOCAL_MAIN[update_start:update_start + 9000]
-        self.assertIn("return _record_dict(record)", update_block)
+        update_block = update_block[: update_block.index("\n\n@app.post")]
+        self.assertIn("return await _record_dict_for_identity(record, identity, db)", update_block)
+        self.assertNotIn("return _record_dict(record)", update_block)
         self.assertIn('"agency_fee_due"', LOCAL_MAIN)
         self.assertIn('"official_fee_unreceived"', LOCAL_MAIN)
         self.assertNotIn('"total_paid_case_office_fee_amount"', LOCAL_MAIN)

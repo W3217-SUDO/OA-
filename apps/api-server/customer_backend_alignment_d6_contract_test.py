@@ -21,6 +21,7 @@ from app.security import current_identity
 
 ADMIN = {"username": "customer-admin", "role": "admin", "display_name": "客户管理员", "department": "上海分所"}
 AUDITOR = {"username": "customer-auditor", "role": "auditor", "display_name": "客户审计员", "department": "上海分所"}
+USER = {"username": "customer-user", "role": "user", "display_name": "客户专员", "department": "上海分所"}
 API = settings.api_prefix
 CUSTOMER_GUID = "11111111-1111-4111-8111-111111111111"
 
@@ -47,6 +48,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add(User(username="customer-auditor", display_name="客户审计员", department="上海分所", role="auditor", password_hash="test", is_active=True))
             db.add(User(username="customer-admin", display_name="客户管理员", department="上海分所", role="admin", password_hash="test", is_active=True))
+            db.add(User(username="customer-user", display_name="客户专员", department="上海分所", role="user", password_hash="test", is_active=True))
             db.add(SystemParameter(category="customer_type", code="customer", name="客户", is_active=True))
             customer = BusinessRecord(
                 module="customer", serial_no="KH-D6-001", title="D6 客户", customer="D6 客户",
@@ -213,6 +215,44 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual((customer.data or {}).get("credit_code"), "FORBIDDEN-CREDIT")
             actions = {event.action for event in (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all()}
         self.assertIn("更新客户资料", actions)
+
+    async def test_generic_record_patch_response_uses_identity_field_projection(self):
+        async with self.sessions() as db:
+            customer = BusinessRecord(
+                module="customer", serial_no="KH-D6-FIELD-PATCH", title="D6 字段投影客户", customer="D6 字段投影客户",
+                status="正常", owner=USER["username"], department=USER["department"],
+                data={
+                    "customer_guid": "22222222-2222-4222-8222-222222222222",
+                    "customer_type": "客户",
+                    "level": "立案客户",
+                    "customer_managers": [USER["username"]],
+                    "credit_code": "VISIBLE-LEGAL-CODE",
+                    "invoice_title": "HIDDEN-BILLING-TITLE",
+                    "taxpayer_id": "HIDDEN-TAXPAYER",
+                    "bank_name": "HIDDEN-BANK",
+                    "bank_account": "HIDDEN-ACCOUNT",
+                },
+            )
+            db.add(customer)
+            await db.commit()
+            record_id = customer.id
+
+        app.dependency_overrides[current_identity] = lambda: USER
+        response = await self.client.patch(f"{API}/records/{record_id}", json={"description": "通用编辑备注"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data.get("credit_code"), "VISIBLE-LEGAL-CODE")
+        for hidden_key in ("invoice_title", "taxpayer_id", "invoice_address", "invoice_phone", "bank_name", "bank_account"):
+            self.assertNotIn(hidden_key, data)
+
+        async with self.sessions() as db:
+            persisted = await db.get(BusinessRecord, record_id)
+            self.assertEqual((persisted.data or {}).get("invoice_title"), "HIDDEN-BILLING-TITLE")
+            actions = [
+                event.action
+                for event in (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record_id))).all()
+            ]
+        self.assertIn("编辑", actions)
 
 
 if __name__ == "__main__":
