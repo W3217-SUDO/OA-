@@ -57,17 +57,35 @@ const SECTION_ERROR_MESSAGES = {
 };
 
 export const getIprApiErrorMessage = (error, fallback = "操作失败") => {
-  const detail = error?.response?.data?.detail;
+  const payload = error?.response?.data ?? error?.data ?? {};
+  const detail = payload.detail;
   if (typeof detail === "string" && detail.trim()) return detail;
   if (Array.isArray(detail)) {
     const messages = detail.map((item) => item?.msg || item?.message).filter(Boolean);
     if (messages.length) return messages.join("；");
   }
+  const legacyMessage = payload.Message ?? payload.message ?? payload.error;
+  if (typeof legacyMessage === "string" && legacyMessage.trim()) return legacyMessage.trim();
+  if (typeof error?.message === "string" && error.message.trim()) return error.message.trim();
   return STATUS_ERROR_MESSAGES[error?.response?.status] || fallback;
 };
 
 export const getIprSectionLoadError = (section, error) =>
   getIprApiErrorMessage(error, SECTION_ERROR_MESSAGES[section] || "案件详情加载失败");
+
+export const normalizeIprMutationResponse = (response, fallback) => {
+  const payload = response?.data ?? response ?? {};
+  const explicit = payload.is_success ?? payload.IsSuccess ?? payload.success;
+  const ok = explicit === undefined ? true : Boolean(explicit);
+  const message = String(payload.message ?? payload.Message ?? payload.detail ?? fallback);
+  return { ok, message: message.trim() || fallback };
+};
+
+export const assertIprMutationSuccess = (response, fallback) => {
+  const result = normalizeIprMutationResponse(response, fallback);
+  if (!result.ok) throw new Error(result.message);
+  return result.message;
+};
 
 export const getIprCompatibleFileCategory = ({ category, caseKinds, fileTypes } = {}) => {
   if (!String(category ?? "").trim()) return undefined;

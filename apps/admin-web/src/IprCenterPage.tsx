@@ -28,6 +28,7 @@ import {
   normalizeIprCaseActionResponse,
 } from "./iprCaseWorkflowParity.mjs";
 import {
+  assertIprMutationSuccess,
   buildIprCaseContactPayload,
   buildIprCaseCustomerPayload,
   buildIprCaseLawFirmPayload,
@@ -689,8 +690,9 @@ export default function IprCenterPage({
         formatRequiredDate(values.document_date, "文档日期"),
       );
       payload.append("remark", values.remark || "");
-      await api.post(`/ipr/cases/${detail.id}/files`, payload);
-      message.success("案件文档已上传");
+      const uploadResponse = await api.post(`/ipr/cases/${detail.id}/files`, payload);
+      const uploadResult = assertIprMutationSuccess(uploadResponse, "案件文档已上传");
+      message.success(uploadResult);
       setIprFileOpen(false);
       setIprUploadFile(null);
       iprFileForm.resetFields();
@@ -707,39 +709,49 @@ export default function IprCenterPage({
       const payload = new FormData();
       payload.append("file", iprBatchFile); payload.append("case_ids", JSON.stringify(values.case_ids));
       payload.append("category", values.category); payload.append("document_date", formatRequiredDate(values.document_date, "文档日期")); payload.append("remark", values.remark || "");
-      const { data } = await api.post("/ipr/cases/files/batch-upload", payload);
-      message.success(`已向 ${data.created} 个案件上传文档`); setIprBatchOpen(false); setIprBatchFile(null); iprBatchForm.resetFields();
-    } catch (e: any) { if (!e?.errorFields) message.error(e?.response?.data?.detail || "批量上传案件文档失败"); }
+      const batchUploadResponse = await api.post("/ipr/cases/files/batch-upload", payload);
+      const batchUploadResult = assertIprMutationSuccess(
+        batchUploadResponse,
+        `已向 ${batchUploadResponse.data.created} 个案件上传文档`,
+      );
+      message.success(batchUploadResult); setIprBatchOpen(false); setIprBatchFile(null); iprBatchForm.resetFields();
+    } catch (e: any) { if (!e?.errorFields) message.error(getIprApiErrorMessage(e, "批量上传案件文档失败")); }
   };
   const markIprFileTransmitted = async (row: Attachment) => {
     if (!detail) return;
     try {
-      await api.post(
+      const markResponse = await api.post(
         `/ipr/cases/${detail.id}/files/${row.id}/mark-transmitted`,
         { comment: "" },
       );
-      message.success("已标记为已转");
+      const markResult = assertIprMutationSuccess(markResponse, "已标记为已转");
+      message.success(markResult);
       await loadIprFiles(detail.id);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || "标记已转失败");
+      message.error(getIprApiErrorMessage(e, "标记已转失败"));
     }
   };
   const markSelectedIprFilesTransmitted = async () => {
     if (!detail || !selectedIprFileIds.length) return;
     try {
-      const { data } = await api.post(`/ipr/cases/${detail.id}/files/mark-transmitted`, { attachment_ids: selectedIprFileIds, comment: "" });
-      message.success(`已标记 ${data.updated} 份文档为已转`);
+      const batchMarkResponse = await api.post(`/ipr/cases/${detail.id}/files/mark-transmitted`, { attachment_ids: selectedIprFileIds, comment: "" });
+      const batchMarkResult = assertIprMutationSuccess(
+        batchMarkResponse,
+        `已标记 ${batchMarkResponse.data.updated} 份文档为已转`,
+      );
+      message.success(batchMarkResult);
       setSelectedIprFileIds([]);
       await loadIprFiles(detail.id);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || "批量标记已转失败");
+      message.error(getIprApiErrorMessage(e, "批量标记已转失败"));
     }
   };
   const deleteIprFile = async (row: Attachment) => {
     if (!detail) return;
     try {
-      await api.delete(`/ipr/cases/${detail.id}/files/${row.id}`);
-      message.success("案件文档已删除");
+      const deleteResponse = await api.delete(`/ipr/cases/${detail.id}/files/${row.id}`);
+      const deleteResult = assertIprMutationSuccess(deleteResponse, "案件文档已删除");
+      message.success(deleteResult);
       await loadIprFiles(detail.id);
     } catch (e: any) {
       message.error(getIprApiErrorMessage(e, "删除案件文档失败"));

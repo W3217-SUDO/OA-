@@ -5,5 +5,7 @@ export function buildIprCaseLawFirmPayload(input: { lawFirmIds?: unknown }): { l
 export function getIprCaseDeletionConfirmation(kind: unknown, label?: unknown): { title: string; content: string; okText: string; cancelText: string };
 export function getIprApiErrorMessage(error: unknown, fallback?: string): string;
 export function getIprSectionLoadError(section: "files" | "logs" | "reminders" | "assistedFees", error: unknown): string;
+export function normalizeIprMutationResponse(response: unknown, fallback: string): { ok: boolean; message: string };
+export function assertIprMutationSuccess(response: unknown, fallback: string): string;
 export function getIprCompatibleFileCategory(input: { category?: unknown; caseKinds?: unknown; fileTypes?: unknown }): string | undefined;
 export function buildIprDeadlineFromOffset(input: { baseDate?: unknown; years?: unknown; months?: unknown; days?: unknown }): string;
