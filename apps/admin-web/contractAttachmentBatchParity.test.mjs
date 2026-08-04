@@ -26,8 +26,8 @@ test("attachment batch delete keeps per-item server failure messages", () => {
 
 test("contract detail wires real attachment delete calls, refresh, and saving gates", () => {
   assert.match(contractCenterSource, /buildContractAttachmentDeletePlan\(selectedAttachmentKeys\)/);
-  assert.match(contractCenterSource, /Promise\.allSettled\(deletePlan\.map/);
-  assert.match(contractCenterSource, /api\.delete\(`\/attachments\/\$\{attachmentId\}`\)/);
+  assert.match(contractCenterSource, /api\.post\(`\/contracts\/\$\{target\.id\}\/attachments\/delete`, \{ fileIds: deletePlan \}\)/);
+  assert.doesNotMatch(contractCenterSource, /Promise\.allSettled\(deletePlan\.map/);
   assert.match(contractCenterSource, /await reloadViewingAttachments\(target\)/);
   assert.match(contractCenterSource, /attachmentBatchSaving/);
   assert.match(contractCenterSource, /rowSelection=\{\{\s*selectedRowKeys:\s*selectedAttachmentKeys/);

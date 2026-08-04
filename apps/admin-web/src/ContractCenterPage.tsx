@@ -41,7 +41,7 @@ import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import { selectContractCurrentApprovalStep } from "./contractApprovalCurrentStep.mjs";
 import { normalizeContractPaymentApplications } from "./contractPaymentApplicationPresentation.mjs";
 import { createContractMutationGate } from "./contractMutationGate.mjs";
-import { buildContractAttachmentDeletePlan, summarizeContractAttachmentDeleteResults } from "./contractAttachmentBatch.mjs";
+import { buildContractAttachmentDeletePlan } from "./contractAttachmentBatch.mjs";
 import {
   CONTRACT_OBJECT_DEFAULT_PAGE_SIZE,
   CONTRACT_OBJECT_PAGE_SIZES,
@@ -1103,21 +1103,16 @@ export default function ContractCenterPage({
         if (!contractMutationGates.current.attachment.tryEnter()) return;
         setAttachmentBatchSaving(true);
         try {
-          const results = await Promise.allSettled(deletePlan.map(async (attachmentId) => {
-            const response = await api.delete(`/attachments/${attachmentId}`);
-            const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
-            if (!feedback.ok) throw new Error(feedback.message);
-            return attachmentId;
-          }));
-          const summary = summarizeContractAttachmentDeleteResults(results.map((result, index) => ({ ...result, id: deletePlan[index] })));
-          if (summary.deleted) await reloadViewingAttachments(target);
-          if (summary.failed.length) {
-            setSelectedAttachmentKeys(summary.failed.map((item) => item.id).filter(Boolean));
-            message.error(`合同附件批量删除未完成：${summary.failed.map((item) => item.message).join("；")}`);
+          const response = await api.post(`/contracts/${target.id}/attachments/delete`, { fileIds: deletePlan });
+          const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
+          if (!feedback.ok) {
+            setSelectedAttachmentKeys(deletePlan);
+            message.error(`合同附件批量删除未完成：${feedback.message}`);
             return;
           }
+          await reloadViewingAttachments(target);
           setSelectedAttachmentKeys([]);
-          message.success(`已删除 ${summary.deleted} 个合同附件`);
+          message.success(`已删除 ${response.data?.deleted ?? deletePlan.length} 个合同附件`);
         } finally {
           contractMutationGates.current.attachment.leave();
           setAttachmentBatchSaving(false);

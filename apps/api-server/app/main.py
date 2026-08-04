@@ -1164,6 +1164,12 @@ class AttachmentBatchInput(BaseModel):
     attachment_ids: list[int] = Field(min_length=1, max_length=100)
 
 
+class ContractAttachmentBatchDeleteInput(BaseModel):
+    file_ids: list[int] = Field(default_factory=list, max_length=100)
+    fileIds: list[int] = Field(default_factory=list, max_length=100)
+    attachment_ids: list[int] = Field(default_factory=list, max_length=100)
+
+
 class CaseAttachmentRenameInput(BaseModel):
     original_name: str = Field(min_length=1, max_length=255)
 
@@ -16261,6 +16267,60 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
         path.unlink()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/attachments/delete")
+async def batch_delete_contract_attachments(contract_id: int, body: ContractAttachmentBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy FCM-style batch delete for contract files with a 200 envelope."""
+    ids = list(dict.fromkeys([int(item_id) for item_id in [*body.file_ids, *body.fileIds, *body.attachment_ids] if int(item_id) > 0]))
+    staged: list[tuple[Path, Path]] = []
+    try:
+        if not ids:
+            raise HTTPException(status_code=422, detail="请选择要删除的合同附件")
+        contract = await _ensure_record_module(contract_id, "contract", identity, db)
+        await _require_contract_attachment_write_access(contract, identity, db)
+        attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(ids)))).all())
+        if len(attachments) != len(ids):
+            raise HTTPException(status_code=422, detail="所选合同附件不存在或已删除")
+        by_id = {item.id: item for item in attachments}
+        ordered = [by_id[item_id] for item_id in ids]
+        prepared: list[tuple[FileAttachment, Path]] = []
+        for item in ordered:
+            if not item.record_id == contract_id:
+                raise HTTPException(status_code=422, detail="所选文件不属于当前合同")
+            if item.category != "合同附件":
+                raise HTTPException(status_code=422, detail="所选文件不是合同附件")
+            await _require_contract_attachment_write_access(contract, identity, db)
+            path = Path(item.path)
+            if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+                raise HTTPException(status_code=422, detail=f"合同附件文件 {item.original_name} 不存在")
+            prepared.append((item, path))
+        for item, path in prepared:
+            staged_path = path.with_name(f".contract-delete-{uuid4().hex}-{path.name}")
+            path.replace(staged_path)
+            staged.append((path, staged_path))
+        for item, _ in prepared:
+            await db.delete(item)
+            db.add(WorkflowEvent(record_id=contract.id, action="批量删除合同附件", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"合同附件：{item.original_name}"))
+        await db.commit()
+    except HTTPException as exc:
+        await db.rollback()
+        for original, staged_path in reversed(staged):
+            if staged_path.is_file():
+                staged_path.replace(original)
+        return JSONResponse(status_code=status.HTTP_200_OK, content={"IsSuccess": False, "Message": str(exc.detail), "fileIds": ids})
+    except Exception:
+        await db.rollback()
+        for original, staged_path in reversed(staged):
+            if staged_path.is_file():
+                staged_path.replace(original)
+        raise
+    for _, staged_path in staged:
+        try:
+            staged_path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("无法清理已删除的合同附件临时文件: %s", staged_path)
+    return {"IsSuccess": True, "Message": "删除成功！", "fileIds": ids, "deleted": len(prepared)}
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/batch/files/delete")
