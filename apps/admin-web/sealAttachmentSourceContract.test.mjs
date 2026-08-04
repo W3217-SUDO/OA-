@@ -104,6 +104,36 @@ test("SealCenter create request submits source attachment ids with the draft pay
   );
 });
 
+test("SealCenter source attachment selector consumes paged contract/case attachments", () => {
+  const sourceLoader = sliceBetween(page, "const selectedSourceRecord = useMemo", "const clearQuery = () =>");
+  const createModal = sliceBetween(page, "<Form form={createForm}", "</Form>");
+
+  assert.ok(
+    sourceHas(sourceLoader, /sourceAttachmentPage/),
+    "source attachment selector must track the current source attachment page.",
+  );
+  assert.ok(
+    sourceHas(sourceLoader, /sourceAttachmentPageSize/),
+    "source attachment selector must track page_size for source attachment requests.",
+  );
+  assert.ok(
+    sourceHas(sourceLoader, /sourceAttachmentTotal/),
+    "source attachment selector must preserve response.total instead of assuming the first page is complete.",
+  );
+  assert.ok(
+    sourceHas(sourceLoader, /api\.get\("\/attachments"[\s\S]*?page:[\s\S]*?page_size:/),
+    "source attachment loader must request /attachments with explicit page and page_size.",
+  );
+  assert.ok(
+    !sourceHas(sourceLoader, /page_size:\s*200/),
+    "source attachment selector must not hard-cap legacy contract/case attachment choices at the first 200 rows.",
+  );
+  assert.ok(
+    sourceHas(createModal, /(loadMoreSourceAttachments|sourceAttachmentTotal|sourceAttachmentPage)/),
+    "create modal must expose a way to consume additional source attachment pages.",
+  );
+});
+
 test("SealCenter preserves existing approval state and permission helper semantics", () => {
   const {
     canBatchDeleteSealFiles,

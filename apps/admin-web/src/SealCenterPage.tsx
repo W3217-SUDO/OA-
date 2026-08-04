@@ -336,6 +336,9 @@ export default function SealCenterPage({
   const [stampAttachmentUploading, setStampAttachmentUploading] = useState(false);
   const [sourceAttachments, setSourceAttachments] = useState<AttachmentRow[]>([]);
   const [sourceAttachmentLoading, setSourceAttachmentLoading] = useState(false);
+  const [sourceAttachmentPage, setSourceAttachmentPage] = useState(1);
+  const [sourceAttachmentPageSize, setSourceAttachmentPageSize] = useState(sealFilePagination.defaultPageSize);
+  const [sourceAttachmentTotal, setSourceAttachmentTotal] = useState(0);
   const [action, setAction] = useState<{
     type: "approve" | "reject" | "stamp" | "archive";
     row: SealRow;
@@ -373,23 +376,33 @@ export default function SealCenterPage({
     if (!createOpen) return;
     if (!selectedSourceRecord) {
       setSourceAttachments([]);
+      setSourceAttachmentPage(1);
+      setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
+      setSourceAttachmentTotal(0);
       createForm.setFieldValue("source_attachment_ids", []);
       return;
     }
     let active = true;
+    const nextPageSize = sealFilePagination.defaultPageSize;
     setSourceAttachmentLoading(true);
+    setSourceAttachmentPage(1);
+    setSourceAttachmentPageSize(nextPageSize);
+    setSourceAttachmentTotal(0);
     api
       .get("/attachments", {
         params: {
           record_id: selectedSourceRecord.id,
           page: 1,
-          page_size: 200,
+          page_size: nextPageSize,
         },
       })
       .then(({ data }) => {
         if (!active) return;
         const items = Array.isArray(data.items) ? data.items : [];
         setSourceAttachments(items);
+        setSourceAttachmentPage(Number(data.page) || 1);
+        setSourceAttachmentPageSize(Number(data.page_size) || nextPageSize);
+        setSourceAttachmentTotal(Number(data.total) || items.length);
         const availableIds = new Set(items.map((item: AttachmentRow) => Number(item.id)));
         const selectedIds = createForm.getFieldValue("source_attachment_ids");
         if (Array.isArray(selectedIds)) {
@@ -416,6 +429,39 @@ export default function SealCenterPage({
       active = false;
     };
   }, [createForm, createOpen, selectedSourceRecord?.id]);
+  const loadMoreSourceAttachments = async () => {
+    if (!selectedSourceRecord || sourceAttachmentLoading) return;
+    if (sourceAttachmentTotal > 0 && sourceAttachments.length >= sourceAttachmentTotal) return;
+    const nextPage = sourceAttachmentPage + 1;
+    setSourceAttachmentLoading(true);
+    try {
+      const { data } = await api.get("/attachments", {
+        params: {
+          record_id: selectedSourceRecord.id,
+          page: nextPage,
+          page_size: sourceAttachmentPageSize,
+        },
+      });
+      const items = Array.isArray(data.items) ? data.items : [];
+      setSourceAttachments((current) => {
+        const seen = new Set(current.map((item) => Number(item.id)));
+        return [
+          ...current,
+          ...items.filter((item: AttachmentRow) => !seen.has(Number(item.id))),
+        ];
+      });
+      setSourceAttachmentPage(Number(data.page) || nextPage);
+      setSourceAttachmentPageSize(Number(data.page_size) || sourceAttachmentPageSize);
+      setSourceAttachmentTotal(Number(data.total) || sourceAttachmentTotal);
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentListFailureMessage(error?.response?.status),
+      );
+    } finally {
+      setSourceAttachmentLoading(false);
+    }
+  };
   const clearQuery = () => {
     queryForm.resetFields();
     setQuery({});
@@ -695,6 +741,9 @@ export default function SealCenterPage({
     setEditingApplication(row || null);
     setSourceAttachments([]);
     setSourceAttachmentLoading(false);
+    setSourceAttachmentPage(1);
+    setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
+    setSourceAttachmentTotal(0);
     createForm.resetFields();
     createForm.setFieldsValue(
       row
@@ -1838,6 +1887,9 @@ export default function SealCenterPage({
           setCreateOpen(false);
           setEditingApplication(null);
           setSourceAttachments([]);
+          setSourceAttachmentPage(1);
+          setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
+          setSourceAttachmentTotal(0);
           createForm.setFieldValue("source_attachment_ids", []);
         }}
       >
@@ -1885,6 +1937,25 @@ export default function SealCenterPage({
                   value: file.id,
                   label: `${file.original_name}｜${formatSealAttachmentSize(file.size)}`,
                 }))}
+                dropdownRender={(menu) => (
+                  <>
+                    {menu}
+                    {selectedSourceRecord &&
+                      sourceAttachmentTotal > sourceAttachments.length && (
+                        <div style={{ padding: 8, textAlign: "center" }}>
+                          <Button
+                            type="link"
+                            size="small"
+                            loading={sourceAttachmentLoading}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => void loadMoreSourceAttachments()}
+                          >
+                            加载更多来源附件（{sourceAttachments.length}/{sourceAttachmentTotal}）
+                          </Button>
+                        </div>
+                      )}
+                  </>
+                )}
               />
             </Form.Item>
             <Form.Item
