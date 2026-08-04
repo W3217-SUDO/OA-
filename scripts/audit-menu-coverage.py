@@ -22,11 +22,16 @@ FINANCE_CSS = (ROOT / "apps/admin-web/src/finance-center.css").read_text(encodin
 NORMALIZED_FINANCE = re.sub(r"\s+", "", FINANCE)
 CASE = (ROOT / "apps/admin-web/src/CaseCenterPage.tsx").read_text(encoding="utf-8")
 CASE_CSS = (ROOT / "apps/admin-web/src/case-center.css").read_text(encoding="utf-8")
+CASE_SECOND_BATCH_PARITY = (ROOT / "apps/admin-web/src/caseSecondBatchParity.ts").read_text(encoding="utf-8")
+NORMALIZED_CASE_SECOND_BATCH_PARITY = re.sub(r"\s+", "", CASE_SECOND_BATCH_PARITY)
 CUSTOMER = (ROOT / "apps/admin-web/src/CustomerCenterPage.tsx").read_text(encoding="utf-8")
 CUSTOMER_CSS = (ROOT / "apps/admin-web/src/customer-center.css").read_text(encoding="utf-8")
+CUSTOMER_PARITY = (ROOT / "apps/admin-web/src/customerParity.mjs").read_text(encoding="utf-8")
 CUSTOMER_CONFLICT = (ROOT / "apps/admin-web/src/CustomerConflictPage.tsx").read_text(encoding="utf-8")
 CUSTOMER_CONFLICT_CSS = (ROOT / "apps/admin-web/src/customer-conflict.css").read_text(encoding="utf-8")
 CONTRACT = (ROOT / "apps/admin-web/src/ContractCenterPage.tsx").read_text(encoding="utf-8")
+CONTRACT_CREATE_CONTEXT = (ROOT / "apps/admin-web/src/contractCreateContext.ts").read_text(encoding="utf-8")
+CONTRACT_WORKFLOW_POLICY = (ROOT / "apps/admin-web/src/contractWorkflowPolicy.mjs").read_text(encoding="utf-8")
 CUSTOMER_DETAIL_NAVIGATION = (ROOT / "apps/admin-web/src/customerDetailNavigation.ts").read_text(encoding="utf-8")
 INVESTIGATION = (ROOT / "apps/admin-web/src/InvestigationCenterPage.tsx").read_text(encoding="utf-8")
 TASK = (ROOT / "apps/admin-web/src/TaskCenterPage.tsx").read_text(encoding="utf-8")
@@ -36,6 +41,8 @@ AUDIT_LOG = (ROOT / "apps/admin-web/src/AuditLogPage.tsx").read_text(encoding="u
 GLOBAL_SEARCH = (ROOT / "apps/admin-web/src/GlobalSearch.tsx").read_text(encoding="utf-8")
 FINANCE_PAGE = (ROOT / "apps/admin-web/src/FinanceCenterPage.tsx").read_text(encoding="utf-8")
 SEAL_PAGE = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")
+SEAL_VIEW_MAPPING = (ROOT / "apps/admin-web/src/sealViewMapping.ts").read_text(encoding="utf-8")
+SEAL_VIEW_MAPPING_NORMALIZED = re.sub(r"\s+", "", SEAL_VIEW_MAPPING).replace('"', "'")
 DOCUMENT_PAGE = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
 WAREHOUSE_PAGE = (ROOT / "apps/admin-web/src/WarehousePage.tsx").read_text(encoding="utf-8")
 BUSINESS_RECORD_NAVIGATION = (ROOT / "apps/admin-web/src/businessRecordDetailNavigation.ts").read_text(encoding="utf-8")
@@ -264,9 +271,13 @@ def main() -> None:
     assert '{ key: "customer-mine", label: "我的客户" }' in APP, "customer-mine fallback menu declaration is missing"
     assert '<CustomerCenterPage initialView={route} onNavigate={navigate} />' in APP, "customer routes must preserve the visible leaf key"
     normalized_customer = re.sub(r"\s+", "", CUSTOMER)
+    normalized_customer_parity = re.sub(r"\s+", "", CUSTOMER_PARITY)
+    assert 'exportconstbuildCustomerListParams=' in normalized_customer_parity, "customer original lists must share a single request-param builder"
+    assert 'scope:normalizedScope,customer_name:String(keyword??"").trim(),customer_type:String(customerType??"客户").trim()||"客户",page:normalizedPage,page_size:normalizedPageSize' in normalized_customer_parity, "customer list param builder must preserve original scope/name/type/page/page_size contract"
+    assert 'if(!CUSTOMER_SCOPE_OMIT_MANAGER.has(normalizedScope))params.manager=String(manager??"").trim()' in normalized_customer_parity, "customer list param builder must omit manager only for shared/recent scopes"
+    assert '...buildCustomerListParams({scope:originalCustomerScope,keyword:requestKeyword,customerType:requestCustomerType,manager:requestManagerKeyword,page:requestPage,pageSize,})' in normalized_customer, "customer page must use the shared original-list param builder with current filters and pagination"
     for token in (
         '"customer-mine":"mine","customer-recycle":"recycle","customer-dept":"department"',
-        'scope:originalCustomerScope,customer_name:keyword,customer_type:customerType,...(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:managerKeyword}),page,page_size:pageSize',
         'elseif(["customer-mine","customer-dept","customer-company","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)){',
         '<label>客户名称</label>',
         '<label>客户/当事人</label>',
@@ -284,7 +295,7 @@ def main() -> None:
         'onNavigate?.("contract-new")',
         'api.get("/attachments",{params:{record_id:target.id}})',
         'setContacts(null);setDetailPageOpen(false);setSelectedRowKeys([]);setPage(1);setJumpPage("1");',
-        'responseTotal>0&&responseItems.length===0&&page>responseLastPage',
+        'responseTotal>0&&responseItems.length===0&&requestPage>responseLastPage',
         'setPage(responseLastPage);setJumpPage(String(responseLastPage));setSelectedRowKeys([]);return;',
         '(r.data.customer_managers||[r.owner]).map(userLabel).join(["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-recent-update"].includes(initialView)?",":"、")',
         '<tdclassName="ant-table-cellcustomer-amount-cell">{amount(listSummary.agency_fee_due)}</td>',
@@ -322,7 +333,7 @@ def main() -> None:
     for token in (
         '"agent-document": "documents-agent"',
         '"documents-agent": "AI 智能文档"',
-        '"system-users": "员工管理"',
+        '"system-users": "hr-all"',
         'const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route',
         '"notary-import-info": "公证信息导入"',
         'function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {',
@@ -332,6 +343,7 @@ def main() -> None:
         'return [key, { key, label: resolveWorkspacePageLabel(key) }]',
     ):
         assert token in route_labels_source, f"workspace deep-route label recovery missing: {token}"
+    assert 'item.key !== "system-users"' in APP and '{ key: "hr-all", label: "员工管理" }' in APP, "workspace system-users alias must hide the legacy menu leaf while recovering the HR employee-management label"
     assert all(token in APP for token in (
         'const normalized = Array.from(new Map(current.map((entry) => {',
         'return [key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }];',
@@ -364,9 +376,10 @@ def main() -> None:
     ):
         assert token in APP, f"cross-tab logout synchronization missing: {token}"
     print("WORKSPACE_LOGOUT_SYNC_OK: logout clears business navigation context, returns to root and synchronizes other tabs")
-    assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
+    assert "api.get('/hr/employees'" in HR, "employee list must use the authoritative HR employee endpoint"
+    assert '"id": -int(user.id)' in MAIN and '"description": "系统账号（尚未建立独立人事档案）"' in MAIN, "employee API must include system accounts without a separate HR record"
     assert 'reset-password' in SYSTEM and '重置密码' in SYSTEM and 'must_change_password = True' in MAIN, "system user list must provide a separate secure password reset action that forces the next-login change"
-    assert 'row.username===currentUsername' in SYSTEM, "The current administrator must not be offered a self password-reset action"
+    assert 'row.username===currentUsername' in re.sub(r"\s+", "", SYSTEM), "The current administrator must not be offered a self password-reset action"
     for token in (
         'async def _ensure_system_user_lifecycle_safe',
         '账号正在审批合同',
@@ -383,7 +396,11 @@ def main() -> None:
         assert token in SMOKE, f"system-user lifecycle dependency smoke coverage missing: {token}"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
-    assert 'sessionStorage.getItem("sunhold:contract-customer")' in CONTRACT, "contract creation must consume customer context from the customer page"
+    assert (
+        'createContractCustomerContextConsumer(sessionStorage)' in normalized_contract
+        and 'customerContextConsumerRef.current.consume()' in normalized_contract
+        and 'storage.getItem(CUSTOMER_CONTEXT_KEY)' in re.sub(r"\s+", "", CONTRACT_CREATE_CONTEXT)
+    ), "contract creation must consume customer context from the customer page"
     assert 'user.can_approve_contract' in CONTRACT and '请选择合同审批流程人员' in CONTRACT and '合同审批资格' in CONTRACT, "contract approval selector must use the explicit audit-flow directory and explain an empty directory"
     assert all(token in MAIN for token in ('"can_approve_contract": await _is_contract_approver(item, db)', 'if not await _is_contract_approver(approver_user, db):', 'async def _is_contract_approver(user: User, db: AsyncSession)', 'if user.role == "admin":', 'BusinessRecord.module == "hr"', 'BusinessRecord.status.not_in({"离职", "停用"})', 'if can_approve_contract and "contract" not in menu_keys:')), "user directory, login permissions, and contract submission must preserve administrator authority and resolve ordinary approvers from explicit active-employee audit-flow membership"
     assert 'can_approve_contract = await _is_contract_approver(user, db)' in MAIN and 'permission = await _user_permission_payload(user, db)\n    return {"access_token": create_token' in MAIN, "contract approver menu access must be built from explicit audit-flow membership and returned by login"
@@ -419,7 +436,14 @@ def main() -> None:
     )), "API smoke coverage must prove ordinary-case dedicated exports and the empty-selection block"
     print("ORDINARY_CASE_EXPORTS_OK: selected Excel, archive manifest and real QR Word use scoped dedicated APIs")
     assert '>新增审批人</Button>' not in CONTRACT and 'approvalCreatorOpen' not in CONTRACT and '合同审批流程人员' in HR and "contract_approval_enabled" in HR, "contract workflow must not create accounts inline; administrators configure explicit contract audit-flow membership on active employee records"
-    assert '事项记录' in CONTRACT and 'openContractEvent' in CONTRACT and '/contracts/${contract.id}/events' in CONTRACT and 'ContractEvent,' in MAIN and '/contracts/{{contract_id}}/events' in MAIN, "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
+    assert (
+        '事项记录' in CONTRACT
+        and 'openContractEvent' in CONTRACT
+        and 'buildContractEventsRequest' in CONTRACT
+        and '`/contracts/${Number(contract.id)}/events`' in CONTRACT_WORKFLOW_POLICY
+        and 'ContractEvent,' in MAIN
+        and '/contracts/{{contract_id}}/events' in MAIN
+    ), "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
     print("CONTRACT_EVENT_RECORD_OK: independent contract matter records are scoped, writable only through the contract flow and audited")
     assert all(token in MODELS for token in ('class ContractObject(Base):', 'class ContractObjectLog(Base):')) and all(token in MAIN for token in ('/contracts/{{contract_id}}/objects', '/contracts/{{contract_id}}/object-cases', '合同标的必须关联当前客户范围内的案件', '合同审批中不能修改合同标的', '已归档合同的合同标的只读')), "contract objects must use a dedicated, status-protected API and enforce same-customer case linkage"
     assert all(token in CONTRACT for token in ('合同标的', '/contracts/${contract.id}/objects', '/contracts/${contract.id}/object-cases', 'openRelatedCase(value)', '合同标的日志', '确认删除该合同标的？')), "contract detail must show, maintain, trace and navigate contract objects through its dedicated API"
@@ -439,7 +463,13 @@ def main() -> None:
     assert 'name="username" label="用户名"' in HR and 'username:value.username' in normalized_hr and '_rename_system_username' in MAIN, "administrator employee edit must rename the login account and migrate exact username references"
     assert '登录账号已存在' in MAIN and "name:'username',errors:['用户名已存在，请使用未登记的用户名']" in normalized_hr, "new employee usernames must be unique and surface the duplicate error on the username field"
     assert 'dayjs.isDayjs(v.signed_at)' in CONTRACT and 'loading={savingContract}' in CONTRACT, "contract creation must safely default hidden fields and expose the real save-in-progress state"
-    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>开始新建合同</Button>' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and '是否同步办理合同用印？' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another from every sealing state, and ask for synchronous sealing"
+    assert (
+        'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT
+        and 'const CONTRACT_CREATE_STEP_TITLES = ["合同基本信息", "提交审批"];' in CONTRACT
+        and '是否同步办理合同用印？' not in CONTRACT
+        and 'onNavigate?.(`contract-detail-${contract.id}-${encodeURIComponent(contract.serial_no)}`)' in CONTRACT
+        and 'CONTRACT_SEAL_READY_STATUSES.includes(contract.status)' in CONTRACT
+    ), "customer-created contract wizard must stop at submit approval, return to detail, and keep seal setup as an approved-contract action"
     assert 'sunhold:route-reselect' in CONTRACT and 'sunhold:route-reselect' in APP, "reselecting the active contract-new menu must reset the wizard instead of keeping the completed contract"
     assert '_resolve_contract_customer' in MAIN and '不能手工录入未登记客户名称' in MAIN, "contract API must reject unregistered customer names"
     for seal_type in ("合同章", "公章", "所函专用章", "法人章", "发票章", "财务专用章", "财务三排章"):
@@ -458,16 +488,20 @@ def main() -> None:
     for token in (
         'constrecycleCustomer=(row:Customer)=>{',
         'content:"删除后客户将进入回收站，可在回收站恢复或进入公海。"',
-        'awaitapi.post(`/customers/${row.id}/recycle`,{comment:"我的客户：客户删除",});',
-        'message.success("客户已移入回收站")',
+        'buildCustomerActionRequest(row.id,confirmation.action,`${initialView==="customer-company"?"公司客户":"客户"}：客户删除`)',
+        'awaitapi.post(`/customers/${row.id}/recycle`,request.data)',
+        'message.success(getCustomerActionMessage(confirmation.action,true))',
         'if(key==="delete")recycleCustomer(target)',
     ):
         assert token in normalized_customer, f"customer-mine delete-to-recycle contract missing: {token}"
     assert 'api.delete(`/records/${row.id}`)' not in CUSTOMER, "customer production UI must not hard-delete customer records"
     for token in (
         '{key:"share",label:"共享客户"}',
-        'if(key==="share"){shareForm.resetFields();setSharing(target);}',
-        'awaitapi.post(`/customers/${sharing.id}/share`,{',
+        'if(key==="share"){shareForm.setFieldsValue({recipients:normalizeSharedObjectValues(target.data.shared_with)});setSharing(target);}',
+        'buildCustomerShareRequest(sharing.id,v.recipients,v.comment)',
+        'constshareUrl=`/customers/${sharing.id}/share`',
+        'constlegacySharePayload={recipients:v.recipients,comment:v.comment||""}',
+        'awaitapi.post(request.url||shareUrl,request.data||legacySharePayload)',
         'message.success("客户共享成功")',
     ):
         assert token in normalized_customer, f"customer-mine share operation is not reachable: {token}"
@@ -481,8 +515,8 @@ def main() -> None:
         'scope:str=Query("mine",pattern="^(mine|recycle|department|department_recycle|company|company_recycle|public|shared|recent_contact|recent_update)$")',
         'page_size:int=Query(15,ge=1,le=200)',
         'BusinessRecord.status.not_in(["已回收","公海"])',
-        'ifscopein{"mine","recycle"}andcurrent_user.role!="admin":',
-        'orbool(exact_managers(item)&manager_tokens)',
+        'ifscopein{"mine","recycle"}:',
+        'customer_participants(item)&manager_tokens',
         '"summary":{"agency_fee_due"',
         '"customer_type":"客户","invoice_address":"test"',
     ):
@@ -531,7 +565,7 @@ def main() -> None:
         '!["customer-recycle", "customer-dept", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) || rows.length > 0',
         'summary={["customer-recycle", "customer-dept", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) && rows.length === 0 ? undefined',
         'isReadOnlyCustomerList && detailPageOpen && contacts',
-        '["customer-recycle", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-recent-update"].includes(initialView) && v === "已回收" ? "已删除" : v',
+        '["customer-recycle", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-recent-update"].includes(initialView) && status === "已回收" ? "已删除" : status',
         'join(["customer-recycle", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-recent-update"].includes(initialView) ? "," : "、")',
     ):
         assert token in MAIN or token in CUSTOMER, f"customer-recycle original contract missing: {token}"
@@ -557,13 +591,13 @@ def main() -> None:
         'initialView==="customer-dept"?"部门客户"',
         'isOriginalCustomerList&&<divclassName="customer-original-pagination">',
         'summary={["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined:',
-        '["customer-dept","customer-company"].includes(initialView)?[{key:"assign",label:"分配客户"}',
+        'initialView==="customer-dept"?[{key:"assign",label:"分配客户"}]',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)&&<divclassName="customer-grid-footer">',
     ):
         assert token in normalized_customer, f"customer-dept original list contract missing: {token}"
     for token in (
-        '{key:"level-review",label:"审批客户分级"}',
-        '{key:"key-change-review",label:"审批关键字段变更"}',
+        '{key:"level",label:"申请客户分级调整"}',
+        '{key:"key-change",label:"申请关键字段变更"}',
         '{key:"portal-open",label:"开通/重置客户服务端"}',
         '{key:"portal-close",label:"停用客户服务端"}',
     ):
@@ -581,11 +615,18 @@ def main() -> None:
     ):
         assert token in normalized_assignment, f"customer-dept assignment dialog missing: {token}"
     assert "分配说明" not in assignment_source and "第一位客户管理人" not in assignment_source, "customer-dept assignment dialog must not invent fields or help text"
-    assert 'api.put(`/customers/${assigning.id}/managers`,{managers:[values.manager]})' in normalized_customer, "customer-dept assignment must submit one selected manager through the protected API"
+    for token in (
+        'buildCustomerManagerRequest(assigning.id,normalizeCustomerManager(values.manager))',
+        'constmanagerUrl=`/customers/${assigning.id}/managers`',
+        'constlegacyManagersPayload={managers:[values.manager]}',
+        'awaitapi.put(request.url||managerUrl,request.data||legacyManagersPayload)',
+    ):
+        assert token in normalized_customer, f"customer-dept assignment must submit one selected manager through the protected API: {token}"
     for token in (
         'ifscopein{"department","department_recycle"}:',
         'ifcurrent_user.rolenotin{"admin","manager"}:',
-        'conditions.append(BusinessRecord.department==current_user.department)',
+        'User.department==current_user.department',
+        'customer_participants(item)&department_tokens',
     ):
         assert token in normalized_main_customer, f"customer-dept scope contract missing: {token}"
     for token in (
@@ -605,7 +646,7 @@ def main() -> None:
         'constisReadOnlyCustomerList=isOriginalCustomerList',
         'setDetailPageOpen(isReadOnlyCustomerList)',
         'initialView==="customer-dept-recycle"?"部门回收站"',
-        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&v==="已回收"?"已删除":v',
+        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&status==="已回收"?"已删除":status',
         '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-recent-update"].includes(initialView)?",":"、"',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)&&<divclassName="customer-grid-footer">',
@@ -638,12 +679,12 @@ def main() -> None:
         '"customer-company":"company"',
         'elseif(["customer-mine","customer-dept","customer-company","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)){',
         'initialView==="customer-company"?"公司客户"',
-        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&v==="已回收"?"已删除":v',
+        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&status==="已回收"?"已删除":status',
         '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-recent-update"].includes(initialView)?",":"、"',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)&&<divclassName="customer-grid-footer">',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&(<Buttondisabled={page===customerPageCount}onClick={()=>goToCustomerPage(customerPageCount)}>»</Button>)',
-        '["customer-dept","customer-company"].includes(initialView)?[{key:"assign",label:"分配客户"}',
+        'initialView==="customer-company"?[{key:"edit",label:"客户编辑"},{key:"delete",label:"客户删除"},{key:"assign",label:"分配客户"}]',
     ):
         assert token in normalized_customer, f"customer-company original contract missing: {token}"
     assert 'customer-company' not in CUSTOMER[manager_lock_start:manager_lock_end], "company customer manager filter must remain editable"
@@ -711,10 +752,10 @@ def main() -> None:
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)&&<divclassName="customer-grid-footer">',
         'initialView==="customer-shared"?[]',
-        '...(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:managerKeyword})',
+        '...(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:requestManagerKeyword})',
         '["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?"":isOriginalCustomerList&&managerLocked',
-        'initialView==="customer-shared"?"没有查询到事项记录，可以去新建"',
-        'initialView==="customer-shared"?"没有查询到客户文件，可以去上传客户文件"',
+        '["customer-shared","customer-company"].includes(initialView)?"没有查询到事项记录，可以去新建"',
+        '["customer-shared","customer-company"].includes(initialView)?"没有查询到客户文件，可以去上传客户文件"',
         'pageSize:15',
         'options={[10,15,20,50,100,200].map((value)=>({value,label:String(value)}))}',
     ):
@@ -747,7 +788,7 @@ def main() -> None:
         'elseif(["customer-mine","customer-dept","customer-company","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)){',
         'constisReadOnlyCustomerList=isOriginalCustomerList',
         'initialView==="customer-recent-contact"?"最近联系的客户"',
-        '(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:managerKeyword})',
+        '(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:requestManagerKeyword})',
         '["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?""',
         '["customer-recent-contact","customer-recent-update"].includes(initialView)?[{key:"edit",label:"客户编辑"}]',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
@@ -789,9 +830,9 @@ def main() -> None:
         'elseif(["customer-mine","customer-dept","customer-company","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)){',
         'constisReadOnlyCustomerList=isOriginalCustomerList',
         'initialView==="customer-recent-update"?"最近更新的客户"',
-        '(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:managerKeyword})',
+        '(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:requestManagerKeyword})',
         '["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?""',
-        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&v==="已回收"?"已删除":v',
+        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&status==="已回收"?"已删除":status',
         '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-recent-update"].includes(initialView)?",":"、"',
         '["customer-recent-contact","customer-recent-update"].includes(initialView)?[{key:"edit",label:"客户编辑"}]',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
@@ -844,7 +885,7 @@ def main() -> None:
         'constisReadOnlyCustomerList=isOriginalCustomerList',
         'initialView==="customer-company-recycle"?"公司回收站"',
         '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-recent-update"].includes(initialView)?",":"、"',
-        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&v==="已回收"?"已删除":v',
+        '["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&status==="已回收"?"已删除":status',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)',
         '["customer-recycle","customer-dept-recycle","customer-company-recycle"].includes(initialView)?[{key:"restore",label:"客户恢复"},{key:"release",label:"进入公海"}]',
@@ -898,8 +939,8 @@ def main() -> None:
         '温馨提示：1.需要输入完整的企业名称，才能查看具体信息.',
         '<label>企业名称：</label>',
         '<Buttonloading={loading}onClick={search}><span>检索</span></Button>',
-        'message.warning("请输入企业名称.")',
-        'params:{name:query},signal:controller.signal',
+        'constquery=name.trim()',
+        'params:query?{name:query}:{},signal:controller.signal',
         'error?.code!=="ERR_CANCELED"',
         '未找到该企业基本信息.',
         '{key:"enterprise_name",label:"企业名称"}',
@@ -940,16 +981,18 @@ def main() -> None:
         'asyncdef_require_customer_conflict_permission(identity:dict,db:AsyncSession)->None:',
         'if"customer-conflict"notinset(permission.get("menu_keys",[])):',
         'def_empty_customer_conflict_result(query:str)->dict:',
-        'name:str=Query(min_length=1,max_length=100)',
-        'query=name.strip()',
-        'raiseHTTPException(status_code=422,detail="企业名称不能为空")',
+        'name:str|None=Query(default=None,max_length=100)',
+        'query=(nameor"").strip()',
+        'needle=_normalize_conflict_entity(query)ifqueryelse""',
+        'matching_cases=casesifnotneedleelse[',
         'ifany(_normalize_conflict_entity(entity)==needleforentityin_case_conflict_entities(case_record))',
         'key=lambdacase_record:(_case_filing_date(case_record)ordate.min,case_record.id)',
         '"found":True',
         '"enterprise_name":query',
         '"latest_case_no":latest_case.serial_no',
         '"latest_case_date":filing_date.isoformat()iffiling_dateelse""',
-        '"customer_managers":await_conflict_customer_managers(query,db)',
+        'manager_entity=latest_case.customer.strip()ifnotqueryelsequery',
+        '"customer_managers":await_conflict_customer_managers(manager_entity,db)ifmanager_entityelse[]',
     ):
         assert token in normalized_main_customer, f"customer-conflict API contract missing: {token}"
     for token in (
@@ -1073,7 +1116,7 @@ def main() -> None:
     for token in (
         'constisReminder=initialView==="task-reminders";',
         'reminder_only:isReminder||undefined,',
-        'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||',
+        'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||',
     ):
         assert token in NORMALIZED_TASK, f"internal task-reminders compatibility contract missing: {token}"
     normalized_main = re.sub(r"\s+", "", MAIN)
@@ -1259,7 +1302,7 @@ def main() -> None:
         'constisCounselCreate=effectiveCreateType==="法律顾问"',
         'createFlowToken=isCounselCreate?"CASE_NEW_COUNSEL_STAGED_FLOW_OK":isAdministrativeCreate?"CASE_NEW_ADMINISTRATIVE_STAGED_FLOW_OK":effectiveCreateType==="民事案件"?"CASE_NEW_CIVIL_STAGED_FLOW_OK":"CASE_NEW_CRIMINAL_STAGED_FLOW_OK"',
         'data-flow-token={createFlowToken}',
-        'right_type:isCounselCreate?"":String(values.right_type||"").trim()',
+        'buildCaseCreatePayload(values,{mode:isCounselCreate?"counsel":"normal",',
         '["被告人/犯罪嫌疑人","被告/被申请人"].includes(values.client_position)',
         'values.client_position==="第三人"',
         '!isAdministrativeCreate&&<Buttonloading={createSubmitting}onClick={()=>voidsaveLitigants(true)}>完成</Button>',
@@ -1268,6 +1311,7 @@ def main() -> None:
         '{isCriminalCreate&&<><divclassName="case-create-section-title">公安机关</div>',
     ):
         assert token in normalized_case, f"administrative case create route guard missing: {token}"
+    assert 'right_type:context.mode==="counsel"?"":text(draft.right_type)' in NORMALIZED_CASE_SECOND_BATCH_PARITY, "administrative case create route guard missing: right_type helper payload"
     assert 'case-create-route-modal' not in CASE and 'case-create-route-modal' not in CASE_CSS, "case creation routes must not render as a modal"
     assert '<Alert' not in route_create, "criminal route first screen must not invent modal alerts"
     for token in (
@@ -1287,7 +1331,8 @@ def main() -> None:
         'if case_type == "行政案件及国家赔偿":',
         'raise HTTPException(status_code=422, detail="行政案件请至少录入一个法院信息")',
         'raise HTTPException(status_code=422, detail="行政案件不能填写公安或检察院信息")',
-        'if body.status != "新案待分配":',
+        'canonical_status = CASE_CREATE_STATUS_ALIASES.get(body.status.strip())',
+        'if canonical_status is None:',
         'except IntegrityError as exc:',
         '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/litigants")',
         '@app.put(f"{settings.api_prefix}/cases/{{case_id}}/complete-creation")',
@@ -1372,7 +1417,7 @@ def main() -> None:
         'constcounselListMode=originalListMode&&initialView.includes("counsel")',
         'label="顾问期间"name="counsel_range"',
         'label="顾问类型"name="counsel_type"',
-        'columns={counselListMode?counselCaseColumns:originalCaseColumns}',
+        'columns={counselListMode?counselCaseColumns:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseColumns:originalCaseColumns}',
         'onClick={()=>voidopenCounselDetail(row)}',
         'title={`${viewingCounselCase?.data.case_type||"案件"}详情：${viewingCounselCase?.serial_no||""}`}',
         'label:"文档信息"', 'label:"律所费用"', 'label:"平台费用"', 'label:"内部结算"',
@@ -1412,7 +1457,7 @@ def main() -> None:
         '@app.post(f"{settings.api_prefix}/cases/counsel/search")',
         '@app.post(f"{settings.api_prefix}/cases/counsel/export")',
         'if body.scope not in {"mine", "department", "company"}:',
-        'if body.sort_order not in {"updated_desc", "case_no_asc", "case_no_desc"}:',
+        'if body.sort_order not in {"updated_desc", "updated_asc", "created_desc", "created_asc", "status_asc", "case_no_asc", "case_no_desc"}:',
         'media_type="text/csv; charset=utf-8"',
         'raise HTTPException(status_code=403, detail="选中的案件不存在、不可见或不符合当前查询条件")',
     ):
@@ -1444,7 +1489,7 @@ def main() -> None:
         'selectedCaseCapability.can_update_progress',
         'selectedCaseCapability.can_manage_hearing',
         'selectedCaseCapability.can_archive',
-        'getCaseCapability(row).can_update_progress?<Button',
+        '...(!counselListMode&&selectedCaseCapability.can_update_progress?[{key:"progress",label:"登记进展"}]:[])',
         'specialMode==="schedule"&&<ButtononClick={()=>voidopenSelectedScheduleHearing()}',
         'if(!getCaseCapability(row).can_archive)returnmessage.warning(',
     ):
@@ -1556,13 +1601,13 @@ def main() -> None:
     task_more_keys = re.findall(r'key:\s*"([^"]+)"', task_more_match.group(1))
     # The same action footer now has a preceding lifecycle dropdown for a
     # multi-selection. It is intentionally outside the evidenced "more"
-    # menu, so assert it separately and remove only its four fixed keys before
+    # menu, so assert it separately and remove only its five fixed keys before
     # preserving the old 11-action contract.
-    assert 'type TaskBatchLifecycleAction = "accept" | "complete" | "handoff" | "withdraw";' in TASK, "task batch lifecycle action type missing"
+    assert 'type TaskBatchLifecycleAction = "accept" | "complete" | "confirm" | "handoff" | "withdraw";' in TASK, "task batch lifecycle action type missing"
     assert 'api.post("/tasks/batch-lifecycle"' in TASK, "task batch lifecycle must use its dedicated API"
-    for key in ("accept", "complete", "handoff", "withdraw"):
+    for key in ("accept", "complete", "confirm", "handoff", "withdraw"):
         assert key in task_more_keys, f"task batch lifecycle menu missing {key}"
-    task_more_keys = [key for key in task_more_keys if key not in {"accept", "complete", "handoff", "withdraw"}]
+    task_more_keys = [key for key in task_more_keys if key not in {"accept", "complete", "confirm", "handoff", "withdraw"}]
     assert task_more_keys == [
         "lawFee", "platformFee", "internalFee", "batch", "authorization", "lawFirmLetter",
         "identity", "settlement", "caseTasks", "logs", "export",
@@ -1826,7 +1871,7 @@ def main() -> None:
     ):
         start = TASK.find(endpoint)
         assert start >= 0 and 'window.dispatchEvent(new Event("sunhold:notifications-updated"));' in TASK[start:start + 420], f"task unread mutation must immediately refresh the bell badge: {endpoint}"
-    assert 'isUnread&&selectedRows.length>0' in NORMALIZED_TASK, "original unread-task selected-row mark-read button is missing"
+    assert 'isUnread&&(<Buttonloading={actionSubmitting}onClick={()=>voidmarkSelectedUnreadTasksRead()}>标记已读</Button>)' in NORMALIZED_TASK, "original unread-task selected-row mark-read button is missing"
     for token in (
         'assertcall("GET",f"/tasks/unread-messages?{unread_task_query}")["total"]==0',
         'manager_unread["items"][0]["latest_unread_message"]=="任务已分派."',
@@ -1850,7 +1895,7 @@ def main() -> None:
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
         'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
         'if(!isPersonalView)returntasks;',
-        'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
+        'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
         '{canManageAcceptedTask&&<ButtononClick={acceptSelectedTask}>',
         'scope=isPersonalView?"mine":initialView.startsWith("task-dept")?"department"',
@@ -1907,7 +1952,7 @@ def main() -> None:
         'scope=isPersonalView?"mine":initialView.startsWith("task-dept")?"department"',
         'isCollaborating?"collaborating":"owned"',
         'if(!isPersonalView)returntasks;',
-        'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
+        'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
         '{canManageAcceptedTask&&<ButtononClick={acceptSelectedTask}>',
     ):
@@ -1958,7 +2003,7 @@ def main() -> None:
         'initialView.startsWith("task-company")?"company":"default"',
         'isCreated?"initiated":',
         'if(!isPersonalView)returntasks;',
-        'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
+        'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
         '{(canManageInitiatedTask||canManageCompanyCreatedTask)&&selected?.status==="已拒绝"&&(',
         '{(canManageInitiatedTask||canManageCompanyCreatedTask)&&["已完成","待确认"].includes(',
@@ -2012,7 +2057,7 @@ def main() -> None:
         'initialView.startsWith("task-company")?"company":"default"',
         'isAccepted?"owned":',
         'if(!isPersonalView)returntasks;',
-        'taskMeta.total===0&&(isCollaborating||isUnread||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
+        'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageAcceptedTask&&<ButtononClick={acceptSelectedTask}>',
         '{canManageCompanyCreatedTask&&(',
     ):
@@ -2070,7 +2115,7 @@ def main() -> None:
         'initialView.startsWith("task-company")?"company":"default"',
         'isCollaborating?"collaborating":"owned"',
         'if(!isPersonalView)returntasks;',
-        'taskMeta.total===0&&(isCollaborating||isUnread||',
+        'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
         '{canManageAcceptedTask&&<ButtononClick={acceptSelectedTask}>',
         '{canManageCompanyCreatedTask&&(',
@@ -2261,7 +2306,7 @@ def main() -> None:
     ):
         assert token in SMOKE, f"agent document smoke coverage missing: {token}"
     print("AGENT_DOCUMENT_SCOPE_AUDIT_OK: current record scope, immutable confirmation audit, capability UI and revocation smoke are protected")
-    assert "['草稿','待审批']" in SEAL, "the pending seal page must keep drafts reachable for submission"
+    assert all(token in SEAL_VIEW_MAPPING_NORMALIZED for token in ("'seal-my':{view:'my',statuses:[]}", "'seal-my-pending':{view:'my',statuses:[STATUS.pending]}", "'seal-my-stamping':{view:'my',statuses:[STATUS.stamping]}")) and all(token in SEAL for token in ("import{sealViewSpec}from'./sealViewMapping'", "conststatusFromView=(v:string):string[]=>sealViewSpec(v).statuses;", "conststatuses=statusFromView(initialView);", "statuses.includes(row.status)", "constrouteStatuses=statusFromView(initialView);", "initialView==='seal-my-pending'", "routeStatuses[0]", "tab==='my'&&r.status==='\u8349\u7a3f'")), "the pending seal page must use centralized route status mapping and keep draft rows reachable from the my-seal route"
     assert 'is_admin_global_view = identity.get("role") == "admin"' in MAIN, "task views must not shrink the administrator's full-firm data scope"
     assert 'BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"})' in MAIN, "seal audit history views must receive approved and rejected applications"
     assert '"approval_comment": body.comment.strip()' in MAIN, "seal approval must persist approver, time and opinion"
@@ -2273,7 +2318,7 @@ def main() -> None:
         assert token in SEAL.replace(" ", ""), f"seal page must use the persisted query/status contract: {token}"
     for token in ('@app.delete(f"{settings.api_prefix}/seals/applications/{{record_id}}", status_code=status.HTTP_204_NO_CONTENT)', '只有草稿用印申请可以删除', 'delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id)'):
         assert token in MAIN, f"seal draft cleanup endpoint missing: {token}"
-    for token in ('constremoveDraft=', "api.delete(`/seals/applications/${row.id}`)"):
+    for token in ('constremoveDraft=', "awaitdeleteSeal(`/seals/applications/${row.id}`)"):
         assert token in SEAL.replace(" ", ""), f"seal draft cleanup action missing: {token}"
     for token in (
         'is_electronic_seal: bool = False',
@@ -2293,12 +2338,12 @@ def main() -> None:
     ):
         assert token in SEAL.replace(" ", ""), f"seal file/print UI missing: {token}"
     print("SEAL_FILES_AND_PRINT_OPTIONS_OK: real seal attachments, upload/download/delete, submission block and legacy print options are covered")
-    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column', "dataSource={assets}", 'constremoveAsset=async', 'api.delete(`/seals/assets/${item.id}`)', '已被任何用印申请引用的印章将被系统阻断删除'):
+    for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column', "dataSource={assets}", 'constremoveAsset=async', 'awaitdeleteSeal(`/seals/assets/${item.id}`)', '已被任何用印申请引用的印章将被系统阻断删除'):
         assert token in SEAL, f"seal asset ledger must render its own searchable, maintainable table: {token}"
     for token in ('@app.delete(f"{settings.api_prefix}/seals/assets/{{asset_id}}", status_code=status.HTTP_204_NO_CONTENT)', '仅管理员可删除未使用印章', 'BusinessRecord.data["seal_asset_id"].as_integer() == item.id', '该印章已被 {referenced} 条用印申请引用，不能删除', 'SealAssetAudit(', 'action="删除印章资产"'):
         assert token in MAIN, f"seal asset safe deletion/audit protection missing: {token}"
     print("SEAL_ASSET_DELETE_OK: unused assets can be administrator-deleted with a persistent audit snapshot; referenced assets are blocked")
-    for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={Boolean(createContractId)}', 'label="案源人"'):
+    for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'const createContractId = Form.useWatch("contract_record_id", createForm);', 'const selectedCreateContract = useMemo(() => contracts.find((row) => row.id === createContractId), [contracts, createContractId]);', 'contract_record_id: contractPrefill?.id', 'label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}', 'options={createContractOptions}', 'label="案源人"'):
         assert token in (MAIN + CASE), f"case create reference/locking contract missing: {token}"
     assert '>登记证物</Button>' in WAREHOUSE and 'rowSelection={{columnWidth:42}}' not in WAREHOUSE, "warehouse must expose evidence registration without a dead selection column"
     for token in (
@@ -2425,10 +2470,28 @@ def main() -> None:
     ]
     for title in report_execution_titles:
         assert title in REPORT, f"execution report is missing original chart {title}"
-    assert REPORT.count('{ title: "执行中止案件数量", unit: "个/案" }') == 2, "original execution report contains two distinct stop-stage charts"
-    for route in ("reports-execution-2", "reports-execution-3"):
-        assert f'PAGE_SPECS["{route}"]' in REPORT, f"{route} must reuse the complete ten-chart original report"
-    assert 'execution_statuses = ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案", "执行终本", "执行终结", "执行中止"]' in MAIN, "all execution report APIs must return the original ten charts"
+    report_execution_1 = REPORT[
+        REPORT.index('"reports-execution-1":'):
+        REPORT.index('PAGE_SPECS["reports-execution-2"]')
+    ]
+    report_execution_2 = REPORT[
+        REPORT.index('PAGE_SPECS["reports-execution-2"]'):
+        REPORT.index('PAGE_SPECS["reports-execution-3"]')
+    ]
+    report_execution_3 = REPORT[
+        REPORT.index('PAGE_SPECS["reports-execution-3"]'):
+        REPORT.index("function Filters")
+    ]
+    execution_stop_chart = '{ title: "\u6267\u884c\u4e2d\u6b62\u6848\u4ef6\u6570\u91cf", unit: "\u4e2a/\u6848" }'
+    assert report_execution_1.count(execution_stop_chart) == 2, "reports-execution-1 must keep two original stop-stage charts"
+    assert report_execution_2.count(execution_stop_chart) == 1, "reports-execution-2 must keep the accepted/stop/closed/final chart slice"
+    assert report_execution_3.count(execution_stop_chart) == 1, "reports-execution-3 must keep the terminated/stop chart slice"
+    execution_status_tokens = [
+        '"\u4e00\u5ba1\u5f85\u6267\u884c"', '"\u4e8c\u5ba1\u5f85\u6267\u884c"', '"\u51c6\u5907\u6750\u6599"', '"\u63d0\u4ea4\u6cd5\u9662"',
+        '"\u6267\u884c\u53d7\u7406"', '"\u6267\u884c\u4e2d\u6b62"', '"\u6267\u884c\u7ed3\u6848"', '"\u6267\u884c\u7ec8\u672c"', '"\u6267\u884c\u7ec8\u7ed3"',
+    ]
+    assert "CASE_EXECUTION_STATUSES = (" in MAIN and all(token in MAIN for token in execution_status_tokens), "report API must keep the original execution status source keys"
+    assert "execution_statuses = list(CASE_EXECUTION_STATUSES)" in MAIN and 'f"{status}\u6848\u4ef6\u6570\u91cf"' in MAIN, "report API must build execution chart data from the stable status keys"
     assert "report-toolbar" not in REPORT and "report-detail-panel" not in REPORT, "original report pages must not expose invented toolbar or detail table UI"
     assert 'mode="multiple"' in REPORT and 'customer: values.customer?.join(",") || ""' in REPORT and 'court_lawyer: values.courtLawyer?.join(",") || ""' in REPORT, "ROI report must retain the original multi-customer and multi-lawyer selectors"
     assert 'customers_selected = {value.strip() for value in customer.split(",") if value.strip()}' in MAIN and 'court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}' in MAIN, "report API must apply every selected customer and hearing lawyer"
@@ -2447,14 +2510,13 @@ def main() -> None:
         '<h5>{displayedOriginalTitle}</h5>',
     ):
         assert token in FINANCE, f"internal payment list lost original-page contract: {token}"
-    assert (
-        'isGeneralSettlementRoute?generalSettlementMeta.pageSize:isArchiveSettlementActiveRoute?archiveSettlementMeta.pageSize:isFeeQueryRoute?feeQueryMeta.pageSize:["finance-internal-mine","finance-internal-settle","finance-internal-refused","finance-internal-void","finance-internal-payment","finance-internal-writeoff","finance-internal-query","finance-internal-done",...internalApprovalRoutes,].includes(initialView)?15:isInvoiceMineRoute?invoiceMineMeta.pageSize:isInvoicePendingRoute?invoicePendingMeta.pageSize:isInvoiceCompanyRoute?invoiceCompanyMeta.pageSize:isInvoiceUnissuedRoute?invoiceUnissuedMeta.pageSize:isInternalDetailRoute?internalDetailMeta.pageSize:20'
-        in NORMALIZED_FINANCE
-    ), "internal payment list must keep 15-row paging"
-    assert (
-        'pageSizeOptions:["finance-settlement-pending","finance-settlement-audit","finance-archive-fee-pending","finance-archive-fee-payment","finance-archive-fee-paid","finance-archive-fee-refused","finance-internal-mine","finance-internal-settle","finance-internal-refused","finance-internal-void","finance-internal-payment","finance-internal-writeoff","finance-internal-query","finance-internal-done","finance-internal-detail","finance-internal-company","finance-invoice-mine","finance-invoice-pending","finance-invoice-company","finance-invoice-unissued","finance-invoice-company-unissued","finance-fee-query",...internalApprovalRoutes,].includes(initialView)?[10,15,20,50,100,200]:undefined'
-        in NORMALIZED_FINANCE
-    ), "internal payment list must keep the original page-size options"
+    for token in (
+        'paymentQueryControlledPageSize(initialView,paymentQueryPageSize,)??paymentQueryDefaultPageSize(initialView)??',
+        '"finance-internal-payment","finance-internal-writeoff","finance-internal-query","finance-internal-done",...internalApprovalRoutes,].includes(initialView)?15',
+        'paymentQueryPageSizeOptions(initialView)??',
+        '"finance-internal-detail","finance-internal-company","finance-invoice-mine","finance-invoice-pending","finance-invoice-company","finance-invoice-unissued","finance-invoice-company-unissued","finance-fee-query",...internalApprovalRoutes,].includes(initialView)?[10,15,20,50,100,200]:undefined',
+    ):
+        assert token in NORMALIZED_FINANCE, f"internal payment list must keep original paging structure: {token}"
     internal_columns_match = re.search(r"const internalOriginalColumns = \[(.*?)\n  \];", FINANCE, re.S)
     assert internal_columns_match, "internal payment columns declaration not found"
     internal_columns = internal_columns_match.group(1)
@@ -2567,11 +2629,11 @@ def main() -> None:
     assert not missing_settlement, f"internal settlement list lost original-page contract: {missing_settlement}"
     print("FINANCE_INTERNAL_SETTLE_OK: 9 filters, 14 headers, enriched pending API, real mark-paid action and 15-row paging")
     archive_contract = [
-        '"finance-internal-archive": "请款单审批"',
+        '"finance-internal-archive": "\u5185\u90e8\u63d0\u6210-\u5f85\u5f52\u6863"',
         'finance-original-internal-approval',
         'setFeeReviewTargets([row])',
         'openBatchFeeReview',
-        'title={<h5>提成审批</h5>}',
+        'title={<h5>{initialView === "finance-payment-audit" ? "\u4ed8\u6b3e\u5ba1\u6279" : "\u63d0\u6210\u5ba1\u6279"}</h5>}',
         'aria-label="审批意见"',
         '同意',
         '拒绝',
@@ -2595,7 +2657,7 @@ def main() -> None:
     print("FINANCE_INTERNAL_AUDIT_OK: original route title, disabled case-stage filter, empty-state footer and shared review flow")
     fee_audit_contract = [
         '"finance-internal-fee-audit": "请款单审批"',
-        'title={<h5>提成审批</h5>}',
+        'title={<h5>{initialView === "finance-payment-audit" ? "\u4ed8\u6b3e\u5ba1\u6279" : "\u63d0\u6210\u5ba1\u6279"}</h5>}',
         'width={580}',
         'placement="right"',
         'mask={false}',
@@ -2693,7 +2755,8 @@ def main() -> None:
     payment_package_contract = [
         '"finance-internal-payment": "待付款列表"',
         'options: ["请选择", "待付款", "已付款"]',
-        'content: "请选择提成."',
+        'const paymentPackageEmptySelectionMessage = (initialView: string) =>',
+        'content: paymentPackageEmptySelectionMessage(initialView)',
         'content: "请选择同一收款人的提成进行打包付款."',
         'api.post("/finance/payment-packages/preview"',
         'api.post("/finance/payment-packages"',
@@ -3288,9 +3351,9 @@ def main() -> None:
         'const isArchiveSettlementPaymentRoute =',
         'initialView === "finance-archive-fee-payment"',
         '"/finance/archive-settlements/payment"',
-        'title="同意支付"',
-        'title="拒绝支付"',
-        'title={archiveSettlementReviewApproved ? "同意支付" : "拒绝支付"}',
+        'title="\u540c\u610f\u7ed3\u7b97"',
+        'title="\u62d2\u7edd\u7ed3\u7b97"',
+        'title={archiveSettlementReviewApproved ? "\u540c\u610f\u7ed3\u7b97" : "\u62d2\u7edd\u7ed3\u7b97"}',
         'finance-archive-payment-context',
         '归档审核人:',
         '归档申请人:',
@@ -3323,9 +3386,9 @@ def main() -> None:
         'const isArchiveSettlementPaidRoute =',
         'initialView === "finance-archive-fee-paid"',
         '"/finance/archive-settlements/paid"',
-        'title="回滚归档费"',
+        'title={isArchiveSettlementRejectedRoute ? "\u56de\u6eda\u5f52\u6863\u8d39" : "\u56de\u6eda\u5f52\u6863\u8d39\u7ed3\u7b97"}',
         '回滚归档费结算',
-        'isArchiveSettlementRejectedRoute ? "回滚归档费" : "回滚支付"',
+        'aria-label={isArchiveSettlementRejectedRoute ? "\u56de\u6eda\u5f52\u6863\u8d39" : "\u56de\u6eda\u5f52\u6863\u8d39\u7ed3\u7b97"}',
         '归档费审核人:',
         '归档费审核时间:',
         '归档费审核备注:',
@@ -3357,7 +3420,7 @@ def main() -> None:
         'initialView === "finance-archive-fee-refused"',
         '"/finance/archive-settlements/rejected"',
         'archiveSettlementRejectedColumnWidths',
-        'title="回滚归档费"',
+        'title={isArchiveSettlementRejectedRoute ? "\u56de\u6eda\u5f52\u6863\u8d39" : "\u56de\u6eda\u5f52\u6863\u8d39\u7ed3\u7b97"}',
         'openArchiveSettlementReapply(',
         'title="重新申请"',
         '请选择案件.',
@@ -3407,14 +3470,17 @@ def main() -> None:
     assert 'location = /index.html' in WEB_NGINX and 'Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always' in WEB_NGINX, "the application shell must not be cached across hashed-asset deployments"
     print("VERSIONED_ASSET_RECOVERY_OK: no-store application shell, one-shot lazy chunk reload and visible repeated-failure fallback")
     for token in (
-        'const transitionOptions=(status:string)=>status===\'试用\'?',
+        "import {hrActionAccess, hrTransitionOptions, hrTransitionReasonMessage} from './hrAccessGuard.mjs'",
+        'const transitionOptions=(status:string):string[]=>hrTransitionOptions(status) as string[]',
+        'const reasonMessage=hrTransitionReasonMessage(value.to_status,value.reason)',
         '办理状态',
         '办理人事状态：',
         'name="is_active" label="登录账号启用" valuePropName="checked"',
         '关闭后该用户立即无法登录',
         'account?.contract_approval_enabled??profileData.contract_approval_enabled',
-        'usersByName.get(String(row.data?.username||row.owner).toLowerCase())',
-        'is_active:account.is_active',
+        "api.get('/system/users',{params:{keyword:row.data.username||row.owner}})",
+        'data.items.find((item:any)=>item.username===(row.data.username||row.owner))',
+        'is_active:account?.is_active??row.data.is_active!==false',
         'api.post(`/hr/${transitioningEmployee.id}/transition`',
     ):
         assert token in HR, f"HR lifecycle UI contract missing: {token}"
@@ -3445,13 +3511,13 @@ def main() -> None:
     for token in (
         'must_change_password: data.must_change_password',
         'localStorage.removeItem("access_token")',
-        'if(!editingUser)payload.must_change_password=true',
+        'if (!editingUser) payload.must_change_password = true;',
         'password_changed_at=None,\n        must_change_password=True',
         'cannot reset current',
     ):
         if token == 'cannot reset current':
             assert '不能重置当前登录账号密码' in MAIN, "Current-admin password reset protection is missing"
-        elif token.startswith('if(!editingUser)'):
+        elif 'payload.must_change_password' in token:
             assert token in SYSTEM, "System account creation must require first-login password change"
         elif token.startswith('must_change_password:') or token.startswith('localStorage'):
             assert token in APP, "Forced-password-change session recovery is missing"
@@ -3470,10 +3536,11 @@ def main() -> None:
     for token in (
         'can_duplicate_case: boolean;',
         'counselDetailCapabilities.can_duplicate_case && <Button',
-        'api.post(`/cases/${row.id}/duplicate`)',
+        'api.post(buildCaseDuplicateRequest(row).path)',
         '任务、附件、费用、提醒、排期和历史记录不会复制',
     ):
         assert token in CASE, f"Case duplication UI contract missing: {token}"
+    assert 'path: `/cases/${Number(row.id)}/duplicate`' in CASE_SECOND_BATCH_PARITY, "Case duplication request helper must keep the protected duplicate endpoint"
     print("CASE_DUPLICATION_OK: manager/create-permission-gated, fresh case number, original-case trace, and no downstream work-history cloning")
     for token in (
         'class CaseMergeInput(BaseModel):',
@@ -3489,7 +3556,7 @@ def main() -> None:
     for token in (
         'can_merge_case: boolean;',
         'const submitCaseMerge = async () => {',
-        'api.post(`/cases/${mergingCase.id}/merge`, values)',
+        'api.post(`/cases/${mergingCase.id}/merge`, buildCaseMergePayload(values))',
         '仅可合并同一客户、同一案件类型且未归档的案件',
         '>合并案件</Button>',
     ):
@@ -3524,14 +3591,14 @@ def main() -> None:
         assert token in MAIN, f"Referenced system parameters must be protected from deletion: {token}"
     print("SYSTEM_PARAMETER_DELETE_GUARD_OK: referenced master data cannot be physically deleted through the generic parameter API")
     for token in (
-        'const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number]) => {',
+        'const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number], employee: Employee|null=deletingEmployee) => {',
         "blocker.kind==='员工附属记录'",
         "blocker.kind==='员工档案文件'",
         'const marker=blocker.records.find(record=>/^(leave|matter|commission)#/i.test(record))||\'\'',
         '/^commission#/i.test(marker)',
         '去清理',
         'activeKey={detailTab}',
-        '员工附属记录和员工档案文件可直接进入当前员工的对应维护页签；业务关联仅作说明，仍须在原业务流程中处理。',
+        '\u5458\u5de5\u9644\u5c5e\u8bb0\u5f55\u548c\u5458\u5de5\u6863\u6848\u6587\u4ef6\u53ef\u76f4\u63a5\u8fdb\u5165\u5f53\u524d\u5458\u5de5\u7684\u5bf9\u5e94\u7ef4\u62a4\u9875\u7b7e',
     ):
         assert token in HR, f"Employee deletion blocker cleanup modal contract missing: {token}"
     print("HR_DELETE_BLOCKER_CLEANUP_OK: cleanable HR blockers map each returned record kind to its maintenance tab without bypassing business lifecycle")

@@ -28,7 +28,7 @@ const apiMenuBlock = apiSource.slice(
 
 test("legacy menu page keeps the list/action matrix and local extras", () => {
   assert.match(menuBlock, /title="菜单列表"/);
-  assert.match(menuBlock, /新增菜单/);
+  assert.doesNotMatch(menuBlock, /新增菜单/);
   assert.match(menuBlock, /placeholder="菜单名称\/标识"/);
   assert.match(menuBlock, /setMenuSearch\(menuSearchInput\); setMenuPage\(1\)/);
   assert.match(menuBlock, /setMenuSearchInput\(""\); setMenuSearch\(""\); setMenuPage\(1\)/);
@@ -44,7 +44,7 @@ test("legacy menu page keeps the list/action matrix and local extras", () => {
   assert.match(menuBlock, /menuJumpPage/);
   assert.match(menuBlock, />GO<\/Button>/);
   assert.match(menuBlock, /showTotal: \(total\)/);
-  assert.match(menuBlock, /没有查询到符合条件的记录，可以去新增菜单。/);
+  assert.match(menuBlock, /没有查询到符合条件的菜单。/);
 });
 
 test("legacy menu modal keeps required fields and cancel semantics", () => {

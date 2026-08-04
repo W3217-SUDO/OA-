@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -529,18 +529,18 @@ export default function SystemCenterPage({
     setMenuJumpPage("");
   };
   const saveMenu = async () => {
+    if (!editingMenu) {
+      message.error("系统菜单只能修改已实现菜单，不能创建菜单入口");
+      return;
+    }
     const value = await menuForm.validateFields();
     try {
-      const { data } = editingMenu
-        ? await api.patch(`/system/menus/${editingMenu.id}`, value)
-        : await api.post("/system/menus", value);
+      const { data } = await api.patch(`/system/menus/${editingMenu.id}`, value);
       message.success("保存成功.");
       setMenuOpen(false);
       window.dispatchEvent(new Event("sunhold:menus-updated"));
       setMenus((items) =>
-        editingMenu
-          ? items.map((item) => (item.id === data.id ? data : item))
-          : [...items, data],
+        items.map((item) => (item.id === data.id ? data : item)),
       );
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "保存失败！");
@@ -1162,27 +1162,6 @@ export default function SystemCenterPage({
             message="无路由菜单作为目录/权限节点，不会导航到页面；有路由菜单仅允许已实现路由。"
             style={{ marginBottom: 12 }}
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingMenu(null);
-              menuForm.resetFields();
-              menuForm.setFieldsValue({
-                key: "",
-                parent_key: "",
-                label: "",
-                description: "",
-                icon: "",
-                sort_order: 0,
-                is_visible: true,
-                is_active: true,
-              });
-              setMenuOpen(true);
-            }}
-          >
-            新增菜单
-          </Button>
           <Space wrap style={{ margin: "12px 0" }}>
             <Input value={menuSearchInput} placeholder="菜单名称/标识" onChange={(event) => setMenuSearchInput(event.target.value)} style={{ width: 220 }} />
             <Button onClick={() => { setMenuSearch(menuSearchInput); setMenuPage(1); }}>查询</Button>
@@ -1224,7 +1203,7 @@ export default function SystemCenterPage({
               },
             ]}
             dataSource={filteredSystemMenus}
-            locale={{ emptyText: "没有查询到符合条件的记录，可以去新增菜单。" }}
+            locale={{ emptyText: "没有查询到符合条件的菜单。" }}
             pagination={{
               current: menuPage,
               pageSize: menuPageSize,
@@ -1944,7 +1923,7 @@ export default function SystemCenterPage({
       </Modal>
       <Modal
         open={menuOpen}
-        title={editingMenu ? "修改菜单" : "新增菜单"}
+        title="修改菜单"
         okText="确定"
         cancelText="取消"
         onOk={saveMenu}

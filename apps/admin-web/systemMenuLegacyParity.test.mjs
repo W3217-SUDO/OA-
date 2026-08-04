@@ -5,11 +5,12 @@ import fs from 'node:fs'
 const source = fs.readFileSync(new URL('./src/SystemCenterPage.tsx', import.meta.url), 'utf8')
 const models = fs.readFileSync(new URL('../api-server/app/models.py', import.meta.url), 'utf8')
 
-test('system menu exposes legacy no-route create and description fields', () => {
-  assert.match(source, /新增菜单/)
+test('system menu edits implemented menu metadata without exposing dead-route creation', () => {
+  assert.doesNotMatch(source, /新增菜单/)
+  assert.doesNotMatch(source, /setEditingMenu\(null\)/)
   assert.match(source, /菜单名称描述|菜单描述/)
   assert.match(source, /menuOpen/)
-  assert.match(source, /editingMenu \? .*修改菜单.*新增菜单/)
+  assert.match(source, /title="修改菜单"/)
   assert.match(source, /name="description"/)
   assert.match(source, /TreeSelect/)
   assert.match(source, /treeCheckable/)
