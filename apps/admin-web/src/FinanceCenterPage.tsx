@@ -383,6 +383,11 @@ const normalizePaymentPackageResponse = (
   page: Number(data?.page || fallbackPage),
   pageSize: Number(data?.page_size || fallbackPageSize),
 });
+const paymentPackageWordExportPath = (packageNo: string) =>
+  "/finance/payment-packages/{package_no}/print-word".replace(
+    "{package_no}",
+    encodeURIComponent(packageNo),
+  );
 
 const paymentPackageWriteoffPayload = (
   values: Record<string, any>,
@@ -914,6 +919,7 @@ export default function FinanceCenterPage({
   >([]);
   const [paymentPrintPreview, setPaymentPrintPreview] =
     useState<PaymentPrintDocumentData | null>(null);
+  const [paymentWordExportLoading, setPaymentWordExportLoading] = useState(false);
   const [paymentPackagePreview, setPaymentPackagePreview] =
     useState<PaymentPackagePreview | null>(null);
   const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
@@ -2375,6 +2381,47 @@ export default function FinanceCenterPage({
     } finally {
       financeActionGates.paymentPackage.leave();
       setPaymentPackageLoading(false);
+    }
+  };
+  const downloadPaymentPrintWord = async () => {
+    if (!paymentPrintPreview) return;
+    const packageNo = String(paymentPrintPreview.packageNo || "").trim();
+    if (!packageNo) {
+      message.warning("付款包号不能为空，不能导出 Word");
+      return;
+    }
+    setPaymentWordExportLoading(true);
+    try {
+      const response = await api.get(
+        paymentPackageWordExportPath(packageNo),
+        { params: { scope: "internal_fee" }, responseType: "blob" },
+      );
+      const disposition =
+        response.headers?.["content-disposition"] ||
+        response.headers?.["Content-Disposition"] ||
+        "";
+      const filenameMatch =
+        /filename\*=UTF-8''([^;]+)/i.exec(disposition) ||
+        /filename="?([^";]+)"?/i.exec(disposition);
+      let filename = packageNo + "-付款申请单.docx";
+      if (filenameMatch?.[1]) {
+        try {
+          filename = decodeURIComponent(filenameMatch[1]);
+        } catch {
+          filename = filenameMatch[1];
+        }
+      }
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      message.success("付款单 Word 已下载");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "付款单 Word 下载失败");
+    } finally {
+      setPaymentWordExportLoading(false);
     }
   };
   const printPayment = async (row: Fee) => {
@@ -8127,6 +8174,14 @@ export default function FinanceCenterPage({
       <div className="finance-original-title finance-payment-package-actions">
         <h5>付款单打印</h5>
         <Space size={8}>
+          <Button
+            type="link"
+            icon={<DownloadOutlined />}
+            loading={paymentWordExportLoading}
+            onClick={() => void downloadPaymentPrintWord()}
+          >
+            下载 Word
+          </Button>
           <Button type="link" onClick={() => window.print()}>
             打印
           </Button>

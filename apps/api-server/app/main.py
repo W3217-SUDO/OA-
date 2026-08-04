@@ -12691,6 +12691,165 @@ def _new_internal_payment_package_no() -> str:
     return f"P{datetime.now():%y%m%d}-{numeric_suffix:08d}"
 
 
+def _payment_package_docx_bytes(
+    package: BusinessRecord,
+    fees: list[BusinessRecord],
+    *,
+    scope: str,
+) -> tuple[str, bytes]:
+    package_data = package.data or {}
+    details = list(package_data.get("items") or [])
+    fee_by_id = {item.id: item for item in fees}
+    total_amount = _round_fee_amount(
+        float(package_data.get("total_amount") or package_data.get("amount") or 0)
+    )
+    title = "提成付款申请单" if scope == "internal_fee" else "付款申请单"
+    document = Document()
+    document.add_heading(title, level=0)
+    meta_rows = [
+        ("打包流水号", package.serial_no),
+        ("打印日期", f"{datetime.now():%Y-%m-%d}"),
+        ("付款状态", package.status),
+        ("收款单位", package_data.get("payee") or ""),
+        ("付款总金额", f"{total_amount:.2f}"),
+        ("属性", package_data.get("fee_type") or package_data.get("attribute") or ""),
+        ("付款日期", package_data.get("paid_date") or package_data.get("payment_date") or ""),
+        ("付款方式", package_data.get("payment_method") or ""),
+        ("付款单据号", package_data.get("invoice_no") or package_data.get("writeoff_voucher_no") or ""),
+        ("制单人", package_data.get("submitted_by") or package.owner or ""),
+        ("备注", package_data.get("remark") or package_data.get("comment") or package.description or ""),
+    ]
+    meta_table = document.add_table(rows=0, cols=2)
+    meta_table.style = "Table Grid"
+    for label, value in meta_rows:
+        cells = meta_table.add_row().cells
+        cells[0].text = str(label)
+        cells[1].text = str(value or "—")
+
+    document.add_paragraph("")
+    item_table = document.add_table(rows=1, cols=8)
+    item_table.style = "Table Grid"
+    headers = ["请款单号", "合同编号", "合同名称", "案号", "付款金额", "费用类型", "申请人", "交款人"]
+    for index, header in enumerate(headers):
+        item_table.rows[0].cells[index].text = header
+    if details:
+        source_rows = details
+    else:
+        source_rows = [
+            {
+                "fee_id": item.id,
+                "request_no": item.serial_no,
+                "case_no": (item.data or {}).get("case_no", ""),
+                "case_name": (item.data or {}).get("case_name") or item.title,
+                "amount": (item.data or {}).get("actual_commission")
+                if (item.data or {}).get("actual_commission") is not None
+                else (item.data or {}).get("amount") or 0,
+                "commission_type": (item.data or {}).get("commission_type")
+                or (item.data or {}).get("fee_type")
+                or item.title,
+                "payee": (item.data or {}).get("payee") or (item.data or {}).get("applicant") or item.owner,
+                "remark": (item.data or {}).get("remark") or item.description or "",
+            }
+            for item in fees
+        ]
+    for row in source_rows:
+        fee = fee_by_id.get(int(row.get("fee_id") or 0))
+        fee_data = (fee.data or {}) if fee else {}
+        cells = item_table.add_row().cells
+        values = [
+            row.get("request_no") or (fee.serial_no if fee else ""),
+            fee_data.get("contract_no") or row.get("contract_no") or "",
+            fee_data.get("contract_title") or row.get("contract_title") or "",
+            row.get("case_no") or fee_data.get("case_no") or "",
+            f"{_round_fee_amount(float(row.get('amount') or 0)):.2f}",
+            row.get("commission_type") or fee_data.get("fee_type") or "",
+            (fee_data.get("applicant") or fee.owner) if fee else "",
+            row.get("payee") or package_data.get("payee") or "",
+        ]
+        for index, value in enumerate(values):
+            cells[index].text = str(value or "—")
+    document.add_paragraph("")
+    document.add_paragraph("客户管理人签字：")
+    document.add_paragraph("审批人签字：")
+    document.add_paragraph("出纳签字：")
+    output = io.BytesIO()
+    document.save(output)
+    filename = f"{package.serial_no}-{title}-{datetime.now():%Y%m%d%H%M%S}.docx"
+    return filename, output.getvalue()
+
+
+async def _payment_package_for_word(
+    package_no: str,
+    scope: str,
+    identity: dict,
+    db: AsyncSession,
+) -> tuple[BusinessRecord, list[BusinessRecord], str]:
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有付款单导出权限")
+    normalized_scope = (scope or "").strip() or "internal_fee"
+    if normalized_scope != "internal_fee":
+        raise HTTPException(status_code=422, detail="不支持的付款包导出范围")
+    normalized_package_no = package_no.strip()
+    if not normalized_package_no:
+        raise HTTPException(status_code=422, detail="付款包号不能为空")
+    package = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "finance_package",
+        BusinessRecord.serial_no == normalized_package_no,
+        *(await _record_scope_conditions(identity, db)),
+    ))
+    if not package:
+        raise HTTPException(status_code=404, detail="付款包不存在或无权访问")
+    if package.status not in {"待核销", "已付款"}:
+        raise HTTPException(status_code=409, detail="仅待核销或已付款付款包可以导出付款单")
+    package_data = package.data or {}
+    if normalized_scope == "internal_fee" and package_data.get("fee_type") != "内部提成":
+        raise HTTPException(status_code=404, detail="付款包不属于内部费用付款范围")
+    fee_ids = [
+        int(item_id)
+        for item_id in package_data.get("fee_ids", [])
+        if str(item_id).strip().isdigit()
+    ]
+    if not fee_ids:
+        raise HTTPException(status_code=409, detail="付款包缺少真实费用明细")
+    fees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(fee_ids),
+        BusinessRecord.module == "finance",
+        *(await _record_scope_conditions(identity, db)),
+    ))).all()
+    fee_by_id = {item.id: item for item in fees}
+    if len(fee_by_id) != len(set(fee_ids)):
+        raise HTTPException(status_code=409, detail="付款包关联费用不存在或无权访问")
+    missing_links: list[str] = []
+    for fee in fees:
+        fee_data = fee.data or {}
+        linked_id = int(fee_data.get("payment_package_id") or 0)
+        linked_no = str(fee_data.get("payment_package_no") or "").strip()
+        if linked_id != package.id and linked_no != package.serial_no:
+            missing_links.append(fee.serial_no)
+    if missing_links:
+        raise HTTPException(status_code=409, detail="费用付款包关联不一致：" + "、".join(missing_links))
+    if not package_data.get("items"):
+        raise HTTPException(status_code=409, detail="付款包缺少可导出的付款明细")
+    return package, fees, normalized_scope
+
+
+@app.get(f"{settings.api_prefix}/finance/payment-packages/{{package_no}}/print-word")
+async def export_payment_package_word(
+    package_no: str,
+    scope: str = Query("internal_fee"),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    package, fees, normalized_scope = await _payment_package_for_word(package_no, scope, identity, db)
+    filename, content = _payment_package_docx_bytes(package, fees, scope=normalized_scope)
+    disposition = f"attachment; filename=payment-package.docx; filename*=UTF-8''{quote(filename)}"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": disposition},
+    )
+
+
 @app.get(f"{settings.api_prefix}/finance/payment-packages")
 async def list_internal_payment_packages(
     page: int = Query(1, ge=1),
@@ -17223,24 +17382,6 @@ async def get_hr_employee_deletion_impact(employee_id: int, identity: dict = Dep
     return {"deletable": not blockers, "blockers": blockers}
 
 
-@app.delete(f"{settings.api_prefix}/hr/employees/{{employee_id}}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Old Staff/Delete parity: delete only an unreferenced employee and linked login atomically."""
-    _require_admin(identity)
-    employee = await db.get(BusinessRecord, employee_id)
-    if not employee or employee.module != "hr":
-        raise HTTPException(status_code=404, detail="员工档案不存在")
-    blockers, user = await _collect_hr_employee_deletion_blockers(employee, identity, db)
-    if blockers:
-        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
-    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))
-    await db.delete(employee)
-    if user:
-        await db.delete(user)
-    await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
 async def _load_hr_batch_deletion_impact(body: HrEmployeeBatchDeleteInput, identity: dict, db: AsyncSession) -> tuple[list[tuple[BusinessRecord, User | None]], list[dict[str, object]]]:
     employee_ids = sorted(set(body.employee_ids))
     if any(employee_id <= 0 for employee_id in employee_ids):
@@ -17279,6 +17420,24 @@ async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: 
             await db.delete(user)
     await db.commit()
     return {"deleted_ids": [employee.id for employee, _ in employees]}
+
+
+@app.delete(f"{settings.api_prefix}/hr/employees/{{employee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Old Staff/Delete parity: delete only an unreferenced employee and linked login atomically."""
+    _require_admin(identity)
+    employee = await db.get(BusinessRecord, employee_id)
+    if not employee or employee.module != "hr":
+        raise HTTPException(status_code=404, detail="员工档案不存在")
+    blockers, user = await _collect_hr_employee_deletion_blockers(employee, identity, db)
+    if blockers:
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))
+    await db.delete(employee)
+    if user:
+        await db.delete(user)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 async def _record_organization_audit(

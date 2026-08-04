@@ -16,6 +16,7 @@ from app.main import (
     FinancePaymentCancelInput,
     FinancePaymentRollbackInput,
     cancel_finance_payment,
+    export_payment_package_word,
     get_finance_payment_source,
     list_finance_transactions,
     list_internal_payment_packages,
@@ -185,6 +186,106 @@ class FinanceBackendContractTest(unittest.TestCase):
                 self.assertGreaterEqual(legacy["total"], 3)
             finally:
                 await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_([item.id for item in packages])))
+                await db.commit()
+
+    def test_payment_package_word_export_returns_docx_blob(self):
+        asyncio.run(self._payment_package_word_export_returns_docx_blob())
+
+    async def _payment_package_word_export_returns_docx_blob(self):
+        prefix = f"CODEX-FINANCE-F5-WORD-{uuid.uuid4().hex[:10]}"
+        async with SessionLocal() as db:
+            fee = BusinessRecord(
+                module="finance", serial_no=f"{prefix}-FEE", title="内部提成",
+                customer=prefix, status="已付款", owner="admin",
+                department="上海分所", data={
+                    "fee_type": "内部费用",
+                    "case_no": f"{prefix}-CASE",
+                    "contract_no": f"{prefix}-CONTRACT",
+                    "contract_title": "Word 导出合同",
+                    "amount": 880.5,
+                    "payee": "测试收款人",
+                    "applicant": "测试申请人",
+                },
+            )
+            db.add(fee); await db.flush()
+            package = BusinessRecord(
+                module="finance_package", serial_no=f"P260804-{uuid.uuid4().hex[:8].upper()}",
+                title="测试付款包", customer="", status="待核销", owner="admin",
+                department="上海分所", data={
+                    "fee_ids": [fee.id],
+                    "payee": "测试收款人",
+                    "amount": 880.5,
+                    "total_amount": 880.5,
+                    "payment_date": "2026-08-04",
+                    "payment_status": "待核销",
+                    "fee_type": "内部提成",
+                    "items": [{
+                        "fee_id": fee.id,
+                        "request_no": fee.serial_no,
+                        "case_no": f"{prefix}-CASE",
+                        "case_name": "Word 导出案件",
+                        "amount": 880.5,
+                        "commission_type": "内部费用",
+                        "payee": "测试收款人",
+                        "remark": "DOCX contract",
+                    }],
+                    "submitted_by": "admin",
+                },
+            )
+            db.add(package); await db.flush()
+            fee.data = {**fee.data, "payment_package_id": package.id, "payment_package_no": package.serial_no}
+            await db.commit()
+            try:
+                response = await export_payment_package_word(package.serial_no, "internal_fee", ADMIN, db)
+                self.assertEqual(response.media_type, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                self.assertIn("Content-Disposition", response.headers)
+                self.assertIn(package.serial_no, response.headers["Content-Disposition"])
+                self.assertTrue(bytes(response.body).startswith(b"PK"))
+            finally:
+                await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_([fee.id, package.id])))
+                await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_([fee.id, package.id])))
+                await db.commit()
+
+    def test_payment_package_word_export_guards_role_and_status(self):
+        asyncio.run(self._payment_package_word_export_guards_role_and_status())
+
+    async def _payment_package_word_export_guards_role_and_status(self):
+        prefix = f"CODEX-FINANCE-F5-WORD-GUARD-{uuid.uuid4().hex[:10]}"
+        async with SessionLocal() as db:
+            fee = BusinessRecord(
+                module="finance", serial_no=f"{prefix}-FEE", title="内部提成",
+                customer=prefix, status="已付款", owner="admin",
+                department="上海分所", data={"fee_type": "内部费用", "amount": 100, "payee": "测试收款人"},
+            )
+            db.add(fee); await db.flush()
+            package = BusinessRecord(
+                module="finance_package", serial_no=f"P260804-{uuid.uuid4().hex[:8].upper()}",
+                title="测试付款包", customer="", status="草稿", owner="admin",
+                department="上海分所", data={
+                    "fee_ids": [fee.id],
+                    "payee": "测试收款人",
+                    "amount": 100,
+                    "total_amount": 100,
+                    "fee_type": "内部提成",
+                    "items": [{"fee_id": fee.id, "request_no": fee.serial_no, "amount": 100, "payee": "测试收款人"}],
+                },
+            )
+            db.add(package); await db.flush()
+            fee.data = {**fee.data, "payment_package_id": package.id, "payment_package_no": package.serial_no}
+            await db.commit()
+            try:
+                with self.assertRaises(HTTPException) as denied:
+                    await export_payment_package_word(
+                        package.serial_no, "internal_fee",
+                        {"username": "admin", "role": "user", "department": "上海分所"}, db,
+                    )
+                self.assertEqual(denied.exception.status_code, 403)
+                with self.assertRaises(HTTPException) as invalid_status:
+                    await export_payment_package_word(package.serial_no, "internal_fee", ADMIN, db)
+                self.assertEqual(invalid_status.exception.status_code, 409)
+            finally:
+                await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_([fee.id, package.id])))
+                await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_([fee.id, package.id])))
                 await db.commit()
 
 
