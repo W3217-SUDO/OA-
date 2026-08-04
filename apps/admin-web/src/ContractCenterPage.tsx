@@ -527,6 +527,14 @@ export default function ContractCenterPage({
       setDetailApprovalsError(extractContractErrorMessage(error, "合同审批信息加载失败"));
     }
   };
+  const handleContractDetailTabChange = (key: string) => {
+    setDetailActiveTab(key);
+    if (!viewing || key === detailActiveTab) return;
+    if (key === "attachments") void reloadViewingAttachments(viewing);
+    else if (key === "events") void reloadContractEvents(viewing, contractEventPage, contractEventKeyword, contractEventPageSize);
+    else if (key === "approvals") void reloadDetailApprovals(viewing);
+    else void openViewing(viewing);
+  };
   const returnFromDetail = () => {
     closeViewing();
     if (isContractDetailView) onNavigate?.(consumeContractDetailReturnView());
@@ -2238,7 +2246,7 @@ export default function ContractCenterPage({
             <Tabs
               className="contract-detail-tabs"
               activeKey={detailActiveTab}
-              onChange={setDetailActiveTab}
+              onChange={handleContractDetailTabChange}
               items={[
                 {
                   key: "objects",

@@ -61,7 +61,7 @@ test("contract list opens the detail page directly on the attachment tab", () =>
   );
   assert.match(
     source,
-    /<Tabs[\s\S]*activeKey=\{detailActiveTab\}[\s\S]*onChange=\{setDetailActiveTab\}/,
+    /<Tabs[\s\S]*activeKey=\{detailActiveTab\}[\s\S]*onChange=\{handleContractDetailTabChange\}/,
     "the contract detail Tabs should honor the requested attachment tab",
   );
 });
