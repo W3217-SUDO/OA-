@@ -3039,7 +3039,7 @@ export default function FinanceCenterPage({
       width: 205,
       render: (_: unknown, r: FinanceFlow) => (
         <Space wrap>
-          <Button type="link" onClick={() => void openRefundDetail(r)}>
+          <Button type="link" onClick={() => setInvoiceDetail(r)}>
             详情
           </Button>
           {["草稿", "已驳回"].includes(r.status) && (
@@ -3166,6 +3166,9 @@ export default function FinanceCenterPage({
       width: 205,
       render: (_: unknown, r: FinanceFlow) => (
         <Space wrap>
+          <Button type="link" onClick={() => void openRefundDetail(r)}>
+            详情
+          </Button>
           {['草稿', '已驳回'].includes(r.status) && (
             <Button
               type="link"
