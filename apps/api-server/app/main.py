@@ -74,6 +74,7 @@ COURT_JUDICIAL_KEYS = {
     "court", "court_case_no", "courtroom", "judge", "clerk", "judge_phone", "filing_date", "hearing_date", "hearing_time",
     "first_court_name", "first_court_case_no", "first_court_courtroom", "first_court_judge", "first_court_clerk", "first_court_filing_date", "first_court_hearing_date",
     "second_court_name", "second_court_case_no", "second_court_courtroom", "second_court_judge", "second_court_clerk", "second_court_filing_date", "second_court_hearing_date",
+    "execution_court_name", "execution_court_case_no", "execution_court_courtroom", "execution_court_judge", "execution_court_clerk", "execution_court_filing_date", "execution_court_hearing_date",
     "retrial_court_name", "retrial_court_case_no", "retrial_court_courtroom", "retrial_court_judge", "retrial_court_clerk", "retrial_court_filing_date", "retrial_court_hearing_date",
 }
 DEFAULT_SYSTEM_MENUS = [
@@ -1489,6 +1490,7 @@ class CriminalProcuratorateMaintenanceInput(BaseModel):
 class CriminalCourtMaintenanceInput(BaseModel):
     first_court_enabled: bool = False; first_court_name: str = Field(default="", max_length=256); first_court_case_no: str = Field(default="", max_length=128); first_court_courtroom: str = Field(default="", max_length=128); first_court_judge: str = Field(default="", max_length=128); first_court_clerk: str = Field(default="", max_length=128); first_court_filing_date: date | None = None; first_court_hearing_date: date | None = None
     second_court_enabled: bool = False; second_court_name: str = Field(default="", max_length=256); second_court_case_no: str = Field(default="", max_length=128); second_court_courtroom: str = Field(default="", max_length=128); second_court_judge: str = Field(default="", max_length=128); second_court_clerk: str = Field(default="", max_length=128); second_court_filing_date: date | None = None; second_court_hearing_date: date | None = None
+    execution_court_enabled: bool = False; execution_court_name: str = Field(default="", max_length=256); execution_court_case_no: str = Field(default="", max_length=128); execution_court_courtroom: str = Field(default="", max_length=128); execution_court_judge: str = Field(default="", max_length=128); execution_court_clerk: str = Field(default="", max_length=128); execution_court_filing_date: date | None = None; execution_court_hearing_date: date | None = None
     retrial_court_enabled: bool = False; retrial_court_name: str = Field(default="", max_length=256); retrial_court_case_no: str = Field(default="", max_length=128); retrial_court_courtroom: str = Field(default="", max_length=128); retrial_court_judge: str = Field(default="", max_length=128); retrial_court_clerk: str = Field(default="", max_length=128); retrial_court_filing_date: date | None = None; retrial_court_hearing_date: date | None = None
     comment: str = Field(default="", max_length=500)
 
@@ -3727,12 +3729,12 @@ PARAMETER_REFERENCE_FIELDS: dict[str, dict[str, set[str]]] = {
     "customer_type": {"customer": {"customer_type"}},
     "case_type": {"case": {"case_type"}},
     "fee_type": {"finance": {"fee_type"}},
-    "court": {"case": {"court", "first_court_name", "second_court_name", "retrial_court_name"}},
+    "court": {"case": {"court", "first_court_name", "second_court_name", "execution_court_name", "retrial_court_name"}},
     "notary_office": {"clue": {"notary_institution"}, "notary": {"notary_institution"}},
     "cause": {"case": {"cause", "cause_of_action", "reason"}},
     "payment_type": {"finance": {"payment_type"}, "contract": {"payment_type"}},
     "district": {"customer": {"province", "city", "district"}, "case": {"province", "city", "district"}},
-    "court_officer": {"case": {"judge", "clerk", "first_court_judge", "first_court_clerk", "second_court_judge", "second_court_clerk", "retrial_court_judge", "retrial_court_clerk"}},
+    "court_officer": {"case": {"judge", "clerk", "first_court_judge", "first_court_clerk", "second_court_judge", "second_court_clerk", "execution_court_judge", "execution_court_clerk", "retrial_court_judge", "retrial_court_clerk"}},
 }
 
 
