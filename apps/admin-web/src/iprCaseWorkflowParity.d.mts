@@ -12,3 +12,13 @@ export function buildIprCaseActionPayload(input: {
   approved?: unknown;
   comment?: unknown;
 }): { approved?: boolean; comment: string };
+
+export function normalizeIprCaseActionResponse(
+  response: unknown,
+  fallback: string,
+): { ok: boolean; message: string };
+
+export function getIprCaseActionErrorMessage(
+  error: unknown,
+  fallback: string,
+): string;

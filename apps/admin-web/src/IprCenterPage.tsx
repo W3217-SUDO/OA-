@@ -23,7 +23,9 @@ import { api } from "./api";
 import { formatRequiredDate } from "./formSafety";
 import {
   buildIprCaseActionPayload,
+  getIprCaseActionErrorMessage,
   getIprCaseActionValidationError,
+  normalizeIprCaseActionResponse,
 } from "./iprCaseWorkflowParity.mjs";
 import {
   buildIprCaseContactPayload,
@@ -962,15 +964,17 @@ export default function IprCenterPage({
     }
     const payload = buildIprCaseActionPayload({ action: name, approved, comment });
     try {
-      await api.post(
+      const response = await api.post(
         `/ipr/cases/${record.id}/${name}`,
         payload,
       );
-      message.success("操作成功");
+      const actionResult = normalizeIprCaseActionResponse(response, "操作成功");
+      if (!actionResult.ok) throw new Error(actionResult.message);
+      message.success(actionResult.message);
       setDetail(null);
       void load();
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || "操作失败");
+      message.error(getIprCaseActionErrorMessage(e, "操作失败"));
     }
   };
   const columns: TableColumnsType<IprRecord> = useMemo(

@@ -31,3 +31,17 @@ export const buildIprCaseActionPayload = ({ action, approved, comment } = {}) =>
     ? { approved: Boolean(approved), comment: String(comment ?? "").trim() }
     : { comment: String(comment ?? "").trim() }
 );
+
+export const normalizeIprCaseActionResponse = (response, fallback) => {
+  const payload = response?.data ?? response ?? {};
+  const explicit = payload.is_success ?? payload.IsSuccess ?? payload.success;
+  const ok = explicit === undefined ? true : Boolean(explicit);
+  const message = String(payload.message ?? payload.Message ?? fallback);
+  return { ok, message: message.trim() || fallback };
+};
+
+export const getIprCaseActionErrorMessage = (error, fallback) => {
+  const payload = error?.response?.data ?? error?.data ?? error ?? {};
+  const message = payload.detail ?? payload.message ?? payload.Message ?? error?.message ?? fallback;
+  return String(message || "").trim() || fallback;
+};
