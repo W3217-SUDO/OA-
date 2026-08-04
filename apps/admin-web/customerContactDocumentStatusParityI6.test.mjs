@@ -61,13 +61,14 @@ test('customer file upload keeps no-file/empty/type checks and list/download aff
   assert.match(localApi, /\/attachments\"/)
   assert.match(localApi, /attachments\/\{\{attachment_id\}\}\/download/)
   assert.match(localApi, /attachments\/\{\{attachment_id\}\}\"/)
-  for (const handler of ['uploadDocument', 'downloadDocument', 'deleteDocument']) assert.match(localPage, new RegExp(`const ${handler}`))
+  for (const handler of ['uploadDocument', 'downloadDocument', 'viewDocument', 'deleteDocument']) assert.match(localPage, new RegExp(`const ${handler}`))
 })
 
 test('customer documents retain empty-state and read/download/delete UI paths', () => {
   assert.match(localPage, /客户文档/)
   assert.match(localPage, /没有查询到客户文件/)
-  assert.match(localPage, /onClick=\{\(\) => downloadDocument\(/)
+  assert.match(localPage, /onClick=\{\(\)\s*=>\s*void viewDocument\(/)
+  assert.match(localPage, /return downloadDocument\(file\)/)
   assert.match(localPage, /onConfirm=\{\(\) => deleteDocument\(/)
   assert.match(localPage, /上传客户文档|上传客户文件/)
 })

@@ -294,6 +294,11 @@ export default function IprCenterPage({
       .then(({ data }) => setProfile(data))
       .catch(() => setProfile({}));
   }, [initialView, annualFeeMonitoringFilter]);
+  const resetMainListSearch = () => {
+    setKeyword("");
+    setAnnualFeeMonitoringFilter("");
+    setPage(1);
+  };
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
@@ -445,6 +450,9 @@ export default function IprCenterPage({
       setIprSectionError("files", error);
     }
   };
+  const refreshIprFiles = () => {
+    if (detail) void loadIprFiles(detail.id, filesPageState.page, filesPageState.pageSize);
+  };
   const loadCaseLawFirms = async (caseId: number) => {
     try {
       const { data } = await api.get<{ items: IprLawFirm[] }>(`/ipr/cases/${caseId}/law-firms`);
@@ -580,6 +588,16 @@ export default function IprCenterPage({
     setKeyword(customerKeyword);
     void load(1, pageSize, customerKeyword);
   };
+  const openMainListCustomerCases = (record: IprRecord) => {
+    const customerKeyword = String(record.data.customer_no || record.customer || "").trim();
+    if (!customerKeyword) {
+      message.warning("当前案件未关联客户");
+      return;
+    }
+    setKeyword(customerKeyword);
+    setPage(1);
+    void load(1, pageSize, customerKeyword);
+  };
   const openContactSelector = async (customer: IprCaseCustomer) => {
     if (!detail) return;
     try {
@@ -705,6 +723,24 @@ export default function IprCenterPage({
       URL.revokeObjectURL(url);
     } catch {
       message.error("案件附件下载失败");
+    }
+  };
+  const previewAttachment = async (item: Attachment) => {
+    const previewWindow = window.open("", "_blank");
+    if (!previewWindow) {
+      message.warning("预览窗口被浏览器拦截");
+      return;
+    }
+    previewWindow.opener = null;
+    try {
+      const response = await api.get(`/attachments/${item.id}/download`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      previewWindow.location.href = url;
+    } catch {
+      previewWindow.close();
+      message.error("案件附件预览失败");
     }
   };
   const uploadIprFile = async () => {
@@ -1051,7 +1087,17 @@ export default function IprCenterPage({
         ellipsis: true,
         render: (_, row) => row.data.application_no || "—",
       },
-      { title: "客户", dataIndex: "customer", width: 160, ellipsis: true },
+      {
+        title: "客户",
+        dataIndex: "customer",
+        width: 160,
+        ellipsis: true,
+        render: (_, row) => (
+          <Button type="link" size="small" onClick={() => openMainListCustomerCases(row)}>
+            {row.customer || "-"}
+          </Button>
+        ),
+      },
       {
         title: "期限",
         width: 110,
@@ -1119,7 +1165,7 @@ export default function IprCenterPage({
         ),
       },
     ],
-    [profile.role, reviewView],
+    [pageSize, profile.role, reviewView],
   );
   const filesPagination = {
     current: filesPageState.page,
@@ -1167,6 +1213,7 @@ export default function IprCenterPage({
                 style={{ width: 220 }}
               />
               <Button onClick={() => void load(1, pageSize)}>查询</Button>
+              <Button onClick={resetMainListSearch}>重置</Button>
               <Select
                 value={annualFeeMonitoringFilter}
                 onChange={setAnnualFeeMonitoringFilter}
@@ -1526,7 +1573,12 @@ export default function IprCenterPage({
                 ]}
               /> : "暂未选择协作律所"}
             </Card>
-          <Card size="small" title="案件文书与附件" style={{ marginTop: 16 }}>
+            <Card
+              size="small"
+              title="案件文书与附件"
+              style={{ marginTop: 16 }}
+              extra={<Button size="small" onClick={refreshIprFiles}>刷新</Button>}
+            >
               {iprSectionErrors.files ? <Alert type="error" showIcon message={iprSectionErrors.files} style={{ marginBottom: 12 }} /> : null}
               <Space wrap>
                 {detail.status !== "草稿" &&
@@ -1597,7 +1649,12 @@ export default function IprCenterPage({
                   dataIndex: "original_name",
                   width: 220,
                   ellipsis: true,
-                  render: (_, row: Attachment) => <Button type="link" onClick={() => void downloadAttachment(row)}>{row.original_name}</Button>,
+                  render: (_, row: Attachment) => (
+                    <Space size={0}>
+                      <Button type="link" onClick={() => void previewAttachment(row)}>{row.original_name}</Button>
+                      <Button type="link" onClick={() => void downloadAttachment(row)}>下载</Button>
+                    </Space>
+                  ),
                 },
                 { title: "上传人", dataIndex: "uploader", width: 95 },
                 { title: "文档日期", dataIndex: "document_date", width: 110, render: (value) => value || "—" },
@@ -1662,12 +1719,20 @@ export default function IprCenterPage({
                     width: 180,
                     render: (_, row: AssistedFee) =>
                       row.receipt ? (
-                        <Button
-                          type="link"
-                          onClick={() => void downloadAttachment(row.receipt!)}
-                        >
-                          {row.receipt.original_name}
-                        </Button>
+                        <Space size={0}>
+                          <Button
+                            type="link"
+                            onClick={() => void previewAttachment(row.receipt!)}
+                          >
+                            {row.receipt.original_name}
+                          </Button>
+                          <Button
+                            type="link"
+                            onClick={() => void downloadAttachment(row.receipt!)}
+                          >
+                            下载
+                          </Button>
+                        </Space>
                       ) : (
                         "—"
                       ),

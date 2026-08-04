@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Drawer, Empty, Input, List, message, Space, Tag } from "antd";
 import { FileOutlined, SearchOutlined } from "@ant-design/icons";
 import { api } from "./api";
@@ -23,6 +23,19 @@ type Result = {
   related_id?: number | null;
   related_serial_no?: string;
 };
+export type AuthorizedMenuItem = {
+  key: string;
+  label: string;
+  disabled?: boolean;
+  link_url?: string;
+  menu_type_id?: number;
+  open_target?: string;
+  children?: AuthorizedMenuItem[];
+};
+type MenuSearchResult = {
+  item: AuthorizedMenuItem;
+  path: string;
+};
 
 const moduleNames: Record<string, string> = {
   customer: "客户",
@@ -45,20 +58,63 @@ const moduleNames: Record<string, string> = {
   template: "模板",
 };
 
-export default function GlobalSearch({ onNavigate }: { onNavigate: (route: string) => void }) {
+export function searchAuthorizedMenuItems(
+  items: AuthorizedMenuItem[],
+  query: string,
+): MenuSearchResult[] {
+  const keyword = query.trim().toLocaleLowerCase();
+  if (!keyword) return [];
+  const visit = (nodes: AuthorizedMenuItem[], ancestors: string[]): MenuSearchResult[] =>
+    nodes.flatMap((item) => {
+      const path = [...ancestors, item.label];
+      const children = visit(item.children || [], path);
+      const isClickableLeaf = !item.children?.length && !item.disabled;
+      const matches = `${path.join(" ")} ${item.key}`.toLocaleLowerCase().includes(keyword);
+      return [
+        ...(isClickableLeaf && matches ? [{ item, path: path.join(" / ") }] : []),
+        ...children,
+      ];
+    });
+  return visit(items, []);
+}
+
+export default function GlobalSearch({
+  onNavigate,
+  menuItems = [],
+  onOpenMenu,
+}: {
+  onNavigate: (route: string) => void;
+  menuItems?: AuthorizedMenuItem[];
+  onOpenMenu?: (item: AuthorizedMenuItem) => void;
+}) {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<Result[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const menuMatches = useMemo(
+    () => searchAuthorizedMenuItems(menuItems, query),
+    [menuItems, query],
+  );
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setItems([]);
+    setOpen(Boolean(value.trim()));
+  };
 
   const search = async (value = query) => {
     const q = value.trim();
+    if (!q) {
+      setItems([]);
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
     if (q.length < 2) {
-      message.warning("至少输入 2 个字符");
+      setItems([]);
       return;
     }
     setLoading(true);
-    setOpen(true);
     try {
       const { data } = await api.get("/search", { params: { q } });
       setItems(data.items);
@@ -81,31 +137,56 @@ export default function GlobalSearch({ onNavigate }: { onNavigate: (route: strin
     onNavigate(item.route);
     setOpen(false);
   };
+  const openMenuResult = (item: MenuSearchResult) => {
+    if (onOpenMenu) onOpenMenu(item.item);
+    else onNavigate(item.item.key);
+    setOpen(false);
+  };
 
   return (
     <>
       <Input.Search
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => handleQueryChange(event.target.value)}
         onSearch={search}
         enterButton={<SearchOutlined />}
-        placeholder="案号、法院号、案件名、客户名、任务内容"
+        placeholder="搜索菜单、案号、法院号、案件名、客户名"
       />
       <Drawer size={600} open={open} title={`全局检索：${query}`} onClose={() => setOpen(false)}>
-        <List
-          loading={loading}
-          dataSource={items}
-          locale={{ emptyText: <Empty description="未找到匹配的业务、附件或模板" /> }}
-          renderItem={(item) => (
-            <List.Item style={{ cursor: "pointer" }} onClick={() => openResult(item)}>
-              <List.Item.Meta
-                avatar={<FileOutlined style={{ fontSize: 22, color: "#00a65a" }} />}
-                title={<Space><Tag>{moduleNames[item.module] || item.module}</Tag><b>{item.serial_no}</b>{item.title}{item.status && <Tag color="green">{item.status}</Tag>}</Space>}
-                description={<><div>{item.subtitle || "—"}</div><small>更新：{item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN") : "—"}</small></>}
-              />
-            </List.Item>
-          )}
-        />
+        {menuMatches.length > 0 && (
+          <List
+            header="菜单"
+            dataSource={menuMatches}
+            renderItem={(item) => (
+              <List.Item style={{ cursor: "pointer" }} onClick={() => openMenuResult(item)}>
+                <List.Item.Meta
+                  avatar={<SearchOutlined style={{ fontSize: 18, color: "#1677ff" }} />}
+                  title={<Space><Tag color="blue">菜单</Tag><b>{item.item.label}</b></Space>}
+                  description={item.path}
+                />
+              </List.Item>
+            )}
+          />
+        )}
+        {query.trim().length >= 2 ? (
+          <List
+            header={menuMatches.length ? "业务、附件或模板" : undefined}
+            loading={loading}
+            dataSource={items}
+            locale={{ emptyText: <Empty description="未找到匹配的业务、附件或模板" /> }}
+            renderItem={(item) => (
+              <List.Item style={{ cursor: "pointer" }} onClick={() => openResult(item)}>
+                <List.Item.Meta
+                  avatar={<FileOutlined style={{ fontSize: 22, color: "#00a65a" }} />}
+                  title={<Space><Tag>{moduleNames[item.module] || item.module}</Tag><b>{item.serial_no}</b>{item.title}{item.status && <Tag color="green">{item.status}</Tag>}</Space>}
+                  description={<><div>{item.subtitle || "—"}</div><small>更新：{item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN") : "—"}</small></>}
+                />
+              </List.Item>
+            )}
+          />
+        ) : !menuMatches.length ? (
+          <Empty description="未找到匹配菜单；输入至少 2 个字符可检索业务数据" />
+        ) : null}
       </Drawer>
     </>
   );

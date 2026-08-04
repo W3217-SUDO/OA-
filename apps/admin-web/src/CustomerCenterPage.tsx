@@ -314,7 +314,8 @@ export default function CustomerCenterPage({
     [detailLoading, setDetailLoading] = useState(false),
     [detailTab, setDetailTab] = useState("contacts"),
     [documentFile, setDocumentFile] = useState<File | null>(null),
-    [contactPhotoPreview, setContactPhotoPreview] = useState<{name:string;url:string}|null>(null);
+    [contactPhotoPreview, setContactPhotoPreview] = useState<{name:string;url:string}|null>(null),
+    [customerDocumentPreview, setCustomerDocumentPreview] = useState<{name:string;url:string}|null>(null);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
@@ -908,6 +909,10 @@ export default function CustomerCenterPage({
       message.error(getCustomerResponseMessage(error, "联系人加载失败"));
     }
   };
+  const refreshCustomerContacts = () => {
+    if (!contacts) return;
+    void loadContactPage(contacts);
+  };
   const openDetail = async (r: Customer, tab = "contacts") => {
     setContactPage(1);
     setContactPageSize(15);
@@ -1183,12 +1188,14 @@ export default function CustomerCenterPage({
       message.error(getCustomerMutationErrorMessage(error, getCustomerDocumentUploadError(error)));
     }
   };
+  const fetchCustomerDocument = async (file: Attachment) => {
+    const guidDownloadPath = buildCustomerFileDownloadPath(getCustomerGuid(contacts), file.id);
+    if (guidDownloadPath) return await api.get(guidDownloadPath, { responseType: "blob" });
+    return await api.get(`/attachments/${file.id}/download`, { responseType: "blob" });
+  };
   const downloadDocument = async (file: Attachment) => {
     try {
-      const guidDownloadPath = buildCustomerFileDownloadPath(getCustomerGuid(contacts), file.id);
-      const res = guidDownloadPath
-        ? await api.get(guidDownloadPath, { responseType: "blob" })
-        : await api.get(`/attachments/${file.id}/download`, { responseType: "blob" });
+      const res = await fetchCustomerDocument(file);
       const url = URL.createObjectURL(res.data),
         a = document.createElement("a");
       a.href = url;
@@ -1197,6 +1204,18 @@ export default function CustomerCenterPage({
       URL.revokeObjectURL(url);
     } catch (error: any) {
       const legacyError = error?.response?.data?.detail || "下载失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
+    }
+  };
+  const viewDocument = async (file: Attachment) => {
+    const previewable = /\.(pdf|jpe?g|png|gif|webp|tiff?)$/i.test(file.original_name);
+    if (!previewable) return downloadDocument(file);
+    try {
+      const res = await fetchCustomerDocument(file);
+      const url = URL.createObjectURL(res.data);
+      setCustomerDocumentPreview({ name: file.original_name, url });
+    } catch (error: any) {
+      const legacyError = error?.response?.data?.detail || "文档加载失败";
       message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
@@ -1598,9 +1617,9 @@ export default function CustomerCenterPage({
               {
                 key: "contacts",
                 label: "联系人",
-                children: <Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
+                children: <><Space style={{ marginBottom: 8 }}>{canManageCurrentCustomer && <Button size="small" type="primary" onClick={() => openNewEditor("contact")}>新建联系人</Button>}<Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space><Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
                   {title:"序号",render:(_:unknown,_row:Contact,index:number)=>index+1,width:55},{title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",render:(_:unknown,row:Contact)=>row.is_valid!==false?"是":"否"},{title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button>{!row.is_primary&&<Button type="link" onClick={()=>void updateContactStatus(row,"primary")}>设为主要</Button>}{row.is_valid===false&&<Button type="link" onClick={()=>void updateContactStatus(row,"active")}>设为有效</Button>}{row.is_valid!==false&&<Button type="link" onClick={()=>void updateContactStatus(row,"inactive")}>设为无效</Button>}</Space>:null},
-                ]} />,
+                ]} /></>,
               },
               {
                 key: "notes",
@@ -1663,7 +1682,7 @@ export default function CustomerCenterPage({
                 key: "documents",
                 label: "客户文档",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
+                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
                 ]} />,
               },
             ]}
@@ -1887,7 +1906,8 @@ export default function CustomerCenterPage({
                 key:"contacts",
                 label:"联系人",
                 children:<>
-                  <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
+                  <Space style={{ marginBottom: 8 }}><Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space>
+                  <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
                     {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
                     {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
                     {title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
@@ -1912,7 +1932,7 @@ export default function CustomerCenterPage({
                 children:<>
                   {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>downloadDocument(row)}>查看</Button>},
+                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},
                     {title:"操作",render:(_:unknown,row:Attachment)=>canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null}
                   ]} />
                   {attachments.length > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button>}
@@ -1923,6 +1943,7 @@ export default function CustomerCenterPage({
         </Card>
       )}
       <Modal open={Boolean(contactPhotoPreview)} title={contactPhotoPreview?.name || "联系人照片"} footer={null} onCancel={()=>{if(contactPhotoPreview)URL.revokeObjectURL(contactPhotoPreview.url);setContactPhotoPreview(null);}} destroyOnHidden><img src={contactPhotoPreview?.url} alt={contactPhotoPreview?.name || "联系人照片"} style={{display:"block",maxWidth:"100%",maxHeight:560,margin:"0 auto"}} /></Modal>
+      <Modal open={Boolean(customerDocumentPreview)} title={customerDocumentPreview?.name || "客户文档预览"} footer={null} width={960} onCancel={()=>{if(customerDocumentPreview)URL.revokeObjectURL(customerDocumentPreview.url);setCustomerDocumentPreview(null);}} destroyOnHidden><iframe title={customerDocumentPreview?.name || "客户文档预览"} src={customerDocumentPreview?.url} style={{display:"block",width:"100%",height:"72vh",border:0}} /></Modal>
       <Modal open={newEditor === "contact"} title="新建联系人" okText="保存" cancelText="取消" onOk={addContact} onCancel={()=>setNewEditor(null)} destroyOnHidden>
         <Form form={contactForm} layout="vertical" initialValues={CUSTOMER_CONTACT_FORM_DEFAULTS}>
           <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
@@ -2205,12 +2226,13 @@ export default function CustomerCenterPage({
               label: `联系人（${contacts?.data.contacts?.length || 0}）`,
               children: (
                 <>
+                  <Space style={{ marginBottom: 8 }}><Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space>
                   <Table
                     className="customer-contact-drawer-table"
                     rowKey="id"
                     size="small"
                     tableLayout="fixed"
-                    pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }}
+                    pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }}
                     dataSource={contacts?.data.contacts || []}
                     scroll={{ x: 1170 }}
                     columns={[
@@ -2460,18 +2482,18 @@ export default function CustomerCenterPage({
                       {
                         title: "操作",
                         width: 130,
-                        render: (_: unknown, r: Attachment) => (
+                        render: (_: unknown, row: Attachment) => (
                           <Space size={0}>
                             <Button
                               type="link"
-                              onClick={() => downloadDocument(r)}
+                              onClick={() => downloadDocument(row)}
                             >
                               下载
                             </Button>
                             {canDeleteCustomerAttachment(canManageCurrentCustomer) && (
                               <Popconfirm
                                 title="删除客户文档？"
-                                onConfirm={() => deleteDocument(r.id)}
+                                onConfirm={() => deleteDocument(row.id)}
                               >
                                 <Button type="link" danger>
                                   删除

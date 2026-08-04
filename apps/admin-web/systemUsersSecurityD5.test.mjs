@@ -30,7 +30,7 @@ test("system user list restores the legacy 15-row pagination contract", () => {
   assert.match(usersBlock, /defaultPageSize: 15/);
   assert.match(usersBlock, /showSizeChanger: true/);
   assert.match(usersBlock, /pageSizeOptions: \["10", "15", "20", "50", "100", "200"\]/);
-  assert.match(usersBlock, /showQuickJumper: true/);
+  assert.match(usersBlock, /showQuickJumper: \{ goButton: "GO" \}/);
   assert.match(usersBlock, /showTotal:/);
 });
 

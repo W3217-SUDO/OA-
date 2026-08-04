@@ -27,3 +27,8 @@ test('customer contact pagination exposes the same six size choices', () => {
   }
   assert.match(localPage, /pageSizeOptions:\s*\[10, 15, 20, 50, 100, 200\]/)
 })
+
+test('customer contact pagination exposes a GO quick jumper in every contact table', () => {
+  const contactPagination = localPage.match(/pagination=\{\{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: \[10, 15, 20, 50, 100, 200\], showQuickJumper: \{ goButton: <Button size="small">GO<\/Button> \}, onChange:/g) || []
+  assert.equal(contactPagination.length, 3)
+})

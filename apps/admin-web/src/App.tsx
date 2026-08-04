@@ -12,6 +12,7 @@ import {
   Alert,
   Button,
   Card,
+  Dropdown,
   Form,
   Input,
   Layout,
@@ -22,13 +23,18 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
 } from "antd";
 import {
   BankOutlined,
   DashboardOutlined,
+  DownOutlined,
   FileTextOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
   LinkOutlined,
   MenuFoldOutlined,
+  MenuOutlined,
   MenuUnfoldOutlined,
   SearchOutlined,
   TeamOutlined,
@@ -1115,6 +1121,7 @@ export default function App() {
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const resetWorkspaceForSession = () => {
     const dashboard = [{ key: "dashboard", label: "控制台" }];
     setContractDetailTarget(null);
@@ -1136,6 +1143,11 @@ export default function App() {
     };
     window.addEventListener("popstate", restoreRouteFromHistory);
     return () => window.removeEventListener("popstate", restoreRouteFromHistory);
+  }, []);
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
   }, []);
   useEffect(() => {
     const receiveContractDetailTarget = (event: Event) => {
@@ -1312,6 +1324,7 @@ export default function App() {
       : sessionUser?.menu_keys || ["user-center"],
   );
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
+  const accountProfileRoute = grantedMenuKeys.has("user-account") ? "user-account" : "user-center";
   const route = canonicalRoute(active);
   const pageAllowed =
     sessionUser?.role === "admin" ||
@@ -1442,24 +1455,84 @@ export default function App() {
           onClick={() => setCollapsed((v) => !v)}
         />
         <div className="global-search">
-          <GlobalSearch onNavigate={navigate} />
+          <GlobalSearch
+            onNavigate={navigate}
+            menuItems={sideMenuItems}
+            onOpenMenu={(item) => {
+              if (item.link_url) {
+                openLegacyMenuItem(item);
+                return;
+              }
+              navigate(item.key);
+            }}
+          />
         </div>
         <Space className="top-actions">
+          <Dropdown
+            menu={{
+              items: sideMenuItems,
+              onClick: ({ key }) => {
+                const item = flattenMenu(sideMenuItems).find(entry => entry.key === key);
+                if (!item || item.disabled || item.children?.length) return;
+                if (item.link_url) {
+                  openLegacyMenuItem(item);
+                  return;
+                }
+                navigate(String(key));
+              },
+            }}
+            trigger={["click"]}
+            placement="bottomLeft"
+          >
+            <Button type="text" icon={<MenuOutlined />}>
+              系统导航 <DownOutlined />
+            </Button>
+          </Dropdown>
           <NotificationCenter onNavigate={navigate} />
-          <span>
-            <UserOutlined />{" "}
-            {(() => {
-              const username = sessionUser?.username || "admin";
-              const account = `${username.slice(0, 1).toUpperCase()}${username.slice(1)}`;
-              const displayName = sessionUser?.display_name || "管理者";
-              return displayName.toLowerCase() === username.toLowerCase()
-                ? account
-                : `${account} ${displayName}`;
-            })()}
-          </span>
-          <Button type="link" onClick={logout}>
-            退出
-          </Button>
+          <Tooltip title={isFullscreen ? "退出全屏" : "全屏"}>
+            <Button
+              type="text"
+              aria-label={isFullscreen ? "退出全屏" : "全屏"}
+              icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+              onClick={() => {
+                if (document.fullscreenElement) {
+                  void document.exitFullscreen?.();
+                  return;
+                }
+                void document.documentElement.requestFullscreen?.();
+              }}
+            />
+          </Tooltip>
+          <Dropdown
+            menu={{
+              items: [
+                { key: "profile", label: "个人资料" },
+                { type: "divider" },
+                { key: "logout", label: "退出", danger: true },
+              ],
+              onClick: ({ key }) => {
+                if (key === "profile") {
+                  navigate(accountProfileRoute);
+                  return;
+                }
+                if (key === "logout") logout();
+              },
+            }}
+            trigger={["click"]}
+            placement="bottomRight"
+          >
+            <Button type="text" aria-label="账户菜单" icon={<UserOutlined />}>
+              {(() => {
+                const username = sessionUser?.username || "admin";
+                const account = `${username.slice(0, 1).toUpperCase()}${username.slice(1)}`;
+                const displayName = sessionUser?.display_name || "管理者";
+                const label = displayName.toLowerCase() === username.toLowerCase()
+                  ? account
+                  : `${account} ${displayName}`;
+                return <>{label} <DownOutlined /></>;
+              })()}
+            </Button>
+          </Dropdown>
         </Space>
       </Header>
       <Layout className="app-body">
@@ -1541,8 +1614,19 @@ export default function App() {
             onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
             items={openPages.map((item) => ({
               key: item.key,
-              label: item.label,
-              closable: openPages.length > 1,
+              label: (
+                <span
+                  onDoubleClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (item.key === "dashboard") return;
+                    closeOpenPage(item.key);
+                  }}
+                >
+                  {item.label}
+                </span>
+              ),
+              closable: item.key !== "dashboard",
             }))}
           />
           <PageLoadBoundary key={active}>

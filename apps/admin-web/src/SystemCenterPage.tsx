@@ -226,8 +226,11 @@ export default function SystemCenterPage({
   const [menuJumpPage, setMenuJumpPage] = useState("");
   const [menuSearchInput, setMenuSearchInput] = useState("");
   const [menuSearch, setMenuSearch] = useState("");
-  const [users, setUsers] = useState<SystemUser[]>([]),
-    [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [userDepartmentOptions, setUserDepartmentOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+  const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [availableMenuKeys, setAvailableMenuKeys] = useState<string[]>([]),
     [availableFieldKeys, setAvailableFieldKeys] = useState<string[]>([]);
   const [securityPolicy, setSecurityPolicy] = useState<SecurityPolicy | null>(
@@ -324,6 +327,21 @@ export default function SystemCenterPage({
       setLoading(false);
     }
   };
+  const loadUserDepartments = async () => {
+    try {
+      const { data } = await api.get("/hr/departments", {
+        params: { active_only: true },
+      });
+      setUserDepartmentOptions(
+        (data.items || []).map((item: { name: string }) => ({
+          value: item.name,
+          label: item.name,
+        })),
+      );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "部门选项加载失败");
+    }
+  };
   const loadRoles = async () => {
     setLoading(true);
     try {
@@ -369,7 +387,10 @@ export default function SystemCenterPage({
       void loadConfigs();
     else if (initialView === "system-management-cache") void loadCaches();
     else if (initialView === "system-management-menu") void loadMenus();
-    else if (initialView === "system-users") void loadUsers();
+    else if (initialView === "system-users") {
+      void loadUsers();
+      void loadUserDepartments();
+    }
     else if (initialView === "system-roles") {
       void loadRoles();
       void loadMenus();
@@ -1360,7 +1381,7 @@ export default function SystemCenterPage({
               defaultPageSize: 15,
               showSizeChanger: true,
               pageSizeOptions: ["10", "15", "20", "50", "100", "200"],
-              showQuickJumper: true,
+              showQuickJumper: { goButton: "GO" },
               showTotal: (total) => `共 ${total} 个账号`,
             }}
             locale={{
@@ -1494,15 +1515,13 @@ export default function SystemCenterPage({
         >
           <Form form={userForm} layout="vertical">
             <div className="system-modal-grid">
-              {!editingUser && (
-                <Form.Item
-                  label="登录账号"
-                  name="username"
-                  rules={[{ required: true }, { min: 3 }]}
-                >
-                  <Input />
-                </Form.Item>
-              )}
+              <Form.Item
+                label="登录账号"
+                name="username"
+                rules={[{ required: true }, { min: 3 }]}
+              >
+                <Input />
+              </Form.Item>
               <Form.Item
                 label="姓名"
                 name="display_name"
@@ -1515,7 +1534,12 @@ export default function SystemCenterPage({
                 name="department"
                 rules={[{ required: true }]}
               >
-                <Input />
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="请选择部门"
+                  options={userDepartmentOptions}
+                />
               </Form.Item>
               <Form.Item
                 label={

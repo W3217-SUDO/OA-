@@ -403,7 +403,13 @@ const paymentPackageWriteoffPayload = (
 });
 
 const paymentQueryQuickJumper = (initialView: string) =>
-  initialView === "finance-payment-query" ? { goButton: "GO" } : undefined;
+  [
+    "finance-payment-query",
+    "finance-payment-mine",
+    "finance-internal-mine",
+  ].includes(initialView)
+    ? { goButton: "GO" }
+    : undefined;
 
 // Legacy AP/PaymentList accepts the complete payment status vocabulary and
 // treats an omitted status as "all statuses". Keep this matrix explicit so
@@ -950,6 +956,7 @@ export default function FinanceCenterPage({
   const [settlementContextRows, setSettlementContextRows] = useState<any[]>([]);
   const [settlementActionLoading, setSettlementActionLoading] = useState(false);
   const [feeOpen, setFeeOpen] = useState(false);
+  const [feeEditTarget, setFeeEditTarget] = useState<Fee | null>(null);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
   // Legacy PaymentView resolves the complete payment plus its contract,
   // customer and package before rendering. Fetch the canonical record for
@@ -2169,13 +2176,40 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "删除失败");
     }
   };
+  const closeFeeModal = () => {
+    setFeeOpen(false);
+    setFeeEditTarget(null);
+    feeForm.resetFields();
+  };
+  const openFeeEdit = (row: Fee) => {
+    const data = row.data || {};
+    feeForm.setFieldsValue({
+      title: row.title,
+      customer: row.customer,
+      amount: data.amount,
+      fee_type: data.fee_type,
+      expense_scope: data.expense_scope,
+      expense_subtype: data.expense_subtype,
+      handler: data.handler || row.owner,
+      court: data.court,
+      document_no: data.document_no,
+      payee: data.payee,
+      description: row.description || "",
+      case_no: data.case_no || "",
+      case_record_id: data.case_record_id || data.case_id || undefined,
+      contract_record_id: data.contract_record_id || data.contract_id || undefined,
+    });
+    setFeeEditTarget(row);
+    setFeeOpen(true);
+  };
   const createFee = async () => {
     const v = await feeForm.validateFields();
     try {
-      await api.post("/finance/fees", v);
-      message.success("费用已创建");
-      setFeeOpen(false);
-      feeForm.resetFields();
+      feeEditTarget
+        ? await api.put(`/finance/fees/${feeEditTarget.id}`, v)
+        : await api.post("/finance/fees", v);
+      message.success(feeEditTarget ? "费用已更新" : "费用已创建");
+      closeFeeModal();
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "创建失败");
@@ -2925,6 +2959,10 @@ export default function FinanceCenterPage({
   };
   const canApprove = ["admin", "manager", "auditor"].includes(role);
   const canManage = ["admin", "manager"].includes(role);
+  const canWithdrawFinanceFee = (row: Fee) =>
+    row.module === "finance" &&
+    ["草稿", "待审批", "已审批", "待付款"].includes(row.status) &&
+    (canManage || row.owner === currentUser.username);
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
     <Space size={0}>
       {r.status === "待认领" && (
@@ -3880,11 +3918,28 @@ export default function FinanceCenterPage({
     const maySubmit =
       ["草稿", "已退回"].includes(row.status) &&
       (role === "admin" || role === "manager" || row.owner === currentUser.username);
+    const mayEdit =
+      row.module === "finance" &&
+      row.data.fee_type === "内部费用" &&
+      row.status === "草稿" &&
+      (canManage || row.owner === currentUser.username);
+    const mayCancel =
+      canWithdrawFinanceFee(row) && row.data.fee_type === "内部费用";
     return (
       <Space size={0}>
         {maySubmit && (
           <Button type="link" onClick={() => feeAction(row, "submit")}>
             提交审批
+          </Button>
+        )}
+        {mayEdit && (
+          <Button type="link" onClick={() => openFeeEdit(row)}>
+            编辑
+          </Button>
+        )}
+        {mayCancel && (
+          <Button type="link" danger onClick={() => openPaymentCancel(row)}>
+            撤回
           </Button>
         )}
         <Button type="link" onClick={() => void openPaymentDetail(row)}>
@@ -3925,6 +3980,20 @@ export default function FinanceCenterPage({
         <Button type="link" onClick={() => void openPaymentDetail(row)}>
           查看
         </Button>
+        {initialView === "finance-payment-mine" &&
+          row.module === "finance" &&
+          row.status === "草稿" &&
+          (canManage || row.owner === currentUser.username) && (
+            <Button type="link" onClick={() => openFeeEdit(row)}>
+              编辑
+            </Button>
+          )}
+        {initialView === "finance-payment-mine" &&
+          canWithdrawFinanceFee(row) && (
+            <Button type="link" danger onClick={() => openPaymentCancel(row)}>
+              撤回请款
+            </Button>
+          )}
       </Space>
     ) : <Space size={0}>
       {initialView === "finance-payment-writeoff" &&
@@ -8556,6 +8625,15 @@ export default function FinanceCenterPage({
               >
                 查询
               </Button>
+              {["finance-payment-mine", "finance-internal-mine"].includes(initialView) && (
+                <Button
+                  icon={<ReloadOutlined />}
+                  disabled={contractPaymentSource.active}
+                  onClick={() => void load()}
+                >
+                  刷新
+                </Button>
+              )}
               {activeRouteConfig?.upload && (
                 <Button
                   icon={<UploadOutlined />}
@@ -10124,6 +10202,8 @@ export default function FinanceCenterPage({
                       type="primary"
                       icon={<PlusOutlined />}
                       onClick={() => {
+                        setFeeEditTarget(null);
+                        feeForm.resetFields();
                         feeForm.setFieldsValue({
                           fee_type: "官方费用",
                           handler:
@@ -11102,13 +11182,19 @@ export default function FinanceCenterPage({
       </Modal>
       <Modal
         open={feeOpen}
-        title="新增费用"
-        okText="保存草稿"
+        title={feeEditTarget ? "编辑费用" : "新增费用"}
+        okText={feeEditTarget ? "保存修改" : "保存草稿"}
         cancelText="取消"
         onOk={createFee}
-        onCancel={() => setFeeOpen(false)}
+        onCancel={closeFeeModal}
       >
         <Form form={feeForm} layout="vertical">
+          <Form.Item name="case_record_id" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contract_record_id" hidden>
+            <Input />
+          </Form.Item>
           <Form.Item label="费用名称" name="title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>

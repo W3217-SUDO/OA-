@@ -47,7 +47,7 @@ const loadPaymentQuerySinglePageGo = () => {
   return context.__showsSinglePageGo;
 };
 
-test("payment query keeps the legacy GO control visible for a single page", () => {
+test("payment query and mine lists keep the legacy GO control visible", () => {
   const quickJumperFor = loadPaymentQueryQuickJumper();
   const showsSinglePageGo = loadPaymentQuerySinglePageGo();
 
@@ -55,7 +55,14 @@ test("payment query keeps the legacy GO control visible for a single page", () =
     JSON.parse(JSON.stringify(quickJumperFor("finance-payment-query"))),
     { goButton: "GO" },
   );
-  assert.equal(quickJumperFor("finance-payment-mine"), undefined);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(quickJumperFor("finance-payment-mine"))),
+    { goButton: "GO" },
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(quickJumperFor("finance-internal-mine"))),
+    { goButton: "GO" },
+  );
   assert.equal(quickJumperFor("finance-payment-print"), undefined);
   assert.equal(showsSinglePageGo("finance-payment-query", 1, 15), true);
   assert.equal(showsSinglePageGo("finance-payment-query", 15, 15), true);

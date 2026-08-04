@@ -337,6 +337,7 @@ export default function SealCenterPage({
     null,
   );
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingCreateFiles, setPendingCreateFiles] = useState<File[]>([]);
   const [assetOpen, setAssetOpen] = useState(false);
   const [editAsset, setEditAsset] = useState<SealAsset | null>(null);
   const [detail, setDetail] = useState<SealRow | null>(null);
@@ -752,6 +753,17 @@ export default function SealCenterPage({
     );
   }, [rows, initialView, query]);
   const auditRows = useMemo(() => toSealAuditRows(history), [history]);
+  const queueCreateFiles = (files: File[]) => {
+    const validFiles = files.filter(Boolean);
+    for (const file of validFiles) {
+      const validationError = validateSealUploadFile(file);
+      if (validationError) {
+        message.error(validationError);
+        return;
+      }
+    }
+    setPendingCreateFiles((current) => [...current, ...validFiles]);
+  };
   const createApplication = async () => {
     let v: Record<string, any>;
     try {
@@ -787,13 +799,19 @@ export default function SealCenterPage({
         ? await patchSeal(`/seals/applications/${editingApplication.id}`, data)
         : await postSeal("/seals/applications", data);
       ensureSealSuccess(response, "鐢宠淇濆瓨澶辫触");
+      const savedApplication = response.data as SealRow;
+      const queuedFilesUploaded = pendingCreateFiles.length
+        ? await uploadSealFiles(pendingCreateFiles, savedApplication)
+        : true;
       message.success(
         editingApplication ? "用印申请已修改" : "用印申请已保存为草稿",
       );
+      if (queuedFilesUploaded) setPendingCreateFiles([]);
       setCreateOpen(false);
       setEditingApplication(null);
       createForm.resetFields();
       load();
+      if (pendingCreateFiles.length) await openDetail(savedApplication);
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail || error?.message || "申请保存失败",
@@ -805,6 +823,7 @@ export default function SealCenterPage({
   };
   const openApplication = (row?: SealRow) => {
     setEditingApplication(row || null);
+    setPendingCreateFiles([]);
     setSourceAttachments([]);
     setSourceAttachmentLoading(false);
     setSourceAttachmentPage(1);
@@ -1328,26 +1347,32 @@ export default function SealCenterPage({
       await openFileList(row);
     }
   };
-  const uploadSealFiles = async (files: File[]) => {
-    if (!detail) return;
+  const uploadSealFiles = async (files: File[], target: SealRow | null = detail): Promise<boolean> => {
+    if (!target) return false;
     const validFiles = files.filter(Boolean);
-    if (!validFiles.length) return;
+    if (!validFiles.length) return false;
     for (const file of validFiles) {
       const validationError = validateSealUploadFile(file);
       if (validationError) {
         message.error(validationError);
-        return;
+        return false;
       }
     }
     const body = new FormData();
     validFiles.forEach((file) => body.append("files", file));
     try {
-      await postSeal(`/seals/applications/${detail.id}/files`, body);
+      const uploadPath =
+        target === detail && detail
+          ? `/seals/applications/${detail.id}/files`
+          : `/seals/applications/${target.id}/files`;
+      await postSeal(uploadPath, body);
       message.success(`已上传用印文件：${validFiles.length} 个`);
-      await loadDetailFiles(detail, 1, attachmentPageSize);
+      await loadDetailFiles(target, 1, attachmentPageSize);
       load();
+      return true;
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "用印文件上传失败");
+      return false;
     }
   };
   const uploadSealFile = async (file: File) => {
@@ -2082,6 +2107,7 @@ export default function SealCenterPage({
         onCancel={() => {
           setCreateOpen(false);
           setEditingApplication(null);
+          setPendingCreateFiles([]);
           setSourceAttachments([]);
           setSourceAttachmentPage(1);
           setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
@@ -2255,9 +2281,36 @@ export default function SealCenterPage({
           <Alert
             type="info"
             showIcon
-            title="请先保存草稿，再在用印详情中上传真实用印文件；未上传文件不能提交审批。"
+            title="可在保存草稿前选择真实用印文件，保存后将自动上传；未上传文件不能提交审批。"
             style={{ marginBottom: 12 }}
           />
+          <Form.Item label="待上传附件">
+            <Upload
+              multiple
+              fileList={pendingCreateFiles.map((file, index) => ({
+                uid: `${file.name}-${file.lastModified}-${index}`,
+                name: file.name,
+                status: "done" as const,
+              }))}
+              beforeUpload={(file, fileList) => {
+                const firstFile = fileList[0] as File & { uid?: string };
+                const currentFile = file as File & { uid?: string };
+                if (!firstFile || firstFile.uid === currentFile.uid || firstFile === currentFile) {
+                  queueCreateFiles(fileList as File[]);
+                }
+                return Upload.LIST_IGNORE;
+              }}
+              onRemove={(file) => {
+                setPendingCreateFiles((current) =>
+                  current.filter((item, index) =>
+                    `${item.name}-${item.lastModified}-${index}` !== file.uid,
+                  ),
+                );
+              }}
+            >
+              <Button icon={<UploadOutlined />}>选择待上传附件</Button>
+            </Upload>
+          </Form.Item>
           <Form.Item
             label="用印用途"
             name="purpose"
@@ -2760,6 +2813,11 @@ export default function SealCenterPage({
                   title: "文件名称",
                   dataIndex: "original_name",
                   ellipsis: true,
+                  render: (value: string, item: AttachmentRow) => (
+                    <Button type="link" onClick={() => void previewAttachment(item)}>
+                      {value}
+                    </Button>
+                  ),
                 },
                 {
                   title: "类型",
