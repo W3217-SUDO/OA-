@@ -896,7 +896,12 @@ export default function ContractCenterPage({
     if (!wizardDraft) return;
     try {
       const contract = await loadWizardContext(wizardDraft.id);
-      if (CONTRACT_SEAL_READY_STATUSES.includes(contract.status)) {
+      if (contract.status === "已拒绝") {
+        setWizardStep(1);
+        sealForm.resetFields();
+        setContractFile(null);
+        setSelectedAttachmentKeys([]);
+      } else if (CONTRACT_SEAL_READY_STATUSES.includes(contract.status)) {
         setWizardStep(3);
         sealForm.setFieldsValue({
           copies: 1,
@@ -924,7 +929,12 @@ export default function ContractCenterPage({
       if (!feedback.ok) throw new Error(feedback.message);
       reviewForm.resetFields();
       const contract = await loadWizardContext(wizardDraft.id);
-      if (CONTRACT_SEAL_READY_STATUSES.includes(contract.status)) {
+      if (!approved || contract.status === "已拒绝") {
+        setWizardStep(1);
+        sealForm.resetFields();
+        setContractFile(null);
+        setSelectedAttachmentKeys([]);
+      } else if (CONTRACT_SEAL_READY_STATUSES.includes(contract.status)) {
         setWizardStep(3);
         sealForm.setFieldsValue({
           copies: 1,
@@ -1157,7 +1167,17 @@ export default function ContractCenterPage({
       setSteps(data.items);
       setReviewing(data.contract);
       setReviewCurrentStep(selectContractCurrentApprovalStep<Step>(data));
-      load();
+      if (!approved || data.contract?.status === "已拒绝") {
+        sealForm.resetFields();
+        setContractFile(null);
+        setSelectedAttachmentKeys([]);
+      }
+      if (viewing?.id === data.contract?.id) {
+        setViewing(data.contract);
+        await reloadViewingAttachments(data.contract);
+        await reloadDetailApprovals(data.contract);
+      }
+      await load();
     } catch (error: any) {
       message.error(extractContractErrorMessage(error, "审批失败"));
     }
@@ -1244,6 +1264,12 @@ export default function ContractCenterPage({
       onOk: async () => {
         try {
           await api.delete(`/contracts/${contract.id}/draft`);
+          localStorage.removeItem(WIZARD_STORAGE_KEY);
+          setContractFile(null);
+          setSelectedAttachmentKeys([]);
+          setAttachments([]);
+          sealForm.resetFields();
+          setLinkedCustomerContext(null);
           if (wizardDraft?.id === contract.id) startCreate();
           if (viewing?.id === contract.id) closeViewing();
           setEventTarget((current) => current?.id === contract.id ? null : current);
