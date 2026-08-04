@@ -3,7 +3,10 @@
   "private": true,
   "version": "1.0.3",
   "type": "module",
-  "scripts": {"dev": "vite --host 0.0.0.0", "build": "tsc -b && vite build"},
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build"
+  },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "antd": "^6.0.0",
