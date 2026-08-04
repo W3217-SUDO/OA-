@@ -185,6 +185,39 @@ const permissionTreeData: TreeDataNode[] = permissionGroups.map((group) => ({
   title: group.name,
   children: group.items.map((item) => ({ key: item, title: item })),
 }));
+const rolePermissionTreeMenuCodes = (
+  nodes: TreeDataNode[] = [],
+  menuCodes = new Set<string>(),
+) => {
+  nodes.forEach((node) => {
+    const key = String(node.key);
+    if (key.startsWith("menu:")) menuCodes.add(key.slice("menu:".length));
+    if (Array.isArray(node.children)) {
+      rolePermissionTreeMenuCodes(node.children as TreeDataNode[], menuCodes);
+    }
+  });
+  return menuCodes;
+};
+const normalizeRolePermissionCheckedKeys = (keys: readonly unknown[]) =>
+  keys.filter(
+    (key): key is string =>
+      typeof key === "string" && !key.startsWith("group:") && key !== "actions",
+  );
+const rolePermissionsToTreeCheckedKeys = (
+  permissions: string[] = [],
+  treeData: TreeDataNode[] = permissionTreeData,
+) => {
+  const menuCodes = rolePermissionTreeMenuCodes(treeData);
+  return permissions.map((key) => (menuCodes.has(key) ? `menu:${key}` : key));
+};
+const rolePermissionTreeKeysToPayload = (keys: readonly string[]) =>
+  Array.from(
+    new Set(
+      normalizeRolePermissionCheckedKeys(keys).map((key) =>
+        key.startsWith("menu:") ? key.slice("menu:".length) : key,
+      ),
+    ),
+  );
 
 export default function OrganizationCenterPage({
   initialView = "hr-departments",
@@ -347,13 +380,14 @@ export default function OrganizationCenterPage({
       return;
     }
     setPermissionRole(row);
-    setSelectedRolePermissions(row.permissions || []);
+    setSelectedRolePermissions(rolePermissionsToTreeCheckedKeys(row.permissions || [], permissionTreeData));
     setRolePermissionTreeData(permissionTreeData);
     setRolePermissionLoading(true);
     try {
       const { data } = await api.get(`/hr/job-roles/${row.id}/permissions`);
-      setSelectedRolePermissions(data.permissions || row.permissions || []);
-      setRolePermissionTreeData(data.tree || permissionTreeData);
+      const nextRolePermissionTreeData = data.tree || permissionTreeData;
+      setRolePermissionTreeData(nextRolePermissionTreeData);
+      setSelectedRolePermissions(rolePermissionsToTreeCheckedKeys(data.permissions || row.permissions || [], nextRolePermissionTreeData));
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "角色权限加载失败");
     } finally {
@@ -372,7 +406,7 @@ export default function OrganizationCenterPage({
     }
     try {
       await api.patch(`/hr/job-roles/${permissionRole.id}/permissions`, {
-        permissions: selectedRolePermissions,
+        permissions: rolePermissionTreeKeysToPayload(selectedRolePermissions),
       });
       message.success("角色权限已保存.");
       setPermissionRole(null);
@@ -659,7 +693,7 @@ export default function OrganizationCenterPage({
                     treeData={rolePermissionTreeData}
                     checkedKeys={selectedRolePermissions}
                 disabled={permissionRole?.code === "SYSTEM-ADMIN"}
-                    onCheck={(checked) => setSelectedRolePermissions((Array.isArray(checked) ? checked : checked.checked).filter((key): key is string => typeof key === "string" && !key.startsWith("group:") && !key.startsWith("menu:") && key !== "actions"))}
+                    onCheck={(checked) => setSelectedRolePermissions(normalizeRolePermissionCheckedKeys(Array.isArray(checked) ? checked : checked.checked))}
               />
             </div>
           </Form.Item>
