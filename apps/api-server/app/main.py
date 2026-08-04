@@ -20271,7 +20271,7 @@ async def transition_record(record_id: int, body: TransitionInput, identity: dic
     record = await _ensure_record_visible(record_id, identity, db)
     await _require_record_module_menu(record.module, identity, db, action="流转")
     if record.module not in GENERIC_RECORD_TRANSITION_MODULES:
-        raise HTTPException(status_code=409, detail="该业务必须使用专用审批或办理入口变更状态")
+        return _legacy_failure_response("该业务必须使用专用审批或办理入口变更状态")
     approval_access = identity.get("role") == "auditor" and record.module in {"contract", "finance", "invoice", "refund", "seal", "clue", "notary"} and record.status in {"待审批", "审批中", "待审核"}
     if not approval_access:
         await _require_record_owner_or_manager(record, identity, db)

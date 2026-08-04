@@ -212,6 +212,31 @@ class RecordTransitionFailureEnvelopeContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["IsSuccess"], False)
         self.assertIn("合同当前不在审批中", payload["Message"])
 
+    async def test_protected_module_transition_business_failure_returns_legacy_envelope(self):
+        response = await self.client.post(
+            f"{API}/records/{self.contract_id}/transition",
+            json={"to_status": "审批中", "comment": "generic transition should be blocked"},
+        )
+
+        async with self.sessions() as db:
+            contract = await db.get(BusinessRecord, self.contract_id)
+            event_count = await db.scalar(
+                select(func.count(WorkflowEvent.id)).where(WorkflowEvent.record_id == self.contract_id)
+            )
+            step_count = await db.scalar(
+                select(func.count(ContractApprovalStep.id)).where(
+                    ContractApprovalStep.contract_record_id == self.contract_id
+                )
+            )
+        self.assertEqual(contract.status, "草稿")
+        self.assertEqual(event_count, 0)
+        self.assertEqual(step_count, 0)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["IsSuccess"], False)
+        self.assertIn("该业务必须使用专用审批或办理入口变更状态", payload["Message"])
+
 
 if __name__ == "__main__":
     unittest.main()
