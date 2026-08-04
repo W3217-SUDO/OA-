@@ -1704,6 +1704,12 @@ class TaskBatchReadInput(BaseModel):
     task_ids: list[int] = Field(min_length=1, max_length=100)
 
 
+class CaseTaskFinishedInput(BaseModel):
+    """Legacy CaseTaskController.Finished payload: cases, never task ids."""
+    case_ids: list[int] = Field(min_length=1, max_length=100)
+    comment: str = Field(default="", max_length=1000)
+
+
 class TemplateInput(BaseModel):
     name: str
     category: str
@@ -2574,7 +2580,10 @@ def _hearing_dict(item: HearingSchedule, case_record: BusinessRecord) -> dict:
 def _task_dict(record: BusinessRecord) -> dict:
     data = record.data or {}
     try:
-        deadline = date.fromisoformat(str(data.get("deadline", "")))
+        # Imported legacy tasks used TaskEndTime/task_end_time; new writes use
+        # deadline. Keep one response field while preserving both sources.
+        raw_deadline = data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime") or ""
+        deadline = date.fromisoformat(str(raw_deadline))
         days_remaining = (deadline - date.today()).days
     except ValueError:
         deadline = None
@@ -8327,22 +8336,64 @@ async def _business_rule_loop() -> None:
 async def list_tasks(
     keyword: str = "", status_filter: str = "", reminder_only: bool = False, scope: str = "default",
     relation: str = Query("", pattern="^(|initiated|owned|collaborating)$"), statuses: str = "",
+    page_id: str | None = Query(None, description="legacy TaskController PageId"),
     priority: str = "", serial_no: str = "", title: str = "", description: str = "",
     initiator: str = "", case_no: str = "", source: str = "", owner: str = "",
     plaintiff: str = "", defendant: str = "",
     created_from: date | None = None, created_to: date | None = None,
     deadline_from: date | None = None, deadline_to: date | None = None,
-    sort_by: str = Query("created_at", pattern="^(created_at|deadline|days_remaining|updated_at)$"),
+    sort_by: str = Query("deadline", pattern="^(created_at|deadline|days_remaining|updated_at)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
-    page: int = Query(1, ge=1), page_size: int | None = Query(None, ge=1, le=200),
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     await _apply_task_auto_completion(db)
     await _apply_task_overdue_performance(db)
+    legacy_page_map = {
+        "9001001010": ("default", "initiated"), "9001002010": ("department", "initiated"),
+        "9001003010": ("company", "initiated"), "9001001020": ("default", "owned"),
+        "9001002020": ("department", "owned"), "9001001030": ("default", "collaborating"),
+        "9001002030": ("department", "collaborating"),
+    }
+    if page_id is not None:
+        mapped = legacy_page_map.get(str(page_id).strip())
+        if not mapped:
+            raise HTTPException(status_code=422, detail="无效的任务页面")
+        scope, relation = mapped
     if scope not in {"default", "mine", "department", "company"}: raise HTTPException(status_code=422, detail="无效的任务范围")
     if created_from and created_to and created_from > created_to: raise HTTPException(status_code=422, detail="发起开始日期不能晚于结束日期")
     if deadline_from and deadline_to and deadline_from > deadline_to: raise HTTPException(status_code=422, detail="截止开始日期不能晚于结束日期")
-    tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task").order_by(BusinessRecord.created_at.desc()))).all()
+    if scope == "company" and identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="only administrators may view company tasks")
+    if scope == "department" and identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="only managers may view department tasks")
+    # Apply participant visibility in SQL before any Python filtering/pagination.
+    # This is the stable equivalent of TaskController's PageId relation matrix:
+    # initiated -> data.initiator, accepted/owned -> owner, collaborating ->
+    # the serialized collaborators array.  The later relation branch preserves
+    # explicit legacy query semantics while this candidate query prevents an
+    # unrelated task from entering the in-memory page window.
+    task_conditions = [BusinessRecord.module == "task"]
+    if identity.get("role") != "admin" and scope in {"mine", "default"}:
+        username_token = f'"{identity["username"]}"'
+        task_conditions.append(or_(
+            BusinessRecord.owner == identity["username"],
+            BusinessRecord.data["initiator"].as_string() == identity["username"],
+            BusinessRecord.data["collaborators"].as_string().contains(username_token),
+        ))
+    elif identity.get("role") == "manager" and scope == "department":
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        if not user:
+            raise HTTPException(status_code=401, detail="current user does not exist")
+        department_usernames = set((await db.scalars(select(User.username).where(User.department == user.department))).all())
+        department_tokens = [BusinessRecord.data["collaborators"].as_string().contains(f'"{name}"') for name in department_usernames]
+        task_conditions.append(or_(
+            BusinessRecord.department == user.department,
+            BusinessRecord.owner.in_(department_usernames),
+            BusinessRecord.data["initiator"].as_string().in_(department_usernames),
+            *department_tokens,
+        ))
+    tasks = list((await db.scalars(select(BusinessRecord).where(*task_conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     if identity.get("role") != "admin" and scope in {"mine", "default"}:
         username = identity["username"]
         tasks = [task for task in tasks if task.owner == username or (task.data or {}).get("initiator") == username or username in (task.data or {}).get("collaborators", [])]
@@ -8428,12 +8479,13 @@ async def list_tasks(
     if reminder_only:
         all_items = [item for item in all_items if item["reminder_due"]]
     total = len(items)
-    effective_page_size = page_size or max(total, 1)
-    if page_size is not None:
-        start = (page - 1) * page_size
-        items = items[start:start + page_size]
+    effective_page_size = page_size
+    pages = (total + effective_page_size - 1) // effective_page_size if total else 0
+    start = (page - 1) * effective_page_size
+    items = items[start:start + effective_page_size]
     return {
         "items": items, "total": total, "page": page, "page_size": effective_page_size,
+        "pages": pages,
         "status_counts": status_counts,
         "summary": {
             "total": len(all_items),
@@ -14769,11 +14821,135 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
 
 
 @app.get(f"{settings.api_prefix}/cases/{{case_id}}/tasks")
-async def list_case_tasks(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_case_tasks(
+    case_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    task_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task").order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
-    items = [item for item in task_rows if _record_links_to_case(item, case_record)]
-    return {"case": _record_dict(case_record), "items": [_task_dict(item) for item in items], "total": len(items)}
+    link_condition = or_(
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+    )
+    task_condition = [BusinessRecord.module == "task", link_condition]
+    if identity.get("role") != "admin":
+        username_token = f'"{identity["username"]}"'
+        task_condition.append(or_(
+            BusinessRecord.owner == identity["username"],
+            BusinessRecord.data["initiator"].as_string() == identity["username"],
+            BusinessRecord.data["collaborators"].as_string().contains(username_token),
+        ))
+    total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_condition)) or 0)
+    if identity.get("role") != "admin" and total == 0:
+        all_linked = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "task", link_condition,
+        )) or 0)
+        if all_linked:
+            raise HTTPException(status_code=403, detail="只有任务参与人可以查看案件任务")
+    deadline_expr = func.coalesce(
+        BusinessRecord.data["deadline"].as_string(),
+        BusinessRecord.data["task_end_time"].as_string(),
+        BusinessRecord.data["TaskEndTime"].as_string(),
+    )
+    rows = list((await db.scalars(
+        select(BusinessRecord).where(*task_condition)
+        .order_by(deadline_expr.desc(), BusinessRecord.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all())
+    pages = (total + page_size - 1) // page_size if total else 0
+    return {
+        "case": _record_dict(case_record),
+        "items": [_task_dict(item) for item in rows],
+        "total": total, "page": page, "page_size": page_size, "pages": pages,
+    }
+
+
+@app.post(f"{settings.api_prefix}/cases/tasks/finished")
+async def finish_case_tasks(
+    body: CaseTaskFinishedInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Atomically implement legacy CaseTaskController.Finished(caseIds).
+
+    The endpoint intentionally accepts case_ids only.  It resolves every linked
+    task, checks case and task participation/status for the complete selection,
+    then writes all status/events/notifications in one transaction.
+    """
+    case_ids = list(dict.fromkeys(int(value) for value in body.case_ids))
+    scope = await _record_scope_conditions(identity, db)
+    cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", BusinessRecord.id.in_(case_ids), *scope,
+    ))).all())
+    by_id = {case_record.id: case_record for case_record in cases}
+    missing = [case_id for case_id in case_ids if case_id not in by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"未找到案件或当前账号无权查看: {','.join(str(value) for value in missing)}")
+    for case_record in cases:
+        await _require_case_progress_write_access(case_record, identity, db)
+
+    links = [
+        or_(BusinessRecord.data["case_id"].as_integer() == case_record.id, BusinessRecord.data["case_no"].as_string() == case_record.serial_no)
+        for case_record in cases
+    ]
+    all_tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task", or_(*links),
+    ))).all()) if links else []
+    grouped: dict[int, list[BusinessRecord]] = {case_record.id: [] for case_record in cases}
+    for task in all_tasks:
+        data = task.data or {}
+        for case_record in cases:
+            if str(data.get("case_id") or "") == str(case_record.id) or str(data.get("case_no") or "") == case_record.serial_no:
+                grouped[case_record.id].append(task)
+                break
+    for case_record in cases:
+        linked = grouped[case_record.id]
+        if not linked:
+            raise HTTPException(status_code=409, detail="案件没有可完成的任务")
+        for task in linked:
+            if not _is_task_participant(task, identity):
+                raise HTTPException(status_code=403, detail="只有任务参与人可以结束案件任务")
+            if task.status != "处理中":
+                raise HTTPException(status_code=409, detail="存在当前状态不能结束的任务")
+
+    try:
+        updated: list[BusinessRecord] = []
+        comment = body.comment.strip()
+        for case_record in cases:
+            for task in grouped[case_record.id]:
+                previous = task.status
+                task.status = "已完成"
+                task.data = {
+                    **(task.data or {}),
+                    "completion_submitted_at": datetime.now().isoformat(timespec="seconds"),
+                    "completion_comment": comment,
+                    "completion_case_id": case_record.id,
+                }
+                await _add_task_message_notifications(
+                    task,
+                    WorkflowEvent(
+                        record_id=task.id, action="案件任务批量完成", from_status=previous,
+                        to_status=task.status, operator=identity["username"], comment=comment,
+                    ),
+                    db,
+                    content="任务结束成功！",
+                )
+                updated.append(task)
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="标记失败！")
+    for task in updated:
+        await db.refresh(task)
+    return {
+        "message": "标记成功！", "case_ids": case_ids, "updated": len(updated),
+        "items": [_task_dict(task) for task in updated],
+    }
 
 
 @app.post(f"{settings.api_prefix}/cases/execution-status")
@@ -19580,7 +19756,11 @@ async def transition_record(record_id: int, body: TransitionInput, identity: dic
         await _require_record_owner_or_manager(record, identity, db)
     allowed = WORKFLOW_TRANSITIONS.get(record.module, {}).get(record.status, [])
     if body.to_status not in allowed:
-        raise HTTPException(status_code=409, detail=f"不能从“{record.status}”流转到“{body.to_status}”")
+        return {
+            "IsSuccess": False,
+            "Data": None,
+            "Message": f"不能从“{record.status}”流转到“{body.to_status}”",
+        }
     previous = record.status
     record.status = body.to_status
     action = "审批通过"
