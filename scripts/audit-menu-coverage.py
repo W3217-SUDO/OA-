@@ -3475,12 +3475,12 @@ def main() -> None:
         'const reasonMessage=hrTransitionReasonMessage(value.to_status,value.reason)',
         '办理状态',
         '办理人事状态：',
-        'name="is_active" label="登录账号启用" valuePropName="checked"',
+        'name="login_enabled" label="登录账号启用" valuePropName="checked"',
         '关闭后该用户立即无法登录',
         'account?.contract_approval_enabled??profileData.contract_approval_enabled',
         "api.get('/system/users',{params:{keyword:row.data.username||row.owner}})",
         'data.items.find((item:any)=>item.username===(row.data.username||row.owner))',
-        'is_active:account?.is_active??row.data.is_active!==false',
+        'login_enabled:account?.is_active??row.data.is_active!==false',
         'api.post(`/hr/${transitioningEmployee.id}/transition`',
     ):
         assert token in HR, f"HR lifecycle UI contract missing: {token}"
