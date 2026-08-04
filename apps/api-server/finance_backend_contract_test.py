@@ -188,6 +188,34 @@ class FinanceBackendContractTest(unittest.TestCase):
                 await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_([item.id for item in packages])))
                 await db.commit()
 
+    def test_payment_packages_support_legacy_page_id_status_mapping(self):
+        asyncio.run(self._payment_packages_support_legacy_page_id_status_mapping())
+
+    async def _payment_packages_support_legacy_page_id_status_mapping(self):
+        prefix = f"CODEX-FINANCE-F5-PAGEID-{uuid.uuid4().hex[:10]}"
+        async with SessionLocal() as db:
+            pending = BusinessRecord(module="finance_package", serial_no=f"{prefix}-PENDING", title=prefix, customer="", status="待核销", owner="admin", department="上海分所", data={"amount": 1})
+            paid = BusinessRecord(module="finance_package", serial_no=f"{prefix}-PAID", title=prefix, customer="", status="已付款", owner="admin", department="上海分所", data={"amount": 2})
+            db.add_all([pending, paid]); await db.commit()
+            try:
+                legacy = await list_internal_payment_packages(
+                    identity=ADMIN, db=db, page=1, page_size=None,
+                    status_filter="", page_id="5001003006",
+                )
+                serials = {item["serial_no"] for item in legacy["items"]}
+                self.assertIn(pending.serial_no, serials)
+                self.assertNotIn(paid.serial_no, serials)
+                explicit = await list_internal_payment_packages(
+                    identity=ADMIN, db=db, page=1, page_size=None,
+                    status_filter="已付款", page_id="5001003006",
+                )
+                explicit_serials = {item["serial_no"] for item in explicit["items"]}
+                self.assertIn(paid.serial_no, explicit_serials)
+                self.assertNotIn(pending.serial_no, explicit_serials)
+            finally:
+                await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_([pending.id, paid.id])))
+                await db.commit()
+
     def test_payment_package_word_export_returns_docx_blob(self):
         asyncio.run(self._payment_package_word_export_returns_docx_blob())
 

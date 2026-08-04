@@ -12859,15 +12859,22 @@ async def list_internal_payment_packages(
     page: int = Query(1, ge=1),
     page_size: int | None = Query(None, ge=1, le=200),
     status_filter: str = Query("", alias="status"),
+    page_id: str = Query("", alias="page_id"),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
+    legacy_status_by_page_id = {
+        "5001003006": "待核销",
+        "50001003006": "待核销",
+    }
+    effective_page_id = page_id.strip() if isinstance(page_id, str) else ""
+    effective_status = status_filter.strip() or legacy_status_by_page_id.get(effective_page_id, "")
     conditions = [
         BusinessRecord.module == "finance_package",
         *(await _record_scope_conditions(identity, db)),
     ]
-    if status_filter.strip():
-        conditions.append(BusinessRecord.status == status_filter.strip())
+    if effective_status:
+        conditions.append(BusinessRecord.status == effective_status)
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0
     query = select(BusinessRecord).where(*conditions).order_by(
         BusinessRecord.created_at.desc(), BusinessRecord.id.desc()

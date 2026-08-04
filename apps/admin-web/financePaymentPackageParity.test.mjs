@@ -26,12 +26,18 @@ test("payment package requests use bounded page coordinates and route status", (
   const paramsFor = evaluateHelper("paymentPackageRequestParams");
   assert.deepEqual(
     JSON.parse(JSON.stringify(paramsFor("finance-internal-writeoff", {}, 2, 15))),
-    { page: 2, page_size: 15, status: "待核销" },
+    { page: 2, page_size: 15, page_id: "5001003006", status: "待核销" },
   );
   assert.deepEqual(
     JSON.parse(JSON.stringify(paramsFor("finance-internal-done", { routeField3: "已付款" }, 1, 20))),
     { page: 1, page_size: 20, status: "已付款" },
   );
+});
+
+test("payment package backend keeps legacy PageId status mapping visible", () => {
+  assert.match(source, /5001003006/);
+  assert.match(source, /page_id/);
+  assert.match(source, /finance-internal-writeoff/);
 });
 
 test("payment package response normalization keeps bounded runtime metadata", () => {

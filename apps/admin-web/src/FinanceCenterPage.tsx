@@ -361,6 +361,7 @@ const paymentPackageRequestParams = (
   page: number,
   pageSize: number,
 ) => {
+  const pageId = initialView === "finance-internal-writeoff" ? "5001003006" : "";
   const status = String(
     initialView === "finance-internal-writeoff"
       ? "待核销"
@@ -369,6 +370,7 @@ const paymentPackageRequestParams = (
   return {
     page,
     page_size: pageSize,
+    ...(pageId ? { page_id: pageId } : {}),
     ...(status ? { status } : {}),
   };
 };
