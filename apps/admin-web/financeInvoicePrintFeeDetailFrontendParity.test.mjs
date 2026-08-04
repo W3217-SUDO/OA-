@@ -126,3 +126,46 @@ test("refund detail still has a stale-response guard for same-record status", ()
   assert.match(openRefundDetail, /refundDetailRequestGuard\.isLatest\(token\)/);
   assert.match(openRefundDetail, /String\(data\.id\) !== String\(row\.id\)/);
 });
+
+test("invoice scanned-file detail request is guarded by module, category, and 404 permission failures", () => {
+  const openRecordFiles = sliceBetween(
+    "const openRecordFiles = async (row: FinanceFlow, category: string)",
+    "\n  const uploadRecordFile",
+    "openRecordFiles",
+  );
+  assert.match(openRecordFiles, /params:\s*{[\s\S]*record_id:\s*row\.id[\s\S]*category/);
+  assert.match(
+    openRecordFiles,
+    /params:\s*{[\s\S]*(module|record_module):\s*row\.module/,
+    "attachment lookup must carry the business module so same numeric ids from other modules cannot leak files",
+  );
+  assert.match(
+    openRecordFiles,
+    /catch \(error: any\)[\s\S]*(response\?\.data\?\.detail|setRecordFileTarget\(null\))/,
+    "403/404 attachment failures should not leave a stale scanned-file modal open",
+  );
+});
+
+test("payment print package lookup rejects cross-module package matches and handles 404 without stale fields", () => {
+  const openPaymentDetail = sliceBetween(
+    "const openPaymentDetail = async (row: Fee)",
+    "\n  const openRefundDetail",
+    "openPaymentDetail",
+  );
+  assert.match(openPaymentDetail, /params:\s*{\s*module:\s*"finance_package"/);
+  assert.match(
+    openPaymentDetail,
+    /paymentPackage[\s\S]*\.module\s*===\s*"finance_package"/,
+    "same package number from a non-finance_package module must not populate print/detail package fields",
+  );
+  const printPayment = sliceBetween(
+    "const printPayment = async (row: Fee) =>",
+    "\n  const loadInvoiceReferenceData",
+    "printPayment",
+  );
+  assert.match(
+    printPayment,
+    /(payment_package_context|finance_package)[\s\S]*(catch|message\.warning)/,
+    "printing should guard package context 403/404 instead of using stale cross-module package fields",
+  );
+});

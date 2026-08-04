@@ -202,6 +202,13 @@ const voucherCategory: Record<string, string> = {
   回款: "回款凭证",
   退费: "退费凭证",
 };
+const attachmentRecordModule = (row: FinanceFlow, category: string) =>
+  row.module ||
+  (category === "发票扫描件"
+    ? "invoice"
+    : category === "退费凭证"
+      ? "refund"
+      : "finance");
 const initialSessionUser = () => {
   try {
     return JSON.parse(localStorage.getItem("user") || "{}");
@@ -956,9 +963,10 @@ export default function FinanceCenterPage({
           });
           const paymentPackage = (packageResponse.data?.items || []).find(
             (item: Fee) =>
-              item.serial_no === packageNo ||
-              item.data?.package_no === packageNo ||
-              item.data?.payment_package_no === packageNo,
+              item.module === "finance_package" &&
+              (String(item.serial_no || "").trim() === packageNo ||
+                String(item.data?.package_no || "").trim() === packageNo ||
+                String(item.data?.payment_package_no || "").trim() === packageNo),
           );
           if (paymentPackage) {
             detail = {
@@ -2369,9 +2377,43 @@ export default function FinanceCenterPage({
       setPaymentPackageLoading(false);
     }
   };
-  const printPayment = (row: Fee) => {
+  const printPayment = async (row: Fee) => {
+    let printRow = row;
+    const packageNo = String(
+      row.data.payment_package_no || row.data.package_no || "",
+    ).trim();
+    if (packageNo) {
+      try {
+        const { data } = await api.get("/records", {
+          params: { module: "finance_package", keyword: packageNo },
+        });
+        const paymentPackage = (data?.items || []).find(
+          (item: Fee) =>
+            item.module === "finance_package" &&
+            (String(item.serial_no || "").trim() === packageNo ||
+              String(item.data?.package_no || "").trim() === packageNo ||
+              String(item.data?.payment_package_no || "").trim() === packageNo),
+        );
+        if (!paymentPackage) {
+          message.warning("未找到付款包或当前账号无权查看");
+          return;
+        }
+        printRow = {
+          ...row,
+          data: {
+            ...row.data,
+            package_no: row.data.package_no || packageNo,
+            payment_package_no: row.data.payment_package_no || packageNo,
+            payment_package_context: paymentPackage,
+          },
+        };
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || "付款包详情加载失败");
+        return;
+      }
+    }
     const preview = createPaymentPrintPreview(
-      row,
+      printRow,
       transactions,
       currentUser.displayName || currentUser.username,
       dayjs().format("YYYY-MM-DD HH:mm"),
@@ -2600,15 +2642,19 @@ export default function FinanceCenterPage({
   };
   const openRecordFiles = async (row: FinanceFlow, category: string) => {
     try {
+      const recordModule = attachmentRecordModule(row, category);
       const { data } = await api.get("/attachments", {
-        params: { record_id: row.id },
+        params: { record_id: row.id, category, module: row.module || recordModule },
       });
       setRecordFiles(data.items);
       setRecordFileTarget(row);
       setRecordFile(null);
       recordFileForm.setFieldsValue({ category, remark: "" });
-    } catch {
-      message.error("业务凭证加载失败");
+    } catch (error: any) {
+      setRecordFiles([]);
+      setRecordFileTarget(null);
+      setRecordFile(null);
+      message.error(error?.response?.data?.detail || "业务凭证加载失败");
     }
   };
   const uploadRecordFile = async () => {
@@ -2618,6 +2664,7 @@ export default function FinanceCenterPage({
     form.append("file", recordFile);
     form.append("record_id", String(recordFileTarget.id));
     form.append("category", v.category);
+    form.append("module", attachmentRecordModule(recordFileTarget, v.category));
     form.append("remark", v.remark || "");
     try {
       await api.post("/attachments", form);
@@ -3784,7 +3831,7 @@ export default function FinanceCenterPage({
     initialView === "finance-payment-print" ? (
       <Space size={0}>
         {row.status === "已付款" && (
-          <Button type="link" onClick={() => printPayment(row)}>
+          <Button type="link" onClick={() => void printPayment(row)}>
             打印
           </Button>
         )}
