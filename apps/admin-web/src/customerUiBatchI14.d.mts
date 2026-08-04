@@ -4,6 +4,7 @@ export const buildCustomerShareRequest: (customerId?: unknown, recipients?: unkn
   method: "post"; url: string; data: { recipients: string[]; comment: string };
 } | null;
 export const normalizeCustomerManager: (value?: unknown) => string;
+export const matchesDirectoryOption: (inputValue?: unknown, option?: { value?: unknown; label?: unknown }) => boolean;
 export const buildCustomerManagerRequest: (customerId?: unknown, manager?: unknown) => {
   method: "put"; url: string; data: { managers: string[] };
 } | null;

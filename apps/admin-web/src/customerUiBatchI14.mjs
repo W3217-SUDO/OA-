@@ -40,6 +40,13 @@ export const buildCustomerShareRequest = (customerId, recipients, comment = "") 
 
 export const normalizeCustomerManager = (value) => String(value ?? "").trim()
 
+export const matchesDirectoryOption = (inputValue, option = {}) => {
+  const needle = String(inputValue ?? "").trim().toLowerCase()
+  if (!needle) return true
+  const text = `${option.value ?? ""} ${option.label ?? ""}`.toLowerCase()
+  return text.includes(needle)
+}
+
 export const buildCustomerManagerRequest = (customerId, manager) => {
   const id = String(customerId ?? "").trim()
   const normalized = normalizeCustomerManager(manager)

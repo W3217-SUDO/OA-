@@ -5422,6 +5422,35 @@ def _normalize_customer_name(value: object) -> str:
     return unicodedata.normalize("NFKC", str(value or "").strip()).casefold()
 
 
+async def _customer_linked_business_counts(customer: BusinessRecord, db: AsyncSession) -> dict[str, int]:
+    customer_no = str(customer.serial_no or "").strip()
+    customer_name = _normalize_customer_name(customer.title)
+    related_records = list((await db.scalars(
+        select(BusinessRecord).where(BusinessRecord.module.in_(["contract", "case", "ipr_case"]))
+    )).all())
+    counts = {"contract_count": 0, "case_count": 0, "civil_case_count": 0}
+    for related in related_records:
+        data = related.data or {}
+        linked = False
+        try:
+            linked = int(data.get("customer_id") or data.get("customer_record_id") or 0) == customer.id
+        except (TypeError, ValueError):
+            linked = False
+        if not linked and customer_no:
+            linked = str(data.get("customer_no") or "").strip() == customer_no
+        if not linked and related.customer:
+            linked = _normalize_customer_name(related.customer) == customer_name
+        if not linked:
+            continue
+        if related.module == "contract":
+            counts["contract_count"] += 1
+        else:
+            counts["case_count"] += 1
+            if related.module == "case" and str(data.get("case_type") or "").strip() == "民事案件":
+                counts["civil_case_count"] += 1
+    return counts
+
+
 async def _ensure_unique_customer_name(title: str, db: AsyncSession, *, exclude_id: int | None = None) -> None:
     normalized = _normalize_customer_name(title)
     if not normalized:
@@ -5924,6 +5953,14 @@ async def recycle_customer(customer_id: int, body: CustomerActionInput, identity
     await _require_record_owner_or_manager(customer, identity, db)
     if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取，不能直接移入回收站")
     if customer.status == "已回收": raise HTTPException(status_code=409, detail="客户已在回收站")
+    linked_counts = await _customer_linked_business_counts(customer, db)
+    if linked_counts["contract_count"] or linked_counts["case_count"]:
+        blockers = []
+        if linked_counts["contract_count"]:
+            blockers.append(f"{linked_counts['contract_count']} 个合同")
+        if linked_counts["case_count"]:
+            blockers.append(f"{linked_counts['case_count']} 个案件")
+        raise HTTPException(status_code=409, detail=f"客户存在{'、'.join(blockers)}，不能删除；请先处理关联合同和案件")
     old = customer.status
     customer.data = {
         **(customer.data or {}),

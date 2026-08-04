@@ -67,6 +67,7 @@ import {
   buildCustomerManagerRequest,
   buildCustomerShareRequest,
   getCustomerMutationErrorMessage,
+  matchesDirectoryOption,
   normalizeCustomerManager,
   validateCustomerPhotoFile,
   validateCustomerUploadFile,
@@ -1231,7 +1232,6 @@ export default function CustomerCenterPage({
     initialView === "customer-mine"
       ? [
           { key: "edit", label: "客户编辑" },
-          { key: "delete", label: "客户删除" },
           { key: "contract", label: "新增合同" },
           { key: "level", label: "申请客户分级调整" },
           { key: "key-change", label: "申请关键字段变更" },
@@ -1242,7 +1242,7 @@ export default function CustomerCenterPage({
       : initialView === "customer-dept"
         ? [{ key: "assign", label: "分配客户" }]
       : initialView === "customer-company"
-        ? [{ key: "assign", label: "分配客户" }]
+        ? [{ key: "edit", label: "客户编辑" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"
@@ -1813,14 +1813,14 @@ export default function CustomerCenterPage({
               <h3>控制信息</h3>
               <div className="customer-create-grid customer-control-grid">
                 <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
-                <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} placeholder="输入或选择人员" /></Form.Item>
+                <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
                 <Form.Item label="是否共享" name="is_shared"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="客户等级" name="level"><Select options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
                   <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
                 </Form.Item>
-                <Form.Item label="客户联系人账号" name="contact"><AutoComplete options={directoryOptions} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
+                <Form.Item label="客户联系人账号" name="contact"><AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
               </div>
             </section>
           </Form>
@@ -1983,7 +1983,7 @@ export default function CustomerCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="客户联系人账号" name="contact">
-              <AutoComplete options={directoryOptions} placeholder="输入姓名或账号，选择系统员工" />
+              <AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" />
             </Form.Item>
             <Form.Item label="联系电话" name="phone">
               <Input />
@@ -2021,7 +2021,7 @@ export default function CustomerCenterPage({
               <Input />
             </Form.Item>
             <div className="span-2"><b>控制信息</b></div>
-            <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} placeholder="输入或选择人员" /></Form.Item>
+            <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
             <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
             <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
             <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>

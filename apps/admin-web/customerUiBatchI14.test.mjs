@@ -7,6 +7,7 @@ import {
   buildCustomerShareRequest,
   normalizeCustomerManager,
   buildCustomerManagerRequest,
+  matchesDirectoryOption,
   validateCustomerUploadFile,
   validateCustomerPhotoFile,
   buildCustomerContactStatusRequest,
@@ -44,6 +45,14 @@ test("manager selection normalizes one username and rejects stale blank labels",
     data: { managers: ["alice"] },
   })
   assert.equal(buildCustomerManagerRequest(12, ""), null)
+})
+
+test("directory autocomplete matches both account and display name", async () => {
+  assert.equal(matchesDirectoryOption("zhang", { value: "zhangsan", label: "张三（zhangsan）" }), true)
+  assert.equal(matchesDirectoryOption("张三", { value: "zhangsan", label: "张三（zhangsan）" }), true)
+  assert.equal(matchesDirectoryOption("lisi", { value: "zhangsan", label: "张三（zhangsan）" }), false)
+  const page = await readFile(new URL("./src/CustomerCenterPage.tsx", import.meta.url), "utf8")
+  assert.equal((page.match(/filterOption=\{matchesDirectoryOption\}/g) || []).length, 4)
 })
 
 test("document and contact photo preflight enforce old upload constraints", () => {

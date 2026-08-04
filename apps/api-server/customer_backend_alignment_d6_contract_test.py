@@ -3,6 +3,7 @@
 import shutil
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -14,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, RolePermission, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, RolePermission, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -30,7 +31,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         tables = [
             User.__table__, RolePermission.__table__, BusinessRecord.__table__,
-            WorkflowEvent.__table__, FileAttachment.__table__,
+            WorkflowEvent.__table__, FileAttachment.__table__, SystemParameter.__table__,
         ]
         async with self.engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
@@ -46,6 +47,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add(User(username="customer-auditor", display_name="客户审计员", department="上海分所", role="auditor", password_hash="test", is_active=True))
             db.add(User(username="customer-admin", display_name="客户管理员", department="上海分所", role="admin", password_hash="test", is_active=True))
+            db.add(SystemParameter(category="customer_type", code="customer", name="客户", is_active=True))
             customer = BusinessRecord(
                 module="customer", serial_no="KH-D6-001", title="D6 客户", customer="D6 客户",
                 status="正常", owner="customer-auditor", department="上海分所",
@@ -155,6 +157,50 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             after = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
         self.assertEqual(after, before)
+
+    async def test_recycle_blocks_customers_with_linked_contracts_or_cases(self):
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            db.add(BusinessRecord(
+                module="contract", serial_no="HT-D6-BLOCK", title="D6 关联合同",
+                customer=customer.title, status="履行中", owner="customer-admin", department="上海分所",
+                data={"customer_id": customer.id, "customer_no": customer.serial_no},
+            ))
+            before_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+            await db.commit()
+
+        response = await self.client.post(f"{API}/customers/{self.customer_id}/recycle", json={"comment": "不应删除"})
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("客户存在1 个合同", response.json()["detail"])
+
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            self.assertEqual(customer.status, "正常")
+            after_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+        self.assertEqual(after_events, before_events)
+
+    async def test_auto_customer_serial_uses_legacy_short_sequence(self):
+        serial_prefix = f"SHKH{datetime.now():%y}"
+        async with self.sessions() as db:
+            db.add(BusinessRecord(
+                module="customer", serial_no=f"{serial_prefix}00007", title="CODEX-I11-existing",
+                customer="CODEX-I11-existing", status="潜在", owner="customer-admin",
+                department="上海分所", data={"customer_type": "客户", "level": "立案客户"},
+            ))
+            await db.commit()
+
+        response = await self.client.post(f"{API}/customers", json={
+            "title": "CODEX-I11-auto-serial",
+            "status": "潜在",
+            "owner": "customer-admin",
+            "customer_type": "客户",
+            "level": "立案客户",
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        serial_no = response.json()["serial_no"]
+        self.assertEqual(serial_no, f"{serial_prefix}00008")
+        self.assertRegex(serial_no, r"^SHKH\d{7}$")
+        self.assertNotRegex(serial_no, r"\d{10,}")
 
     async def test_identity_field_filtering_and_workflow_audit(self):
         app.dependency_overrides[current_identity] = lambda: AUDITOR

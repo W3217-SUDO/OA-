@@ -8,10 +8,10 @@ const actionsSource = source.slice(
   source.indexOf('const runOriginalAction'),
 )
 
-test('company customers expose only the legacy assignment action', () => {
+test('company customers expose assignment plus guarded edit/delete actions', () => {
   assert.match(
     actionsSource,
-    /initialView === "customer-company"\s*\?\s*\[\s*\{ key: "assign", label: "分配客户" \}\s*\]\s*:/,
+    /initialView === "customer-company"\s*\?\s*\[\s*\{ key: "edit", label: "客户编辑" \}, \{ key: "delete", label: "客户删除" \}, \{ key: "assign", label: "分配客户" \}\s*\]\s*:/,
   )
 
   const companyStart = actionsSource.indexOf('initialView === "customer-company"')
@@ -20,6 +20,6 @@ test('company customers expose only the legacy assignment action', () => {
 
   assert.doesNotMatch(
     companyActions,
-    /key: "edit"|key: "delete"|level-review|key-change-review|portal-open|portal-close/,
+    /level-review|key-change-review|portal-open|portal-close/,
   )
 })
