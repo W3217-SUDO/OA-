@@ -28,10 +28,11 @@ test('HR admin navigation uses a single permission gate before changing pages', 
   assert.ok(navigationBlock.includes('window.location.href'), 'authorized navigation should still move to the target admin page')
 })
 
-test('system user management entry is routed through the guarded navigation helper', () => {
-  assert.ok(columns.includes('openHrAdminNavigation(\'system-users\''), 'row-level system user entry must use the guarded helper')
-  assert.ok(!columns.includes('page=system-users'), 'row-level system user entry must not bypass the helper with a raw URL')
-  assert.ok(columns.includes('actionAccess.canManageAccount'), 'system user entry remains hidden from users without account-management rights')
+test('standalone system user management entry is removed from employee rows', () => {
+  assert.ok(!columns.includes('openHrAdminNavigation(\'system-users\''), 'employee rows should not open the old standalone system user page')
+  assert.ok(!columns.includes('page=system-users'), 'employee rows must not link to the removed standalone page')
+  assert.ok(!columns.includes('>系统用户<'), 'employee row actions should not expose a duplicate system user button')
+  assert.ok(columns.includes('openPasswordReset'), 'password reset stays available inside employee management')
 })
 
 test('contract approval relationship navigation is admin-gated and does not jump when unauthorized', () => {

@@ -24,7 +24,7 @@ const batchDeletionModal = block('const batchDeletionModal=', 'if(!isNew)return'
 const EMPLOYEE_SUBRECORD = '员工附属记录'
 const EMPLOYEE_ARCHIVE_FILE = '员工档案文件'
 const BUSINESS_LINK = '业务关联'
-const SYSTEM_USER_MANAGEMENT = '系统用户管理'
+const EMPLOYEE_MANAGEMENT_GUIDANCE = '员工管理'
 const PROTECTED_LOGIN = '受保护登录账号'
 const CASE_REFERENCE = '案件'
 const LEAVE = '请假'
@@ -46,7 +46,7 @@ test('single employee deletion impact keeps old business-occupied guard and expl
     [EMPLOYEE_SUBRECORD, 'employee subrecords'],
     [EMPLOYEE_ARCHIVE_FILE, 'employee archive files'],
     [BUSINESS_LINK, 'old business-occupied guard'],
-    [SYSTEM_USER_MANAGEMENT, 'System User Management guidance'],
+    [EMPLOYEE_MANAGEMENT_GUIDANCE, 'employee management guidance'],
     [PROTECTED_LOGIN, 'protected login account blocker'],
     [CASE_REFERENCE, 'case reference blocker'],
   ]), [])
