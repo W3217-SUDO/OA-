@@ -20,6 +20,7 @@ import {
 import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import {
   buildIprCaseActionPayload,
@@ -554,6 +555,23 @@ export default function IprCenterPage({
       await Promise.all([loadCaseCustomers(detail.id), loadCaseContacts(detail.id)]);
     } catch (e: any) {
       message.error(e?.response?.data?.detail || "案件客户保存失败");
+    }
+  };
+  const openLinkedCaseCustomer = async (customer: IprCaseCustomer) => {
+    try {
+      const target = await resolveCustomerDetailTarget({
+        id: customer.customer_id,
+        serial_no: customer.customer_no,
+        title: customer.name,
+      });
+      if (!target) {
+        message.warning("未找到关联客户或当前账号无权查看");
+        return;
+      }
+      rememberCustomerDetailTarget(target);
+      onNavigate?.("customer-company");
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || "关联客户加载失败");
     }
   };
   const openContactSelector = async (customer: IprCaseCustomer) => {
@@ -1449,8 +1467,8 @@ export default function IprCenterPage({
                 locale={{ emptyText: "暂未关联案件客户" }}
                 dataSource={caseCustomers}
                 columns={[
-                  { title: "客户编号", dataIndex: "customer_no", width: 150 },
-                  { title: "客户名称", dataIndex: "name", render: (value, row) => <Space>{value}{row.is_primary ? <Tag color="blue">主客户</Tag> : null}</Space> },
+                  { title: "客户编号", dataIndex: "customer_no", width: 150, render: (value, row) => <Button type="link" size="small" onClick={() => void openLinkedCaseCustomer(row)}>{value || "—"}</Button> },
+                  { title: "客户名称", dataIndex: "name", render: (value, row) => <Space><Button type="link" size="small" onClick={() => void openLinkedCaseCustomer(row)}>{value || "—"}</Button>{row.is_primary ? <Tag color="blue">主客户</Tag> : null}</Space> },
                   { title: "状态", dataIndex: "status", width: 110 },
                   { title: "联系人", width: 130, render: (_, row) => <Button type="link" size="small" onClick={() => void openContactSelector(row)}>维护联系人</Button> },
                 ]}
