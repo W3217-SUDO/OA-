@@ -2433,6 +2433,9 @@ class SealApplicationInput(BaseModel):
     is_offline_print: bool = False
     document_names: str = ""
     description: str = ""
+    source_attachment_ids: list[int] = Field(default_factory=list)
+    contract_file_ids: list[int] = Field(default_factory=list)
+    case_file_ids: list[int] = Field(default_factory=list)
 
 
 class SealPackageDownloadInput(BaseModel):
@@ -15775,7 +15778,15 @@ async def delete_template(template_id: int, identity: dict = Depends(current_ide
 
 
 @app.get(f"{settings.api_prefix}/attachments")
-async def list_attachments(record_id: int | None = None, finance_transaction_id: int | None = None, category: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_attachments(
+    record_id: int | None = None,
+    finance_transaction_id: int | None = None,
+    category: str = "",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
     record = None
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
@@ -15789,9 +15800,18 @@ async def list_attachments(record_id: int | None = None, finance_transaction_id:
     items = (await db.scalars(select(FileAttachment).where(*conditions).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all()
     if not (record and record.module == "task"):
         items = await _filter_visible_attachments(items, identity, db)
+    total = len(items)
+    items = items[(page - 1) * page_size:(page - 1) * page_size + page_size]
     record_ids = {item.record_id for item in items if item.record_id}
     records = {record.id: record for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(record_ids)))).all()} if record_ids else {}
-    return {"items": [_attachment_dict(item, records.get(item.record_id)) for item in items], "total": len(items), "required_archive_categories": sorted(ARCHIVE_REQUIRED_CATEGORIES)}
+    return {
+        "items": [_attachment_dict(item, records.get(item.record_id)) for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+        "required_archive_categories": sorted(ARCHIVE_REQUIRED_CATEGORIES),
+    }
 
 
 @app.get(f"{settings.api_prefix}/attachments/{{attachment_id}}")
@@ -16459,6 +16479,62 @@ async def package_download_seal_files(body: SealPackageDownloadInput, identity: 
     )
 
 
+async def _copy_seal_source_attachments(
+    target_record: BusinessRecord,
+    source_attachment_ids: list[int],
+    identity: dict,
+    db: AsyncSession,
+) -> list[Path]:
+    """Copy contract/case source files into a draft seal application."""
+    ids = list(dict.fromkeys([int(item_id) for item_id in source_attachment_ids if int(item_id) > 0]))
+    if not ids:
+        return []
+    source_items = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(ids)))).all())
+    if len(source_items) != len(ids):
+        raise HTTPException(status_code=404, detail="閫変腑鐨勬潵婧愭枃浠朵笉瀛樺湪")
+    by_id = {item.id: item for item in source_items}
+    created_targets: list[Path] = []
+    category = "用印文件"
+    try:
+        for item_id in ids:
+            source = by_id[item_id]
+            if not source.record_id:
+                raise HTTPException(status_code=422, detail="閫変腑鐨勬潵婧愭枃浠舵湭鍏宠仈涓氬姟璁板綍")
+            source_record = await _ensure_attachment_record_visible(source.record_id, identity, db)
+            if source_record.module == "contract":
+                await _ensure_record_module(source_record.id, "contract", identity, db)
+            elif source_record.module == "case":
+                await _ensure_record_module(source_record.id, "case", identity, db)
+            else:
+                raise HTTPException(status_code=422, detail="鐢ㄥ嵃鐢宠鍙兘浠庡悎鍚屾垨妗堜欢澶嶅埗鏉ユ簮鏂囦欢")
+            source_path = Path(source.path)
+            if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
+                raise HTTPException(status_code=404, detail=f"鏉ユ簮鏂囦欢 {source.original_name} 涓嶅瓨鍦?")
+            target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
+            target.write_bytes(source_path.read_bytes())
+            created_targets.append(target)
+            db.add(FileAttachment(
+                record_id=target_record.id,
+                category=category,
+                original_name=source.original_name,
+                stored_name=target.name,
+                content_type=source.content_type or "application/octet-stream",
+                size=target.stat().st_size,
+                path=str(target),
+                uploader=identity["username"],
+                remark=f"copied from {source_record.serial_no}",
+                document_date=source.document_date,
+            ))
+        await db.flush()
+        await _sync_seal_document_names(target_record, db)
+        return created_targets
+    except Exception:
+        await db.rollback()
+        for target in created_targets:
+            target.unlink(missing_ok=True)
+        raise
+
+
 @app.post(f"{settings.api_prefix}/seals/applications", status_code=status.HTTP_201_CREATED)
 async def create_seal_application(body: SealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     asset = await db.get(SealAsset, body.seal_asset_id)
@@ -16467,9 +16543,19 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     case_no, contract_no, customer, use_type = await _validated_seal_relations(body, identity, db)
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
     item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "copies": body.copies, "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
-    db.add(item); await db.flush()
-    db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
-    await db.commit(); await db.refresh(item)
+    copied_targets: list[Path] = []
+    source_attachment_ids = [*body.source_attachment_ids, *body.contract_file_ids, *body.case_file_ids]
+    # FileAttachment copies are created inside the same transaction as the draft.
+    try:
+        db.add(item); await db.flush()
+        copied_targets = await _copy_seal_source_attachments(item, source_attachment_ids, identity, db)
+        db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
+        await db.commit(); await db.refresh(item)
+    except Exception:
+        await db.rollback()
+        for target in copied_targets:
+            target.unlink(missing_ok=True)
+        raise
     return await _seal_record_dict(item, db)
 
 
@@ -16512,6 +16598,83 @@ async def _get_seal_application(record_id: int, identity: dict, db: AsyncSession
     except HTTPException as exc:
         if exc.status_code == 404: raise HTTPException(status_code=404, detail="用印申请不存在或无权访问") from exc
         raise
+
+
+@app.get(f"{settings.api_prefix}/seals/applications/{{record_id}}/files")
+async def list_seal_application_files(
+    record_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    record = await _get_seal_application(record_id, identity, db)
+    conditions = [FileAttachment.record_id == record.id, FileAttachment.category == "用印文件"]
+    total = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(*conditions)) or 0)
+    rows = (await db.scalars(
+        select(FileAttachment)
+        .where(*conditions)
+        .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all()
+    return {
+        "items": [_attachment_dict(item, record) for item in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
+
+
+@app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/files", status_code=status.HTTP_201_CREATED)
+async def upload_seal_application_files(
+    record_id: int,
+    files: list[UploadFile] = File(...),
+    remark: str = Form(""),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    record = await _get_seal_application(record_id, identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status != "草稿":
+        raise HTTPException(status_code=409, detail="只有草稿用印申请可以上传用印文件")
+    if not files:
+        raise HTTPException(status_code=422, detail="请至少选择一个用印文件")
+    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    prepared: list[tuple[UploadFile, bytes, Path, str]] = []
+    try:
+        for file in files:
+            suffix = Path(file.filename or "").suffix.lower()
+            if suffix not in allowed:
+                raise HTTPException(status_code=422, detail="不支持的文件格式")
+            content = await file.read()
+            if len(content) > 20 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
+            target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+            target.write_bytes(content)
+            prepared.append((file, content, target, suffix))
+        for file, content, target, _ in prepared:
+            db.add(FileAttachment(
+                record_id=record.id,
+                category="用印文件",
+                original_name=Path(file.filename or target.name).name,
+                stored_name=target.name,
+                content_type=file.content_type or "application/octet-stream",
+                size=len(content),
+                path=str(target),
+                uploader=identity["username"],
+                remark=remark,
+            ))
+        await db.flush()
+        await _sync_seal_document_names(record, db)
+        db.add(WorkflowEvent(record_id=record.id, action="上传用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{len(prepared)} 个文件"))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        for _, _, target, _ in prepared:
+            target.unlink(missing_ok=True)
+        raise
+    return await list_seal_application_files(record.id, 1, min(200, max(15, len(prepared))), identity, db)
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/submit")

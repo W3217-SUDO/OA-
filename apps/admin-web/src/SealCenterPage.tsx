@@ -318,6 +318,9 @@ export default function SealCenterPage({
   const [previewDetail, setPreviewDetail] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
+  const [attachmentPage, setAttachmentPage] = useState(1);
+  const [attachmentPageSize, setAttachmentPageSize] = useState(sealFilePagination.defaultPageSize);
+  const [attachmentTotal, setAttachmentTotal] = useState(0);
   const [attachmentSelectedKeys, setAttachmentSelectedKeys] = useState<number[]>([]);
   const detailRequestTracker = useMemo(() => createSealDetailRequestTracker(), []);
   const fileListRequestTracker = useMemo(() => createSealFileListRequestTracker(), []);
@@ -325,6 +328,9 @@ export default function SealCenterPage({
   const [fileListOpen, setFileListOpen] = useState(false);
   const [fileListRow, setFileListRow] = useState<SealRow | null>(null);
   const [fileListAttachments, setFileListAttachments] = useState<AttachmentRow[]>([]);
+  const [fileListPage, setFileListPage] = useState(1);
+  const [fileListPageSize, setFileListPageSize] = useState(sealFilePagination.defaultPageSize);
+  const [fileListTotal, setFileListTotal] = useState(0);
   const [stampAttachments, setStampAttachments] = useState<AttachmentRow[]>([]);
   const [stampAttachmentId, setStampAttachmentId] = useState<number | null>(null);
   const [stampAttachmentUploading, setStampAttachmentUploading] = useState(false);
@@ -373,7 +379,13 @@ export default function SealCenterPage({
     let active = true;
     setSourceAttachmentLoading(true);
     api
-      .get("/attachments", { params: { record_id: selectedSourceRecord.id } })
+      .get("/attachments", {
+        params: {
+          record_id: selectedSourceRecord.id,
+          page: 1,
+          page_size: 200,
+        },
+      })
       .then(({ data }) => {
         if (!active) return;
         const items = Array.isArray(data.items) ? data.items : [];
@@ -800,7 +812,12 @@ export default function SealCenterPage({
   const loadStampAttachments = async (row: SealRow) => {
     try {
       const { data } = await api.get("/attachments", {
-        params: { record_id: row.id, category: "用印文件" },
+        params: {
+          record_id: row.id,
+          category: "用印文件",
+          page: 1,
+          page_size: 200,
+        },
       });
       const items = Array.isArray(data.items) ? data.items : [];
       setStampAttachments(items);
@@ -941,18 +958,32 @@ export default function SealCenterPage({
       setActionSubmitting(false);
     }
   };
-  const loadDetailFiles = async (row: SealRow) => {
+  const loadDetailFiles = async (
+    row: SealRow,
+    nextPage = attachmentPage,
+    nextPageSize = attachmentPageSize,
+  ) => {
     const requestId = detailRequestTracker.next();
     try {
       const { data } = await api.get("/attachments", {
-        params: { record_id: row.id, category: "用印文件" },
+        params: {
+          record_id: row.id,
+          category: "用印文件",
+          page: nextPage,
+          page_size: nextPageSize,
+        },
       });
       if (!detailRequestTracker.isCurrent(requestId)) return;
-      setAttachments(data.items);
+      const items = Array.isArray(data.items) ? data.items : [];
+      setAttachmentPage(nextPage);
+      setAttachmentPageSize(nextPageSize);
+      setAttachmentTotal(Number(data.total ?? items.length));
+      setAttachments(items);
       setAttachmentSelectedKeys([]);
     } catch (error: any) {
       if (!detailRequestTracker.isCurrent(requestId)) return;
       setAttachments([]);
+      setAttachmentTotal(0);
       setAttachmentSelectedKeys([]);
       message.error(
         error?.response?.data?.detail ||
@@ -965,11 +996,19 @@ export default function SealCenterPage({
     setDetail(row);
     setHistory([]);
     setAttachments([]);
+    setAttachmentPage(1);
+    setAttachmentPageSize(sealFilePagination.defaultPageSize);
+    setAttachmentTotal(0);
     setAttachmentSelectedKeys([]);
     const [historyResult, filesResult] = await Promise.allSettled([
       api.get(`/records/${row.id}/history`),
       api.get("/attachments", {
-        params: { record_id: row.id, category: "用印文件" },
+        params: {
+          record_id: row.id,
+          category: "用印文件",
+          page: 1,
+          page_size: sealFilePagination.defaultPageSize,
+        },
       }),
     ]);
     if (!detailRequestTracker.isCurrent(requestId)) return;
@@ -983,9 +1022,14 @@ export default function SealCenterPage({
       );
     }
     if (filesResult.status === "fulfilled") {
-      setAttachments(filesResult.value.data.items || []);
+      const items = Array.isArray(filesResult.value.data.items)
+        ? filesResult.value.data.items
+        : [];
+      setAttachmentTotal(Number(filesResult.value.data.total ?? items.length));
+      setAttachments(items);
     } else {
       setAttachments([]);
+      setAttachmentTotal(0);
       message.error(
         filesResult.reason?.response?.data?.detail ||
           sealAttachmentListFailureMessage(filesResult.reason?.response?.status),
@@ -1009,28 +1053,47 @@ export default function SealCenterPage({
       );
     }
   };
-  const openFileList = async (row: SealRow) => {
+  const loadFileList = async (
+    row: SealRow,
+    nextPage = fileListPage,
+    nextPageSize = fileListPageSize,
+  ) => {
     const requestId = fileListRequestTracker.next();
-    setFileListRow(null);
-    setFileListAttachments([]);
-    setFileListOpen(false);
     try {
       const { data } = await api.get("/attachments", {
-        params: { record_id: row.id, category: "用印文件" },
+        params: {
+          record_id: row.id,
+          category: "用印文件",
+          page: nextPage,
+          page_size: nextPageSize,
+        },
       });
       if (!fileListRequestTracker.isCurrent(requestId)) return;
       setFileListRow(row);
-      setFileListAttachments(data.items || []);
+      setFileListPage(nextPage);
+      setFileListPageSize(nextPageSize);
+      setFileListTotal(Number(data.total ?? (Array.isArray(data.items) ? data.items.length : 0)));
+      setFileListAttachments(Array.isArray(data.items) ? data.items : []);
       setFileListOpen(true);
     } catch (error: any) {
       if (!fileListRequestTracker.isCurrent(requestId)) return;
       setFileListRow(null);
       setFileListAttachments([]);
+      setFileListTotal(0);
       setFileListOpen(false);
       message.error(
         sealErrorMessage(error, sealAttachmentListFailureMessage(error?.response?.status)),
       );
     }
+  };
+  const openFileList = async (row: SealRow) => {
+    setFileListRow(null);
+    setFileListAttachments([]);
+    setFileListPage(1);
+    setFileListPageSize(sealFilePagination.defaultPageSize);
+    setFileListTotal(0);
+    setFileListOpen(false);
+    await loadFileList(row, 1, sealFilePagination.defaultPageSize);
   };
   const previewAttachment = async (item: AttachmentRow) => {
     const requestId = previewRequestTracker.next();
@@ -1089,7 +1152,7 @@ export default function SealCenterPage({
     try {
       await postSeal("/attachments", body);
       message.success(`已上传用印文件：${file.name}`);
-      await loadDetailFiles(detail);
+      await loadDetailFiles(detail, 1, attachmentPageSize);
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "用印文件上传失败");
@@ -1104,7 +1167,7 @@ export default function SealCenterPage({
     try {
       await deleteSeal(`/attachments/${item.id}`);
       message.success("用印文件已删除");
-      if (detail) await loadDetailFiles(detail);
+      if (detail) await loadDetailFiles(detail, attachmentPage, attachmentPageSize);
       load();
     } catch (error: any) {
       message.error(
@@ -1124,7 +1187,7 @@ export default function SealCenterPage({
       });
       message.success(`已删除 ${attachmentSelectedKeys.length} 个用印文件`);
       setAttachmentSelectedKeys([]);
-      await loadDetailFiles(detail);
+      await loadDetailFiles(detail, attachmentPage, attachmentPageSize);
       load();
     } catch (error: any) {
       message.error(
@@ -2177,6 +2240,9 @@ export default function SealCenterPage({
           setDetail(null);
           setHistory([]);
           setAttachments([]);
+          setAttachmentPage(1);
+          setAttachmentPageSize(sealFilePagination.defaultPageSize);
+          setAttachmentTotal(0);
           setAttachmentSelectedKeys([]);
         }}
       >
@@ -2354,7 +2420,18 @@ export default function SealCenterPage({
                     }
                   : undefined
               }
-              pagination={sealFilePagination}
+              pagination={{
+                current: attachmentPage,
+                pageSize: attachmentPageSize,
+                total: attachmentTotal,
+                showSizeChanger: sealFilePagination.showSizeChanger,
+                pageSizeOptions: sealFilePagination.pageSizeOptions.map(String),
+                showQuickJumper: sealFilePagination.showQuickJumper,
+                showTotal: sealFilePagination.showTotal,
+                onChange: (page, pageSize) => {
+                  if (detail) void loadDetailFiles(detail, page, pageSize);
+                },
+              }}
               locale={{
                 emptyText: "暂无用印文件；提交审批前请上传至少一个文件",
               }}
@@ -2481,6 +2558,9 @@ export default function SealCenterPage({
           setFileListOpen(false);
           setFileListRow(null);
           setFileListAttachments([]);
+          setFileListPage(1);
+          setFileListPageSize(sealFilePagination.defaultPageSize);
+          setFileListTotal(0);
           setAttachmentSelectedKeys([]);
         }}
         footer={<Button onClick={() => {
@@ -2488,13 +2568,27 @@ export default function SealCenterPage({
           setFileListOpen(false);
           setFileListRow(null);
           setFileListAttachments([]);
+          setFileListPage(1);
+          setFileListPageSize(sealFilePagination.defaultPageSize);
+          setFileListTotal(0);
           setAttachmentSelectedKeys([]);
         }}>关闭</Button>}
       >
         <Table
           size="small"
           rowKey="id"
-          pagination={false}
+          pagination={{
+            current: fileListPage,
+            pageSize: fileListPageSize,
+            total: fileListTotal,
+            showSizeChanger: sealFilePagination.showSizeChanger,
+            pageSizeOptions: sealFilePagination.pageSizeOptions.map(String),
+            showQuickJumper: sealFilePagination.showQuickJumper,
+            showTotal: sealFilePagination.showTotal,
+            onChange: (page, pageSize) => {
+              if (fileListRow) void loadFileList(fileListRow, page, pageSize);
+            },
+          }}
           locale={{ emptyText: "" }}
           dataSource={fileListAttachments}
           columns={[
