@@ -76,7 +76,7 @@ export default function UserCenterPage(){
       <div className="account-setting-help">请完善以下信息,方便我们更好的为您服务</div>
       <Form form={passwordForm} className="account-setting-form" labelCol={{flex:'100px'}} wrapperCol={{flex:'360px'}} labelAlign="right" colon>
         <Form.Item label="原密码" name="current_password" rules={[{required:true,message:'请输入原密码'}]}><Input.Password autoComplete="current-password"/></Form.Item>
-        <Form.Item label="新密码" name="new_password" rules={[{required:true,message:'请输入新密码'},{min:8,message:'密码至少 8 位'}]}><Input.Password autoComplete="new-password"/></Form.Item>
+        <Form.Item label="新密码" name="new_password" rules={[{required:true,message:'请输入新密码'},{min:8,message:'密码至少 8 位'},({getFieldValue})=>({validator(_,value){return !value||!getFieldValue('current_password')||value!==getFieldValue('current_password')?Promise.resolve():Promise.reject(new Error('新密码不能与原密码相同'))}})]}><Input.Password autoComplete="new-password"/></Form.Item>
         <Form.Item label="新密码确认" name="confirm_password" dependencies={['new_password']} rules={[{required:true,message:'请再次输入新密码'},({getFieldValue})=>({validator(_,value){return !value||getFieldValue('new_password')===value?Promise.resolve():Promise.reject(new Error('两次输入的新密码不一致'))}})]}><Input.Password autoComplete="new-password"/></Form.Item>
         <Form.Item label=" "><Button type="primary" icon={<SaveOutlined/>} onClick={changePassword}>保存</Button></Form.Item>
       </Form>

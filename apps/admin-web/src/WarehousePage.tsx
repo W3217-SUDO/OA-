@@ -64,7 +64,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
     })
     return [...grouped.entries()].sort(([left],[right])=>left.localeCompare(right,'zh-CN')).map(([warehouseName,locations])=>{
       const total=[...locations.values()].reduce((sum,count)=>sum+count,0)
-      return {key:`warehouse:${warehouseName}`,title:`${warehouseName}（${total}）`,children:[...locations.entries()].sort(([left],[right])=>left.localeCompare(right,'zh-CN')).map(([locationName,count])=>({key:`location:${warehouseName}\u0000${locationName}`,title:`${locationName}（${count}）`}))}
+      return {key:`warehouse:${warehouseName}`,title:`${warehouseName}【${total}】`,children:[...locations.entries()].sort(([left],[right])=>left.localeCompare(right,'zh-CN')).map(([locationName,count])=>({key:`location:${warehouseName}\u0000${locationName}`,title:`${locationName}【${count}】`}))}
     })
   },[allRows])
 
@@ -119,7 +119,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
     <div className="warehouse-layout">
       <aside className="warehouse-storage-tree" aria-label="仓库库位汇总">
         <div className="warehouse-storage-title"><span>仓库库位</span><Button type="link" size="small" onClick={()=>{setWarehouse('');setLocation('')}}>全部</Button></div>
-        <Tree blockNode defaultExpandAll virtual={false} selectedKeys={[location?`location:${warehouse}\u0000${location}`:warehouse?`warehouse:${warehouse}`:'']} onSelect={selectStorageLocation} treeData={storageTreeData}/>
+        <Tree blockNode virtual={false} selectedKeys={[location?`location:${warehouse}\u0000${location}`:warehouse?`warehouse:${warehouse}`:'']} onSelect={selectStorageLocation} treeData={storageTreeData}/>
         {!storageTreeData.length&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无证物库位"/>}
       </aside>
       <section className="warehouse-list-panel">

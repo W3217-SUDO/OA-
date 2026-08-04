@@ -35,6 +35,7 @@ type QueryField = {
 };
 type PageKind =
   | "receipt"
+  | "receipt-query"
   | "receipt-create"
   | "payment"
   | "payment-audit"
@@ -72,7 +73,7 @@ const pages: Record<string, PageConfig> = {
   "platform-finance-overview-claim": { title: "回款领取", kind: "receipt", status: "待认领" },
   "platform-finance-overview-pending": { title: "待分配回款", kind: "receipt", status: "待分配" },
   "platform-finance-overview-allocated": { title: "已分配回款", kind: "receipt", status: "已分配" },
-  "platform-finance-overview-query": { title: "回款查询", kind: "receipt" },
+  "platform-finance-overview-query": { title: "回款查询", kind: "receipt-query" },
 
   "platform-finance-payment": { title: "我的请款单", kind: "payment" },
   "platform-finance-payment-mine": { title: "我的请款单", kind: "payment" },
@@ -165,6 +166,17 @@ const receiptFields: QueryField[] = [
   { key: "payer", label: "回款单位" },
   { key: "method", label: "回款方式", kind: "select", options: paymentMethods },
   { key: "contractNo", label: "合同编号" },
+];
+const receiptQueryFields: QueryField[] = [
+  { key: "sequenceNo", label: "回款流水号" },
+  { key: "customer", label: "客户名称" },
+  { key: "receiptRange", label: "回款日期", kind: "range" },
+  { key: "payer", label: "回款单位" },
+  { key: "method", label: "回款方式", kind: "select", options: paymentMethods },
+  { key: "contractNo", label: "合同编号" },
+  { key: "salesRep", label: "销售代表" },
+  { key: "bankNo", label: "银行单号" },
+  { key: "customerManager", label: "客户管理人" },
 ];
 const paymentFields: QueryField[] = [
   { key: "applicationRange", label: "申请日期", kind: "range" },
@@ -267,6 +279,21 @@ const receiptColumns: TableColumnsType<EmptyRow> = [
   column("回款方式", 100),
   column("备注", 180),
 ];
+const receiptQueryColumns: TableColumnsType<EmptyRow> = [
+  operationColumn,
+  column("回款流水号", 150),
+  column("合同编号", 145),
+  column("客户名称", 190),
+  column("回款单位", 190),
+  column("销售代表", 100),
+  column("回款日期", 110),
+  column("回款金额", 115),
+  column("官费", 110),
+  column("代理费", 115),
+  column("其他费用", 125),
+  column("回款方式", 100),
+  column("银行单据号", 145),
+];
 const paymentColumns: TableColumnsType<EmptyRow> = [
   operationColumn,
   column("请款单号", 150),
@@ -303,11 +330,12 @@ const invoiceColumns: TableColumnsType<EmptyRow> = [
   column("开票金额", 110),
   column("高开金额", 110),
   column("开票抬头", 190),
-  column("发票号码", 140),
+  column("发票编号", 140),
   column("申请人", 90),
   column("领票人", 90),
   column("开票日期", 105),
   column("状态", 90),
+  column("备注", 180),
 ];
 const settlementColumns: TableColumnsType<EmptyRow> = [
   operationColumn,
@@ -361,6 +389,7 @@ const feeQueryColumns: TableColumnsType<EmptyRow> = [
 
 const fieldsByKind: Record<PageKind, QueryField[]> = {
   receipt: receiptFields,
+  "receipt-query": receiptQueryFields,
   "receipt-create": [],
   payment: paymentFields,
   "payment-audit": paymentAuditFields,
@@ -371,6 +400,7 @@ const fieldsByKind: Record<PageKind, QueryField[]> = {
 };
 const columnsByKind: Record<PageKind, TableColumnsType<EmptyRow>> = {
   receipt: receiptColumns,
+  "receipt-query": receiptQueryColumns,
   "receipt-create": [],
   payment: paymentColumns,
   "payment-audit": paymentAuditColumns,
@@ -660,7 +690,7 @@ export default function PlatformFinancePage({
     setSubmittedQuery(initialQuery);
     setSelectedKeys([]);
   };
-  const showSelection = ["receipt", "payment", "payment-audit", "fee-query"].includes(
+  const showSelection = ["receipt", "invoice", "payment", "payment-audit", "fee-query"].includes(
     config.kind,
   );
 
@@ -723,10 +753,16 @@ export default function PlatformFinancePage({
         客户名称: item.claimed_customer || item.customer || "—",
         客户: item.customer || "—",
         客户管理人: item.claimant || data.customer_manager || item.owner || "—",
+        回款流水号: item.serial_no || item.receipt_no || "—",
         回款单位: item.payer_name || data.payer || "—",
+        销售代表: data.sales_rep || data.sales_representative || item.sales_rep || "—",
         回款日期: item.received_date || data.received_at || "—",
         回款时间: item.received_date || data.received_at || "—",
         回款金额: money(item.amount ?? data.received_amount ?? amount),
+        官费: money(data.official_fee),
+        代理费: money(data.agency_fee),
+        其他费用: money(data.other_fee),
+        银行单据号: data.bank_reference || item.bank_reference || "—",
         已分金额: money(item.allocated_amount),
         未分金额: money(item.remaining_amount),
         回款方式: data.payment_method || "银行转账",
@@ -749,6 +785,7 @@ export default function PlatformFinancePage({
         退费金额: money(data.refund_amount),
         开票抬头: data.invoice_title || item.customer || "—",
         发票号码: data.invoice_no || "—",
+        发票编号: data.invoice_no || "—",
         案件阶段: data.case_stage || "—",
         开庭律师: data.hearing_lawyer || "—",
         律师助理: data.assistant || "—",
@@ -795,10 +832,10 @@ export default function PlatformFinancePage({
       return value && value !== "—" ? <Button type="link" onClick={() => openCustomerDetail(value, row._source?.data?.customer_no)}>{value}</Button> : "—";
     },
   } : item);
-  const exportCsv = () => {
+  const exportCsv = (rows = filteredRows) => {
     const titles = renderedColumns.map((item: any) => String(item.title)).filter((title) => title !== "操作");
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-    const csv = "\ufeff" + [titles.map(escape).join(","), ...filteredRows.map(row => titles.map(title => escape(row[title])).join(","))].join("\r\n");
+    const csv = "\ufeff" + [titles.map(escape).join(","), ...rows.map(row => titles.map(title => escape(row[title])).join(","))].join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `${config.title}-${dayjs().format("YYYYMMDD")}.csv`; link.click(); URL.revokeObjectURL(url);
   };
@@ -835,7 +872,14 @@ export default function PlatformFinancePage({
             </Button>
           )}
           <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadRows()}>刷新</Button>
-          <Button icon={<DownloadOutlined />} disabled={!filteredRows.length} onClick={exportCsv}>导出CSV</Button>
+          {config.kind === "invoice" ? (
+            <>
+              <Button icon={<DownloadOutlined />} disabled={!filteredRows.length} onClick={() => exportCsv()}>导出全部</Button>
+              <Button icon={<DownloadOutlined />} disabled={!selectedKeys.length} onClick={() => exportCsv(filteredRows.filter(row => selectedKeys.includes(row.key)))}>导出选中</Button>
+            </>
+          ) : (
+            <Button icon={<DownloadOutlined />} disabled={!filteredRows.length} onClick={() => exportCsv()}>导出CSV</Button>
+          )}
         </div>
       </div>
       <Table<any>

@@ -123,6 +123,9 @@ type Attachment = {
   remark: string;
   created_at: string;
   document_date?: string | null;
+  is_license?: boolean | string | null;
+  IsLicense?: boolean | string | null;
+  isLicense?: boolean | string | null;
 };
 type CustomerEvent = {
   id: number;
@@ -316,7 +319,8 @@ export default function CustomerCenterPage({
     [detailTab, setDetailTab] = useState("contacts"),
     [documentFile, setDocumentFile] = useState<File | null>(null),
     [contactPhotoPreview, setContactPhotoPreview] = useState<{name:string;url:string}|null>(null),
-    [customerDocumentPreview, setCustomerDocumentPreview] = useState<{name:string;url:string}|null>(null);
+    [customerDocumentPreview, setCustomerDocumentPreview] = useState<{name:string;url:string}|null>(null),
+    [customerLicenseThumb, setCustomerLicenseThumb] = useState("");
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
@@ -344,6 +348,9 @@ export default function CustomerCenterPage({
     [keyChangeForm] = Form.useForm(),
     [documentForm] = Form.useForm();
   const documentFileRef = useRef<HTMLInputElement>(null);
+  const customerLicenseAttachment = attachments.find(
+    (item) => item.is_license === true || item.is_license === "true" || item.IsLicense === true || item.isLicense === true
+  );
   const resolveCustomerDetailTarget = async (target: {
     id?: number;
     serial_no?: string;
@@ -1233,6 +1240,22 @@ export default function CustomerCenterPage({
       message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
+  useEffect(() => {
+    let cancelled = false;
+    setCustomerLicenseThumb((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return "";
+    });
+    if (!customerLicenseAttachment) return;
+    void fetchCustomerDocument(customerLicenseAttachment)
+      .then((res) => { if (!cancelled) setCustomerLicenseThumb(URL.createObjectURL(res.data)); })
+      .catch(() => { if (!cancelled) setCustomerLicenseThumb(""); });
+    return () => { cancelled = true; };
+  }, [customerLicenseAttachment?.id]);
+  const openLicenseUpload = () => {
+    openNewEditor("document");
+    documentForm.setFieldsValue({ ...CUSTOMER_DOCUMENT_FORM_DEFAULTS, is_license: true });
+  };
   const openNewEditor = (type: "contact" | "note" | "document") => {
     if ((!editing && !detailPageOpen) || !contacts) {
       Modal.info({
@@ -1637,6 +1660,21 @@ export default function CustomerCenterPage({
               <label><span>上海市资助信息</span><Select disabled value={contacts.data.is_assisted || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
               <label><span>客戶管理人</span><Input disabled value={(contacts.data.customer_managers || [contacts.owner]).map(userLabel).join("、")} /></label>
             </div>
+          </section>
+          <section className="customer-license-section">
+            <h3>营业执照</h3>
+            {customerLicenseAttachment ? (
+              <div className="customer-license-card">
+                {customerLicenseThumb && <img className="customer-license-thumb" alt="营业执照" src={customerLicenseThumb} />}
+                <Space>
+                  <Button type="link" onClick={() => void viewDocument(customerLicenseAttachment)}>查看营业执照</Button>
+                  <Button type="link" onClick={() => void downloadDocument(customerLicenseAttachment)}>下载营业执照</Button>
+                </Space>
+              </div>
+            ) : (
+              <div className="customer-license-empty">暂无营业执照</div>
+            )}
+            {canManageCurrentCustomer && <Button icon={<UploadOutlined />} onClick={openLicenseUpload}>上传营业执照</Button>}
           </section>
           <Tabs
             className="customer-view-tabs"

@@ -14,6 +14,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   message,
 } from "antd";
@@ -221,6 +222,7 @@ export default function IprCenterPage({
     [iprLogForm] = Form.useForm();
   const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
   const [deadlineOffsetForm] = Form.useForm();
+  const [iprDetailTab, setIprDetailTab] = useState<string>("files");
   const batchCaseIds = Form.useWatch("case_ids", iprBatchForm) as number[] | undefined;
   const batchSelectedKinds = useMemo(() => {
     const ids = new Set((batchCaseIds || []).map(Number));
@@ -351,6 +353,17 @@ export default function IprCenterPage({
     });
     setDetail(null);
     setCreateOpen(true);
+  };
+  const openIprCaseTask = (record: IprRecord) => {
+    window.sessionStorage.setItem(
+      "sunhold:task-create-context",
+      JSON.stringify({
+        case_no: record.serial_no,
+        customer: record.customer,
+        title: `案件任务—${record.serial_no}`,
+      }),
+    );
+    onNavigate?.("task-my-created");
   };
   const applyDeadlineOffset = async () => {
     try {
@@ -1118,6 +1131,11 @@ export default function IprCenterPage({
         render: (_, row) => row.data.application_no || "—",
       },
       {
+        title: "申请日",
+        width: 110,
+        render: (_, row) => row.data.application_date || "—",
+      },
+      {
         title: "客户",
         dataIndex: "customer",
         width: 160,
@@ -1127,6 +1145,11 @@ export default function IprCenterPage({
             {row.customer || "-"}
           </Button>
         ),
+      },
+      {
+        title: "处理人",
+        width: 110,
+        render: (_, row) => row.data.case_manager || "—",
       },
       {
         title: "期限",
@@ -1425,7 +1448,7 @@ export default function IprCenterPage({
           detail ? `${detail.data.case_kind}案件详情：${detail.serial_no}` : ""
         }
         width={820}
-        extra={detail ? <Button onClick={() => openCopy(detail)}>复制案件</Button> : null}
+        extra={detail ? <Space size={0}><Button onClick={() => openCopy(detail)}>复制案件</Button><Button onClick={() => openIprCaseTask(detail)}>案件任务</Button></Space> : null}
         onClose={() => setDetail(null)}
       >
         {detail && (
@@ -1631,6 +1654,15 @@ export default function IprCenterPage({
                 ]}
               /> : "暂未选择协作律所"}
             </Card>
+            <Tabs
+              activeKey={iprDetailTab}
+              onChange={setIprDetailTab}
+              items={[
+                {
+                  key: "files",
+                  label: "文档信息",
+                  children: (
+                    <>
             <Card
               size="small"
               title="案件文书与附件"
@@ -1731,6 +1763,13 @@ export default function IprCenterPage({
               ]}
             />
           </Card>
+                    </>
+                  ),
+                },
+                {
+                  key: "assistedFees",
+                  label: "资助明细",
+                  children: (
           <Card
             size="small"
               title="资助明细"
@@ -1846,6 +1885,10 @@ export default function IprCenterPage({
                 ]}
               />
             </Card>
+                  ),
+                },
+              ]}
+            />
             <Card
               size="small"
               title="案件提醒"

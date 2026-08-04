@@ -10,4 +10,17 @@ assert.match(source, /历史分配记录/);
 assert.match(source, /incomingAllocationTarget\?\.allocations/);
 assert.match(source, /row\.transaction_id \|\| row\.receivable_plan_id/);
 
-console.log("financeIncomingAllocationHistoryParity: 5 assertions passed");
+const historyModalSource = source.slice(
+  source.indexOf("历史分配记录"),
+  source.indexOf("</Modal>", source.indexOf("历史分配记录")),
+);
+
+assert.match(
+  historyModalSource,
+  /dataIndex: "contract_no"[\s\S]*?openContractDetail/,
+);
+assert.match(
+  historyModalSource,
+  /dataIndex: "case_no"[\s\S]*?openCaseDetail/,
+);
+console.log("financeIncomingAllocationHistoryParity: 7 assertions passed");

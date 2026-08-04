@@ -8,6 +8,7 @@ import {
   DatePicker,
   Descriptions,
   Drawer,
+  Dropdown,
   Form,
   Input,
   InputNumber,
@@ -191,6 +192,11 @@ export default function DocumentCenterPage({
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [attachmentDetail, setAttachmentDetail] = useState<Attachment | null>(null);
   const [templateDetail, setTemplateDetail] = useState<Template | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewName, setPreviewName] = useState("");
+  const [previewKind, setPreviewKind] = useState<"image" | "pdf" | "text">("text");
+  const [previewText, setPreviewText] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const [uploadTarget, setUploadTarget] = useState<RecordRow | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [documentForm] = Form.useForm();
@@ -607,7 +613,27 @@ export default function DocumentCenterPage({
       message.error("下载失败");
     }
   };
-  const deleteFile = async (id: number) => {
+  const previewAttachment = async (row: Attachment) => {
+    try {
+      const { data } = await api.get(`/attachments/${row.id}/preview`);
+      if (data.kind === "unsupported") {
+        message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
+        return;
+      }
+      setPreviewName(row.original_name);
+      setPreviewKind(data.kind);
+      setPreviewText(data.text || "");
+      if (data.kind === "image" || data.kind === "pdf") {
+        const response = await api.get(`/attachments/${row.id}/download`, { responseType: "blob" });
+        setPreviewUrl(URL.createObjectURL(response.data));
+      } else {
+        setPreviewUrl("");
+      }
+      setPreviewOpen(true);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "附件预览失败");
+    }
+  };  const deleteFile = async (id: number) => {
     try {
       await api.delete(`/attachments/${id}`);
       message.success("附件已删除");
@@ -875,6 +901,13 @@ export default function DocumentCenterPage({
         <Space>
           <Button
             type="link"
+            icon={<EyeOutlined />}
+            onClick={() => void previewAttachment(r)}
+          >
+            查看
+          </Button>
+          <Button
+            type="link"
             icon={<DownloadOutlined />}
             onClick={() => download(r)}
           >
@@ -1088,6 +1121,13 @@ export default function DocumentCenterPage({
     [receiptRows, receiptQuery, profile, tab],
   );
   const showReceipt = (r: ReceiptRow) => openDocument(r);
+  const receiptAttachment = (r: ReceiptRow) =>
+    attachments.find((a) => a.record_id === r.id);
+  const previewReceiptFile = (r: ReceiptRow) => {
+    const file = receiptAttachment(r);
+    if (!file) return showReceipt(r);
+    void previewAttachment(file);
+  };
   const officialColumns = [
     {
       title: "案号",
@@ -1116,7 +1156,18 @@ export default function DocumentCenterPage({
       width: 430,
       ellipsis: true,
       render: (v: string, r: ReceiptRow) => (
-        <a onClick={() => showReceipt(r)}>{v}</a>
+        <Space size={0}>
+          <a onClick={() => showReceipt(r)}>{v}</a>
+          {receiptAttachment(r) && (
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              onClick={() => previewReceiptFile(r)}
+            >
+              查看
+            </Button>
+          )}
+        </Space>
       ),
     },
     {
@@ -1193,7 +1244,26 @@ export default function DocumentCenterPage({
       ellipsis: true,
       render: (_: unknown, r: ReceiptRow) => r.data.defendant || "—",
     },
-    { title: "文件名称", dataIndex: "title", width: 350, ellipsis: true },
+    {
+      title: "文件名称",
+      dataIndex: "title",
+      width: 350,
+      ellipsis: true,
+      render: (v: string, r: ReceiptRow) => (
+        <Space size={0}>
+          <a onClick={() => showReceipt(r)}>{v}</a>
+          {receiptAttachment(r) && (
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              onClick={() => previewReceiptFile(r)}
+            >
+              查看
+            </Button>
+          )}
+        </Space>
+      ),
+    },
     {
       title: "上传日期",
       key: "uploaded_at",
@@ -1315,7 +1385,54 @@ export default function DocumentCenterPage({
       message.error(error?.response?.data?.detail || "更新官文业务处理状态失败");
     }
   };
-  const receiptPanel = isReceiptView ? (
+  const receiptMoreActionItems = [
+    { key: "upload-case-files", label: "上传案件文档" },
+    {
+      key: "case-fees",
+      label: "新增案件费用",
+      children: [
+        { key: "case-fee-office", label: "新增官费" },
+        { key: "case-fee-agent", label: "新增代理费" },
+        { key: "case-fee-other", label: "新增其他费用" },
+      ],
+    },
+    { key: "internal-fee", label: "新增内部费用" },
+    {
+      key: "batch-update",
+      label: "批量修改",
+      children: [
+        { key: "hearing-lawyer", label: "修改开庭律师" },
+        { key: "handling-lawyer", label: "修改经办律师" },
+        { key: "assistant", label: "修改律师助理" },
+        { key: "case-phase", label: "修改案件阶段" },
+      ],
+    },
+    { key: "authorization-letter", label: "生成授权委托书" },
+    { key: "law-firm-letter", label: "生成律所函" },
+    { key: "identity-certificate", label: "生成身份证明" },
+    { key: "settlement-list", label: "生成结算提成表" },
+    { key: "case-tasks", label: "案件任务" },
+    { key: "case-logs", label: "案件日志" },
+  ];
+  const openSelectedReceiptCase = () => {
+    const row = receiptRows.find((item) => selectedReceiptKeys.includes(item.id));
+    if (!row) {
+      message.warning("请选择需要操作的收文记录");
+      return;
+    }
+    if (!row.data.case_no || row.data.case_no === "—") {
+      message.warning("当前收文未关联案件，无法进入案件操作");
+      return;
+    }
+    void openCaseDetail(row.data.case_no);
+  };
+  const handleReceiptMoreAction = (key: string) => {
+    if (["authorization-letter", "law-firm-letter", "identity-certificate", "settlement-list"].includes(key)) {
+      onNavigate?.("documents-agent");
+      return;
+    }
+    openSelectedReceiptCase();
+  };  const receiptPanel = isReceiptView ? (
     <Card
       className="panel receipt-original-panel"
       title={
@@ -1486,7 +1603,7 @@ export default function DocumentCenterPage({
           </>
         ) : (<>
           <Button size="small" icon={<EditOutlined />} disabled={!selectedReceiptKeys.length} onClick={openReceiptDateEditor}>修改收文日期</Button>
-          <Button size="small" disabled={selectedReceiptKeys.length!==1} onClick={()=>{const row=receiptRows.find(item=>selectedReceiptKeys.includes(item.id));if(row)showReceipt(row)}}>更多操作</Button>
+          <Dropdown menu={{ items: receiptMoreActionItems, onClick: ({ key }) => handleReceiptMoreAction(key) }}><Button size="small" disabled={selectedReceiptKeys.length !== 1}>更多操作</Button></Dropdown>
         </>)}
       </div>
     </Card>
@@ -1637,15 +1754,23 @@ export default function DocumentCenterPage({
                   { title: "文书名称", dataIndex: "title", width: 240, ellipsis: true },
                   { title: "来源", width: 180, render: (_, row: any) => row.source_serial_no ? <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingSource(row)}>{`${row.source_type === "contract" ? "合同" : "案件"}：${row.source_serial_no}`}</Button> : "—" },
                   { title: "客户", dataIndex: "customer", width: 180, ellipsis: true, render: (value: string) => value ? <Button type="link" className="case-cell-link" onClick={() => void openCustomerDetail(value)}>{value}</Button> : "—" },
+                  { title: "印章类型", dataIndex: "seal_type", width: 130, render: (value: string) => value || "—" },
+                  { title: "用印类型", key: "official_document_type", width: 90, render: (_, row: any) => row.source_type === "case" ? "案件" : row.source_type === "contract" ? "合同" : "—" },
+                  { title: "文件数", key: "file_count", width: 80, render: (_: unknown, row: RecordRow) => <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingDetail(row)}>{(row as any).attachments?.length || 0}</Button> },
                   { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <Tag color={value === "已通过" ? "green" : value === "已拒绝" ? "red" : value === "待审批" ? "orange" : "default"}>{value}</Tag> },
                   { title: "申请人", dataIndex: "owner", width: 120 },
-                  { title: "创建时间", dataIndex: "created_at", width: 175, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+                  { title: "申请时间", dataIndex: "created_at", width: 175, sorter: (a: any, b: any) => String(a.created_at || "").localeCompare(String(b.created_at || "")), render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                   { title: "审核人", dataIndex: "auditor", width: 120, render: (value: string) => value || "—" },
-                  { title: "审核时间", dataIndex: "audit_time", width: 175, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+                  { title: "审核时间", dataIndex: "audit_time", width: 175, sorter: (a: any, b: any) => String(a.audit_time || "").localeCompare(String(b.audit_time || "")), render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                   { title: "审核意见", dataIndex: "audit_remark", width: 220, ellipsis: true, render: (value: string) => value || "—" },
                   { title: "操作", fixed: "right", width: 290, render: (_, row: RecordRow) => <Space size={2}><Button type="link" size="small" onClick={() => openOfficialOutgoingDetail(row)}>详情</Button>{["草稿", "已拒绝", "已撤回"].includes(row.status) && <Button type="link" size="small" onClick={() => openOfficialOutgoingEditor(row)}>编辑</Button>}{["草稿", "已拒绝", "已撤回"].includes(row.status) && <Button type="link" size="small" onClick={() => submitOfficialOutgoing(row)}>提交</Button>}{row.status === "待审批" && <><Button type="link" size="small" onClick={() => { outgoingReviewForm.setFieldsValue({ comment: "" }); setOutgoingReview({ row, approved: true }); }}>通过</Button><Button danger type="link" size="small" onClick={() => { outgoingReviewForm.setFieldsValue({ comment: "" }); setOutgoingReview({ row, approved: false }); }}>拒绝</Button></>}{["待审批", "已拒绝"].includes(row.status) && <Popconfirm title="确认撤回正式发文？" onConfirm={() => rollbackOfficialOutgoing(row)}><Button type="link" size="small">撤回</Button></Popconfirm>}</Space> },
                 ]}
                 dataSource={outgoingDocuments}
+                pagination={{
+                  pageSize: 15,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                  showSizeChanger: true,
+                }}
                 scroll={{ x: 1920 }}
               />
             ) : tab === "files" ? (
@@ -1655,6 +1780,11 @@ export default function DocumentCenterPage({
                 size="small"
                 columns={fileColumns}
                 dataSource={attachments}
+                pagination={{
+                  pageSize: 15,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                  showSizeChanger: true,
+                }}
                 scroll={{ x: 1450 }}
               />
             ) : tab === "templates" ? (
@@ -1664,6 +1794,11 @@ export default function DocumentCenterPage({
                 size="small"
                 columns={templateColumns}
                 dataSource={templates}
+                pagination={{
+                  pageSize: 15,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                  showSizeChanger: true,
+                }}
                 scroll={{ x: 1200 }}
               />
             ) : (
@@ -1673,6 +1808,11 @@ export default function DocumentCenterPage({
                 size="small"
                 columns={archiveColumns}
                 dataSource={archiveRows}
+                pagination={{
+                  pageSize: 15,
+                  showTotal: (total) => `共 ${total} 条记录`,
+                  showSizeChanger: true,
+                }}
                 scroll={{ x: 1300 }}
               />
             )}
@@ -1683,13 +1823,13 @@ export default function DocumentCenterPage({
         {outgoingDetail && <><Descriptions bordered size="small" column={2} items={[
           { key: "title", label: "\u6587\u4e66\u540d\u79f0", children: outgoingDetail.title }, { key: "status", label: "\u72b6\u6001", children: outgoingDetail.status },
           { key: "source", label: "\u6765\u6e90\u4e1a\u52a1", children: outgoingDetail.source_serial_no ? <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingSource(outgoingDetail)}>{`${outgoingDetail.source_type === "contract" ? "\u5408\u540c" : "\u6848\u4ef6"}\uff5c${outgoingDetail.source_serial_no}`}</Button> : "\u2014" }, { key: "seal", label: "\u5370\u7ae0\u7c7b\u578b", children: outgoingDetail.seal_type || "\u2014" },
-          { key: "copies", label: "\u76d6\u7ae0\u4efd\u6570", children: outgoingDetail.print_quantity || 1 }, { key: "electronic", label: "\u7535\u5b50\u5370\u7ae0", children: outgoingDetail.is_electronic_seal ? "\u662f" : "\u5426" },
+          { key: "copies", label: "\u76d6\u7ae0\u4efd\u6570", children: outgoingDetail.print_quantity || 1 }, { key: "electronic", label: "\u7535\u5b50\u5370\u7ae0", children: outgoingDetail.is_electronic_seal ? "\u662f" : "\u5426" }, { key: "offline", label: "\u6253\u5370\u76d6\u7ae0", children: outgoingDetail.is_offline_print ? "\u9700\u8981" : "\u4e0d\u9700\u8981" }, { key: "customer", label: "\u5ba2\u6237\u540d\u79f0", children: outgoingDetail.customer || "\u2014" }, { key: "applied", label: "\u7533\u8bf7\u65f6\u95f4", children: outgoingDetail.created_at ? dayjs(outgoingDetail.created_at).format("YYYY-MM-DD HH:mm") : "\u2014" },
           { key: "content", label: "\u6587\u4e66\u5185\u5bb9", children: outgoingDetail.content || "\u2014", span: 2 }, { key: "remark", label: "\u5907\u6ce8", children: outgoingDetail.description || "\u2014", span: 2 },
         ]} />
         <Card size="small" title={"\u6b63\u5f0f\u53d1\u6587\u9644\u4ef6"} style={{ marginTop: 16 }} extra={["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) ? <Upload key="upload" showUploadList={false} beforeUpload={(item) => { void uploadOfficialOutgoingFile(outgoingDetail, item as unknown as File); return false; }}><Button icon={<UploadOutlined />}>{"\u4e0a\u4f20\u9644\u4ef6"}</Button></Upload> : null}>
           <Table size="small" rowKey="id" pagination={false} dataSource={outgoingDetail.attachments || []} columns={[
             { title: "\u6587\u4ef6\u540d\u79f0", dataIndex: "original_name", ellipsis: true }, { title: "\u7c7b\u522b", dataIndex: "category", width: 150 }, { title: "\u5927\u5c0f", dataIndex: "size", width: 100, render: (value: number) => fileSize(value) },
-            { title: "\u64cd\u4f5c", width: 150, render: (_, item: Attachment) => <Space size={2}><Button type="link" size="small" onClick={() => window.open(`/api/v1/attachments/${item.id}/download`, "_blank")}>{"\u4e0b\u8f7d"}</Button>{["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && item.category === "正式发文附件" && <Popconfirm title="确认删除该正式发文附件？" onConfirm={() => deleteOfficialOutgoingFile(outgoingDetail, item)}><Button danger type="link" size="small">删除</Button></Popconfirm>}</Space> },
+            { title: "\u4e0a\u4f20\u4eba", dataIndex: "uploader", width: 90 }, { title: "\u4e0a\u4f20\u65f6\u95f4", dataIndex: "created_at", width: 150, render: (value: string) => value ? new Date(value).toLocaleString() : "\u2014" }, { title: "\u64cd\u4f5c", width: 180, render: (_, item: Attachment) => <Space size={2}><Button type="link" size="small" onClick={() => void previewAttachment(item)}>{"\u67e5\u770b"}</Button><Button type="link" size="small" onClick={() => window.open(`/api/v1/attachments/${item.id}/download`, "_blank")}>{"\u4e0b\u8f7d"}</Button>{["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && item.category === "正式发文附件" && <Popconfirm title="确认删除该正式发文附件？" onConfirm={() => deleteOfficialOutgoingFile(outgoingDetail, item)}><Button danger type="link" size="small">删除</Button></Popconfirm>}</Space> },
           ]} />
         </Card>
         {outgoingDetail.status === "\u5df2\u901a\u8fc7" && <Card size="small" title={"\u76d6\u7ae0\u6587\u4ef6"} style={{ marginTop: 16 }}><Upload showUploadList={false} beforeUpload={(item) => { void uploadOfficialOutgoingFile(outgoingDetail, item as unknown as File, true); return false; }}><Button type="primary" icon={<UploadOutlined />}>{"\u4e0a\u4f20\u76d6\u7ae0\u6587\u4ef6\u5e76\u6807\u8bb0\u5df2\u76d6\u7ae0"}</Button></Upload></Card>}
@@ -2083,11 +2223,16 @@ export default function DocumentCenterPage({
                   { title: "上传人", dataIndex: "uploader", width: 80 },
                   {
                     title: "操作",
-                    width: 70,
+                    width: 100,
                     render: (_: unknown, r: Attachment) => (
-                      <Button type="link" onClick={() => download(r)}>
-                        下载
-                      </Button>
+                      <Space size={0}>
+                        <Button type="link" onClick={() => void previewAttachment(r)}>
+                          查看
+                        </Button>
+                        <Button type="link" onClick={() => download(r)}>
+                          下载
+                        </Button>
+                      </Space>
                     ),
                   },
                 ]}
@@ -2151,6 +2296,31 @@ export default function DocumentCenterPage({
           <Descriptions.Item label="说明">{templateDetail.description || "—"}</Descriptions.Item>
         </Descriptions>}
       </Drawer>
+      <Modal
+        open={previewOpen}
+        title={`文件预览：${previewName}`}
+        footer={null}
+        width={760}
+        onCancel={() => {
+          setPreviewOpen(false);
+          setPreviewUrl("");
+        }}
+        destroyOnHidden
+      >
+        {previewKind === "image" ? (
+          <img src={previewUrl} alt={previewName} style={{ maxWidth: "100%" }} />
+        ) : previewKind === "pdf" ? (
+          <iframe
+            src={previewUrl}
+            title={previewName}
+            style={{ width: "100%", height: 520 }}
+          />
+        ) : (
+          <pre style={{ whiteSpace: "pre-wrap", maxHeight: 520, overflow: "auto" }}>
+            {previewText}
+          </pre>
+        )}
+      </Modal>
     </>
   );
 }

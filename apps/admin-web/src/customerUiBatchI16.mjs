@@ -90,6 +90,7 @@ export const normalizeCustomerAttachmentItems = (payload) =>
       created_at: ["created_at", "CreatedAt", "create_time", "CreateTime"],
       uploader: ["uploader", "Uploader", "file_uploader", "FileUploader"],
       category: ["category", "Category"],
+      is_license: ["is_license", "IsLicense", "isLicense"],
       size: ["size", "Size", "file_size", "FileSize"],
       remark: ["remark", "Remark"],
     }))

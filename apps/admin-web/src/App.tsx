@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Dropdown,
@@ -497,6 +498,36 @@ function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>): Na
     return [{ ...item, ...(item.children ? { children } : {}) }];
   });
 }
+type RenderableMenuItem = Omit<NavItem, "label" | "children"> & { label: ReactNode; children?: RenderableMenuItem[] };
+
+// Legacy sidebar double-click reloads the workspace page bound to the menu leaf.
+function menuItemsWithDoubleClickReload(
+  items: NavItem[],
+  onReload: (item: NavItem) => void,
+): RenderableMenuItem[] {
+  return items.map((item) => {
+    const children = item.children
+      ? menuItemsWithDoubleClickReload(item.children, onReload)
+      : undefined;
+    return {
+      ...item,
+      ...(children ? { children } : {}),
+      label: children ? item.label : (
+        <span
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (item.link_url || item.disabled) return;
+            onReload(item);
+          }}
+        >
+          {item.label}
+        </span>
+      ),
+    };
+  });
+}
+
 function ancestorMenuKeys(
   items: NavItem[],
   target: string,
@@ -1147,6 +1178,8 @@ export default function App() {
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
+  const [caseQuickKeyword, setCaseQuickKeyword] = useState("");
+  const [taskUnreadCount, setTaskUnreadCount] = useState(0);
   const sidebarCollapsed = isNarrowViewport
     ? !mobileSidebarOpen
     : collapsed && !sidebarHoverExpanded;
@@ -1280,6 +1313,19 @@ export default function App() {
     window.addEventListener("sunhold:menus-updated", loadMenus);
     return () => window.removeEventListener("sunhold:menus-updated", loadMenus);
   }, [loggedIn]);
+  useEffect(() => {
+    if (!loggedIn) return;
+    const loadTaskUnread = () =>
+      api
+        .get("/tasks/unread-messages")
+        .then(({ data }) =>
+          setTaskUnreadCount(Number(data?.unread_messages ?? data?.total ?? 0)),
+        )
+        .catch(() => undefined);
+    loadTaskUnread();
+    const timer = window.setInterval(loadTaskUnread, 30000);
+    return () => window.clearInterval(timer);
+  }, [loggedIn]);
   const effectiveMenuItems = useMemo(
     () => configuredMenuItems(menuConfig),
     [menuConfig],
@@ -1365,7 +1411,27 @@ export default function App() {
       : sessionUser?.menu_keys || ["user-center"],
   );
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
+  const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
+    setActive(String(item.key));
+    setWorkspaceReloadKey((value) => value + 1);
+  });
   const accountProfileRoute = grantedMenuKeys.has("user-account") ? "user-account" : "user-center";
+  const runCaseQuickSearch = (value: string) => {
+    const keyword = value.trim();
+    if (!keyword) return;
+    const target = ["case-company", "case-dept", "case-mine"].find((route) =>
+      grantedMenuKeys.has(route),
+    );
+    if (!target) {
+      message.error("当前角色没有案件列表菜单权限");
+      return;
+    }
+    sessionStorage.setItem(
+      "sunhold:case-list-return",
+      JSON.stringify({ route: target, query: { keyword } }),
+    );
+    navigate(target);
+  };
   const route = canonicalRoute(active);
   const pageAllowed =
     sessionUser?.role === "admin" ||
@@ -1514,6 +1580,17 @@ export default function App() {
             }}
           />
         </div>
+        <Input.Search
+          className="case-quick-search"
+          value={caseQuickKeyword}
+          onChange={(event) => setCaseQuickKeyword(event.target.value)}
+          onSearch={runCaseQuickSearch}
+          enterButton
+          allowClear
+          placeholder="案号、法院号、案件名、客户名、任务内容"
+          aria-label="案件快捷搜索"
+          style={{ width: 260 }}
+        />
         <Space className="top-actions">
           <Tooltip title="返回控制台">
             <Button
@@ -1545,12 +1622,14 @@ export default function App() {
           </Dropdown>
           <NotificationCenter onNavigate={navigate} />
           <Tooltip title="任务消息">
-            <Button
-              type="text"
-              aria-label="任务消息"
-              icon={<MessageOutlined />}
-              onClick={() => navigate("task-reminders")}
-            />
+            <Badge count={taskUnreadCount} size="small" overflowCount={99}>
+              <Button
+                type="text"
+                aria-label="任务消息"
+                icon={<MessageOutlined />}
+                onClick={() => navigate("task-reminders")}
+              />
+            </Badge>
           </Tooltip>
           <Tooltip title={isFullscreen ? "退出全屏" : "全屏"}>
             <Button
@@ -1650,7 +1729,7 @@ export default function App() {
           <Menu
             mode="inline"
             theme="dark"
-            items={sideMenuItems}
+            items={sidebarReloadableItems}
             selectedKeys={[active]}
             openKeys={openMenuKeys}
             onOpenChange={(keys) => {

@@ -984,8 +984,8 @@ export default function SealCenterPage({
             copies: 1,
             source_attachment_ids: [],
             delivery_method: "现场用印",
-            is_electronic_seal: false,
-            is_offline_print: false,
+            is_electronic_seal: true,
+            is_offline_print: true,
           },
     );
     setCreateOpen(true);
@@ -1056,25 +1056,34 @@ export default function SealCenterPage({
   };
   const batchWithdraw = async (selected: SealRow[]) => {
     if (!canBatchWithdrawSealRows(selected)) return;
-    if (!actionGate.tryEnter()) {
-      message.info("操作正在提交，请勿重复点击");
-      return;
-    }
-    setActionSubmitting(true);
-    try {
-      await postSeal("/seals/applications/batch/withdraw", {
-        application_ids: selected.map((row) => row.id),
-        comment: "申请人批量撤回待审批用印申请",
-      });
-      message.success(`已撤回 ${selected.length} 条用印申请`);
-      setSelectedKeys([]);
-      load();
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "批量撤回失败");
-    } finally {
-      actionGate.leave();
-      setActionSubmitting(false);
-    }
+    Modal.confirm({
+      title: "撤回用印申请",
+      content: `确定撤回选中的 ${selected.length} 条用印申请？撤回后相关申请将停止审批。`,
+      okText: "确认撤回",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      async onOk() {
+        if (!actionGate.tryEnter()) {
+          message.info("操作正在提交，请勿重复点击");
+          return;
+        }
+        setActionSubmitting(true);
+        try {
+          await postSeal("/seals/applications/batch/withdraw", {
+            application_ids: selected.map((row) => row.id),
+            comment: "申请人批量撤回待审批用印申请",
+          });
+          message.success(`已撤回 ${selected.length} 条用印申请`);
+          setSelectedKeys([]);
+          load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "批量撤回失败");
+        } finally {
+          actionGate.leave();
+          setActionSubmitting(false);
+        }
+      },
+    });
   };
   const withdrawSelectedApplications = () => {
     const selected = selectedSealRows(visibleRows, selectedKeys);
@@ -2715,6 +2724,47 @@ export default function SealCenterPage({
                 key: "customer",
                 label: "客户",
                 children: action.row.customer || "—",
+              },
+              {
+                key: "contract_no",
+                label: "合同编号",
+                children: action.row.data.contract_no || "—",
+              },
+              {
+                key: "customer_no",
+                label: "客户编号",
+                children: action.row.data.customer_no || "—",
+              },
+              {
+                key: "seal_type",
+                label: "印章类型",
+                children:
+                  action.row.data.seal_type ||
+                  action.row.seal_asset?.seal_type ||
+                  "—",
+              },
+              {
+                key: "electronic",
+                label: "是否电章",
+                children: action.row.data.is_electronic_seal ? "是" : "否",
+              },
+              {
+                key: "offline_print",
+                label: "是否打印盖章",
+                children: action.row.data.is_offline_print ? "需要" : "不需要",
+              },
+              {
+                key: "print_quantity",
+                label: "盖章份数",
+                children:
+                  action.row.data.print_quantity ??
+                  action.row.data.copies ??
+                  "—",
+              },
+              {
+                key: "remark",
+                label: "用印备注",
+                children: action.row.data.remark || action.row.description || "—",
               },
             ]}
             style={{ marginBottom: 12 }}

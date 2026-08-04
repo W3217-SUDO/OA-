@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react'
-import {Button, Card, Descriptions, Divider, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Timeline} from 'antd'
+import {Alert, Button, Card, Descriptions, Divider, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Timeline} from 'antd'
 import {DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons'
 import {api} from './api'
 import {rememberCaseDetailTarget} from './caseDetailNavigation'
@@ -82,13 +82,13 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
   useEffect(()=>{setPage(1);load(1)},[module])
   useEffect(()=>{if(openCreate)startCreate()},[module,openCreate])
 
-  const startCreate=()=>{setEditing(null);form.resetFields();form.setFieldsValue({serial_no:nextSerial(config.prefix),status:config.statuses[0],owner:'管理者',department:'上海分所'});setModalOpen(true)}
+  const startCreate=()=>{if(module==='task'){message.warning('请使用事务中心专用入口');return}setEditing(null);form.resetFields();form.setFieldsValue({serial_no:nextSerial(config.prefix),status:config.statuses[0],owner:'管理者',department:'上海分所'});setModalOpen(true)}
   const startEdit=(row:RecordRow)=>{setEditing(row);form.setFieldsValue({...row,...row.data});setModalOpen(true)}
   const openDetails=async(row:RecordRow)=>{setViewing(row);setHistory({transitions:[],items:[]});try{const {data}=await api.get(`/records/${row.id}/history`);setHistory(data)}catch{message.error('流程记录加载失败')}}
-  const save=async()=>{const values=await form.validateFields();const data=Object.fromEntries(config.fields.map(f=>[f.key,values[f.key]??'']));const payload={module,serial_no:values.serial_no,title:values.title,customer:values.customer||'',status:values.status,owner:values.owner,department:values.department,description:values.description||'',data};try{if(editing)await api.patch(`/records/${editing.id}`,payload);else await api.post('/records',payload);message.success(editing?'保存成功':'新增成功');setModalOpen(false);load()}catch(error:any){message.error(error?.response?.data?.detail||'保存失败')}}
-  const remove=async(id:number)=>{try{await api.delete(`/records/${id}`);message.success('已删除');load()}catch{message.error('删除失败')}}
+  const save=async()=>{if(module==='task'){message.warning('请使用事务中心专用入口');return}const values=await form.validateFields();const data=Object.fromEntries(config.fields.map(f=>[f.key,values[f.key]??'']));const payload={module,serial_no:values.serial_no,title:values.title,customer:values.customer||'',status:values.status,owner:values.owner,department:values.department,description:values.description||'',data};try{if(editing)await api.patch(`/records/${editing.id}`,payload);else await api.post('/records',payload);message.success(editing?'保存成功':'新增成功');setModalOpen(false);load()}catch(error:any){message.error(error?.response?.data?.detail||'保存失败')}}
+  const remove=async(id:number)=>{if(module==='task'){message.warning('请使用事务中心专用入口');return}try{await api.delete(`/records/${id}`);message.success('已删除');load()}catch{message.error('删除失败')}}
   const startTransition=(target:string)=>{setTransitionTarget(target);setTransitionComment('');setTransitionOpen(true)}
-  const submitTransition=async()=>{if(!viewing)return;try{const {data}=await api.post(`/records/${viewing.id}/transition`,{to_status:transitionTarget,comment:transitionComment});message.success(`已流转至“${transitionTarget}”`);setViewing(data);setTransitionOpen(false);const result=await api.get(`/records/${viewing.id}/history`);setHistory(result.data);load()}catch(error:any){message.error(error?.response?.data?.detail||'流程操作失败')}}
+  const submitTransition=async()=>{if(!viewing)return;if(module==='task'){message.warning('禁止使用通用记录接口流转任务');return}try{const {data}=await api.post(`/records/${viewing.id}/transition`,{to_status:transitionTarget,comment:transitionComment});message.success(`已流转至“${transitionTarget}”`);setViewing(data);setTransitionOpen(false);const result=await api.get(`/records/${viewing.id}/history`);setHistory(result.data);load()}catch(error:any){message.error(error?.response?.data?.detail||'流程操作失败')}}
 
   const columns=useMemo(()=>[
     {title:'业务编号',dataIndex:'serial_no',width:145,fixed:'left' as const,render:(value:string,row:RecordRow)=><a onClick={()=>openDetails(row)}>{value}</a>},
@@ -101,6 +101,24 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
     {title:'更新时间',dataIndex:'updated_at',width:160,render:(v:string)=>v?new Date(v).toLocaleString('zh-CN'):'-'},
     {title:'操作',key:'actions',fixed:'right' as const,width:150,render:(_:unknown,row:RecordRow)=><Space><Button type="link" size="small" icon={<EyeOutlined/>} onClick={()=>openDetails(row)}>查看</Button><Button type="link" size="small" icon={<EditOutlined/>} onClick={()=>startEdit(row)}>编辑</Button><Popconfirm title="确认删除这条记录？" onConfirm={()=>remove(row.id)}><Button danger type="link" size="small" icon={<DeleteOutlined/>}/></Popconfirm></Space>},
   ],[module, rows, onNavigate])
+
+  if (module === "task") {
+    return (
+      <Card className="panel business-panel" title={title || config.title}>
+        <Alert
+          type="info"
+          showIcon
+          message="事务中心请使用专用入口"
+          description="禁止使用通用记录接口新建或流转任务；请从我的任务、我接受的任务或未读消息进入事务中心操作。"
+        />
+        <Space wrap style={{ marginTop: 16 }}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => onNavigate?.("task-my-created")}>我的任务</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => onNavigate?.("task-my-accepted")}>我接受的任务</Button>
+          <Button icon={<EyeOutlined />} onClick={() => onNavigate?.("task-my-unread")}>未读消息</Button>
+        </Space>
+      </Card>
+    );
+  }
 
   return <>
     <Card className="panel business-panel" title={title||config.title} extra={<Space><Button icon={<ReloadOutlined/>} onClick={()=>load()}>刷新</Button><Button type="primary" icon={<PlusOutlined/>} onClick={startCreate}>新建</Button></Space>}>

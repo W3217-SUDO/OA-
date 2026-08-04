@@ -1089,6 +1089,8 @@ export default function FinanceCenterPage({
   );
   const [incomingAllocationTarget, setIncomingAllocationTarget] =
     useState<IncomingPayment | null>(null);
+  const [incomingDetailTarget, setIncomingDetailTarget] =
+    useState<IncomingPayment | null>(null);
   const [issueTarget, setIssueTarget] = useState<FinanceFlow | null>(null);
   const [voidTarget, setVoidTarget] = useState<FinanceFlow | null>(null);
   const [refundCompleteTarget, setRefundCompleteTarget] =
@@ -2988,6 +2990,9 @@ export default function FinanceCenterPage({
     (canManage || row.owner === currentUser.username);
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
     <Space size={0}>
+      <Button type="link" onClick={() => setIncomingDetailTarget(r)}>
+        查看
+      </Button>
       {r.status === "待认领" && (
         <Button
           type="link"
@@ -10944,8 +10949,8 @@ export default function FinanceCenterPage({
           dataSource={incomingAllocationTarget?.allocations || []}
           locale={{ emptyText: "暂无分配记录" }}
           columns={[
-            { title: "合同号", dataIndex: "contract_no", width: 150 },
-            { title: "案号", dataIndex: "case_no", width: 140 },
+            { title: "合同号", dataIndex: "contract_no", width: 150, render: (v: string) => v ? <Button type="link" onClick={() => openContractDetail(v)}>{v}</Button> : "—" },
+            { title: "案号", dataIndex: "case_no", width: 140, render: (v: string) => v ? <Button type="link" onClick={() => openCaseDetail(v)}>{v}</Button> : "—" },
             { title: "费用阶段", dataIndex: "phase", width: 120 },
             {
               title: "分配金额",
@@ -10958,6 +10963,64 @@ export default function FinanceCenterPage({
             { title: "分配时间", dataIndex: "allocated_at", width: 180 },
           ]}
         />
+      </Modal>
+      <Modal
+        width={860}
+        open={Boolean(incomingDetailTarget)}
+        title={`回款详情：${incomingDetailTarget?.receipt_no || ""}`}
+        footer={null}
+        onCancel={() => setIncomingDetailTarget(null)}
+      >
+        <Descriptions column={2} size="small" bordered>
+          <Descriptions.Item label="到账编号">
+            {incomingDetailTarget?.receipt_no || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="到账日期">
+            {incomingDetailTarget?.received_date || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="付款单位/户名">
+            {incomingDetailTarget?.payer_name || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="银行流水号">
+            {incomingDetailTarget?.bank_reference || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="到账金额">
+            {incomingDetailTarget?.amount == null ? "无权限" : money(incomingDetailTarget.amount)}
+          </Descriptions.Item>
+          <Descriptions.Item label="已分配">
+            {incomingDetailTarget?.allocated_amount == null ? "无权限" : money(incomingDetailTarget.allocated_amount)}
+          </Descriptions.Item>
+          <Descriptions.Item label="认领客户">
+            {incomingDetailTarget?.claimed_customer || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="状态">
+            {incomingDetailTarget?.status || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="认领人">
+            {incomingDetailTarget?.claimant || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="备注">
+            {incomingDetailTarget?.remark || "—"}
+          </Descriptions.Item>
+        </Descriptions>
+        {Boolean(incomingDetailTarget?.allocations?.length) && (
+          <Table
+            style={{ marginTop: 16 }}
+            size="small"
+            pagination={false}
+            rowKey={(row: any, index) =>
+              String(row.transaction_id || row.receivable_plan_id || index)
+            }
+            dataSource={incomingDetailTarget?.allocations || []}
+            columns={[
+              { title: "合同号", dataIndex: "contract_no", render: (v: string) => v ? <Button type="link" onClick={() => openContractDetail(v)}>{v}</Button> : "—" },
+              { title: "案号", dataIndex: "case_no", render: (v: string) => v ? <Button type="link" onClick={() => openCaseDetail(v)}>{v}</Button> : "—" },
+              { title: "金额", dataIndex: "amount", render: (value: number) => money(value) },
+              { title: "分配人", dataIndex: "allocated_by", width: 100 },
+              { title: "分配时间", dataIndex: "allocated_at", width: 180 },
+            ]}
+          />
+        )}
       </Modal>
       <Modal
         width={720}

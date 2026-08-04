@@ -30,6 +30,7 @@ type ChartSpec = {
   title: string;
   unit: "天/案" | "元" | "百分比" | "个/案";
   metricKeys?: string[];
+  limit?: number;
 };
 
 type PageSpec = {
@@ -76,16 +77,10 @@ const PAGE_SPECS: Record<string, PageSpec> = {
     title: "执行进度案件统计",
     filter: "none",
     charts: [
-      { title: "一审待执行案件数量", unit: "个/案" },
-      { title: "二审待执行案件数量", unit: "个/案" },
-      { title: "准备材料案件数量", unit: "个/案" },
-      { title: "提交法院案件数量", unit: "个/案" },
-      { title: "执行受理案件数量", unit: "个/案" },
-      { title: "执行中止案件数量", unit: "个/案" },
-      { title: "执行结案案件数量", unit: "个/案" },
-      { title: "执行终本案件数量", unit: "个/案" },
-      { title: "执行终结案件数量", unit: "个/案" },
-      { title: "执行中止案件数量", unit: "个/案" },
+      { title: "一审待执行案件数量", unit: "个/案", limit: 20 },
+      { title: "二审待执行案件数量", unit: "个/案", limit: 20 },
+      { title: "准备材料案件数量", unit: "个/案", limit: 20 },
+      { title: "提交法院案件数量", unit: "个/案", limit: 20 },
     ],
   },
 };
@@ -94,18 +89,18 @@ PAGE_SPECS["reports-execution-2"] = {
   title: "执行进度案件统计",
   filter: "none",
   charts: [
-    { title: "执行受理案件数量", unit: "个/案" },
-    { title: "执行中止案件数量", unit: "个/案" },
-    { title: "执行结案案件数量", unit: "个/案" },
-    { title: "执行终本案件数量", unit: "个/案" },
+    { title: "执行受理案件数量", unit: "个/案", limit: 20 },
+    { title: "执行中止案件数量", unit: "个/案", limit: 20 },
+    { title: "执行结案案件数量", unit: "个/案", limit: 20 },
+    { title: "执行终本案件数量", unit: "个/案", limit: 20 },
   ],
 };
 PAGE_SPECS["reports-execution-3"] = {
   title: "执行进度案件统计",
   filter: "none",
   charts: [
-    { title: "执行终结案件数量", unit: "个/案" },
-    { title: "执行中止案件数量", unit: "个/案" },
+    { title: "执行终结案件数量", unit: "个/案", limit: 20 },
+    { title: "执行中止案件数量", unit: "个/案", limit: 20 },
   ],
 };
 
@@ -163,6 +158,7 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
 }
 
 function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; value: number }[] }) {
+  const chartItems = spec.limit ? items.slice(0, spec.limit) : items;
   return (
     <section className="report-chart-panel">
       <div className="report-chart-title">
@@ -170,8 +166,8 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
         <span className="report-chart-unit">单位： {spec.unit}</span>
       </div>
       <div className="report-chart-body">
-        {items.length ? <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={items} margin={{ top: 20, right: 24, bottom: 16, left: 4 }}>
+        {chartItems.length ? <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartItems} margin={{ top: 20, right: 24, bottom: 16, left: 4 }}>
             <CartesianGrid stroke="#ececec" vertical={false} />
             <XAxis dataKey="name" axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#777", fontSize: 11 }} />
             <YAxis
@@ -187,6 +183,38 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
         </ResponsiveContainer> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />}
       </div>
     </section>
+  );
+}
+
+const largeScreenViews = ["reports-refund", "reports-execution-1", "reports-execution-2", "reports-execution-3"];
+
+export function ReportLargeScreenPage({ initialView = "reports-refund" }: { initialView?: string }) {
+  const [index, setIndex] = useState(() => Math.max(0, largeScreenViews.indexOf(initialView)));
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setIndex(current => (current + 1) % largeScreenViews.length), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      const request = document.documentElement.requestFullscreen?.();
+      if (request) void request.then(() => setFullscreen(true)).catch(() => setFullscreen(false));
+    } else {
+      const exit = document.exitFullscreen?.();
+      if (exit) void exit.then(() => setFullscreen(false));
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, overflow: "auto", background: "#0b2545", color: "#fff" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px" }}>
+        <span>报表大屏</span>
+        <Button onClick={toggleFullscreen}>{fullscreen ? "退出全屏" : "全屏"}</Button>
+      </div>
+      <ReportCenterPage key={largeScreenViews[index]} initialView={largeScreenViews[index]} />
+    </div>
   );
 }
 
