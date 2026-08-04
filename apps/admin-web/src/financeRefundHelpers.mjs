@@ -1,6 +1,9 @@
 export const refundPageSizeOptions = [10, 15, 20, 50, 100, 200];
 export const refundStatusOptions = ["全部", "草稿", "待审批", "退款办理中", "已退款", "已驳回"];
 
+export const refundStatusForRoute = (initialView, selectedStatus = "") =>
+  initialView === "finance-refund-not-required" ? "R100" : selectedStatus;
+
 const refundFilterParams = (status = "", group = "", scope = "company") => ({
   ...(status && status !== "全部" ? { status } : {}),
   ...(group ? { group } : {}),

@@ -46,6 +46,8 @@ import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import { createFinanceActionGate } from "./financeActionGate.mjs";
+import { buildInvoiceApplicationPayload } from "./financeInvoiceHelpers.mjs";
+import { internalFeeExportRequestParams } from "./financeInternalFeeHelpers.mjs";
 import {
   normalizeRefundResponse,
   caseFeeRefundStatusLabel,
@@ -58,6 +60,7 @@ import {
   refundLoadFailure,
   refundPageSizeOptions,
   refundSelectedExportRequestParams,
+  refundStatusForRoute,
   refundStatusOptions,
 } from "./financeRefundHelpers.mjs";
 import RecordImportButton from "./RecordImportButton";
@@ -485,7 +488,7 @@ const paymentQueryPageTotal = (
     )
     .toFixed(2);
 
-const paymentQueryFeeTypeControl = (initialView: string) =>
+const paymentQueryFeeTypeControl = (initialView: string): "feeType" | undefined =>
   initialView === "finance-payment-query" ? undefined : "feeType";
 
 const effectivePaymentQuery = (
@@ -617,7 +620,13 @@ export default function FinanceCenterPage({
               : "fees";
   const [tab, setTab] = useState(first);
   const [fees, setFees] = useState<Fee[]>([]);
+  const [financeFeeListMeta, setFinanceFeeListMeta] = useState({
+    page: 1,
+    pageSize: 100,
+    total: 0,
+  });
   const [contractPayments, setContractPayments] = useState<Fee[]>([]);
+  const [contracts, setContracts] = useState<Fee[]>([]);
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
   const [refundMeta, setRefundMeta] = useState({
@@ -629,6 +638,7 @@ export default function FinanceCenterPage({
   const [refundStatusFilter, setRefundStatusFilter] = useState("全部");
   const [refundGroupFilter, setRefundGroupFilter] = useState("");
   const [cases, setCases] = useState<Fee[]>([]);
+  const financeFeeRefreshGuard = useMemo(() => createLatestRequestGuard(), []);
   const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
@@ -996,6 +1006,7 @@ export default function FinanceCenterPage({
   const [allocateForm] = Form.useForm();
   const [settlementBatchForm] = Form.useForm();
   const selectedFeeType = Form.useWatch("fee_type", feeForm);
+  const invoiceCaseNo = Form.useWatch("case_no", invoiceForm);
   const isInternalApprovalRoute = internalApprovalRoutes.includes(initialView);
   const isInternalDetailRoute = [
     "finance-internal-detail",
@@ -1038,6 +1049,8 @@ export default function FinanceCenterPage({
     isArchiveSettlementPaidRoute ||
     isArchiveSettlementRejectedRoute;
   const isFeeQueryRoute = initialView === "finance-fee-query";
+  const isRefundNotRequiredRoute = initialView === "finance-refund-not-required";
+  const activeRefundStatus = refundStatusForRoute(initialView, refundStatusFilter);
   const generalSettlementParams = (
     query: Record<string, any>,
     page = 1,
@@ -1503,7 +1516,7 @@ export default function FinanceCenterPage({
   const loadRefunds = async (
     page = 1,
     pageSize = refundMeta.pageSize,
-    status = refundStatusFilter,
+    status = refundStatusForRoute(initialView, refundStatusFilter),
     preserveOnError = false,
     group = refundGroupFilter,
   ) => {
@@ -1542,7 +1555,7 @@ export default function FinanceCenterPage({
       load: loadRefunds,
       page,
       pageSize: refundMeta.pageSize,
-      status: refundStatusFilter,
+      status: activeRefundStatus,
       group: refundGroupFilter,
     });
   };
@@ -1598,7 +1611,12 @@ export default function FinanceCenterPage({
               })
           : api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
         api.get("/records", { params: { module: "invoice", page_size: 100 } }),
-        loadRefunds(1, refundMeta.pageSize),
+        loadRefunds(
+          1,
+          refundMeta.pageSize,
+          activeRefundStatus,
+          isRefundNotRequiredRoute,
+        ),
         api.get("/records", { params: { module: "case", page_size: 100 } }),
         api.get("/records", { params: { module: "customer", page_size: 100 } }),
         api.get("/receivables"),
@@ -1739,6 +1757,11 @@ export default function FinanceCenterPage({
             }),
       ]);
       setFees(feeRes.data.items);
+      setFinanceFeeListMeta({
+        page: Number(feeRes.data.page || 1),
+        pageSize: Number(feeRes.data.page_size || 100),
+        total: Number(feeRes.data.total || feeRes.data.items?.length || 0),
+      });
       if (initialView === "finance-payment-query") {
         setPaymentQueryMeta({
           total: Number(feeRes.data.total || 0),
@@ -1905,8 +1928,10 @@ export default function FinanceCenterPage({
           ? { status: "待付款" }
           : initialView === "finance-payment-print"
             ? { status: "已付款" }
-            : initialView === "finance-payment-writeoff"
+      : initialView === "finance-payment-writeoff"
               ? { status: "待核销" }
+              : initialView === "finance-internal-archive"
+                ? { routeField1: "待归档" }
               : initialView === "finance-internal-refund-audit"
                 ? { routeField1: "待审批" }
                 : initialView === "finance-internal-detail"
@@ -2084,6 +2109,44 @@ export default function FinanceCenterPage({
     setPaymentCancelReason("");
     setPaymentCancelTarget(row);
   };
+  const refreshCurrentFinanceFeeList = async ({
+    page,
+    pageSize,
+    status,
+    query,
+  }: {
+    page: number;
+    pageSize: number;
+    status: string;
+    query: Record<string, any>;
+  }) => {
+    const token = financeFeeRefreshGuard.begin();
+    try {
+      const response = await api.get("/records", {
+        params: {
+          module: "finance",
+          page: Math.max(1, page),
+          page_size: Math.min(100, Math.max(1, pageSize)),
+          keyword: String(query?.keyword || query?.paymentNo || "").trim(),
+          record_status:
+            status && status !== "全部" ? status : undefined,
+        },
+      });
+      if (!financeFeeRefreshGuard.isLatest(token)) return false;
+      setFees(Array.isArray(response.data?.items) ? response.data.items : []);
+      setFinanceFeeListMeta({
+        page: Number(response.data?.page || page),
+        pageSize: Number(response.data?.page_size || pageSize),
+        total: Number(response.data?.total || 0),
+      });
+      return true;
+    } catch (error: any) {
+      if (financeFeeRefreshGuard.isLatest(token)) {
+        message.error(error?.response?.data?.detail || "财务费用刷新失败");
+      }
+      return false;
+    }
+  };
   const submitPaymentCancel = async () => {
     if (!paymentCancelTarget) return;
     const reason = paymentCancelReason.trim();
@@ -2098,7 +2161,12 @@ export default function FinanceCenterPage({
       message.success("撤销成功！");
       setPaymentCancelTarget(null);
       setPaymentCancelReason("");
-      await load();
+      await refreshCurrentFinanceFeeList({
+        page: financeFeeListMeta.page,
+        pageSize: financeFeeListMeta.pageSize,
+        status: paymentCancelTarget.status,
+        query: originalQuery,
+      });
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "撤销失败！");
     }
@@ -2116,7 +2184,12 @@ export default function FinanceCenterPage({
       message.success("回滚成功！");
       setPaymentRollbackTarget(null);
       setPaymentRollbackComment("");
-      await load();
+      await refreshCurrentFinanceFeeList({
+        page: financeFeeListMeta.page,
+        pageSize: financeFeeListMeta.pageSize,
+        status: paymentRollbackTarget.status,
+        query: originalQuery,
+      });
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "回滚失败！");
     }
@@ -2207,10 +2280,31 @@ export default function FinanceCenterPage({
     }
     setPaymentPrintPreview(preview);
   };
+  const loadInvoiceReferenceData = async () => {
+    try {
+      const response = await api.get("/records", {
+        params: { module: "contract", page_size: 100 },
+      });
+      setContracts(Array.isArray(response.data?.items) ? response.data.items : []);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同关联数据加载失败");
+      throw error;
+    }
+  };
   const createInvoice = async () => {
     const v = await invoiceForm.validateFields();
+    const linked = buildInvoiceApplicationPayload({
+      values: v,
+      cases,
+      contracts,
+      caseFees: fees,
+    });
+    if (linked.ok === false) {
+      message.error(linked.error);
+      return;
+    }
     try {
-      await api.post("/finance/invoices", v);
+      await api.post("/finance/invoices", linked.payload);
       message.success("发票申请草稿已创建");
       setInvoiceOpen(false);
       invoiceForm.resetFields();
@@ -2236,6 +2330,7 @@ export default function FinanceCenterPage({
   };
   const updateRefundAmount = async () => {
     if (!refundAmountTarget) return;
+    const mutationStatus = refundStatusForRoute(initialView, refundStatusFilter);
     const values = await refundAmountForm.validateFields();
     const request = refundAmountUpdateRequest(
       refundAmountTarget.id,
@@ -2251,7 +2346,7 @@ export default function FinanceCenterPage({
       await loadRefunds(
         refundMeta.page,
         refundMeta.pageSize,
-        refundStatusFilter,
+        mutationStatus,
         true,
         refundGroupFilter,
       );
@@ -2262,6 +2357,7 @@ export default function FinanceCenterPage({
     }
   };
   const updateRefundBatchStatus = async () => {
+    const mutationStatus = refundStatusForRoute(initialView, refundStatusFilter);
     const request = refundBatchStatusRequest(
       selectedRefundRows,
       refundBatchStatus,
@@ -2275,7 +2371,7 @@ export default function FinanceCenterPage({
       await loadRefunds(
         refundMeta.page,
         refundMeta.pageSize,
-        refundStatusFilter,
+        mutationStatus,
         true,
         refundGroupFilter,
       );
@@ -3235,9 +3331,10 @@ export default function FinanceCenterPage({
     "finance-payment-print": "请款单列表",
     "finance-payment-writeoff": "请款单列表",
     "finance-payment-query": "请款单列表",
+    "finance-refund-not-required": "不再办理退费案件",
     "finance-internal-mine": "我的请款单",
     "finance-internal-settle": "内部提成-待结算",
-    "finance-internal-archive": "请款单审批",
+    "finance-internal-archive": "内部提成-待归档",
     "finance-internal-audit": "请款单审批",
     "finance-internal-fee-audit": "请款单审批",
     "finance-internal-refused": "请款单列表",
@@ -4355,8 +4452,11 @@ export default function FinanceCenterPage({
       options:
         initialView === "finance-internal-refund-audit"
           ? ["请选择", ...paymentStatuses]
-          : ["待审批", "已审批", "已拒绝", "已作废"],
-      defaultValue: "待审批",
+          : initialView === "finance-internal-archive"
+            ? ["待归档", "待审批", "已审批", "已拒绝", "已作废"]
+            : ["待审批", "已审批", "已拒绝", "已作废"],
+      defaultValue:
+        initialView === "finance-internal-archive" ? "待归档" : "待审批",
       disabled: initialView !== "finance-internal-refund-audit",
     }),
     f("申请人"),
@@ -6110,7 +6210,11 @@ export default function FinanceCenterPage({
         "finance-internal-fee-audit",
       ].includes(initialView)
     )
-      rows = rows.filter((row) => row.status === "待审批");
+      rows = rows.filter((row) =>
+        initialView === "finance-internal-archive"
+          ? row.status === "待归档"
+          : row.status === "待审批",
+      );
     if (initialView === "finance-internal-refund-audit")
       rows = rows.filter((row) => isInternalRefundFee(row));
     if (initialView === "finance-internal-refused")
@@ -7074,8 +7178,38 @@ export default function FinanceCenterPage({
       setGeneralSettlementBusy(false);
     }
   };
-  const exportConfiguredRows = (selectedOnly: boolean) => {
+  const exportConfiguredRows = async (selectedOnly: boolean) => {
     if (!activeRouteConfig) return;
+    if (
+      activeRouteConfig.source === "fees" &&
+      initialView.startsWith("finance-internal") &&
+      !isInternalDetailRoute
+    ) {
+      if (selectedOnly && !selectedOriginalRows.length) {
+        message.warning("请先选择需要导出的费用");
+        return;
+      }
+      try {
+        const response = await api.get("/finance/internal-fees/export", {
+          params: internalFeeExportRequestParams({
+            scope: initialView === "finance-internal-mine" ? "mine" : "company",
+            query: originalQuery,
+            ids: selectedOnly ? selectedOriginalRows.map(Number) : [],
+            initialView,
+          }),
+          responseType: "blob",
+        });
+        const url = URL.createObjectURL(response.data);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${displayedOriginalTitle}-${dayjs().format("YYYY-MM-DD")}.xls`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || "内部费用导出失败");
+      }
+      return;
+    }
     const rows = selectedOnly
       ? configuredRows.filter((row) => selectedOriginalRows.includes(row.id))
       : configuredRows;
@@ -7110,19 +7244,28 @@ export default function FinanceCenterPage({
       message.warning("请先选择需要导出的退款记录");
       return;
     }
+    const exportParams = selectedOnly
+      ? isRefundNotRequiredRoute
+        ? refundSelectedExportRequestParams(
+            selectedRefundRows,
+            activeRefundStatus,
+            refundGroupFilter,
+          )
+        : refundSelectedExportRequestParams(
+            selectedRefundRows,
+            refundStatusFilter,
+            refundGroupFilter,
+          )
+      : isRefundNotRequiredRoute
+        ? refundExportRequestParams(activeRefundStatus, refundGroupFilter)
+        : refundExportRequestParams(refundStatusFilter, refundGroupFilter);
     try {
       const response = await api.get(
         selectedOnly
           ? "/finance/refunds/export-selected"
           : "/finance/refunds/export",
         {
-          params: selectedOnly
-            ? refundSelectedExportRequestParams(
-                selectedRefundRows,
-                refundStatusFilter,
-                refundGroupFilter,
-              )
-            : refundExportRequestParams(refundStatusFilter, refundGroupFilter),
+          params: exportParams,
           responseType: "blob",
         },
       );
@@ -7387,14 +7530,22 @@ export default function FinanceCenterPage({
       type="error"
       showIcon
       message="合同付款来源定位失败"
-      description={contractPaymentSource.error}
+      description={
+        "error" in contractPaymentSource
+          ? contractPaymentSource.error
+          : "合同付款来源参数无效"
+      }
     />
   ) : !financeDataReady || loading ? (
     <Alert
       type="info"
       showIcon
       message="正在定位合同付款来源"
-      description={`请款单 ${contractPaymentSource.paymentNo}｜合同 ${contractPaymentSource.contractNo}`}
+      description={
+        "paymentNo" in contractPaymentSource
+          ? `请款单 ${contractPaymentSource.paymentNo}｜合同 ${contractPaymentSource.contractNo}`
+          : "合同付款来源参数无效"
+      }
       action={
         <Button onClick={() => onNavigate?.(contractPaymentSource.returnPage)}>
           返回合同详情
@@ -9548,6 +9699,11 @@ export default function FinanceCenterPage({
           </section>
         ) : (
           <>
+            {isRefundNotRequiredRoute && (
+              <div className="finance-original-title">
+                <h5>不再办理退费案件</h5>
+              </div>
+            )}
             <Alert
               className="finance-rule"
               type="info"
@@ -9672,12 +9828,19 @@ export default function FinanceCenterPage({
                       type="primary"
                       icon={<PlusOutlined />}
                       onClick={() => {
-                        invoiceForm.setFieldsValue({
-                          invoice_type: "增值税普通发票",
-                          invoice_content: "法律服务费",
-                          delivery_method: "电子发票",
-                        });
-                        setInvoiceOpen(true);
+                        void (async () => {
+                          try {
+                            await loadInvoiceReferenceData();
+                          } catch {
+                            return;
+                          }
+                          invoiceForm.setFieldsValue({
+                            invoice_type: "增值税普通发票",
+                            invoice_content: "法律服务费",
+                            delivery_method: "电子发票",
+                          });
+                          setInvoiceOpen(true);
+                        })();
                       }}
                     >
                       发票申请
@@ -9700,7 +9863,7 @@ export default function FinanceCenterPage({
                           void loadRefunds(
                             1,
                             refundMeta.pageSize,
-                            refundStatusFilter,
+                            activeRefundStatus,
                             true,
                             nextGroup,
                           );
@@ -9709,12 +9872,14 @@ export default function FinanceCenterPage({
                       />
                       <Select
                         aria-label="退款状态筛选"
-                        value={refundStatusFilter}
+                        value={activeRefundStatus}
+                        disabled={isRefundNotRequiredRoute}
                         options={refundStatusOptions.map((value) => ({
                           label: value,
                           value,
                         }))}
                         onChange={(value) => {
+                          if (isRefundNotRequiredRoute) return;
                           setRefundStatusFilter(value);
                           void loadRefunds(
                             1,
@@ -9728,10 +9893,10 @@ export default function FinanceCenterPage({
                       />
                       <Button
                         onClick={() => {
-                          setRefundStatusFilter("全部");
+                          setRefundStatusFilter(isRefundNotRequiredRoute ? "R100" : "全部");
                           setRefundGroupFilter("");
                           setSelectedRefundRows([]);
-                          void loadRefunds(1, refundMeta.pageSize, "", true, "");
+                          void loadRefunds(1, refundMeta.pageSize, refundStatusForRoute(initialView, ""), true, "");
                         }}
                       >
                         清空
@@ -9867,22 +10032,18 @@ export default function FinanceCenterPage({
                     showSizeChanger: true,
                     pageSizeOptions: refundPageSizeOptions,
                     onShowSizeChange: (_current, size) => {
-                      void loadRefunds(
-                        1,
-                        size,
-                        refundStatusFilter,
-                        true,
-                        refundGroupFilter,
-                      );
+                      if (isRefundNotRequiredRoute) {
+                        void loadRefunds(1, size, activeRefundStatus, true, refundGroupFilter);
+                      } else {
+                        void loadRefunds(1, size, refundStatusFilter, true, refundGroupFilter);
+                      }
                     },
                     onChange: (page, size) => {
-                      void loadRefunds(
-                        page,
-                        size,
-                        refundStatusFilter,
-                        true,
-                        refundGroupFilter,
-                      );
+                      if (isRefundNotRequiredRoute) {
+                        void loadRefunds(page, size, activeRefundStatus, true, refundGroupFilter);
+                      } else {
+                        void loadRefunds(page, size, refundStatusFilter, true, refundGroupFilter);
+                      }
                     },
                   }}
                   scroll={{ x: 1700 }}
@@ -10702,6 +10863,31 @@ export default function FinanceCenterPage({
                   if (item)
                     invoiceForm.setFieldValue("customer", item.customer);
                 }}
+              />
+            </Form.Item>
+            <Form.Item label="关联合同" name="contract_record_id">
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={contracts.map((x) => ({
+                  value: x.id,
+                  label: `${x.serial_no}｜${x.title || x.customer || ""}`,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item label="关联案件费用" name="case_fee_ids">
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={fees
+                  .filter((x) => !invoiceCaseNo || x.data?.case_no === invoiceCaseNo)
+                  .map((x) => ({
+                    value: x.id,
+                    label: `${x.serial_no}｜${x.title || x.data?.fee_type || ""}`,
+                  }))}
               />
             </Form.Item>
             <Form.Item

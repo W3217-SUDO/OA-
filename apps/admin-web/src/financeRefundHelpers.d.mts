@@ -1,5 +1,9 @@
 export declare const refundPageSizeOptions: number[];
 export declare const refundStatusOptions: string[];
+export declare const refundStatusForRoute: (
+  initialView: string,
+  selectedStatus?: string,
+) => string;
 export declare const refundRequestParams: (
   page: number,
   pageSize: number,
