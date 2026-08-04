@@ -50,7 +50,7 @@ test("invoice pagination remains server bounded", () => {
 });
 
 test("invoice detail and export controls remain available alongside the new default", () => {
-  assert.match(source, /setInvoiceDetail\(row\)/);
+  assert.match(source, /openInvoiceDetail\(row\)/);
   assert.match(source, /api\.get\("\/finance\/invoices\/export"/);
   assert.match(source, /selectedOnly && !selectedOriginalRows\.length/);
 });
@@ -82,5 +82,5 @@ test("invoice empty export selection is rejected before any request", () => {
 
 test("invoice detail remains read-only and can be opened from mine rows", () => {
   assert.match(source, /const invoiceMineOperation/);
-  assert.match(source, /setInvoiceDetail\(row\)/);
+  assert.match(source, /openInvoiceDetail\(row\)/);
 });

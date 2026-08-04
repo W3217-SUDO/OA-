@@ -75,7 +75,7 @@ test("fee query renders the legacy refund status label and invoice routes expose
   const pendingEnd = source.indexOf("const openInvoiceNumberChange", pendingStart);
   assert.ok(pendingStart >= 0 && pendingEnd > pendingStart);
   const pendingBlock = source.slice(pendingStart, pendingEnd);
-  assert.match(pendingBlock, /setInvoiceDetail\(row\)/);
+  assert.match(pendingBlock, /openInvoiceDetail\(row\)/);
   assert.match(pendingBlock, /openRecordFiles\(row/);
   for (const name of ["invoiceMineOperation", "invoiceCompanyOperation"]) {
     const start = source.indexOf(`const ${name}`);

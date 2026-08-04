@@ -8,5 +8,6 @@ test("sidebar restores the legacy expand-on-hover behavior", () => {
   assert.match(source, /sidebarHoverExpanded/, "the shell should track a temporary hover-expanded state");
   assert.match(source, /onMouseEnter=\{\(\) => collapsed && setSidebarHoverExpanded\(true\)\}/, "hovering a collapsed sidebar should expand it");
   assert.match(source, /onMouseLeave=\{\(\) => setSidebarHoverExpanded\(false\)\}/, "leaving the sidebar should restore its collapsed presentation");
-  assert.match(source, /collapsed=\{collapsed && !sidebarHoverExpanded\}/, "hover expansion must not overwrite the saved collapse preference");
+  assert.match(source, /: collapsed && !sidebarHoverExpanded/, "the desktop branch must keep hover expansion separate from the saved collapse preference");
+  assert.match(source, /collapsed=\{sidebarCollapsed\}/, "the Sider should consume the responsive state without bypassing desktop hover behavior");
 });

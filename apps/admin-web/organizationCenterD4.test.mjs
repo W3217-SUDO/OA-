@@ -21,7 +21,7 @@ test("organization lists retain legacy fifteen-row paging plus boundary controls
   assert.equal((source.match(/pageSize:\s*15/g) || []).length, 2);
   assert.match(source, /showSizeChanger:\s*true/);
   assert.match(source, /pageSizeOptions:\s*\[[^\]]*15/);
-  assert.match(source, /showQuickJumper:\s*true/);
+  assert.match(source, /showQuickJumper:\s*\{\s*goButton:\s*["']GO["']\s*\}/);
   assert.match(source, /showTotal:\s*\(total\)/);
 });
 

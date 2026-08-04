@@ -914,6 +914,7 @@ export default function IprCenterPage({
       message.error(e?.response?.data?.detail || "删除案件提醒失败");
     }
   };
+  const canDeleteIprReminder = (row: IprReminder) => row.creator === profile.username || ["admin", "manager"].includes(profile.role || "");
   const confirmIprDeletion = (kind: string, label: string, operation: () => Promise<void>) => {
     const prompt = getIprCaseDeletionConfirmation(kind, label);
     Modal.confirm({ ...prompt, onOk: operation });
@@ -1881,7 +1882,7 @@ export default function IprCenterPage({
                     title: "操作",
                     width: 80,
                     render: (_, row: IprReminder) =>
-                      detail.status === "在办" ? (
+                      detail.status === "在办" && canDeleteIprReminder(row) ? (
                         <Button
                           type="link"
                           danger

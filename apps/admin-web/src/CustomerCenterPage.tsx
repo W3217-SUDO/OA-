@@ -1370,6 +1370,14 @@ export default function CustomerCenterPage({
   const canManageCurrentCustomer = Boolean(contacts && (
     isCustomerDetailManageable(contacts, profile)
   ));
+  const canOpenCustomerCommunication = [
+    "customer-mine",
+    "customer-dept",
+    "customer-company",
+    "customer-shared",
+    "customer-recent-contact",
+    "customer-recent-update",
+  ].includes(initialView);
   const columns = [
     {
       title: "客户编号",
@@ -1454,12 +1462,27 @@ export default function CustomerCenterPage({
         displayDate(initialView === "customer-recent-update" ? r.updated_at : r.data.last_modified_date || r.updated_at),
     },
     {
+      title: "沟通记录",
+      key: "communication",
+      width: 126,
+      align: "center" as const,
+      render: (_: unknown, r: Customer) =>
+        canOpenCustomerCommunication ? (
+          <Button type="link" className="customer-cell-link" onClick={() => openCustomerCommunication(r)}>
+            新增沟通记录
+          </Button>
+        ) : "—",
+    },
+    {
       title: "联系次数",
       key: "contactCount",
       width: 118,
       align: "center" as const,
-      render: (_: unknown, r: Customer) =>
-        r.data.contact_count ?? r.data.notes?.length ?? 0,
+      render: (_: unknown, r: Customer) => (
+        <Button type="link" className="customer-cell-link" onClick={() => openDetail(r, "contacts")}>
+          {r.data.contact_count ?? r.data.notes?.length ?? 0}
+        </Button>
+      ),
     },
     {
       title: "合同数量",

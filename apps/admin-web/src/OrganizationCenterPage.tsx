@@ -534,7 +534,7 @@ export default function OrganizationCenterPage({
               pageSize: 15,
               showSizeChanger: true,
               pageSizeOptions: ["10", "15", "20", "50", "100"],
-              showQuickJumper: true,
+              showQuickJumper: { goButton: "GO" },
               showTotal: (total) => `共 ${total} 条`,
             }}
           />

@@ -1967,6 +1967,7 @@ export default function ContractCenterPage({
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
           <RecordImportButton module="contract" onImported={load} /><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
+          <Button danger disabled={!selected || selected.status !== "草稿"} onClick={()=>needSelected(()=>revokeDraft(selected!))}>撤销草稿</Button>
           <Button disabled={!selectedSecondaryActionPolicy.canEdit} onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
           <Button disabled={!selectedActionPolicy.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
@@ -2271,7 +2272,7 @@ export default function ContractCenterPage({
                       <Input.Search allowClear value={contractEventKeyword} loading={contractEventsLoading} placeholder="搜索事项内容" onChange={(event) => setContractEventKeyword(event.target.value)} onSearch={(value) => { setContractEventKeyword(value.trim()); setContractEventPage(1); if (viewing) void reloadContractEvents(viewing, 1, value.trim(), contractEventPageSize); }} />
                       {contractEventsError && <Button type="link" onClick={() => viewing && void reloadContractEvents(viewing, contractEventPage, contractEventKeyword, contractEventPageSize)}>重试</Button>}
                     </Space>
-                    {contractEventsError ? <Alert type="error" showIcon message={contractEventsError} /> : contractEvents.length ? <Timeline items={contractEvents.map((event) => ({ children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div> }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
+                    {contractEventsError ? <Alert type="error" showIcon message={contractEventsError} /> : contractEvents.length ? <Timeline items={contractEvents.map((event) => ({ children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div> }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={viewing ? <span>暂无事项记录，<Button type="link" onClick={() => viewing && void openContractEvent(viewing)}>新建</Button></span> : "暂无事项记录"} />}
                     {viewingHasEventEndpoint && <Pagination size="small" current={contractEventPage} pageSize={contractEventPageSize} total={contractEventTotal} showSizeChanger pageSizeOptions={CONTRACT_EVENT_PAGE_SIZES.map(String)} showQuickJumper={{ goButton: <Button size="small">GO</Button> }} onChange={(page, pageSize) => { setContractEventPage(page); setContractEventPageSize(pageSize); if (viewing) void reloadContractEvents(viewing, page, contractEventKeyword, pageSize); }} />}
                   </>,
                 },
@@ -2411,7 +2412,7 @@ export default function ContractCenterPage({
           <Timeline items={contractEvents.map((event) => ({
             children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,
           }))} />
-        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项记录" />}
+        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={viewing ? <span>暂无事项记录，<Button type="link" onClick={() => viewing && void openContractEvent(viewing)}>新建</Button></span> : "暂无事项记录"} />}
         <Divider>流程记录</Divider>
         {contractWorkflowEvents.length ? <Timeline items={contractWorkflowEvents.map((event) => ({
           children: <div className="contract-history-item"><b>{event.content}</b><small>{event.operator} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}</small></div>,

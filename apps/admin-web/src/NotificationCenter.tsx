@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, Drawer, Empty, List, Space, Tag, Tooltip } from "antd";
+import { Badge, Button, Drawer, Empty, List, Modal, Space, Tag, Tooltip } from "antd";
 import { BellOutlined, CheckOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -20,13 +20,14 @@ type Notice = {
 };
 
 const colors: Record<string, string> = { error: "red", warning: "orange", info: "blue" };
-const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',finance_package:'finance-fee-query',finance_settlement:'finance-fee-query',finance_archive_settlement:'finance-fee-query',contract:'contract-audit',case:'case-schedule',message:'user-messages'};
+const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',finance_package:'finance-fee-query',finance_settlement:'finance-fee-query',finance_archive_settlement:'finance-fee-query',contract:'contract-audit',case:'case-schedule'};
 
 export default function NotificationCenter({ onNavigate }: { onNavigate: (key: string) => void }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notice[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -52,6 +53,7 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
 
   const read = async (item: Notice) => {
     if (!item.is_read) await api.post(`/notifications/${item.id}/read`);
+    const nextNotice = { ...item, is_read: true };
     setItems((rows) => rows.map((row) => row.id === item.id ? { ...row, is_read: true } : row));
     setUnread((value) => Math.max(0, value - (item.is_read ? 0 : 1)));
     if (item.source_type === "contract" && item.source_id) rememberContractDetailTarget({ id: item.source_id });
@@ -63,7 +65,9 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
     if (route) {
       onNavigate(route);
       setOpen(false);
+      return;
     }
+    setSelectedNotice(nextNotice);
   };
 
   const readAll = async () => {
@@ -117,6 +121,20 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
           )}
         />
       </Drawer>
+      <Modal
+        open={Boolean(selectedNotice)}
+        title={selectedNotice?.title}
+        footer={null}
+        onCancel={() => setSelectedNotice(null)}
+      >
+        <Space wrap>
+          <Tag color={colors[selectedNotice?.level || ""] || "blue"}>
+            {selectedNotice?.is_read ? "已读" : "未读"}
+          </Tag>
+          <small>{selectedNotice?.created_at ? new Date(selectedNotice.created_at).toLocaleString("zh-CN") : ""}</small>
+        </Space>
+        <div style={{ marginTop: 16, whiteSpace: "pre-wrap" }}>{selectedNotice?.content}</div>
+      </Modal>
     </>
   );
 }

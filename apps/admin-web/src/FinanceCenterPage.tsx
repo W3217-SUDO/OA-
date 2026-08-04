@@ -639,6 +639,7 @@ export default function FinanceCenterPage({
     [],
   );
   const refundRequestGuard = useMemo(() => createLatestRequestGuard(), []);
+  const invoiceDetailRequestGuard = useMemo(() => createLatestRequestGuard(), []);
   const refundDetailRequestGuard = useMemo(() => createLatestRequestGuard(), []);
   const contractPaymentSourceSearch =
     initialView === "finance-payment-mine" && typeof window !== "undefined"
@@ -1013,6 +1014,26 @@ export default function FinanceCenterPage({
           error?.message ||
           "请款单详情加载失败",
       );
+    }
+  };
+  const openInvoiceDetail = async (row: FinanceFlow) => {
+    const token = invoiceDetailRequestGuard.begin();
+    try {
+      const { data } = await api.get(`/records/${row.id}`);
+      if (!invoiceDetailRequestGuard.isLatest(token)) return;
+      if (!data || data.module !== "invoice") {
+        throw new Error("发票详情记录无效");
+      }
+      if (String(data.id) !== String(row.id)) {
+        throw new Error("发票详情记录不匹配");
+      }
+      setInvoiceDetail(data);
+    } catch (error: any) {
+      if (invoiceDetailRequestGuard.isLatest(token)) {
+        message.error(
+          error?.response?.data?.detail || error?.message || "发票详情加载失败",
+        );
+      }
     }
   };
   const openRefundDetail = async (row: FinanceFlow) => {
@@ -3204,7 +3225,7 @@ export default function FinanceCenterPage({
       width: 205,
       render: (_: unknown, r: FinanceFlow) => (
         <Space wrap>
-          <Button type="link" onClick={() => setInvoiceDetail(r)}>
+          <Button type="link" onClick={() => void openInvoiceDetail(r)}>
             详情
           </Button>
           {["草稿", "已驳回"].includes(r.status) && (
@@ -4002,8 +4023,17 @@ export default function FinanceCenterPage({
             </Button>
           )}
       </Space>
+    ) : initialView === "finance-internal-payment" ? (
+      <Space size={0}>
+        <Button type="link" onClick={() => void openPaymentDetail(row)}>
+          查看
+        </Button>
+      </Space>
     ) : initialView === "finance-payment-waiting" ? (
       <Space size={0}>
+        <Button type="link" onClick={() => void openPaymentDetail(row)}>
+          查看
+        </Button>
         {latestTransaction(row) && (
           <Button type="link" onClick={() => void printPayment(row)}>
             打印
@@ -5254,6 +5284,7 @@ export default function FinanceCenterPage({
       source: "fees",
       selectable: true,
       headers: [
+        "操作",
         "状态",
         "申请人",
         "申请日期",
@@ -5811,7 +5842,7 @@ export default function FinanceCenterPage({
   );
   const invoiceMineOperation = (_: unknown, row: FinanceFlow) => (
     <Space size={0}>
-      <Button type="link" onClick={() => setInvoiceDetail(row)}>
+      <Button type="link" onClick={() => void openInvoiceDetail(row)}>
         查看
       </Button>
       {["草稿", "已驳回"].includes(row.status) && (
@@ -5869,7 +5900,7 @@ export default function FinanceCenterPage({
   };
   const invoicePendingOperation = (_: unknown, row: FinanceFlow) => (
     <Space size={0}>
-      <Button type="link" onClick={() => setInvoiceDetail(row)}>
+      <Button type="link" onClick={() => void openInvoiceDetail(row)}>
         查看
       </Button>
       <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
@@ -5999,7 +6030,7 @@ export default function FinanceCenterPage({
   };
   const invoiceCompanyOperation = (_: unknown, row: FinanceFlow) => (
     <Space size={0} wrap>
-      <Button type="link" onClick={() => setInvoiceDetail(row)}>
+      <Button type="link" onClick={() => void openInvoiceDetail(row)}>
         查看
       </Button>
       <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
@@ -6449,7 +6480,7 @@ export default function FinanceCenterPage({
           onClick={() =>
             isInvoicePendingRoute
               ? openInvoiceProcess(row)
-              : setInvoiceDetail(row)
+              : void openInvoiceDetail(row)
           }
         >
           {cellValue(row, header)}
@@ -11174,6 +11205,18 @@ export default function FinanceCenterPage({
             </Descriptions.Item>
             <Descriptions.Item label="案件编号">
               {feeDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(feeDetail.data.case_no)}>{feeDetail.data.case_no}</Button> : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="合同编号">
+              {feeDetail.data.contract_no ? (
+                <Button
+                  type="link"
+                  onClick={() => openContractDetail(feeDetail.data.contract_no)}
+                >
+                  {feeDetail.data.contract_no}
+                </Button>
+              ) : (
+                "—"
+              )}
             </Descriptions.Item>
             <Descriptions.Item label="案件阶段">
               {feeDetail.data.case_stage ||

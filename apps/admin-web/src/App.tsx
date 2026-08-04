@@ -1135,9 +1135,14 @@ export default function App() {
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
+  const sidebarCollapsed = isNarrowViewport
+    ? !mobileSidebarOpen
+    : collapsed && !sidebarHoverExpanded;
   const resetWorkspaceForSession = () => {
     const dashboard = [{ key: "dashboard", label: "控制台" }];
     setContractDetailTarget(null);
@@ -1473,10 +1478,16 @@ export default function App() {
         </div>
         <Button
           type="text"
-          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-          title={collapsed ? "展开侧栏" : "收起侧栏"}
-          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-          onClick={() => setCollapsed((v) => !v)}
+          aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => {
+            if (isNarrowViewport) {
+              setMobileSidebarOpen((open) => !open);
+              return;
+            }
+            setCollapsed((v) => !v);
+          }}
         />
         <div className="global-search">
           <GlobalSearch
@@ -1590,15 +1601,32 @@ export default function App() {
       <Layout className="app-body">
         <Sider
           width={230}
-          collapsedWidth={50}
-          collapsed={collapsed && !sidebarHoverExpanded}
+          breakpoint="lg"
+          onBreakpoint={(broken) => {
+            setIsNarrowViewport(broken);
+            if (!broken) setMobileSidebarOpen(false);
+          }}
+          collapsedWidth={isNarrowViewport ? 0 : 50}
+          collapsed={sidebarCollapsed}
           onMouseEnter={() => collapsed && setSidebarHoverExpanded(true)}
           onMouseLeave={() => setSidebarHoverExpanded(false)}
           className="sidebar"
         >
-          {!collapsed && (
+          {(isNarrowViewport ? mobileSidebarOpen : !collapsed) && (
             <div className="user-panel">
-              <div className="avatar">
+              <div
+                className="avatar"
+                role="button"
+                tabIndex={0}
+                aria-label="打开个人资料"
+                onClick={() => navigate(accountProfileRoute)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigate(accountProfileRoute);
+                  }
+                }}
+              >
                 {(sessionUser?.username || "admin").slice(0, 1).toUpperCase()}
               </div>
               <div>
@@ -1629,7 +1657,7 @@ export default function App() {
               navigate(key);
             }}
           />
-          {!collapsed && (
+          {(isNarrowViewport ? mobileSidebarOpen : !collapsed) && (
             <div className="support-tools">
               <div className="support-tools-title">办案辅助工具</div>
               {supportTools.map((item) => (
@@ -1648,6 +1676,9 @@ export default function App() {
         </Sider>
         <Content
           className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") ? "case-detail-content" : ""}`}
+          onClick={() => {
+            if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
+          }}
         >
           <div className="page-head">
             <div>

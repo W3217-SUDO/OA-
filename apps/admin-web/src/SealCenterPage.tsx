@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { sealViewSpec } from "./sealViewMapping";
 import {
   Alert,
@@ -132,7 +132,8 @@ function getSealPreviewMode(payload: { kind?: string }): SealPreviewMode {
 }
 const sealUploadExtensions = new Set([
   ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-  ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar",
+  ".txt", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".zip", ".rar",
+  ".ini", ".conf", ".eml",
 ]);
 function validateSealUploadFile(file: File | undefined): string | null {
   if (!file || !file.name || file.size <= 0) return "请选择上传文件.";
@@ -351,6 +352,7 @@ export default function SealCenterPage({
     null,
   );
   const [createOpen, setCreateOpen] = useState(false);
+  const createSubmitModeRef = useRef(false);
   const [pendingCreateFiles, setPendingCreateFiles] = useState<File[]>([]);
   const [assetOpen, setAssetOpen] = useState(false);
   const [editAsset, setEditAsset] = useState<SealAsset | null>(null);
@@ -843,6 +845,8 @@ export default function SealCenterPage({
     setPendingCreateFiles((current) => [...current, ...validFiles]);
   };
   const createApplication = async () => {
+    const submitAfterSave = createSubmitModeRef.current;
+    createSubmitModeRef.current = false;
     let v: Record<string, any>;
     try {
       v = await createForm.validateFields();
@@ -881,8 +885,20 @@ export default function SealCenterPage({
       const queuedFilesUploaded = pendingCreateFiles.length
         ? await uploadSealFiles(pendingCreateFiles, savedApplication)
         : true;
+      if (submitAfterSave && !queuedFilesUploaded) {
+        throw new Error("附件上传失败，未提交审批");
+      }
+      if (submitAfterSave) {
+        await postSeal(`/seals/applications/${savedApplication.id}/submit`, {
+          comment: "申请人在编辑弹窗内确认材料无误并提交审批",
+        });
+      }
       message.success(
-        editingApplication ? "用印申请已修改" : "用印申请已保存为草稿",
+        submitAfterSave
+          ? "用印申请已保存并提交审批"
+          : editingApplication
+            ? "用印申请已修改"
+            : "用印申请已保存为草稿",
       );
       if (queuedFilesUploaded) setPendingCreateFiles([]);
       setCreateOpen(false);
@@ -2169,7 +2185,42 @@ export default function SealCenterPage({
         okText="保存草稿"
         cancelText="取消"
         confirmLoading={actionSubmitting}
-        onOk={createApplication}
+        onOk={() => void createApplication()}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setCreateOpen(false);
+              setEditingApplication(null);
+              setPendingCreateFiles([]);
+              setSourceAttachments([]);
+              setSourceAttachmentPage(1);
+              setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
+              setSourceAttachmentTotal(0);
+              createForm.setFieldValue("source_attachment_ids", []);
+            }}
+          >
+            取消
+          </Button>,
+          <Button
+            key="save"
+            loading={actionSubmitting}
+            onClick={() => void createApplication()}
+          >
+            保存草稿
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={actionSubmitting}
+            onClick={() => {
+              createSubmitModeRef.current = true;
+              void createApplication();
+            }}
+          >
+            保存并提交审批
+          </Button>,
+        ]}
         onCancel={() => {
           setCreateOpen(false);
           setEditingApplication(null);
@@ -2377,6 +2428,17 @@ export default function SealCenterPage({
               <Button icon={<UploadOutlined />}>选择待上传附件</Button>
             </Upload>
           </Form.Item>
+          {editingApplication && (
+            <Button
+              type="link"
+              onClick={() => {
+                setCreateOpen(false);
+                void openDetail(editingApplication);
+              }}
+            >
+              管理已有用印文件
+            </Button>
+          )}
           <Form.Item
             label="用印用途"
             name="purpose"
@@ -2541,6 +2603,31 @@ export default function SealCenterPage({
           resetStampAttachmentState();
         }}
       >
+        {(action?.type === "approve" || action?.type === "reject") && (
+          <Descriptions
+            size="small"
+            bordered
+            column={1}
+            items={[
+              {
+                key: "serial_no",
+                label: "用印编号",
+                children: action.row.serial_no,
+              },
+              {
+                key: "title",
+                label: "申请标题",
+                children: action.row.title,
+              },
+              {
+                key: "customer",
+                label: "客户",
+                children: action.row.customer || "—",
+              },
+            ]}
+            style={{ marginBottom: 12 }}
+          />
+        )}
         {(action?.type === "approve" || action?.type === "reject") && (
           <Button
             type="link"
