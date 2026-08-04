@@ -62,6 +62,22 @@ def call(method: str, path: str, body=None, *, expected=(200,), raw=False, heade
     return json.loads(payload.decode("utf-8"))
 
 
+def paged_items(path: str, *, page_size: int = 200) -> list[dict]:
+    items: list[dict] = []
+    page = 1
+    while True:
+        separator = "&" if "?" in path else "?"
+        payload = call("GET", f"{path}{separator}{urllib.parse.urlencode({'page': page, 'page_size': page_size})}")
+        items.extend(payload.get("items") or [])
+        pages = int(payload.get("pages") or 0)
+        total = int(payload.get("total") or len(items))
+        if pages <= 0:
+            pages = (total + page_size - 1) // page_size if total else 0
+        if page >= pages or len(items) >= total:
+            return items
+        page += 1
+
+
 def login(username: str, password: str, *, expected=(200,), complete_forced_change=True):
     global TOKEN
     remembered = SMOKE_CHANGED_PASSWORDS.get(username)
@@ -1544,7 +1560,7 @@ def main():
         call("POST", f"/cases/{case['id']}/assign", assignment_payload, expected=(409,))
         case = call("POST", f"/cases/{case['id']}/creation/review", {"approved": True, "comment": "案件主管审核通过"})
         assert case["status"] == "新案待分配" and case["data"]["case_creation_approval_status"] == "已通过"
-        fixed_tasks = call("GET", f"/cases/{case['id']}/tasks")["items"]
+        fixed_tasks = paged_items(f"/cases/{case['id']}/tasks")
         assert {item["data"]["fixed_task_key"] for item in fixed_tasks if item["data"].get("task_type") == "固定任务"} == {"filing-registration", "service-tracking"}
         assert judicial["description"] == "刑事案件案情说明" and judicial["data"]["first_court_enabled"] is True
         maintained_security = call("PUT", f"/cases/{case['id']}/criminal/public-security", {"public_security_name": "上海市公安局维护分局", "public_security_case_no": serial("PS-MAINTAIN"), "public_security_address": "上海市维护路1号", "public_security_phone": "021-12345678", "public_security_operator": "维护侦查员", "comment": "刑事公安机关维护验收"})
@@ -1741,7 +1757,7 @@ def main():
         call("PUT", f"/cases/{archive_case['id']}/litigants", {})
         archive_case = call("PUT", f"/cases/{archive_case['id']}/judicial", {"court": "上海市测试人民法院"})
         archive_case = call("POST", f"/cases/{archive_case['id']}/creation/review", {"approved": True, "comment": "归档测试案件立案审批通过"})
-        for fixed_task in call("GET", f"/cases/{archive_case['id']}/tasks")["items"]:
+        for fixed_task in paged_items(f"/cases/{archive_case['id']}/tasks"):
             call("POST", f"/tasks/{fixed_task['id']}/accept", {"comment": "归档前办理固定任务"})
             call("POST", f"/tasks/{fixed_task['id']}/complete", {"comment": "固定任务成果已提交"})
             call("POST", f"/tasks/{fixed_task['id']}/confirm", {"comment": "案件主管验收通过"})
@@ -1876,8 +1892,8 @@ def main():
         records.append(handoff_task_id)
         handoff_task = call("GET", f"/records/{handoff_task_id}")
         assert handoff_task["status"] == "待接收" and handoff_task["data"]["auto_task_type"] == "notary_original_handoff" and handoff_task["data"]["case_no"] == batch_case["serial_no"]
-        case_task_items = call("GET", f"/cases/{batch_case['id']}/tasks")
-        assert handoff_task_id in {item["id"] for item in case_task_items["items"]}
+        case_task_items = paged_items(f"/cases/{batch_case['id']}/tasks")
+        assert handoff_task_id in {item["id"] for item in case_task_items}
         call("POST", f"/tasks/{handoff_task_id}/accept", {"comment": "扫描文员接收交接任务"})
         submitted_handoff = call("POST", f"/tasks/{handoff_task_id}/complete", {"comment": "原件已交给案件文书人员"})
         assert submitted_handoff["status"] == "已完成" and submitted_handoff["workflow_status"] == "已完成" and submitted_handoff["completion_auto_confirm_at"]
@@ -2709,7 +2725,7 @@ def main():
             "submit": True,
         }
         # 案件办结必须先完成系统生成的固定任务；结算归档同样不得绕过该业务门槛。
-        for fixed_task in call("GET", f"/cases/{case['id']}/tasks")["items"]:
+        for fixed_task in paged_items(f"/cases/{case['id']}/tasks"):
             if fixed_task.get("data", {}).get("task_type") != "固定任务" or fixed_task["status"] in {"已完成", "已验收", "已取消"}:
                 continue
             if fixed_task["status"] in {"待接收", "待接受"}:
