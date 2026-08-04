@@ -41,6 +41,7 @@ import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
 import { selectContractCurrentApprovalStep } from "./contractApprovalCurrentStep.mjs";
 import { normalizeContractPaymentApplications } from "./contractPaymentApplicationPresentation.mjs";
 import { createContractMutationGate } from "./contractMutationGate.mjs";
+import { buildContractAttachmentDeletePlan, summarizeContractAttachmentDeleteResults } from "./contractAttachmentBatch.mjs";
 import {
   CONTRACT_OBJECT_DEFAULT_PAGE_SIZE,
   CONTRACT_OBJECT_PAGE_SIZES,
@@ -267,6 +268,8 @@ export default function ContractCenterPage({
   const [approverSettingsSaving, setApproverSettingsSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
+  const [selectedAttachmentKeys, setSelectedAttachmentKeys] = useState<Key[]>([]);
+  const [attachmentBatchSaving, setAttachmentBatchSaving] = useState(false);
   const [detailReceipts, setDetailReceipts] = useState<any[]>([]);
   const [detailInvoices, setDetailInvoices] = useState<Contract[]>([]);
   const [detailPayments, setDetailPayments] = useState<Contract[]>([]);
@@ -293,6 +296,7 @@ export default function ContractCenterPage({
     submit: createContractMutationGate(),
     payment: createContractMutationGate(),
     invoice: createContractMutationGate(),
+    attachment: createContractMutationGate(),
   });
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
@@ -322,6 +326,8 @@ export default function ContractCenterPage({
     contractEventRequestTracker.current.next();
     setViewing(null);
     setViewingAttachments([]);
+    setSelectedAttachmentKeys([]);
+    setAttachmentBatchSaving(false);
     setContractObjects([]);
     setObjectPage(1);
     setObjectPageSize(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
@@ -363,6 +369,7 @@ export default function ContractCenterPage({
     const eventRequestId = contractEventRequestTracker.current.next();
     setViewing(contract);
     setViewingAttachments([]);
+    setSelectedAttachmentKeys([]);
     setViewingAttachmentsLoading(true);
     setViewingAttachmentsError(null);
     setContractEventsLoading(true);
@@ -476,6 +483,7 @@ export default function ContractCenterPage({
     try {
       const response = await api.get("/attachments", { params: { record_id: contract.id } });
       setViewingAttachments((response.data.items || []).map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) })));
+      setSelectedAttachmentKeys([]);
     } catch (error: any) {
       setViewingAttachmentsError(extractContractErrorMessage(error, "合同附件加载失败"));
     } finally {
@@ -1063,6 +1071,28 @@ export default function ContractCenterPage({
       message.success("合同附件已删除");
     } catch (error: any) {
       message.error(extractContractErrorMessage(error, "合同附件删除失败"));
+    }
+  };
+  const batchDeleteViewingAttachments = async () => {
+    const target = viewing;
+    const deletePlan = buildContractAttachmentDeletePlan(selectedAttachmentKeys);
+    if (!target || !deletePlan.length || !contractAttachmentActionPolicy(target.status).canDelete || !contractMutationGates.current.attachment.tryEnter()) return;
+    setAttachmentBatchSaving(true);
+    try {
+      const results = await Promise.allSettled(deletePlan.map(async (attachmentId) => {
+        const response = await api.delete(`/attachments/${attachmentId}`);
+        const feedback = normalizeContractActionResponse(response, "合同附件删除失败");
+        if (!feedback.ok) throw new Error(feedback.message);
+        return attachmentId;
+      }));
+      const summary = summarizeContractAttachmentDeleteResults(results.map((result, index) => ({ ...result, id: deletePlan[index] })));
+      if (summary.deleted) await reloadViewingAttachments(target);
+      setSelectedAttachmentKeys([]);
+      if (summary.failed.length) message.warning(`${summary.deleted} 个附件已删除；${summary.failed.map((item) => item.message).join("；")}`);
+      else message.success(`已删除 ${summary.deleted} 个合同附件`);
+    } finally {
+      contractMutationGates.current.attachment.leave();
+      setAttachmentBatchSaving(false);
     }
   };
   const submit = async () => {
@@ -2100,8 +2130,9 @@ export default function ContractCenterPage({
                     <Space wrap style={{ marginBottom: 8 }}>
                       <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onChange={(event) => setContractFile(event.target.files?.[0] || null)} />
                       <Button onClick={() => void uploadViewingAttachment()} disabled={!contractFile || !viewing || ["审批中", "已归档"].includes(viewing.status)}>上传附件</Button>
+                      <Button danger loading={attachmentBatchSaving} disabled={!viewing || !contractAttachmentActionPolicy(viewing.status).canDelete || !selectedAttachmentKeys.length} onClick={() => void batchDeleteViewingAttachments()}>批量删除{selectedAttachmentKeys.length ? `（${selectedAttachmentKeys.length}）` : ""}</Button>
                     </Space>
-                    {viewingAttachmentsError ? <Alert type="error" showIcon message={viewingAttachmentsError} action={<Button size="small" onClick={() => viewing && void reloadViewingAttachments(viewing)}>重试</Button>} /> : viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} columns={[
+                    {viewingAttachmentsError ? <Alert type="error" showIcon message={viewingAttachmentsError} action={<Button size="small" onClick={() => viewing && void reloadViewingAttachments(viewing)}>重试</Button>} /> : viewingAttachmentsLoading ? <span>正在加载合同附件…</span> : viewingAttachments.length ? <Table size="small" rowKey="id" pagination={false} dataSource={viewingAttachments} rowSelection={{ selectedRowKeys: selectedAttachmentKeys, onChange: setSelectedAttachmentKeys, getCheckboxProps: () => ({ disabled: !viewing || !contractAttachmentActionPolicy(viewing.status).canDelete }) }} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: Attachment, index: number) => index + 1 },
                     { title: "文件名称", dataIndex: "original_name" },
                     { title: "分类", dataIndex: "category", width: 160 },
