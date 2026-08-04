@@ -69,6 +69,7 @@ import "./finance-center.css";
 
 type Fee = {
   id: number;
+  module?: string;
   serial_no: string;
   title: string;
   customer: string;
@@ -417,6 +418,18 @@ const paymentQueryRequestParams = (
   record_status: String(query.status || "").trim(),
 });
 
+const contractPaymentQueryRequestParams = (
+  query: Record<string, any>,
+  page: number,
+  pageSize: number,
+) => ({
+  module: "contract_payment",
+  page,
+  page_size: pageSize,
+  keyword: String(query.paymentNo || "").trim(),
+  record_status: String(query.status || "").trim(),
+});
+
 const paymentQueryShowsSinglePageGo = (
   initialView: string,
   total: number,
@@ -490,6 +503,16 @@ const paymentQueryPageTotal = (
 
 const paymentQueryFeeTypeControl = (initialView: string): "feeType" | undefined =>
   initialView === "finance-payment-query" ? undefined : "feeType";
+
+const settlementContextPageSize = 100;
+
+const settlementContextTasksRequest = (caseId: number, page: number) => ({
+  url: "/cases/" + caseId + "/tasks",
+  params: { page, page_size: settlementContextPageSize },
+});
+
+const normalizeSettlementContextRows = (data: any) =>
+  Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
 
 const effectivePaymentQuery = (
   initialView: string,
@@ -596,6 +619,7 @@ export default function FinanceCenterPage({
     [],
   );
   const refundRequestGuard = useMemo(() => createLatestRequestGuard(), []);
+  const refundDetailRequestGuard = useMemo(() => createLatestRequestGuard(), []);
   const contractPaymentSourceSearch =
     initialView === "finance-payment-mine" && typeof window !== "undefined"
       ? window.location.search
@@ -921,7 +945,45 @@ export default function FinanceCenterPage({
       if (!data || !["finance", "contract_payment"].includes(data.module)) {
         throw new Error("请款单详情记录无效");
       }
-      setFeeDetail(data);
+      const packageNo = String(
+        data.data?.payment_package_no || data.data?.package_no || "",
+      ).trim();
+      let detail = data;
+      if (packageNo) {
+        try {
+          const packageResponse = await api.get("/records", {
+            params: { module: "finance_package", keyword: packageNo },
+          });
+          const paymentPackage = (packageResponse.data?.items || []).find(
+            (item: Fee) =>
+              item.serial_no === packageNo ||
+              item.data?.package_no === packageNo ||
+              item.data?.payment_package_no === packageNo,
+          );
+          if (paymentPackage) {
+            detail = {
+              ...data,
+              data: {
+                ...data.data,
+                package_no: data.data?.package_no || packageNo,
+                payment_package_no:
+                  data.data?.payment_package_no || packageNo,
+                payment_package_context: paymentPackage,
+              },
+            };
+          }
+        } catch {
+          detail = {
+            ...data,
+            data: {
+              ...data.data,
+              package_no: data.data?.package_no || packageNo,
+              payment_package_no: data.data?.payment_package_no || packageNo,
+            },
+          };
+        }
+      }
+      setFeeDetail(detail);
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail ||
@@ -931,16 +993,23 @@ export default function FinanceCenterPage({
     }
   };
   const openRefundDetail = async (row: FinanceFlow) => {
+    const token = refundDetailRequestGuard.begin();
     try {
       const { data } = await api.get(`/records/${row.id}`);
+      if (!refundDetailRequestGuard.isLatest(token)) return;
       if (!data || data.module !== "refund") {
         throw new Error("退款详情记录无效");
       }
+      if (String(data.id) !== String(row.id)) {
+        throw new Error("退款详情记录不匹配");
+      }
       setRefundDetail(data);
     } catch (error: any) {
-      message.error(
-        error?.response?.data?.detail || error?.message || "退款详情加载失败",
-      );
+      if (refundDetailRequestGuard.isLatest(token)) {
+        message.error(
+          error?.response?.data?.detail || error?.message || "退款详情加载失败",
+        );
+      }
     }
   };
   useEffect(() => {
@@ -1482,19 +1551,35 @@ export default function FinanceCenterPage({
   ) => {
     const requests = paymentQueryServerPagePlan(page, pageSize);
     const responses = await Promise.all(
-      requests.map((request) =>
+      requests.flatMap((request) => [
         api.get("/records", {
           params: paymentQueryRequestParams(query, request.page, request.pageSize),
         }),
-      ),
+        api.get("/records", {
+          params: contractPaymentQueryRequestParams(
+            query,
+            request.page,
+            request.pageSize,
+          ),
+        }),
+      ]),
     );
-    const firstResponse = responses[0]?.data || { items: [], total: 0 };
+    const seen = new Set<string>();
+    const mergedItems = responses
+      .flatMap((response) => response.data?.items || [])
+      .filter((item: Fee) => {
+        const key = String(item.module || item.data?._source_module || "finance") + ":" + String(item.id);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     return {
       data: {
-        items: responses
-          .flatMap((response) => response.data?.items || [])
-          .slice(0, pageSize),
-        total: Number(firstResponse.total || 0),
+        items: mergedItems.slice(0, pageSize),
+        total: responses.reduce(
+          (sum, response) => sum + Number(response.data?.total || 0),
+          0,
+        ),
         page,
         page_size: pageSize,
       },
@@ -2218,8 +2303,9 @@ export default function FinanceCenterPage({
   const writeoffFee = async () => {
     if (!writeoffTarget) return;
     const values = await writeoffForm.validateFields();
+    const target = writeoffTarget;
     try {
-      const contractPayment = contractPayments.find((item) => item.id === writeoffTarget.id);
+      const contractPayment = contractPayments.find((item) => item.id === target.id);
       if (contractPayment) {
         await api.post(`/contract-payment-applications/${contractPayment.id}/writeoff`, {
           writeoff_date: formatRequiredDate(values.writeoff_date || dayjs(), "核销日期"),
@@ -2229,14 +2315,30 @@ export default function FinanceCenterPage({
         message.success("合同付款已核销");
         setWriteoffTarget(null);
         writeoffForm.resetFields();
-        await load();
+        await refreshCurrentFinanceFeeList({
+          page: financeFeeListMeta.page,
+          pageSize: financeFeeListMeta.pageSize,
+          status: paymentStatus(target),
+          query: originalQuery,
+        });
+        if (feeDetail?.id === target.id) {
+          await openPaymentDetail(target);
+        }
         return;
       }
       await api.post(`/finance/fees/${writeoffTarget.id}/writeoff`, values);
       message.success("付款已核销并留痕");
       setWriteoffTarget(null);
       writeoffForm.resetFields();
-      await load();
+      await refreshCurrentFinanceFeeList({
+        page: financeFeeListMeta.page,
+        pageSize: financeFeeListMeta.pageSize,
+        status: paymentStatus(target),
+        query: originalQuery,
+      });
+      if (feeDetail?.id === target.id) {
+        await openPaymentDetail(target);
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "付款核销失败");
     }
@@ -7343,17 +7445,42 @@ export default function FinanceCenterPage({
     }
     return linked[0];
   };
+  const loadSettlementContextTasks = async (caseId: number) => {
+    const firstRequest = settlementContextTasksRequest(caseId, 1);
+    const firstResponse = await api.get(firstRequest.url, {
+      params: firstRequest.params,
+    });
+    const firstRows = normalizeSettlementContextRows(firstResponse.data);
+    const total = Number(firstResponse.data?.total || firstRows.length);
+    const totalPages = Math.max(
+      1,
+      Math.ceil(total / settlementContextPageSize),
+    );
+    if (totalPages === 1) return firstRows;
+    const restResponses = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_value, index) => {
+        const request = settlementContextTasksRequest(caseId, index + 2);
+        return api.get(request.url, { params: request.params });
+      }),
+    );
+    return [
+      ...firstRows,
+      ...restResponses.flatMap((response) =>
+        normalizeSettlementContextRows(response.data),
+      ),
+    ];
+  };
   const openSettlementContext = async (mode: "tasks" | "logs") => {
     const linked = selectedSettlementCase();
     if (!linked) return;
     setSettlementActionLoading(true);
     try {
-      const { data } = await api.get(
-        mode === "tasks"
-          ? `/cases/${linked.id}/tasks`
-          : `/records/${linked.id}/history`,
-      );
-      setSettlementContextRows(data.items || []);
+      if (mode === "tasks") {
+        setSettlementContextRows(await loadSettlementContextTasks(linked.id));
+      } else {
+        const { data } = await api.get(`/records/${linked.id}/history`);
+        setSettlementContextRows(data.items || []);
+      }
       setSettlementContext({ mode, caseRecord: linked });
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件信息加载失败");
@@ -10682,6 +10809,15 @@ export default function FinanceCenterPage({
               {initialView === "finance-internal-refused"
                 ? "已拒绝"
                 : paymentStatus(feeDetail)}
+            </Descriptions.Item>
+            <Descriptions.Item label="付款包号">
+              {feeDetail.data.payment_package_no ||
+                feeDetail.data.package_no ||
+                feeDetail.data.payment_package_context?.serial_no ||
+                "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="付款包状态">
+              {feeDetail.data.payment_package_context?.status || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="申请日期">
               {(
