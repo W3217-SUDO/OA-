@@ -573,15 +573,15 @@ function financeRouteFromPlatform(route: string): string {
 const supportTools = [
   {
     label: "国家知识产权局商标局",
-    href: "https://sbj.cnipa.gov.cn/sbj/index.html",
+    href: "http://wcjs.sbj.cnipa.gov.cn/txnT01.do",
   },
   {
     label: "国家知识产权局专利局",
-    href: "https://www.cnipa.gov.cn/col/col1510/index.html",
+    href: "http://pss-system.cnipa.gov.cn/sipopublicsearch/portal/uiIndex.shtml",
   },
-  { label: "全国组织机构查询平台", href: "https://www.cods.org.cn/" },
+  { label: "全国组织机构查询平台", href: "https://www.cods.org.cn" },
   { label: "法律法规查询", href: "https://flk.npc.gov.cn/" },
-  { label: "裁判文书检索", href: "https://wenshu.court.gov.cn/" },
+  { label: "裁判文书检索", href: "https://openlaw.cn/index.jsp" },
 ];
 
 type DashboardData = {

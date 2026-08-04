@@ -1573,6 +1573,26 @@ export default function ContractCenterPage({
       message.error("导出失败");
     }
   };
+  const exportContractDetailExcel = async (contract: Contract) => {
+    try {
+      const res = await api.get("/records/export-excel", {
+        params: {
+          module: "contract",
+          serial_no: contract.serial_no || undefined,
+          title: contract.serial_no ? undefined : contract.title,
+        },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = (contract.serial_no || contract.title || "合同详情") + ".xls";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error("导出失败");
+    }
+  };
   const needSelected = (action: () => void) =>
     selected ? action() : message.warning("请先选择一份合同");
   const selected = rows.find((row) => row.id === Number(selectedRowKeys[0]));
@@ -1941,7 +1961,7 @@ export default function ContractCenterPage({
           }}
           tableLayout="fixed"
           scroll={{ x: isAuditView ? 1450 : 1480 }}
-          pagination={{current:listPagination.current,pageSize:listPagination.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:()=>`共有${rows.length}条`,onChange:updateListPagination}}
+          pagination={{current:listPagination.current,pageSize:listPagination.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:<Button size="small">GO</Button>},showTotal:()=>`共有${rows.length}条`,onChange:updateListPagination}}
           summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
@@ -2180,7 +2200,7 @@ export default function ContractCenterPage({
         width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
         title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
-        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
+        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
         onCancel={returnFromDetail}
         getContainer={isContractDetailView ? false : undefined}
         mask={!isContractDetailView}

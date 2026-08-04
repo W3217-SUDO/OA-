@@ -1200,6 +1200,9 @@ export default function IprCenterPage({
             current: page,
             pageSize: pageSize,
             total,
+            showSizeChanger: true,
+            pageSizeOptions: ["15", "20", "50", "100"],
+            showQuickJumper: { goButton: <Button size="small">GO</Button> },
             showTotal: (t) => "共 " + t + " 条" + (pages ? " / " + pages + " 页" : ""),
             onChange: (nextPage, nextPageSize) => void load(nextPage, nextPageSize),
           }}

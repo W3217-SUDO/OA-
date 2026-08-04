@@ -1193,6 +1193,10 @@ export default function SealCenterPage({
     }
     void openDetail(row);
   };
+  const openAuditList = async (row: SealRow) => {
+    await openDetail(row);
+    setAuditListOpen(true);
+  };
   const downloadAttachment = async (item: AttachmentRow) => {
     try {
       const response = await api.get(`/attachments/${item.id}/download`, {
@@ -1648,6 +1652,9 @@ export default function SealCenterPage({
         <Space size={0}>
           <Button type="link" onClick={() => openDetail(r)}>
             查看
+          </Button>
+          <Button type="link" onClick={() => void openAuditList(r)}>
+            审批流程
           </Button>
           {tab === "my" && r.status === "草稿" && (
             <>

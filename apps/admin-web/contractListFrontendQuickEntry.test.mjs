@@ -93,3 +93,11 @@ test("contract list restores legacy approval, related case, and re-upload shortc
     "draft/refused rows should expose the old re-upload entry",
   );
 });
+
+test("contract main list exposes a legacy GO quick jumper on pagination", () => {
+  assert.match(
+    source,
+    /pagination=\{\{current:listPagination\.current,pageSize:listPagination\.pageSize,showSizeChanger:true,pageSizeOptions:\[10,15,20,50,100,200\],showQuickJumper:\s*\{\s*goButton:\s*<Button size="small">GO<\/Button>\s*\}/,
+    "the main contract list should expose the same GO quick-jump pagination affordance as legacy paging",
+  );
+});
