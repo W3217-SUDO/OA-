@@ -49,6 +49,7 @@ function EmployeeSubrecords({employeeId,kind,canManage=true}:{employeeId?:number
   const emptyColumns:TableColumnsType<any>=kind==='leave'?[{title:'请假开始日期'},{title:'请假结束日期'},{title:'请假小时'},{title:'请假类型'},{title:'备注'},{title:'操作'}]:kind==='matter'?[{title:'序号'},{title:'内容'},{title:'操作人'},{title:'操作日期'},{title:'操作'}]:[{title:'序号'},{title:'开始日期'},{title:'结束日期'},{title:'基本工资'},{title:'开庭比例提成'},{title:'开庭固定提成'},{title:'文书比例提成'},{title:'文书固定提成'},{title:'案源比例提成'},{title:'案源固定提成'},{title:'调查比例提成'},{title:'调查固定提成'},{title:'品管比例提成'},{title:'品管固定提成'},{title:'操作'}]
   const canMaintainCommission=kind!=='commission'||canManage
   if(!employeeId && (kind==='leave'||kind==='commission')){const notice=employeeSubrecordCreateMessage(employeeId);return <div className="employee-subrecord"><div className="subrecord-toolbar">{canMaintainCommission&&(kind!=='leave'||canManage)&&<Button type="primary" icon={<PlusOutlined/>} onClick={()=>{if(notice)message.info(notice)}}>新建</Button>}</div><Table rowKey="id" size="small" columns={emptyColumns} dataSource={[]} pagination={false}/><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={notice||'请先保存员工基本信息，再维护此页记录'}/></div>}
+  if(!employeeId&&kind==='archive'){const notice=employeeSubrecordCreateMessage(employeeId);return <div className="employee-subrecord"><Table rowKey="id" size="small" columns={[{title:'序号'},{title:'上传人'},{title:'文件名称'},{title:'文档日期'},{title:'查看'},{title:'操作'}]} dataSource={[]} pagination={false}/><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={notice||'请先保存员工基本信息，再维护此页记录'}/></div>}
   const remove=async(id:number)=>{try{await api.delete(kind==='archive'?`/attachments/${id}`:`/hr/${employeeId}/subrecords/${id}`);message.success('删除成功');void load()}catch(error:any){message.error(error?.response?.data?.detail||'删除失败')}}
   const download=async(item:Attachment)=>{try{const response=await api.get(`/attachments/${item.id}/download`,{responseType:'blob'});const url=URL.createObjectURL(response.data);const anchor=document.createElement('a');anchor.href=url;anchor.download=item.original_name;anchor.click();URL.revokeObjectURL(url)}catch{message.error('文件下载失败')}}
   const [attachmentPreview,setAttachmentPreview]=useState<AttachmentPreview|null>(null)
@@ -104,9 +105,8 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const [selectedEmployeeIds,setSelectedEmployeeIds]=useState<number[]>([]),[batchDeletionImpact,setBatchDeletionImpact]=useState<any>(null),[batchDeleting,setBatchDeleting]=useState(false)
   const load=async(requestedPage=employeePage)=>{setLoading(true);try{
     const [profileResult,employeeResult]=await Promise.allSettled([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:15,company,department,username,name,mobile,enabled}})])
-    const profile=profileResult.status==='fulfilled'?profileResult.value.data:null
-    const role=profile?String(profile.role||''):''
-    const currentLoginUsername=profile?String(profile.username||profile.user?.username||''):''
+    const role=profileResult.status==='fulfilled'?String(profileResult.value.data.role||''):''
+    const currentLoginUsername=profileResult.status==='fulfilled'?String(profileResult.value.data.username||profileResult.value.data.user?.username||''):''
     setAccessRole(role)
     setCurrentUsername(currentLoginUsername)
     if(employeeResult.status==='rejected')throw employeeResult.reason
