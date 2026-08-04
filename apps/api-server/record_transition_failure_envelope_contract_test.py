@@ -8,10 +8,20 @@ CodeGraph evidence:
 - The same query showed old controllers such as
   `Areas/Account/Controllers/MessageCenterController.cs:163-177` returning
   failure through `PostResponse` rather than dropping the message body.
+- CodeGraph query `CustomerController CustomerCreateUpdate response.IsSuccess response.Message response.Data CheckUserLogin`
+  surfaced `Areas/CRM/Controllers/CustomerController.cs:360-386`: customer
+  writes catch business failures and return `IsSuccess=false` with `Message`
+  in the shared envelope.
+- CodeGraph query `CMS ContractController ToAudit ContractAuditController ContractAuditCreate PostResponse`
+  surfaced `Areas/CMS/Controllers/ContractController.cs:52-73` and
+  `Areas/CMS/Controllers/ContractAuditController.cs:247-264`: contract
+  submit/audit writes return `PostResponse` with `IsSuccess=false` and
+  `Message` when business service calls fail.
 
-This red test locks the shared API gap: a failed generic transition must not
-write status or audit rows, and it must preserve a legacy-compatible failure
-envelope instead of only returning FastAPI's default `{"detail": "..."}`.
+These red tests lock the shared API gap: failed generic state/write attempts
+must not write status or audit rows, and they must preserve a
+legacy-compatible failure envelope instead of only returning FastAPI default
+detail errors.
 """
 
 import unittest
@@ -24,7 +34,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -69,8 +79,35 @@ class RecordTransitionFailureEnvelopeContract(unittest.IsolatedAsyncioTestCase):
                 data={"kind": "status-envelope-contract"},
             )
             db.add(record)
+            customer = BusinessRecord(
+                module="customer",
+                serial_no="TRANSITION-FAIL-CUSTOMER-001",
+                title="Transition failure customer",
+                customer="Transition failure customer",
+                status="正常",
+                owner=IDENTITY["username"],
+                department=IDENTITY["department"],
+                data={
+                    "customer_type": "客户",
+                    "customer_managers": [IDENTITY["username"]],
+                },
+            )
+            db.add(customer)
+            contract = BusinessRecord(
+                module="contract",
+                serial_no="TRANSITION-FAIL-CONTRACT-001",
+                title="Transition failure contract approval",
+                customer="Transition failure customer",
+                status="草稿",
+                owner=IDENTITY["username"],
+                department=IDENTITY["department"],
+                data={"amount": 1000, "contract_body": "律所"},
+            )
+            db.add(contract)
             await db.commit()
             self.record_id = record.id
+            self.customer_id = customer.id
+            self.contract_id = contract.id
         app.dependency_overrides[get_db] = self.override_db
         app.dependency_overrides[current_identity] = lambda: IDENTITY
         self.client = httpx.AsyncClient(
@@ -105,6 +142,75 @@ class RecordTransitionFailureEnvelopeContract(unittest.IsolatedAsyncioTestCase):
         payload = response.json()
         self.assertEqual(payload["IsSuccess"], False)
         self.assertIn("不能从", payload["Message"])
+
+    async def test_generic_patch_business_rule_failure_keeps_audit_clean_and_returns_legacy_envelope(self):
+        response = await self.client.patch(
+            f"{API}/records/{self.customer_id}",
+            json={"status": "公海"},
+        )
+
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            event_count = await db.scalar(
+                select(func.count(WorkflowEvent.id)).where(WorkflowEvent.record_id == self.customer_id)
+            )
+        self.assertEqual(customer.status, "正常")
+        self.assertEqual(event_count, 0)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["IsSuccess"], False)
+        self.assertIn("客户生命周期状态必须通过", payload["Message"])
+
+    async def test_contract_submit_business_failure_keeps_approval_clean_and_returns_legacy_envelope(self):
+        response = await self.client.post(
+            f"{API}/contracts/{self.contract_id}/submit",
+            json={"approvers": [IDENTITY["username"]], "comment": "missing file"},
+        )
+
+        async with self.sessions() as db:
+            contract = await db.get(BusinessRecord, self.contract_id)
+            event_count = await db.scalar(
+                select(func.count(WorkflowEvent.id)).where(WorkflowEvent.record_id == self.contract_id)
+            )
+            step_count = await db.scalar(
+                select(func.count(ContractApprovalStep.id)).where(
+                    ContractApprovalStep.contract_record_id == self.contract_id
+                )
+            )
+        self.assertEqual(contract.status, "草稿")
+        self.assertEqual(event_count, 0)
+        self.assertEqual(step_count, 0)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["IsSuccess"], False)
+        self.assertIn("请先上传至少一份合同附件", payload["Message"])
+
+    async def test_contract_approve_business_failure_keeps_audit_clean_and_returns_legacy_envelope(self):
+        response = await self.client.post(
+            f"{API}/contracts/{self.contract_id}/approve",
+            json={"approved": True, "comment": "not pending"},
+        )
+
+        async with self.sessions() as db:
+            contract = await db.get(BusinessRecord, self.contract_id)
+            event_count = await db.scalar(
+                select(func.count(WorkflowEvent.id)).where(WorkflowEvent.record_id == self.contract_id)
+            )
+            step_count = await db.scalar(
+                select(func.count(ContractApprovalStep.id)).where(
+                    ContractApprovalStep.contract_record_id == self.contract_id
+                )
+            )
+        self.assertEqual(contract.status, "草稿")
+        self.assertEqual(event_count, 0)
+        self.assertEqual(step_count, 0)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["IsSuccess"], False)
+        self.assertIn("合同当前不在审批中", payload["Message"])
 
 
 if __name__ == "__main__":

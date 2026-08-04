@@ -2529,6 +2529,12 @@ def _legacy_customer_business_failure_response(exc: HTTPException) -> dict:
     raise exc
 
 
+def _legacy_contract_business_failure_response(exc: HTTPException) -> dict:
+    if exc.status_code in {status.HTTP_409_CONFLICT, status.HTTP_422_UNPROCESSABLE_ENTITY}:
+        return _legacy_failure_response(str(exc.detail or "操作失败"))
+    raise exc
+
+
 FIELD_PERMISSION_DATA_KEYS = {
     "customer.billing": {"invoice_title", "taxpayer_id", "invoice_address", "invoice_phone"},
     "customer.bank": {"bank_name", "bank_account"},
@@ -6768,78 +6774,84 @@ async def contract_approvals(contract_id: int, identity: dict = Depends(current_
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/submit")
 async def submit_contract(contract_id: int, body: ContractSubmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_record_module(contract_id, "contract", identity, db)
-    await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status not in {"草稿", "已拒绝"}: raise HTTPException(status_code=409, detail="只有草稿或已拒绝合同可以重新提交")
-    attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
-        FileAttachment.record_id == contract.id, FileAttachment.category == "合同附件",
-    )) or 0)
-    if attachment_count < 1:
-        raise HTTPException(status_code=422, detail="请先上传至少一份合同附件后再提交审批")
-    approvers = [x.strip() for x in body.approvers if x.strip()]
-    if len(approvers) != 1: raise HTTPException(status_code=422, detail="合同审批只能选择一名合同审批流程人员")
-    approver_user = await db.scalar(select(User).where(User.username == approvers[0], User.is_active.is_(True)))
-    if not approver_user: raise HTTPException(status_code=422, detail="审批人不存在或已停用")
-    if not await _is_contract_approver(approver_user, db):
-        raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
-    await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id))
-    for index, approver in enumerate(approvers, 1):
-        db.add(ContractApprovalStep(contract_record_id=contract_id, step_order=index, approver=approver, status="待审批" if index == 1 else "等待中"))
-    old = contract.status
-    contract.status = "审批中"
-    contract.data = {
-        **(contract.data or {}),
-        "approval_count": len(approvers),
-        "submitted_at": datetime.now().isoformat(timespec="seconds"),
-        "submitted_by": identity["username"],
-        "submit_comment": body.comment.strip(),
-        "current_approver": approvers[0],
-    }
-    db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批人：{approvers[0]}")); await db.commit(); await db.refresh(contract)
-    return await _record_dict_for_identity(contract, identity, db)
+    try:
+        contract = await _ensure_record_module(contract_id, "contract", identity, db)
+        await _require_record_owner_or_manager(contract, identity, db)
+        if contract.status not in {"草稿", "已拒绝"}: raise HTTPException(status_code=409, detail="只有草稿或已拒绝合同可以重新提交")
+        attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
+            FileAttachment.record_id == contract.id, FileAttachment.category == "合同附件",
+        )) or 0)
+        if attachment_count < 1:
+            raise HTTPException(status_code=422, detail="请先上传至少一份合同附件后再提交审批")
+        approvers = [x.strip() for x in body.approvers if x.strip()]
+        if len(approvers) != 1: raise HTTPException(status_code=422, detail="合同审批只能选择一名合同审批流程人员")
+        approver_user = await db.scalar(select(User).where(User.username == approvers[0], User.is_active.is_(True)))
+        if not approver_user: raise HTTPException(status_code=422, detail="审批人不存在或已停用")
+        if not await _is_contract_approver(approver_user, db):
+            raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
+        await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id))
+        for index, approver in enumerate(approvers, 1):
+            db.add(ContractApprovalStep(contract_record_id=contract_id, step_order=index, approver=approver, status="待审批" if index == 1 else "等待中"))
+        old = contract.status
+        contract.status = "审批中"
+        contract.data = {
+            **(contract.data or {}),
+            "approval_count": len(approvers),
+            "submitted_at": datetime.now().isoformat(timespec="seconds"),
+            "submitted_by": identity["username"],
+            "submit_comment": body.comment.strip(),
+            "current_approver": approvers[0],
+        }
+        db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批人：{approvers[0]}")); await db.commit(); await db.refresh(contract)
+        return await _record_dict_for_identity(contract, identity, db)
+    except HTTPException as exc:
+        return _legacy_contract_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/approve")
 async def approve_contract(contract_id: int, body: ContractApprovalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_contract_approval_access(contract_id, identity, db)
-    if contract.status != "审批中": raise HTTPException(status_code=409, detail="合同当前不在审批中")
-    if not body.approved and not body.comment.strip(): raise HTTPException(status_code=422, detail="拒绝时必须填写审批意见")
-    steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
-    current = next((x for x in steps if x.status == "待审批"), None)
-    if not current: raise HTTPException(status_code=409, detail="合同没有待处理的审批节点")
-    admin_override = identity.get("role") == "admin" and current.approver != identity["username"]
-    if current.approver != identity["username"] and not admin_override:
-        raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批")
-    current.comment = body.comment.strip(); current.acted_at = datetime.now(); old = contract.status
-    if not body.approved:
-        current.status = "已拒绝"; contract.status = "已拒绝"
-        contract.data = {**(contract.data or {}), "current_approver": ""}
-        for step in steps:
-            if step.status == "等待中": step.status = "已取消"
-        action = "合同审批拒绝"
-    else:
-        current.status = "已通过"; next_step = next((x for x in steps if x.status == "等待中"), None)
-        if next_step:
-            next_step.status = "待审批"; action = "合同节点通过"
-            contract.data = {**(contract.data or {}), "current_approver": next_step.approver}
-        else:
-            contract.status = "已通过"; action = "合同审批完成"
+    try:
+        contract = await _ensure_contract_approval_access(contract_id, identity, db)
+        if contract.status != "审批中": raise HTTPException(status_code=409, detail="合同当前不在审批中")
+        if not body.approved and not body.comment.strip(): raise HTTPException(status_code=422, detail="拒绝时必须填写审批意见")
+        steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
+        current = next((x for x in steps if x.status == "待审批"), None)
+        if not current: raise HTTPException(status_code=409, detail="合同没有待处理的审批节点")
+        admin_override = identity.get("role") == "admin" and current.approver != identity["username"]
+        if current.approver != identity["username"] and not admin_override:
+            raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批")
+        current.comment = body.comment.strip(); current.acted_at = datetime.now(); old = contract.status
+        if not body.approved:
+            current.status = "已拒绝"; contract.status = "已拒绝"
             contract.data = {**(contract.data or {}), "current_approver": ""}
-            seal_application_id = int((contract.data or {}).get("seal_application_id") or 0)
-            if seal_application_id and (contract.data or {}).get("sync_seal"):
-                seal_application = await db.get(BusinessRecord, seal_application_id)
-                if seal_application and seal_application.module == "seal" and seal_application.status == "草稿":
-                    seal_file_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == seal_application.id, FileAttachment.category == "用印文件")) or 0)
-                    if seal_file_count:
-                        seal_application.status = "待审批"
-                        contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"), "sync_seal_file_required": False}
-                        db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
-                    else:
-                        contract.data = {**(contract.data or {}), "sync_seal_file_required": True}
-                        db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后等待用印文件", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已通过；请在用印中心上传真实用印文件后提交审批"))
-    approval_actor = f"管理员代办 {current.approver}" if admin_override else current.approver
-    db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {approval_actor}：{body.comment}")); await db.commit(); await db.refresh(contract)
-    return await _record_dict_for_identity(contract, identity, db)
+            for step in steps:
+                if step.status == "等待中": step.status = "已取消"
+            action = "合同审批拒绝"
+        else:
+            current.status = "已通过"; next_step = next((x for x in steps if x.status == "等待中"), None)
+            if next_step:
+                next_step.status = "待审批"; action = "合同节点通过"
+                contract.data = {**(contract.data or {}), "current_approver": next_step.approver}
+            else:
+                contract.status = "已通过"; action = "合同审批完成"
+                contract.data = {**(contract.data or {}), "current_approver": ""}
+                seal_application_id = int((contract.data or {}).get("seal_application_id") or 0)
+                if seal_application_id and (contract.data or {}).get("sync_seal"):
+                    seal_application = await db.get(BusinessRecord, seal_application_id)
+                    if seal_application and seal_application.module == "seal" and seal_application.status == "草稿":
+                        seal_file_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == seal_application.id, FileAttachment.category == "用印文件")) or 0)
+                        if seal_file_count:
+                            seal_application.status = "待审批"
+                            contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"), "sync_seal_file_required": False}
+                            db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
+                        else:
+                            contract.data = {**(contract.data or {}), "sync_seal_file_required": True}
+                            db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后等待用印文件", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已通过；请在用印中心上传真实用印文件后提交审批"))
+        approval_actor = f"管理员代办 {current.approver}" if admin_override else current.approver
+        db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {approval_actor}：{body.comment}")); await db.commit(); await db.refresh(contract)
+        return await _record_dict_for_identity(contract, identity, db)
+    except HTTPException as exc:
+        return _legacy_contract_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/seal-application", status_code=status.HTTP_201_CREATED)
