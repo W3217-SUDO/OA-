@@ -1,6 +1,10 @@
 const listValue = (value) =>
   Array.isArray(value) ? value.join(",") : String(value || "");
 
+const internalFeePageIdByRoute = {
+  "finance-internal-archive": "5001004005",
+};
+
 export const internalFeeExportRequestParams = ({
   scope = "company",
   query = {},
@@ -30,6 +34,8 @@ export const internalFeeExportRequestParams = ({
     case_stages: listValue(query.routeField10),
     fee_types: listValue(query.routeField11),
   };
+  const pageId = internalFeePageIdByRoute[initialView] || "";
+  if (pageId) params.page_id = pageId;
   const uniqueIds = [...new Set(ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
   if (uniqueIds.length) params.ids = uniqueIds.join(",");
   return params;

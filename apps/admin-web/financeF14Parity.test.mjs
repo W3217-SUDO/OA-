@@ -136,6 +136,7 @@ test("F14-18 internal export helper keeps scope, filters and selected ids", () =
     ids: [4, 4, 9],
   });
   assert.equal(params.scope, "company");
+  assert.equal(params.page_id, "5001004005");
   assert.equal(params.case_no, "CASE-41");
   assert.equal(params.payment_status, "");
   assert.equal(params.ids, "4,9");
