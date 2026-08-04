@@ -114,7 +114,12 @@ test("package download keeps explicit 403/404 semantics", () => {
 
 test("local detail file list keeps legacy fifteen-row paging", () => {
   assert.match(local, /sealFilePagination/);
-  assert.match(local, /pagination=\{sealFilePagination\}/);
+  assert.match(local, /useState\(sealFilePagination\.defaultPageSize\)/);
+  assert.match(local, /page_size:\s*nextPageSize/);
+  assert.match(local, /current:\s*attachmentPage/);
+  assert.match(local, /pageSize:\s*attachmentPageSize/);
+  assert.match(local, /total:\s*attachmentTotal/);
+  assert.match(local, /onChange:\s*\(page, pageSize\)/);
 });
 
 test("local draft file list exposes atomic batch delete", () => {

@@ -127,9 +127,10 @@ test("seal audit projection preserves persisted fields and derives fallback roun
     { id: 1, action: "用印审批通过", to_status: "待用印", operator: "a", comment: "ok", created_at: "2026-08-03T01:00:00Z" },
     { id: 2, action: "编辑", to_status: "待用印", operator: "b", comment: "noise", created_at: "2026-08-02T01:00:00Z" },
     { id: 3, action: "用印审批拒绝", audit_status: "R", audit_date: "2026-08-01", audit_content: "理由", audit_round: 4, operator: "c", comment: "ignored", created_at: "2026-08-01T01:00:00Z" },
+    { id: 5, action: "用印审批通过", audit_status: "A", audit_date: "2026-08-02", audit_content: "同意", audit_round: 5, operator: "e" },
     { id: 4, action: "用印审批驳回", to_status: "已拒绝", operator: "d", comment: "驳回原因", created_at: "2026-07-31T01:00:00Z" },
   ]);
-  assert.equal(rows.length, 3);
+  assert.equal(rows.length, 4);
   assert.deepEqual(rows[0], {
     id: 1,
     auditor: "a",
@@ -142,14 +143,16 @@ test("seal audit projection preserves persisted fields and derives fallback roun
   assert.deepEqual(rows[1], {
     id: 3,
     auditor: "c",
-    audit_status: "R",
+    audit_status: "审批拒绝",
     audit_date: "2026-08-01",
     audit_content: "理由",
     audit_round: 4,
     current_step: "",
   });
-  assert.equal(rows[2].audit_status, "已拒绝");
-  assert.equal(rows[2].audit_content, "驳回原因");
+  assert.equal(rows[2].audit_status, "审批通过");
+  assert.equal(rows[2].audit_content, "同意");
+  assert.equal(rows[3].audit_status, "已拒绝");
+  assert.equal(rows[3].audit_content, "驳回原因");
 });
 
 test("seal audit projection keeps explicit rejection and current step", () => {

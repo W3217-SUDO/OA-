@@ -3,9 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-const oldRoot = path.resolve(
-  "C:/Users/13533/Desktop/OA\u7cfb\u7edf/\u65e7\u7cfb\u7edf\u5f52\u6863\u6e90\u7801/SH.CRM.WEB",
-);
+const oldRoot = path.resolve(process.cwd(), "..", "..", "..", "旧系统归档源码", "SH.CRM.WEB");
 const oldController = fs.readFileSync(
   path.join(oldRoot, "Areas", "AWS", "Controllers", "OfficialDocumentController.cs"),
   "utf8",

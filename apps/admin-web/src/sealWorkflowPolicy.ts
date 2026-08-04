@@ -33,11 +33,21 @@ function isAuditEvent(event: SealHistoryEvent): boolean {
   return /(?:审批|审核)(?:通过|拒绝|驳回)$|驳回$/.test(String(event.action || ""));
 }
 
+function legacySealAuditStatusName(value: unknown): string {
+  const status = String(value || "").trim();
+  if (!status) return "";
+  const normalized = status.toLowerCase();
+  if (["a", "approved", "approve", "pass", "passed"].includes(normalized)) return "审批通过";
+  if (["r", "rejected", "reject", "refused", "refuse"].includes(normalized)) return "审批拒绝";
+  if (["p", "pending"].includes(normalized)) return "待审批";
+  return status;
+}
+
 export function toSealAuditRows(events: readonly SealHistoryEvent[]): SealAuditRow[] {
   return events.filter(isAuditEvent).map((event, index) => ({
     id: event.id,
     auditor: String(event.operator || ""),
-    audit_status: String(event.audit_status || event.to_status || ""),
+    audit_status: legacySealAuditStatusName(event.audit_status || event.to_status || ""),
     audit_date: String(event.audit_date || event.created_at || ""),
     audit_content: String(event.audit_content || event.comment || ""),
     audit_round: Number(event.audit_round ?? index + 1),
