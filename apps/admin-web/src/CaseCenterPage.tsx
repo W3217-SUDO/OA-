@@ -288,6 +288,29 @@ type TaskRow = {
   days_remaining?: number | null;
   collaborators?: string[];
 };
+type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
+const CASE_TASK_DEFAULT_PAGE = 1;
+const CASE_TASK_DEFAULT_PAGE_SIZE = 15;
+const normalizeCaseTaskPageState = (
+  payload: any,
+  fallbackPage = CASE_TASK_DEFAULT_PAGE,
+  fallbackPageSize = CASE_TASK_DEFAULT_PAGE_SIZE,
+): CaseTaskPageState => {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const total = Number.isFinite(Number(payload?.total)) ? Number(payload.total) : items.length;
+  const pageSize = Number.isFinite(Number(payload?.page_size)) && Number(payload.page_size) > 0
+    ? Number(payload.page_size)
+    : fallbackPageSize;
+  const page = Number.isFinite(Number(payload?.page)) && Number(payload.page) > 0
+    ? Number(payload.page)
+    : fallbackPage;
+  const pages = Number.isFinite(Number(payload?.pages)) && Number(payload.pages) >= 0
+    ? Number(payload.pages)
+    : total
+      ? Math.ceil(total / pageSize)
+      : 0;
+  return { items, total, page, pageSize, pages };
+};
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;created_at:string;size:number;remark?:string};
 type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;options?:CaseFileTypeOption[]};
 type AttachmentPreview = {name:string;kind:"image"|"pdf"|"text"|"docx";url?:string;text?:string};
@@ -476,6 +499,10 @@ export default function CaseCenterPage({
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
   const [counselDetailHistory, setCounselDetailHistory] = useState<any[]>([]);
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
+  const [counselDetailTaskPage, setCounselDetailTaskPage] = useState(CASE_TASK_DEFAULT_PAGE);
+  const [counselDetailTaskPageSize, setCounselDetailTaskPageSize] = useState(CASE_TASK_DEFAULT_PAGE_SIZE);
+  const [counselDetailTaskTotal, setCounselDetailTaskTotal] = useState(0);
+  const [counselDetailTaskPages, setCounselDetailTaskPages] = useState(0);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
@@ -506,6 +533,10 @@ export default function CaseCenterPage({
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
+  const [caseTaskPage, setCaseTaskPage] = useState(CASE_TASK_DEFAULT_PAGE);
+  const [caseTaskPageSize, setCaseTaskPageSize] = useState(CASE_TASK_DEFAULT_PAGE_SIZE);
+  const [caseTaskTotal, setCaseTaskTotal] = useState(0);
+  const [caseTaskPages, setCaseTaskPages] = useState(0);
   const [selectedCaseKeys, setSelectedCaseKeys] = useState<Key[]>([]);
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
   const legacyCaseListDefaults = getLegacyCaseListDefaults(initialView);
@@ -1151,10 +1182,47 @@ export default function CaseCenterPage({
       assistant: row.data.assistant || "",
     });
   };
+  const applyCaseTaskPageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
+    const normalized = normalizeCaseTaskPageState(payload, fallbackPage, fallbackPageSize);
+    setCaseTasks(normalized.items);
+    setCaseTaskPage(normalized.page);
+    setCaseTaskPageSize(normalized.pageSize);
+    setCaseTaskTotal(normalized.total);
+    setCaseTaskPages(normalized.pages);
+    return normalized;
+  };
+  const applyCounselDetailTaskPageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
+    const normalized = normalizeCaseTaskPageState(payload, fallbackPage, fallbackPageSize);
+    setCounselDetailTasks(normalized.items);
+    setCounselDetailTaskPage(normalized.page);
+    setCounselDetailTaskPageSize(normalized.pageSize);
+    setCounselDetailTaskTotal(normalized.total);
+    setCounselDetailTaskPages(normalized.pages);
+    return normalized;
+  };
+  const loadCaseTasksPage = async (
+    row: CaseRow,
+    nextPage = caseTaskPage,
+    nextPageSize = caseTaskPageSize,
+  ) => {
+    const { data } = await api.get(`/cases/${row.id}/tasks`, {
+      params: { page: nextPage, page_size: nextPageSize },
+    });
+    return applyCaseTaskPageState(data, nextPage, nextPageSize);
+  };
+  const loadCounselDetailTasksPage = async (
+    row: CaseRow,
+    nextPage = counselDetailTaskPage,
+    nextPageSize = counselDetailTaskPageSize,
+  ) => {
+    const { data } = await api.get(`/cases/${row.id}/tasks`, {
+      params: { page: nextPage, page_size: nextPageSize },
+    });
+    return applyCounselDetailTaskPageState(data, nextPage, nextPageSize);
+  };
   const openCaseTasks = async (row: CaseRow) => {
     try {
-      const { data } = await api.get(`/cases/${row.id}/tasks`);
-      setCaseTasks(data.items);
+      await loadCaseTasksPage(row, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
       taskForm.resetFields();
       taskForm.setFieldsValue({
         owner: profile.username || row.owner,
@@ -1185,14 +1253,20 @@ export default function CaseCenterPage({
       setActiveCounselDocCategory("");
       const [historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes] = await Promise.allSettled([
         api.get(`/records/${row.id}/history`),
-        api.get(`/cases/${row.id}/tasks`),
+        api.get(`/cases/${row.id}/tasks`, {
+          params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE },
+        }),
         api.get("/attachments", { params: { record_id: row.id } }),
         api.get(`/cases/${row.id}/reminders`),
         api.get(`/cases/${row.id}/logs`),
         api.get(`/cases/${row.id}/action-capabilities`),
       ]);
       setCounselDetailHistory(historyRes.status === "fulfilled" ? historyRes.value.data.items || [] : []);
-      setCounselDetailTasks(taskRes.status === "fulfilled" ? taskRes.value.data.items || [] : []);
+      if (taskRes.status === "fulfilled") {
+        applyCounselDetailTaskPageState(taskRes.value.data, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
+      } else {
+        applyCounselDetailTaskPageState({ items: [], total: 0, page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, pages: 0 }, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
+      }
       setCounselDetailAttachments(attachmentRes.status === "fulfilled" ? attachmentRes.value.data.items || [] : []);
       setCounselReminders(reminderRes.status === "fulfilled" ? reminderRes.value.data.items || [] : []);
       setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
@@ -1775,6 +1849,29 @@ export default function CaseCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件任务创建失败");
     }
+  };
+  const caseTaskBasePagination = getCaseTaskPagination();
+  const caseTaskPagination = {
+    current: caseTaskPage,
+    pageSize: caseTaskPageSize,
+    total: caseTaskTotal,
+    pageSizeOptions: caseTaskBasePagination.pageSizeOptions,
+    showSizeChanger: caseTaskBasePagination.showSizeChanger,
+    showTotal: (total: number) => `共 ${total} 项${caseTaskPages ? ` / ${caseTaskPages} 页` : ""}`,
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (taskCase) void loadCaseTasksPage(taskCase, nextPage, nextPageSize);
+    },
+  };
+  const counselDetailTaskPagination = {
+    current: counselDetailTaskPage,
+    pageSize: counselDetailTaskPageSize,
+    total: counselDetailTaskTotal,
+    pageSizeOptions: caseTaskBasePagination.pageSizeOptions,
+    showSizeChanger: caseTaskBasePagination.showSizeChanger,
+    showTotal: (total: number) => `共 ${total} 项${counselDetailTaskPages ? ` / ${counselDetailTaskPages} 页` : ""}`,
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (viewingCounselCase) void loadCounselDetailTasksPage(viewingCounselCase, nextPage, nextPageSize);
+    },
   };
   const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所") => {
     if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
@@ -3312,8 +3409,8 @@ export default function CaseCenterPage({
               {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",dataIndex:"owner",width:110},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Button type="primary" style={{marginBottom:10}} onClick={()=>{caseLogForm.resetFields();setCaseLogOpen(true);}}>新增日志</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",dataIndex:"operator",width:110}]}/></>},
               {key:"logs",label:"系统日志",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",dataIndex:"operator",width:110},{title:"说明",dataIndex:"comment"}]}/>},
-              {key:"tasks",label:"案件任务",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_case_task&&<Button type="primary" onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布案件任务</Button>}</Space><Table rowKey="id" size="small" pagination={getCaseTaskPagination()} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source!=="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",dataIndex:"initiator",width:110,ellipsis:true},{title:"负责人",dataIndex:"owner",width:110,ellipsis:true},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/></>},
-              {key:"customer-tasks",label:"客户任务",children:<Table rowKey="id" size="small" pagination={getCaseTaskPagination()} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",dataIndex:"initiator",width:110,ellipsis:true},{title:"负责人",dataIndex:"owner",width:110,ellipsis:true},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>},
+              {key:"tasks",label:"案件任务",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_case_task&&<Button type="primary" onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布案件任务</Button>}</Space><Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source!=="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",dataIndex:"initiator",width:110,ellipsis:true},{title:"负责人",dataIndex:"owner",width:110,ellipsis:true},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/></>},
+              {key:"customer-tasks",label:"客户任务",children:<Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",dataIndex:"initiator",width:110,ellipsis:true},{title:"负责人",dataIndex:"owner",width:110,ellipsis:true},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>},
             ]}
           />
             </div>
@@ -3494,7 +3591,7 @@ export default function CaseCenterPage({
         <Table
           rowKey="id"
           size="small"
-          pagination={false}
+          pagination={caseTaskPagination}
           tableLayout="fixed"
           scroll={{ x: 890 }}
           dataSource={caseTasks}

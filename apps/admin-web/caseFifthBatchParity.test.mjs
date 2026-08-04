@@ -30,7 +30,8 @@ test("案件任务详情保留旧系统默认 15 条分页", () => {
   assert.equal(pagination.showTotal(7), "共 7 项");
   assert.match(page, /caseFifthBatchParity\.mjs/);
   assert.match(page, /getCaseTaskPagination/);
-  assert.match(page, /pagination=\{getCaseTaskPagination\(\)\}/);
+  assert.match(page, /pagination=\{caseTaskPagination\}/);
+  assert.match(page, /pagination=\{counselDetailTaskPagination\}/);
 });
 
 test("案件文件类型消费层按 parent_code 构造可选父子树", () => {
