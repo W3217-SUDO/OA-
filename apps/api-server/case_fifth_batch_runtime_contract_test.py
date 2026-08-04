@@ -158,15 +158,36 @@ class CaseApiRuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         ])
         self.assertEqual(payload["courts"], [{"value": "Runtime Court", "label": "Runtime Court", "code": "COURT-A"}])
 
-    async def test_case_tasks_filter_linked_items_and_total_without_pagination_contract(self) -> None:
+    async def test_case_tasks_default_page_filters_linked_items_and_exposes_pagination(self) -> None:
         response = await self.client.get(f"/api/v1/cases/{self.case_id}/tasks")
 
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
         self.assertEqual(payload["case"]["id"], self.case_id)
         self.assertEqual(payload["total"], 16)
-        self.assertEqual(len(payload["items"]), 16)
+        self.assertEqual(payload["page"], 1)
+        self.assertEqual(payload["page_size"], 15)
+        self.assertEqual(payload["pages"], 2)
+        self.assertEqual(len(payload["items"]), 15)
         self.assertTrue(all(item["data"]["case_id"] == self.case_id for item in payload["items"]))
+        first_page_serials = {item["serial_no"] for item in payload["items"]}
+        self.assertNotIn("TASK-RUNTIME-UNRELATED", first_page_serials)
+
+        second = await self.client.get(
+            f"/api/v1/cases/{self.case_id}/tasks",
+            params={"page": 2, "page_size": 15},
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        second_payload = second.json()
+        self.assertEqual(second_payload["case"]["id"], self.case_id)
+        self.assertEqual(second_payload["total"], 16)
+        self.assertEqual(second_payload["page"], 2)
+        self.assertEqual(second_payload["page_size"], 15)
+        self.assertEqual(second_payload["pages"], 2)
+        self.assertEqual(len(second_payload["items"]), 1)
+        self.assertTrue(all(item["data"]["case_id"] == self.case_id for item in second_payload["items"]))
+        combined_serials = first_page_serials | {item["serial_no"] for item in second_payload["items"]}
+        self.assertEqual(combined_serials, {f"TASK-RUNTIME-{index:02d}" for index in range(16)})
 
     async def test_archive_readiness_is_calculated_by_backend_facts(self) -> None:
         response = await self.client.get(f"/api/v1/cases/{self.case_id}/archive-readiness")

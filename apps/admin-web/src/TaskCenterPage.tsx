@@ -126,6 +126,7 @@ type CaseRecord = {
   status: string;
   owner: string;
 };
+type CaseContextTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 type DialogAction = "reject" | "resend";
 type FeeAction = "lawFee" | "platformFee" | "internalFee";
 type FeeSubtype = "官费" | "第三方费用" | "代理费" | "其他费用" | "内部费用";
@@ -146,6 +147,25 @@ type TaskQuery = {
   deadline_range?: [Dayjs, Dayjs];
 };
 type StatusTab = { key: string; label: string; statuses: string[] };
+
+const CASE_CONTEXT_TASK_DEFAULT_PAGE = 1;
+const CASE_CONTEXT_TASK_DEFAULT_PAGE_SIZE = 15;
+const normalizeCaseContextTaskPageState = (
+  payload: any,
+  fallbackPage = CASE_CONTEXT_TASK_DEFAULT_PAGE,
+  fallbackPageSize = CASE_CONTEXT_TASK_DEFAULT_PAGE_SIZE,
+): CaseContextTaskPageState => {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const total = Number.isFinite(Number(payload?.total)) ? Number(payload.total) : items.length;
+  const pageSize = Number.isFinite(Number(payload?.page_size)) ? Number(payload.page_size) : fallbackPageSize;
+  const page = Number.isFinite(Number(payload?.page)) ? Number(payload.page) : fallbackPage;
+  const pages = Number.isFinite(Number(payload?.pages))
+    ? Number(payload.pages)
+    : total > 0
+      ? Math.ceil(total / Math.max(pageSize, 1))
+      : 0;
+  return { items, total, page, pageSize, pages };
+};
 
 const EMPTY_SUMMARY: Summary = {
   total: 0,
@@ -249,6 +269,12 @@ export default function TaskCenterPage({
   const [createMaterialFiles, setCreateMaterialFiles] = useState<UploadFile[]>([]);
   const [caseContext, setCaseContext] = useState<{ mode: "tasks" | "logs"; record: CaseRecord } | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
+  const [caseTaskContextMeta, setCaseTaskContextMeta] = useState({
+    total: 0,
+    page: CASE_CONTEXT_TASK_DEFAULT_PAGE,
+    pageSize: CASE_CONTEXT_TASK_DEFAULT_PAGE_SIZE,
+    pages: 0,
+  });
   const [caseHistory, setCaseHistory] = useState<HistoryItem[]>([]);
   const [caseContextLoading, setCaseContextLoading] = useState(false);
   const [createForm] = Form.useForm();
@@ -744,19 +770,45 @@ export default function TaskCenterPage({
     rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
     onNavigate?.("case-company");
   };
+  const applyCaseContextTaskPageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
+    const normalized = normalizeCaseContextTaskPageState(payload, fallbackPage, fallbackPageSize);
+    setCaseTasks(normalized.items);
+    setCaseTaskContextMeta({
+      total: normalized.total,
+      page: normalized.page,
+      pageSize: normalized.pageSize,
+      pages: normalized.pages,
+    });
+    return normalized;
+  };
+  const loadCaseContextTasksPage = async (
+    record: CaseRecord,
+    nextPage = caseTaskContextMeta.page,
+    nextPageSize = caseTaskContextMeta.pageSize,
+  ) => {
+    const { data } = await api.get(`/cases/${record.id}/tasks`, {
+      params: { page: nextPage, page_size: nextPageSize },
+    });
+    return applyCaseContextTaskPageState(data, nextPage, nextPageSize);
+  };
   const openCaseContext = async (row: TaskRow, mode: "tasks" | "logs") => {
     setCaseContextLoading(true);
     try {
       const record = await resolveLinkedCase(row);
       if (!record) return;
       if (mode === "tasks") {
-        const { data } = await api.get(`/cases/${record.id}/tasks`);
-        setCaseTasks(data.items);
+        await loadCaseContextTasksPage(record, CASE_CONTEXT_TASK_DEFAULT_PAGE, CASE_CONTEXT_TASK_DEFAULT_PAGE_SIZE);
         setCaseHistory([]);
       } else {
         const { data } = await api.get(`/records/${record.id}/history`);
         setCaseHistory(data.items);
         setCaseTasks([]);
+        setCaseTaskContextMeta({
+          total: 0,
+          page: CASE_CONTEXT_TASK_DEFAULT_PAGE,
+          pageSize: CASE_CONTEXT_TASK_DEFAULT_PAGE_SIZE,
+          pages: 0,
+        });
       }
       setCaseContext({ mode, record });
     } catch (error: any) {
@@ -1080,6 +1132,17 @@ export default function TaskCenterPage({
     { title: "负责人", dataIndex: "owner", width: 120, ellipsis: true, render: (value: string) => value || "—" },
   ];
   const columns = isUnread ? unreadColumns : standardColumns;
+  const caseTaskContextPagination = {
+    current: caseTaskContextMeta.page,
+    pageSize: caseTaskContextMeta.pageSize,
+    total: caseTaskContextMeta.total,
+    showSizeChanger: true,
+    pageSizeOptions: [15, 30, 50, 100, 200],
+    showTotal: (total: number) => `共 ${total} 条`,
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (caseContext?.record) void loadCaseContextTasksPage(caseContext.record, nextPage, nextPageSize);
+    },
+  };
   const openCreateTask = () => {
     createForm.setFieldsValue({ owner: profile.username || "admin", priority: "普通", source: "人工", collaborators: [], deadline: dayjs().add(7, "day") });
     setCreateOpen(true);
@@ -1789,7 +1852,7 @@ export default function TaskCenterPage({
             className="task-case-context-table"
             rowKey="id"
             size="small"
-            pagination={false}
+            pagination={caseTaskContextPagination}
             tableLayout="fixed"
             scroll={{ x: 820 }}
             dataSource={caseTasks}
