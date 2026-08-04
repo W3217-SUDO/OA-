@@ -80,6 +80,7 @@ type SystemUser = {
   display_name: string;
   department: string;
   role: string;
+  role_ids?: string[];
   is_active: boolean;
   must_change_password?: boolean;
   contract_approval_enabled?: boolean;
@@ -586,6 +587,7 @@ export default function SystemCenterPage({
       row
         ? {
             ...row,
+            role_ids: row.role_ids?.length ? row.role_ids : [row.role],
             password: "",
             profile: {
               ...(row.profile || {}),
@@ -598,6 +600,7 @@ export default function SystemCenterPage({
         : {
             department: "上海分所",
             role: "user",
+            role_ids: ["user"],
             is_active: true,
             profile: { contract_approval_enabled: false },
           },
@@ -606,7 +609,23 @@ export default function SystemCenterPage({
   };
   const saveUser = async () => {
     const value = await userForm.validateFields();
-    const payload = { ...value, profile: value.profile || {} };
+    const roleIds = Array.from(
+      new Set(
+        (
+          Array.isArray(value.role_ids) && value.role_ids.length
+            ? value.role_ids
+            : value.role
+              ? [value.role]
+              : ["user"]
+        ).filter(Boolean),
+      ),
+    );
+    const payload = {
+      ...value,
+      role: roleIds.includes("admin") ? "admin" : roleIds[0],
+      role_ids: roleIds,
+      profile: value.profile || {},
+    };
     if (editingUser && !payload.password) delete payload.password;
     if (!editingUser) payload.must_change_password = true;
     try {
@@ -623,7 +642,7 @@ export default function SystemCenterPage({
     }
   };
   const removeUser = async (row: SystemUser) => {
-    if (row.role === "admin") {
+    if (row.role === "admin" || row.role_ids?.includes("admin")) {
       message.error("系统管理员账号不可删除");
       return;
     }
@@ -1415,25 +1434,33 @@ export default function SystemCenterPage({
                 title: "系统角色",
                 dataIndex: "role",
                 width: 105,
-                render: (value) => (
-                  <Tag
-                    color={
-                      value === "admin"
-                        ? "red"
-                        : value === "manager"
-                          ? "blue"
-                          : "default"
-                    }
-                  >
-                    {value === "admin"
-                      ? "系统管理员"
-                      : value === "manager"
-                        ? "部门负责人"
-                        : value === "auditor"
-                          ? "审计人员"
-                          : "普通用户"}
-                  </Tag>
-                ),
+                render: (_value, row: SystemUser) => {
+                  const roles = row.role_ids?.length ? row.role_ids : [row.role];
+                  return (
+                    <Space size={[0, 4]} wrap>
+                      {roles.map((value) => (
+                        <Tag
+                          key={value}
+                          color={
+                            value === "admin"
+                              ? "red"
+                              : value === "manager"
+                                ? "blue"
+                                : "default"
+                          }
+                        >
+                          {value === "admin"
+                            ? "系统管理员"
+                            : value === "manager"
+                              ? "部门负责人"
+                              : value === "auditor"
+                                ? "审计人员"
+                                : "普通用户"}
+                        </Tag>
+                      ))}
+                    </Space>
+                  );
+                },
               },
               {
                 title: "合同审批流程",
@@ -1495,7 +1522,7 @@ export default function SystemCenterPage({
                     >
                       解锁
                     </Button>
-                    {row.role !== "admin" && (
+                    {row.role !== "admin" && !row.role_ids?.includes("admin") && (
                       <Popconfirm
                         title="确认删除该登录账号？"
                         onConfirm={() => removeUser(row)}
@@ -1565,8 +1592,25 @@ export default function SystemCenterPage({
                 label="系统角色"
                 name="role"
                 rules={[{ required: true }]}
+                hidden
               >
                 <Select
+                  options={[
+                    { value: "admin", label: "系统管理员（最高权限）" },
+                    { value: "manager", label: "部门负责人" },
+                    { value: "auditor", label: "审计人员" },
+                    { value: "user", label: "普通用户" },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                label="系统角色（可多选）"
+                name="role_ids"
+                rules={[{ required: true, message: "请至少选择一个系统角色" }]}
+              >
+                <Select
+                  mode="multiple"
+                  placeholder="请选择系统角色"
                   options={[
                     { value: "admin", label: "系统管理员（最高权限）" },
                     { value: "manager", label: "部门负责人" },
