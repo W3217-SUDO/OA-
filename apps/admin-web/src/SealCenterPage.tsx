@@ -303,6 +303,15 @@ export default function SealCenterPage({
           ? "assets"
           : "my";
   const statusFromView = (v: string): string[] => sealViewSpec(v).statuses;
+  const usesLegacyApplicationPagination = [
+    "seal-my-pending",
+    "seal-audit-pending",
+    "seal-audit-stamping",
+    "seal-audit-refused",
+    "seal-admin-pending",
+    "seal-admin-used",
+    "seal-admin-query",
+  ].includes(initialView);
   const [tab, setTab] = useState(tabFromView(initialView));
   const [rows, setRows] = useState<SealRow[]>([]);
   const [assets, setAssets] = useState<SealAsset[]>([]);
@@ -333,6 +342,11 @@ export default function SealCenterPage({
   const [keyword, setKeyword] = useState("");
   const [query, setQuery] = useState<Record<string, any>>({});
   const [selectedKeys, setSelectedKeys] = useState<(string | number)[]>([]);
+  const [applicationPage, setApplicationPage] = useState(1);
+  const [applicationPageSize, setApplicationPageSize] = useState(
+    usesLegacyApplicationPagination ? 15 : 20,
+  );
+  const [applicationGoPage, setApplicationGoPage] = useState(1);
   const [editingApplication, setEditingApplication] = useState<SealRow | null>(
     null,
   );
@@ -719,9 +733,26 @@ export default function SealCenterPage({
   };
   useEffect(() => {
     setTab(tabFromView(initialView));
+    setApplicationPage(1);
+    setApplicationGoPage(1);
+    setApplicationPageSize(
+      [
+        "seal-my-pending",
+        "seal-audit-pending",
+        "seal-audit-stamping",
+        "seal-audit-refused",
+        "seal-admin-pending",
+        "seal-admin-used",
+        "seal-admin-query",
+      ].includes(initialView)
+        ? 15
+        : 20,
+    );
   }, [initialView]);
   useEffect(() => {
     setSelectedKeys([]);
+    setApplicationPage(1);
+    setApplicationGoPage(1);
   }, [initialView, tab, query]);
   useEffect(() => {
     load();
@@ -752,6 +783,50 @@ export default function SealCenterPage({
             r.created_at.slice(0, 10) <= dates[1].format("YYYY-MM-DD"))),
     );
   }, [rows, initialView, query]);
+  const applicationPageCount = Math.max(
+    1,
+    Math.ceil(visibleRows.length / applicationPageSize),
+  );
+  const goToApplicationPage = () => {
+    const page = Math.min(
+      applicationPageCount,
+      Math.max(1, Math.floor(Number(applicationGoPage) || 1)),
+    );
+    setApplicationPage(page);
+    setApplicationGoPage(page);
+  };
+  const applicationPagination = usesLegacyApplicationPagination
+    ? {
+        current: applicationPage,
+        pageSize: applicationPageSize,
+        defaultPageSize: 15,
+        showSizeChanger: true,
+        showQuickJumper:
+          initialView === "seal-my-pending" ? { goButton: "GO" } : true,
+        pageSizeOptions: [10, 15, 20, 50, 100, 200],
+        showTotal: (n: number) => `共 ${n} 条记录`,
+        onChange: (page: number, pageSize: number) => {
+          setApplicationPage(page);
+          setApplicationGoPage(page);
+          setApplicationPageSize(pageSize);
+        },
+      }
+    : {
+        current: applicationPage,
+        pageSize: applicationPageSize,
+        showTotal: (n: number) => `共 ${n} 条记录`,
+        onChange: (page: number, pageSize: number) => {
+          setApplicationPage(page);
+          setApplicationGoPage(page);
+          setApplicationPageSize(pageSize);
+        },
+      };
+  useEffect(() => {
+    if (applicationPage > applicationPageCount) {
+      setApplicationPage(applicationPageCount);
+      setApplicationGoPage(applicationPageCount);
+    }
+  }, [applicationPage, applicationPageCount]);
   const auditRows = useMemo(() => toSealAuditRows(history), [history]);
   const queueCreateFiles = (files: File[]) => {
     const validFiles = files.filter(Boolean);
@@ -1947,30 +2022,7 @@ export default function SealCenterPage({
             columns={appColumns}
             dataSource={visibleRows}
             scroll={{ x: 1850 }}
-            pagination={
-              [
-                "seal-my-pending",
-                "seal-audit-pending",
-                "seal-audit-stamping",
-                "seal-audit-refused",
-                "seal-admin-pending",
-                "seal-admin-used",
-                "seal-admin-query",
-              ].includes(
-                initialView,
-              )
-                ? {
-                    defaultPageSize: 15,
-                    showSizeChanger: true,
-                    showQuickJumper:
-                      initialView === "seal-my-pending"
-                        ? { goButton: "GO" }
-                        : true,
-                    pageSizeOptions: [10, 15, 20, 50, 100, 200],
-                    showTotal: (n) => `共 ${n} 条记录`,
-                  }
-                : { pageSize: 20, showTotal: (n) => `共 ${n} 条记录` }
-            }
+            pagination={applicationPagination}
             locale={{
               emptyText:
                 initialView === "seal-my-pending" ? (
@@ -1998,21 +2050,25 @@ export default function SealCenterPage({
               ].includes(initialView)
                 ? () => (
                     <div className="seal-table-actions">
-                      {initialView === "seal-my-pending" &&
-                        visibleRows.length <= 15 && (
-                          <Space size={4} aria-label="分页跳转">
-                            <InputNumber
-                              aria-label="跳转页码"
-                              min={1}
-                              max={1}
-                              defaultValue={1}
-                              controls={false}
-                              size="small"
-                              style={{ width: 52 }}
-                            />
-                            <Button size="small">GO</Button>
-                          </Space>
-                        )}
+                      {initialView === "seal-my-pending" && (
+                        <Space size={4} aria-label="分页跳转">
+                          <InputNumber
+                            aria-label="跳转页码"
+                            min={1}
+                            max={applicationPageCount}
+                            value={applicationGoPage}
+                            controls={false}
+                            size="small"
+                            style={{ width: 52 }}
+                            onChange={(page) =>
+                              setApplicationGoPage(Number(page) || 1)
+                            }
+                          />
+                          <Button size="small" onClick={goToApplicationPage}>
+                            GO
+                          </Button>
+                        </Space>
+                      )}
                       {initialView === "seal-my-pending" && (
                         <>
                           <Button onClick={() => openApplication()}>
@@ -2608,6 +2664,7 @@ export default function SealCenterPage({
         open={Boolean(detail)}
         size={640}
         title={`用印详情：${detail?.serial_no || ""}`}
+        extra={detail ? <Button icon={<ReloadOutlined />} onClick={() => void openDetail(detail)}>刷新</Button> : null}
         onClose={() => {
           detailRequestTracker.invalidate();
           setDetail(null);

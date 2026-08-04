@@ -8470,7 +8470,17 @@ export default function FinanceCenterPage({
                 下载 Word
               </Button>
             )}
-            {!paymentPackagePreview && (
+            {(!paymentPackagePreview || paymentPackagePreview.submitted) && (
+              <Button
+                type="link"
+                icon={<DownloadOutlined />}
+                loading={paymentWordExportLoading}
+                onClick={() => void downloadPaymentPrintWord(paymentPackagePrintData.package_no)}
+              >
+                下载 Word
+              </Button>
+            )}
+            {(!paymentPackagePreview || paymentPackagePreview.submitted) && (
               <Button type="link" onClick={() => window.print()}>
                 打印
               </Button>
@@ -8626,6 +8636,33 @@ export default function FinanceCenterPage({
                 查询
               </Button>
               {["finance-payment-mine", "finance-internal-mine"].includes(initialView) && (
+                <Button
+                  icon={<ReloadOutlined />}
+                  disabled={contractPaymentSource.active}
+                  onClick={() => void load()}
+                >
+                  刷新
+                </Button>
+              )}
+              {initialView === "finance-payment-audit" && (
+                <Button
+                  icon={<ReloadOutlined />}
+                  disabled={contractPaymentSource.active}
+                  onClick={() => void load()}
+                >
+                  刷新
+                </Button>
+              )}
+              {initialView === "finance-payment-waiting" && (
+                <Button
+                  icon={<ReloadOutlined />}
+                  disabled={contractPaymentSource.active}
+                  onClick={() => void load()}
+                >
+                  刷新
+                </Button>
+              )}
+              {initialView === "finance-payment-writeoff" && (
                 <Button
                   icon={<ReloadOutlined />}
                   disabled={contractPaymentSource.active}

@@ -178,6 +178,7 @@ export default function IprCenterPage({
     [receiptFile, setReceiptFile] = useState<File | null>(null),
     [reminders, setReminders] = useState<IprReminder[]>([]),
     [reminderOpen, setReminderOpen] = useState(false),
+    [reminderDetail, setReminderDetail] = useState<IprReminder | null>(null),
     [reminderForm] = Form.useForm(),
     [suppressionOpen, setSuppressionOpen] = useState(false),
     [reminderEventTypes, setReminderEventTypes] = useState<ReminderEventType[]>(
@@ -214,6 +215,7 @@ export default function IprCenterPage({
     [iprOperationLogs, setIprOperationLogs] = useState<IprOperationLog[]>([]),
     [iprHistory, setIprHistory] = useState<IprHistoryItem[]>([]),
     [iprLogOpen, setIprLogOpen] = useState(false),
+    [iprBusinessLogDetail, setIprBusinessLogDetail] = useState<IprBusinessLog | null>(null),
     [iprLogForm] = Form.useForm();
   const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
   const [deadlineOffsetForm] = Form.useForm();
@@ -392,6 +394,9 @@ export default function IprCenterPage({
     } catch (error) {
       setIprSectionError("assistedFees", error);
     }
+  };
+  const refreshAssistedFees = () => {
+    if (detail) void loadAssistedFees(detail.id, assistedFeesPageState.page, assistedFeesPageState.pageSize);
   };
   const loadReminders = async (
     caseId: number,
@@ -1478,7 +1483,16 @@ export default function IprCenterPage({
                 locale={{ emptyText: "暂未填写业务日志" }}
                 dataSource={iprBusinessLogs}
                 columns={[
-                  { title: "内容", dataIndex: "content", ellipsis: true },
+                  {
+                    title: "内容",
+                    dataIndex: "content",
+                    ellipsis: true,
+                    render: (content: string, row: IprBusinessLog) => (
+                      <Button type="link" onClick={() => setIprBusinessLogDetail(row)}>
+                        {content}
+                      </Button>
+                    ),
+                  },
                   { title: "创建人", dataIndex: "created_by", width: 110 },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                   { title: "操作", width: 90, render: (_, row) => row.created_by === profile.username || ["admin", "manager"].includes(profile.role || "") ? <Button danger type="link" size="small" onClick={() => confirmIprDeletion("log", row.content, () => deleteIprLog(row.id))}>删除</Button> : "—" },
@@ -1615,13 +1629,14 @@ export default function IprCenterPage({
               <div style={{ marginTop: 12 }}>
                 {attachments.length
                   ? attachments.map((item) => (
-                      <Button
-                        key={item.id}
-                        type="link"
-                        onClick={() => void downloadAttachment(item)}
-                      >
-                        {item.original_name}
-                      </Button>
+                      <Space key={item.id} size={0}>
+                        <Button type="link" onClick={() => void previewAttachment(item)}>
+                          {item.original_name}
+                        </Button>
+                        <Button type="link" onClick={() => void downloadAttachment(item)}>
+                          下载
+                        </Button>
+                      </Space>
                     ))
                   : "暂无案件附件"}
               </div>
@@ -1674,21 +1689,24 @@ export default function IprCenterPage({
           </Card>
           <Card
             size="small"
-            title="资助明细"
+              title="资助明细"
               style={{ marginTop: 16 }}
               extra={
-                detail.status === "在办" ? (
-                  <Button
-                    type="primary"
-                    size="small"
-                    onClick={() => {
-                      assistedForm.resetFields();
-                      setAssistedOpen(true);
-                    }}
-                  >
-                    新建资助费用
-                  </Button>
-                ) : null
+                <Space size={0}>
+                  <Button size="small" onClick={refreshAssistedFees}>刷新</Button>
+                  {detail.status === "在办" ? (
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => {
+                        assistedForm.resetFields();
+                        setAssistedOpen(true);
+                      }}
+                    >
+                      新建资助费用
+                    </Button>
+                  ) : null}
+                </Space>
               }
             >
               {iprSectionErrors.assistedFees ? <Alert type="error" showIcon message={iprSectionErrors.assistedFees} style={{ marginBottom: 12 }} /> : null}
@@ -1828,7 +1846,16 @@ export default function IprCenterPage({
                 columns={[
                   { title: "提醒日期", dataIndex: "reminder_date", width: 110 },
                   { title: "截止日期", dataIndex: "deadline", width: 110 },
-                  { title: "提醒内容", dataIndex: "content", ellipsis: true },
+                  {
+                    title: "提醒内容",
+                    dataIndex: "content",
+                    ellipsis: true,
+                    render: (content: string, row: IprReminder) => (
+                      <Button type="link" onClick={() => setReminderDetail(row)}>
+                        {content}
+                      </Button>
+                    ),
+                  },
                   { title: "创建人", dataIndex: "creator", width: 100 },
                   {
                     title: "操作",
@@ -2004,6 +2031,22 @@ export default function IprCenterPage({
         </Form>
       </Modal>
       <Modal
+        open={!!reminderDetail}
+        title="案件提醒详情"
+        footer={null}
+        onCancel={() => setReminderDetail(null)}
+      >
+        {reminderDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="提醒类型">{reminderDetail.event_type}</Descriptions.Item>
+            <Descriptions.Item label="提醒日期">{reminderDetail.reminder_date}</Descriptions.Item>
+            <Descriptions.Item label="截止日期">{reminderDetail.deadline}</Descriptions.Item>
+            <Descriptions.Item label="创建人">{reminderDetail.creator}</Descriptions.Item>
+            <Descriptions.Item label="提醒内容">{reminderDetail.content}</Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+      <Modal
         open={suppressionOpen}
         title="案件提醒不监控"
         onCancel={() => setSuppressionOpen(false)}
@@ -2039,6 +2082,20 @@ export default function IprCenterPage({
             <Input.TextArea rows={5} maxLength={4000} showCount />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={!!iprBusinessLogDetail}
+        title="案件业务日志详情"
+        footer={null}
+        onCancel={() => setIprBusinessLogDetail(null)}
+      >
+        {iprBusinessLogDetail && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="日志内容">{iprBusinessLogDetail.content}</Descriptions.Item>
+            <Descriptions.Item label="创建人">{iprBusinessLogDetail.created_by}</Descriptions.Item>
+            <Descriptions.Item label="创建时间">{iprBusinessLogDetail.created_at}</Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
       <Modal
         open={customerOpen}

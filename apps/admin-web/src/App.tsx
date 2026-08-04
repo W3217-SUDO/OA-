@@ -32,10 +32,12 @@ import {
   FileTextOutlined,
   FullscreenExitOutlined,
   FullscreenOutlined,
+  HomeOutlined,
   LinkOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
+  ReloadOutlined,
   SearchOutlined,
   TeamOutlined,
   UserOutlined,
@@ -633,6 +635,7 @@ function clearClientSessionStorage() {
   localStorage.removeItem("access_token");
   localStorage.removeItem("user");
   localStorage.removeItem("sunhold:open-pages");
+  localStorage.removeItem("sunhold:last-page");
   businessNavigationSessionKeys.forEach((key) => sessionStorage.removeItem(key));
 }
 
@@ -678,6 +681,16 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
   }
   const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
   return menuLabel || routePageLabels[normalizedKey] || "业务页面";
+}
+
+function readWorkspaceRouteFromLocation() {
+  const requestedRoute = new URLSearchParams(window.location.search).get("page");
+  if (requestedRoute) return normalizeWorkspaceRoute(requestedRoute);
+  try {
+    return normalizeWorkspaceRoute(localStorage.getItem("sunhold:last-page") || "dashboard");
+  } catch {
+    return "dashboard";
+  }
 }
 
 function readOpenPages(active: string): OpenPage[] {
@@ -1115,10 +1128,11 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sunhold:sidebar-auto-collapse") === "yes",
   );
-  const routeFromLocation = () => normalizeWorkspaceRoute(new URLSearchParams(window.location.search).get("page") || "dashboard");
+  const routeFromLocation = readWorkspaceRouteFromLocation;
   const [active, setActive] = useState(routeFromLocation);
   const [contractDetailTarget, setContractDetailTarget] = useState<ContractDetailNavigationContext | null>(null);
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
+  const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
@@ -1144,6 +1158,10 @@ export default function App() {
     window.addEventListener("popstate", restoreRouteFromHistory);
     return () => window.removeEventListener("popstate", restoreRouteFromHistory);
   }, []);
+  useEffect(() => {
+    if (!loggedIn) return;
+    localStorage.setItem("sunhold:last-page", active);
+  }, [active, loggedIn]);
   useEffect(() => {
     const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", syncFullscreenState);
@@ -1252,6 +1270,10 @@ export default function App() {
     () => configuredMenuItems(menuConfig),
     [menuConfig],
   );
+  useEffect(() => {
+    if (!loggedIn) return;
+    document.title = resolveWorkspacePageLabel(active, effectiveMenuItems);
+  }, [active, effectiveMenuItems, loggedIn]);
   const navigate = (route: string) => {
     const normalizedRoute = normalizeWorkspaceRoute(route);
     if (normalizedRoute === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: normalizedRoute }));
@@ -1468,6 +1490,14 @@ export default function App() {
           />
         </div>
         <Space className="top-actions">
+          <Tooltip title="返回控制台">
+            <Button
+              type="text"
+              aria-label="返回控制台"
+              icon={<HomeOutlined />}
+              onClick={() => navigate("dashboard")}
+            />
+          </Tooltip>
           <Dropdown
             menu={{
               items: sideMenuItems,
@@ -1612,6 +1642,18 @@ export default function App() {
             activeKey={active}
             onChange={navigate}
             onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
+            tabBarExtraContent={{
+              right: (
+                <Tooltip title="刷新当前页">
+                  <Button
+                    type="text"
+                    aria-label="刷新当前页"
+                    icon={<ReloadOutlined />}
+                    onClick={() => setWorkspaceReloadKey((value) => value + 1)}
+                  />
+                </Tooltip>
+              ),
+            }}
             items={openPages.map((item) => ({
               key: item.key,
               label: (
@@ -1629,7 +1671,7 @@ export default function App() {
               closable: item.key !== "dashboard",
             }))}
           />
-          <PageLoadBoundary key={active}>
+          <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
             <Suspense fallback={<div className="loading">正在加载页面...</div>}>
               {currentPage}
             </Suspense>

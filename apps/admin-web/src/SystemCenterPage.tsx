@@ -15,6 +15,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   TreeSelect,
 } from "antd";
 import type { TableColumnsType } from "antd";
@@ -23,6 +24,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { api } from "./api";
 import "./system-center.css";
@@ -1358,6 +1360,13 @@ export default function SystemCenterPage({
             <Button type="primary" onClick={() => loadUsers(keyword)}>
               查询
             </Button>
+            <Tooltip title="刷新系统用户">
+              <Button
+                aria-label="刷新系统用户"
+                icon={<ReloadOutlined />}
+                onClick={() => void loadUsers(keyword)}
+              />
+            </Tooltip>
             <Button
               type="primary"
               icon={<PlusOutlined />}

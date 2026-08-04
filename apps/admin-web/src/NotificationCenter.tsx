@@ -84,7 +84,20 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
         open={open}
         title={<Space>消息通知{unread > 0 && <Tag color="red">{unread} 条未读</Tag>}</Space>}
         onClose={() => setOpen(false)}
-        extra={<Button size="small" icon={<CheckOutlined />} disabled={!unread} onClick={readAll}>全部已读</Button>}
+        footer={(
+          <Space style={{ width: "100%", justifyContent: "space-between" }}>
+            <Button
+              type="link"
+              onClick={() => {
+                onNavigate("user-messages");
+                setOpen(false);
+              }}
+            >
+              更多内部消息
+            </Button>
+            <Button size="small" icon={<CheckOutlined />} disabled={!unread} onClick={readAll}>全部已读</Button>
+          </Space>
+        )}
       >
         <List
           loading={loading}

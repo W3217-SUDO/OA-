@@ -946,6 +946,15 @@ export default function CustomerCenterPage({
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "contracts" });
     onNavigate?.("contract-company");
   };
+  const openCustomerContractCreate = (customer: Customer) => {
+    sessionStorage.setItem("sunhold:contract-customer", JSON.stringify({
+      id: customer.id,
+      name: customer.title,
+      serial_no: customer.serial_no,
+      at: Date.now(),
+    }));
+    onNavigate?.("contract-new");
+  };
   const openCustomerCivilCases = (customer: Customer) => {
     sessionStorage.setItem("sunhold:customer-return", JSON.stringify(buildCustomerDetailReturnState({
       scope: originalCustomerScope,
@@ -1317,15 +1326,7 @@ export default function CustomerCenterPage({
     if (key === "assign") startAssign(target);
     if (key === "communication") openCustomerCommunication(target);
     if (key === "contact-management") void openDetail(target, "contacts");
-    if (key === "contract") {
-      sessionStorage.setItem("sunhold:contract-customer", JSON.stringify({
-        id: target.id,
-        name: target.title,
-        serial_no: target.serial_no,
-        at: Date.now(),
-      }));
-      onNavigate?.("contract-new");
-    }
+    if (key === "contract") openCustomerContractCreate(target);
     if (key === "level") { levelForm.setFieldsValue({ level: target.data.level, comment: "" }); setLevelCustomer(target); }
     if (key === "key-change") { keyChangeForm.setFieldsValue({ title: target.title, credit_code: target.data.credit_code || "", comment: "" }); setKeyChangeCustomer(target); }
     if (key === "level-review") {
@@ -1622,6 +1623,16 @@ export default function CustomerCenterPage({
                 ]} /></>,
               },
               {
+                key: "contracts",
+                label: `合同（${contacts.data.contract_count ?? 0}）`,
+                children: (
+                  <Space>
+                    <Button type="primary" onClick={() => openCustomerContracts(contacts)}>查看合同</Button>
+                    {canManageCurrentCustomer && <Button onClick={() => openCustomerContractCreate(contacts)}>新增合同</Button>}
+                  </Space>
+                ),
+              },
+              {
                 key: "notes",
                 label: "事项记录",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
@@ -1682,7 +1693,7 @@ export default function CustomerCenterPage({
                 key: "documents",
                 label: "客户文档",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"操作",render:()=>null},
+                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},{title:"操作",render:()=>null},
                 ]} />,
               },
             ]}
@@ -1932,7 +1943,7 @@ export default function CustomerCenterPage({
                 children:<>
                   {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},
+                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},
                     {title:"操作",render:(_:unknown,row:Attachment)=>canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null}
                   ]} />
                   {attachments.length > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button>}
@@ -2321,6 +2332,16 @@ export default function CustomerCenterPage({
                   </Card>
                 </>
               ),
+            },
+            {
+              key: "contracts",
+              label: `合同（${contacts?.data.contract_count ?? 0}）`,
+              children: contacts ? (
+                <Space>
+                  <Button type="primary" onClick={() => openCustomerContracts(contacts)}>查看合同</Button>
+                  {canManageCurrentCustomer && <Button onClick={() => openCustomerContractCreate(contacts)}>新增合同</Button>}
+                </Space>
+              ) : null,
             },
             {
               key: "notes",
