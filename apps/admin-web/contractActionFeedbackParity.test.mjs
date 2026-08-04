@@ -45,3 +45,24 @@ test("mutation handlers preserve legacy server messages and keep validation UX",
   }
   assert.match(contractCenterSource, /if \(error\?\.errorFields\) return;/);
 });
+
+const contractObjectHandlerSource = (name) => {
+  const start = contractCenterSource.indexOf("const " + name + " =");
+  assert.ok(start >= 0, name + " handler is wired");
+  const next = contractCenterSource.indexOf("\n  const ", start + 1);
+  return contractCenterSource.slice(start, next < 0 ? undefined : next);
+};
+
+test("contract object save and delete consume legacy PostResponse failures before success UI", () => {
+  const saveSource = contractObjectHandlerSource("saveContractObject");
+  const deleteSource = contractObjectHandlerSource("deleteContractObject");
+
+  for (const source of [saveSource, deleteSource]) {
+    assert.match(source, /normalizeContractActionResponse\(/);
+    assert.match(source, /if \(!feedback\.ok\) throw new Error\(feedback\.message\)/);
+    assert.ok(
+      source.indexOf("normalizeContractActionResponse(") < source.indexOf("message.success("),
+      "legacy envelope must be checked before success message",
+    );
+  }
+});
