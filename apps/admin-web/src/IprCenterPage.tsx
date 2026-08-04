@@ -1126,6 +1126,7 @@ export default function IprCenterPage({
               />
               <Button onClick={() => void exportExcel()}>导出Excel</Button>
               <Button onClick={() => { iprBatchForm.resetFields(); iprBatchForm.setFieldsValue({ document_date: dayjs() }); void loadIprFileTypes(""); setIprBatchFile(null); setIprBatchOpen(true); }}>批量上传文档</Button>
+              <Button onClick={() => onNavigate?.("ipr-custom-file-import")}>案件自定义文件导入</Button>
               <Button onClick={() => onNavigate?.("case-files-receipt")}>案件票据导入</Button>
               <Button onClick={() => onNavigate?.("case-files-invoice")}>案件发票导入</Button>
               <Button disabled={!selectedIprCaseIds.length} onClick={openBatchMaintenance}>批量维护</Button>
