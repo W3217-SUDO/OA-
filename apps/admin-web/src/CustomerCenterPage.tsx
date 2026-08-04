@@ -1416,7 +1416,7 @@ export default function CustomerCenterPage({
       ),
     },
     {
-      title: "民事案件数",
+      title: "民事案件数量",
       key: "caseCount",
       width: 120,
       align: "center" as const,

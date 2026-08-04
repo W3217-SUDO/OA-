@@ -15,6 +15,8 @@ test('customer contract and case relation actions preserve stable identifiers be
   assert.match(oldCase, /CaseCustomerListSelected\(CaseCustomerSelectedModel model\)/)
   assert.match(localPage, /rememberCustomerRelationTarget\(\{ id: customer\.id, serial_no: customer\.serial_no, title: customer\.title, target: "contracts" \}\)/)
   assert.match(localPage, /rememberCustomerRelationTarget\(\{ id: customer\.id, serial_no: customer\.serial_no, title: customer\.title, target: "civil-cases" \}\)/)
+  assert.match(localPage, /title: "合同数量"/)
+  assert.match(localPage, /title: "民事案件数量"/)
   assert.match(localRelation, /sessionStorage\.setItem\(STORAGE_KEY/)
 })
 
