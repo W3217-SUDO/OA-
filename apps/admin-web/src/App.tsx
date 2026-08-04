@@ -433,7 +433,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     (item) =>
       item.is_visible &&
       item.is_active &&
-      item.key !== "task-reminders",
+      item.key !== "task-reminders" &&
+      item.key !== "system-users",
   ).sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
   );
@@ -592,6 +593,7 @@ type OpenPage = { key: string; label: string };
 // instead of exposing an internal route key to users.
 const legacyRouteAliases: Record<string, string> = {
   "agent-document": "documents-agent",
+  "system-users": "hr-all",
 };
 const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route;
 const businessNavigationSessionKeys = [
@@ -618,7 +620,6 @@ function replaceWithRootRoute() {
   window.history.replaceState(null, "", window.location.pathname);
 }
 const routePageLabels: Record<string, string> = {
-  "system-users": "员工管理",
   "system-audit": "操作日志",
   "documents-agent": "AI 智能文档",
   "notary-import-info": "公证信息导入",
