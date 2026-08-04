@@ -2519,6 +2519,16 @@ GENERIC_RECORD_TRANSITION_MODULES = {"report", "system"}
 GENERIC_RECORD_DELETABLE_MODULES = {"report"}
 
 
+def _legacy_failure_response(message: str, data: object | None = None) -> dict:
+    return {"IsSuccess": False, "Data": data, "Message": message}
+
+
+def _legacy_customer_business_failure_response(exc: HTTPException) -> dict:
+    if exc.status_code in {status.HTTP_409_CONFLICT, status.HTTP_422_UNPROCESSABLE_ENTITY}:
+        return _legacy_failure_response(str(exc.detail or "操作失败"))
+    raise exc
+
+
 FIELD_PERMISSION_DATA_KEYS = {
     "customer.billing": {"invoice_title", "taxpayer_id", "invoice_address", "invoice_phone"},
     "customer.bank": {"bank_name", "bank_account"},
@@ -5915,99 +5925,114 @@ async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: d
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/claim")
 async def claim_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity.get("role") not in {"admin", "manager", "user"}:
-        raise HTTPException(status_code=403, detail="当前角色不能领取公海客户")
-    customer = await _locked_customer_or_404(customer_id, identity, db)
-    if customer.status != "公海": raise HTTPException(status_code=409, detail="只有公海客户可以领取")
-    current_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
-    if not current_user: raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
-    old = customer.status; customer.status = "潜在"; customer.owner = current_user.username; customer.department = current_user.department
-    customer.data = {
-        **(customer.data or {}),
-        "customer_managers": [identity["username"]],
-        "shared_with": [],
-        "is_shared": "否",
-        "claimed_at": datetime.now().isoformat(timespec="seconds"),
-        "claimed_by": identity["username"],
-    }
-    db.add(_customer_event(customer, "领取客户", identity, body.comment or "从公海领取客户", old)); await db.commit(); await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    try:
+        if identity.get("role") not in {"admin", "manager", "user"}:
+            raise HTTPException(status_code=403, detail="当前角色不能领取公海客户")
+        customer = await _locked_customer_or_404(customer_id, identity, db)
+        if customer.status != "公海": raise HTTPException(status_code=409, detail="只有公海客户可以领取")
+        current_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+        if not current_user: raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
+        old = customer.status; customer.status = "潜在"; customer.owner = current_user.username; customer.department = current_user.department
+        customer.data = {
+            **(customer.data or {}),
+            "customer_managers": [identity["username"]],
+            "shared_with": [],
+            "is_shared": "否",
+            "claimed_at": datetime.now().isoformat(timespec="seconds"),
+            "claimed_by": identity["username"],
+        }
+        db.add(_customer_event(customer, "领取客户", identity, body.comment or "从公海领取客户", old)); await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/release")
 async def release_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    customer = await _locked_customer_or_404(customer_id, identity, db)
-    await _require_record_owner_or_manager(customer, identity, db)
-    if customer.status not in {"正常", "跟进中", "已回收", *CUSTOMER_CREATE_STATUSES}: raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
-    old = customer.status; customer.status = "公海"; customer.owner = "公海"
-    customer.data = {
-        **(customer.data or {}),
-        "shared_with": [],
-        "is_shared": "否",
-        "released_at": datetime.now().isoformat(timespec="seconds"),
-        "released_by": identity["username"],
-    }
-    db.add(_customer_event(customer, "释放公海", identity, body.comment or "客户释放到公海", old)); await db.commit(); await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    try:
+        customer = await _locked_customer_or_404(customer_id, identity, db)
+        await _require_record_owner_or_manager(customer, identity, db)
+        if customer.status not in {"正常", "跟进中", "已回收", *CUSTOMER_CREATE_STATUSES}: raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
+        old = customer.status; customer.status = "公海"; customer.owner = "公海"
+        customer.data = {
+            **(customer.data or {}),
+            "shared_with": [],
+            "is_shared": "否",
+            "released_at": datetime.now().isoformat(timespec="seconds"),
+            "released_by": identity["username"],
+        }
+        db.add(_customer_event(customer, "释放公海", identity, body.comment or "客户释放到公海", old)); await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/share")
 async def share_customer(customer_id: int, body: CustomerShareInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    customer = await _locked_customer_or_404(customer_id, identity, db)
-    await _require_record_owner_or_manager(customer, identity, db)
-    if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="公海或回收站客户不能共享")
-    recipients = await _resolve_active_customer_managers(body.recipients, db)
-    customer_managers = {
-        str(value).strip()
-        for value in (customer.data or {}).get("customer_managers", [])
-        if str(value).strip()
-    }
-    redundant = sorted(set(recipients) & ({str(customer.owner or "").strip()} | customer_managers))
-    if redundant:
-        raise HTTPException(status_code=422, detail=f"客户负责人或管理人无需重复共享：{'、'.join(redundant)}")
-    existing = set((customer.data or {}).get("shared_with", [])); existing.update(recipients)
-    customer.data = {**(customer.data or {}), "shared_with": sorted(existing), "is_shared": "是", "shared_at": datetime.now().isoformat(timespec="seconds")}
-    db.add(_customer_event(customer, "共享客户", identity, body.comment or f"共享给：{'、'.join(recipients)}")); await db.commit(); await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    try:
+        customer = await _locked_customer_or_404(customer_id, identity, db)
+        await _require_record_owner_or_manager(customer, identity, db)
+        if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="公海或回收站客户不能共享")
+        recipients = await _resolve_active_customer_managers(body.recipients, db)
+        customer_managers = {
+            str(value).strip()
+            for value in (customer.data or {}).get("customer_managers", [])
+            if str(value).strip()
+        }
+        redundant = sorted(set(recipients) & ({str(customer.owner or "").strip()} | customer_managers))
+        if redundant:
+            raise HTTPException(status_code=422, detail=f"客户负责人或管理人无需重复共享：{'、'.join(redundant)}")
+        existing = set((customer.data or {}).get("shared_with", [])); existing.update(recipients)
+        customer.data = {**(customer.data or {}), "shared_with": sorted(existing), "is_shared": "是", "shared_at": datetime.now().isoformat(timespec="seconds")}
+        db.add(_customer_event(customer, "共享客户", identity, body.comment or f"共享给：{'、'.join(recipients)}")); await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/recycle")
 async def recycle_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    customer = await _locked_customer_or_404(customer_id, identity, db)
-    await _require_record_owner_or_manager(customer, identity, db)
-    if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取，不能直接移入回收站")
-    if customer.status == "已回收": raise HTTPException(status_code=409, detail="客户已在回收站")
-    linked_counts = await _customer_linked_business_counts(customer, db)
-    if linked_counts["contract_count"] or linked_counts["case_count"]:
-        blockers = []
-        if linked_counts["contract_count"]:
-            blockers.append(f"{linked_counts['contract_count']} 个合同")
-        if linked_counts["case_count"]:
-            blockers.append(f"{linked_counts['case_count']} 个案件")
-        raise HTTPException(status_code=409, detail=f"客户存在{'、'.join(blockers)}，不能删除；请先处理关联合同和案件")
-    old = customer.status
-    customer.data = {
-        **(customer.data or {}),
-        "shared_with": [],
-        "is_shared": "否",
-        "status_before_recycle": old,
-        "recycled_at": datetime.now().isoformat(timespec="seconds"),
-        "recycled_by": identity["username"],
-    }
-    customer.status = "已回收"; db.add(_customer_event(customer, "移入回收站", identity, body.comment or "客户移入回收站", old)); await db.commit(); await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    try:
+        customer = await _locked_customer_or_404(customer_id, identity, db)
+        await _require_record_owner_or_manager(customer, identity, db)
+        if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取，不能直接移入回收站")
+        if customer.status == "已回收": raise HTTPException(status_code=409, detail="客户已在回收站")
+        linked_counts = await _customer_linked_business_counts(customer, db)
+        if linked_counts["contract_count"] or linked_counts["case_count"]:
+            blockers = []
+            if linked_counts["contract_count"]:
+                blockers.append(f"{linked_counts['contract_count']} 个合同")
+            if linked_counts["case_count"]:
+                blockers.append(f"{linked_counts['case_count']} 个案件")
+            raise HTTPException(status_code=409, detail=f"客户存在{'、'.join(blockers)}，不能删除；请先处理关联合同和案件")
+        old = customer.status
+        customer.data = {
+            **(customer.data or {}),
+            "shared_with": [],
+            "is_shared": "否",
+            "status_before_recycle": old,
+            "recycled_at": datetime.now().isoformat(timespec="seconds"),
+            "recycled_by": identity["username"],
+        }
+        customer.status = "已回收"; db.add(_customer_event(customer, "移入回收站", identity, body.comment or "客户移入回收站", old)); await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/restore")
 async def restore_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    customer = await _locked_customer_or_404(customer_id, identity, db)
-    await _require_record_owner_or_manager(customer, identity, db)
-    if customer.status != "已回收": raise HTTPException(status_code=409, detail="只有回收站客户可以恢复")
-    old = customer.status; previous = str((customer.data or {}).get("status_before_recycle", "跟进中"))
-    if previous not in {"正常", "跟进中", "公海", *CUSTOMER_CREATE_STATUSES}: previous = "潜在"
-    customer.status = previous; customer.data = {**(customer.data or {}), "restored_at": datetime.now().isoformat(timespec="seconds"), "restored_by": identity["username"]}
-    db.add(_customer_event(customer, "恢复客户", identity, body.comment or f"恢复为{previous}", old)); await db.commit(); await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    try:
+        customer = await _locked_customer_or_404(customer_id, identity, db)
+        await _require_record_owner_or_manager(customer, identity, db)
+        if customer.status != "已回收": raise HTTPException(status_code=409, detail="只有回收站客户可以恢复")
+        old = customer.status; previous = str((customer.data or {}).get("status_before_recycle", "跟进中"))
+        if previous not in {"正常", "跟进中", "公海", *CUSTOMER_CREATE_STATUSES}: previous = "潜在"
+        customer.status = previous; customer.data = {**(customer.data or {}), "restored_at": datetime.now().isoformat(timespec="seconds"), "restored_by": identity["username"]}
+        db.add(_customer_event(customer, "恢复客户", identity, body.comment or f"恢复为{previous}", old)); await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/contacts", status_code=status.HTTP_201_CREATED)
@@ -6156,25 +6181,28 @@ async def download_customer_contact_photo(customer_id: int, contact_id: str, ide
 
 @app.put(f"{settings.api_prefix}/customers/{{customer_id}}/managers")
 async def update_customer_managers(customer_id: int, body: CustomerManagersInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    customer = await _customer_or_404(customer_id, identity, db)
-    if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取后才能分配管理人")
-    await _require_record_owner_or_manager(customer, identity, db)
-    managers = await _resolve_active_customer_managers(body.managers, db)
-    data = dict(customer.data or {})
-    history = list(data.get("assignment_history") or [])
-    history.append({
-        "from_owner": customer.owner,
-        "to_owner": managers[0],
-        "managers": managers,
-        "operator": identity["username"],
-        "comment": body.comment.strip(),
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-    })
-    customer.owner = managers[0]
-    customer.data = {**data, "customer_managers": managers, "assignment_history": history}
-    db.add(_customer_event(customer, "更新客户管理人", identity, body.comment or f"客户管理人：{'、'.join(managers)}"))
-    await db.commit(); await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    try:
+        customer = await _customer_or_404(customer_id, identity, db)
+        if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取后才能分配管理人")
+        await _require_record_owner_or_manager(customer, identity, db)
+        managers = await _resolve_active_customer_managers(body.managers, db)
+        data = dict(customer.data or {})
+        history = list(data.get("assignment_history") or [])
+        history.append({
+            "from_owner": customer.owner,
+            "to_owner": managers[0],
+            "managers": managers,
+            "operator": identity["username"],
+            "comment": body.comment.strip(),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        customer.owner = managers[0]
+        customer.data = {**data, "customer_managers": managers, "assignment_history": history}
+        db.add(_customer_event(customer, "更新客户管理人", identity, body.comment or f"客户管理人：{'、'.join(managers)}"))
+        await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
 
 
 @app.post(f"{settings.api_prefix}/customers/{{customer_id}}/notes", status_code=status.HTTP_201_CREATED)
@@ -20154,19 +20182,19 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
     await _require_record_owner_or_manager(record, identity, db)
     changes = body.model_dump(exclude_unset=True)
     if record.module not in GENERIC_RECORD_EDITABLE_MODULES:
-        raise HTTPException(status_code=409, detail="该业务必须使用专用入口办理")
+        return _legacy_failure_response("该业务必须使用专用入口办理")
     if record.module in {"hr", "warehouse"} and identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="当前角色不能修改人事或仓库资料")
     if "status" in changes and record.module in {"clue", "evidence", "invoice", "refund", "document", "hr", "warehouse"}:
-        raise HTTPException(status_code=409, detail="该业务必须使用专用审批或办理入口变更状态")
+        return _legacy_failure_response("该业务必须使用专用审批或办理入口变更状态")
     if record.module == "customer" and "status" in changes and changes["status"] != record.status:
-        raise HTTPException(status_code=409, detail="客户生命周期状态必须通过领取、释放、回收或恢复专用入口变更")
+        return _legacy_failure_response("客户生命周期状态必须通过领取、释放、回收或恢复专用入口变更")
     if record.module == "warehouse" and "data" in changes:
-        if record.status != "在库": raise HTTPException(status_code=409, detail="借出或归还中的物品不能直接修改资料")
+        if record.status != "在库": return _legacy_failure_response("借出或归还中的物品不能直接修改资料")
         protected = {"borrower", "due_date", "borrow_purpose", "borrowed_at", "borrowed_by", "return_requested_at", "returned_at", "return_condition", "scrapped_at", "scrap_reason", "evidence_status", "checked_in_at", "checked_in_by", "checked_out_at", "checked_out_by", "recipient", "checkout_purpose", "rechecked_in_at", "rechecked_in_by", "destroyed_at", "destroyed_by", "destroy_reason"}
         incoming_data = dict(changes.get("data") or {})
         for key in protected:
-            if incoming_data.get(key) != (record.data or {}).get(key): raise HTTPException(status_code=409, detail="借还及报废信息必须通过专用办理入口修改")
+            if incoming_data.get(key) != (record.data or {}).get(key): return _legacy_failure_response("借还及报废信息必须通过专用办理入口修改")
     if identity.get("role") != "admin":
         user = await db.scalar(select(User).where(User.username == identity["username"]))
         if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
@@ -20182,7 +20210,7 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
         if "owner" in changes:
             requested_owner = (await _resolve_active_customer_managers([changes["owner"]], db))[0]
             if requested_owner != record.owner:
-                raise HTTPException(status_code=409, detail="客户负责人必须通过客户管理人专用入口修改")
+                return _legacy_failure_response("客户负责人必须通过客户管理人专用入口修改")
             changes["owner"] = record.owner
         if "data" in changes:
             customer_data = dict(changes.get("data") or {})
@@ -20192,7 +20220,7 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
                     protected_contact_field in customer_data
                     and customer_data.get(protected_contact_field) != existing_customer_data.get(protected_contact_field)
                 ):
-                    raise HTTPException(status_code=409, detail="客户系统维护字段必须通过对应专用入口修改")
+                    return _legacy_failure_response("客户系统维护字段必须通过对应专用入口修改")
                 if protected_contact_field in existing_customer_data:
                     customer_data[protected_contact_field] = existing_customer_data[protected_contact_field]
                 else:
@@ -20209,7 +20237,7 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
                     if str(manager).strip()
                 ]
                 if incoming_managers != existing_managers:
-                    raise HTTPException(status_code=409, detail="客户管理人必须通过客户管理人专用入口修改")
+                    return _legacy_failure_response("客户管理人必须通过客户管理人专用入口修改")
             customer_data["customer_managers"] = existing_managers
             changes["data"] = customer_data
     old_status = record.status
@@ -20237,11 +20265,7 @@ async def transition_record(record_id: int, body: TransitionInput, identity: dic
         await _require_record_owner_or_manager(record, identity, db)
     allowed = WORKFLOW_TRANSITIONS.get(record.module, {}).get(record.status, [])
     if body.to_status not in allowed:
-        return {
-            "IsSuccess": False,
-            "Data": None,
-            "Message": f"不能从“{record.status}”流转到“{body.to_status}”",
-        }
+        return _legacy_failure_response(f"不能从“{record.status}”流转到“{body.to_status}”")
     previous = record.status
     record.status = body.to_status
     action = "审批通过"

@@ -105,7 +105,9 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             before_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
         failed = await self.client.put(f"{API}/customers/{self.customer_id}/managers", json={"managers": ["missing-user"], "comment": "不应写入"})
-        self.assertEqual(failed.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        self.assertEqual(failed.status_code, status.HTTP_200_OK, failed.text)
+        self.assertEqual(failed.json()["IsSuccess"], False)
+        self.assertIn("客户管理人不存在", failed.json()["Message"])
         after_failed = await self.client.get(f"{API}/customers/{self.customer_id}/assignment-history")
         self.assertEqual(after_failed.json()["total"], before_count)
         async with self.sessions() as db:
@@ -172,8 +174,9 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             await db.commit()
 
         response = await self.client.post(f"{API}/customers/{self.customer_id}/recycle", json={"comment": "不应删除"})
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertIn("客户存在1 个合同", response.json()["detail"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        self.assertEqual(response.json()["IsSuccess"], False)
+        self.assertIn("客户存在1 个合同", response.json()["Message"])
 
         async with self.sessions() as db:
             customer = await db.get(BusinessRecord, self.customer_id)

@@ -40,7 +40,6 @@ KNOWN_BACKEND_GAPS = (
     "legacy contact SetDefatultContacts/SetActivedContacts endpoints have no exact local route",
     "legacy customerGuid-based CustomerFiles/CustomerFileDownloadByGuid contract is represented only by generic record_id attachments",
     "legacy CustomerEvents/CustomerEventCreate contract has no customer-specific local route",
-    "legacy PostResponse 200/IsSuccess failure envelope differs from local HTTP error status/detail contract",
 )
 
 
@@ -123,6 +122,15 @@ class CustomerBackendContractMatrixI4(unittest.TestCase):
     def test_unresolved_backend_gaps_remain_explicit(self):
         self.assertGreaterEqual(len(KNOWN_BACKEND_GAPS), 5)
         self.assertTrue(all(isinstance(item, str) and item for item in KNOWN_BACKEND_GAPS))
+        self.assertNotIn("legacy PostResponse 200/IsSuccess failure envelope differs from local HTTP error status/detail contract", KNOWN_BACKEND_GAPS)
+
+    def test_customer_post_response_failure_envelope_is_closed(self):
+        self.assertIn("def _legacy_customer_business_failure_response", LOCAL_MAIN)
+        for function_name in ("claim_customer", "release_customer", "share_customer", "recycle_customer", "restore_customer", "update_customer_managers"):
+            block = LOCAL_MAIN[LOCAL_MAIN.index(f"async def {function_name}"):]
+            block = block[: block.find("\n\n@app.") if "\n\n@app." in block else len(block)]
+            self.assertIn("except HTTPException as exc:", block)
+            self.assertIn("_legacy_customer_business_failure_response(exc)", block)
 
     def test_known_gap_markers_are_present_in_current_backend(self):
         self.assertNotIn("CustomerSharedObjects", LOCAL_MAIN)
