@@ -14,6 +14,16 @@ const oldOfficialDocumentController = fs.readFileSync(
   path.join(oldRoot, "Areas", "AWS", "Controllers", "OfficialDocumentController.cs"),
   "utf8",
 );
+const oldCreateUpdateInvoke = fs.readFileSync(
+  path.join(
+    oldRoot,
+    "Scripts",
+    "AWS",
+    "OfficialDocument",
+    "AWS.OfficialDocument.CreateUpdate.Invoke.js",
+  ),
+  "utf8",
+);
 
 function sourceHas(source, pattern) {
   return pattern.test(source);
@@ -131,6 +141,57 @@ test("SealCenter source attachment selector consumes paged contract/case attachm
   assert.ok(
     sourceHas(createModal, /(loadMoreSourceAttachments|sourceAttachmentTotal|sourceAttachmentPage)/),
     "create modal must expose a way to consume additional source attachment pages.",
+  );
+});
+
+test("SealCenter hides relation and source attachment fields for administrative seals", () => {
+  const legacyInitSealType = sliceBetween(
+    oldCreateUpdateInvoke,
+    "function initSealType()",
+    "$(document).ready",
+  );
+  assert.ok(
+    sourceHas(
+      legacyInitSealType,
+      /else\s*\{[\s\S]*?\$\("\.case"\)\.hide\(\);[\s\S]*?\$\("\.contract"\)\.hide\(\);[\s\S]*?\$\("\.customer"\)\.hide\(\);[\s\S]*?\}/,
+    ),
+    "legacy administrative seal branch hid case, contract, and customer selectors",
+  );
+
+  const sourceLoader = sliceBetween(page, "const selectedUseType", "const clearQuery = () =>");
+  const createModal = sliceBetween(page, "<Form form={createForm}", "</Form>");
+
+  assert.ok(
+    sourceHas(sourceLoader, /const isContractSeal = selectedUseType === "合同用印";/),
+    "create form must name the contract seal branch from use_type",
+  );
+  assert.ok(
+    sourceHas(sourceLoader, /const isCaseSeal = selectedUseType === "案件用印";/),
+    "create form must name the case seal branch from use_type",
+  );
+  assert.ok(
+    sourceHas(sourceLoader, /const showSourceRelationFields = isContractSeal \|\| isCaseSeal;/),
+    "only contract/case seals should expose relation/source fields",
+  );
+  assert.ok(
+    sourceHas(sourceLoader, /setFieldsValue\(\{[\s\S]*?customer:\s*undefined,[\s\S]*?case_no:\s*undefined,[\s\S]*?contract_no:\s*undefined,[\s\S]*?source_attachment_ids:\s*\[\],[\s\S]*?\}\)/),
+    "switching to administrative seal must clear stale relation and source selections",
+  );
+  assert.ok(
+    sourceHas(createModal, /\{showSourceRelationFields && \([\s\S]*?label="客户\/单位"/),
+    "administrative seal must not render the customer selector",
+  );
+  assert.ok(
+    sourceHas(createModal, /\{isCaseSeal && \([\s\S]*?label="关联案号"/),
+    "case selector must render only for case seals",
+  );
+  assert.ok(
+    sourceHas(createModal, /\{isContractSeal && \([\s\S]*?label="关联合同号"/),
+    "contract selector must render only for contract seals",
+  );
+  assert.ok(
+    sourceHas(createModal, /\{showSourceRelationFields && \([\s\S]*?label="来源附件"/),
+    "source attachment selector must render only for contract/case seals",
   );
 });
 

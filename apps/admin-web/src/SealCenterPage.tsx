@@ -363,15 +363,18 @@ export default function SealCenterPage({
   const selectedUseType = Form.useWatch("use_type", createForm);
   const selectedCaseNo = Form.useWatch("case_no", createForm);
   const selectedContractNo = Form.useWatch("contract_no", createForm);
+  const isContractSeal = selectedUseType === "合同用印";
+  const isCaseSeal = selectedUseType === "案件用印";
+  const showSourceRelationFields = isContractSeal || isCaseSeal;
   const selectedSourceRecord = useMemo(() => {
-    if (selectedUseType === "合同用印" && selectedContractNo) {
+    if (isContractSeal && selectedContractNo) {
       return contracts.find((item) => item.serial_no === selectedContractNo) || null;
     }
-    if (selectedUseType === "案件用印" && selectedCaseNo) {
+    if (isCaseSeal && selectedCaseNo) {
       return cases.find((item) => item.serial_no === selectedCaseNo) || null;
     }
     return null;
-  }, [cases, contracts, selectedCaseNo, selectedContractNo, selectedUseType]);
+  }, [cases, contracts, isCaseSeal, isContractSeal, selectedCaseNo, selectedContractNo]);
   useEffect(() => {
     if (!createOpen) return;
     if (!selectedSourceRecord) {
@@ -461,6 +464,31 @@ export default function SealCenterPage({
     } finally {
       setSourceAttachmentLoading(false);
     }
+  };
+  const handleUseTypeChange = (nextUseType: string) => {
+    const nextIsContractSeal = nextUseType === "合同用印";
+    const nextIsCaseSeal = nextUseType === "案件用印";
+    const nextShowSourceRelationFields = nextIsContractSeal || nextIsCaseSeal;
+    setSourceAttachments([]);
+    setSourceAttachmentPage(1);
+    setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
+    setSourceAttachmentTotal(0);
+    if (!nextShowSourceRelationFields) {
+      createForm.setFieldsValue({
+        customer: undefined,
+        case_no: undefined,
+        contract_no: undefined,
+        source_attachment_ids: [],
+      });
+      return;
+    }
+    createForm.setFieldsValue({
+      case_no: nextIsCaseSeal ? createForm.getFieldValue("case_no") : undefined,
+      contract_no: nextIsContractSeal
+        ? createForm.getFieldValue("contract_no")
+        : undefined,
+      source_attachment_ids: [],
+    });
   };
   const clearQuery = () => {
     queryForm.resetFields();
@@ -714,7 +742,10 @@ export default function SealCenterPage({
       const data = {
         ...(editingApplication?.data || {}),
         ...v,
-        source_attachment_ids: sourceAttachmentIds,
+        customer: showSourceRelationFields ? v.customer : "",
+        case_no: isCaseSeal ? v.case_no : "",
+        contract_no: isContractSeal ? v.contract_no : "",
+        source_attachment_ids: showSourceRelationFields ? sourceAttachmentIds : [],
         use_date: formatRequiredDate(v.use_date, "计划用印日期"),
       };
       const response = editingApplication
@@ -1907,74 +1938,109 @@ export default function SealCenterPage({
             >
               <Input placeholder="例如：民事起诉状用印" />
             </Form.Item>
-            <Form.Item label="客户/单位" name="customer">
-              <Select
-                showSearch
-                allowClear
-                optionFilterProp="label"
-                options={customers.map((x) => ({
-                  value: x.title || x.customer,
-                  label: `${x.title || x.customer}｜${x.serial_no}`,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              label="关联案号"
-              name="case_no"
-              rules={selectedUseType === "案件用印" ? [{ required: true, message: "案件用印必须选择关联案件" }] : []}
-            >
-              <Select showSearch allowClear optionFilterProp="label" options={cases.map((x) => ({ value: x.serial_no, label: `${x.serial_no}｜${x.title}` }))} />
-            </Form.Item>
-            <Form.Item
-              label="关联合同号"
-              name="contract_no"
-              rules={selectedUseType === "合同用印" ? [{ required: true, message: "合同用印必须选择关联合同" }] : []}
-            >
-              <Select showSearch allowClear optionFilterProp="label" options={contracts.map((x) => ({ value: x.serial_no, label: `${x.serial_no}｜${x.customer}｜${x.title}` }))} />
-            </Form.Item>
-            <Form.Item label="来源附件" name="source_attachment_ids">
-              <Select
-                mode="multiple"
-                allowClear
-                loading={sourceAttachmentLoading}
-                placeholder={selectedSourceRecord ? "选择合同/案件来源附件" : "请先选择关联合同或案件"}
-                options={sourceAttachments.map((file) => ({
-                  value: file.id,
-                  label: `${file.original_name}｜${formatSealAttachmentSize(file.size)}`,
-                }))}
-                dropdownRender={(menu) => (
-                  <>
-                    {menu}
-                    {selectedSourceRecord &&
-                      sourceAttachmentTotal > sourceAttachments.length && (
-                        <div style={{ padding: 8, textAlign: "center" }}>
-                          <Button
-                            type="link"
-                            size="small"
-                            loading={sourceAttachmentLoading}
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => void loadMoreSourceAttachments()}
-                          >
-                            加载更多来源附件（{sourceAttachments.length}/{sourceAttachmentTotal}）
-                          </Button>
-                        </div>
-                      )}
-                  </>
-                )}
-              />
-            </Form.Item>
             <Form.Item
               label="用印类型"
               name="use_type"
               rules={[{ required: true }]}
             >
               <Select
+                onChange={handleUseTypeChange}
                 options={["合同用印", "案件用印", "行政用印"].map((x) => ({
                   value: x,
                   label: x,
                 }))}
               />
             </Form.Item>
+            {showSourceRelationFields && (
+              <Form.Item label="客户/单位" name="customer" preserve={false}>
+                <Select
+                  showSearch
+                  allowClear
+                  optionFilterProp="label"
+                  options={customers.map((x) => ({
+                    value: x.title || x.customer,
+                    label: `${x.title || x.customer}｜${x.serial_no}`,
+                  }))}
+                />
+              </Form.Item>
+            )}
+            {isCaseSeal && (
+              <Form.Item
+                label="关联案号"
+                name="case_no"
+                preserve={false}
+                rules={[{ required: true, message: "案件用印必须选择关联案件" }]}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  optionFilterProp="label"
+                  options={cases.map((x) => ({
+                    value: x.serial_no,
+                    label: `${x.serial_no}｜${x.title}`,
+                  }))}
+                />
+              </Form.Item>
+            )}
+            {isContractSeal && (
+              <Form.Item
+                label="关联合同号"
+                name="contract_no"
+                preserve={false}
+                rules={[{ required: true, message: "合同用印必须选择关联合同" }]}
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  optionFilterProp="label"
+                  options={contracts.map((x) => ({
+                    value: x.serial_no,
+                    label: `${x.serial_no}｜${x.customer}｜${x.title}`,
+                  }))}
+                />
+              </Form.Item>
+            )}
+            {showSourceRelationFields && (
+              <Form.Item
+                label="来源附件"
+                name="source_attachment_ids"
+                preserve={false}
+              >
+                <Select
+                  mode="multiple"
+                  allowClear
+                  loading={sourceAttachmentLoading}
+                  placeholder={
+                    selectedSourceRecord
+                      ? "选择合同/案件来源附件"
+                      : "请先选择关联合同或案件"
+                  }
+                  options={sourceAttachments.map((file) => ({
+                    value: file.id,
+                    label: `${file.original_name}｜${formatSealAttachmentSize(file.size)}`,
+                  }))}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      {selectedSourceRecord &&
+                        sourceAttachmentTotal > sourceAttachments.length && (
+                          <div style={{ padding: 8, textAlign: "center" }}>
+                            <Button
+                              type="link"
+                              size="small"
+                              loading={sourceAttachmentLoading}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => void loadMoreSourceAttachments()}
+                            >
+                              加载更多来源附件（{sourceAttachments.length}/{sourceAttachmentTotal}）
+                            </Button>
+                          </div>
+                        )}
+                    </>
+                  )}
+                />
+              </Form.Item>
+            )}
             <Form.Item
               label="选择印章"
               name="seal_asset_id"
