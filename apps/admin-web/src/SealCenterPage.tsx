@@ -1076,6 +1076,22 @@ export default function SealCenterPage({
       setActionSubmitting(false);
     }
   };
+  const withdrawSelectedApplications = () => {
+    const selected = selectedSealRows(visibleRows, selectedKeys);
+    if (!selected.length) {
+      message.info("请选择需要撤回的用印申请");
+      return;
+    }
+    if (!canBatchWithdrawSealRows(selected)) {
+      message.info("仅待审批或待用印用印申请可以撤回");
+      return;
+    }
+    if (selected.length > 1) {
+      void batchWithdraw(selected);
+      return;
+    }
+    void withdraw(selected[0]);
+  };
   const removeDraft = async (row: SealRow) => {
     Modal.confirm({
       title: "删除用印草稿",
@@ -1627,6 +1643,38 @@ export default function SealCenterPage({
       );
     }
   };
+  const stampSelectedApplications = () => {
+    const selected = selectedSealRows(visibleRows, selectedKeys);
+    if (!selected.length) {
+      message.info("请选择用印文件");
+      return;
+    }
+    if (!canBatchStampSealRows(selected)) {
+      message.info("仅待用印用印申请可以标记用印");
+      return;
+    }
+    const selectedRow = selected.length === 1 ? selected[0] : null;
+    if (selectedRow) {
+      setAction({ type: "stamp", row: selectedRow });
+      void openStampAction(selectedRow);
+      return;
+    }
+    batchStampForm.setFieldsValue({
+      actual_copies: Math.min(
+        ...selected.map((row) => Number(row.data.copies) || 0),
+      ),
+      operator: "admin",
+    });
+    setBatchStampOpen(true);
+  };
+  const downloadSelectedSealFiles = () => {
+    const selected = selectedSealRows(visibleRows, selectedKeys);
+    if (!selected.length) {
+      message.warning("请选择用印文件");
+      return;
+    }
+    void packageDownload(selected);
+  };
   const saveAsset = async () => {
     let v: Record<string, any>;
     try {
@@ -2175,12 +2223,7 @@ export default function SealCenterPage({
                             提交
                           </Button>
                           <Button
-                            disabled={!canBatchWithdrawSealRows(selectedRows)}
-                            onClick={() =>
-                              selectedRows.length > 1
-                                ? void batchWithdraw(selectedRows)
-                                : selectedRow && void withdraw(selectedRow)
-                            }
+                            onClick={() => withdrawSelectedApplications()}
                           >
                             撤回
                           </Button>
@@ -2188,12 +2231,7 @@ export default function SealCenterPage({
                       )}
                       {initialView === "seal-my-stamping" && (
                         <Button
-                          disabled={!canBatchWithdrawSealRows(selectedRows)}
-                          onClick={() =>
-                            selectedRows.length > 1
-                              ? void batchWithdraw(selectedRows)
-                              : selectedRow && void withdraw(selectedRow)
-                          }
+                          onClick={() => withdrawSelectedApplications()}
                         >
                           撤回
                         </Button>
@@ -2201,27 +2239,12 @@ export default function SealCenterPage({
                       {initialView === "seal-admin-pending" && (
                         <>
                           <Button
-                            disabled={!canBatchStampSealRows(selectedRows)}
-                            onClick={() => {
-                              if (selectedRows.length === 1 && selectedRow) {
-                                setAction({ type: "stamp", row: selectedRow });
-                                void openStampAction(selectedRow);
-                              } else if (selectedRows.length > 1) {
-                                batchStampForm.setFieldsValue({
-                                  actual_copies: Math.min(
-                                    ...selectedRows.map((row) => Number(row.data.copies) || 0),
-                                  ),
-                                  operator: "admin",
-                                });
-                                setBatchStampOpen(true);
-                              }
-                            }}
+                            onClick={() => stampSelectedApplications()}
                           >
                             标记用印
                           </Button>
                           <Button
-                            disabled={!selectedRows.length}
-                            onClick={() => packageDownload(selectedRows)}
+                            onClick={() => downloadSelectedSealFiles()}
                           >
                             打包下载
                           </Button>
