@@ -17840,7 +17840,12 @@ async def list_ipr_cases(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.data["application_no"].as_string().ilike(like)))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
     rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
-    return {"items": [_record_dict(row, await _allowed_field_keys(identity, db)) for row in rows], "total": total or 0, "page": page, "page_size": page_size}
+    total = int(total or 0)
+    return {
+        "items": [_record_dict(row, await _allowed_field_keys(identity, db)) for row in rows],
+        "total": total, "page": page, "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
 
 
 @app.get(f"{settings.api_prefix}/ipr/cases/export/excel")
@@ -18342,14 +18347,30 @@ def _ipr_assisted_fee_dict(row: IprCaseAssistedFee, attachment: FileAttachment |
 
 
 @app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees")
-async def list_ipr_case_assisted_fees(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_ipr_case_assisted_fees(
+    case_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
     """List one visible IPR case's assistance applications and receipt files."""
     case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    rows = list((await db.scalars(select(IprCaseAssistedFee).where(IprCaseAssistedFee.case_record_id == case_record.id).order_by(IprCaseAssistedFee.created_at.desc()))).all())
+    total = int(await db.scalar(select(func.count()).select_from(IprCaseAssistedFee).where(IprCaseAssistedFee.case_record_id == case_record.id)) or 0)
+    rows = list((await db.scalars(
+        select(IprCaseAssistedFee)
+        .where(IprCaseAssistedFee.case_record_id == case_record.id)
+        .order_by(IprCaseAssistedFee.created_at.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all())
     attachment_ids = [row.receipt_attachment_id for row in rows if row.receipt_attachment_id]
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all()) if attachment_ids else []
     by_id = {item.id: item for item in attachments}
-    return {"items": [_ipr_assisted_fee_dict(row, by_id.get(row.receipt_attachment_id)) for row in rows], "total": len(rows)}
+    return {
+        "items": [_ipr_assisted_fee_dict(row, by_id.get(row.receipt_attachment_id)) for row in rows],
+        "total": total, "page": page, "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
 
 
 @app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees", status_code=status.HTTP_201_CREATED)
@@ -18443,10 +18464,26 @@ async def _ensure_active_ipr_case_write(case_id: int, identity: dict, db: AsyncS
 
 
 @app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders")
-async def list_ipr_case_reminders(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_ipr_case_reminders(
+    case_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    rows = list((await db.scalars(select(IprCaseReminder).where(IprCaseReminder.case_record_id == record.id).order_by(IprCaseReminder.reminder_date, IprCaseReminder.id))).all())
-    return {"items": [_ipr_case_reminder_dict(row) for row in rows], "total": len(rows)}
+    total = int(await db.scalar(select(func.count()).select_from(IprCaseReminder).where(IprCaseReminder.case_record_id == record.id)) or 0)
+    rows = list((await db.scalars(
+        select(IprCaseReminder)
+        .where(IprCaseReminder.case_record_id == record.id)
+        .order_by(IprCaseReminder.reminder_date, IprCaseReminder.id)
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all())
+    return {
+        "items": [_ipr_case_reminder_dict(row) for row in rows],
+        "total": total, "page": page, "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
 
 
 @app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders", status_code=status.HTTP_201_CREATED)
@@ -18541,10 +18578,26 @@ async def _ipr_case_file_attachment(case_record: BusinessRecord, attachment_id: 
 
 
 @app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files")
-async def list_ipr_case_files(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_ipr_case_files(
+    case_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    items = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id).order_by(FileAttachment.document_date.desc().nullslast(), FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all())
-    return {"items": [_attachment_dict(item, record) for item in items], "total": len(items)}
+    total = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == record.id)) or 0)
+    items = list((await db.scalars(
+        select(FileAttachment)
+        .where(FileAttachment.record_id == record.id)
+        .order_by(FileAttachment.document_date.desc().nullslast(), FileAttachment.created_at.desc(), FileAttachment.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all())
+    return {
+        "items": [_attachment_dict(item, record) for item in items],
+        "total": total, "page": page, "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
 
 
 @app.get(f"{settings.api_prefix}/ipr/case-file-types")
