@@ -114,22 +114,9 @@ class HrEmployeeLoginDisabledContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertIs(employee["data"]["is_active"], True)
 
         updated = await self.client.patch(
-            f"{API}/hr/employees/{employee['id']}",
+            f"{API}/hr/employees/{employee['id']}/login-status",
             headers=admin_headers,
-            json={
-                "username": "codexactive",
-                "display_name": "CODEX启停测试",
-                "department": "上海分所",
-                "role": "user",
-                "position": "律师助理",
-                "is_active": False,
-                "email": "",
-                "mobile": "",
-                "office_phone": "",
-                "joined_at": "2026-08-04",
-                "left_at": None,
-                "data": {**employee["data"], "account_type": "员工账号", "position": "律师助理"},
-            },
+            json={"is_active": False},
         )
         self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
         self.assertIs(updated.json()["employee"]["data"]["is_active"], False)

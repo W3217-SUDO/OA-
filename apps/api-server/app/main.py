@@ -2033,6 +2033,10 @@ class HrEmployeeUpdateInput(BaseModel):
     data: dict = Field(default_factory=dict)
 
 
+class HrEmployeeLoginStatusInput(BaseModel):
+    is_active: bool
+
+
 class HrEmployeeCreateInput(BaseModel):
     # Only an "employee account" has a system-login counterpart.  Keeping this
     # optional lets HR retain customer/external personnel files without creating
@@ -17330,6 +17334,39 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.is_active = body.is_active; user.profile = profile
     employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "username": username, "role": body.role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
+    await db.commit(); await db.refresh(employee); await db.refresh(user)
+    return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
+
+
+@app.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}/login-status")
+async def update_hr_employee_login_status(employee_id: int, body: HrEmployeeLoginStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    employee = await db.get(BusinessRecord, employee_id)
+    if not employee or employee.module != "hr":
+        raise HTTPException(status_code=404, detail="员工档案不存在")
+    data = dict(employee.data or {})
+    account_type = str(data.get("account_type") or "员工账号").strip()
+    if account_type != "员工账号":
+        raise HTTPException(status_code=409, detail="该员工档案未关联系统登录账号")
+    username = str(data.get("username") or employee.owner).strip().lower()
+    user = await db.scalar(select(User).where(User.username == username))
+    if not user:
+        raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在")
+    if user.username == "admin":
+        raise HTTPException(status_code=409, detail="管理员账号不能通过员工档案停用")
+    if user.username == identity["username"] and not body.is_active:
+        raise HTTPException(status_code=409, detail="不能停用当前登录账号")
+    previous_active = user.is_active
+    user.is_active = body.is_active
+    data.update({"username": user.username, "role": user.role, "is_active": body.is_active, "system_user_id": user.id})
+    employee.data = data
+    db.add(WorkflowEvent(
+        record_id=employee.id, action="切换登录账号状态",
+        from_status="启用" if previous_active else "停用",
+        to_status="启用" if body.is_active else "停用",
+        operator=identity["username"],
+        comment="登录账号：{}；{}".format(user.username, "启用" if body.is_active else "停用"),
+    ))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
 
