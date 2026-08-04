@@ -98,6 +98,10 @@ type IprCaseContact = CustomerContact & { customer_id: number; customer_name: st
 type IprBusinessLog = { id: number; content: string; created_by: string; created_at: string };
 type IprOperationLog = { id: number; action: string; operator: string; comment: string; from_status?: string; to_status?: string; created_at: string };
 type IprHistoryItem = { id: number; action: string; operator: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
+type IprDetailPageState = { page: number; pageSize: number; total: number; pages: number };
+type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number };
+const IPR_DETAIL_DEFAULT_PAGE = 1;
+const IPR_DETAIL_DEFAULT_PAGE_SIZE = 15;
 const statusColor: Record<string, string> = {
   草稿: "default",
   待立案审核: "gold",
@@ -137,6 +141,24 @@ export default function IprCenterPage({
     logs: "",
     reminders: "",
     assistedFees: "",
+  });
+  const [filesPageState, setFilesPageState] = useState<IprDetailPageState>({
+    page: IPR_DETAIL_DEFAULT_PAGE,
+    pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  });
+  const [remindersPageState, setRemindersPageState] = useState<IprDetailPageState>({
+    page: IPR_DETAIL_DEFAULT_PAGE,
+    pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  });
+  const [assistedFeesPageState, setAssistedFeesPageState] = useState<IprDetailPageState>({
+    page: IPR_DETAIL_DEFAULT_PAGE,
+    pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE,
+    total: 0,
+    pages: 0,
   });
   const [customers, setCustomers] = useState<Customer[]>([]),
     [profile, setProfile] = useState<{ role?: string; username?: string }>({}),
@@ -340,23 +362,45 @@ export default function IprCenterPage({
         );
     }
   };
-  const loadAssistedFees = async (caseId: number) => {
+  const loadAssistedFees = async (
+    caseId: number,
+    nextPage = assistedFeesPageState.page,
+    nextPageSize = assistedFeesPageState.pageSize,
+  ) => {
     try {
-      const { data } = await api.get<{ items: AssistedFee[] }>(
+      const { data } = await api.get<IprDetailPagePayload<AssistedFee>>(
         `/ipr/cases/${caseId}/assisted-fees`,
+        { params: { page: nextPage, page_size: nextPageSize } },
       );
       setAssistedFees(data.items || []);
+      setAssistedFeesPageState({
+        page: data.page ?? nextPage,
+        pageSize: data.page_size ?? nextPageSize,
+        total: data.total ?? data.items?.length ?? 0,
+        pages: data.pages ?? 0,
+      });
       clearIprSectionError("assistedFees");
     } catch (error) {
       setIprSectionError("assistedFees", error);
     }
   };
-  const loadReminders = async (caseId: number) => {
+  const loadReminders = async (
+    caseId: number,
+    nextPage = remindersPageState.page,
+    nextPageSize = remindersPageState.pageSize,
+  ) => {
     try {
-      const { data } = await api.get<{ items: IprReminder[] }>(
+      const { data } = await api.get<IprDetailPagePayload<IprReminder>>(
         `/ipr/cases/${caseId}/reminders`,
+        { params: { page: nextPage, page_size: nextPageSize } },
       );
       setReminders(data.items || []);
+      setRemindersPageState({
+        page: data.page ?? nextPage,
+        pageSize: data.page_size ?? nextPageSize,
+        total: data.total ?? data.items?.length ?? 0,
+        pages: data.pages ?? 0,
+      });
       clearIprSectionError("reminders");
     } catch (error) {
       setIprSectionError("reminders", error);
@@ -375,12 +419,23 @@ export default function IprCenterPage({
       setSuppressedIds([]);
     }
   };
-  const loadIprFiles = async (caseId: number) => {
+  const loadIprFiles = async (
+    caseId: number,
+    nextPage = filesPageState.page,
+    nextPageSize = filesPageState.pageSize,
+  ) => {
     try {
-      const { data } = await api.get<{ items: Attachment[] }>(
+      const { data } = await api.get<IprDetailPagePayload<Attachment>>(
         `/ipr/cases/${caseId}/files`,
+        { params: { page: nextPage, page_size: nextPageSize } },
       );
       setAttachments(data.items || []);
+      setFilesPageState({
+        page: data.page ?? nextPage,
+        pageSize: data.page_size ?? nextPageSize,
+        total: data.total ?? data.items?.length ?? 0,
+        pages: data.pages ?? 0,
+      });
       clearIprSectionError("files");
     } catch (error) {
       setIprSectionError("files", error);
@@ -541,17 +596,20 @@ export default function IprCenterPage({
     setIprOperationLogs([]);
     setAssistedFees([]);
     setReminders([]);
+    setFilesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
+    setRemindersPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
+    setAssistedFeesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
     setIprSectionErrors({ files: "", logs: "", reminders: "", assistedFees: "" });
     try {
       await Promise.all([
-        loadIprFiles(record.id),
+        loadIprFiles(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadCaseLawFirms(record.id),
         loadCaseCustomers(record.id),
         loadCaseContacts(record.id),
         loadIprLogs(record.id),
         loadIprHistory(record.id),
-        loadAssistedFees(record.id),
-        loadReminders(record.id),
+        loadAssistedFees(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
+        loadReminders(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadReminderSuppressions(record.id),
       ]);
     } catch (error) {
@@ -1014,6 +1072,36 @@ export default function IprCenterPage({
     ],
     [profile.role, reviewView],
   );
+  const filesPagination = {
+    current: filesPageState.page,
+    pageSize: filesPageState.pageSize,
+    total: filesPageState.total,
+    showSizeChanger: true,
+    pageSizeOptions: ["15", "20", "50"],
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (detail) void loadIprFiles(detail.id, nextPage, nextPageSize);
+    },
+  };
+  const assistedFeesPagination = {
+    current: assistedFeesPageState.page,
+    pageSize: assistedFeesPageState.pageSize,
+    total: assistedFeesPageState.total,
+    showSizeChanger: true,
+    pageSizeOptions: ["15", "20", "50"],
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (detail) void loadAssistedFees(detail.id, nextPage, nextPageSize);
+    },
+  };
+  const remindersPagination = {
+    current: remindersPageState.page,
+    pageSize: remindersPageState.pageSize,
+    total: remindersPageState.total,
+    showSizeChanger: true,
+    pageSizeOptions: ["15", "20", "50"],
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (detail) void loadReminders(detail.id, nextPage, nextPageSize);
+    },
+  };
   return (
     <div className="page-shell">
       <Card
@@ -1445,7 +1533,7 @@ export default function IprCenterPage({
             <Table
               rowKey="id"
               size="small"
-              pagination={false}
+              pagination={filesPagination}
               dataSource={attachments}
               rowSelection={{ selectedRowKeys: selectedIprFileIds, onChange: (keys) => setSelectedIprFileIds(keys.map(Number)), getCheckboxProps: (row: Attachment) => ({ disabled: !row.requires_transmission || !!row.is_transmitted }) }}
               scroll={{ x: 760 }}
@@ -1497,7 +1585,7 @@ export default function IprCenterPage({
               <Table
                 rowKey="id"
                 size="small"
-                pagination={false}
+                pagination={assistedFeesPagination}
                 dataSource={assistedFees}
                 scroll={{ x: 780 }}
                 columns={[
@@ -1616,7 +1704,7 @@ export default function IprCenterPage({
               <Table
                 rowKey="id"
                 size="small"
-                pagination={false}
+                pagination={remindersPagination}
                 dataSource={reminders}
                 scroll={{ x: 700 }}
                 columns={[
