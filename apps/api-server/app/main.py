@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
-from .security import create_token, current_identity, hash_password, verify_password
+from .security import create_token, current_identity, hash_password, user_role_ids, verify_password
 
 
 logger = logging.getLogger(__name__)
@@ -192,6 +192,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
     "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
 }
+SYSTEM_USER_ROLE_CODES = frozenset(DEFAULT_ROLE_PERMISSIONS)
 ROLE_DATA_SCOPES = frozenset({
     "全所数据", "本部门数据", "授权审批数据", "本人及共享数据",
 })
@@ -368,6 +369,7 @@ def _upgrade_schema(connection) -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_users_department ON users (department)"))
     for column, definition in {
         "profile": "JSON NOT NULL DEFAULT '{}'",
+        "role_ids": "JSON NOT NULL DEFAULT '[]'",
         "failed_login_attempts": "INTEGER NOT NULL DEFAULT 0",
         "locked_until": "DATETIME",
         "last_login_at": "DATETIME",
@@ -493,6 +495,7 @@ async def lifespan(_: FastAPI):
                 display_name=settings.initial_admin_display_name,
                 department=settings.initial_admin_department,
                 role="admin",
+                role_ids=["admin"],
                 password_hash=hash_password(settings.initial_admin_password),
                 must_change_password=True,
             ))
@@ -1989,7 +1992,8 @@ class SystemUserInput(BaseModel):
     display_name: str = Field(min_length=1, max_length=64)
     department: str = Field(default="上海分所", min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
-    role: str = "user"
+    role: str | None = None
+    role_ids: list[str] | None = None
     is_active: bool = True
     # An administrator-issued password is always one-time.  Keep accepting
     # this legacy request field for API compatibility, but never allow a
@@ -2007,6 +2011,7 @@ class SystemUserUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=64)
     department: str | None = Field(default=None, min_length=1, max_length=64)
     role: str | None = None
+    role_ids: list[str] | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
     profile: dict | None = None
@@ -2974,6 +2979,49 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
             })
     return roots
 
+def _normalize_system_user_role_ids(
+    role_ids: list[str] | None,
+    role: str | None,
+    *,
+    fallback_role: str = "user",
+) -> list[str]:
+    legacy_role = str(role or "").strip()
+    if legacy_role and legacy_role not in SYSTEM_USER_ROLE_CODES:
+        raise HTTPException(status_code=422, detail="角色值无效")
+    requested = role_ids if role_ids is not None else ([legacy_role] if legacy_role else [fallback_role])
+    normalized = [str(value or "").strip() for value in requested]
+    if not normalized or any(not value for value in normalized):
+        raise HTTPException(status_code=422, detail="至少需要保留一个角色")
+    invalid = sorted(set(normalized) - SYSTEM_USER_ROLE_CODES)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"角色值无效：{', '.join(invalid)}")
+    if len(set(normalized)) != len(normalized):
+        raise HTTPException(status_code=422, detail="角色不能重复")
+    if role_ids is not None and legacy_role and legacy_role not in normalized:
+        raise HTTPException(status_code=422, detail="主角色必须包含在角色列表中")
+    primary = "admin" if "admin" in normalized else (legacy_role or normalized[0])
+    return [primary, *(value for value in normalized if value != primary)]
+
+
+def _system_user_role_ids(user: User) -> list[str]:
+    role_ids = [role for role in user_role_ids(user) if role in SYSTEM_USER_ROLE_CODES]
+    if not role_ids:
+        return ["user"]
+    if "admin" in role_ids:
+        return ["admin", *(role for role in role_ids if role != "admin")]
+    return role_ids
+
+
+def _identity_role_ids(identity: dict) -> list[str]:
+    role_ids = [str(role).strip() for role in identity.get("role_ids", []) if str(role).strip() in SYSTEM_USER_ROLE_CODES]
+    role = str(identity.get("role") or "user").strip()
+    if role in SYSTEM_USER_ROLE_CODES and role not in role_ids:
+        role_ids.insert(0, role)
+    if "admin" in role_ids:
+        return ["admin", *(value for value in role_ids if value != "admin")]
+    return list(dict.fromkeys(role_ids)) or ["user"]
+
+
 async def _permission_payload(role: str, db: AsyncSession) -> dict:
     permission = await db.scalar(select(RolePermission).where(RolePermission.role == role))
     config = DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"])
@@ -2988,6 +3036,20 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
         "menu_keys": _expand_menu_permission_keys(menu_keys),
         "data_scope": permission.data_scope if permission else config["data_scope"],
         "field_keys": list(permission.field_keys if permission else config["field_keys"]),
+    }
+
+
+async def _permission_payload_for_roles(role_ids: list[str], db: AsyncSession) -> dict:
+    if "admin" in role_ids:
+        return await _permission_payload("admin", db)
+    payloads = [await _permission_payload(role, db) for role in role_ids]
+    menu_keys = list(dict.fromkeys(key for payload in payloads for key in payload["menu_keys"]))
+    field_keys = list(dict.fromkeys(key for payload in payloads for key in payload["field_keys"]))
+    return {
+        "menu_keys": _expand_menu_permission_keys(menu_keys),
+        # Multiple roles may broaden operations, but never data visibility.
+        "data_scope": payloads[0]["data_scope"],
+        "field_keys": field_keys,
     }
 
 
@@ -3044,10 +3106,11 @@ def _record_module_menu_roots(module: str) -> tuple[str, ...]:
 
 async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:
     """Prevent generic write/export endpoints from bypassing menu authorization."""
-    if identity.get("role") == "admin":
+    role_ids = _identity_role_ids(identity)
+    if "admin" in role_ids:
         return
     roots = set(_record_module_menu_roots(module))
-    permission = await _permission_payload(str(identity.get("role") or "user"), db)
+    permission = await _permission_payload_for_roles(role_ids, db)
     granted_roots = {_menu_root(key) for key in permission["menu_keys"]}
     if not roots.intersection(granted_roots):
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的菜单权限")
@@ -3055,7 +3118,7 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
 
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     """Expose the contract workbench to explicitly configured contract auditors."""
-    permission = await _permission_payload(user.role, db)
+    permission = await _permission_payload_for_roles(_system_user_role_ids(user), db)
     can_approve_contract = await _is_contract_approver(user, db)
     menu_keys = list(permission["menu_keys"])
     if can_approve_contract and "contract" not in menu_keys:
@@ -3064,11 +3127,11 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
 
 
 async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
-    if identity.get("role") == "admin":
+    role_ids = _identity_role_ids(identity)
+    if "admin" in role_ids:
         return set(FIELD_KEYS)
-    permission = await db.scalar(select(RolePermission).where(RolePermission.role == identity.get("role")))
-    config = DEFAULT_ROLE_PERMISSIONS.get(identity.get("role"), DEFAULT_ROLE_PERMISSIONS["user"])
-    return set(permission.field_keys if permission else config["field_keys"])
+    permission = await _permission_payload_for_roles(role_ids, db)
+    return set(permission["field_keys"])
 
 
 async def _record_dict_for_identity(record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
@@ -3356,7 +3419,8 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
     user.failed_login_attempts = 0; user.locked_until = None; user.last_login_at = now
     await db.commit()
     permission = await _user_permission_payload(user, db)
-    return {"access_token": create_token(user.username, user.role, policy.token_minutes), "token_type": "bearer", "expires_in": policy.token_minutes * 60, "must_change_password": user.must_change_password, "user": {"username": user.username, "display_name": user.display_name, "department": user.department, "role": user.role, "must_change_password": user.must_change_password, **permission}}
+    role_ids = _system_user_role_ids(user)
+    return {"access_token": create_token(user.username, role_ids[0], policy.token_minutes), "token_type": "bearer", "expires_in": policy.token_minutes * 60, "must_change_password": user.must_change_password, "user": {"username": user.username, "display_name": user.display_name, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "must_change_password": user.must_change_password, **permission}}
 
 
 @app.get(f"{settings.api_prefix}/auth/me")
@@ -3401,13 +3465,14 @@ async def update_current_user_profile(body: CurrentUserUpdate, identity: dict = 
 
 
 def _require_admin(identity: dict) -> None:
-    if identity.get("role") != "admin":
+    if "admin" not in _identity_role_ids(identity):
         raise HTTPException(status_code=403, detail="仅系统管理员可以执行此操作")
 
 
 def _system_user_dict(user: User) -> dict:
     profile = user.profile or {}
-    return {"id": user.id, "username": user.username, "display_name": user.display_name, "department": user.department, "role": user.role, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
+    role_ids = _system_user_role_ids(user)
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
 
 
 @app.get(f"{settings.api_prefix}/system/users")
@@ -3424,8 +3489,7 @@ async def list_system_users(keyword: str = "", identity: dict = Depends(current_
 @app.post(f"{settings.api_prefix}/system/users", status_code=status.HTTP_201_CREATED)
 async def create_system_user(body: SystemUserInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
-    if body.role not in {"admin", "manager", "auditor", "user"}:
-        raise HTTPException(status_code=422, detail="角色值无效")
+    role_ids = _normalize_system_user_role_ids(body.role_ids, body.role)
     username = body.username.strip().lower()
     if await db.scalar(select(User).where(User.username == username)):
         raise HTTPException(status_code=409, detail="登录账号已存在")
@@ -3435,7 +3499,8 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
         username=username,
         display_name=body.display_name.strip(),
         department=body.department.strip(),
-        role=body.role,
+        role=role_ids[0],
+        role_ids=role_ids,
         profile=body.profile,
         password_hash=hash_password(body.password),
         is_active=body.is_active,
@@ -3542,12 +3607,12 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
         raise HTTPException(status_code=404, detail="用户不存在")
     if body.username is not None:
         await _rename_system_username(user, body.username, identity, db)
-    if body.role is not None:
-        if body.role not in {"admin", "manager", "auditor", "user"}:
-            raise HTTPException(status_code=422, detail="角色值无效")
-        if user.username == identity["username"] and body.role != "admin":
+    if body.role is not None or body.role_ids is not None:
+        role_ids = _normalize_system_user_role_ids(body.role_ids, body.role, fallback_role=_system_user_role_ids(user)[0])
+        if user.username == identity["username"] and "admin" not in role_ids:
             raise HTTPException(status_code=409, detail="不能取消当前登录账号的管理员角色")
-        user.role = body.role
+        user.role = role_ids[0]
+        user.role_ids = role_ids
     if body.is_active is not None:
         if user.username == identity["username"] and not body.is_active:
             raise HTTPException(status_code=409, detail="不能停用当前登录账号")
@@ -3577,7 +3642,7 @@ async def delete_system_user(user_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=404, detail="用户不存在")
     if user.username == identity["username"]:
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
-    if user.role == "admin":
+    if "admin" in _system_user_role_ids(user):
         raise HTTPException(status_code=409, detail="不能删除系统管理员账号")
     await _ensure_system_user_lifecycle_safe(user, db, action="删除")
     await db.delete(user); await db.commit()
@@ -17419,7 +17484,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
             username=username, display_name=display_name, department=body.department.strip(),
             # Job position controls investigation capability.  A new HR
             # account always starts as the least-privileged system user.
-            role="user", profile=profile, password_hash=hash_password(body.password),
+            role="user", role_ids=["user"], profile=profile, password_hash=hash_password(body.password),
             is_active=body.is_active, password_changed_at=None, must_change_password=True,
         )
     employee = BusinessRecord(
@@ -17481,7 +17546,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     # transition endpoint, which also disables the linked account.
     previous_status = employee.status
     profile = {**(user.profile or {}), **body.data, "account_type": "员工账号", "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
-    user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.is_active = body.is_active; user.profile = profile
+    user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.role_ids = [body.role]; user.is_active = body.is_active; user.profile = profile
     employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "username": username, "role": body.role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)

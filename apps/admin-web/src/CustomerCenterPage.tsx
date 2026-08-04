@@ -914,6 +914,10 @@ export default function CustomerCenterPage({
     if (!contacts) return;
     void loadContactPage(contacts);
   };
+  const handleCustomerDetailTabChange = (key: string) => {
+    setDetailTab(key);
+    if (contacts && key !== detailTab) void refreshDetail(contacts);
+  };
   const openDetail = async (r: Customer, tab = "contacts") => {
     setContactPage(1);
     setContactPageSize(15);
@@ -1637,7 +1641,7 @@ export default function CustomerCenterPage({
           <Tabs
             className="customer-view-tabs"
             activeKey={detailTab}
-            onChange={setDetailTab}
+            onChange={handleCustomerDetailTabChange}
             items={[
               {
                 key: "contacts",
@@ -2268,7 +2272,7 @@ export default function CustomerCenterPage({
       >
         <Tabs
           activeKey={detailTab}
-          onChange={setDetailTab}
+          onChange={handleCustomerDetailTabChange}
           items={[
             {
               key: "contacts",

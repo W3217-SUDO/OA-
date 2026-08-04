@@ -480,6 +480,13 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
 function flattenMenu(items: NavItem[]): NavItem[] {
   return items.flatMap((item) => [item, ...flattenMenu(item.children || [])]);
 }
+function menuKeysWithChildren(items: NavItem[]): string[] {
+  return items.flatMap((item) =>
+    item.children?.length
+      ? [item.key, ...menuKeysWithChildren(item.children)]
+      : [],
+  );
+}
 function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>): NavItem[] {
   return items.flatMap((item) => {
     const children = filterMenuByGrantedKeys(item.children || [], grantedKeys);
@@ -1331,6 +1338,11 @@ export default function App() {
     if (!ancestors.length) return;
     setOpenMenuKeys((current) => Array.from(new Set([...current, ...ancestors])));
   }, [active, effectiveMenuItems]);
+  useEffect(() => {
+    const defaults = menuKeysWithChildren(effectiveMenuItems);
+    if (!defaults.length) return;
+    setOpenMenuKeys((current) => current.length ? current : defaults);
+  }, [menuConfig]);
   const logout = () => {
     endClientSession();
   };

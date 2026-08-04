@@ -1087,6 +1087,8 @@ export default function FinanceCenterPage({
   const [allocateTarget, setAllocateTarget] = useState<IncomingPayment | null>(
     null,
   );
+  const [incomingAllocationTarget, setIncomingAllocationTarget] =
+    useState<IncomingPayment | null>(null);
   const [issueTarget, setIssueTarget] = useState<FinanceFlow | null>(null);
   const [voidTarget, setVoidTarget] = useState<FinanceFlow | null>(null);
   const [refundCompleteTarget, setRefundCompleteTarget] =
@@ -3011,6 +3013,14 @@ export default function FinanceCenterPage({
             分配
           </Button>
         )}
+      {r.allocations?.length > 0 && (
+        <Button
+          type="link"
+          onClick={() => setIncomingAllocationTarget(r)}
+        >
+          分配记录
+        </Button>
+      )}
       {role === "admin" && (
         <Button type="link" danger onClick={() => deleteIncoming(r)}>
           删除
@@ -8338,7 +8348,16 @@ export default function FinanceCenterPage({
                   invoiceDetailCase?.title || "",
                   invoiceDetailData.case_no || "",
                 ]).map((value, index) =>
-                  index === (invoiceProcess ? 2 : invoiceCancel ? 2 : 4) && value ? (
+                  !invoiceProcess && !invoiceCancel && index === 0 && value ? (
+                    <td key={index}>
+                      <Button
+                        type="link"
+                        onClick={() => openContractDetail(invoiceDetailData.contract_no)}
+                      >
+                        {value}
+                      </Button>
+                    </td>
+                  ) : index === (invoiceProcess ? 2 : invoiceCancel ? 2 : 4) && value ? (
                     <td key={index}><Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button></td>
                   ) : <td key={index}>{value}</td>,
                 )}
@@ -10908,6 +10927,37 @@ export default function FinanceCenterPage({
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        width={920}
+        open={Boolean(incomingAllocationTarget)}
+        title={`历史分配记录：${incomingAllocationTarget?.receipt_no || ""}`}
+        footer={null}
+        onCancel={() => setIncomingAllocationTarget(null)}
+      >
+        <Table
+          rowKey={(row: any, index) =>
+            String(row.transaction_id || row.receivable_plan_id || index)
+          }
+          size="small"
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+          dataSource={incomingAllocationTarget?.allocations || []}
+          locale={{ emptyText: "暂无分配记录" }}
+          columns={[
+            { title: "合同号", dataIndex: "contract_no", width: 150 },
+            { title: "案号", dataIndex: "case_no", width: 140 },
+            { title: "费用阶段", dataIndex: "phase", width: 120 },
+            {
+              title: "分配金额",
+              dataIndex: "amount",
+              width: 120,
+              render: (value: number) => money(value),
+            },
+            { title: "分配方式", dataIndex: "payment_method", width: 110 },
+            { title: "分配人", dataIndex: "allocated_by", width: 100 },
+            { title: "分配时间", dataIndex: "allocated_at", width: 180 },
+          ]}
+        />
       </Modal>
       <Modal
         width={720}

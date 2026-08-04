@@ -43,7 +43,7 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
   useEffect(() => {
     const notificationsUpdated = () => { void load(); };
     void load();
-    const timer = window.setInterval(load, 60000);
+    const timer = window.setInterval(load, 30000);
     window.addEventListener('sunhold:notifications-updated',notificationsUpdated);
     return () => {
       window.clearInterval(timer);

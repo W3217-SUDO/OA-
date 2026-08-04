@@ -63,6 +63,7 @@ class User(Base):
     department: Mapped[str] = mapped_column(String(64), default="上海分所", index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="admin")
+    role_ids: Mapped[list] = mapped_column(JSON, default=list)
     profile: Mapped[dict] = mapped_column(JSON, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)

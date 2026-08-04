@@ -517,6 +517,52 @@ export default function SealCenterPage({
       setSourceAttachmentLoading(false);
     }
   };
+  const selectAllSourceAttachments = async () => {
+    if (!selectedSourceRecord || sourceAttachmentLoading) return;
+    setSourceAttachmentLoading(true);
+    try {
+      const allItems: AttachmentRow[] = [];
+      let nextPage = 1;
+      let total = 0;
+      let pageSize = sourceAttachmentPageSize || sealFilePagination.defaultPageSize;
+      while (allItems.length < total || nextPage === 1) {
+        const { data } = await api.get("/attachments", {
+          params: {
+            record_id: selectedSourceRecord.id,
+            page: nextPage,
+            page_size: pageSize,
+          },
+        });
+        const items = Array.isArray(data.items) ? data.items : [];
+        const seen = new Set(allItems.map((item) => Number(item.id)));
+        allItems.push(
+          ...items.filter(
+            (item: AttachmentRow) => !seen.has(Number(item.id)),
+          ),
+        );
+        total = Number(data.total) || allItems.length;
+        pageSize = Number(data.page_size) || pageSize;
+        const resolvedPage = Number(data.page) || nextPage;
+        if (!items.length || allItems.length >= total) break;
+        nextPage = resolvedPage + 1;
+      }
+      setSourceAttachments(allItems);
+      setSourceAttachmentPage(Math.max(1, nextPage));
+      setSourceAttachmentPageSize(pageSize);
+      setSourceAttachmentTotal(total || allItems.length);
+      createForm.setFieldValue(
+        "source_attachment_ids",
+        allItems.map((item) => item.id),
+      );
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail ||
+          sealAttachmentListFailureMessage(error?.response?.status),
+      );
+    } finally {
+      setSourceAttachmentLoading(false);
+    }
+  };
   const handleUseTypeChange = (nextUseType: string) => {
     const nextIsContractSeal = nextUseType === "合同用印";
     const nextIsCaseSeal = nextUseType === "案件用印";
@@ -943,6 +989,23 @@ export default function SealCenterPage({
           },
     );
     setCreateOpen(true);
+  };
+  const editSelectedApplication = () => {
+    const selected = selectedSealRows(visibleRows, selectedKeys);
+    if (!selected.length) {
+      message.info("请选择用印申请");
+      return;
+    }
+    if (selected.length > 1) {
+      message.info("只能选择一个用印申请进行修改");
+      return;
+    }
+    const row = selected[0];
+    if (row.status !== "草稿") {
+      message.info("仅草稿用印申请可以修改");
+      return;
+    }
+    openApplication(row);
   };
   const submit = async (row: SealRow) => {
     if (!actionGate.tryEnter()) {
@@ -2100,14 +2163,7 @@ export default function SealCenterPage({
                           <Button onClick={() => openApplication()}>
                             申请用印
                           </Button>
-                          <Button
-                            disabled={
-                              !selectedRow || selectedRow.status !== "草稿"
-                            }
-                            onClick={() =>
-                              selectedRow && openApplication(selectedRow)
-                            }
-                          >
+                          <Button onClick={() => editSelectedApplication()}>
                             修改
                           </Button>
                           <Button
@@ -2325,6 +2381,19 @@ export default function SealCenterPage({
                   dropdownRender={(menu) => (
                     <>
                       {menu}
+                      {selectedSourceRecord && (
+                        <div style={{ padding: 8, textAlign: "center" }}>
+                          <Button
+                            type="link"
+                            size="small"
+                            loading={sourceAttachmentLoading}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => void selectAllSourceAttachments()}
+                          >
+                            选择全部来源附件
+                          </Button>
+                        </div>
+                      )}
                       {selectedSourceRecord &&
                         sourceAttachmentTotal > sourceAttachments.length && (
                           <div style={{ padding: 8, textAlign: "center" }}>

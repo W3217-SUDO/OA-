@@ -330,6 +330,28 @@ export default function IprCenterPage({
     });
     setCreateOpen(true);
   };
+  const openCopy = (record: IprRecord) => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({
+      case_kind: record.data.case_kind,
+      customer: record.customer,
+      title: `${record.title}（复制）`,
+      application_no: record.data.application_no,
+      application_type: record.data.application_type,
+      applicant: record.data.applicant,
+      case_manager: record.data.case_manager,
+      application_date: record.data.application_date
+        ? dayjs(record.data.application_date)
+        : undefined,
+      deadline: record.data.deadline ? dayjs(record.data.deadline) : undefined,
+      annual_fee_year: record.data.annual_fee_year,
+      rate: record.data.rate ?? 0,
+      description: record.description,
+    });
+    setDetail(null);
+    setCreateOpen(true);
+  };
   const applyDeadlineOffset = async () => {
     try {
       const values = await deadlineOffsetForm.validateFields();
@@ -1403,6 +1425,7 @@ export default function IprCenterPage({
           detail ? `${detail.data.case_kind}案件详情：${detail.serial_no}` : ""
         }
         width={820}
+        extra={detail ? <Button onClick={() => openCopy(detail)}>复制案件</Button> : null}
         onClose={() => setDetail(null)}
       >
         {detail && (

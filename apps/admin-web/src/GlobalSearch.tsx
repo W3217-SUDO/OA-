@@ -110,10 +110,6 @@ export default function GlobalSearch({
       return;
     }
     setOpen(true);
-    if (q.length < 2) {
-      setItems([]);
-      return;
-    }
     setLoading(true);
     try {
       const { data } = await api.get("/search", { params: { q } });
@@ -168,7 +164,7 @@ export default function GlobalSearch({
             )}
           />
         )}
-        {query.trim().length >= 2 ? (
+        {query.trim() ? (
           <List
             header={menuMatches.length ? "业务、附件或模板" : undefined}
             loading={loading}
@@ -185,7 +181,7 @@ export default function GlobalSearch({
             )}
           />
         ) : !menuMatches.length ? (
-          <Empty description="未找到匹配菜单；输入至少 2 个字符可检索业务数据" />
+          <Empty description="未找到匹配的菜单、业务、附件或模板" />
         ) : null}
       </Drawer>
     </>

@@ -1787,6 +1787,7 @@ export default function ContractCenterPage({
     : steps.find((step) => step.status === "待审批");
   const canActOnCurrentApproval = Boolean(currentApproval && canActOnContractApproval("审批中", currentApproval.approver, profile.username, profile.role));
   const contractObjectPolicy = contractObjectActionPolicy(viewing?.status);
+  const detailSecondaryActionPolicy = contractSecondaryActionPolicy(viewing?.status);
   const presentedReceipts = detailReceipts.map((row) => {
     const item = normalizeIncomingPaymentForContract(row, viewing || {});
     if (!item) return null;
@@ -2201,7 +2202,7 @@ export default function ContractCenterPage({
         width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
         title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
-        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}<Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
+        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}{viewing && <Button disabled={!detailSecondaryActionPolicy.canEdit} onClick={() => openChange(viewing)}>合同变更</Button>}<Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
         onCancel={returnFromDetail}
         getContainer={isContractDetailView ? false : undefined}
         mask={!isContractDetailView}
