@@ -97,7 +97,6 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
         self.assertIn("if use_type not in SEAL_USE_TYPES", source)
         self.assertIn("SEAL_USE_TYPES", self.local)
 
-    @unittest.expectedFailure
     def test_gate_seal_type_bitmask_or_multi_asset_relation_is_preserved(self):
         """Old DTO carries seven bit values; local input stores one asset id/type."""
         dto = self.local[self.local.index("class SealApplicationInput"):self.local.index("class SealPackageDownloadInput")]

@@ -83,7 +83,8 @@ class SystemCacheContractTest(unittest.TestCase):
         self.assertEqual(status, 200, batch)
         self.assertEqual(batch["cleared"], [key])
         status, body = request("POST", "/system/caches/clear", token, {"cache_keys": []})
-        self.assertEqual(status, 422, body)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(len(body["cleared"]), 8)
         status, body = request("POST", "/system/caches/clear", token, {"cache_keys": ["CODEX-SYS-E-UNKNOWN"]})
         self.assertEqual(status, 404, body)
 

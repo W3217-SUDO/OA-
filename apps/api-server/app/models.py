@@ -30,6 +30,7 @@ class JobRole(Base):
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     permissions: Mapped[list] = mapped_column(JSON, default=list)
+    field_keys: Mapped[list] = mapped_column(JSON, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
@@ -137,6 +138,8 @@ class LawFirm(Base):
     organization_code: Mapped[str] = mapped_column(String(64), default="")
     company_code: Mapped[str] = mapped_column(String(64), default="")
     country: Mapped[str] = mapped_column(String(64), default="中国")
+    firm_type: Mapped[str] = mapped_column(String(64), default="", index=True)
+    firm_level: Mapped[str] = mapped_column(String(32), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     default_contact_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     license_attachment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -352,6 +355,10 @@ class FileAttachment(Base):
     is_transmitted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     transmitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     transmitted_by: Mapped[str] = mapped_column(String(64), default="")
+    # CPC 申请文件包生成后锁定，防止在未解锁时重复生成或覆盖。
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -559,6 +566,8 @@ class IncomingPayment(Base):
     claimed_customer: Mapped[str] = mapped_column(String(255), default="", index=True)
     contract_record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)
     contract_no: Mapped[str] = mapped_column(String(64), default="", index=True)
+    case_no: Mapped[str] = mapped_column(String(64), default="", index=True)
+    bank_source: Mapped[str] = mapped_column(String(64), default="", index=True)
     claimant: Mapped[str] = mapped_column(String(64), default="")
     allocated_amount: Mapped[float] = mapped_column(Float, default=0)
     allocations: Mapped[list] = mapped_column(JSON, default=list)
