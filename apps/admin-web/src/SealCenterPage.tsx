@@ -140,6 +140,13 @@ function validateSealUploadFile(file: File | undefined): string | null {
   if (file.size > 20 * 1024 * 1024) return "单个文件不能超过 20MB";
   return null;
 }
+function sealUploadedAttachmentId(response: { data?: any } | undefined): number | null {
+  const direct = Number(response?.data?.id);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const nested = Number(response?.data?.attachment?.id);
+  if (Number.isFinite(nested) && nested > 0) return nested;
+  return null;
+}
 function sealActionFailureMessage(type: "approve" | "reject" | "stamp" | "archive"): string {
   return {
     approve: "审批失败",
@@ -318,6 +325,11 @@ export default function SealCenterPage({
   const [fileListOpen, setFileListOpen] = useState(false);
   const [fileListRow, setFileListRow] = useState<SealRow | null>(null);
   const [fileListAttachments, setFileListAttachments] = useState<AttachmentRow[]>([]);
+  const [stampAttachments, setStampAttachments] = useState<AttachmentRow[]>([]);
+  const [stampAttachmentId, setStampAttachmentId] = useState<number | null>(null);
+  const [stampAttachmentUploading, setStampAttachmentUploading] = useState(false);
+  const [sourceAttachments, setSourceAttachments] = useState<AttachmentRow[]>([]);
+  const [sourceAttachmentLoading, setSourceAttachmentLoading] = useState(false);
   const [action, setAction] = useState<{
     type: "approve" | "reject" | "stamp" | "archive";
     row: SealRow;
@@ -340,6 +352,58 @@ export default function SealCenterPage({
   }, []);
   const canReadAssetAudit = canViewSealAssetAudit(sessionRole);
   const selectedUseType = Form.useWatch("use_type", createForm);
+  const selectedCaseNo = Form.useWatch("case_no", createForm);
+  const selectedContractNo = Form.useWatch("contract_no", createForm);
+  const selectedSourceRecord = useMemo(() => {
+    if (selectedUseType === "合同用印" && selectedContractNo) {
+      return contracts.find((item) => item.serial_no === selectedContractNo) || null;
+    }
+    if (selectedUseType === "案件用印" && selectedCaseNo) {
+      return cases.find((item) => item.serial_no === selectedCaseNo) || null;
+    }
+    return null;
+  }, [cases, contracts, selectedCaseNo, selectedContractNo, selectedUseType]);
+  useEffect(() => {
+    if (!createOpen) return;
+    if (!selectedSourceRecord) {
+      setSourceAttachments([]);
+      createForm.setFieldValue("source_attachment_ids", []);
+      return;
+    }
+    let active = true;
+    setSourceAttachmentLoading(true);
+    api
+      .get("/attachments", { params: { record_id: selectedSourceRecord.id } })
+      .then(({ data }) => {
+        if (!active) return;
+        const items = Array.isArray(data.items) ? data.items : [];
+        setSourceAttachments(items);
+        const availableIds = new Set(items.map((item: AttachmentRow) => Number(item.id)));
+        const selectedIds = createForm.getFieldValue("source_attachment_ids");
+        if (Array.isArray(selectedIds)) {
+          const nextIds = selectedIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id) && availableIds.has(id));
+          if (nextIds.length !== selectedIds.length) {
+            createForm.setFieldValue("source_attachment_ids", nextIds);
+          }
+        }
+      })
+      .catch((error: any) => {
+        if (!active) return;
+        setSourceAttachments([]);
+        message.error(
+          error?.response?.data?.detail ||
+            sealAttachmentListFailureMessage(error?.response?.status),
+        );
+      })
+      .finally(() => {
+        if (active) setSourceAttachmentLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [createForm, createOpen, selectedSourceRecord?.id]);
   const clearQuery = () => {
     queryForm.resetFields();
     setQuery({});
@@ -584,9 +648,15 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
+      const sourceAttachmentIds = Array.isArray(v.source_attachment_ids)
+        ? v.source_attachment_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+        : [];
       const data = {
         ...(editingApplication?.data || {}),
         ...v,
+        source_attachment_ids: sourceAttachmentIds,
         use_date: formatRequiredDate(v.use_date, "计划用印日期"),
       };
       const response = editingApplication
@@ -611,6 +681,8 @@ export default function SealCenterPage({
   };
   const openApplication = (row?: SealRow) => {
     setEditingApplication(row || null);
+    setSourceAttachments([]);
+    setSourceAttachmentLoading(false);
     createForm.resetFields();
     createForm.setFieldsValue(
       row
@@ -624,6 +696,7 @@ export default function SealCenterPage({
         : {
             use_date: dayjs().add(1, "day"),
             copies: 1,
+            source_attachment_ids: [],
             delivery_method: "现场用印",
             is_electronic_seal: false,
             is_offline_print: false,
@@ -719,9 +792,86 @@ export default function SealCenterPage({
       },
     });
   };
+  const resetStampAttachmentState = () => {
+    setStampAttachments([]);
+    setStampAttachmentId(null);
+    actionForm.setFieldValue("stamp_attachment_id", undefined);
+  };
+  const loadStampAttachments = async (row: SealRow) => {
+    try {
+      const { data } = await api.get("/attachments", {
+        params: { record_id: row.id, category: "用印文件" },
+      });
+      const items = Array.isArray(data.items) ? data.items : [];
+      setStampAttachments(items);
+      return items;
+    } catch (error: any) {
+      setStampAttachments([]);
+      message.error(
+        sealErrorMessage(error, sealAttachmentListFailureMessage(error?.response?.status)),
+      );
+      return [];
+    }
+  };
+  const openStampAction = async (row: SealRow) => {
+    setAction({ type: "stamp", row });
+    resetStampAttachmentState();
+    actionForm.setFieldsValue({
+      actual_copies: row.data.copies,
+      operator: "admin",
+      stamp_attachment_id: undefined,
+    });
+    const files = await loadStampAttachments(row);
+    if (files.length === 1) {
+      setStampAttachmentId(files[0].id);
+      actionForm.setFieldValue("stamp_attachment_id", files[0].id);
+    }
+  };
+  const uploadStampAttachment = async (file: File, row: SealRow): Promise<number | null> => {
+    const validationError = validateSealUploadFile(file);
+    if (validationError) {
+      message.error(validationError);
+      return null;
+    }
+    const body = new FormData();
+    body.append("file", file);
+    body.append("record_id", String(row.id));
+    body.append("category", "用印文件");
+    setStampAttachmentUploading(true);
+    try {
+      const response = await postSeal("/attachments", body);
+      const uploadedStampAttachmentId = sealUploadedAttachmentId(response);
+      if (!uploadedStampAttachmentId) {
+        message.error("盖章附件上传失败：未返回附件标识");
+        return null;
+      }
+      setStampAttachmentId(uploadedStampAttachmentId);
+      actionForm.setFieldValue("stamp_attachment_id", uploadedStampAttachmentId);
+      message.success("已上传盖章附件：" + file.name);
+      await loadStampAttachments(row);
+      return uploadedStampAttachmentId;
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "盖章附件上传失败");
+      return null;
+    } finally {
+      setStampAttachmentUploading(false);
+    }
+  };
   const runAction = async () => {
     if (!action) return;
     const v = await actionForm.validateFields();
+    let stampAttachmentForSubmit: number | null = null;
+    if (action.type === "stamp") {
+      if (stampAttachmentUploading) {
+        message.info("盖章附件正在上传，请稍后确认");
+        return;
+      }
+      stampAttachmentForSubmit = Number(v.stamp_attachment_id ?? stampAttachmentId);
+      if (!Number.isFinite(stampAttachmentForSubmit) || stampAttachmentForSubmit <= 0) {
+        message.error("请先选择或上传盖章附件");
+        return;
+      }
+    }
     if (!actionGate.tryEnter()) {
       message.info("操作正在提交，请勿重复点击");
       return;
@@ -734,7 +884,10 @@ export default function SealCenterPage({
           comment: v.comment || "",
         });
       else if (action.type === "stamp")
-        await postSeal(`/seals/applications/${action.row.id}/stamp`, v);
+        await postSeal(`/seals/applications/${action.row.id}/stamp`, {
+          ...v,
+          stamp_attachment_id: stampAttachmentForSubmit,
+        });
       else
         await postSeal(`/seals/applications/${action.row.id}/archive`, {
           comment: v.comment || "",
@@ -748,6 +901,7 @@ export default function SealCenterPage({
         }[action.type],
       );
       setAction(null);
+      resetStampAttachmentState();
       actionForm.resetFields();
       load();
       if (action.type === "stamp") void refreshAssetAudit();
@@ -1580,10 +1734,7 @@ export default function SealCenterPage({
                             onClick={() => {
                               if (selectedRows.length === 1 && selectedRow) {
                                 setAction({ type: "stamp", row: selectedRow });
-                                actionForm.setFieldsValue({
-                                  actual_copies: selectedRow.data.copies,
-                                  operator: "admin",
-                                });
+                                void openStampAction(selectedRow);
                               } else if (selectedRows.length > 1) {
                                 batchStampForm.setFieldsValue({
                                   actual_copies: Math.min(
@@ -1623,6 +1774,8 @@ export default function SealCenterPage({
         onCancel={() => {
           setCreateOpen(false);
           setEditingApplication(null);
+          setSourceAttachments([]);
+          createForm.setFieldValue("source_attachment_ids", []);
         }}
       >
         <Form form={createForm} layout="vertical">
@@ -1658,6 +1811,18 @@ export default function SealCenterPage({
               rules={selectedUseType === "合同用印" ? [{ required: true, message: "合同用印必须选择关联合同" }] : []}
             >
               <Select showSearch allowClear optionFilterProp="label" options={contracts.map((x) => ({ value: x.serial_no, label: `${x.serial_no}｜${x.customer}｜${x.title}` }))} />
+            </Form.Item>
+            <Form.Item label="来源附件" name="source_attachment_ids">
+              <Select
+                mode="multiple"
+                allowClear
+                loading={sourceAttachmentLoading}
+                placeholder={selectedSourceRecord ? "选择合同/案件来源附件" : "请先选择关联合同或案件"}
+                options={sourceAttachments.map((file) => ({
+                  value: file.id,
+                  label: `${file.original_name}｜${formatSealAttachmentSize(file.size)}`,
+                }))}
+              />
             </Form.Item>
             <Form.Item
               label="用印类型"
@@ -1887,7 +2052,10 @@ export default function SealCenterPage({
         cancelText="取消"
         confirmLoading={actionSubmitting}
         onOk={runAction}
-        onCancel={() => setAction(null)}
+        onCancel={() => {
+          setAction(null);
+          resetStampAttachmentState();
+        }}
       >
         <Form form={actionForm} layout="vertical">
           {action?.type === "stamp" && (
@@ -1917,6 +2085,35 @@ export default function SealCenterPage({
               >
                 <Input placeholder="例如：YY-2026-0042" />
               </Form.Item>
+              <Form.Item
+                label="盖章附件"
+                name="stamp_attachment_id"
+                rules={[{ required: true, message: "请先选择或上传盖章附件" }]}
+              >
+                <Select
+                  allowClear
+                  loading={stampAttachmentUploading}
+                  placeholder="选择已上传盖章附件"
+                  options={stampAttachments.map((file) => ({
+                    value: file.id,
+                    label: file.original_name + "｜" + file.uploader,
+                  }))}
+                  onChange={(value) => setStampAttachmentId(Number(value) || null)}
+                />
+              </Form.Item>
+              <Upload
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  const row = action?.type === "stamp" ? action.row : null;
+                  if (!row) return Upload.LIST_IGNORE;
+                  void uploadStampAttachment(file as File, row);
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={stampAttachmentUploading}>
+                  上传盖章附件
+                </Button>
+              </Upload>
             </>
           )}
           <Form.Item
