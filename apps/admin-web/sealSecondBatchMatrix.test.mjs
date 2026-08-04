@@ -21,6 +21,10 @@ test("seal second batch maps upload, permissions, package download and workflow 
   assert.match(oldFiles, /上传成功！/);
   assert.match(oldFiles, /\[CheckUserLogin\][\s\S]*OfficialDocumentFileDownload/);
   assert.match(localPage, /validateSealUploadFile/);
+  assert.match(localApi, /async def upload_seal_application_files/);
+  assert.match(localApi, /files: list\[UploadFile\]/);
+  assert.match(localPage, /\/seals\/applications\/\$\{detail\.id\}\/files/);
+  assert.match(localPage, /body\.append\("files", file\)/);
   assert.match(localPage, /detail\.status === "草稿"/);
   assert.match(localPage, /deleteSeal\(`\/attachments\/\$\{item\.id\}`\)/);
 

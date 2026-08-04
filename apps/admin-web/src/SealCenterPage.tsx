@@ -1187,25 +1187,30 @@ export default function SealCenterPage({
       );
     }
   };
-  const uploadSealFile = async (file: File) => {
+  const uploadSealFiles = async (files: File[]) => {
     if (!detail) return;
-    const validationError = validateSealUploadFile(file);
-    if (validationError) {
-      message.error(validationError);
-      return;
+    const validFiles = files.filter(Boolean);
+    if (!validFiles.length) return;
+    for (const file of validFiles) {
+      const validationError = validateSealUploadFile(file);
+      if (validationError) {
+        message.error(validationError);
+        return;
+      }
     }
     const body = new FormData();
-    body.append("file", file);
-    body.append("record_id", String(detail.id));
-    body.append("category", "用印文件");
+    validFiles.forEach((file) => body.append("files", file));
     try {
-      await postSeal("/attachments", body);
-      message.success(`已上传用印文件：${file.name}`);
+      await postSeal(`/seals/applications/${detail.id}/files`, body);
+      message.success(`已上传用印文件：${validFiles.length} 个`);
       await loadDetailFiles(detail, 1, attachmentPageSize);
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "用印文件上传失败");
     }
+  };
+  const uploadSealFile = async (file: File) => {
+    await uploadSealFiles([file]);
   };
   const removeSealFile = async (item: AttachmentRow) => {
     if (!actionGate.tryEnter()) {
@@ -2452,13 +2457,12 @@ export default function SealCenterPage({
                 <Upload
                   multiple
                   showUploadList={false}
-                  beforeUpload={(file) => {
-                    const validationError = validateSealUploadFile(file as File);
-                    if (validationError) {
-                      message.error(validationError);
-                      return Upload.LIST_IGNORE;
+                  beforeUpload={(file, fileList) => {
+                    const firstFile = fileList[0] as File & { uid?: string };
+                    const currentFile = file as File & { uid?: string };
+                    if (!firstFile || firstFile.uid === currentFile.uid || firstFile === currentFile) {
+                      void uploadSealFiles(fileList as File[]);
                     }
-                    void uploadSealFile(file as File);
                     return Upload.LIST_IGNORE;
                   }}
                 >
