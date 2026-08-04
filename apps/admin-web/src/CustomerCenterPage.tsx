@@ -958,7 +958,8 @@ export default function CustomerCenterPage({
       return;
     }
     try {
-      await api.post(`/customers/${contacts.id}/contacts`, v);
+      const response = await api.post(`/customers/${contacts.id}/contacts`, v);
+      assertCustomerMutationSuccess(response?.data);
       message.success("联系人已添加");
       contactForm.resetFields();
       setNewEditor(null);
@@ -972,13 +973,18 @@ export default function CustomerCenterPage({
   const deleteContact = async (id: string) => {
     if (!contacts) return;
     try {
-      await api.delete(`/customers/${contacts.id}/contacts/${id}`);
+      const response = await api.delete(`/customers/${contacts.id}/contacts/${id}`);
+      assertCustomerMutationSuccess(response?.data);
       message.success("联系人已删除");
       await refreshDetail();
       load();
     } catch (error: any) {
       const legacyError = error?.response?.data?.detail || "删除失败";
-      message.error(getCustomerMutationErrorMessage(error, legacyError));
+      if (error?.response?.data?.detail) {
+        message.error(error?.response?.data?.detail || "删除失败");
+      } else {
+        message.error(getCustomerMutationErrorMessage(error, legacyError));
+      }
     }
   };
   const uploadContactPhoto = async (contact: Contact, option: any) => {
@@ -1013,7 +1019,8 @@ export default function CustomerCenterPage({
       return;
     }
     try {
-      await api.put(`/customers/${contacts.id}/contacts/${editingContact.id}`, values);
+      const response = await api.put(`/customers/${contacts.id}/contacts/${editingContact.id}`, values);
+      assertCustomerMutationSuccess(response?.data);
       message.success("联系人已更新");
       setEditingContact(null);
       contactEditForm.resetFields();
@@ -1031,7 +1038,10 @@ export default function CustomerCenterPage({
     try {
       await runContactStatusUpdate(
         request,
-        (url, data) => api.patch(url, data),
+        (url, data) => api.patch(url, data).then((response) => {
+          assertCustomerMutationSuccess(response?.data);
+          return response;
+        }),
         refreshDetail,
         load,
       );
@@ -1051,7 +1061,8 @@ export default function CustomerCenterPage({
       return;
     }
     try {
-      await api.post(request.url, request.data);
+      const response = await api.post(request.url, request.data);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户注意事项已保存");
       customerEventForm.resetFields();
       await refreshDetail();
@@ -1064,7 +1075,8 @@ export default function CustomerCenterPage({
     if (!contacts) return;
     const v = await noteForm.validateFields();
     try {
-      await api.post(`/customers/${contacts.id}/notes`, v);
+      const response = await api.post(`/customers/${contacts.id}/notes`, v);
+      assertCustomerMutationSuccess(response?.data);
       message.success("跟进记录已保存");
       noteForm.resetFields();
       setNewEditor(null);
@@ -1078,12 +1090,14 @@ export default function CustomerCenterPage({
   const deleteNote = async (id: string) => {
     if (!contacts) return;
     try {
-      await api.delete(`/customers/${contacts.id}/notes/${id}`);
+      const response = await api.delete(`/customers/${contacts.id}/notes/${id}`);
+      assertCustomerMutationSuccess(response?.data);
       message.success("跟进记录已删除");
       await refreshDetail();
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "删除失败");
+      const legacyError = error?.response?.data?.detail || "删除失败";
+      message.error(getCustomerMutationErrorMessage(error, legacyError));
     }
   };
   const openNoteEdit = (note: Note) => {
@@ -1094,7 +1108,8 @@ export default function CustomerCenterPage({
     if (!contacts || !editingNote) return;
     const values = await noteEditForm.validateFields();
     try {
-      await api.put(`/customers/${contacts.id}/notes/${editingNote.id}`, values);
+      const response = await api.put(`/customers/${contacts.id}/notes/${editingNote.id}`, values);
+      assertCustomerMutationSuccess(response?.data);
       message.success("事项记录已更新");
       setEditingNote(null);
       noteEditForm.resetFields();
@@ -1127,7 +1142,8 @@ export default function CustomerCenterPage({
       .filter(([key]) => key !== "record_id")
       .forEach(([key, value]) => data.append(key, value));
     try {
-      await api.post("/attachments", data);
+      const response = await api.post("/attachments", data);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户文档已上传");
       documentForm.resetFields();
       setDocumentFile(null);
@@ -1171,7 +1187,8 @@ export default function CustomerCenterPage({
   };
   const deleteDocument = async (id: number) => {
     try {
-      await api.delete(`/attachments/${id}`);
+      const response = await api.delete(`/attachments/${id}`);
+      assertCustomerMutationSuccess(response?.data);
       message.success("客户文档已删除");
       await refreshDetail();
     } catch (error: any) {
