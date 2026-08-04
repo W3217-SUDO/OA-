@@ -45,7 +45,7 @@ test("seal source capability matrix records the first implementation batch", () 
   assert.match(localApi, /identity: dict = Depends\(current_identity\)/);
   assert.match(localApi, /async def preview_attachment\(/);
   assert.match(localPage, /\/attachments\/\$\{item\.id\}\/preview/);
-  assert.match(localPage, /api\.delete\(`\/attachments\/\$\{item\.id\}`\)/);
+  assert.match(localPage, /deleteSeal\(`\/attachments\/\$\{item\.id\}`\)/);
 
   // 13–15: audit modal schema, close action and legacy empty-body behavior.
   assert.match(oldAuditView, /auditListModal/);

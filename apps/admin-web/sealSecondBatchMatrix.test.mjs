@@ -22,7 +22,7 @@ test("seal second batch maps upload, permissions, package download and workflow 
   assert.match(oldFiles, /\[CheckUserLogin\][\s\S]*OfficialDocumentFileDownload/);
   assert.match(localPage, /validateSealUploadFile/);
   assert.match(localPage, /detail\.status === "草稿"/);
-  assert.match(localPage, /api\.delete\(`\/attachments\/\$\{item\.id\}`\)/);
+  assert.match(localPage, /deleteSeal\(`\/attachments\/\$\{item\.id\}`\)/);
 
   // 05–08: package download selection, protected API and failure details.
   assert.match(oldController, /public JsonResult Download\(List<string> officialDocumentNos\)/);

@@ -42,6 +42,8 @@ const {
   shouldCloseSealAssetAuditAfterDelete,
   sealAssetAuditFailureMessage,
   sealAssetAuditPagination,
+  sealErrorMessage,
+  sealResponseIsFailure,
   sealQueryFailureMessage,
   selectedSealRows,
   compareSealDateValues,
@@ -135,6 +137,7 @@ test("seal audit projection preserves persisted fields and derives fallback roun
     audit_date: "2026-08-03T01:00:00Z",
     audit_content: "ok",
     audit_round: 1,
+    current_step: rows[0].audit_status,
   });
   assert.deepEqual(rows[1], {
     id: 3,
@@ -143,9 +146,27 @@ test("seal audit projection preserves persisted fields and derives fallback roun
     audit_date: "2026-08-01",
     audit_content: "理由",
     audit_round: 4,
+    current_step: "",
   });
   assert.equal(rows[2].audit_status, "已拒绝");
   assert.equal(rows[2].audit_content, "驳回原因");
+});
+
+test("seal audit projection keeps explicit rejection and current step", () => {
+  const rejected = toSealAuditRows([
+    { id: 9, action: "驳回", operator: "reviewer", comment: "补充材料", created_at: "2026-08-03T02:00:00Z", current_step: "审批驳回" },
+  ]);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].current_step, "审批驳回");
+});
+
+test("seal response matrix preserves legacy PostResponse and FastAPI detail failures", () => {
+  assert.equal(sealResponseIsFailure({ IsSuccess: false, Message: "旧失败" }), true);
+  assert.equal(sealResponseIsFailure({ is_success: false, message: "旧失败" }), true);
+  assert.equal(sealResponseIsFailure({ items: [], total: 0 }), false);
+  assert.equal(sealErrorMessage({ IsSuccess: false, Message: "旧失败" }, "fallback"), "旧失败");
+  assert.equal(sealErrorMessage({ response: { status: 409, data: { detail: "服务端冲突" } } }, "fallback"), "服务端冲突");
+  assert.equal(sealErrorMessage({ response: { status: 403, data: {} } }, "无权限"), "无权限");
 });
 
 test("seal selection and draft batch-delete gate are runtime helpers", () => {

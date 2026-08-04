@@ -13,6 +13,8 @@ export type SealHistoryEvent = {
   audit_date?: string;
   audit_content?: string;
   audit_round?: number;
+  current_step?: string;
+  step?: string;
 };
 export type SealAuditRow = {
   id: number;
@@ -21,10 +23,13 @@ export type SealAuditRow = {
   audit_date: string;
   audit_content: string;
   audit_round: number;
+  current_step: string;
 };
 
 function isAuditEvent(event: SealHistoryEvent): boolean {
   if (event.audit_status || event.audit_date || event.audit_content || event.audit_round !== undefined) return true;
+  const action = String(event.action || "");
+  if (/拒绝|驳回|退回|reject(?:ed)?/i.test(action)) return true;
   return /(?:审批|审核)(?:通过|拒绝|驳回)$|驳回$/.test(String(event.action || ""));
 }
 
@@ -36,7 +41,24 @@ export function toSealAuditRows(events: readonly SealHistoryEvent[]): SealAuditR
     audit_date: String(event.audit_date || event.created_at || ""),
     audit_content: String(event.audit_content || event.comment || ""),
     audit_round: Number(event.audit_round ?? index + 1),
+    current_step: String(event.current_step || event.step || event.to_status || ""),
   }));
+}
+
+export function sealResponseIsFailure(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const payload = data as Record<string, unknown>;
+  return payload.IsSuccess === false || payload.isSuccess === false || payload.is_success === false;
+}
+
+export function sealErrorMessage(error: unknown, fallback: string): string {
+  const value = (error && typeof error === "object" ? error : {}) as Record<string, any>;
+  const responseData = value.response?.data;
+  const payload = responseData && typeof responseData === "object" ? responseData : value;
+  for (const candidate of [payload.detail, payload.Message, payload.message, value.message]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate;
+  }
+  return fallback;
 }
 
 export function canSealAction(action: SealAction, row: SealActionRow): boolean {

@@ -61,6 +61,8 @@ import {
   compareSealDateValues,
   selectedSealRows,
   shouldCloseSealAssetAuditAfterDelete,
+  sealErrorMessage,
+  sealResponseIsFailure,
   toSealAuditRows,
 } from "./sealWorkflowPolicy";
 import type { SealAssetAuditRow } from "./sealWorkflowPolicy";
@@ -167,6 +169,44 @@ function sealAttachmentPreviewFailureMessage(status?: number): string {
   if (status === 404) return "附件不存在或文件实体不存在";
   if (status === 409) return "当前状态不允许预览该用印文件";
   return "文件预览失败";
+}
+function ensureSealSuccess<T extends { data?: unknown }>(response: T, fallback: string): T {
+  if (sealResponseIsFailure(response.data)) {
+    const failure = new Error(sealErrorMessage(response.data, fallback)) as Error & {
+      response?: { data?: unknown };
+    };
+    failure.response = { data: { detail: failure.message } };
+    throw failure;
+  }
+  return response;
+}
+async function postSeal(url: string, data?: unknown) {
+  return ensureSealSuccess(await api.post(url, data), "鐢ㄥ嵃鎿嶄綔澶辫触");
+}
+async function patchSeal(url: string, data?: unknown) {
+  return ensureSealSuccess(await api.patch(url, data), "鐢ㄥ嵃淇濆瓨澶辫触");
+}
+async function deleteSeal(url: string) {
+  return ensureSealSuccess(await api.delete(url), "鐢ㄥ嵃鍒犻櫎澶辫触");
+}
+async function postSealBlob(url: string, data: unknown, config: any) {
+  const response = await api.post(url, data, config);
+  if (typeof Blob !== "undefined" && response.data instanceof Blob && response.data.type.includes("json")) {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(await response.data.text());
+    } catch {
+      payload = undefined;
+    }
+    if (sealResponseIsFailure(payload)) {
+      const failure = new Error(sealErrorMessage(payload, "鎵撳寘涓嬭浇澶辫触")) as Error & {
+        response?: { data?: unknown };
+      };
+      failure.response = { data: { detail: failure.message } };
+      throw failure;
+    }
+  }
+  return ensureSealSuccess(response, "鎵撳寘涓嬭浇澶辫触");
 }
 type RelationRow = {
   id: number;
@@ -395,8 +435,7 @@ export default function SealCenterPage({
     } catch (error: any) {
       if (!assetAuditRequestTracker.isCurrent(requestId)) return;
       message.error(
-        error?.response?.data?.detail ||
-          sealAssetAuditFailureMessage(error?.response?.status),
+        sealErrorMessage(error, sealAssetAuditFailureMessage(error?.response?.status)),
       );
     } finally {
       if (assetAuditRequestTracker.isCurrent(requestId)) setAssetAuditLoading(false);
@@ -437,8 +476,7 @@ export default function SealCenterPage({
     } catch (error: any) {
       if (!assetAuditRequestTracker.isCurrent(requestId)) return;
       message.error(
-        error?.response?.data?.detail ||
-          sealAssetAuditFailureMessage(error?.response?.status),
+        sealErrorMessage(error, sealAssetAuditFailureMessage(error?.response?.status)),
       );
     } finally {
       if (assetAuditRequestTracker.isCurrent(requestId)) setAssetAuditLoading(false);
@@ -551,9 +589,10 @@ export default function SealCenterPage({
         ...v,
         use_date: formatRequiredDate(v.use_date, "计划用印日期"),
       };
-      if (editingApplication)
-        await api.patch(`/seals/applications/${editingApplication.id}`, data);
-      else await api.post("/seals/applications", data);
+      const response = editingApplication
+        ? await patchSeal(`/seals/applications/${editingApplication.id}`, data)
+        : await postSeal("/seals/applications", data);
+      ensureSealSuccess(response, "鐢宠淇濆瓨澶辫触");
       message.success(
         editingApplication ? "用印申请已修改" : "用印申请已保存为草稿",
       );
@@ -599,7 +638,7 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      await api.post(`/seals/applications/${row.id}/submit`, {
+      const response = await postSeal(`/seals/applications/${row.id}/submit`, {
         comment: "申请人确认材料无误并提交",
       });
       message.success("已提交用印审批");
@@ -625,7 +664,7 @@ export default function SealCenterPage({
         }
         setActionSubmitting(true);
         try {
-          await api.post(`/seals/applications/${row.id}/withdraw`, {
+          await postSeal(`/seals/applications/${row.id}/withdraw`, {
             comment: "申请人撤回待审批用印申请",
           });
           message.success("用印申请已撤回");
@@ -647,7 +686,7 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      await api.post("/seals/applications/batch/withdraw", {
+      await postSeal("/seals/applications/batch/withdraw", {
         application_ids: selected.map((row) => row.id),
         comment: "申请人批量撤回待审批用印申请",
       });
@@ -670,7 +709,7 @@ export default function SealCenterPage({
       okButtonProps: { danger: true },
       async onOk() {
         try {
-          await api.delete(`/seals/applications/${row.id}`);
+          await deleteSeal(`/seals/applications/${row.id}`);
           message.success("用印草稿已删除");
           setSelectedKeys((keys) => keys.filter((key) => key !== row.id));
           load();
@@ -690,14 +729,14 @@ export default function SealCenterPage({
     setActionSubmitting(true);
     try {
       if (action.type === "approve" || action.type === "reject")
-        await api.post(`/seals/applications/${action.row.id}/approve`, {
+        await postSeal(`/seals/applications/${action.row.id}/approve`, {
           approved: action.type === "approve",
           comment: v.comment || "",
         });
       else if (action.type === "stamp")
-        await api.post(`/seals/applications/${action.row.id}/stamp`, v);
+        await postSeal(`/seals/applications/${action.row.id}/stamp`, v);
       else
-        await api.post(`/seals/applications/${action.row.id}/archive`, {
+        await postSeal(`/seals/applications/${action.row.id}/archive`, {
           comment: v.comment || "",
         });
       message.success(
@@ -731,7 +770,7 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      await api.post("/seals/applications/batch-stamp", {
+      await postSeal("/seals/applications/batch-stamp", {
         application_ids: selected.map((row) => row.id),
         ...values,
       });
@@ -812,8 +851,7 @@ export default function SealCenterPage({
       URL.revokeObjectURL(url);
     } catch (error: any) {
       message.error(
-        error?.response?.data?.detail ||
-          sealAttachmentDownloadFailureMessage(error?.response?.status),
+        sealErrorMessage(error, sealAttachmentDownloadFailureMessage(error?.response?.status)),
       );
     }
   };
@@ -836,8 +874,7 @@ export default function SealCenterPage({
       setFileListAttachments([]);
       setFileListOpen(false);
       message.error(
-        error?.response?.data?.detail ||
-          sealAttachmentListFailureMessage(error?.response?.status),
+        sealErrorMessage(error, sealAttachmentListFailureMessage(error?.response?.status)),
       );
     }
   };
@@ -880,8 +917,7 @@ export default function SealCenterPage({
     } catch (error: any) {
       if (!previewRequestTracker.isCurrent(requestId)) return;
       message.error(
-        error?.response?.data?.detail ||
-          sealAttachmentPreviewFailureMessage(error?.response?.status),
+        sealErrorMessage(error, sealAttachmentPreviewFailureMessage(error?.response?.status)),
       );
     }
   };
@@ -897,7 +933,7 @@ export default function SealCenterPage({
     body.append("record_id", String(detail.id));
     body.append("category", "用印文件");
     try {
-      await api.post("/attachments", body);
+      await postSeal("/attachments", body);
       message.success(`已上传用印文件：${file.name}`);
       await loadDetailFiles(detail);
       load();
@@ -912,7 +948,7 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      await api.delete(`/attachments/${item.id}`);
+      await deleteSeal(`/attachments/${item.id}`);
       message.success("用印文件已删除");
       if (detail) await loadDetailFiles(detail);
       load();
@@ -929,7 +965,7 @@ export default function SealCenterPage({
   const removeSealFiles = async () => {
     if (!detail || !attachmentSelectedKeys.length) return;
     try {
-      await api.post("/seals/applications/batch/files/delete", {
+      await postSeal("/seals/applications/batch/files/delete", {
         attachment_ids: attachmentSelectedKeys,
       });
       message.success(`已删除 ${attachmentSelectedKeys.length} 个用印文件`);
@@ -964,7 +1000,7 @@ export default function SealCenterPage({
       return;
     }
     try {
-      const res = await api.post(
+      const res = await postSealBlob(
         "/seals/applications/package-download",
         { application_ids: selected.map((row) => row.id) },
         { responseType: "blob" },
@@ -1005,8 +1041,8 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      if (editAsset) await api.patch(`/seals/assets/${editAsset.id}`, v);
-      else await api.post("/seals/assets", v);
+      if (editAsset) await patchSeal(`/seals/assets/${editAsset.id}`, v);
+      else await postSeal("/seals/assets", v);
       message.success(editAsset ? "印章资料已更新" : "印章已入库");
       setAssetOpen(false);
       setEditAsset(null);
@@ -1027,7 +1063,7 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      await api.delete(`/seals/assets/${item.id}`);
+      await deleteSeal(`/seals/assets/${item.id}`);
       message.success("印章资产已删除");
       void load();
       if (shouldCloseSealAssetAuditAfterDelete(item.id, assetAuditAsset?.id ?? null)) {
@@ -2234,8 +2270,9 @@ export default function SealCenterPage({
             { title: "审批意见", dataIndex: "audit_content" },
             {
               title: "审批轮次",
-              dataIndex: "audit_round",
-            },
+                  dataIndex: "audit_round",
+                },
+                { title: "当前步骤", dataIndex: "current_step" },
           ]}
         />
       </Modal>
