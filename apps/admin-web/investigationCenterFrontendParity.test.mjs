@@ -40,6 +40,14 @@ test('clue create payload keeps legacy source, store and subject fields', () => 
   }
 })
 
+test('clue creation exposes draft, approval and attachment actions', () => {
+  assert.match(source, /constcreate=async\(submitAfterCreate=false\)/)
+  assert.match(source, /暂存线索/)
+  assert.match(source, /提交审批/)
+  assert.match(source, /record_id.*created\.id/)
+  assert.match(source, /investigations\/clues\/\$\{created\.id\}\/submit/)
+})
+
 test('clue detail modal renders the legacy clue evidence and subject sections', () => {
   assert.match(source, /label:'侵权方式'[\s\S]*label:'店铺链接'[\s\S]*label:'生产商'[\s\S]*label:'主体信息'[\s\S]*label:'调查辅助'[\s\S]*label:'取证机构'[\s\S]*label:'证物状态'/)
 })

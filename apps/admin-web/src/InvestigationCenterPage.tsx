@@ -18,6 +18,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Typography,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -173,6 +174,7 @@ export default function InvestigationCenterPage({
   const [createOpen, setCreateOpen] = useState(false);
   const [investigationCreateOpen, setInvestigationCreateOpen] = useState(false);
   const [clueCreateOpen, setClueCreateOpen] = useState(false);
+  const [clueFiles, setClueFiles] = useState<File[]>([]);
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [clueReviewing, setClueReviewing] = useState<Row | null>(null);
   const [collectionTarget, setCollectionTarget] = useState<Row | null>(null);
@@ -471,7 +473,7 @@ export default function InvestigationCenterPage({
     });
     return result;
   }, [rows, initialTab, profile, listQuery]);
-  const create = async () => {
+  const create = async (submitAfterCreate = false) => {
     const values = await createForm.validateFields();
     const targetModule = createModule;
     const meta = moduleMeta[targetModule];
@@ -486,7 +488,7 @@ export default function InvestigationCenterPage({
               ? "待分配"
               : values.status;
     try {
-      await api.post("/investigations/records", {
+      const { data: created } = await api.post("/investigations/records", {
         module: targetModule,
         serial_no: values.serial_no,
         title: values.title,
@@ -533,14 +535,30 @@ export default function InvestigationCenterPage({
               : Boolean(values.customer_review),
         },
       });
+      if (targetModule === "clue" && clueFiles.length) {
+        for (const file of clueFiles) {
+          const form = new FormData();
+          form.append("file", file);
+          form.append("record_id", String(created.id));
+          form.append("category", "调查线索附件");
+          form.append("remark", "新建线索附件");
+          await api.post("/attachments", form);
+        }
+      }
+      if (targetModule === "clue" && submitAfterCreate) {
+        await api.post(`/investigations/clues/${created.id}/submit`, {
+          comment: "提交线索审批",
+        });
+      }
       message.success(`${meta.title}已创建`);
       setCreateOpen(false);
       setInvestigationCreateOpen(false);
       setClueCreateOpen(false);
       setCreateContextTask(null);
       setCreateModule(tab);
+      setClueFiles([]);
       createForm.resetFields();
-      load();
+      load(targetModule === "clue" ? "clue" : tab);
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail || error?.message || "创建失败",
@@ -2852,7 +2870,7 @@ export default function InvestigationCenterPage({
         title="新建调查任务"
         okText="保存调查任务"
         cancelText="取消"
-        onOk={create}
+        onOk={() => void create()}
         onCancel={() => {
           setInvestigationCreateOpen(false);
           setCreateContextTask(null);
@@ -2951,13 +2969,20 @@ export default function InvestigationCenterPage({
       <Modal
         open={clueCreateOpen}
         title="新建调查线索"
-        okText="保存"
         cancelText="取消"
-        onOk={create}
+        footer={
+          <Space>
+            <Button onClick={() => void create(false)}>暂存线索</Button>
+            <Button type="primary" onClick={() => void create(true)}>
+              提交审批
+            </Button>
+          </Space>
+        }
         onCancel={() => {
           setClueCreateOpen(false);
           setCreateContextTask(null);
           setCreateModule(tab);
+          setClueFiles([]);
           createForm.resetFields();
         }}
       >
@@ -3046,6 +3071,21 @@ export default function InvestigationCenterPage({
             </Form.Item>
             <Form.Item label="调查区域" name="region">
               <Input />
+            </Form.Item>
+            <Form.Item label="附件">
+              <input
+                multiple
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.zip,.rar"
+                onChange={(event) =>
+                  setClueFiles(Array.from(event.target.files || []))
+                }
+              />
+              <Typography.Text type="secondary">
+                {clueFiles.length
+                  ? `已选择 ${clueFiles.length} 个文件`
+                  : "可上传调查线索相关材料"}
+              </Typography.Text>
             </Form.Item>
             <Form.Item className="span-2" label="说明" name="description">
               <Input.TextArea rows={3} />
@@ -3213,7 +3253,7 @@ export default function InvestigationCenterPage({
         title={`新增${meta.title}`}
         okText="保存"
         cancelText="取消"
-        onOk={create}
+        onOk={() => void create()}
         onCancel={() => setCreateOpen(false)}
       >
         <Form form={createForm} layout="vertical">
