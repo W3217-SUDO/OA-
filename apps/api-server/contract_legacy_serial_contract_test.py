@@ -41,6 +41,12 @@ class ContractLegacySerialContractTest(unittest.TestCase):
         self.assertIn('serial_no = await _next_contract_serial_no(db)', source)
         self.assertNotIn('requested_serial_no = body.serial_no.strip()', source)
 
+    def test_contract_submit_persists_sync_seal_choice(self):
+        source = Path("app/main.py").read_text(encoding="utf-8")
+
+        self.assertIn('sync_seal: bool = False', source)
+        self.assertIn('"sync_seal": body.sync_seal', source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -79,5 +79,8 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /生成用印申请并进入用印中心/);
   assert.match(contractPage, /const \{ submit: enterSealCenter, \.\.\.sealValues \} = values/);
   assert.match(contractPage, /if \(enterSealCenter\)[\s\S]{0,180}onNavigate\?\.\("seal-my"\)/);
+  assert.match(contractPage, /label="是否同步用印" name="sync_seal"/);
+  assert.match(contractPage, /sync_seal: Boolean\(values\.sync_seal\)/);
+  assert.match(contractPage, /if \(values\.sync_seal\)[\s\S]{0,180}setWizardStep\(3\)/);
   assert.match(contractPage, /合同审批中，请在详情查看进度/);
 });

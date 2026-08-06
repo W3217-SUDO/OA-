@@ -2586,6 +2586,7 @@ class CustomerCreateInput(BaseModel):
 class ContractSubmitInput(BaseModel):
     approvers: list[str] = Field(min_length=1, max_length=10)
     comment: str = ""
+    sync_seal: bool = False
 
 class ContractApproverSettingsInput(BaseModel):
     usernames: list[str] = Field(default_factory=list, max_length=200)
@@ -7604,6 +7605,7 @@ async def submit_contract(contract_id: int, body: ContractSubmitInput, identity:
             "submitted_by": identity["username"],
             "submit_comment": body.comment.strip(),
             "current_approver": approvers[0],
+            "sync_seal": body.sync_seal,
         }
         db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批人：{approvers[0]}")); await db.commit(); await db.refresh(contract)
         return await _record_dict_for_identity(contract, identity, db)
