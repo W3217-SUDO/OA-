@@ -2297,7 +2297,7 @@ export default function ContractCenterPage({
           </Form.Item>
           <div className="form-grid">
             <Form.Item label="调查主管" name="owner" rules={[{ required: true, message: "请选择调查主管" }]}>
-              <Select disabled showSearch optionFilterProp="label" options={directory.filter(user => user.job_permissions?.includes("调查任务发布")).map(user=>({value:user.username,label:user.display_name || user.username}))} />
+              <Select disabled showSearch optionFilterProp="label" options={directory.map(user=>({value:user.username,label:user.display_name || user.username}))} />
             </Form.Item>
             <Form.Item label="权利类型" name="right_type" rules={[{ required: true }]}>
               <Select options={["商标","专利","著作权","不正当竞争"].map(value=>({value,label:value}))} />

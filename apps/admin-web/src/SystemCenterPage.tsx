@@ -329,7 +329,7 @@ export default function SystemCenterPage({
       const { data } = await api.get("/users/directory");
       setInvestigationSupervisorOptions(
         (data.items || [])
-          .filter((item: DirectoryOption) => item.is_active && item.job_permissions?.includes("调查任务发布"))
+          .filter((item: DirectoryOption) => item.is_active)
           .map((item: DirectoryOption) => ({ value: item.username, label: item.display_name || item.username })),
       );
     } catch (error: any) {
@@ -1415,7 +1415,7 @@ export default function SystemCenterPage({
         <Card className="panel system-focused" title="调查任务分配人">
           <Form form={investigationSupervisorForm} layout="inline">
             <Form.Item name="supervisor_username" label="调查主管" rules={[{ required: true, message: "请选择调查主管" }]}>
-              <Select showSearch optionFilterProp="label" placeholder="请选择已配置调查任务发布权限的人员" options={investigationSupervisorOptions} style={{ minWidth: 320 }} />
+              <Select showSearch optionFilterProp="label" placeholder="请选择启用的系统人员" options={investigationSupervisorOptions} style={{ minWidth: 320 }} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" onClick={() => saveConfig("investigation_assignment", investigationSupervisorForm)}>保存</Button>

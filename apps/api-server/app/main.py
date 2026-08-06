@@ -4438,8 +4438,8 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     value = _validate_system_config(config_key, body.value)
     if config_key == "investigation_assignment":
         supervisor = await db.scalar(select(User).where(User.username == value["supervisor_username"], User.is_active.is_(True)))
-        if not supervisor or not await _user_has_job_permission(supervisor, "调查任务发布", db):
-            raise HTTPException(status_code=422, detail="调查任务分配人必须是启用且具有调查任务发布权限的人员")
+        if not supervisor:
+            raise HTTPException(status_code=422, detail="调查任务分配人必须是启用的系统人员")
     item.value = value; item.updated_by = identity["username"]
     await _system_audit(db, identity, "更新系统配置", f"系统配置:{item.key}", {"key": item.key})
     await db.commit(); await db.refresh(item)
@@ -5207,8 +5207,6 @@ async def _configured_investigation_supervisor(db: AsyncSession) -> User:
     supervisor = await db.scalar(select(User).where(User.username == configured_username, User.is_active.is_(True)))
     if not supervisor:
         raise HTTPException(status_code=409, detail="已配置的调查任务分配人不存在或已停用，请重新设置")
-    if not await _user_has_job_permission(supervisor, "调查任务发布", db):
-        raise HTTPException(status_code=409, detail="已配置的调查任务分配人没有调查任务发布权限，请重新设置")
     return supervisor
 
 
