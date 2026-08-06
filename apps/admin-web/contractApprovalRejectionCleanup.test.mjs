@@ -47,6 +47,16 @@ test("draft revoke clears stale attachment, customer, wizard recovery, and seal 
   ]) {
     assert.match(revokeDraftSource, pattern);
   }
+  assert.match(
+    revokeDraftSource,
+    /message\.success\("合同草稿已撤销，附件和事项记录已一并清理"\);\s*void load\(\);/,
+    "a successful revoke must close its confirmation before a list refresh can finish",
+  );
+  assert.doesNotMatch(
+    revokeDraftSource,
+    /message\.success\("合同草稿已撤销，附件和事项记录已一并清理"\);\s*await load\(\);/,
+    "the confirmation must not wait on a potentially slow list refresh",
+  );
 });
 
 test("wizard rejection returns to submit step and does not leave seal configuration behind", () => {

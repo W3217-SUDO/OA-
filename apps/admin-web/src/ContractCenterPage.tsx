@@ -1444,7 +1444,7 @@ export default function ContractCenterPage({
           if (viewing?.id === contract.id) closeViewing();
           setEventTarget((current) => current?.id === contract.id ? null : current);
           message.success("合同草稿已撤销，附件和事项记录已一并清理");
-          await load();
+          void load();
         } catch (error: any) {
           message.error(extractContractErrorMessage(error, "合同草稿撤销失败"));
           throw error;
