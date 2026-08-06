@@ -5,6 +5,13 @@ export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
 export const CONTRACT_LIST_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
 export const CONTRACT_EVENT_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
 export const CONTRACT_QUERY_FIELDS = ["title", "serial_no", "type", "customer", "case_no", "fee_type", "signed_at", "source_person", "contract_body"];
+export const createContractListRequestGuard = () => {
+  let latestRequestId = 0;
+  return {
+    begin: () => ++latestRequestId,
+    isLatest: (requestId) => requestId === latestRequestId,
+  };
+};
 const CONTRACT_LIST_ROUTES = new Set(["contract-mine", "contract-dept", "contract-company", "contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"]);
 export const contractMenuEntries = () => [
   { key: "contract-mine", label: "我的合同", scope: "mine", legacyPath: "FCM/Contract/ContractList" },

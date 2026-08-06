@@ -80,6 +80,7 @@ import {
   contractAuditActionPolicy,
   contractAuditViewConfig,
   contractListActionPolicy,
+  createContractListRequestGuard,
   contractListViewConfig,
   contractSecondaryActionPolicy,
   extractContractErrorMessage,
@@ -324,6 +325,7 @@ export default function ContractCenterPage({
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const viewingAttachmentRequest = useRef(0);
   const contractEventRequestTracker = useRef(createContractEventRequestTracker());
+  const contractListRequestGuard = useRef(createContractListRequestGuard()).current;
   const contractEventSubmitGate = useRef(createContractEventSubmitGate());
   const contractMutationGates = useRef({
     submit: createContractMutationGate(),
@@ -580,6 +582,7 @@ export default function ContractCenterPage({
     }
   };
   const load = async (queryOverride?: Record<string, any>) => {
+    const requestId = contractListRequestGuard.begin();
     setLoading(true);
     const target = detailTarget || consumeContractDetailTarget() || contractDetailRouteTarget;
     if (customerRelationQueryViewRef.current && customerRelationQueryViewRef.current !== initialView) {
@@ -621,11 +624,11 @@ export default function ContractCenterPage({
     }
     try {
       const recordsRes = await recordsRequest;
-      setAllRows(recordsRes.data.items);
+      if (contractListRequestGuard.isLatest(requestId)) setAllRows(recordsRes.data.items);
     } catch (error: any) {
-      message.error(extractContractErrorMessage(error, "合同数据加载失败"));
+      if (contractListRequestGuard.isLatest(requestId)) message.error(extractContractErrorMessage(error, "合同数据加载失败"));
     } finally {
-      setLoading(false);
+      if (contractListRequestGuard.isLatest(requestId)) setLoading(false);
     }
     const [profileResult, directoryResult, sealResult, customerResult] = await auxiliaryRequests;
     if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);

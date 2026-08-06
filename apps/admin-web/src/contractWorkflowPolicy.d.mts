@@ -5,6 +5,7 @@ export const CONTRACT_DRAFT_EDITABLE_STATUSES: readonly string[];
 export const CONTRACT_LIST_PAGE_SIZES: readonly number[];
 export const CONTRACT_EVENT_PAGE_SIZES: readonly number[];
 export const CONTRACT_QUERY_FIELDS: readonly string[];
+export function createContractListRequestGuard(): { begin(): number; isLatest(requestId: number): boolean };
 export function contractMenuEntries(): Array<{ key: string; label: string; scope: string; legacyPath: string }>;
 export function contractListViewConfig(view: string): { scope: string; defaultPageSize: number; statuses: string[]; queryFields: readonly string[] };
 export function normalizeContractQuery(values?: Record<string, unknown>): Record<string, unknown>;

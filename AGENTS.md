@@ -92,3 +92,19 @@
 - 前端版本号以 `apps/admin-web/package.json` 为准；涉及发布时必须确认版本号。若需要递增版本，必须同步 `package.json` 与 `package-lock.json`，并确保构建通过后再部署。
 - 每次部署后必须执行并汇报：定向测试、前端生产构建、后端相关测试或 `py_compile`、`git diff --check`、`systemctl restart sunhold-dev-api sunhold-dev-web`、服务 active 状态、`/health`、目标页面 HTTP 200。
 - 不能把未部署、未重启、未健康检查或未打开 8089 验证的修改说成“服务器已解决”。
+
+## 8.6 Excel Row-By-Row Delivery Rule
+
+- The only implementation target is the new OA system in this worktree on `dev`. Do not modify archived or legacy-system source code. Legacy material may be read only when the Excel row or its screenshots require behavior evidence.
+- The authoritative backlog is the newest `问题/8.6OA系统对接.xlsx`, sheet `8月6日`. Treat every row without an explicit `1` completion mark and every row lacking a complete evidence record as unfinished.
+- Process rows strictly in Excel row order unless the user explicitly reprioritizes one. Before locating code, read the row's text and inspect every image embedded in that same row. Do not ask the user to resend material already present in the workbook.
+- A row is complete only after: new-system root cause and code change are identified; focused regression passes; relevant backend check and frontend production build pass; version is incremented consistently in `apps/admin-web/package.json` and `package-lock.json`; the committed `dev` version is deployed to the non-Docker 8089 service; and the behavior is accepted using the Codex in-app browser at `http://150.158.3.104:8089/`.
+- Record for every row: row number, text summary, all same-row screenshots, new-system evidence, changed files, test commands/results, version and commit, 8089 deployment result, in-app-browser acceptance result, and remaining risk. Never claim a row or the workbook complete based on source review, a build, or deployment alone.
+- Deploy only after the current planned batch has all its rows implemented and verified. Deployment must be versioned, use the actual `sunhold-dev-api` and `sunhold-dev-web` non-Docker systemd worktree, restart both services, and verify `/health`, HTTP 200, and the target page before reporting success.
+
+## Daily Excel Acceptance Discipline
+
+- At the start of every workday, locate the newest OA issue workbook in `C:\Users\Administrator\Desktop\OA系统\问题\`, read its active worksheet, and continue from the earliest row not explicitly marked `1` and not recorded as accepted in the row-by-row acceptance ledger.
+- For every row, inspect its text and every embedded same-row screenshot before deciding whether the new system has an issue. A source-code review alone never closes a row.
+- Use the Codex in-app browser for the final acceptance path on `http://150.158.3.104:8089/`. Reproduce the reported behavior first; if it fails, fix the new-system source, run focused regression/build/deployment checks, then repeat the same in-app-browser path before marking the row accepted.
+- Update the row-by-row acceptance ledger immediately after each browser outcome. Record either `已验收` with the exact page and observed result, or `未通过/待修复` with the reproduced behavior and next action. Do not carry an unrecorded result into the next day.
