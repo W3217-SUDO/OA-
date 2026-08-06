@@ -297,6 +297,17 @@ const menuItems: NavItem[] = [
     icon: <SearchOutlined />,
     label: "调查大厅",
     children: [
+      {
+        key: "investigation-task-published",
+        label: "我发布的调查任务",
+        children: [
+          { key: "investigation-task-mine", label: "我的调查任务" },
+          { key: "investigation-task-overdue", label: "过期调查任务" },
+          { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
+          { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
+          { key: "investigation-task-sub-mine", label: "我的调查任务（子任务）" },
+        ],
+      },
       { key: "clue", label: "线索管理" },
       { key: "notary", label: "公证管理" },
       { key: "evidence", label: "证据管理" },
