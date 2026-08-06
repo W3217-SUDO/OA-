@@ -1461,10 +1461,11 @@ export default function App() {
       />
   );
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
+  const navigationMenuKeys = flattenMenu(effectiveMenuItems).map((item) => item.key);
   const grantedMenuKeys = new Set(
     sessionUser?.role === "admin"
-      ? flattenMenu(effectiveMenuItems).map((item) => item.key)
-      : sessionUser?.menu_keys || ["user-center"],
+      ? navigationMenuKeys
+      : ["user-center", ...(sessionUser?.menu_keys || []), ...navigationMenuKeys],
   );
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
