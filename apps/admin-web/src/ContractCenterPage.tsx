@@ -1457,6 +1457,29 @@ export default function ContractCenterPage({
       },
     });
   };
+  const deleteCompanyContract = (contract: Contract) => {
+    Modal.confirm({
+      title: "删除合同",
+      content: "将永久删除该公司合同及其附件和无关联记录，且无法恢复。已有审批、收款、案件、用印或财务关联的合同不能删除。",
+      okText: "确认删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const response = await api.post("/contracts/company/delete", { contract_ids: [contract.id] });
+          const feedback = normalizeContractActionResponse(response, "公司合同删除失败");
+          if (!feedback.ok) throw new Error(feedback.message);
+          if (viewing?.id === contract.id) closeViewing();
+          setSelectedAttachmentKeys([]);
+          message.success("公司合同已删除");
+          await load();
+        } catch (error: any) {
+          message.error(extractContractErrorMessage(error, "公司合同删除失败"));
+          throw error;
+        }
+      },
+    });
+  };
   const archive = async (r: Contract) => {
     try {
       const response = await api.post(`/contracts/${r.id}/archive`);
@@ -2087,7 +2110,11 @@ export default function ContractCenterPage({
           <RecordImportButton module="contract" onImported={load} /><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button danger disabled={!selected || selected.status !== "草稿"} onClick={()=>needSelected(()=>revokeDraft(selected!))}>撤销草稿</Button>
-          <Button danger disabled={!selected || selected.status !== "已回收"} onClick={()=>needSelected(()=>deleteRecycledContract(selected!))}>删除合同</Button>
+          {initialView === "contract-company" ? (
+            <Button danger disabled={!selected} onClick={()=>needSelected(()=>deleteCompanyContract(selected!))}>删除合同</Button>
+          ) : (
+            <Button danger disabled={!selected || selected.status !== "已回收"} onClick={()=>needSelected(()=>deleteRecycledContract(selected!))}>删除合同</Button>
+          )}
           <Button disabled={!selectedSecondaryActionPolicy.canEdit} onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
           <Button disabled={!selectedActionPolicy.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>

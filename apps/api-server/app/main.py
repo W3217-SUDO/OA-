@@ -7546,12 +7546,18 @@ async def revoke_contract_draft(contract_id: int, identity: dict = Depends(curre
         await db.delete(attachment)
     await db.execute(delete(ContractEvent).where(ContractEvent.contract_record_id == contract.id))
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id))
-@app.post(f"{settings.api_prefix}/contracts/delete")
-async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def _delete_contract_records(
+    body: ContractWholeDeleteInput,
+    identity: dict,
+    db: AsyncSession,
+    *,
+    allow_company_contract: bool = False,
+):
     """Legacy FCM ContractDelete parity: physically delete whole contract records.
 
-    Only recycled contracts can be removed; attachment rows and their physical
-    files are deleted together so no orphaned contract or upload data remains.
+    Recycle-bin removal accepts only recycled contracts. The separate company
+    contract endpoint preserves the legacy company-ledger delete action while
+    retaining every downstream-record guard before physical removal.
     """
     ids = list(dict.fromkeys([int(item_id) for item_id in [*body.contract_ids, *body.contractIds] if int(item_id) > 0]))
     if identity["role"] != "admin":
@@ -7566,7 +7572,7 @@ async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict
         by_id = {item.id: item for item in contracts}
         ordered = [by_id[item_id] for item_id in ids]
         for contract in ordered:
-            if contract.status != "已回收":
+            if not allow_company_contract and contract.status != "已回收":
                 raise HTTPException(status_code=409, detail="只有回收站合同可以整体删除")
             if int(await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)) or 0):
                 raise HTTPException(status_code=409, detail="合同已有审批记录，不能整体删除")
@@ -7607,6 +7613,16 @@ async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict
             if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
                 path.unlink()
     return {"IsSuccess": True, "Message": "删除成功", "deleted": len(prepared)}
+
+
+@app.post(f"{settings.api_prefix}/contracts/delete")
+async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _delete_contract_records(body, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/contracts/company/delete")
+async def delete_company_contract_records(body: ContractWholeDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _delete_contract_records(body, identity, db, allow_company_contract=True)
 
 
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == contract.id))

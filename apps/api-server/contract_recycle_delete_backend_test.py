@@ -63,10 +63,16 @@ class ContractRecycleDeleteBackendTest(unittest.IsolatedAsyncioTestCase):
                 customer="CODEX customer", status=DRAFT, owner="contract-admin",
                 department="Shanghai", description="recycle test", data={},
             )
-            db.add_all([recycled, draft])
+            company_contract = BusinessRecord(
+                module="contract", serial_no="CODEX-CONTRACT-COMPANY-DELETE-001", title="company delete target",
+                customer="CODEX customer", status="审批通过", owner="contract-admin",
+                department="Shanghai", description="company delete test", data={},
+            )
+            db.add_all([recycled, draft, company_contract])
             await db.flush()
             self.recycled_id = recycled.id
             self.draft_id = draft.id
+            self.company_contract_id = company_contract.id
             self.attachment_path = self.upload_root / "contract-recycle.pdf"
             self.attachment_path.write_bytes(b"contract-recycle-file")
             db.add(FileAttachment(
@@ -136,6 +142,18 @@ class ContractRecycleDeleteBackendTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == self.recycled_id)))
             self.assertIsNone(await db.scalar(select(WorkflowEvent.id).where(WorkflowEvent.record_id == self.recycled_id)))
         self.assertFalse(self.attachment_path.exists())
+
+    async def test_company_delete_removes_an_unrecycled_contract_for_an_administrator(self):
+        response = await self.client.post(
+            f"{API}/contracts/company/delete", json={"contract_ids": [self.company_contract_id]}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        body = response.json()
+        self.assertTrue(body["IsSuccess"])
+        self.assertEqual(body["deleted"], 1)
+
+        async with self.sessions() as db:
+            self.assertIsNone(await db.get(BusinessRecord, self.company_contract_id))
 
     async def test_whole_delete_failures_keep_records_and_files(self):
         bad_status = await self.client.post(f"{API}/contracts/delete", json={"contractIds": [self.draft_id]})
