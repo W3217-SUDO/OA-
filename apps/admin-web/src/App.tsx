@@ -491,7 +491,37 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
           children: children.length ? children : undefined,
         };
       });
-  return build("");
+  const built = build("");
+  const taskChildren = [
+    { key: "investigation-task-mine", label: "我的调查任务" },
+    { key: "investigation-task-overdue", label: "过期调查任务" },
+    { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
+    { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
+    { key: "investigation-task-sub-mine", label: "我的调查任务（子任务）" },
+  ];
+  const hasPublishedTaskRoute = ordered.some(
+    (item) => item.key === "investigation-task-published",
+  );
+  if (!hasPublishedTaskRoute) return built;
+  return built.map((item) => {
+    if (item.key !== "investigation") return item;
+    const published = (item.children || []).find(
+      (child) => child.key === "investigation-task-published",
+    );
+    if (!published) return item;
+    const existingChildren = new Set(
+      (item.children || []).flatMap((child) => [child.key, ...(child.children || []).map((nested) => nested.key)]),
+    );
+    const nested = taskChildren.filter((child) => existingChildren.has(child.key));
+    return {
+      ...item,
+      children: (item.children || []).map((child) =>
+        child.key === "investigation-task-published"
+          ? { ...child, children: nested.length ? nested : taskChildren }
+          : child,
+      ),
+    };
+  });
 }
 
 function flattenMenu(items: NavItem[]): NavItem[] {
