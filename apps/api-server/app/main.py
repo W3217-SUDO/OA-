@@ -2926,11 +2926,11 @@ def _contract_person_values(value: object) -> list[str]:
 
 async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields: set[str] | None, db: AsyncSession) -> dict:
     result = _record_dict(record, allowed_fields)
-    if record.module not in {"contract", "customer"}:
+    if record.module not in {"contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
     data = result["data"]
     usernames = [record.owner]
-    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager"):
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer"):
         usernames.extend(_contract_person_values(data.get(key)))
     usernames.extend(_contract_person_values(data.get("customer_managers")))
     usernames.extend(_contract_person_values(data.get("contact_accounts") or data.get("contact")))
@@ -2951,6 +2951,23 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
         contact_names = [_contract_person_display_name(value, names_by_username) for value in contact_accounts]
         data["contact_account_display_names"] = contact_names
         data["contact_account_display_name"] = "、".join(contact_names)
+    if record.module in {"investigation", "task", "clue", "notary", "evidence"}:
+        people = _contract_person_values(data.get("customer_managers") or data.get("customer_manager"))
+        manager_label = ""
+        if people:
+            # Usernames remain the authorization keys; UI receives display labels.
+            manager_label = "、".join(str(names_by_username.get(value.lower()) or value) for value in people)
+            data["customer_manager_display_name"] = manager_label
+            data["customer_manager"] = manager_label
+        for key in ("reviewer", "customer_reviewer"):
+            value = str(data.get(key) or "").strip()
+            if value:
+                label = str(names_by_username.get(value.lower()) or value)
+                data[f"{key}_display_name"] = label
+                data[key] = label
+        reviewer_label = str(data.get("customer_reviewer_display_name") or data.get("reviewer_display_name") or "")
+        if record.module == "clue" and manager_label and reviewer_label:
+            data["customer_manager"] = f"{manager_label}（审核人：{reviewer_label}）"
     return result
 
 
@@ -7836,6 +7853,8 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
             "publisher": identity["username"],
             "assigner": identity["username"] if owner else "",
             "source_owner": (contract.data or {}).get("source_person") or contract.owner,
+            "customer_managers": list((contract.data or {}).get("customer_managers") or [contract.owner]),
+            "customer_manager": "、".join(list((contract.data or {}).get("customer_managers") or [contract.owner])),
         },
     )
     db.add(investigation)
@@ -8469,7 +8488,8 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         payload["owner"] = source_task.owner
         payload["customer"] = source_task.customer
         payload["department"] = source_task.department
-        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": (source_task.data or {}).get("investigation_record_id"), "investigation_no": (source_task.data or {}).get("investigation_no"), "customer_review": bool((source_task.data or {}).get("customer_review"))}
+        source_data = source_task.data or {}
+        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id"), "investigation_no": source_data.get("investigation_no"), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or []))}
     if identity.get("role") != "admin":
         payload["department"] = user.department
         if identity.get("role") == "user":

@@ -41,3 +41,9 @@ test('clue detail modal renders the legacy clue evidence and subject sections', 
 test('customer review modal shows the previous auditor and opinion', () => {
   assert.match(source, /clueReviewing\?\.status==='待客户审核'[\s\S]*上一级审核员[\s\S]*上一级审核意见/)
 })
+
+test('clue lists retain customer manager presentation and review-stage edit actions', () => {
+  assert.match(source, /title:'客户管理人'[\s\S]*customer_manager/)
+  assert.match(source, /clue-audit-pending[\s\S]*clue-audit-customer/)
+  assert.match(source, /clue-my-pending[\s\S]*clue-my-customer[\s\S]*clue-my-collect[\s\S]*clue-my-collected/)
+})
