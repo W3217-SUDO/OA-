@@ -34,8 +34,9 @@ class InvestigationPeoplePresentationContractTest(unittest.IsolatedAsyncioTestCa
             clue = BusinessRecord(
                 module="clue", serial_no="CODEX-INV-PEOPLE-001", title="线索", customer="CODEX客户",
                 status="待客户审核", owner="manager-a", department="上海", data={
-                    "customer_managers": ["manager-a", "manager-b"],
+                "customer_managers": ["manager-a", "manager-b"],
                     "reviewer": "reviewer-a", "customer_reviewer": "customer-reviewer",
+                    "investigator": "manager-a", "source_owner": "manager-b", "assigner": "reviewer-a",
                 },
             )
             db.add(clue)
@@ -46,6 +47,10 @@ class InvestigationPeoplePresentationContractTest(unittest.IsolatedAsyncioTestCa
         self.assertEqual(result["data"]["customer_manager"], "张三、李四（审核人：fwl）")
         self.assertEqual(result["data"]["reviewer_display_name"], "王五")
         self.assertEqual(result["data"]["customer_reviewer_display_name"], "fwl")
+        self.assertEqual(result["owner_display_name"], "张三")
+        self.assertEqual(result["data"]["investigator_display_name"], "张三")
+        self.assertEqual(result["data"]["source_owner_display_name"], "李四")
+        self.assertEqual(result["data"]["assigner_display_name"], "王五")
         self.assertEqual(clue.data["customer_managers"], ["manager-a", "manager-b"])
         self.assertEqual(clue.data["reviewer"], "reviewer-a")
 

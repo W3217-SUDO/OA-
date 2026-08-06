@@ -48,6 +48,7 @@ type Row = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
   description?: string;
   data: Record<string, any>;
   updated_at: string;
@@ -1397,7 +1398,7 @@ export default function InvestigationCenterPage({
           width: 100,
           render: (_: unknown, r: Row) => r.data.right_type || "—",
         },
-        { title: "调查员", dataIndex: "owner", width: 100 },
+          { title: "调查员", width: 100, render: (_: unknown, r: Row) => r.owner_display_name || r.owner || "—" },
         {
           title: "调查区域",
           width: 160,
@@ -1417,7 +1418,7 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 100,
-          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || r.data.source_owner || "—",
         },
         {
           title: "状态",
@@ -1522,7 +1523,7 @@ export default function InvestigationCenterPage({
           title: "任务分配人",
           width: 110,
           render: (_: unknown, r: Row) =>
-            r.data.assigner || r.data.assigned_by || "—",
+            r.data.assigner_display_name || r.data.assigned_by_display_name || r.data.assigner || r.data.assigned_by || "—",
         },
       ];
     if (initialTab.startsWith("clue-"))
@@ -1569,7 +1570,7 @@ export default function InvestigationCenterPage({
               "—"
             ),
         },
-        { title: "调查员", dataIndex: "owner", width: 95 },
+        { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || r.owner || "—" },
         {
           title: "调查时间",
           width: 110,
@@ -1621,12 +1622,12 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 95,
-          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || r.data.source_owner || "—",
         },
         {
           title: "客户管理人",
           width: 110,
-          render: (_: unknown, r: Row) => r.data.customer_manager || "—",
+          render: (_: unknown, r: Row) => r.data.customer_manager_display_name || r.data.customer_manager || "—",
         },
         {
           title: "公证书号",

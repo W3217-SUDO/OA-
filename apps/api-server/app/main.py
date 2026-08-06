@@ -2930,7 +2930,7 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
         return result
     data = result["data"]
     usernames = [record.owner]
-    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer"):
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer", "investigator", "source_owner", "assigner", "assigned_by"):
         usernames.extend(_contract_person_values(data.get(key)))
     usernames.extend(_contract_person_values(data.get("customer_managers")))
     usernames.extend(_contract_person_values(data.get("contact_accounts") or data.get("contact")))
@@ -2938,7 +2938,7 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
     users = list((await db.scalars(select(User).where(User.username.in_(normalized_usernames)))).all()) if normalized_usernames else []
     names_by_username = {user.username.lower(): user.display_name for user in users}
     result["owner_display_name"] = _contract_person_display_name(record.owner, names_by_username)
-    for key in ("source_person", "customer_source", "submitted_by", "current_approver"):
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "investigator", "source_owner", "assigner", "assigned_by"):
         if key in data:
             data[f"{key}_display_name"] = _contract_person_display_name(data.get(key), names_by_username)
     managers = _contract_person_values(data.get("customer_managers") or data.get("customer_manager"))
