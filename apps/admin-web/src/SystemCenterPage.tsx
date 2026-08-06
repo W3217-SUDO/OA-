@@ -329,7 +329,6 @@ export default function SystemCenterPage({
       const { data } = await api.get("/users/directory");
       setInvestigationSupervisorOptions(
         (data.items || [])
-          .filter((item: DirectoryOption) => item.is_active)
           .map((item: DirectoryOption) => ({ value: item.username, label: item.display_name || item.username })),
       );
     } catch (error: any) {
