@@ -4420,14 +4420,18 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     _require_admin(identity)
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
     result = [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at} for item in items]
+    supervisor_options = [
+        {"username": user.username, "display_name": user.display_name}
+        for user in (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
+    ]
     if keyword.strip():
         needle = keyword.strip().lower()
         result = [item for item in result if needle in " ".join([item["key"], item["label"], item["group"], item["description"], json.dumps(item["value"], ensure_ascii=False)]).lower()]
     if page is None and page_size is None:
-        return {"items": result}
+        return {"items": result, "investigation_supervisor_options": supervisor_options}
     current_page, current_size = page or 1, page_size or 15
     total = len(result); start = (current_page - 1) * current_size
-    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size}
+    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "investigation_supervisor_options": supervisor_options}
 
 
 @app.patch(f"{settings.api_prefix}/system/configs/{{config_key}}")

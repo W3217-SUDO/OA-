@@ -303,6 +303,14 @@ export default function SystemCenterPage({
     try {
       const { data } = await api.get("/system/configs");
       setConfigs(data.items);
+      if (initialView === "system-management-config") {
+        setInvestigationSupervisorOptions(
+          (data.investigation_supervisor_options || []).map((item: DirectoryOption) => ({
+            value: item.username,
+            label: item.display_name || item.username,
+          })),
+        );
+      }
       for (const item of data.items as SystemConfig[]) {
         if (
           item.key === "customer_share_policy" &&

@@ -132,7 +132,10 @@ test("organization and audit routes remain explicit integration boundaries", () 
 
 test("investigation supervisor selection refreshes enabled personnel when opened", () => {
   assert.match(pageSource, /const loadInvestigationSupervisorOptions = async \(\) =>/);
+  assert.match(pageSource, /data\.investigation_supervisor_options/);
   assert.match(pageSource, /api\.get\("\/users\/directory"\)/);
   assert.doesNotMatch(pageSource, /\.filter\(\(item: DirectoryOption\) => item\.is_active\)/);
   assert.match(pageSource, /onOpenChange=\{\(open\) => \{[\s\S]*if \(open\) void loadInvestigationSupervisorOptions\(\)/);
+  assert.match(apiSource, /"investigation_supervisor_options": supervisor_options/);
+  assert.match(apiSource, /select\(User\)\.where\(User\.is_active\.is_\(True\)\)/);
 });
