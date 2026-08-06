@@ -93,7 +93,8 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.doesNotMatch(contractPage, /wizardDraft\.status === "审批中"\) \{\s*message\.warning\("合同仍在审批中/);
   assert.match(contractPage, /const load = async \(queryOverride\?\: Record<string, any>\)/);
   assert.match(contractPage, /void load\(normalized\)/);
-  assert.match(contractPage, /合同审批中，请在详情查看进度/);
+  assert.match(contractPage, /可先提交用印申请；合同审批与用印审批将分别流转/);
+  assert.doesNotMatch(contractPage, /合同审批中，请在详情查看进度/);
 });
 
 test("re-upload reopens the submit wizard and refreshes the persisted attachment list", () => {

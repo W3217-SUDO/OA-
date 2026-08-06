@@ -2173,8 +2173,8 @@ export default function ContractCenterPage({
           )}
           {wizardStep === 3 && (
             <div className="contract-wizard-panel contract-seal-step contract-page-stage">
-              {wizardDraft?.status === "审批中" && !wizardDraft?.data.sync_seal ? <Alert type="info" showIcon title="合同正在审批中" description="请在合同详情查看审批进度；审批通过后再从合同用印入口办理。" /> : wizardDraft?.status === "审批中" ? <Alert type="info" showIcon title="合同正在审批中" description="已选择同步申请用印，请填写以下信息生成用印草稿；真实用印文件仍需在用印中心上传。" /> : <div className="contract-wizard-finished"><CheckOutlined /><h3>合同审批已通过</h3><p>合同草稿、审批意见、附件和时间线均已保存；请在用印中心上传真实用印文件后提交审批。</p></div>}
-              {(wizardDraft?.status !== "审批中" || wizardDraft?.data.sync_seal) && (wizardDraft?.data.seal_application_id ? (
+              {wizardDraft?.status === "审批中" ? <Alert type="info" showIcon title="合同正在审批中" description="可先提交用印申请；合同审批与用印审批将分别流转。" /> : <div className="contract-wizard-finished"><CheckOutlined /><h3>合同审批已通过</h3><p>合同草稿、审批意见、附件和时间线均已保存；请在用印中心上传真实用印文件后提交审批。</p></div>}
+              {wizardDraft?.data.seal_application_id ? (
                 <Descriptions bordered size="small" column={2} items={[
                   { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                   { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}` },
@@ -2193,7 +2193,7 @@ export default function ContractCenterPage({
                   </div>
                   <Form.Item name="submit" valuePropName="checked" hidden><Checkbox /></Form.Item>
                 </Form>
-              ))}
+              )}
               <Divider titlePlacement="start">合同附件</Divider>
               <div className="contract-attachment-list">{attachments.length ? attachments.map((item) => <Button key={item.id} type="link" onClick={() => downloadAttachment(item)}>{item.original_name}</Button>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />}</div>
               <Divider titlePlacement="start">合同状态时间线</Divider>
@@ -2207,9 +2207,8 @@ export default function ContractCenterPage({
             {wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") && <Button type="primary" loading={submittingWizard} onClick={submitWizard}>提交审批</Button>}
             {wizardStep === 1 && wizardDraft?.status === "审批中" && <Button type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) onNavigate?.(route); }}>查看合同详情</Button>}
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
-            {wizardStep === 3 && (wizardDraft?.status !== "审批中" || wizardDraft?.data.sync_seal) && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button>}
-            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && (wizardDraft?.status !== "审批中" || wizardDraft?.data.sync_seal) && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button>}
-            {wizardStep === 3 && wizardDraft?.status === "审批中" && !wizardDraft?.data.sync_seal && <Button disabled>合同审批中，请在详情查看进度</Button>}
+            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button>}
+            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button>}
             {wizardStep === 3 && <Button onClick={() => startCreate()}>开始新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button onClick={() => startCreate()}>继续新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button type="primary" onClick={() => onNavigate?.("seal-my")}>进入用印中心</Button>}
@@ -2602,9 +2601,8 @@ export default function ContractCenterPage({
             wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") ? <Button key="submit" type="primary" loading={submittingWizard} onClick={submitWizard}>提交审批</Button> : null,
             wizardStep === 1 && wizardDraft?.status === "审批中" ? <Button key="detail" type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) { setOpen(false); onNavigate?.(route); } }}>查看合同详情</Button> : null,
             wizardStep === 2 ? <Button key="refresh" type="primary" onClick={refreshWizard}>刷新审批状态</Button> : null,
-            wizardStep === 3 && wizardDraft?.status !== "审批中" && !wizardDraft?.data.seal_application_id ? <Button key="seal-save" onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button> : null,
-            wizardStep === 3 && !wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" ? <Button key="seal-submit" type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button> : null,
-            wizardStep === 3 && wizardDraft?.status === "审批中" ? <Button key="approval-wait" disabled>合同审批中，请在详情查看进度</Button> : null,
+            wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-save" onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button> : null,
+            wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-submit" type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button> : null,
             wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" ? <Button key="seal" type="primary" onClick={() => { setOpen(false); onNavigate?.("seal-my"); }}>进入用印中心</Button> : null,
           ]
         }
