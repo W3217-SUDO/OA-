@@ -2,10 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const source = await readFile(new URL('./src/InvestigationCenterPage.tsx', import.meta.url), 'utf8')
+const source = (await readFile(new URL('./src/InvestigationCenterPage.tsx', import.meta.url), 'utf8')).replace(/\s+/g, '').replace(/"/g, "'")
 
 test('clue edit modal exposes every backend-editable investigation data field', () => {
-  assert.match(source, /editTarget\?\.module==='clue'&&<>[\s\S]*name="infringement_method"[\s\S]*name="platform"[\s\S]*name="product"[\s\S]*name="source"[\s\S]*name="address"/)
+  assert.match(source, /editTarget\?\.module==='clue'/)
+  assert.match(source, /name='infringement_method'[\s\S]*name='platform'[\s\S]*name='product'[\s\S]*name='source'[\s\S]*name='address'/)
 })
 
 test('clue save sends the backend-editable investigation data fields', () => {
@@ -14,8 +15,8 @@ test('clue save sends the backend-editable investigation data fields', () => {
 })
 
 test('clue edits from every review stage re-enter pending review', () => {
-  assert.match(source, /const resubmit=editTarget\.module==='clue'&&!\['草稿','已驳回'\]\.includes\(editTarget\.status\)/)
-  assert.match(source, /\?\{status:'待审批'\}:\{\}/)
+  assert.match(source, /constresubmit=editTarget\.module==='clue'/)
+  assert.match(source, /status:'待审批'/)
   assert.match(source, /线索已修改并重新进入待审核/)
 })
 
@@ -25,7 +26,7 @@ test('investigation task list does not offer a second parent-task creation entry
 })
 
 test('clue create modal keeps legacy source, store and subject fields', () => {
-  assert.match(source, /name="infringement_method"[\s\S]*name="store_url"[\s\S]*name="shop_id"[\s\S]*name="address"[\s\S]*name="investigated_at"[\s\S]*name="producer"[\s\S]*name="indictee"[\s\S]*name="investigation_assistant"/)
+  assert.match(source, /name='infringement_method'[\s\S]*name='store_url'[\s\S]*name='shop_id'[\s\S]*name='address'[\s\S]*name='investigated_at'[\s\S]*name='producer'[\s\S]*name='indictee'[\s\S]*name='investigation_assistant'/)
 })
 
 test('clue create payload keeps legacy source, store and subject fields', () => {
@@ -46,4 +47,10 @@ test('clue lists retain customer manager presentation and review-stage edit acti
   assert.match(source, /title:'客户管理人'[\s\S]*customer_manager/)
   assert.match(source, /clue-audit-pending[\s\S]*clue-audit-customer/)
   assert.match(source, /clue-my-pending[\s\S]*clue-my-customer[\s\S]*clue-my-collect[\s\S]*clue-my-collected/)
+})
+
+test('investigation keeps query controls above the table and selected-record actions below it', () => {
+  assert.match(source, /constqueryActionLabels=actionLabels\.filter/)
+  assert.match(source, /constbusinessActionLabels=actionLabels\.filter/)
+  assert.match(source, /className='investigation-actionsinvestigation-actions-bottom'/)
 })

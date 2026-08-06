@@ -1,199 +1,3942 @@
-import {useEffect, useMemo, useState} from 'react'
-import {Alert, Button, Card, Checkbox, DatePicker, Descriptions, Drawer, Form, Input, InputNumber, message, Modal, Radio, Select, Space, Table, Tabs, Tag} from 'antd'
-import {CheckCircleOutlined, DeleteOutlined, DownloadOutlined, FileSearchOutlined, ImportOutlined, PaperClipOutlined, PlusOutlined, ReloadOutlined, TeamOutlined, UploadOutlined} from '@ant-design/icons'
-import dayjs from 'dayjs'
-import {api} from './api'
-import {rememberCaseDetailTarget} from './caseDetailNavigation'
-import {rememberCustomerDetailTarget} from './customerDetailNavigation'
-import {consumeInvestigationDetailTarget} from './investigationDetailNavigation'
-import {rememberInvestigationDetailTarget} from './investigationDetailNavigation'
-import {formatRequiredDate} from './formSafety'
-import './investigation-center.css'
+import { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  DatePicker,
+  Descriptions,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  message,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Table,
+  Tabs,
+  Tag,
+} from "antd";
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  FileSearchOutlined,
+  ImportOutlined,
+  PaperClipOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  TeamOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+import { api } from "./api";
+import { rememberCaseDetailTarget } from "./caseDetailNavigation";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { consumeInvestigationDetailTarget } from "./investigationDetailNavigation";
+import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
+import { formatRequiredDate } from "./formSafety";
+import "./investigation-center.css";
 
-type Row={id:number;module:string;serial_no:string;title:string;customer:string;status:string;owner:string;description?:string;data:Record<string,any>;updated_at:string}
-type Attachment={id:number;category:string;original_name:string;size:number;uploader:string;created_at:string}
-type Contract={id:number;serial_no:string;title:string;customer:string;status:string}
-type TaskRow={id:number;serial_no:string;title:string;status:string;owner:string;deadline:string;priority:string;parent_task_id?:number;parent_task_no?:string}
-type Profile={username:string;display_name:string;role:string;department?:string}
-type InvestigationActions={review_clue:boolean;review_customer_clue:boolean;review_notary:boolean;register_notary_certificate:boolean}
-type SubtaskLifecycleAction='accept'|'complete'
-const moduleMeta={
-  investigation:{title:'调查任务',prefix:'DC',statuses:['待分配','进行中','已完成','已取消']},
-  clue:{title:'调查线索',prefix:'XS',statuses:['草稿','待审批','待取证','已取证','待公证','已转案件','已驳回']},
-  notary:{title:'公证审核',prefix:'GZ',statuses:['等待材料','待审核','审核通过','审核驳回']},
-  evidence:{title:'证据材料',prefix:'ZJ',statuses:['待整理','已整理','已入卷']},
-}
-const statusColors:Record<string,string>={'待分配':'orange','进行中':'blue','已完成':'green','已取消':'red','待审批':'orange','待客户审核':'gold','待取证':'cyan','已取证':'blue','待公证':'purple','已转案件':'green','等待材料':'gold','审核通过':'green','审核驳回':'red','待审核':'orange','已入卷':'green'}
-const serial=(prefix:string)=>prefix+new Date().toISOString().replace(/\D/g,'').slice(0,14)
+type Row = {
+  id: number;
+  module: string;
+  serial_no: string;
+  title: string;
+  customer: string;
+  status: string;
+  owner: string;
+  description?: string;
+  data: Record<string, any>;
+  updated_at: string;
+};
+type Attachment = {
+  id: number;
+  category: string;
+  original_name: string;
+  size: number;
+  uploader: string;
+  created_at: string;
+};
+type Contract = {
+  id: number;
+  serial_no: string;
+  title: string;
+  customer: string;
+  status: string;
+};
+type TaskRow = {
+  id: number;
+  serial_no: string;
+  title: string;
+  status: string;
+  owner: string;
+  deadline: string;
+  priority: string;
+  parent_task_id?: number;
+  parent_task_no?: string;
+};
+type Profile = {
+  username: string;
+  display_name: string;
+  role: string;
+  department?: string;
+};
+type InvestigationActions = {
+  review_clue: boolean;
+  review_customer_clue: boolean;
+  review_notary: boolean;
+  register_notary_certificate: boolean;
+};
+type SubtaskLifecycleAction = "accept" | "complete";
+const moduleMeta = {
+  investigation: {
+    title: "调查任务",
+    prefix: "DC",
+    statuses: ["待分配", "进行中", "已完成", "已取消"],
+  },
+  clue: {
+    title: "调查线索",
+    prefix: "XS",
+    statuses: [
+      "草稿",
+      "待审批",
+      "待取证",
+      "已取证",
+      "待公证",
+      "已转案件",
+      "已驳回",
+    ],
+  },
+  notary: {
+    title: "公证审核",
+    prefix: "GZ",
+    statuses: ["等待材料", "待审核", "审核通过", "审核驳回"],
+  },
+  evidence: {
+    title: "证据材料",
+    prefix: "ZJ",
+    statuses: ["待整理", "已整理", "已入卷"],
+  },
+};
+const statusColors: Record<string, string> = {
+  待分配: "orange",
+  进行中: "blue",
+  已完成: "green",
+  已取消: "red",
+  待审批: "orange",
+  待客户审核: "gold",
+  待取证: "cyan",
+  已取证: "blue",
+  待公证: "purple",
+  已转案件: "green",
+  等待材料: "gold",
+  审核通过: "green",
+  审核驳回: "red",
+  待审核: "orange",
+  已入卷: "green",
+};
+const serial = (prefix: string) =>
+  prefix + new Date().toISOString().replace(/\D/g, "").slice(0, 14);
 
-export default function InvestigationCenterPage({initialTab,onNavigate}:{initialTab:string;onNavigate?:(route:string)=>void}){
-  const initial=(initialTab.startsWith('notary')?'notary':initialTab.startsWith('evidence')?'evidence':initialTab.startsWith('investigation-task-')?'investigation':'clue') as keyof typeof moduleMeta
-  const [profile,setProfile]=useState<Profile>({username:'',display_name:'',role:''})
-  const [investigationActions,setInvestigationActions]=useState<Record<string,InvestigationActions>>({})
-  const [tab,setTab]=useState<keyof typeof moduleMeta>(initial)
-  const [rows,setRows]=useState<Row[]>([])
-  const [loading,setLoading]=useState(false)
-  const [createOpen,setCreateOpen]=useState(false)
-  const [investigationCreateOpen,setInvestigationCreateOpen]=useState(false)
-  const [clueCreateOpen,setClueCreateOpen]=useState(false)
-  const [reviewing,setReviewing]=useState<Row|null>(null)
-  const [clueReviewing,setClueReviewing]=useState<Row|null>(null); const [collectionTarget,setCollectionTarget]=useState<Row|null>(null); const [evidenceSource,setEvidenceSource]=useState<Row|null>(null); const [certificateTarget,setCertificateTarget]=useState<Row|null>(null)
-  const [importOpen,setImportOpen]=useState(false); const [importFile,setImportFile]=useState<File|null>(null); const [importReference,setImportReference]=useState(''); const [importResult,setImportResult]=useState<{created:number;failed:number;errors:{row:number;error:string}[]}|null>(null)
-  const [importPreviewRows,setImportPreviewRows]=useState<Record<string,unknown>[]>([])
-  const [selectedClues,setSelectedClues]=useState<number[]>([]); const [batchOpen,setBatchOpen]=useState(false); const [contracts,setContracts]=useState<Contract[]>([])
-  const [materialOpen,setMaterialOpen]=useState(false); const [materialTarget,setMaterialTarget]=useState<Row|null>(null); const [materials,setMaterials]=useState<Attachment[]>([]); const [allowedCategories,setAllowedCategories]=useState<string[]>([]); const [materialFiles,setMaterialFiles]=useState<File[]>([])
-  const [taskTarget,setTaskTarget]=useState<Row|null>(null); const [tasks,setTasks]=useState<TaskRow[]>([]); const [creatingSubtask,setCreatingSubtask]=useState(false)
-  const [subtaskActionTarget,setSubtaskActionTarget]=useState<{row:Row;action:SubtaskLifecycleAction}|null>(null)
-  const [editTarget,setEditTarget]=useState<Row|null>(null); const [assignTarget,setAssignTarget]=useState<Row|null>(null); const [feeTarget,setFeeTarget]=useState<Row|null>(null)
-  const [investigationDetail,setInvestigationDetail]=useState<Row|null>(null)
-  const [linkedCase,setLinkedCase]=useState<Row|null>(null)
-  const [createContextTask,setCreateContextTask]=useState<Row|null>(null)
-  const [createModule,setCreateModule]=useState<keyof typeof moduleMeta>(initial)
-  const [listQuery,setListQuery]=useState<Record<string,any>>({})
-  const [createForm]=Form.useForm(); const [reviewForm]=Form.useForm(); const [clueReviewForm]=Form.useForm(); const [collectionForm]=Form.useForm(); const [evidenceForm]=Form.useForm(); const [certificateForm]=Form.useForm(); const [taskForm]=Form.useForm(); const [subtaskActionForm]=Form.useForm(); const [materialForm]=Form.useForm(); const [batchForm]=Form.useForm(); const [editForm]=Form.useForm(); const [assignForm]=Form.useForm(); const [feeForm]=Form.useForm()
-  const load=async(key=tab)=>{setLoading(true);try{const module=initialTab.startsWith('investigation-task-sub-')?'task':initialTab.startsWith('investigation-task-')?'investigation':key;const {data}=initialTab==='notary-query-files'?await api.get('/investigations/notaries/files'):await api.get('/records',{params:{module,page_size:100}});const loadedRows=data.items as Row[];setRows(loadedRows);setInvestigationActions({});const target=consumeInvestigationDetailTarget();if(target){let targetRow=loadedRows.find(row=>(target.id&&row.id===target.id)||(target.serial_no&&row.serial_no===target.serial_no));if(!targetRow&&target.id){try{const detail=await api.get(`/records/${target.id}`);if(detail.data.module===target.module||!target.module)targetRow=detail.data}catch{/* Keep the serial-number fallback for scoped or stale IDs. */}}if(!targetRow&&target.serial_no){const res=await api.get('/records',{params:{module:target.module||module,keyword:target.serial_no,page_size:100}});targetRow=(res.data.items as Row[]).find(row=>row.serial_no===target.serial_no)}if(targetRow)setInvestigationDetail(targetRow);else message.warning('未找到关联调查记录或当前账号无权查看')}const capabilityRows=loadedRows.filter(row=>row.module==='clue'||row.module==='notary');if(capabilityRows.length)void api.get('/investigations/action-capabilities',{params:{record_ids:capabilityRows.map(row=>row.id).join(',')}}).then(capabilities=>setInvestigationActions(capabilities.data.items||{})).catch(()=>message.warning('调查操作权限加载失败，详情仍可查看'))}catch{message.error('调查中心数据加载失败')}finally{setLoading(false)}}
-  useEffect(()=>{const bootstrap=async()=>{setTab(initial);setCreateModule(initial);setListQuery({});setSelectedClues([]);try{const {data}=await api.get('/auth/me');setProfile(data)}catch{message.error('当前登录身份加载失败，已按普通用户范围显示')}await load(initial)};void bootstrap()},[initialTab])
-  const visibleRows=useMemo(()=>{
-    let result=rows
-    const routeStatuses:Record<string,string[]>={
-      'clue-my-draft':['草稿'],'clue-my-pending':['待审批'],'clue-my-customer':['待客户审核'],'clue-my-collect':['待取证'],'clue-my-collected':['已取证'],'clue-my-refused':['已驳回'],
-      'clue-audit-pending':['待审批'],'clue-audit-customer':['待客户审核'],'clue-audit-refused':['已驳回'],'clue-audit-collect':['待取证'],'clue-audit-collected':['已取证'],
-      'clue-company-draft':['草稿'],'clue-company-pending':['待审批'],'clue-company-collect':['待取证'],'clue-company-collected':['已取证'],'clue-company-refused':['已驳回'],
+export default function InvestigationCenterPage({
+  initialTab,
+  onNavigate,
+}: {
+  initialTab: string;
+  onNavigate?: (route: string) => void;
+}) {
+  const initial = (
+    initialTab.startsWith("notary")
+      ? "notary"
+      : initialTab.startsWith("evidence")
+        ? "evidence"
+        : initialTab.startsWith("investigation-task-")
+          ? "investigation"
+          : "clue"
+  ) as keyof typeof moduleMeta;
+  const [profile, setProfile] = useState<Profile>({
+    username: "",
+    display_name: "",
+    role: "",
+  });
+  const [investigationActions, setInvestigationActions] = useState<
+    Record<string, InvestigationActions>
+  >({});
+  const [tab, setTab] = useState<keyof typeof moduleMeta>(initial);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [investigationCreateOpen, setInvestigationCreateOpen] = useState(false);
+  const [clueCreateOpen, setClueCreateOpen] = useState(false);
+  const [reviewing, setReviewing] = useState<Row | null>(null);
+  const [clueReviewing, setClueReviewing] = useState<Row | null>(null);
+  const [collectionTarget, setCollectionTarget] = useState<Row | null>(null);
+  const [evidenceSource, setEvidenceSource] = useState<Row | null>(null);
+  const [certificateTarget, setCertificateTarget] = useState<Row | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importReference, setImportReference] = useState("");
+  const [importResult, setImportResult] = useState<{
+    created: number;
+    failed: number;
+    errors: { row: number; error: string }[];
+  } | null>(null);
+  const [importPreviewRows, setImportPreviewRows] = useState<
+    Record<string, unknown>[]
+  >([]);
+  const [selectedClues, setSelectedClues] = useState<number[]>([]);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [materialOpen, setMaterialOpen] = useState(false);
+  const [materialTarget, setMaterialTarget] = useState<Row | null>(null);
+  const [materials, setMaterials] = useState<Attachment[]>([]);
+  const [allowedCategories, setAllowedCategories] = useState<string[]>([]);
+  const [materialFiles, setMaterialFiles] = useState<File[]>([]);
+  const [taskTarget, setTaskTarget] = useState<Row | null>(null);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [creatingSubtask, setCreatingSubtask] = useState(false);
+  const [subtaskActionTarget, setSubtaskActionTarget] = useState<{
+    row: Row;
+    action: SubtaskLifecycleAction;
+  } | null>(null);
+  const [editTarget, setEditTarget] = useState<Row | null>(null);
+  const [assignTarget, setAssignTarget] = useState<Row | null>(null);
+  const [feeTarget, setFeeTarget] = useState<Row | null>(null);
+  const [investigationDetail, setInvestigationDetail] = useState<Row | null>(
+    null,
+  );
+  const [linkedCase, setLinkedCase] = useState<Row | null>(null);
+  const [createContextTask, setCreateContextTask] = useState<Row | null>(null);
+  const [createModule, setCreateModule] =
+    useState<keyof typeof moduleMeta>(initial);
+  const [listQuery, setListQuery] = useState<Record<string, any>>({});
+  const [createForm] = Form.useForm();
+  const [reviewForm] = Form.useForm();
+  const [clueReviewForm] = Form.useForm();
+  const [collectionForm] = Form.useForm();
+  const [evidenceForm] = Form.useForm();
+  const [certificateForm] = Form.useForm();
+  const [taskForm] = Form.useForm();
+  const [subtaskActionForm] = Form.useForm();
+  const [materialForm] = Form.useForm();
+  const [batchForm] = Form.useForm();
+  const [editForm] = Form.useForm();
+  const [assignForm] = Form.useForm();
+  const [feeForm] = Form.useForm();
+  const load = async (key = tab) => {
+    setLoading(true);
+    try {
+      const module = initialTab.startsWith("investigation-task-sub-")
+        ? "task"
+        : initialTab.startsWith("investigation-task-")
+          ? "investigation"
+          : key;
+      const { data } =
+        initialTab === "notary-query-files"
+          ? await api.get("/investigations/notaries/files")
+          : await api.get("/records", { params: { module, page_size: 100 } });
+      const loadedRows = data.items as Row[];
+      setRows(loadedRows);
+      setInvestigationActions({});
+      const target = consumeInvestigationDetailTarget();
+      if (target) {
+        let targetRow = loadedRows.find(
+          (row) =>
+            (target.id && row.id === target.id) ||
+            (target.serial_no && row.serial_no === target.serial_no),
+        );
+        if (!targetRow && target.id) {
+          try {
+            const detail = await api.get(`/records/${target.id}`);
+            if (detail.data.module === target.module || !target.module)
+              targetRow = detail.data;
+          } catch {
+            /* Keep the serial-number fallback for scoped or stale IDs. */
+          }
+        }
+        if (!targetRow && target.serial_no) {
+          const res = await api.get("/records", {
+            params: {
+              module: target.module || module,
+              keyword: target.serial_no,
+              page_size: 100,
+            },
+          });
+          targetRow = (res.data.items as Row[]).find(
+            (row) => row.serial_no === target.serial_no,
+          );
+        }
+        if (targetRow) setInvestigationDetail(targetRow);
+        else message.warning("未找到关联调查记录或当前账号无权查看");
+      }
+      const capabilityRows = loadedRows.filter(
+        (row) => row.module === "clue" || row.module === "notary",
+      );
+      if (capabilityRows.length)
+        void api
+          .get("/investigations/action-capabilities", {
+            params: {
+              record_ids: capabilityRows.map((row) => row.id).join(","),
+            },
+          })
+          .then((capabilities) =>
+            setInvestigationActions(capabilities.data.items || {}),
+          )
+          .catch(() => message.warning("调查操作权限加载失败，详情仍可查看"));
+    } catch {
+      message.error("调查中心数据加载失败");
+    } finally {
+      setLoading(false);
     }
-    const statuses=routeStatuses[initialTab]||[]
-    if(statuses.length)result=result.filter(row=>statuses.includes(row.status))
-    if(initialTab==='investigation-task-published'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(String(row.data.publisher||row.owner||'')))}
-    if(initialTab==='investigation-task-mine'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
-    if(initialTab.startsWith('investigation-task-sub-'))result=result.filter(row=>Boolean(row.data.investigation_record_id||row.data.investigation_no||row.data.investigation_module))
-    if(initialTab==='investigation-task-sub-published'&&profile.role!=='admin'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(String(row.data.initiator||row.data.publisher||'')))}
-    if(initialTab==='investigation-task-sub-mine'&&profile.role!=='admin'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
-    if(initialTab==='investigation-task-overdue')result=result.filter(row=>Boolean(row.data.authorized_to)&&dayjs(String(row.data.authorized_to)).isBefore(dayjs(),'day')&&!['已完成','已取消'].includes(row.status))
-    if(initialTab==='investigation-task-unassigned')result=result.filter(row=>row.status==='待分配'||!row.owner)
-    if(initialTab.includes('-my-')&&profile.role!=='admin'){const names=[profile.username,profile.display_name].filter(Boolean);result=result.filter(row=>names.includes(row.owner))}
-    if(initialTab.endsWith('-no-fee'))result=result.filter(row=>!row.data.fee_application_id&&!row.data.fee_no)
-    else if(initialTab.endsWith('-fee'))result=result.filter(row=>Boolean(row.data.fee_application_id||row.data.fee_no))
-    const d=(row:Row)=>row.data||{},contains=(value:unknown,key:string)=>!listQuery[key]||String(value||'').toLocaleLowerCase().includes(String(listQuery[key]).trim().toLocaleLowerCase())
-    const inRange=(value:unknown,key:string)=>{const range=listQuery[key];if(!range?.[0]||!range?.[1]||!value)return !range?.[0]&&!range?.[1];const current=dayjs(String(value));return current.isValid()&&!current.isBefore(range[0],'day')&&!current.isAfter(range[1],'day')}
-    result=result.filter(row=>{
-      const data=d(row),hasCase=Boolean(data.case_no||data.converted_case_no||data.converted_case_id)
-      const evidenceStatus=data.evidence_status||data.warehouse_status||data.storage_status||''
-      return contains(row.serial_no,'serial_no')
-        &&contains(row.owner,'investigator')
-        &&contains(row.customer,'rights_holder')
-        &&contains(data.region||data.address,'region')
-        &&contains(row.title,'shop_name')
-        &&contains(data.warehouse||data.certificate_storage_location,'warehouse')
-        &&contains(data.certificate_no,'certificate_no')
-        &&contains(data.case_no||data.converted_case_no,'case_no')
-        &&contains(data.document_type,'document_type')
-        &&contains(data.handler,'handler')
-        &&contains(data.invoice_no,'invoice_no')
-        &&contains(data.notary_institution,'notary_institution')
-        &&contains(data.infringement_method||data.platform,'infringement_method')
-        &&contains(data.address,'shop_address')
-        &&(!listQuery.right_type||listQuery.right_type==='全部'||data.right_type===listQuery.right_type)
-        &&(!listQuery.evidence_status||evidenceStatus===listQuery.evidence_status)
-        &&(!listQuery.case_status||listQuery.case_status==='全部'||(listQuery.case_status==='已生成案件'?hasCase:!hasCase))
-        &&inRange(data.authorized_from||data.authorized_to,'authorized_range')
-        &&inRange(data.investigated_at||data.started_at||data.ended_at,'investigation_range')
-        &&inRange(data.imported_at||row.updated_at,'import_range')
-        &&inRange(data.collected_at,'collection_range')
-    })
-    return result
-  },[rows,initialTab,profile,listQuery])
-  const create=async()=>{const values=await createForm.validateFields();const targetModule=createModule;const meta=moduleMeta[targetModule];const initialStatus=targetModule==='clue'?'草稿':targetModule==='evidence'?'待整理':targetModule==='notary'?'待审核':targetModule==='investigation'?'待分配':values.status;try{await api.post('/investigations/records',{module:targetModule,serial_no:values.serial_no,title:values.title,customer:values.customer||'',status:initialStatus,owner:values.owner||profile.username||'admin',department:profile.department||'上海分所',description:values.description||'',data:{platform:values.platform||'',product:values.product||'',source:values.source||'',source_task_id:createContextTask?.id||null,source_task_no:createContextTask?.serial_no||'',publisher:profile.username||'admin',source_owner:values.source_owner||profile.display_name||profile.username||'',region:values.region||'',address:values.address||'',right_type:values.right_type||'',infringement_method:values.infringement_method||'',store_url:values.store_url||'',shop_id:values.shop_id||'',investigated_at:values.investigated_at?formatRequiredDate(values.investigated_at,'调查日期'):'',producer:values.producer||'',indictee:values.indictee||'',investigation_assistant:values.investigation_assistant||'',authorized_from:targetModule==='investigation'?formatRequiredDate(values.authorized_from,'授权开始日期'):undefined,authorized_to:targetModule==='investigation'?formatRequiredDate(values.authorized_to,'授权结束日期'):undefined,customer_review:targetModule==='clue'?Boolean(createContextTask?.data.customer_review):Boolean(values.customer_review)}});message.success(`${meta.title}已创建`);setCreateOpen(false);setInvestigationCreateOpen(false);setClueCreateOpen(false);setCreateContextTask(null);setCreateModule(tab);createForm.resetFields();load()}catch(error:any){message.error(error?.response?.data?.detail||error?.message||'创建失败')}}
-  const submitClue=async(row:Row)=>{try{await api.post(`/investigations/clues/${row.id}/submit`,{comment:'提交线索审批'});message.success('线索已提交审批');load('clue')}catch(error:any){message.error(error?.response?.data?.detail||'提交失败')}}
-  const reviewClue=async()=>{if(!clueReviewing)return;const v=await clueReviewForm.validateFields();const customerReview=clueReviewing.status==='待客户审核';try{await api.post(`/investigations/clues/${clueReviewing.id}/${customerReview?'customer-review':'review'}`,v);message.success(v.approved?(customerReview?'客户审核通过，进入待取证':'内部审核已通过'): '线索已驳回');setClueReviewing(null);clueReviewForm.resetFields();load('clue')}catch(error:any){message.error(error?.response?.data?.detail||'线索审核失败')}}
-  const registerCollection=async()=>{if(!collectionTarget)return;try{const v=await collectionForm.validateFields();await api.post(`/investigations/clues/${collectionTarget.id}/collect`,{...v,collected_at:formatRequiredDate(v.collected_at,'取证日期')});message.success('取证信息已登记，线索进入已取证');setCollectionTarget(null);collectionForm.resetFields();load('clue')}catch(error:any){if(error?.errorFields)return;message.error(error?.response?.data?.detail||error?.message||'取证登记失败')}}
-  const createEvidence=async()=>{if(!evidenceSource)return;const v=await evidenceForm.validateFields();try{await api.post(`/investigations/clues/${evidenceSource.id}/evidence`,v);message.success('证据目录已建立');setEvidenceSource(null);evidenceForm.resetFields();if(onNavigate)onNavigate('evidence');else{setTab('evidence');load('evidence')}}catch(error:any){message.error(error?.response?.data?.detail||'建立证据目录失败')}}
-  const evidenceAction=async(row:Row,action:'organize'|'file')=>{try{await api.post(`/investigations/evidence/${row.id}/${action}`,{comment:action==='organize'?'证据整理完成':'证据材料入卷'});message.success(action==='organize'?'证据已整理':'证据已入卷');load('evidence')}catch(error:any){message.error(error?.response?.data?.detail||'证据操作失败')}}
-  const registerCertificate=async()=>{if(!certificateTarget)return;try{const v=await certificateForm.validateFields();await api.post(`/notaries/${certificateTarget.id}/certificate`,{...v,issued_date:formatRequiredDate(v.issued_date,'签发日期')});message.success('公证书编号及存放信息已登记');setCertificateTarget(null);certificateForm.resetFields();load('notary')}catch(error:any){if(error?.errorFields)return;message.error(error?.response?.data?.detail||error?.message||'公证书登记失败')}}
-  const applyNotary=async(row:Row)=>{try{const {data}=await api.post(`/investigations/${row.id}/notary`);message.success(`已生成公证记录 ${data.serial_no}`);if(onNavigate)onNavigate('notary');else{setTab('notary');load('notary')}}catch(error:any){message.error(error?.response?.data?.detail||'申请公证失败')}}
-  const review=async()=>{if(!reviewing)return;const values=await reviewForm.validateFields();try{const {data}=await api.post(`/notaries/${reviewing.id}/review`,values);message.success(values.approved?`审核通过，已自动生成案件 ${data.case.serial_no}`:'公证审核已驳回');setReviewing(null);reviewForm.resetFields();load()}catch(error:any){message.error(error?.response?.data?.detail||'审核失败')}}
-  const downloadImportTemplate=async()=>{const target=tab==='notary'?'notaries':'clues';try{const res=await api.get(`/investigations/${target}/import-template`,{responseType:'blob'});const url=URL.createObjectURL(res.data);const a=document.createElement('a');a.href=url;a.download=tab==='notary'?'公证导入模板.csv':'线索导入模板.csv';a.click();URL.revokeObjectURL(url)}catch{message.error('模板下载失败')}}
-  const importRows=async()=>{if(!importFile){message.warning('请选择上传文件');return}const needsReference=initialTab==='notary-import-files'||initialTab==='notary-import-invoices';if(needsReference&&!importReference.trim()){message.warning(initialTab==='notary-import-files'?'请填写公证书号':'请填写发票号');return}const form=new FormData();form.append('file',importFile);if(initialTab==='notary-import-files')form.append('certificate_no',importReference.trim());if(initialTab==='notary-import-invoices')form.append('invoice_no',importReference.trim());const endpoint:Record<string,string>={'notary-import-info':'/investigations/notaries/import','notary-import-storage':'/investigations/notaries/storage/import','notary-import-files':'/investigations/notaries/files/import','notary-import-invoices':'/investigations/notaries/invoices/import'};const target=endpoint[initialTab]||`/investigations/${tab==='notary'?'notaries':'clues'}/import`;try{const {data}=await api.post(target,form);setImportResult(data);if(initialTab==='notary-import-storage')setImportPreviewRows(data.items||[]);else if(initialTab==='notary-import-files'||initialTab==='notary-import-invoices')setImportPreviewRows([{id:data.attachment?.id,'文件名':data.attachment?.original_name,'案号':'','公证书号':initialTab==='notary-import-files'?data.reference_no:'','发票号':initialTab==='notary-import-invoices'?data.reference_no:'','线索编号':'','调查员':data.attachment?.uploader,'处理人':data.attachment?.uploader,'导入时间':data.attachment?.created_at}]);else if(Array.isArray(data.created_ids)){const created=await Promise.all(data.created_ids.map((id:number)=>api.get(`/records/${id}`).then(res=>res.data)));setImportPreviewRows(created.map((row:any)=>({id:row.id,'来源线索编号':row.data.clue_no,'公证标题':row.title,'负责人':row.owner,'审核截止日':row.data.review_due_date,'公证书编号':row.data.certificate_no,'签发日期':row.data.certificate_issued_date,'存放位置':row.data.certificate_storage_location,'实物已收':row.data.physical_received?'是':'否','说明':row.description}))) }message.success(initialTab==='notary-import-storage'?`成功更新 ${data.updated??data.created} 条公证仓库信息`:initialTab==='notary-import-files'?`公证书文件已按公证书号匹配 ${data.record_no} 并上传`:initialTab==='notary-import-invoices'?`发票文件已按发票号匹配 ${data.record_no} 并上传`:`成功导入 ${data.created} 条${tab==='notary'?'公证记录':'线索'}`);setImportFile(null);setImportReference('');load(tab)}catch(error:any){message.error(error?.response?.data?.detail||'导入失败')}}
-  const openBatchCases=async()=>{if(!selectedClues.length){message.warning('请先勾选需要转案的线索');return}try{const {data}=await api.get('/records',{params:{module:'contract',page_size:100}});setContracts(data.items.filter((x:Contract)=>!['草稿','审批中','已拒绝','已撤回','已作废'].includes(x.status)));batchForm.resetFields();batchForm.setFieldsValue({case_type:'民事案件'});setBatchOpen(true)}catch{message.error('可用合同加载失败')}}
-  const batchCases=async()=>{const v=await batchForm.validateFields();try{const {data}=await api.post('/investigations/clues/batch-cases',{...v,clue_ids:selectedClues});if(data.failed)message.warning(`生成 ${data.created} 个案件，${data.failed} 条未处理：${data.errors.slice(0,3).map((x:any)=>x.error).join('；')}`);else message.success(`已生成 ${data.created} 个待分配案件`);setBatchOpen(false);setSelectedClues([]);load('clue')}catch(error:any){message.error(error?.response?.data?.detail||'批量转案失败')}}
-  const openMaterials=async(row:Row)=>{setMaterialTarget(row);setMaterialFiles([]);try{const {data}=await api.get(`/investigations/${row.id}/materials`);setMaterials(data.items);setAllowedCategories(data.allowed_categories);materialForm.setFieldsValue({category:data.allowed_categories[0],remark:''});setMaterialOpen(true)}catch(error:any){message.error(error?.response?.data?.detail||'材料加载失败')}}
-  const uploadMaterial=async()=>{if(!materialTarget)return;const v=await materialForm.validateFields();if(!materialFiles.length){message.warning('请选择材料文件');return}try{const uploaded:Attachment[]=[];for(const file of materialFiles){const form=new FormData();form.append('file',file);form.append('record_id',String(materialTarget.id));form.append('category',v.category);form.append('remark',v.remark||'');const {data}=await api.post('/attachments',form);uploaded.push(data)}setMaterials(x=>[...uploaded,...x]);setMaterialFiles([]);materialForm.setFieldValue('remark','');message.success(`已批量上传 ${uploaded.length} 个材料`);load()}catch(error:any){message.error(error?.response?.data?.detail||'上传失败')}}
-  const downloadMaterial=async(row:Attachment)=>{try{const res=await api.get(`/attachments/${row.id}/download`,{responseType:'blob'});const url=URL.createObjectURL(res.data);const a=document.createElement('a');a.href=url;a.download=row.original_name;a.click();URL.revokeObjectURL(url)}catch{message.error('材料下载失败')}}
-  const deleteMaterial=async(row:Attachment)=>{try{await api.delete(`/attachments/${row.id}`);setMaterials(x=>x.filter(item=>item.id!==row.id));message.success('材料已删除');load()}catch(error:any){message.error(error?.response?.data?.detail||'删除失败')}}
-  const downloadExport=async(endpoint:string,filename:string)=>{const source=selectedRows.length?selectedRows:visibleRows;if(!source.length){message.warning('当前没有可导出的记录');return}try{const ids=source.map(row=>row.id).join(',');const res=await api.get(endpoint,{params:{ids},responseType:'blob'});const url=URL.createObjectURL(res.data);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}catch{message.error('导出失败')}}
-  const exportRows=(kind:'clues'|'handover')=>downloadExport(kind==='handover'?'/investigations/clues/handover-export':'/investigations/clues/export',kind==='handover'?'调查线索交接清单.csv':'调查线索.csv')
-  const openLinkedCase=async(caseNo:string)=>{const serialNo=String(caseNo||'').trim();if(!serialNo){message.warning('当前记录未关联案件');return}try{const {data}=await api.get('/records',{params:{module:'case',keyword:serialNo,page_size:100}});const row=(data.items as Row[]).find(item=>item.serial_no===serialNo);if(!row){message.warning('未找到关联案件或当前账号无权查看');return}if(onNavigate){rememberCaseDetailTarget({id:row.id,serial_no:row.serial_no});onNavigate('case-company');return}setLinkedCase(row)}catch(error:any){message.error(error?.response?.data?.detail||'关联案件加载失败')}}
-  const openLinkedCustomer=async(customerName:string)=>{const title=String(customerName||'').trim();if(!title){message.warning('当前记录未关联权利人');return}try{const {data}=await api.get('/records',{params:{module:'customer',keyword:title,page_size:100}});const customer=(data.items as Row[]).find(item=>item.title===title||item.customer===title);if(!customer){message.warning('未找到关联权利人档案或当前账号无权查看');return}if(onNavigate){rememberCustomerDetailTarget({id:customer.id,serial_no:customer.serial_no,title:customer.title});onNavigate('customer-company');return}message.warning('当前页面未配置客户详情跳转')}catch(error:any){message.error(error?.response?.data?.detail||'关联权利人加载失败')}}
-  const openLinkedNotary=async(recordId?:number,certificateNo?:string)=>{try{let targetId=recordId;let targetNo='';if(!targetId){const certificate=String(certificateNo||'').trim();if(!certificate){message.warning('当前记录未关联公证信息');return}const {data}=await api.get('/notaries/lookup',{params:{certificate_no:certificate}});targetId=data.id;targetNo=data.serial_no}if(onNavigate){rememberInvestigationDetailTarget({id:targetId,serial_no:targetNo,module:'notary'});onNavigate('notary');return}message.warning('当前页面未配置公证详情跳转')}catch(error:any){message.error(error?.response?.data?.detail||'关联公证加载失败')}}
-  const openLinkedInvestigation=async(serialNo:string,module:'investigation'|'clue'|'task')=>{const no=String(serialNo||'').trim();if(!no){message.warning(module==='task'?'当前线索未关联来源调查任务':'当前记录未关联调查编号');return}try{const {data}=await api.get('/records',{params:{module,keyword:no,page_size:100}});const target=(data.items as Row[]).find(row=>row.serial_no===no);if(!target){message.warning(module==='task'?'未找到来源调查任务或当前账号无权查看':'未找到关联调查记录或当前账号无权查看');return}if(onNavigate){rememberInvestigationDetailTarget({id:target.id,serial_no:target.serial_no,module});onNavigate(module==='investigation'?'investigation-task-published':module==='task'?'investigation-task-sub-published':'clue-company-draft');return}message.warning('当前页面未配置调查详情跳转')}catch(error:any){message.error(error?.response?.data?.detail||'关联调查记录加载失败')}}
-  const openInvestigationDetail=async(row:Row)=>{try{const {data}=await api.get(`/records/${row.id}`);setInvestigationDetail(data)}catch(error:any){message.error(error?.response?.data?.detail||'调查详情加载失败')}}
-  const openTasks=async(row:Row,createSubtask=false)=>{try{const {data}=await api.get(`/investigations/${row.id}/tasks`);const existingTasks=data.items as TaskRow[];const hasParent=existingTasks.length>0;setTaskTarget(row);setTasks(existingTasks);setCreatingSubtask(createSubtask&&hasParent);taskForm.resetFields();taskForm.setFieldsValue({owner:row.owner,priority:'普通',parent_task_id:createSubtask&&hasParent?existingTasks[0].id:undefined});if(createSubtask&&!hasParent)message.info('当前调查尚无任务，先创建首个调查任务；后续“新增子任务”将自动关联该任务')}catch(error:any){message.error(error?.response?.data?.detail||'调查任务加载失败')}}
-  const createTask=async()=>{if(!taskTarget)return;try{const v=await taskForm.validateFields();await api.post(`/investigations/${taskTarget.id}/tasks`,{...v,deadline:formatRequiredDate(v.deadline,'截止日期')});message.success(v.parent_task_id?'子任务已创建':'调查任务已创建');const {data}=await api.get(`/investigations/${taskTarget.id}/tasks`);setTasks(data.items);taskForm.resetFields();taskForm.setFieldsValue({owner:taskTarget.owner,priority:'普通'})}catch(error:any){if(error?.errorFields){const name=String(error.errorFields[0]?.name?.[0]||'');const labels:Record<string,string>={title:'任务名称',owner:'负责人',deadline:'截止日期',parent_task_id:'父任务'};taskForm.scrollToField(error.errorFields[0].name);message.warning(`请填写${labels[name]||'必填信息'}后再创建任务`);return}message.error(error?.response?.data?.detail||error?.message||'任务创建失败')}}
-  const openSubtaskAction=(row:Row,action:SubtaskLifecycleAction)=>{subtaskActionForm.resetFields();setSubtaskActionTarget({row,action})}
-  const submitSubtaskAction=async()=>{if(!subtaskActionTarget)return;try{const values=await subtaskActionForm.validateFields();const {row,action}=subtaskActionTarget;await api.post(`/tasks/${row.id}/${action}`,{comment:values.comment||''});message.success(action==='accept'?'调查子任务已接收，进入办理中':'调查子任务已提交完成，等待发起人验收');setSubtaskActionTarget(null);subtaskActionForm.resetFields();await load()}catch(error:any){if(error?.errorFields)return;message.error(error?.response?.data?.detail||error?.message||'调查子任务流转失败')}}
-  const openEdit=(row:Row)=>{setEditTarget(row);editForm.setFieldsValue({title:row.title,customer:row.customer,owner:row.owner,description:row.description||'',region:row.data.region||'',address:row.data.address||'',right_type:row.data.right_type||'',platform:row.data.platform||'',product:row.data.product||'',source:row.data.source||'',infringement_method:row.data.infringement_method||'',deadline:row.data.deadline?dayjs(row.data.deadline):undefined,priority:row.data.priority||'普通'})}
-  const saveEdit=async()=>{if(!editTarget)return;const v=await editForm.validateFields();try{const resubmit=editTarget.module==='clue'&&!['草稿','已驳回'].includes(editTarget.status);await api.patch(`/investigations/records/${editTarget.id}`,{title:v.title,customer:v.customer||'',description:v.description||'',...(resubmit?{status:'待审批'}:{}),data:{region:v.region||'',address:v.address||'',right_type:v.right_type||'',platform:v.platform||'',product:v.product||'',source:v.source||'',infringement_method:v.infringement_method||'',deadline:v.deadline?.format('YYYY-MM-DD')||editTarget.data.deadline,priority:v.priority||editTarget.data.priority}});message.success(resubmit?'线索已修改并重新进入待审核':'调查资料已修改');setEditTarget(null);load()}catch(error:any){message.error(error?.response?.data?.detail||'修改失败')}}
-  const openAssign=(row:Row)=>{setAssignTarget(row);assignForm.setFieldsValue({investigator:row.owner,comment:''})}
-  const saveAssign=async()=>{if(!assignTarget)return;const v=await assignForm.validateFields();try{await api.post(`/investigations/${assignTarget.id}/assign`,v);message.success('调查员已更新');setAssignTarget(null);load()}catch(error:any){message.error(error?.response?.data?.detail||'调查员分配失败')}}
-  const openFee=(row:Row)=>{setFeeTarget(row);feeForm.setFieldsValue({fee_type:'调查取证费',amount:row.data.fee_amount||undefined,description:''})}
-  const saveFee=async()=>{if(!feeTarget)return;const v=await feeForm.validateFields();try{const {data}=await api.post(`/investigations/clues/${feeTarget.id}/fee-application`,v);message.success(`费用申请 ${data.fee.serial_no} 已创建`);setFeeTarget(null);load()}catch(error:any){message.error(error?.response?.data?.detail||'费用申请失败')}}
-  const closeInvestigation=(row:Row)=>Modal.confirm({title:`关闭调查任务：${row.serial_no}`,content:'系统会检查全部调查子任务和线索；全部办结后生成可下载的 Word 调查报告。',okText:'关闭并生成报告',cancelText:'取消',async onOk(){try{const {data}=await api.post(`/investigations/${row.id}/close`,{comment:'全部调查事项已经办结'});message.success(`调查任务已关闭，报告 ${data.report.original_name} 已生成`);load()}catch(error:any){message.error(error?.response?.data?.detail||'调查任务关闭失败');throw error}}})
-  const batchDeleteSelected=(selected:Row[])=>{if(!selected.length){message.warning('请先勾选记录');return}Modal.confirm({title:`确认删除 ${selected.length} 条记录？`,content:'仅草稿、已驳回线索或未开始任务允许删除；有关联业务的记录会被拒绝。',okText:'确认删除',okButtonProps:{danger:true},cancelText:'取消',async onOk(){try{const {data}=await api.post('/investigations/batch-delete',{record_ids:selected.map(x=>x.id),comment:'列表批量删除'});if(data.failed)message.warning(`删除 ${data.deleted} 条，失败 ${data.failed} 条：${data.errors.slice(0,3).map((x:any)=>x.error).join('；')}`);else message.success(`已删除 ${data.deleted} 条记录`);setSelectedClues([]);load()}catch(error:any){message.error(error?.response?.data?.detail||'批量删除失败')}}})}
-  const columns=useMemo(()=>{
-    if(initialTab==='notary-query-files')return ['文件名称','发票号','取证时间','取证机构','线索编号','案件编号','调查员','文书','店铺名称','权利人','处理人','公证书号','导入时间'].map((title,index)=>({title,key:`notary-${index}`,width:index===0?220:120,render:(_:unknown,r:Row)=>{const value=[r.title,r.data.invoice_no,r.data.collected_at,r.data.notary_institution,r.data.clue_no,r.data.case_no,r.owner,r.data.document_type,r.data.shop_name,r.customer,r.data.handler,r.data.certificate_no,r.data.imported_at][index];if(index===4&&value)return <Button type="link" onClick={()=>openLinkedInvestigation(String(value),'clue')}>{value}</Button>;if(index===5&&value)return <Button type="link" onClick={()=>void openLinkedCase(String(value))}>{value}</Button>;if(index===9&&value)return <Button type="link" onClick={()=>void openLinkedCustomer(String(value))}>{value}</Button>;if(index===11&&value)return <Button type="link" onClick={()=>void openLinkedNotary(undefined,String(value))}>{value}</Button>;return value||'—'}}))
-    if(initialTab.startsWith('investigation-task-sub-'))return [{title:'任务编号',dataIndex:'serial_no',width:170,render:(value:string,r:Row)=><Button type="link" onClick={()=>void openInvestigationDetail(r)}>{value}</Button>},{title:'权利人',dataIndex:'customer',width:180,render:(value:string)=>value?<Button type="link" onClick={()=>void openLinkedCustomer(value)}>{value}</Button>:'—'},{title:'权利类型',width:100,render:(_:unknown,r:Row)=>r.data.right_type||'—'},{title:'调查员',dataIndex:'owner',width:100},{title:'调查区域',width:160,render:(_:unknown,r:Row)=>r.data.region||r.data.address||'—'},{title:'开始时间',width:110,render:(_:unknown,r:Row)=>r.data.started_at||'—'},{title:'结束时间',width:110,render:(_:unknown,r:Row)=>r.data.ended_at||'—'},{title:'案源人',width:100,render:(_:unknown,r:Row)=>r.data.source_owner||'—'},{title:'状态',dataIndex:'status',width:100,render:(value:string)=><Tag color={statusColors[value]||'blue'}>{value}</Tag>},{title:'办理',key:'lifecycle',fixed:'right',width:170,render:(_:unknown,r:Row)=>{const canHandle=profile.role==='admin'||r.owner===profile.username;return <Space size={0}>{canHandle&&['待接收','待处理'].includes(r.status)&&<Button type="link" onClick={()=>openSubtaskAction(r,'accept')}>接收任务</Button>}{canHandle&&r.status==='处理中'&&<Button type="link" onClick={()=>openSubtaskAction(r,'complete')}>提交完成</Button>}{!canHandle&&<span>仅负责人可办理</span>}</Space>}}]
-    if(initialTab.startsWith('investigation-task-'))return [{title:'调查编号',dataIndex:'serial_no',width:170,render:(value:string,r:Row)=><Button type="link" onClick={()=>void openInvestigationDetail(r)}>{value}</Button>},{title:'权利人',dataIndex:'customer',width:180,render:(value:string)=>value?<Button type="link" onClick={()=>void openLinkedCustomer(value)}>{value}</Button>:'—'},{title:'权利类型',width:100,render:(_:unknown,r:Row)=>r.data.right_type||'—'},{title:'线索是否客户审核',width:135,render:(_:unknown,r:Row)=>r.data.customer_review?'是':'否'},{title:'授权开始时间',width:115,render:(_:unknown,r:Row)=>r.data.authorized_from||'—'},{title:'授权结束时间',width:115,render:(_:unknown,r:Row)=>r.data.authorized_to||'—'},{title:'调查区域',width:160,render:(_:unknown,r:Row)=>r.data.region||'—'},{title:'案源人',width:100,render:(_:unknown,r:Row)=>r.data.source_owner||'—'},{title:'任务分配人',width:110,render:(_:unknown,r:Row)=>r.data.assigner||r.data.assigned_by||'—'}]
-    if(initialTab.startsWith('clue-'))return [{title:'线索编号',dataIndex:'serial_no',width:160,render:(value:string,r:Row)=><Button type="link" onClick={()=>void openInvestigationDetail(r)}>{value}</Button>},{title:'来源调查任务',width:170,render:(_:unknown,r:Row)=>r.data.source_task_no?<Button type="link" onClick={()=>openLinkedInvestigation(String(r.data.source_task_no),'task')}>{String(r.data.source_task_no)}</Button>:'—'},{title:'案件编号',width:150,render:(_:unknown,r:Row)=>r.data.case_no?<Button type="link" onClick={()=>void openLinkedCase(r.data.case_no)}>{r.data.case_no}</Button>:'—'},{title:'调查员',dataIndex:'owner',width:95},{title:'调查时间',width:110,render:(_:unknown,r:Row)=>r.data.investigated_at||'—'},{title:'取证时间',width:110,render:(_:unknown,r:Row)=>r.data.collected_at||'—'},{title:'侵权方式',width:110,render:(_:unknown,r:Row)=>r.data.infringement_method||r.data.platform||'—'},{title:'店铺名称',dataIndex:'title',width:180},{title:'店铺Id',width:120,render:(_:unknown,r:Row)=>r.data.shop_id||'—'},{title:'调查地址',width:200,render:(_:unknown,r:Row)=>r.data.address||'—'},{title:'权利人',dataIndex:'customer',width:180,render:(value:string)=>value?<Button type="link" onClick={()=>void openLinkedCustomer(value)}>{value}</Button>:'—'},{title:'权利类型',width:100,render:(_:unknown,r:Row)=>r.data.right_type||'—'},{title:'案源人',width:95,render:(_:unknown,r:Row)=>r.data.source_owner||'—'},{title:'客户管理人',width:110,render:(_:unknown,r:Row)=>r.data.customer_manager||'—'},{title:'公证书号',width:160,render:(_:unknown,r:Row)=>r.data.certificate_no||r.data.notary_record_id?<Button type="link" onClick={()=>void openLinkedNotary(r.data.notary_record_id, r.data.certificate_no)}>{r.data.certificate_no||`公证ID：${r.data.notary_record_id}`}</Button>:'—'},{title:'仓库',width:120,render:(_:unknown,r:Row)=>r.data.warehouse||'—'},{title:'费用金额',width:105,render:(_:unknown,r:Row)=>r.data.fee_amount||'—'}]
-    const base:any[]=[{title:'业务编号',dataIndex:'serial_no',width:170,render:(value:string,r:Row)=><Button type="link" onClick={()=>void openInvestigationDetail(r)}>{value}</Button>},{title:'标题/事项',dataIndex:'title',width:240,ellipsis:true},{title:'客户',dataIndex:'customer',width:190,ellipsis:true,render:(value:string)=>value?<Button type="link" onClick={()=>void openLinkedCustomer(value)}>{value}</Button>:'—'},{title:'状态',dataIndex:'status',width:100,render:(v:string)=><Tag color={statusColors[v]||'blue'}>{v}</Tag>},{title:'负责人',dataIndex:'owner',width:90}]
-    const materialButton=(r:Row)=><Button type="link" icon={<PaperClipOutlined/>} onClick={()=>openMaterials(r)}>材料{Number(r.data.material_count||0)?`（${r.data.material_count}）`:''}</Button>
-    const taskButton=(r:Row)=><Button type="link" icon={<TeamOutlined/>} onClick={()=>openTasks(r)}>任务</Button>
-    if(tab==='clue')base.push({title:'调查平台',key:'platform',width:100,render:(_:unknown,r:Row)=>r.data.platform||'-'},{title:'侵权产品',key:'product',width:140,render:(_:unknown,r:Row)=>r.data.product||'-'},{title:'取证信息',key:'collection',width:200,render:(_:unknown,r:Row)=>r.data.collected_at?<Space orientation="vertical" size={0}><span>{String(r.data.collected_at)}</span><span>{String(r.data.notary_institution||'')}</span></Space>:'尚未取证'},{title:'关联公证/案件',key:'relation',width:190,render:(_:unknown,r:Row)=><Space orientation="vertical" size={0}>{r.data.notary_record_id?<Button className="business-relation-link" type="link" onClick={()=>void openLinkedNotary(r.data.notary_record_id,r.data.certificate_no)}>{r.data.certificate_no||`公证ID：${r.data.notary_record_id}`}</Button>:<span>未建立公证记录</span>}{r.data.converted_case_no&&<Button className="business-relation-link" type="link" onClick={()=>void openLinkedCase(String(r.data.converted_case_no))}>{String(r.data.converted_case_no)}</Button>}</Space>},{title:'操作',key:'action',fixed:'right',width:420,render:(_:unknown,r:Row)=><Space size={0} wrap>{['草稿','已驳回'].includes(r.status)&&<Button type="link" onClick={()=>submitClue(r)}>提交</Button>}{investigationActions[String(r.id)]?.review_clue&&r.status==='待审批'&&<Button type="link" onClick={()=>{setClueReviewing(r);clueReviewForm.setFieldsValue({approved:true})}}>内部审批</Button>}{investigationActions[String(r.id)]?.review_customer_clue&&r.status==='待客户审核'&&<Button type="link" onClick={()=>{setClueReviewing(r);clueReviewForm.setFieldsValue({approved:true})}}>客户审核</Button>}{r.status==='待取证'&&<Button type="link" onClick={()=>{collectionForm.resetFields();setCollectionTarget(r)}}>登记取证</Button>}{['已取证','已转案件'].includes(r.status)&&!r.data.notary_record_id&&<Button type="link" onClick={()=>applyNotary(r)}>建立公证</Button>}{!['草稿','待审批','待客户审核','已驳回'].includes(r.status)&&<Button type="link" onClick={()=>{evidenceForm.setFieldsValue({owner:r.owner,source:'调查取证'});setEvidenceSource(r)}}>建证据</Button>}{taskButton(r)}{materialButton(r)}</Space>})
-    if(tab==='notary')base.push({title:'来源线索',key:'clue',width:150,render:(_:unknown,r:Row)=>r.data.clue_no?<Button type="link" onClick={()=>openLinkedInvestigation(String(r.data.clue_no),'clue')}>{r.data.clue_no}</Button>:'—'},{title:'审核期限',key:'due',width:110,render:(_:unknown,r:Row)=>r.data.review_due_date||'-'},{title:'公证书编号',key:'cert',width:155,render:(_:unknown,r:Row)=>r.data.certificate_no||'-'},{title:'存放位置',key:'storage',width:150,render:(_:unknown,r:Row)=>r.data.certificate_storage_location||'-'},{title:'关联案件',key:'case',width:165,render:(_:unknown,r:Row)=>r.data.case_no?<Button className="business-relation-link" type="link" onClick={()=>void openLinkedCase(String(r.data.case_no))}>{String(r.data.case_no)}</Button>:'-'},{title:'操作',key:'action',fixed:'right',width:330,render:(_:unknown,r:Row)=><Space size={0} wrap>{investigationActions[String(r.id)]?.review_notary&&r.status==='待审核'&&<Button type="link" onClick={()=>{setReviewing(r);reviewForm.setFieldsValue({approved:true,case_type:'民事案件'})}}>审核</Button>}{investigationActions[String(r.id)]?.register_notary_certificate&&['等待材料','待审核','审核驳回','审核通过'].includes(r.status)&&<Button type="link" onClick={()=>{certificateForm.resetFields();certificateForm.setFieldsValue({certificate_no:r.data.certificate_no||'',storage_location:r.data.certificate_storage_location||'',physical_received:Boolean(r.data.physical_received)});setCertificateTarget(r)}}>登记公证书</Button>}{taskButton(r)}{materialButton(r)}</Space>})
-    if(tab==='evidence')base.push({title:'材料来源',key:'source',width:140,render:(_:unknown,r:Row)=>r.data.source||'-'},{title:'关联线索',key:'clue',width:150,render:(_:unknown,r:Row)=>r.data.clue_no?<Button type="link" onClick={()=>openLinkedInvestigation(String(r.data.clue_no),'clue')}>{r.data.clue_no}</Button>:'—'},{title:'操作',key:'action',fixed:'right',width:300,render:(_:unknown,r:Row)=><Space size={0}>{r.status==='待整理'&&<Button type="link" onClick={()=>evidenceAction(r,'organize')}>完成整理</Button>}{r.status==='已整理'&&<Button type="link" onClick={()=>evidenceAction(r,'file')}>证据入卷</Button>}{taskButton(r)}{materialButton(r)}</Space>})
-    return base
-  },[tab,initialTab,investigationActions,profile])
-  const meta=moduleMeta[tab]
-  const canReviewClue=visibleRows.some(row=>Boolean(investigationActions[String(row.id)]?.review_clue))
-  const canReviewCustomerClue=visibleRows.some(row=>Boolean(investigationActions[String(row.id)]?.review_customer_clue))
-  const isParentTask=initialTab.startsWith('investigation-task-')&&!initialTab.startsWith('investigation-task-sub-'),isSubTask=initialTab.startsWith('investigation-task-sub-'),isClue=initialTab.startsWith('clue-'),isAuditClue=initialTab.startsWith('clue-audit-'),isImport=['notary-import-info','notary-import-storage','notary-import-files','notary-import-invoices'].includes(initialTab),isFileQuery=initialTab==='notary-query-files'
-  const routeTitles:Record<string,string>={'notary-import-info':'公证信息导入','notary-import-storage':'补充取证信息(公证书号,仓库位置,发票号)文件导入','notary-import-files':'公证书文件导入','notary-import-invoices':'发票文件导入','notary-query-files':'公证书文件列表'}
-  const pageTitle=routeTitles[initialTab]||(isSubTask||isParentTask?'调查任务列表':isClue?'调查线索列表':meta.title)
-  const originalButtons:Record<string,string[]>={'investigation-task-published':['查询','刷新','修改','上传调查资料','关闭任务并生成报告','删除'],'investigation-task-mine':['查询','刷新','修改','上传调查资料','新增线索','关闭任务并生成报告'],'investigation-task-overdue':['查询','刷新','修改','上传调查资料','关闭任务并生成报告'],'investigation-task-unassigned':['查询','刷新','新增子任务','删除'],'investigation-task-sub-published':['查询','刷新','修改','批量删除'],'investigation-task-sub-mine':['查询','刷新','新增线索'],'clue-my-draft':['查询','修改','提交','新增文件','批量删除'],'clue-my-pending':['查询','修改'],'clue-my-customer':['查询','修改'],'clue-my-collect':['查询','修改','新增调查员','取证'],'clue-my-collected':['查询','修改','建立公证','建立证据目录','申请费用','新增调查员','取证','生成案件'],'clue-my-refused':['查询','修改','提交','新增文件','批量删除'],'clue-my-no-fee':['查询','修改','申请费用'],'clue-my-fee':['查询','修改'],'clue-audit-pending':['查询','刷新','修改','审批'],'clue-audit-customer':['查询','刷新','修改','审批']}
-  const selectedRows=visibleRows.filter(row=>selectedClues.includes(row.id)); const selectedRow=selectedRows.length===1?selectedRows[0]:null
-  const actionLabels=[...(originalButtons[initialTab]||['查询']),...(isClue?['导出线索','导出交接清单']:[])].filter(label=>label!=='审批'||(initialTab==='clue-audit-customer'?canReviewCustomerClue:canReviewClue))
-  const requireSingleRow=(label:string,handler:(row:Row)=>void)=>{if(!selectedRow){message.warning(label==='新增线索'?'请只勾选一条子任务':'请只勾选一条记录');return}handler(selectedRow)}
-  const originalActionHandlers:Record<string,()=>void>={查询:()=>setListQuery(x=>({...x})),刷新:()=>void load(),导出线索:()=>void exportRows('clues'),导出交接清单:()=>void exportRows('handover'),新建调查任务:()=>{setCreateContextTask(null);setCreateModule('investigation');createForm.setFieldsValue({serial_no:serial('DC'),status:'待分配',owner:profile.username||'admin',customer:'',right_type:'商标',customer_review:true});setInvestigationCreateOpen(true)},新增线索:()=>requireSingleRow('新增线索',row=>{setCreateContextTask(row);setCreateModule('clue');createForm.setFieldsValue({serial_no:serial('XS'),status:'草稿',owner:row.owner,customer:row.customer,right_type:row.data.right_type||'商标',source_owner:row.data.source_owner||'',region:row.data.region||'',address:row.data.address||'',platform:'',product:'',infringement_method:'',source:'',store_url:'',shop_id:'',producer:'',indictee:'',investigation_assistant:'',investigated_at:undefined});setClueCreateOpen(true)}),批量删除:()=>batchDeleteSelected(selectedRows),删除:()=>batchDeleteSelected(selectedRows),生成案件:()=>void openBatchCases(),修改:()=>requireSingleRow('修改',openEdit),提交:()=>requireSingleRow('提交',row=>void submitClue(row)),审批:()=>requireSingleRow('审批',row=>{const actions=investigationActions[String(row.id)];const allowed=row.status==='待客户审核'?actions?.review_customer_clue:actions?.review_clue;if(!allowed){message.error('当前账号没有此线索的审核权限');return}setClueReviewing(row);clueReviewForm.setFieldsValue({approved:true})}),取证:()=>requireSingleRow('取证',row=>{collectionForm.resetFields();setCollectionTarget(row)}),建立公证:()=>requireSingleRow('建立公证',row=>void applyNotary(row)),建立证据目录:()=>requireSingleRow('建立证据目录',row=>{evidenceForm.setFieldsValue({title:`${row.serial_no} 取证材料`,owner:row.owner,source:'调查取证',description:''});setEvidenceSource(row)}),新增文件:()=>requireSingleRow('新增文件',row=>void openMaterials(row)),上传调查资料:()=>requireSingleRow('上传调查资料',row=>void openMaterials(row)),新增子任务:()=>requireSingleRow('新增子任务',row=>void openTasks(row,true)),新增调查员:()=>requireSingleRow('新增调查员',openAssign),申请费用:()=>requireSingleRow('申请费用',openFee),关闭任务并生成报告:()=>requireSingleRow('关闭任务并生成报告',row=>void closeInvestigation(row))}
-  const runOriginalAction=(label:string)=>{const handler=originalActionHandlers[label];if(!handler){message.error(`调查中心动作未配置真实办理入口：${label}`);return}handler()}
-  const filters=isParentTask?<><Form.Item label="调查编号" name="serial_no"><Input/></Form.Item><Form.Item label="授权日期" name="authorized_range"><DatePicker.RangePicker/></Form.Item><Form.Item label="权利人" name="rights_holder"><Input/></Form.Item><Form.Item label="调查区域" name="region"><Input/></Form.Item></>:isSubTask?<><Form.Item label="任务编号" name="serial_no"><Input/></Form.Item><Form.Item label="调查日期" name="investigation_range"><DatePicker.RangePicker/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item><Form.Item label="调查区域" name="region"><Input/></Form.Item><Form.Item label="权利人" name="rights_holder"><Input/></Form.Item><Form.Item label="权利类型" name="right_type"><Select allowClear options={['全部','商标','专利','著作权','不正当竞争'].map(value=>({value,label:value}))}/></Form.Item></>:isAuditClue?<><Form.Item label="线索编号" name="serial_no"><Input/></Form.Item><Form.Item label="侵权方式" name="infringement_method"><Select allowClear options={['电商平台','实体店铺','工厂','其他','网页链接'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="权利人" name="rights_holder"><Input/></Form.Item><Form.Item label="案件状态" name="case_status"><Select allowClear options={['全部','未生成案件','已生成案件'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="店铺名称" name="shop_name"><Input/></Form.Item><Form.Item label="店铺地址" name="shop_address"><Input/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item><Form.Item label="调查区域" name="region"><Input/></Form.Item><Form.Item label="调查日期" name="investigation_range"><DatePicker.RangePicker/></Form.Item><Form.Item label="取证日期" name="collection_range"><DatePicker.RangePicker/></Form.Item><Form.Item label="公证书号" name="certificate_no"><Input/></Form.Item><Form.Item label="仓库位置" name="warehouse"><Input/></Form.Item></>:<><Form.Item label="线索编号" name="serial_no"><Input/></Form.Item><Form.Item label="证物状态" name="evidence_status"><Select allowClear placeholder="请选择" options={['未入库','已入库','已出库','已重新入库','已销毁'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item><Form.Item label="权利人" name="rights_holder"><Input/></Form.Item><Form.Item label="案件状态" name="case_status"><Select allowClear options={['全部','未生成案件','已生成案件'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="店铺名称" name="shop_name"><Input/></Form.Item><Form.Item label="调查区域" name="region"><Input/></Form.Item><Form.Item label="调查日期" name="investigation_range"><DatePicker.RangePicker/></Form.Item><Form.Item label="仓库位置" name="warehouse"><Input/></Form.Item><Form.Item label="公证书号" name="certificate_no"><Input/></Form.Item><Form.Item label="公证机构" name="notary_institution"><Input/></Form.Item><Form.Item label="取证日期" name="collection_range"><DatePicker.RangePicker/></Form.Item></>
-  const fileQueryFilters=<><Form.Item label="线索编号" name="serial_no"><Input/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item><Form.Item label="文书" name="document_type"><Input/></Form.Item><Form.Item label="权利人" name="rights_holder"><Input/></Form.Item><Form.Item label="案件编号" name="case_no"><Input/></Form.Item><Form.Item label="店铺名称" name="shop_name"><Input/></Form.Item><Form.Item label="处理人" name="handler"><Input/></Form.Item><Form.Item label="导入日期" name="import_range"><DatePicker.RangePicker/></Form.Item><Form.Item label="发票号" name="invoice_no"><Input/></Form.Item><Form.Item label="公证书号" name="certificate_no"><Input/></Form.Item><Form.Item label="公证机构" name="notary_institution"><Input/></Form.Item><Form.Item label="取证日期" name="collection_range"><DatePicker.RangePicker/></Form.Item></>
-  const importColumns=initialTab==='notary-import-info'?['来源线索编号','公证标题','负责人','审核截止日','公证书编号','签发日期','存放位置','实物已收','说明']:initialTab==='notary-import-storage'?['线索号','调查员','调查时间','侵权方式','店铺名称','调查地址','公证书号','仓库','发票号','案号']:initialTab==='notary-import-files'?['文件名','案号','公证书号','发票号','取证时间','取证机构','落款时间','线索编号','调查员','店铺名称','权利人']:['文件名','公证书号','发票号','取证时间','取证机构','落款时间','线索编号','调查员','店铺名称','权利人']
-  const importRule=initialTab==='notary-import-info'?'仅支持 UTF-8 CSV；来源线索必须已完成取证，且尚未生成公证记录。':initialTab==='notary-import-files'?'请选择 PDF，并填写要关联的公证书号；文件名不参与编号匹配。':initialTab==='notary-import-invoices'?'请选择 PDF，并填写要关联的发票号；文件名不参与编号匹配。':''
-  const importAccept=['notary-import-info','notary-import-storage'].includes(initialTab)?'.csv,text/csv':'.pdf,application/pdf'
+  };
+  useEffect(() => {
+    const bootstrap = async () => {
+      setTab(initial);
+      setCreateModule(initial);
+      setListQuery({});
+      setSelectedClues([]);
+      try {
+        const { data } = await api.get("/auth/me");
+        setProfile(data);
+      } catch {
+        message.error("当前登录身份加载失败，已按普通用户范围显示");
+      }
+      await load(initial);
+    };
+    void bootstrap();
+  }, [initialTab]);
+  const visibleRows = useMemo(() => {
+    let result = rows;
+    const routeStatuses: Record<string, string[]> = {
+      "clue-my-draft": ["草稿"],
+      "clue-my-pending": ["待审批"],
+      "clue-my-customer": ["待客户审核"],
+      "clue-my-collect": ["待取证"],
+      "clue-my-collected": ["已取证"],
+      "clue-my-refused": ["已驳回"],
+      "clue-audit-pending": ["待审批"],
+      "clue-audit-customer": ["待客户审核"],
+      "clue-audit-refused": ["已驳回"],
+      "clue-audit-collect": ["待取证"],
+      "clue-audit-collected": ["已取证"],
+      "clue-company-draft": ["草稿"],
+      "clue-company-pending": ["待审批"],
+      "clue-company-collect": ["待取证"],
+      "clue-company-collected": ["已取证"],
+      "clue-company-refused": ["已驳回"],
+    };
+    const statuses = routeStatuses[initialTab] || [];
+    if (statuses.length)
+      result = result.filter((row) => statuses.includes(row.status));
+    if (initialTab === "investigation-task-published") {
+      const names = [profile.username, profile.display_name].filter(Boolean);
+      result = result.filter((row) =>
+        names.includes(String(row.data.publisher || row.owner || "")),
+      );
+    }
+    if (initialTab === "investigation-task-mine") {
+      const names = [profile.username, profile.display_name].filter(Boolean);
+      result = result.filter((row) => names.includes(row.owner));
+    }
+    if (initialTab.startsWith("investigation-task-sub-"))
+      result = result.filter((row) =>
+        Boolean(
+          row.data.investigation_record_id ||
+          row.data.investigation_no ||
+          row.data.investigation_module,
+        ),
+      );
+    if (
+      initialTab === "investigation-task-sub-published" &&
+      profile.role !== "admin"
+    ) {
+      const names = [profile.username, profile.display_name].filter(Boolean);
+      result = result.filter((row) =>
+        names.includes(String(row.data.initiator || row.data.publisher || "")),
+      );
+    }
+    if (
+      initialTab === "investigation-task-sub-mine" &&
+      profile.role !== "admin"
+    ) {
+      const names = [profile.username, profile.display_name].filter(Boolean);
+      result = result.filter((row) => names.includes(row.owner));
+    }
+    if (initialTab === "investigation-task-overdue")
+      result = result.filter(
+        (row) =>
+          Boolean(row.data.authorized_to) &&
+          dayjs(String(row.data.authorized_to)).isBefore(dayjs(), "day") &&
+          !["已完成", "已取消"].includes(row.status),
+      );
+    if (initialTab === "investigation-task-unassigned")
+      result = result.filter((row) => row.status === "待分配" || !row.owner);
+    if (initialTab.includes("-my-") && profile.role !== "admin") {
+      const names = [profile.username, profile.display_name].filter(Boolean);
+      result = result.filter((row) => names.includes(row.owner));
+    }
+    if (initialTab.endsWith("-no-fee"))
+      result = result.filter(
+        (row) => !row.data.fee_application_id && !row.data.fee_no,
+      );
+    else if (initialTab.endsWith("-fee"))
+      result = result.filter((row) =>
+        Boolean(row.data.fee_application_id || row.data.fee_no),
+      );
+    const d = (row: Row) => row.data || {},
+      contains = (value: unknown, key: string) =>
+        !listQuery[key] ||
+        String(value || "")
+          .toLocaleLowerCase()
+          .includes(String(listQuery[key]).trim().toLocaleLowerCase());
+    const inRange = (value: unknown, key: string) => {
+      const range = listQuery[key];
+      if (!range?.[0] || !range?.[1] || !value)
+        return !range?.[0] && !range?.[1];
+      const current = dayjs(String(value));
+      return (
+        current.isValid() &&
+        !current.isBefore(range[0], "day") &&
+        !current.isAfter(range[1], "day")
+      );
+    };
+    result = result.filter((row) => {
+      const data = d(row),
+        hasCase = Boolean(
+          data.case_no || data.converted_case_no || data.converted_case_id,
+        );
+      const evidenceStatus =
+        data.evidence_status ||
+        data.warehouse_status ||
+        data.storage_status ||
+        "";
+      return (
+        contains(row.serial_no, "serial_no") &&
+        contains(row.owner, "investigator") &&
+        contains(row.customer, "rights_holder") &&
+        contains(data.region || data.address, "region") &&
+        contains(row.title, "shop_name") &&
+        contains(
+          data.warehouse || data.certificate_storage_location,
+          "warehouse",
+        ) &&
+        contains(data.certificate_no, "certificate_no") &&
+        contains(data.case_no || data.converted_case_no, "case_no") &&
+        contains(data.document_type, "document_type") &&
+        contains(data.handler, "handler") &&
+        contains(data.invoice_no, "invoice_no") &&
+        contains(data.notary_institution, "notary_institution") &&
+        contains(
+          data.infringement_method || data.platform,
+          "infringement_method",
+        ) &&
+        contains(data.address, "shop_address") &&
+        (!listQuery.right_type ||
+          listQuery.right_type === "全部" ||
+          data.right_type === listQuery.right_type) &&
+        (!listQuery.evidence_status ||
+          evidenceStatus === listQuery.evidence_status) &&
+        (!listQuery.case_status ||
+          listQuery.case_status === "全部" ||
+          (listQuery.case_status === "已生成案件" ? hasCase : !hasCase)) &&
+        inRange(
+          data.authorized_from || data.authorized_to,
+          "authorized_range",
+        ) &&
+        inRange(
+          data.investigated_at || data.started_at || data.ended_at,
+          "investigation_range",
+        ) &&
+        inRange(data.imported_at || row.updated_at, "import_range") &&
+        inRange(data.collected_at, "collection_range")
+      );
+    });
+    return result;
+  }, [rows, initialTab, profile, listQuery]);
+  const create = async () => {
+    const values = await createForm.validateFields();
+    const targetModule = createModule;
+    const meta = moduleMeta[targetModule];
+    const initialStatus =
+      targetModule === "clue"
+        ? "草稿"
+        : targetModule === "evidence"
+          ? "待整理"
+          : targetModule === "notary"
+            ? "待审核"
+            : targetModule === "investigation"
+              ? "待分配"
+              : values.status;
+    try {
+      await api.post("/investigations/records", {
+        module: targetModule,
+        serial_no: values.serial_no,
+        title: values.title,
+        customer: values.customer || "",
+        status: initialStatus,
+        owner: values.owner || profile.username || "admin",
+        department: profile.department || "上海分所",
+        description: values.description || "",
+        data: {
+          platform: values.platform || "",
+          product: values.product || "",
+          source: values.source || "",
+          source_task_id: createContextTask?.id || null,
+          source_task_no: createContextTask?.serial_no || "",
+          publisher: profile.username || "admin",
+          source_owner:
+            values.source_owner ||
+            profile.display_name ||
+            profile.username ||
+            "",
+          region: values.region || "",
+          address: values.address || "",
+          right_type: values.right_type || "",
+          infringement_method: values.infringement_method || "",
+          store_url: values.store_url || "",
+          shop_id: values.shop_id || "",
+          investigated_at: values.investigated_at
+            ? formatRequiredDate(values.investigated_at, "调查日期")
+            : "",
+          producer: values.producer || "",
+          indictee: values.indictee || "",
+          investigation_assistant: values.investigation_assistant || "",
+          authorized_from:
+            targetModule === "investigation"
+              ? formatRequiredDate(values.authorized_from, "授权开始日期")
+              : undefined,
+          authorized_to:
+            targetModule === "investigation"
+              ? formatRequiredDate(values.authorized_to, "授权结束日期")
+              : undefined,
+          customer_review:
+            targetModule === "clue"
+              ? Boolean(createContextTask?.data.customer_review)
+              : Boolean(values.customer_review),
+        },
+      });
+      message.success(`${meta.title}已创建`);
+      setCreateOpen(false);
+      setInvestigationCreateOpen(false);
+      setClueCreateOpen(false);
+      setCreateContextTask(null);
+      setCreateModule(tab);
+      createForm.resetFields();
+      load();
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail || error?.message || "创建失败",
+      );
+    }
+  };
+  const submitClue = async (row: Row) => {
+    try {
+      await api.post(`/investigations/clues/${row.id}/submit`, {
+        comment: "提交线索审批",
+      });
+      message.success("线索已提交审批");
+      load("clue");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "提交失败");
+    }
+  };
+  const reviewClue = async () => {
+    if (!clueReviewing) return;
+    const v = await clueReviewForm.validateFields();
+    const customerReview = clueReviewing.status === "待客户审核";
+    try {
+      await api.post(
+        `/investigations/clues/${clueReviewing.id}/${customerReview ? "customer-review" : "review"}`,
+        v,
+      );
+      message.success(
+        v.approved
+          ? customerReview
+            ? "客户审核通过，进入待取证"
+            : "内部审核已通过"
+          : "线索已驳回",
+      );
+      setClueReviewing(null);
+      clueReviewForm.resetFields();
+      load("clue");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "线索审核失败");
+    }
+  };
+  const registerCollection = async () => {
+    if (!collectionTarget) return;
+    try {
+      const v = await collectionForm.validateFields();
+      await api.post(`/investigations/clues/${collectionTarget.id}/collect`, {
+        ...v,
+        collected_at: formatRequiredDate(v.collected_at, "取证日期"),
+      });
+      message.success("取证信息已登记，线索进入已取证");
+      setCollectionTarget(null);
+      collectionForm.resetFields();
+      load("clue");
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(
+        error?.response?.data?.detail || error?.message || "取证登记失败",
+      );
+    }
+  };
+  const createEvidence = async () => {
+    if (!evidenceSource) return;
+    const v = await evidenceForm.validateFields();
+    try {
+      await api.post(`/investigations/clues/${evidenceSource.id}/evidence`, v);
+      message.success("证据目录已建立");
+      setEvidenceSource(null);
+      evidenceForm.resetFields();
+      if (onNavigate) onNavigate("evidence");
+      else {
+        setTab("evidence");
+        load("evidence");
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "建立证据目录失败");
+    }
+  };
+  const evidenceAction = async (row: Row, action: "organize" | "file") => {
+    try {
+      await api.post(`/investigations/evidence/${row.id}/${action}`, {
+        comment: action === "organize" ? "证据整理完成" : "证据材料入卷",
+      });
+      message.success(action === "organize" ? "证据已整理" : "证据已入卷");
+      load("evidence");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "证据操作失败");
+    }
+  };
+  const registerCertificate = async () => {
+    if (!certificateTarget) return;
+    try {
+      const v = await certificateForm.validateFields();
+      await api.post(`/notaries/${certificateTarget.id}/certificate`, {
+        ...v,
+        issued_date: formatRequiredDate(v.issued_date, "签发日期"),
+      });
+      message.success("公证书编号及存放信息已登记");
+      setCertificateTarget(null);
+      certificateForm.resetFields();
+      load("notary");
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(
+        error?.response?.data?.detail || error?.message || "公证书登记失败",
+      );
+    }
+  };
+  const applyNotary = async (row: Row) => {
+    try {
+      const { data } = await api.post(`/investigations/${row.id}/notary`);
+      message.success(`已生成公证记录 ${data.serial_no}`);
+      if (onNavigate) onNavigate("notary");
+      else {
+        setTab("notary");
+        load("notary");
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "申请公证失败");
+    }
+  };
+  const review = async () => {
+    if (!reviewing) return;
+    const values = await reviewForm.validateFields();
+    try {
+      const { data } = await api.post(
+        `/notaries/${reviewing.id}/review`,
+        values,
+      );
+      message.success(
+        values.approved
+          ? `审核通过，已自动生成案件 ${data.case.serial_no}`
+          : "公证审核已驳回",
+      );
+      setReviewing(null);
+      reviewForm.resetFields();
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "审核失败");
+    }
+  };
+  const downloadImportTemplate = async () => {
+    const target = tab === "notary" ? "notaries" : "clues";
+    try {
+      const res = await api.get(`/investigations/${target}/import-template`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = tab === "notary" ? "公证导入模板.csv" : "线索导入模板.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error("模板下载失败");
+    }
+  };
+  const importRows = async () => {
+    if (!importFile) {
+      message.warning("请选择上传文件");
+      return;
+    }
+    const needsReference =
+      initialTab === "notary-import-files" ||
+      initialTab === "notary-import-invoices";
+    if (needsReference && !importReference.trim()) {
+      message.warning(
+        initialTab === "notary-import-files"
+          ? "请填写公证书号"
+          : "请填写发票号",
+      );
+      return;
+    }
+    const form = new FormData();
+    form.append("file", importFile);
+    if (initialTab === "notary-import-files")
+      form.append("certificate_no", importReference.trim());
+    if (initialTab === "notary-import-invoices")
+      form.append("invoice_no", importReference.trim());
+    const endpoint: Record<string, string> = {
+      "notary-import-info": "/investigations/notaries/import",
+      "notary-import-storage": "/investigations/notaries/storage/import",
+      "notary-import-files": "/investigations/notaries/files/import",
+      "notary-import-invoices": "/investigations/notaries/invoices/import",
+    };
+    const target =
+      endpoint[initialTab] ||
+      `/investigations/${tab === "notary" ? "notaries" : "clues"}/import`;
+    try {
+      const { data } = await api.post(target, form);
+      setImportResult(data);
+      if (initialTab === "notary-import-storage")
+        setImportPreviewRows(data.items || []);
+      else if (
+        initialTab === "notary-import-files" ||
+        initialTab === "notary-import-invoices"
+      )
+        setImportPreviewRows([
+          {
+            id: data.attachment?.id,
+            文件名: data.attachment?.original_name,
+            案号: "",
+            公证书号:
+              initialTab === "notary-import-files" ? data.reference_no : "",
+            发票号:
+              initialTab === "notary-import-invoices" ? data.reference_no : "",
+            线索编号: "",
+            调查员: data.attachment?.uploader,
+            处理人: data.attachment?.uploader,
+            导入时间: data.attachment?.created_at,
+          },
+        ]);
+      else if (Array.isArray(data.created_ids)) {
+        const created = await Promise.all(
+          data.created_ids.map((id: number) =>
+            api.get(`/records/${id}`).then((res) => res.data),
+          ),
+        );
+        setImportPreviewRows(
+          created.map((row: any) => ({
+            id: row.id,
+            来源线索编号: row.data.clue_no,
+            公证标题: row.title,
+            负责人: row.owner,
+            审核截止日: row.data.review_due_date,
+            公证书编号: row.data.certificate_no,
+            签发日期: row.data.certificate_issued_date,
+            存放位置: row.data.certificate_storage_location,
+            实物已收: row.data.physical_received ? "是" : "否",
+            说明: row.description,
+          })),
+        );
+      }
+      message.success(
+        initialTab === "notary-import-storage"
+          ? `成功更新 ${data.updated ?? data.created} 条公证仓库信息`
+          : initialTab === "notary-import-files"
+            ? `公证书文件已按公证书号匹配 ${data.record_no} 并上传`
+            : initialTab === "notary-import-invoices"
+              ? `发票文件已按发票号匹配 ${data.record_no} 并上传`
+              : `成功导入 ${data.created} 条${tab === "notary" ? "公证记录" : "线索"}`,
+      );
+      setImportFile(null);
+      setImportReference("");
+      load(tab);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "导入失败");
+    }
+  };
+  const openBatchCases = async () => {
+    if (!selectedClues.length) {
+      message.warning("请先勾选需要转案的线索");
+      return;
+    }
+    try {
+      const { data } = await api.get("/records", {
+        params: { module: "contract", page_size: 100 },
+      });
+      setContracts(
+        data.items.filter(
+          (x: Contract) =>
+            !["草稿", "审批中", "已拒绝", "已撤回", "已作废"].includes(
+              x.status,
+            ),
+        ),
+      );
+      batchForm.resetFields();
+      batchForm.setFieldsValue({ case_type: "民事案件" });
+      setBatchOpen(true);
+    } catch {
+      message.error("可用合同加载失败");
+    }
+  };
+  const batchCases = async () => {
+    const v = await batchForm.validateFields();
+    try {
+      const { data } = await api.post("/investigations/clues/batch-cases", {
+        ...v,
+        clue_ids: selectedClues,
+      });
+      if (data.failed)
+        message.warning(
+          `生成 ${data.created} 个案件，${data.failed} 条未处理：${data.errors
+            .slice(0, 3)
+            .map((x: any) => x.error)
+            .join("；")}`,
+        );
+      else message.success(`已生成 ${data.created} 个待分配案件`);
+      setBatchOpen(false);
+      setSelectedClues([]);
+      load("clue");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量转案失败");
+    }
+  };
+  const openMaterials = async (row: Row) => {
+    setMaterialTarget(row);
+    setMaterialFiles([]);
+    try {
+      const { data } = await api.get(`/investigations/${row.id}/materials`);
+      setMaterials(data.items);
+      setAllowedCategories(data.allowed_categories);
+      materialForm.setFieldsValue({
+        category: data.allowed_categories[0],
+        remark: "",
+      });
+      setMaterialOpen(true);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "材料加载失败");
+    }
+  };
+  const uploadMaterial = async () => {
+    if (!materialTarget) return;
+    const v = await materialForm.validateFields();
+    if (!materialFiles.length) {
+      message.warning("请选择材料文件");
+      return;
+    }
+    try {
+      const uploaded: Attachment[] = [];
+      for (const file of materialFiles) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("record_id", String(materialTarget.id));
+        form.append("category", v.category);
+        form.append("remark", v.remark || "");
+        const { data } = await api.post("/attachments", form);
+        uploaded.push(data);
+      }
+      setMaterials((x) => [...uploaded, ...x]);
+      setMaterialFiles([]);
+      materialForm.setFieldValue("remark", "");
+      message.success(`已批量上传 ${uploaded.length} 个材料`);
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "上传失败");
+    }
+  };
+  const downloadMaterial = async (row: Attachment) => {
+    try {
+      const res = await api.get(`/attachments/${row.id}/download`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = row.original_name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error("材料下载失败");
+    }
+  };
+  const deleteMaterial = async (row: Attachment) => {
+    try {
+      await api.delete(`/attachments/${row.id}`);
+      setMaterials((x) => x.filter((item) => item.id !== row.id));
+      message.success("材料已删除");
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "删除失败");
+    }
+  };
+  const downloadExport = async (endpoint: string, filename: string) => {
+    const source = selectedRows.length ? selectedRows : visibleRows;
+    if (!source.length) {
+      message.warning("当前没有可导出的记录");
+      return;
+    }
+    try {
+      const ids = source.map((row) => row.id).join(",");
+      const res = await api.get(endpoint, {
+        params: { ids },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error("导出失败");
+    }
+  };
+  const exportRows = (kind: "clues" | "handover") =>
+    downloadExport(
+      kind === "handover"
+        ? "/investigations/clues/handover-export"
+        : "/investigations/clues/export",
+      kind === "handover" ? "调查线索交接清单.csv" : "调查线索.csv",
+    );
+  const openLinkedCase = async (caseNo: string) => {
+    const serialNo = String(caseNo || "").trim();
+    if (!serialNo) {
+      message.warning("当前记录未关联案件");
+      return;
+    }
+    try {
+      const { data } = await api.get("/records", {
+        params: { module: "case", keyword: serialNo, page_size: 100 },
+      });
+      const row = (data.items as Row[]).find(
+        (item) => item.serial_no === serialNo,
+      );
+      if (!row) {
+        message.warning("未找到关联案件或当前账号无权查看");
+        return;
+      }
+      if (onNavigate) {
+        rememberCaseDetailTarget({ id: row.id, serial_no: row.serial_no });
+        onNavigate("case-company");
+        return;
+      }
+      setLinkedCase(row);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联案件加载失败");
+    }
+  };
+  const openLinkedCustomer = async (customerName: string) => {
+    const title = String(customerName || "").trim();
+    if (!title) {
+      message.warning("当前记录未关联权利人");
+      return;
+    }
+    try {
+      const { data } = await api.get("/records", {
+        params: { module: "customer", keyword: title, page_size: 100 },
+      });
+      const customer = (data.items as Row[]).find(
+        (item) => item.title === title || item.customer === title,
+      );
+      if (!customer) {
+        message.warning("未找到关联权利人档案或当前账号无权查看");
+        return;
+      }
+      if (onNavigate) {
+        rememberCustomerDetailTarget({
+          id: customer.id,
+          serial_no: customer.serial_no,
+          title: customer.title,
+        });
+        onNavigate("customer-company");
+        return;
+      }
+      message.warning("当前页面未配置客户详情跳转");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联权利人加载失败");
+    }
+  };
+  const openLinkedNotary = async (
+    recordId?: number,
+    certificateNo?: string,
+  ) => {
+    try {
+      let targetId = recordId;
+      let targetNo = "";
+      if (!targetId) {
+        const certificate = String(certificateNo || "").trim();
+        if (!certificate) {
+          message.warning("当前记录未关联公证信息");
+          return;
+        }
+        const { data } = await api.get("/notaries/lookup", {
+          params: { certificate_no: certificate },
+        });
+        targetId = data.id;
+        targetNo = data.serial_no;
+      }
+      if (onNavigate) {
+        rememberInvestigationDetailTarget({
+          id: targetId,
+          serial_no: targetNo,
+          module: "notary",
+        });
+        onNavigate("notary");
+        return;
+      }
+      message.warning("当前页面未配置公证详情跳转");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联公证加载失败");
+    }
+  };
+  const openLinkedInvestigation = async (
+    serialNo: string,
+    module: "investigation" | "clue" | "task",
+  ) => {
+    const no = String(serialNo || "").trim();
+    if (!no) {
+      message.warning(
+        module === "task"
+          ? "当前线索未关联来源调查任务"
+          : "当前记录未关联调查编号",
+      );
+      return;
+    }
+    try {
+      const { data } = await api.get("/records", {
+        params: { module, keyword: no, page_size: 100 },
+      });
+      const target = (data.items as Row[]).find((row) => row.serial_no === no);
+      if (!target) {
+        message.warning(
+          module === "task"
+            ? "未找到来源调查任务或当前账号无权查看"
+            : "未找到关联调查记录或当前账号无权查看",
+        );
+        return;
+      }
+      if (onNavigate) {
+        rememberInvestigationDetailTarget({
+          id: target.id,
+          serial_no: target.serial_no,
+          module,
+        });
+        onNavigate(
+          module === "investigation"
+            ? "investigation-task-published"
+            : module === "task"
+              ? "investigation-task-sub-published"
+              : "clue-company-draft",
+        );
+        return;
+      }
+      message.warning("当前页面未配置调查详情跳转");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联调查记录加载失败");
+    }
+  };
+  const openInvestigationDetail = async (row: Row) => {
+    try {
+      const { data } = await api.get(`/records/${row.id}`);
+      setInvestigationDetail(data);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "调查详情加载失败");
+    }
+  };
+  const openTasks = async (row: Row, createSubtask = false) => {
+    try {
+      const { data } = await api.get(`/investigations/${row.id}/tasks`);
+      const existingTasks = data.items as TaskRow[];
+      const hasParent = existingTasks.length > 0;
+      setTaskTarget(row);
+      setTasks(existingTasks);
+      setCreatingSubtask(createSubtask && hasParent);
+      taskForm.resetFields();
+      taskForm.setFieldsValue({
+        owner: row.owner,
+        priority: "普通",
+        parent_task_id:
+          createSubtask && hasParent ? existingTasks[0].id : undefined,
+      });
+      if (createSubtask && !hasParent)
+        message.info(
+          "当前调查尚无任务，先创建首个调查任务；后续“新增子任务”将自动关联该任务",
+        );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "调查任务加载失败");
+    }
+  };
+  const createTask = async () => {
+    if (!taskTarget) return;
+    try {
+      const v = await taskForm.validateFields();
+      await api.post(`/investigations/${taskTarget.id}/tasks`, {
+        ...v,
+        deadline: formatRequiredDate(v.deadline, "截止日期"),
+      });
+      message.success(v.parent_task_id ? "子任务已创建" : "调查任务已创建");
+      const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
+      setTasks(data.items);
+      taskForm.resetFields();
+      taskForm.setFieldsValue({ owner: taskTarget.owner, priority: "普通" });
+    } catch (error: any) {
+      if (error?.errorFields) {
+        const name = String(error.errorFields[0]?.name?.[0] || "");
+        const labels: Record<string, string> = {
+          title: "任务名称",
+          owner: "负责人",
+          deadline: "截止日期",
+          parent_task_id: "父任务",
+        };
+        taskForm.scrollToField(error.errorFields[0].name);
+        message.warning(`请填写${labels[name] || "必填信息"}后再创建任务`);
+        return;
+      }
+      message.error(
+        error?.response?.data?.detail || error?.message || "任务创建失败",
+      );
+    }
+  };
+  const openSubtaskAction = (row: Row, action: SubtaskLifecycleAction) => {
+    subtaskActionForm.resetFields();
+    setSubtaskActionTarget({ row, action });
+  };
+  const submitSubtaskAction = async () => {
+    if (!subtaskActionTarget) return;
+    try {
+      const values = await subtaskActionForm.validateFields();
+      const { row, action } = subtaskActionTarget;
+      await api.post(`/tasks/${row.id}/${action}`, {
+        comment: values.comment || "",
+      });
+      message.success(
+        action === "accept"
+          ? "调查子任务已接收，进入办理中"
+          : "调查子任务已提交完成，等待发起人验收",
+      );
+      setSubtaskActionTarget(null);
+      subtaskActionForm.resetFields();
+      await load();
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(
+        error?.response?.data?.detail || error?.message || "调查子任务流转失败",
+      );
+    }
+  };
+  const openEdit = (row: Row) => {
+    setEditTarget(row);
+    editForm.setFieldsValue({
+      title: row.title,
+      customer: row.customer,
+      owner: row.owner,
+      description: row.description || "",
+      region: row.data.region || "",
+      address: row.data.address || "",
+      right_type: row.data.right_type || "",
+      platform: row.data.platform || "",
+      product: row.data.product || "",
+      source: row.data.source || "",
+      infringement_method: row.data.infringement_method || "",
+      deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined,
+      priority: row.data.priority || "普通",
+    });
+  };
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    const v = await editForm.validateFields();
+    try {
+      const resubmit =
+        editTarget.module === "clue" &&
+        !["草稿", "已驳回"].includes(editTarget.status);
+      await api.patch(`/investigations/records/${editTarget.id}`, {
+        title: v.title,
+        customer: v.customer || "",
+        description: v.description || "",
+        ...(resubmit ? { status: "待审批" } : {}),
+        data: {
+          region: v.region || "",
+          address: v.address || "",
+          right_type: v.right_type || "",
+          platform: v.platform || "",
+          product: v.product || "",
+          source: v.source || "",
+          infringement_method: v.infringement_method || "",
+          deadline:
+            v.deadline?.format("YYYY-MM-DD") || editTarget.data.deadline,
+          priority: v.priority || editTarget.data.priority,
+        },
+      });
+      message.success(
+        resubmit ? "线索已修改并重新进入待审核" : "调查资料已修改",
+      );
+      setEditTarget(null);
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "修改失败");
+    }
+  };
+  const openAssign = (row: Row) => {
+    setAssignTarget(row);
+    assignForm.setFieldsValue({ investigator: row.owner, comment: "" });
+  };
+  const saveAssign = async () => {
+    if (!assignTarget) return;
+    const v = await assignForm.validateFields();
+    try {
+      await api.post(`/investigations/${assignTarget.id}/assign`, v);
+      message.success("调查员已更新");
+      setAssignTarget(null);
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "调查员分配失败");
+    }
+  };
+  const openFee = (row: Row) => {
+    setFeeTarget(row);
+    feeForm.setFieldsValue({
+      fee_type: "调查取证费",
+      amount: row.data.fee_amount || undefined,
+      description: "",
+    });
+  };
+  const saveFee = async () => {
+    if (!feeTarget) return;
+    const v = await feeForm.validateFields();
+    try {
+      const { data } = await api.post(
+        `/investigations/clues/${feeTarget.id}/fee-application`,
+        v,
+      );
+      message.success(`费用申请 ${data.fee.serial_no} 已创建`);
+      setFeeTarget(null);
+      load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "费用申请失败");
+    }
+  };
+  const closeInvestigation = (row: Row) =>
+    Modal.confirm({
+      title: `关闭调查任务：${row.serial_no}`,
+      content:
+        "系统会检查全部调查子任务和线索；全部办结后生成可下载的 Word 调查报告。",
+      okText: "关闭并生成报告",
+      cancelText: "取消",
+      async onOk() {
+        try {
+          const { data } = await api.post(`/investigations/${row.id}/close`, {
+            comment: "全部调查事项已经办结",
+          });
+          message.success(
+            `调查任务已关闭，报告 ${data.report.original_name} 已生成`,
+          );
+          load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "调查任务关闭失败");
+          throw error;
+        }
+      },
+    });
+  const batchDeleteSelected = (selected: Row[]) => {
+    if (!selected.length) {
+      message.warning("请先勾选记录");
+      return;
+    }
+    Modal.confirm({
+      title: `确认删除 ${selected.length} 条记录？`,
+      content:
+        "仅草稿、已驳回线索或未开始任务允许删除；有关联业务的记录会被拒绝。",
+      okText: "确认删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      async onOk() {
+        try {
+          const { data } = await api.post("/investigations/batch-delete", {
+            record_ids: selected.map((x) => x.id),
+            comment: "列表批量删除",
+          });
+          if (data.failed)
+            message.warning(
+              `删除 ${data.deleted} 条，失败 ${data.failed} 条：${data.errors
+                .slice(0, 3)
+                .map((x: any) => x.error)
+                .join("；")}`,
+            );
+          else message.success(`已删除 ${data.deleted} 条记录`);
+          setSelectedClues([]);
+          load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "批量删除失败");
+        }
+      },
+    });
+  };
+  const columns = useMemo(() => {
+    if (initialTab === "notary-query-files")
+      return [
+        "文件名称",
+        "发票号",
+        "取证时间",
+        "取证机构",
+        "线索编号",
+        "案件编号",
+        "调查员",
+        "文书",
+        "店铺名称",
+        "权利人",
+        "处理人",
+        "公证书号",
+        "导入时间",
+      ].map((title, index) => ({
+        title,
+        key: `notary-${index}`,
+        width: index === 0 ? 220 : 120,
+        render: (_: unknown, r: Row) => {
+          const value = [
+            r.title,
+            r.data.invoice_no,
+            r.data.collected_at,
+            r.data.notary_institution,
+            r.data.clue_no,
+            r.data.case_no,
+            r.owner,
+            r.data.document_type,
+            r.data.shop_name,
+            r.customer,
+            r.data.handler,
+            r.data.certificate_no,
+            r.data.imported_at,
+          ][index];
+          if (index === 4 && value)
+            return (
+              <Button
+                type="link"
+                onClick={() => openLinkedInvestigation(String(value), "clue")}
+              >
+                {value}
+              </Button>
+            );
+          if (index === 5 && value)
+            return (
+              <Button
+                type="link"
+                onClick={() => void openLinkedCase(String(value))}
+              >
+                {value}
+              </Button>
+            );
+          if (index === 9 && value)
+            return (
+              <Button
+                type="link"
+                onClick={() => void openLinkedCustomer(String(value))}
+              >
+                {value}
+              </Button>
+            );
+          if (index === 11 && value)
+            return (
+              <Button
+                type="link"
+                onClick={() => void openLinkedNotary(undefined, String(value))}
+              >
+                {value}
+              </Button>
+            );
+          return value || "—";
+        },
+      }));
+    if (initialTab.startsWith("investigation-task-sub-"))
+      return [
+        {
+          title: "任务编号",
+          dataIndex: "serial_no",
+          width: 170,
+          render: (value: string, r: Row) => (
+            <Button type="link" onClick={() => void openInvestigationDetail(r)}>
+              {value}
+            </Button>
+          ),
+        },
+        {
+          title: "权利人",
+          dataIndex: "customer",
+          width: 180,
+          render: (value: string) =>
+            value ? (
+              <Button
+                type="link"
+                onClick={() => void openLinkedCustomer(value)}
+              >
+                {value}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "权利类型",
+          width: 100,
+          render: (_: unknown, r: Row) => r.data.right_type || "—",
+        },
+        { title: "调查员", dataIndex: "owner", width: 100 },
+        {
+          title: "调查区域",
+          width: 160,
+          render: (_: unknown, r: Row) =>
+            r.data.region || r.data.address || "—",
+        },
+        {
+          title: "开始时间",
+          width: 110,
+          render: (_: unknown, r: Row) => r.data.started_at || "—",
+        },
+        {
+          title: "结束时间",
+          width: 110,
+          render: (_: unknown, r: Row) => r.data.ended_at || "—",
+        },
+        {
+          title: "案源人",
+          width: 100,
+          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+        },
+        {
+          title: "状态",
+          dataIndex: "status",
+          width: 100,
+          render: (value: string) => (
+            <Tag color={statusColors[value] || "blue"}>{value}</Tag>
+          ),
+        },
+        {
+          title: "办理",
+          key: "lifecycle",
+          fixed: "right",
+          width: 170,
+          render: (_: unknown, r: Row) => {
+            const canHandle =
+              profile.role === "admin" || r.owner === profile.username;
+            return (
+              <Space size={0}>
+                {canHandle && ["待接收", "待处理"].includes(r.status) && (
+                  <Button
+                    type="link"
+                    onClick={() => openSubtaskAction(r, "accept")}
+                  >
+                    接收任务
+                  </Button>
+                )}
+                {canHandle && r.status === "处理中" && (
+                  <Button
+                    type="link"
+                    onClick={() => openSubtaskAction(r, "complete")}
+                  >
+                    提交完成
+                  </Button>
+                )}
+                {!canHandle && <span>仅负责人可办理</span>}
+              </Space>
+            );
+          },
+        },
+      ];
+    if (initialTab.startsWith("investigation-task-"))
+      return [
+        {
+          title: "调查编号",
+          dataIndex: "serial_no",
+          width: 170,
+          render: (value: string, r: Row) => (
+            <Button type="link" onClick={() => void openInvestigationDetail(r)}>
+              {value}
+            </Button>
+          ),
+        },
+        {
+          title: "权利人",
+          dataIndex: "customer",
+          width: 180,
+          render: (value: string) =>
+            value ? (
+              <Button
+                type="link"
+                onClick={() => void openLinkedCustomer(value)}
+              >
+                {value}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "权利类型",
+          width: 100,
+          render: (_: unknown, r: Row) => r.data.right_type || "—",
+        },
+        {
+          title: "线索是否客户审核",
+          width: 135,
+          render: (_: unknown, r: Row) =>
+            r.data.customer_review ? "是" : "否",
+        },
+        {
+          title: "授权开始时间",
+          width: 115,
+          render: (_: unknown, r: Row) => r.data.authorized_from || "—",
+        },
+        {
+          title: "授权结束时间",
+          width: 115,
+          render: (_: unknown, r: Row) => r.data.authorized_to || "—",
+        },
+        {
+          title: "调查区域",
+          width: 160,
+          render: (_: unknown, r: Row) => r.data.region || "—",
+        },
+        {
+          title: "案源人",
+          width: 100,
+          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+        },
+        {
+          title: "任务分配人",
+          width: 110,
+          render: (_: unknown, r: Row) =>
+            r.data.assigner || r.data.assigned_by || "—",
+        },
+      ];
+    if (initialTab.startsWith("clue-"))
+      return [
+        {
+          title: "线索编号",
+          dataIndex: "serial_no",
+          width: 160,
+          render: (value: string, r: Row) => (
+            <Button type="link" onClick={() => void openInvestigationDetail(r)}>
+              {value}
+            </Button>
+          ),
+        },
+        {
+          title: "来源调查任务",
+          width: 170,
+          render: (_: unknown, r: Row) =>
+            r.data.source_task_no ? (
+              <Button
+                type="link"
+                onClick={() =>
+                  openLinkedInvestigation(String(r.data.source_task_no), "task")
+                }
+              >
+                {String(r.data.source_task_no)}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "案件编号",
+          width: 150,
+          render: (_: unknown, r: Row) =>
+            r.data.case_no ? (
+              <Button
+                type="link"
+                onClick={() => void openLinkedCase(r.data.case_no)}
+              >
+                {r.data.case_no}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        { title: "调查员", dataIndex: "owner", width: 95 },
+        {
+          title: "调查时间",
+          width: 110,
+          render: (_: unknown, r: Row) => r.data.investigated_at || "—",
+        },
+        {
+          title: "取证时间",
+          width: 110,
+          render: (_: unknown, r: Row) => r.data.collected_at || "—",
+        },
+        {
+          title: "侵权方式",
+          width: 110,
+          render: (_: unknown, r: Row) =>
+            r.data.infringement_method || r.data.platform || "—",
+        },
+        { title: "店铺名称", dataIndex: "title", width: 180 },
+        {
+          title: "店铺Id",
+          width: 120,
+          render: (_: unknown, r: Row) => r.data.shop_id || "—",
+        },
+        {
+          title: "调查地址",
+          width: 200,
+          render: (_: unknown, r: Row) => r.data.address || "—",
+        },
+        {
+          title: "权利人",
+          dataIndex: "customer",
+          width: 180,
+          render: (value: string) =>
+            value ? (
+              <Button
+                type="link"
+                onClick={() => void openLinkedCustomer(value)}
+              >
+                {value}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "权利类型",
+          width: 100,
+          render: (_: unknown, r: Row) => r.data.right_type || "—",
+        },
+        {
+          title: "案源人",
+          width: 95,
+          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+        },
+        {
+          title: "客户管理人",
+          width: 110,
+          render: (_: unknown, r: Row) => r.data.customer_manager || "—",
+        },
+        {
+          title: "公证书号",
+          width: 160,
+          render: (_: unknown, r: Row) =>
+            r.data.certificate_no || r.data.notary_record_id ? (
+              <Button
+                type="link"
+                onClick={() =>
+                  void openLinkedNotary(
+                    r.data.notary_record_id,
+                    r.data.certificate_no,
+                  )
+                }
+              >
+                {r.data.certificate_no || `公证ID：${r.data.notary_record_id}`}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "仓库",
+          width: 120,
+          render: (_: unknown, r: Row) => r.data.warehouse || "—",
+        },
+        {
+          title: "费用金额",
+          width: 105,
+          render: (_: unknown, r: Row) => r.data.fee_amount || "—",
+        },
+      ];
+    const base: any[] = [
+      {
+        title: "业务编号",
+        dataIndex: "serial_no",
+        width: 170,
+        render: (value: string, r: Row) => (
+          <Button type="link" onClick={() => void openInvestigationDetail(r)}>
+            {value}
+          </Button>
+        ),
+      },
+      { title: "标题/事项", dataIndex: "title", width: 240, ellipsis: true },
+      {
+        title: "客户",
+        dataIndex: "customer",
+        width: 190,
+        ellipsis: true,
+        render: (value: string) =>
+          value ? (
+            <Button type="link" onClick={() => void openLinkedCustomer(value)}>
+              {value}
+            </Button>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        title: "状态",
+        dataIndex: "status",
+        width: 100,
+        render: (v: string) => <Tag color={statusColors[v] || "blue"}>{v}</Tag>,
+      },
+      { title: "负责人", dataIndex: "owner", width: 90 },
+    ];
+    const materialButton = (r: Row) => (
+      <Button
+        type="link"
+        icon={<PaperClipOutlined />}
+        onClick={() => openMaterials(r)}
+      >
+        材料
+        {Number(r.data.material_count || 0)
+          ? `（${r.data.material_count}）`
+          : ""}
+      </Button>
+    );
+    const taskButton = (r: Row) => (
+      <Button type="link" icon={<TeamOutlined />} onClick={() => openTasks(r)}>
+        任务
+      </Button>
+    );
+    if (tab === "clue")
+      base.push(
+        {
+          title: "调查平台",
+          key: "platform",
+          width: 100,
+          render: (_: unknown, r: Row) => r.data.platform || "-",
+        },
+        {
+          title: "侵权产品",
+          key: "product",
+          width: 140,
+          render: (_: unknown, r: Row) => r.data.product || "-",
+        },
+        {
+          title: "取证信息",
+          key: "collection",
+          width: 200,
+          render: (_: unknown, r: Row) =>
+            r.data.collected_at ? (
+              <Space orientation="vertical" size={0}>
+                <span>{String(r.data.collected_at)}</span>
+                <span>{String(r.data.notary_institution || "")}</span>
+              </Space>
+            ) : (
+              "尚未取证"
+            ),
+        },
+        {
+          title: "关联公证/案件",
+          key: "relation",
+          width: 190,
+          render: (_: unknown, r: Row) => (
+            <Space orientation="vertical" size={0}>
+              {r.data.notary_record_id ? (
+                <Button
+                  className="business-relation-link"
+                  type="link"
+                  onClick={() =>
+                    void openLinkedNotary(
+                      r.data.notary_record_id,
+                      r.data.certificate_no,
+                    )
+                  }
+                >
+                  {r.data.certificate_no ||
+                    `公证ID：${r.data.notary_record_id}`}
+                </Button>
+              ) : (
+                <span>未建立公证记录</span>
+              )}
+              {r.data.converted_case_no && (
+                <Button
+                  className="business-relation-link"
+                  type="link"
+                  onClick={() =>
+                    void openLinkedCase(String(r.data.converted_case_no))
+                  }
+                >
+                  {String(r.data.converted_case_no)}
+                </Button>
+              )}
+            </Space>
+          ),
+        },
+        {
+          title: "操作",
+          key: "action",
+          fixed: "right",
+          width: 420,
+          render: (_: unknown, r: Row) => (
+            <Space size={0} wrap>
+              {["草稿", "已驳回"].includes(r.status) && (
+                <Button type="link" onClick={() => submitClue(r)}>
+                  提交
+                </Button>
+              )}
+              {investigationActions[String(r.id)]?.review_clue &&
+                r.status === "待审批" && (
+                  <Button
+                    type="link"
+                    onClick={() => {
+                      setClueReviewing(r);
+                      clueReviewForm.setFieldsValue({ approved: true });
+                    }}
+                  >
+                    内部审批
+                  </Button>
+                )}
+              {investigationActions[String(r.id)]?.review_customer_clue &&
+                r.status === "待客户审核" && (
+                  <Button
+                    type="link"
+                    onClick={() => {
+                      setClueReviewing(r);
+                      clueReviewForm.setFieldsValue({ approved: true });
+                    }}
+                  >
+                    客户审核
+                  </Button>
+                )}
+              {r.status === "待取证" && (
+                <Button
+                  type="link"
+                  onClick={() => {
+                    collectionForm.resetFields();
+                    setCollectionTarget(r);
+                  }}
+                >
+                  登记取证
+                </Button>
+              )}
+              {["已取证", "已转案件"].includes(r.status) &&
+                !r.data.notary_record_id && (
+                  <Button type="link" onClick={() => applyNotary(r)}>
+                    建立公证
+                  </Button>
+                )}
+              {!["草稿", "待审批", "待客户审核", "已驳回"].includes(
+                r.status,
+              ) && (
+                <Button
+                  type="link"
+                  onClick={() => {
+                    evidenceForm.setFieldsValue({
+                      owner: r.owner,
+                      source: "调查取证",
+                    });
+                    setEvidenceSource(r);
+                  }}
+                >
+                  建证据
+                </Button>
+              )}
+              {taskButton(r)}
+              {materialButton(r)}
+            </Space>
+          ),
+        },
+      );
+    if (tab === "notary")
+      base.push(
+        {
+          title: "来源线索",
+          key: "clue",
+          width: 150,
+          render: (_: unknown, r: Row) =>
+            r.data.clue_no ? (
+              <Button
+                type="link"
+                onClick={() =>
+                  openLinkedInvestigation(String(r.data.clue_no), "clue")
+                }
+              >
+                {r.data.clue_no}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "审核期限",
+          key: "due",
+          width: 110,
+          render: (_: unknown, r: Row) => r.data.review_due_date || "-",
+        },
+        {
+          title: "公证书编号",
+          key: "cert",
+          width: 155,
+          render: (_: unknown, r: Row) => r.data.certificate_no || "-",
+        },
+        {
+          title: "存放位置",
+          key: "storage",
+          width: 150,
+          render: (_: unknown, r: Row) =>
+            r.data.certificate_storage_location || "-",
+        },
+        {
+          title: "关联案件",
+          key: "case",
+          width: 165,
+          render: (_: unknown, r: Row) =>
+            r.data.case_no ? (
+              <Button
+                className="business-relation-link"
+                type="link"
+                onClick={() => void openLinkedCase(String(r.data.case_no))}
+              >
+                {String(r.data.case_no)}
+              </Button>
+            ) : (
+              "-"
+            ),
+        },
+        {
+          title: "操作",
+          key: "action",
+          fixed: "right",
+          width: 330,
+          render: (_: unknown, r: Row) => (
+            <Space size={0} wrap>
+              {investigationActions[String(r.id)]?.review_notary &&
+                r.status === "待审核" && (
+                  <Button
+                    type="link"
+                    onClick={() => {
+                      setReviewing(r);
+                      reviewForm.setFieldsValue({
+                        approved: true,
+                        case_type: "民事案件",
+                      });
+                    }}
+                  >
+                    审核
+                  </Button>
+                )}
+              {investigationActions[String(r.id)]
+                ?.register_notary_certificate &&
+                ["等待材料", "待审核", "审核驳回", "审核通过"].includes(
+                  r.status,
+                ) && (
+                  <Button
+                    type="link"
+                    onClick={() => {
+                      certificateForm.resetFields();
+                      certificateForm.setFieldsValue({
+                        certificate_no: r.data.certificate_no || "",
+                        storage_location:
+                          r.data.certificate_storage_location || "",
+                        physical_received: Boolean(r.data.physical_received),
+                      });
+                      setCertificateTarget(r);
+                    }}
+                  >
+                    登记公证书
+                  </Button>
+                )}
+              {taskButton(r)}
+              {materialButton(r)}
+            </Space>
+          ),
+        },
+      );
+    if (tab === "evidence")
+      base.push(
+        {
+          title: "材料来源",
+          key: "source",
+          width: 140,
+          render: (_: unknown, r: Row) => r.data.source || "-",
+        },
+        {
+          title: "关联线索",
+          key: "clue",
+          width: 150,
+          render: (_: unknown, r: Row) =>
+            r.data.clue_no ? (
+              <Button
+                type="link"
+                onClick={() =>
+                  openLinkedInvestigation(String(r.data.clue_no), "clue")
+                }
+              >
+                {r.data.clue_no}
+              </Button>
+            ) : (
+              "—"
+            ),
+        },
+        {
+          title: "操作",
+          key: "action",
+          fixed: "right",
+          width: 300,
+          render: (_: unknown, r: Row) => (
+            <Space size={0}>
+              {r.status === "待整理" && (
+                <Button
+                  type="link"
+                  onClick={() => evidenceAction(r, "organize")}
+                >
+                  完成整理
+                </Button>
+              )}
+              {r.status === "已整理" && (
+                <Button type="link" onClick={() => evidenceAction(r, "file")}>
+                  证据入卷
+                </Button>
+              )}
+              {taskButton(r)}
+              {materialButton(r)}
+            </Space>
+          ),
+        },
+      );
+    return base;
+  }, [tab, initialTab, investigationActions, profile]);
+  const meta = moduleMeta[tab];
+  const canReviewClue = visibleRows.some((row) =>
+    Boolean(investigationActions[String(row.id)]?.review_clue),
+  );
+  const canReviewCustomerClue = visibleRows.some((row) =>
+    Boolean(investigationActions[String(row.id)]?.review_customer_clue),
+  );
+  const isParentTask =
+      initialTab.startsWith("investigation-task-") &&
+      !initialTab.startsWith("investigation-task-sub-"),
+    isSubTask = initialTab.startsWith("investigation-task-sub-"),
+    isClue = initialTab.startsWith("clue-"),
+    isAuditClue = initialTab.startsWith("clue-audit-"),
+    isImport = [
+      "notary-import-info",
+      "notary-import-storage",
+      "notary-import-files",
+      "notary-import-invoices",
+    ].includes(initialTab),
+    isFileQuery = initialTab === "notary-query-files";
+  const routeTitles: Record<string, string> = {
+    "notary-import-info": "公证信息导入",
+    "notary-import-storage": "补充取证信息(公证书号,仓库位置,发票号)文件导入",
+    "notary-import-files": "公证书文件导入",
+    "notary-import-invoices": "发票文件导入",
+    "notary-query-files": "公证书文件列表",
+  };
+  const pageTitle =
+    routeTitles[initialTab] ||
+    (isSubTask || isParentTask
+      ? "调查任务列表"
+      : isClue
+        ? "调查线索列表"
+        : meta.title);
+  const originalButtons: Record<string, string[]> = {
+    "investigation-task-published": [
+      "查询",
+      "刷新",
+      "修改",
+      "上传调查资料",
+      "关闭任务并生成报告",
+      "删除",
+    ],
+    "investigation-task-mine": [
+      "查询",
+      "刷新",
+      "修改",
+      "上传调查资料",
+      "新增线索",
+      "关闭任务并生成报告",
+    ],
+    "investigation-task-overdue": [
+      "查询",
+      "刷新",
+      "修改",
+      "上传调查资料",
+      "关闭任务并生成报告",
+    ],
+    "investigation-task-unassigned": ["查询", "刷新", "新增子任务", "删除"],
+    "investigation-task-sub-published": ["查询", "刷新", "修改", "批量删除"],
+    "investigation-task-sub-mine": ["查询", "刷新", "新增线索"],
+    "clue-my-draft": ["查询", "修改", "提交", "新增文件", "批量删除"],
+    "clue-my-pending": ["查询", "修改"],
+    "clue-my-customer": ["查询", "修改"],
+    "clue-my-collect": ["查询", "修改", "新增调查员", "取证"],
+    "clue-my-collected": [
+      "查询",
+      "修改",
+      "建立公证",
+      "建立证据目录",
+      "申请费用",
+      "新增调查员",
+      "取证",
+      "生成案件",
+    ],
+    "clue-my-refused": ["查询", "修改", "提交", "新增文件", "批量删除"],
+    "clue-my-no-fee": ["查询", "修改", "申请费用"],
+    "clue-my-fee": ["查询", "修改"],
+    "clue-audit-pending": ["查询", "刷新", "修改", "审批"],
+    "clue-audit-customer": ["查询", "刷新", "修改", "审批"],
+  };
+  const selectedRows = visibleRows.filter((row) =>
+    selectedClues.includes(row.id),
+  );
+  const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
+  const actionLabels = [
+    ...(originalButtons[initialTab] || ["查询"]),
+    ...(isClue ? ["导出线索", "导出交接清单"] : []),
+  ].filter(
+    (label) =>
+      label !== "审批" ||
+      (initialTab === "clue-audit-customer"
+        ? canReviewCustomerClue
+        : canReviewClue),
+  );
+  const queryActionLabels = actionLabels.filter((label) => ["查询", "刷新"].includes(label));
+  const businessActionLabels = actionLabels.filter((label) => !["查询", "刷新"].includes(label));
+  const requireSingleRow = (label: string, handler: (row: Row) => void) => {
+    if (!selectedRow) {
+      message.warning(
+        label === "新增线索" ? "请只勾选一条子任务" : "请只勾选一条记录",
+      );
+      return;
+    }
+    handler(selectedRow);
+  };
+  const originalActionHandlers: Record<string, () => void> = {
+    查询: () => setListQuery((x) => ({ ...x })),
+    刷新: () => void load(),
+    导出线索: () => void exportRows("clues"),
+    导出交接清单: () => void exportRows("handover"),
+    新建调查任务: () => {
+      setCreateContextTask(null);
+      setCreateModule("investigation");
+      createForm.setFieldsValue({
+        serial_no: serial("DC"),
+        status: "待分配",
+        owner: profile.username || "admin",
+        customer: "",
+        right_type: "商标",
+        customer_review: true,
+      });
+      setInvestigationCreateOpen(true);
+    },
+    新增线索: () =>
+      requireSingleRow("新增线索", (row) => {
+        setCreateContextTask(row);
+        setCreateModule("clue");
+        createForm.setFieldsValue({
+          serial_no: serial("XS"),
+          status: "草稿",
+          owner: row.owner,
+          customer: row.customer,
+          right_type: row.data.right_type || "商标",
+          source_owner: row.data.source_owner || "",
+          region: row.data.region || "",
+          address: row.data.address || "",
+          platform: "",
+          product: "",
+          infringement_method: "",
+          source: "",
+          store_url: "",
+          shop_id: "",
+          producer: "",
+          indictee: "",
+          investigation_assistant: "",
+          investigated_at: undefined,
+        });
+        setClueCreateOpen(true);
+      }),
+    批量删除: () => batchDeleteSelected(selectedRows),
+    删除: () => batchDeleteSelected(selectedRows),
+    生成案件: () => void openBatchCases(),
+    修改: () => requireSingleRow("修改", openEdit),
+    提交: () => requireSingleRow("提交", (row) => void submitClue(row)),
+    审批: () =>
+      requireSingleRow("审批", (row) => {
+        const actions = investigationActions[String(row.id)];
+        const allowed =
+          row.status === "待客户审核"
+            ? actions?.review_customer_clue
+            : actions?.review_clue;
+        if (!allowed) {
+          message.error("当前账号没有此线索的审核权限");
+          return;
+        }
+        setClueReviewing(row);
+        clueReviewForm.setFieldsValue({ approved: true });
+      }),
+    取证: () =>
+      requireSingleRow("取证", (row) => {
+        collectionForm.resetFields();
+        setCollectionTarget(row);
+      }),
+    建立公证: () =>
+      requireSingleRow("建立公证", (row) => void applyNotary(row)),
+    建立证据目录: () =>
+      requireSingleRow("建立证据目录", (row) => {
+        evidenceForm.setFieldsValue({
+          title: `${row.serial_no} 取证材料`,
+          owner: row.owner,
+          source: "调查取证",
+          description: "",
+        });
+        setEvidenceSource(row);
+      }),
+    新增文件: () =>
+      requireSingleRow("新增文件", (row) => void openMaterials(row)),
+    上传调查资料: () =>
+      requireSingleRow("上传调查资料", (row) => void openMaterials(row)),
+    新增子任务: () =>
+      requireSingleRow("新增子任务", (row) => void openTasks(row, true)),
+    新增调查员: () => requireSingleRow("新增调查员", openAssign),
+    申请费用: () => requireSingleRow("申请费用", openFee),
+    关闭任务并生成报告: () =>
+      requireSingleRow(
+        "关闭任务并生成报告",
+        (row) => void closeInvestigation(row),
+      ),
+  };
+  const runOriginalAction = (label: string) => {
+    const handler = originalActionHandlers[label];
+    if (!handler) {
+      message.error(`调查中心动作未配置真实办理入口：${label}`);
+      return;
+    }
+    handler();
+  };
+  const filters = isParentTask ? (
+    <>
+      <Form.Item label="调查编号" name="serial_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="授权日期" name="authorized_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+      <Form.Item label="权利人" name="rights_holder">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查区域" name="region">
+        <Input />
+      </Form.Item>
+    </>
+  ) : isSubTask ? (
+    <>
+      <Form.Item label="任务编号" name="serial_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查日期" name="investigation_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+      <Form.Item label="调查员" name="investigator">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查区域" name="region">
+        <Input />
+      </Form.Item>
+      <Form.Item label="权利人" name="rights_holder">
+        <Input />
+      </Form.Item>
+      <Form.Item label="权利类型" name="right_type">
+        <Select
+          allowClear
+          options={["全部", "商标", "专利", "著作权", "不正当竞争"].map(
+            (value) => ({ value, label: value }),
+          )}
+        />
+      </Form.Item>
+    </>
+  ) : isAuditClue ? (
+    <>
+      <Form.Item label="线索编号" name="serial_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="侵权方式" name="infringement_method">
+        <Select
+          allowClear
+          options={["电商平台", "实体店铺", "工厂", "其他", "网页链接"].map(
+            (value) => ({ value, label: value }),
+          )}
+        />
+      </Form.Item>
+      <Form.Item label="权利人" name="rights_holder">
+        <Input />
+      </Form.Item>
+      <Form.Item label="案件状态" name="case_status">
+        <Select
+          allowClear
+          options={["全部", "未生成案件", "已生成案件"].map((value) => ({
+            value,
+            label: value,
+          }))}
+        />
+      </Form.Item>
+      <Form.Item label="店铺名称" name="shop_name">
+        <Input />
+      </Form.Item>
+      <Form.Item label="店铺地址" name="shop_address">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查员" name="investigator">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查区域" name="region">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查日期" name="investigation_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+      <Form.Item label="取证日期" name="collection_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+      <Form.Item label="公证书号" name="certificate_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="仓库位置" name="warehouse">
+        <Input />
+      </Form.Item>
+    </>
+  ) : (
+    <>
+      <Form.Item label="线索编号" name="serial_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="证物状态" name="evidence_status">
+        <Select
+          allowClear
+          placeholder="请选择"
+          options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map(
+            (value) => ({ value, label: value }),
+          )}
+        />
+      </Form.Item>
+      <Form.Item label="调查员" name="investigator">
+        <Input />
+      </Form.Item>
+      <Form.Item label="权利人" name="rights_holder">
+        <Input />
+      </Form.Item>
+      <Form.Item label="案件状态" name="case_status">
+        <Select
+          allowClear
+          options={["全部", "未生成案件", "已生成案件"].map((value) => ({
+            value,
+            label: value,
+          }))}
+        />
+      </Form.Item>
+      <Form.Item label="店铺名称" name="shop_name">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查区域" name="region">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查日期" name="investigation_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+      <Form.Item label="仓库位置" name="warehouse">
+        <Input />
+      </Form.Item>
+      <Form.Item label="公证书号" name="certificate_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="公证机构" name="notary_institution">
+        <Input />
+      </Form.Item>
+      <Form.Item label="取证日期" name="collection_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+    </>
+  );
+  const fileQueryFilters = (
+    <>
+      <Form.Item label="线索编号" name="serial_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="调查员" name="investigator">
+        <Input />
+      </Form.Item>
+      <Form.Item label="文书" name="document_type">
+        <Input />
+      </Form.Item>
+      <Form.Item label="权利人" name="rights_holder">
+        <Input />
+      </Form.Item>
+      <Form.Item label="案件编号" name="case_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="店铺名称" name="shop_name">
+        <Input />
+      </Form.Item>
+      <Form.Item label="处理人" name="handler">
+        <Input />
+      </Form.Item>
+      <Form.Item label="导入日期" name="import_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+      <Form.Item label="发票号" name="invoice_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="公证书号" name="certificate_no">
+        <Input />
+      </Form.Item>
+      <Form.Item label="公证机构" name="notary_institution">
+        <Input />
+      </Form.Item>
+      <Form.Item label="取证日期" name="collection_range">
+        <DatePicker.RangePicker />
+      </Form.Item>
+    </>
+  );
+  const importColumns =
+    initialTab === "notary-import-info"
+      ? [
+          "来源线索编号",
+          "公证标题",
+          "负责人",
+          "审核截止日",
+          "公证书编号",
+          "签发日期",
+          "存放位置",
+          "实物已收",
+          "说明",
+        ]
+      : initialTab === "notary-import-storage"
+        ? [
+            "线索号",
+            "调查员",
+            "调查时间",
+            "侵权方式",
+            "店铺名称",
+            "调查地址",
+            "公证书号",
+            "仓库",
+            "发票号",
+            "案号",
+          ]
+        : initialTab === "notary-import-files"
+          ? [
+              "文件名",
+              "案号",
+              "公证书号",
+              "发票号",
+              "取证时间",
+              "取证机构",
+              "落款时间",
+              "线索编号",
+              "调查员",
+              "店铺名称",
+              "权利人",
+            ]
+          : [
+              "文件名",
+              "公证书号",
+              "发票号",
+              "取证时间",
+              "取证机构",
+              "落款时间",
+              "线索编号",
+              "调查员",
+              "店铺名称",
+              "权利人",
+            ];
+  const importRule =
+    initialTab === "notary-import-info"
+      ? "仅支持 UTF-8 CSV；来源线索必须已完成取证，且尚未生成公证记录。"
+      : initialTab === "notary-import-files"
+        ? "请选择 PDF，并填写要关联的公证书号；文件名不参与编号匹配。"
+        : initialTab === "notary-import-invoices"
+          ? "请选择 PDF，并填写要关联的发票号；文件名不参与编号匹配。"
+          : "";
+  const importAccept = ["notary-import-info", "notary-import-storage"].includes(
+    initialTab,
+  )
+    ? ".csv,text/csv"
+    : ".pdf,application/pdf";
   // Every route declares its data-column widths. Calculate the horizontal viewport
   // from those widths and include the selection column, instead of leaving a large
   // blank scroll area on narrow branches or hiding a fixed right action column.
-  const tableScrollX=columns.reduce((total:number,column:any)=>total+(typeof column.width==='number'?column.width:160),0)+(isFileQuery?0:40)
-  const investigationDetailItems=investigationDetail?[{key:'no',label:'调查编号',children:investigationDetail.serial_no},{key:'status',label:'状态',children:<Tag color={statusColors[investigationDetail.status]||'blue'}>{investigationDetail.status}</Tag>},{key:'title',label:'调查事项',children:investigationDetail.title,span:2},{key:'customer',label:'权利人',children:investigationDetail.customer?<Button className="business-relation-link" type="link" onClick={()=>void openLinkedCustomer(investigationDetail.customer)}>{investigationDetail.customer}</Button>:'—'},{key:'right-type',label:'权利类型',children:investigationDetail.data.right_type||'—'},{key:'owner',label:'调查员',children:investigationDetail.owner||'—'},{key:'region',label:'调查区域',children:investigationDetail.data.region||'—'},{key:'authorized-from',label:'授权开始',children:investigationDetail.data.authorized_from||'—'},{key:'authorized-to',label:'授权结束',children:investigationDetail.data.authorized_to||'—'},{key:'source-owner',label:'案源人',children:investigationDetail.data.source_owner||'—'},{key:'assigner',label:'任务分配人',children:investigationDetail.data.assigner||investigationDetail.data.assigned_by||'—'},...(investigationDetail.data.source_task_no?[{key:'source-task',label:'来源调查任务',children:<Button className="business-relation-link" type="link" onClick={()=>openLinkedInvestigation(String(investigationDetail.data.source_task_no),'task')}>{String(investigationDetail.data.source_task_no)}</Button>}]:[]),...(investigationDetail.data.clue_no?[{key:'clue',label:'关联线索',children:<Button className="business-relation-link" type="link" onClick={()=>openLinkedInvestigation(String(investigationDetail.data.clue_no),'clue')}>{String(investigationDetail.data.clue_no)}</Button>}]:[]),...(investigationDetail.data.case_no||investigationDetail.data.converted_case_no?[{key:'case',label:'关联案件',children:<Button className="business-relation-link" type="link" onClick={()=>void openLinkedCase(String(investigationDetail.data.case_no||investigationDetail.data.converted_case_no))}>{String(investigationDetail.data.case_no||investigationDetail.data.converted_case_no)}</Button>}]:[]),...(investigationDetail.data.certificate_no||investigationDetail.data.notary_record_id?[{key:'notary',label:'关联公证',children:<Button className="business-relation-link" type="link" onClick={()=>void openLinkedNotary(investigationDetail.data.notary_record_id,investigationDetail.data.certificate_no)}>{String(investigationDetail.data.certificate_no||`公证ID：${investigationDetail.data.notary_record_id}`)}</Button>}]:[]),...(investigationDetail.module==='clue'?[{key:'infringement',label:'侵权方式',children:investigationDetail.data.infringement_method||investigationDetail.data.platform||'—'},{key:'investigated-at',label:'调查日期',children:investigationDetail.data.investigated_at||'—'},{key:'store-url',label:'店铺链接',children:investigationDetail.data.store_url?<a href={String(investigationDetail.data.store_url)} target="_blank" rel="noreferrer">{String(investigationDetail.data.store_url)}</a>:'—'},{key:'shop-id',label:'店铺Id',children:investigationDetail.data.shop_id||'—'},{key:'address',label:'调查地址',children:investigationDetail.data.address||'—'},{key:'platform',label:'调查平台',children:investigationDetail.data.platform||'—'},{key:'product',label:'侵权产品',children:investigationDetail.data.product||'—'},{key:'source',label:'来源',children:investigationDetail.data.source||'—'},{key:'producer',label:'生产商',children:investigationDetail.data.producer||investigationDetail.data.producers||'—'},{key:'indictee',label:'主体信息',children:investigationDetail.data.indictee||investigationDetail.data.indictees||investigationDetail.data.subject||'—'},{key:'assistant',label:'调查辅助',children:investigationDetail.data.investigation_assistant||investigationDetail.data.assistant||'—'},{key:'collected-at',label:'取证日期',children:investigationDetail.data.collected_at||'—'},{key:'notary-institution',label:'取证机构',children:investigationDetail.data.notary_institution||'—'},{key:'certificate-no',label:'公证书号',children:investigationDetail.data.certificate_no||'—'},{key:'invoice-no',label:'发票号',children:investigationDetail.data.invoice_no||'—'},{key:'warehouse',label:'证物存放处',children:investigationDetail.data.warehouse||investigationDetail.data.certificate_storage_location||'—'},{key:'evidence-status',label:'证物状态',children:investigationDetail.data.evidence_status||investigationDetail.data.warehouse_status||investigationDetail.data.storage_status||'—'},{key:'investigator-remark',label:'调查员备注',children:investigationDetail.data.investigator_remark||'—'},{key:'review-remark',label:'审批备注',children:investigationDetail.data.review_comment||'—'},{key:'customer-review-remark',label:'客户审核备注',children:investigationDetail.data.customer_review_comment||'—'}]:[]),{key:'description',label:'说明',children:investigationDetail.description||'—',span:2}]:[]
-  return <>
-    <Modal open={Boolean(subtaskActionTarget)} title={`${subtaskActionTarget?.action==='accept'?'接收调查子任务':'提交调查子任务完成'}：${subtaskActionTarget?.row.serial_no||''}`} okText={subtaskActionTarget?.action==='accept'?'确认接收':'提交完成'} cancelText="取消" onOk={submitSubtaskAction} onCancel={()=>{setSubtaskActionTarget(null);subtaskActionForm.resetFields()}}><Form form={subtaskActionForm} layout="vertical"><Form.Item label={subtaskActionTarget?.action==='accept'?'接收说明':'办理结果说明'} name="comment" rules={subtaskActionTarget?.action==='complete'?[{required:true,min:2,message:'请填写办理结果说明'}]:[]}><Input.TextArea rows={4} placeholder={subtaskActionTarget?.action==='accept'?'可填写接收说明':'请说明本次调查办理结果'}/></Form.Item></Form></Modal>
-    <Modal open={investigationCreateOpen} title="新建调查任务" okText="保存调查任务" cancelText="取消" onOk={create} onCancel={()=>{setInvestigationCreateOpen(false);setCreateContextTask(null);setCreateModule(tab);createForm.resetFields()}}><Form form={createForm} layout="vertical"><div className="form-grid"><Form.Item label="调查编号" name="serial_no" rules={[{required:true,message:'请填写调查编号'}]}><Input/></Form.Item><Form.Item label="负责人/调查员" name="owner" rules={[{required:true,message:'请填写负责人'}]}><Input/></Form.Item><Form.Item className="span-2" label="标题/事项" name="title" rules={[{required:true,min:2,message:'调查事项至少 2 个字符'}]}><Input/></Form.Item><Form.Item label="权利人/客户" name="customer"><Input/></Form.Item><Form.Item label="案源人" name="source_owner"><Input/></Form.Item><Form.Item label="调查区域" name="region" rules={[{required:true,message:'请填写调查区域'}]}><Input/></Form.Item><Form.Item label="权利类型" name="right_type" rules={[{required:true,message:'请选择权利类型'}]}><Select options={['商标','专利','著作权','不正当竞争'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="授权开始日期" name="authorized_from" rules={[{required:true,message:'请选择授权开始日期'}]}><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item label="授权结束日期" name="authorized_to" dependencies={['authorized_from']} rules={[{required:true,message:'请选择授权结束日期'},{validator:(_,value)=>{const start=createForm.getFieldValue('authorized_from');return !start||!value||!dayjs(value).isBefore(dayjs(start),'day')?Promise.resolve():Promise.reject(new Error('授权结束日期不能早于开始日期'))}}]}><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item name="customer_review" valuePropName="checked"><Checkbox>线索需要客户审核</Checkbox></Form.Item><Form.Item className="span-2" label="说明" name="description"><Input.TextArea rows={3}/></Form.Item></div></Form></Modal>
-    <Modal open={clueCreateOpen} title="新建调查线索" okText="保存" cancelText="取消" onOk={create} onCancel={()=>{setClueCreateOpen(false);setCreateContextTask(null);setCreateModule(tab);createForm.resetFields()}}><Form form={createForm} layout="vertical"><div className="form-grid"><Form.Item label="线索编号" name="serial_no" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="负责人" name="owner" rules={[{required:true}]}><Input/></Form.Item><Form.Item className="span-2" label="标题/事项" name="title" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="客户" name="customer"><Input/></Form.Item><Form.Item label="调查平台" name="platform" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="侵权产品" name="product" rules={[{required:true,message:'不同产品需分别创建线索'}]}><Input/></Form.Item><Form.Item label="侵权方式" name="infringement_method"><Select allowClear options={['电商平台','实体店铺','工厂','其他','网页链接'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="来源" name="source"><Input/></Form.Item><Form.Item label="店铺链接" name="store_url"><Input placeholder="请输入店铺链接"/></Form.Item><Form.Item label="店铺Id" name="shop_id"><Input placeholder="淘宝店铺Id为掌柜名称，拼多多店铺Id为一串数字"/></Form.Item><Form.Item label="调查地址" name="address"><Input placeholder="请输入调查地址"/></Form.Item><Form.Item label="调查日期" name="investigated_at"><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item label="生产商" name="producer"><Input placeholder="生产商"/></Form.Item><Form.Item label="主体信息" name="indictee"><Input placeholder="主体信息"/></Form.Item><Form.Item label="调查辅助员" name="investigation_assistant"><Input placeholder="调查辅助员"/></Form.Item><Form.Item label="权利类型" name="right_type"><Select options={['商标','专利','著作权','不正当竞争'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="案源人" name="source_owner"><Input/></Form.Item><Form.Item label="调查区域" name="region"><Input/></Form.Item><Form.Item className="span-2" label="说明" name="description"><Input.TextArea rows={3}/></Form.Item></div></Form></Modal>
-    {(initialTab==='notary-import-files'||initialTab==='notary-import-invoices')&&<Card size="small" style={{marginBottom:12}}><Space><span>{initialTab==='notary-import-files'?'公证书号':'发票号'}</span><Input style={{width:260}} placeholder={initialTab==='notary-import-files'?'请输入公证书号':'请输入发票号'} value={importReference} onChange={e=>setImportReference(e.target.value)}/></Space></Card>}
-    <Card className="panel investigation-original" title={pageTitle}>
-      {isImport?<div className="notary-import-page"><div className="notary-file-rule">{importRule}</div><label>请选择上传文件：</label><Space wrap>{initialTab==='notary-import-info'&&<Button icon={<DownloadOutlined/>} onClick={downloadImportTemplate}>下载导入模板</Button>}<label className="notary-upload-button"><UploadOutlined/> 选择文件<input hidden type="file" accept={importAccept} onChange={e=>{setImportFile(e.target.files?.[0]||null);setImportResult(null);setImportPreviewRows([])}}/></label>{importFile&&<span className="notary-selected-file">{importFile.name}</span>}<Button type="primary" onClick={importRows}>上传文件</Button></Space>{importResult&&<Alert style={{marginTop:12}} type={importResult.failed?'warning':'success'} showIcon title={`成功 ${initialTab==='notary-import-storage'?(importResult as any).updated??importResult.created:importResult.created} 条，失败 ${importResult.failed} 条`} description={importResult.errors?.slice(0,8).map(x=><div key={`${x.row}-${x.error}`}>第 {x.row} 行：{x.error}</div>)}/>}<Table size="small" rowKey={(row:any)=>String(row.id??JSON.stringify(row))} dataSource={importPreviewRows} locale={{emptyText:'暂无待导入数据'}} columns={importColumns.map(title=>({title,dataIndex:title}))} scroll={{x:1200}} pagination={false}/></div>:<><Form key={initialTab} className="investigation-query" onValuesChange={(_,all)=>setListQuery(all)}>{isFileQuery?fileQueryFilters:filters}<div className="investigation-actions">{actionLabels.map(label=><Button key={label} type={label==='查询'?'primary':'default'} onClick={()=>runOriginalAction(label)}>{label==='审批'&&initialTab==='clue-audit-customer'?'客户审核':label==='审批'&&initialTab==='clue-audit-pending'?'内部审批':label}</Button>)}</div></Form><Tabs className="investigation-hidden-tabs" activeKey={tab} onChange={key=>{if(onNavigate){onNavigate(key);return}setTab(key as keyof typeof moduleMeta);load(key as keyof typeof moduleMeta)}} items={[{key:'clue',label:'线索管理'},{key:'notary',label:'公证管理'},{key:'evidence',label:'证据管理'}]}/><Table rowKey="id" loading={loading} size="small" columns={columns} dataSource={visibleRows} rowSelection={!isFileQuery?{selectedRowKeys:selectedClues,onChange:keys=>setSelectedClues(keys as number[])}:undefined} scroll={{x:tableScrollX}} pagination={{pageSize:20,showTotal:n=>`共 ${n} 条`}} locale={{emptyText:'没有查询到符合条件的记录'}}/></>}
-    </Card>
-    <Modal open={createOpen} title={`新增${meta.title}`} okText="保存" cancelText="取消" onOk={create} onCancel={()=>setCreateOpen(false)}><Form form={createForm} layout="vertical"><div className="form-grid"><Form.Item label="业务编号" name="serial_no" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="状态" name="status" rules={[{required:true}]}><Select options={meta.statuses.map(v=>({value:v,label:v}))}/></Form.Item><Form.Item className="span-2" label="标题/事项" name="title" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="客户" name="customer"><Input/></Form.Item><Form.Item label="负责人" name="owner"><Input/></Form.Item>{tab==='clue'&&<><Form.Item label="调查平台" name="platform"><Input/></Form.Item><Form.Item label="侵权产品" name="product" rules={[{required:true,message:'不同产品需分别创建线索'}]}><Input/></Form.Item></>}{tab==='evidence'&&<Form.Item label="材料来源" name="source"><Input/></Form.Item>}<Form.Item className="span-2" label="说明" name="description"><Input.TextArea rows={3}/></Form.Item></div></Form></Modal>
-    <Modal open={Boolean(clueReviewing)} title={`${clueReviewing?.status==='待客户审核'?'客户审核确认':'线索内部审批'}：${clueReviewing?.serial_no||''}`} okText="提交审核" cancelText="取消" onOk={reviewClue} onCancel={()=>setClueReviewing(null)}><Form form={clueReviewForm} layout="vertical">{clueReviewing?.status==='待客户审核'&&<div className="form-grid audit-reference"><Form.Item label="上一级审核员"><Input value={clueReviewing.data.reviewer||'—'} readOnly/></Form.Item><Form.Item label="上一级审核意见"><Input.TextArea value={clueReviewing.data.review_comment||'—'} readOnly rows={2}/></Form.Item></div>}<Form.Item label="审核结果" name="approved" rules={[{required:true}]}><Radio.Group><Radio value={true}><CheckCircleOutlined/> {clueReviewing?.status==='待客户审核'?'客户确认通过，进入待取证':'内部审批通过，进入客户审核或取证'}</Radio><Radio value={false}>驳回修改</Radio></Radio.Group></Form.Item><Form.Item label={clueReviewing?.status==='待客户审核'?'客户反馈/驳回原因':'审核意见/驳回原因'} name="comment" rules={[{required:true,min:2}]}><Input.TextArea rows={4}/></Form.Item></Form></Modal>
-    <Modal open={Boolean(collectionTarget)} title={`登记取证：${collectionTarget?.serial_no||''}`} okText="确认已取证" cancelText="取消" onOk={registerCollection} onCancel={()=>setCollectionTarget(null)}><Form form={collectionForm} layout="vertical"><Form.Item label="取证日期" name="collected_at" rules={[{required:true}]}><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item label="公证机构" name="notary_institution" rules={[{required:true,min:2}]}><Input placeholder="例如：上海市东方公证处"/></Form.Item><Form.Item label="取证说明" name="comment"><Input.TextArea rows={3}/></Form.Item></Form></Modal>
-    <Modal open={Boolean(evidenceSource)} title={`建立证据目录：${evidenceSource?.serial_no||''}`} okText="创建证据" cancelText="取消" onOk={createEvidence} onCancel={()=>setEvidenceSource(null)}><Form form={evidenceForm} layout="vertical"><Form.Item label="证据标题" name="title" rules={[{required:true}]}><Input/></Form.Item><div className="form-grid"><Form.Item label="负责人" name="owner" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="材料来源" name="source"><Input/></Form.Item></div><Form.Item label="证据说明" name="description"><Input.TextArea rows={3}/></Form.Item></Form></Modal>
-    <Modal open={Boolean(reviewing)} title={`公证审核：${reviewing?.serial_no||''}`} okText="提交审核" cancelText="取消" onOk={review} onCancel={()=>setReviewing(null)}><Form form={reviewForm} layout="vertical"><Form.Item label="审核结果" name="approved" rules={[{required:true}]}><Radio.Group><Radio value={true}><CheckCircleOutlined/> 通过并自动转案件</Radio><Radio value={false}>驳回</Radio></Radio.Group></Form.Item><Form.Item label="案件类型" name="case_type"><Select options={['民事案件','刑事案件','行政案件','仲裁案件'].map(v=>({value:v,label:v}))}/></Form.Item><Form.Item label="拟管辖法院" name="court"><Input/></Form.Item><Form.Item label="审核意见" name="comment"><Input.TextArea rows={4}/></Form.Item></Form></Modal>
-    <Modal open={Boolean(certificateTarget)} title={`登记公证书：${certificateTarget?.serial_no||''}`} okText="保存登记" cancelText="取消" onOk={registerCertificate} onCancel={()=>setCertificateTarget(null)}><Form form={certificateForm} layout="vertical"><Form.Item label="公证书编号" name="certificate_no" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="签发日期" name="issued_date" rules={[{required:true}]}><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item label="实物/扫描件存放位置" name="storage_location" rules={[{required:true}]}><Input placeholder="例如：上海档案室 A-01"/></Form.Item><Form.Item name="physical_received" valuePropName="checked"><Checkbox>纸质公证书实物已收到</Checkbox></Form.Item><Form.Item label="登记说明" name="comment"><Input.TextArea rows={3}/></Form.Item></Form></Modal>
-    <Modal open={importOpen} title={`${tab==='notary'?'公证记录':'调查线索'}批量导入`} okText="开始导入" cancelText="关闭" onOk={importRows} onCancel={()=>setImportOpen(false)}><Alert type="info" showIcon title={tab==='notary'?'仅支持 UTF-8 CSV；来源线索必须存在且尚未生成公证记录。':'仅支持 UTF-8 CSV；每一行只能填写一种侵权产品，重复线索不会导入。'}/><Space orientation="vertical" className="import-box"><Button icon={<DownloadOutlined/>} onClick={downloadImportTemplate}>下载 CSV 模板</Button><input type="file" accept=".csv,text/csv" onChange={e=>setImportFile(e.target.files?.[0]||null)}/>{importResult&&<Alert type={importResult.failed?'warning':'success'} showIcon title={`成功 ${importResult.created} 条，失败 ${importResult.failed} 条`} description={importResult.errors.slice(0,8).map(x=><div key={`${x.row}-${x.error}`}>第 {x.row} 行：{x.error}</div>)}/>}</Space></Modal>
-    <Modal open={batchOpen} title={`已取证线索批量转案件（已选 ${selectedClues.length} 条）`} okText="生成等待公证书案件" cancelText="取消" onOk={batchCases} onCancel={()=>setBatchOpen(false)}><Alert type="info" showIcon title="只有已取证线索可转案；每条线索生成一个等待公证书案件，客户必须与所选合同一致。" style={{marginBottom:15}}/><Form form={batchForm} layout="vertical"><Form.Item label="关联合同" name="contract_record_id" rules={[{required:true}]}><Select showSearch optionFilterProp="label" options={contracts.map(x=>({value:x.id,label:`${x.serial_no}｜${x.customer}｜${x.title}`}))}/></Form.Item><Form.Item label="案件类型" name="case_type"><Select options={['民事案件','刑事案件','行政案件','仲裁案件'].map(v=>({value:v,label:v}))}/></Form.Item><Form.Item label="拟管辖法院" name="court"><Input/></Form.Item></Form></Modal>
-    <Modal width={780} open={materialOpen} title={`${materialTarget?.serial_no||''}｜材料目录`} footer={null} onCancel={()=>setMaterialOpen(false)}><Table rowKey="id" size="small" pagination={false} scroll={{x:720}} dataSource={materials} locale={{emptyText:'尚未上传材料'}} columns={[{title:'目录',dataIndex:'category',width:120,render:(v:string)=><Tag color="blue">{v}</Tag>},{title:'文件名',dataIndex:'original_name',width:280,ellipsis:{showTitle:true}},{title:'大小',dataIndex:'size',width:90,render:(v:number)=>`${(v/1024).toFixed(1)} KB`},{title:'上传人',dataIndex:'uploader',width:85},{title:'操作',key:'action',width:140,render:(_:unknown,r:Attachment)=><Space size={0}><Button type="link" icon={<DownloadOutlined/>} onClick={()=>downloadMaterial(r)}>下载</Button><Button danger type="link" icon={<DeleteOutlined/>} onClick={()=>deleteMaterial(r)}>删除</Button></Space>}]} /><Form form={materialForm} layout="vertical" className="material-upload-form"><div className="form-grid"><Form.Item label="材料目录" name="category" rules={[{required:true}]}><Select options={allowedCategories.map(v=>({value:v,label:v}))}/></Form.Item><Form.Item label="批量选择文件" required><input multiple type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.zip,.rar" onChange={e=>setMaterialFiles(Array.from(e.target.files||[]))}/></Form.Item></div><Form.Item label="材料说明" name="remark"><Input/></Form.Item><Button type="primary" icon={<UploadOutlined/>} onClick={uploadMaterial}>批量上传{materialFiles.length?`（${materialFiles.length}）`:''}</Button></Form></Modal>
-    <Drawer size={760} open={Boolean(taskTarget)} title={`调查任务：${taskTarget?.serial_no||''}`} onClose={()=>{setTaskTarget(null);setCreatingSubtask(false)}}><Table rowKey="id" size="small" pagination={false} scroll={{x:840}} dataSource={tasks} columns={[{title:'任务编号',dataIndex:'serial_no',width:165},{title:'任务名称',dataIndex:'title',width:220,ellipsis:{showTitle:true}},{title:'父任务',dataIndex:'parent_task_no',width:150,render:(v:string)=>v||'—'},{title:'负责人',dataIndex:'owner',width:90},{title:'截止日',dataIndex:'deadline',width:110},{title:'状态',dataIndex:'status',width:90,render:(v:string)=><Tag>{v}</Tag>}]}/><Card size="small" title={creatingSubtask?'新增子任务':tasks.length?'新增主任务/子任务':'创建首个调查任务'} style={{marginTop:16}}><Form form={taskForm} layout="vertical"><Form.Item label="任务名称" name="title" rules={[{required:true}]}><Input/></Form.Item><div className="form-grid"><Form.Item label="负责人" name="owner" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="截止日期" name="deadline" rules={[{required:true}]}><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item label="优先级" name="priority"><Select options={['普通','紧急','特急'].map(v=>({value:v,label:v}))}/></Form.Item><Form.Item label={creatingSubtask?'父任务':'父任务（留空为主任务）'} name="parent_task_id" rules={creatingSubtask?[{required:true,message:'请选择父任务'}]:[]}><Select allowClear={!creatingSubtask} options={tasks.map(x=>({value:x.id,label:`${x.serial_no}｜${x.title}`}))}/></Form.Item></div><Form.Item label="任务说明" name="description"><Input.TextArea rows={3}/></Form.Item><Button type="primary" onClick={createTask}>{creatingSubtask?'创建子任务':'创建调查任务'}</Button></Form></Card></Drawer>
-    <Modal width={760} open={Boolean(investigationDetail)} title={`调查详情：${investigationDetail?.serial_no||''}`} footer={<Button onClick={()=>setInvestigationDetail(null)}>关闭</Button>} onCancel={()=>setInvestigationDetail(null)}><Descriptions bordered size="small" column={2} items={investigationDetailItems}/></Modal>
-    <Modal open={Boolean(editTarget)} title={`修改调查记录：${editTarget?.serial_no||''}`} okText="保存修改" cancelText="取消" onOk={saveEdit} onCancel={()=>setEditTarget(null)}><Form form={editForm} layout="vertical"><div className="form-grid"><Form.Item label="标题/事项" name="title" rules={[{required:true}]}><Input/></Form.Item><Form.Item label="权利人/客户" name="customer"><Input/></Form.Item><Form.Item label="负责人/调查员（请通过分配入口变更）" name="owner" rules={[{required:true}]}><Input disabled/></Form.Item><Form.Item label="调查区域" name="region"><Input/></Form.Item><Form.Item label="权利类型" name="right_type"><Select allowClear options={['商标','专利','著作权','不正当竞争'].map(value=>({value,label:value}))}/></Form.Item>{editTarget?.module==='clue'&&<><Form.Item label="侵权方式" name="infringement_method"><Select allowClear options={['电商平台','实体店铺','工厂','其他','网页链接'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="调查平台" name="platform"><Input/></Form.Item><Form.Item label="侵权产品" name="product"><Input/></Form.Item><Form.Item label="来源" name="source"><Input/></Form.Item><Form.Item label="调查地址" name="address"><Input/></Form.Item></>}{editTarget?.module==='task'&&<><Form.Item label="截止日期" name="deadline"><DatePicker style={{width:'100%'}}/></Form.Item><Form.Item label="优先级" name="priority"><Select options={['普通','紧急','特急'].map(value=>({value,label:value}))}/></Form.Item></>}</div><Form.Item label="说明" name="description"><Input.TextArea rows={3}/></Form.Item></Form></Modal>
-    <Modal open={Boolean(assignTarget)} title={`分配调查员：${assignTarget?.serial_no||''}`} okText="确认分配" cancelText="取消" onOk={saveAssign} onCancel={()=>setAssignTarget(null)}><Form form={assignForm} layout="vertical"><Form.Item label="调查员账号" name="investigator" rules={[{required:true,min:1}]}><Input/></Form.Item><Form.Item label="分配说明" name="comment"><Input.TextArea rows={3}/></Form.Item></Form></Modal>
-    <Modal open={Boolean(feeTarget)} title={`申请调查费用：${feeTarget?.serial_no||''}`} okText="创建费用申请" cancelText="取消" onOk={saveFee} onCancel={()=>setFeeTarget(null)}><Form form={feeForm} layout="vertical"><Form.Item label="费用类型" name="fee_type" rules={[{required:true}]}><Select options={['调查取证费','公证费','差旅费','购买样品费','其他'].map(value=>({value,label:value}))}/></Form.Item><Form.Item label="申请金额" name="amount" rules={[{required:true}]}><InputNumber min={0.01} precision={2} style={{width:'100%'}}/></Form.Item><Form.Item label="费用说明" name="description"><Input.TextArea rows={3}/></Form.Item></Form></Modal>
-    <Modal width={760} open={Boolean(linkedCase)} title={`关联案件：${linkedCase?.serial_no||''}`} footer={<Button onClick={()=>setLinkedCase(null)}>关闭</Button>} onCancel={()=>setLinkedCase(null)}><Descriptions bordered size="small" column={2} items={linkedCase?[{key:'no',label:'案号',children:linkedCase.serial_no},{key:'status',label:'阶段',children:<Tag color="blue">{linkedCase.status}</Tag>},{key:'title',label:'案件名称',children:linkedCase.title,span:2},{key:'customer',label:'客户/原告',children:linkedCase.customer},{key:'opponent',label:'对方当事人',children:linkedCase.data.opponent||linkedCase.data.defendant||'—'},{key:'court',label:'法院',children:linkedCase.data.court||'—'},{key:'owner',label:'负责人',children:linkedCase.owner},{key:'description',label:'说明',children:linkedCase.description||'—',span:2}]:[]}/></Modal>
-  </>
+  const tableScrollX =
+    columns.reduce(
+      (total: number, column: any) =>
+        total + (typeof column.width === "number" ? column.width : 160),
+      0,
+    ) + (isFileQuery ? 0 : 40);
+  const investigationDetailItems = investigationDetail
+    ? [
+        {
+          key: "no",
+          label: "调查编号",
+          children: investigationDetail.serial_no,
+        },
+        {
+          key: "status",
+          label: "状态",
+          children: (
+            <Tag color={statusColors[investigationDetail.status] || "blue"}>
+              {investigationDetail.status}
+            </Tag>
+          ),
+        },
+        {
+          key: "title",
+          label: "调查事项",
+          children: investigationDetail.title,
+          span: 2,
+        },
+        {
+          key: "customer",
+          label: "权利人",
+          children: investigationDetail.customer ? (
+            <Button
+              className="business-relation-link"
+              type="link"
+              onClick={() =>
+                void openLinkedCustomer(investigationDetail.customer)
+              }
+            >
+              {investigationDetail.customer}
+            </Button>
+          ) : (
+            "—"
+          ),
+        },
+        {
+          key: "right-type",
+          label: "权利类型",
+          children: investigationDetail.data.right_type || "—",
+        },
+        {
+          key: "owner",
+          label: "调查员",
+          children: investigationDetail.owner || "—",
+        },
+        {
+          key: "region",
+          label: "调查区域",
+          children: investigationDetail.data.region || "—",
+        },
+        {
+          key: "authorized-from",
+          label: "授权开始",
+          children: investigationDetail.data.authorized_from || "—",
+        },
+        {
+          key: "authorized-to",
+          label: "授权结束",
+          children: investigationDetail.data.authorized_to || "—",
+        },
+        {
+          key: "source-owner",
+          label: "案源人",
+          children: investigationDetail.data.source_owner || "—",
+        },
+        {
+          key: "assigner",
+          label: "任务分配人",
+          children:
+            investigationDetail.data.assigner ||
+            investigationDetail.data.assigned_by ||
+            "—",
+        },
+        ...(investigationDetail.data.source_task_no
+          ? [
+              {
+                key: "source-task",
+                label: "来源调查任务",
+                children: (
+                  <Button
+                    className="business-relation-link"
+                    type="link"
+                    onClick={() =>
+                      openLinkedInvestigation(
+                        String(investigationDetail.data.source_task_no),
+                        "task",
+                      )
+                    }
+                  >
+                    {String(investigationDetail.data.source_task_no)}
+                  </Button>
+                ),
+              },
+            ]
+          : []),
+        ...(investigationDetail.data.clue_no
+          ? [
+              {
+                key: "clue",
+                label: "关联线索",
+                children: (
+                  <Button
+                    className="business-relation-link"
+                    type="link"
+                    onClick={() =>
+                      openLinkedInvestigation(
+                        String(investigationDetail.data.clue_no),
+                        "clue",
+                      )
+                    }
+                  >
+                    {String(investigationDetail.data.clue_no)}
+                  </Button>
+                ),
+              },
+            ]
+          : []),
+        ...(investigationDetail.data.case_no ||
+        investigationDetail.data.converted_case_no
+          ? [
+              {
+                key: "case",
+                label: "关联案件",
+                children: (
+                  <Button
+                    className="business-relation-link"
+                    type="link"
+                    onClick={() =>
+                      void openLinkedCase(
+                        String(
+                          investigationDetail.data.case_no ||
+                            investigationDetail.data.converted_case_no,
+                        ),
+                      )
+                    }
+                  >
+                    {String(
+                      investigationDetail.data.case_no ||
+                        investigationDetail.data.converted_case_no,
+                    )}
+                  </Button>
+                ),
+              },
+            ]
+          : []),
+        ...(investigationDetail.data.certificate_no ||
+        investigationDetail.data.notary_record_id
+          ? [
+              {
+                key: "notary",
+                label: "关联公证",
+                children: (
+                  <Button
+                    className="business-relation-link"
+                    type="link"
+                    onClick={() =>
+                      void openLinkedNotary(
+                        investigationDetail.data.notary_record_id,
+                        investigationDetail.data.certificate_no,
+                      )
+                    }
+                  >
+                    {String(
+                      investigationDetail.data.certificate_no ||
+                        `公证ID：${investigationDetail.data.notary_record_id}`,
+                    )}
+                  </Button>
+                ),
+              },
+            ]
+          : []),
+        ...(investigationDetail.module === "clue"
+          ? [
+              {
+                key: "infringement",
+                label: "侵权方式",
+                children:
+                  investigationDetail.data.infringement_method ||
+                  investigationDetail.data.platform ||
+                  "—",
+              },
+              {
+                key: "investigated-at",
+                label: "调查日期",
+                children: investigationDetail.data.investigated_at || "—",
+              },
+              {
+                key: "store-url",
+                label: "店铺链接",
+                children: investigationDetail.data.store_url ? (
+                  <a
+                    href={String(investigationDetail.data.store_url)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {String(investigationDetail.data.store_url)}
+                  </a>
+                ) : (
+                  "—"
+                ),
+              },
+              {
+                key: "shop-id",
+                label: "店铺Id",
+                children: investigationDetail.data.shop_id || "—",
+              },
+              {
+                key: "address",
+                label: "调查地址",
+                children: investigationDetail.data.address || "—",
+              },
+              {
+                key: "platform",
+                label: "调查平台",
+                children: investigationDetail.data.platform || "—",
+              },
+              {
+                key: "product",
+                label: "侵权产品",
+                children: investigationDetail.data.product || "—",
+              },
+              {
+                key: "source",
+                label: "来源",
+                children: investigationDetail.data.source || "—",
+              },
+              {
+                key: "producer",
+                label: "生产商",
+                children:
+                  investigationDetail.data.producer ||
+                  investigationDetail.data.producers ||
+                  "—",
+              },
+              {
+                key: "indictee",
+                label: "主体信息",
+                children:
+                  investigationDetail.data.indictee ||
+                  investigationDetail.data.indictees ||
+                  investigationDetail.data.subject ||
+                  "—",
+              },
+              {
+                key: "assistant",
+                label: "调查辅助",
+                children:
+                  investigationDetail.data.investigation_assistant ||
+                  investigationDetail.data.assistant ||
+                  "—",
+              },
+              {
+                key: "collected-at",
+                label: "取证日期",
+                children: investigationDetail.data.collected_at || "—",
+              },
+              {
+                key: "notary-institution",
+                label: "取证机构",
+                children: investigationDetail.data.notary_institution || "—",
+              },
+              {
+                key: "certificate-no",
+                label: "公证书号",
+                children: investigationDetail.data.certificate_no || "—",
+              },
+              {
+                key: "invoice-no",
+                label: "发票号",
+                children: investigationDetail.data.invoice_no || "—",
+              },
+              {
+                key: "warehouse",
+                label: "证物存放处",
+                children:
+                  investigationDetail.data.warehouse ||
+                  investigationDetail.data.certificate_storage_location ||
+                  "—",
+              },
+              {
+                key: "evidence-status",
+                label: "证物状态",
+                children:
+                  investigationDetail.data.evidence_status ||
+                  investigationDetail.data.warehouse_status ||
+                  investigationDetail.data.storage_status ||
+                  "—",
+              },
+              {
+                key: "investigator-remark",
+                label: "调查员备注",
+                children: investigationDetail.data.investigator_remark || "—",
+              },
+              {
+                key: "review-remark",
+                label: "审批备注",
+                children: investigationDetail.data.review_comment || "—",
+              },
+              {
+                key: "customer-review-remark",
+                label: "客户审核备注",
+                children:
+                  investigationDetail.data.customer_review_comment || "—",
+              },
+            ]
+          : []),
+        {
+          key: "description",
+          label: "说明",
+          children: investigationDetail.description || "—",
+          span: 2,
+        },
+      ]
+    : [];
+  return (
+    <>
+      <Modal
+        open={Boolean(subtaskActionTarget)}
+        title={`${subtaskActionTarget?.action === "accept" ? "接收调查子任务" : "提交调查子任务完成"}：${subtaskActionTarget?.row.serial_no || ""}`}
+        okText={
+          subtaskActionTarget?.action === "accept" ? "确认接收" : "提交完成"
+        }
+        cancelText="取消"
+        onOk={submitSubtaskAction}
+        onCancel={() => {
+          setSubtaskActionTarget(null);
+          subtaskActionForm.resetFields();
+        }}
+      >
+        <Form form={subtaskActionForm} layout="vertical">
+          <Form.Item
+            label={
+              subtaskActionTarget?.action === "accept"
+                ? "接收说明"
+                : "办理结果说明"
+            }
+            name="comment"
+            rules={
+              subtaskActionTarget?.action === "complete"
+                ? [{ required: true, min: 2, message: "请填写办理结果说明" }]
+                : []
+            }
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder={
+                subtaskActionTarget?.action === "accept"
+                  ? "可填写接收说明"
+                  : "请说明本次调查办理结果"
+              }
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={investigationCreateOpen}
+        title="新建调查任务"
+        okText="保存调查任务"
+        cancelText="取消"
+        onOk={create}
+        onCancel={() => {
+          setInvestigationCreateOpen(false);
+          setCreateContextTask(null);
+          setCreateModule(tab);
+          createForm.resetFields();
+        }}
+      >
+        <Form form={createForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item
+              label="调查编号"
+              name="serial_no"
+              rules={[{ required: true, message: "请填写调查编号" }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label="负责人/调查员"
+              name="owner"
+              rules={[{ required: true, message: "请填写负责人" }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              className="span-2"
+              label="标题/事项"
+              name="title"
+              rules={[
+                { required: true, min: 2, message: "调查事项至少 2 个字符" },
+              ]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="权利人/客户" name="customer">
+              <Input />
+            </Form.Item>
+            <Form.Item label="案源人" name="source_owner">
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label="调查区域"
+              name="region"
+              rules={[{ required: true, message: "请填写调查区域" }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label="权利类型"
+              name="right_type"
+              rules={[{ required: true, message: "请选择权利类型" }]}
+            >
+              <Select
+                options={["商标", "专利", "著作权", "不正当竞争"].map(
+                  (value) => ({ value, label: value }),
+                )}
+              />
+            </Form.Item>
+            <Form.Item
+              label="授权开始日期"
+              name="authorized_from"
+              rules={[{ required: true, message: "请选择授权开始日期" }]}
+            >
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item
+              label="授权结束日期"
+              name="authorized_to"
+              dependencies={["authorized_from"]}
+              rules={[
+                { required: true, message: "请选择授权结束日期" },
+                {
+                  validator: (_, value) => {
+                    const start = createForm.getFieldValue("authorized_from");
+                    return !start ||
+                      !value ||
+                      !dayjs(value).isBefore(dayjs(start), "day")
+                      ? Promise.resolve()
+                      : Promise.reject(
+                          new Error("授权结束日期不能早于开始日期"),
+                        );
+                  },
+                },
+              ]}
+            >
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="customer_review" valuePropName="checked">
+              <Checkbox>线索需要客户审核</Checkbox>
+            </Form.Item>
+            <Form.Item className="span-2" label="说明" name="description">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </div>
+        </Form>
+      </Modal>
+      <Modal
+        open={clueCreateOpen}
+        title="新建调查线索"
+        okText="保存"
+        cancelText="取消"
+        onOk={create}
+        onCancel={() => {
+          setClueCreateOpen(false);
+          setCreateContextTask(null);
+          setCreateModule(tab);
+          createForm.resetFields();
+        }}
+      >
+        <Form form={createForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item
+              label="线索编号"
+              name="serial_no"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item
+              className="span-2"
+              label="标题/事项"
+              name="title"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="客户" name="customer">
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label="调查平台"
+              name="platform"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label="侵权产品"
+              name="product"
+              rules={[{ required: true, message: "不同产品需分别创建线索" }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="侵权方式" name="infringement_method">
+              <Select
+                allowClear
+                options={[
+                  "电商平台",
+                  "实体店铺",
+                  "工厂",
+                  "其他",
+                  "网页链接",
+                ].map((value) => ({ value, label: value }))}
+              />
+            </Form.Item>
+            <Form.Item label="来源" name="source">
+              <Input />
+            </Form.Item>
+            <Form.Item label="店铺链接" name="store_url">
+              <Input placeholder="请输入店铺链接" />
+            </Form.Item>
+            <Form.Item label="店铺Id" name="shop_id">
+              <Input placeholder="淘宝店铺Id为掌柜名称，拼多多店铺Id为一串数字" />
+            </Form.Item>
+            <Form.Item label="调查地址" name="address">
+              <Input placeholder="请输入调查地址" />
+            </Form.Item>
+            <Form.Item label="调查日期" name="investigated_at">
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item label="生产商" name="producer">
+              <Input placeholder="生产商" />
+            </Form.Item>
+            <Form.Item label="主体信息" name="indictee">
+              <Input placeholder="主体信息" />
+            </Form.Item>
+            <Form.Item label="调查辅助员" name="investigation_assistant">
+              <Input placeholder="调查辅助员" />
+            </Form.Item>
+            <Form.Item label="权利类型" name="right_type">
+              <Select
+                options={["商标", "专利", "著作权", "不正当竞争"].map(
+                  (value) => ({ value, label: value }),
+                )}
+              />
+            </Form.Item>
+            <Form.Item label="案源人" name="source_owner">
+              <Input />
+            </Form.Item>
+            <Form.Item label="调查区域" name="region">
+              <Input />
+            </Form.Item>
+            <Form.Item className="span-2" label="说明" name="description">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </div>
+        </Form>
+      </Modal>
+      {(initialTab === "notary-import-files" ||
+        initialTab === "notary-import-invoices") && (
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Space>
+            <span>
+              {initialTab === "notary-import-files" ? "公证书号" : "发票号"}
+            </span>
+            <Input
+              style={{ width: 260 }}
+              placeholder={
+                initialTab === "notary-import-files"
+                  ? "请输入公证书号"
+                  : "请输入发票号"
+              }
+              value={importReference}
+              onChange={(e) => setImportReference(e.target.value)}
+            />
+          </Space>
+        </Card>
+      )}
+      <Card className="panel investigation-original" title={pageTitle}>
+        {isImport ? (
+          <div className="notary-import-page">
+            <div className="notary-file-rule">{importRule}</div>
+            <label>请选择上传文件：</label>
+            <Space wrap>
+              {initialTab === "notary-import-info" && (
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={downloadImportTemplate}
+                >
+                  下载导入模板
+                </Button>
+              )}
+              <label className="notary-upload-button">
+                <UploadOutlined /> 选择文件
+                <input
+                  hidden
+                  type="file"
+                  accept={importAccept}
+                  onChange={(e) => {
+                    setImportFile(e.target.files?.[0] || null);
+                    setImportResult(null);
+                    setImportPreviewRows([]);
+                  }}
+                />
+              </label>
+              {importFile && (
+                <span className="notary-selected-file">{importFile.name}</span>
+              )}
+              <Button type="primary" onClick={importRows}>
+                上传文件
+              </Button>
+            </Space>
+            {importResult && (
+              <Alert
+                style={{ marginTop: 12 }}
+                type={importResult.failed ? "warning" : "success"}
+                showIcon
+                title={`成功 ${initialTab === "notary-import-storage" ? ((importResult as any).updated ?? importResult.created) : importResult.created} 条，失败 ${importResult.failed} 条`}
+                description={importResult.errors?.slice(0, 8).map((x) => (
+                  <div key={`${x.row}-${x.error}`}>
+                    第 {x.row} 行：{x.error}
+                  </div>
+                ))}
+              />
+            )}
+            <Table
+              size="small"
+              rowKey={(row: any) => String(row.id ?? JSON.stringify(row))}
+              dataSource={importPreviewRows}
+              locale={{ emptyText: "暂无待导入数据" }}
+              columns={importColumns.map((title) => ({
+                title,
+                dataIndex: title,
+              }))}
+              scroll={{ x: 1200 }}
+              pagination={false}
+            />
+          </div>
+        ) : (
+          <>
+            <Form
+              key={initialTab}
+              className="investigation-query"
+              onValuesChange={(_, all) => setListQuery(all)}
+            >
+              {isFileQuery ? fileQueryFilters : filters}
+              <div className="investigation-actions">
+                {queryActionLabels.map((label) => (
+                  <Button
+                    key={label}
+                    type={label === "查询" ? "primary" : "default"}
+                    onClick={() => runOriginalAction(label)}
+                  >
+                    {label === "审批" && initialTab === "clue-audit-customer"
+                      ? "客户审核"
+                      : label === "审批" && initialTab === "clue-audit-pending"
+                        ? "内部审批"
+                        : label}
+                  </Button>
+                ))}
+              </div>
+            </Form>
+            <Tabs
+              className="investigation-hidden-tabs"
+              activeKey={tab}
+              onChange={(key) => {
+                if (onNavigate) {
+                  onNavigate(key);
+                  return;
+                }
+                setTab(key as keyof typeof moduleMeta);
+                load(key as keyof typeof moduleMeta);
+              }}
+              items={[
+                { key: "clue", label: "线索管理" },
+                { key: "notary", label: "公证管理" },
+                { key: "evidence", label: "证据管理" },
+              ]}
+            />
+            <Table
+              rowKey="id"
+              loading={loading}
+              size="small"
+              columns={columns}
+              dataSource={visibleRows}
+              rowSelection={
+                !isFileQuery
+                  ? {
+                      selectedRowKeys: selectedClues,
+                      onChange: (keys) => setSelectedClues(keys as number[]),
+                    }
+                  : undefined
+              }
+              scroll={{ x: tableScrollX }}
+              pagination={{ pageSize: 20, showTotal: (n) => `共 ${n} 条` }}
+              locale={{ emptyText: "没有查询到符合条件的记录" }}
+            />
+            {businessActionLabels.length > 0 && (
+              <div className="investigation-actions investigation-actions-bottom">
+                {businessActionLabels.map((label) => (
+                  <Button key={label} onClick={() => runOriginalAction(label)}>
+                    {label === "审批" && initialTab === "clue-audit-customer"
+                      ? "客户审核"
+                      : label === "审批" && initialTab === "clue-audit-pending"
+                        ? "内部审批"
+                        : label}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+      <Modal
+        open={createOpen}
+        title={`新增${meta.title}`}
+        okText="保存"
+        cancelText="取消"
+        onOk={create}
+        onCancel={() => setCreateOpen(false)}
+      >
+        <Form form={createForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item
+              label="业务编号"
+              name="serial_no"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="状态" name="status" rules={[{ required: true }]}>
+              <Select
+                options={meta.statuses.map((v) => ({ value: v, label: v }))}
+              />
+            </Form.Item>
+            <Form.Item
+              className="span-2"
+              label="标题/事项"
+              name="title"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="客户" name="customer">
+              <Input />
+            </Form.Item>
+            <Form.Item label="负责人" name="owner">
+              <Input />
+            </Form.Item>
+            {tab === "clue" && (
+              <>
+                <Form.Item label="调查平台" name="platform">
+                  <Input />
+                </Form.Item>
+                <Form.Item
+                  label="侵权产品"
+                  name="product"
+                  rules={[
+                    { required: true, message: "不同产品需分别创建线索" },
+                  ]}
+                >
+                  <Input />
+                </Form.Item>
+              </>
+            )}
+            {tab === "evidence" && (
+              <Form.Item label="材料来源" name="source">
+                <Input />
+              </Form.Item>
+            )}
+            <Form.Item className="span-2" label="说明" name="description">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </div>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(clueReviewing)}
+        title={`${clueReviewing?.status === "待客户审核" ? "客户审核确认" : "线索内部审批"}：${clueReviewing?.serial_no || ""}`}
+        okText="提交审核"
+        cancelText="取消"
+        onOk={reviewClue}
+        onCancel={() => setClueReviewing(null)}
+      >
+        <Form form={clueReviewForm} layout="vertical">
+          {clueReviewing?.status === "待客户审核" && (
+            <div className="form-grid audit-reference">
+              <Form.Item label="上一级审核员">
+                <Input value={clueReviewing.data.reviewer || "—"} readOnly />
+              </Form.Item>
+              <Form.Item label="上一级审核意见">
+                <Input.TextArea
+                  value={clueReviewing.data.review_comment || "—"}
+                  readOnly
+                  rows={2}
+                />
+              </Form.Item>
+            </div>
+          )}
+          <Form.Item
+            label="审核结果"
+            name="approved"
+            rules={[{ required: true }]}
+          >
+            <Radio.Group>
+              <Radio value={true}>
+                <CheckCircleOutlined />{" "}
+                {clueReviewing?.status === "待客户审核"
+                  ? "客户确认通过，进入待取证"
+                  : "内部审批通过，进入客户审核或取证"}
+              </Radio>
+              <Radio value={false}>驳回修改</Radio>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item
+            label={
+              clueReviewing?.status === "待客户审核"
+                ? "客户反馈/驳回原因"
+                : "审核意见/驳回原因"
+            }
+            name="comment"
+            rules={[{ required: true, min: 2 }]}
+          >
+            <Input.TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(collectionTarget)}
+        title={`登记取证：${collectionTarget?.serial_no || ""}`}
+        okText="确认已取证"
+        cancelText="取消"
+        onOk={registerCollection}
+        onCancel={() => setCollectionTarget(null)}
+      >
+        <Form form={collectionForm} layout="vertical">
+          <Form.Item
+            label="取证日期"
+            name="collected_at"
+            rules={[{ required: true }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            label="公证机构"
+            name="notary_institution"
+            rules={[{ required: true, min: 2 }]}
+          >
+            <Input placeholder="例如：上海市东方公证处" />
+          </Form.Item>
+          <Form.Item label="取证说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(evidenceSource)}
+        title={`建立证据目录：${evidenceSource?.serial_no || ""}`}
+        okText="创建证据"
+        cancelText="取消"
+        onOk={createEvidence}
+        onCancel={() => setEvidenceSource(null)}
+      >
+        <Form form={evidenceForm} layout="vertical">
+          <Form.Item label="证据标题" name="title" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="材料来源" name="source">
+              <Input />
+            </Form.Item>
+          </div>
+          <Form.Item label="证据说明" name="description">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(reviewing)}
+        title={`公证审核：${reviewing?.serial_no || ""}`}
+        okText="提交审核"
+        cancelText="取消"
+        onOk={review}
+        onCancel={() => setReviewing(null)}
+      >
+        <Form form={reviewForm} layout="vertical">
+          <Form.Item
+            label="审核结果"
+            name="approved"
+            rules={[{ required: true }]}
+          >
+            <Radio.Group>
+              <Radio value={true}>
+                <CheckCircleOutlined /> 通过并自动转案件
+              </Radio>
+              <Radio value={false}>驳回</Radio>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item label="案件类型" name="case_type">
+            <Select
+              options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
+                (v) => ({ value: v, label: v }),
+              )}
+            />
+          </Form.Item>
+          <Form.Item label="拟管辖法院" name="court">
+            <Input />
+          </Form.Item>
+          <Form.Item label="审核意见" name="comment">
+            <Input.TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(certificateTarget)}
+        title={`登记公证书：${certificateTarget?.serial_no || ""}`}
+        okText="保存登记"
+        cancelText="取消"
+        onOk={registerCertificate}
+        onCancel={() => setCertificateTarget(null)}
+      >
+        <Form form={certificateForm} layout="vertical">
+          <Form.Item
+            label="公证书编号"
+            name="certificate_no"
+            rules={[{ required: true }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label="签发日期"
+            name="issued_date"
+            rules={[{ required: true }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            label="实物/扫描件存放位置"
+            name="storage_location"
+            rules={[{ required: true }]}
+          >
+            <Input placeholder="例如：上海档案室 A-01" />
+          </Form.Item>
+          <Form.Item name="physical_received" valuePropName="checked">
+            <Checkbox>纸质公证书实物已收到</Checkbox>
+          </Form.Item>
+          <Form.Item label="登记说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={importOpen}
+        title={`${tab === "notary" ? "公证记录" : "调查线索"}批量导入`}
+        okText="开始导入"
+        cancelText="关闭"
+        onOk={importRows}
+        onCancel={() => setImportOpen(false)}
+      >
+        <Alert
+          type="info"
+          showIcon
+          title={
+            tab === "notary"
+              ? "仅支持 UTF-8 CSV；来源线索必须存在且尚未生成公证记录。"
+              : "仅支持 UTF-8 CSV；每一行只能填写一种侵权产品，重复线索不会导入。"
+          }
+        />
+        <Space orientation="vertical" className="import-box">
+          <Button icon={<DownloadOutlined />} onClick={downloadImportTemplate}>
+            下载 CSV 模板
+          </Button>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+          />
+          {importResult && (
+            <Alert
+              type={importResult.failed ? "warning" : "success"}
+              showIcon
+              title={`成功 ${importResult.created} 条，失败 ${importResult.failed} 条`}
+              description={importResult.errors.slice(0, 8).map((x) => (
+                <div key={`${x.row}-${x.error}`}>
+                  第 {x.row} 行：{x.error}
+                </div>
+              ))}
+            />
+          )}
+        </Space>
+      </Modal>
+      <Modal
+        open={batchOpen}
+        title={`已取证线索批量转案件（已选 ${selectedClues.length} 条）`}
+        okText="生成等待公证书案件"
+        cancelText="取消"
+        onOk={batchCases}
+        onCancel={() => setBatchOpen(false)}
+      >
+        <Alert
+          type="info"
+          showIcon
+          title="只有已取证线索可转案；每条线索生成一个等待公证书案件，客户必须与所选合同一致。"
+          style={{ marginBottom: 15 }}
+        />
+        <Form form={batchForm} layout="vertical">
+          <Form.Item
+            label="关联合同"
+            name="contract_record_id"
+            rules={[{ required: true }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={contracts.map((x) => ({
+                value: x.id,
+                label: `${x.serial_no}｜${x.customer}｜${x.title}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="案件类型" name="case_type">
+            <Select
+              options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
+                (v) => ({ value: v, label: v }),
+              )}
+            />
+          </Form.Item>
+          <Form.Item label="拟管辖法院" name="court">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        width={780}
+        open={materialOpen}
+        title={`${materialTarget?.serial_no || ""}｜材料目录`}
+        footer={null}
+        onCancel={() => setMaterialOpen(false)}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          scroll={{ x: 720 }}
+          dataSource={materials}
+          locale={{ emptyText: "尚未上传材料" }}
+          columns={[
+            {
+              title: "目录",
+              dataIndex: "category",
+              width: 120,
+              render: (v: string) => <Tag color="blue">{v}</Tag>,
+            },
+            {
+              title: "文件名",
+              dataIndex: "original_name",
+              width: 280,
+              ellipsis: { showTitle: true },
+            },
+            {
+              title: "大小",
+              dataIndex: "size",
+              width: 90,
+              render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
+            },
+            { title: "上传人", dataIndex: "uploader", width: 85 },
+            {
+              title: "操作",
+              key: "action",
+              width: 140,
+              render: (_: unknown, r: Attachment) => (
+                <Space size={0}>
+                  <Button
+                    type="link"
+                    icon={<DownloadOutlined />}
+                    onClick={() => downloadMaterial(r)}
+                  >
+                    下载
+                  </Button>
+                  <Button
+                    danger
+                    type="link"
+                    icon={<DeleteOutlined />}
+                    onClick={() => deleteMaterial(r)}
+                  >
+                    删除
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
+        <Form
+          form={materialForm}
+          layout="vertical"
+          className="material-upload-form"
+        >
+          <div className="form-grid">
+            <Form.Item
+              label="材料目录"
+              name="category"
+              rules={[{ required: true }]}
+            >
+              <Select
+                options={allowedCategories.map((v) => ({ value: v, label: v }))}
+              />
+            </Form.Item>
+            <Form.Item label="批量选择文件" required>
+              <input
+                multiple
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.zip,.rar"
+                onChange={(e) =>
+                  setMaterialFiles(Array.from(e.target.files || []))
+                }
+              />
+            </Form.Item>
+          </div>
+          <Form.Item label="材料说明" name="remark">
+            <Input />
+          </Form.Item>
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={uploadMaterial}
+          >
+            批量上传{materialFiles.length ? `（${materialFiles.length}）` : ""}
+          </Button>
+        </Form>
+      </Modal>
+      <Drawer
+        size={760}
+        open={Boolean(taskTarget)}
+        title={`调查任务：${taskTarget?.serial_no || ""}`}
+        onClose={() => {
+          setTaskTarget(null);
+          setCreatingSubtask(false);
+        }}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          scroll={{ x: 840 }}
+          dataSource={tasks}
+          columns={[
+            { title: "任务编号", dataIndex: "serial_no", width: 165 },
+            {
+              title: "任务名称",
+              dataIndex: "title",
+              width: 220,
+              ellipsis: { showTitle: true },
+            },
+            {
+              title: "父任务",
+              dataIndex: "parent_task_no",
+              width: 150,
+              render: (v: string) => v || "—",
+            },
+            { title: "负责人", dataIndex: "owner", width: 90 },
+            { title: "截止日", dataIndex: "deadline", width: 110 },
+            {
+              title: "状态",
+              dataIndex: "status",
+              width: 90,
+              render: (v: string) => <Tag>{v}</Tag>,
+            },
+          ]}
+        />
+        <Card
+          size="small"
+          title={
+            creatingSubtask
+              ? "新增子任务"
+              : tasks.length
+                ? "新增主任务/子任务"
+                : "创建首个调查任务"
+          }
+          style={{ marginTop: 16 }}
+        >
+          <Form form={taskForm} layout="vertical">
+            <Form.Item
+              label="任务名称"
+              name="title"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <div className="form-grid">
+              <Form.Item
+                label="负责人"
+                name="owner"
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                label="截止日期"
+                name="deadline"
+                rules={[{ required: true }]}
+              >
+                <DatePicker style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item label="优先级" name="priority">
+                <Select
+                  options={["普通", "紧急", "特急"].map((v) => ({
+                    value: v,
+                    label: v,
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
+                label={creatingSubtask ? "父任务" : "父任务（留空为主任务）"}
+                name="parent_task_id"
+                rules={
+                  creatingSubtask
+                    ? [{ required: true, message: "请选择父任务" }]
+                    : []
+                }
+              >
+                <Select
+                  allowClear={!creatingSubtask}
+                  options={tasks.map((x) => ({
+                    value: x.id,
+                    label: `${x.serial_no}｜${x.title}`,
+                  }))}
+                />
+              </Form.Item>
+            </div>
+            <Form.Item label="任务说明" name="description">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+            <Button type="primary" onClick={createTask}>
+              {creatingSubtask ? "创建子任务" : "创建调查任务"}
+            </Button>
+          </Form>
+        </Card>
+      </Drawer>
+      <Modal
+        width={760}
+        open={Boolean(investigationDetail)}
+        title={`调查详情：${investigationDetail?.serial_no || ""}`}
+        footer={
+          <Button onClick={() => setInvestigationDetail(null)}>关闭</Button>
+        }
+        onCancel={() => setInvestigationDetail(null)}
+      >
+        <Descriptions
+          bordered
+          size="small"
+          column={2}
+          items={investigationDetailItems}
+        />
+      </Modal>
+      <Modal
+        open={Boolean(editTarget)}
+        title={`修改调查记录：${editTarget?.serial_no || ""}`}
+        okText="保存修改"
+        cancelText="取消"
+        onOk={saveEdit}
+        onCancel={() => setEditTarget(null)}
+      >
+        <Form form={editForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item
+              label="标题/事项"
+              name="title"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+            <Form.Item label="权利人/客户" name="customer">
+              <Input />
+            </Form.Item>
+            <Form.Item
+              label="负责人/调查员（请通过分配入口变更）"
+              name="owner"
+              rules={[{ required: true }]}
+            >
+              <Input disabled />
+            </Form.Item>
+            <Form.Item label="调查区域" name="region">
+              <Input />
+            </Form.Item>
+            <Form.Item label="权利类型" name="right_type">
+              <Select
+                allowClear
+                options={["商标", "专利", "著作权", "不正当竞争"].map(
+                  (value) => ({ value, label: value }),
+                )}
+              />
+            </Form.Item>
+            {editTarget?.module === "clue" && (
+              <>
+                <Form.Item label="侵权方式" name="infringement_method">
+                  <Select
+                    allowClear
+                    options={[
+                      "电商平台",
+                      "实体店铺",
+                      "工厂",
+                      "其他",
+                      "网页链接",
+                    ].map((value) => ({ value, label: value }))}
+                  />
+                </Form.Item>
+                <Form.Item label="调查平台" name="platform">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="侵权产品" name="product">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="来源" name="source">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="调查地址" name="address">
+                  <Input />
+                </Form.Item>
+              </>
+            )}
+            {editTarget?.module === "task" && (
+              <>
+                <Form.Item label="截止日期" name="deadline">
+                  <DatePicker style={{ width: "100%" }} />
+                </Form.Item>
+                <Form.Item label="优先级" name="priority">
+                  <Select
+                    options={["普通", "紧急", "特急"].map((value) => ({
+                      value,
+                      label: value,
+                    }))}
+                  />
+                </Form.Item>
+              </>
+            )}
+          </div>
+          <Form.Item label="说明" name="description">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(assignTarget)}
+        title={`分配调查员：${assignTarget?.serial_no || ""}`}
+        okText="确认分配"
+        cancelText="取消"
+        onOk={saveAssign}
+        onCancel={() => setAssignTarget(null)}
+      >
+        <Form form={assignForm} layout="vertical">
+          <Form.Item
+            label="调查员账号"
+            name="investigator"
+            rules={[{ required: true, min: 1 }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item label="分配说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(feeTarget)}
+        title={`申请调查费用：${feeTarget?.serial_no || ""}`}
+        okText="创建费用申请"
+        cancelText="取消"
+        onOk={saveFee}
+        onCancel={() => setFeeTarget(null)}
+      >
+        <Form form={feeForm} layout="vertical">
+          <Form.Item
+            label="费用类型"
+            name="fee_type"
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                "调查取证费",
+                "公证费",
+                "差旅费",
+                "购买样品费",
+                "其他",
+              ].map((value) => ({ value, label: value }))}
+            />
+          </Form.Item>
+          <Form.Item
+            label="申请金额"
+            name="amount"
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="费用说明" name="description">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        width={760}
+        open={Boolean(linkedCase)}
+        title={`关联案件：${linkedCase?.serial_no || ""}`}
+        footer={<Button onClick={() => setLinkedCase(null)}>关闭</Button>}
+        onCancel={() => setLinkedCase(null)}
+      >
+        <Descriptions
+          bordered
+          size="small"
+          column={2}
+          items={
+            linkedCase
+              ? [
+                  { key: "no", label: "案号", children: linkedCase.serial_no },
+                  {
+                    key: "status",
+                    label: "阶段",
+                    children: <Tag color="blue">{linkedCase.status}</Tag>,
+                  },
+                  {
+                    key: "title",
+                    label: "案件名称",
+                    children: linkedCase.title,
+                    span: 2,
+                  },
+                  {
+                    key: "customer",
+                    label: "客户/原告",
+                    children: linkedCase.customer,
+                  },
+                  {
+                    key: "opponent",
+                    label: "对方当事人",
+                    children:
+                      linkedCase.data.opponent ||
+                      linkedCase.data.defendant ||
+                      "—",
+                  },
+                  {
+                    key: "court",
+                    label: "法院",
+                    children: linkedCase.data.court || "—",
+                  },
+                  { key: "owner", label: "负责人", children: linkedCase.owner },
+                  {
+                    key: "description",
+                    label: "说明",
+                    children: linkedCase.description || "—",
+                    span: 2,
+                  },
+                ]
+              : []
+          }
+        />
+      </Modal>
+    </>
+  );
 }
