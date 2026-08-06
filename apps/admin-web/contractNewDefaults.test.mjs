@@ -76,6 +76,8 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /wizardStep === 3[\s\S]{0,180}contract-seal-step/);
   assert.match(contractPage, /api\.post\(`\/contracts\/\$\{wizardDraft\.id\}\/seal-application`/);
   assert.match(contractPage, /保存用印草稿/);
-  assert.match(contractPage, /保存并提交用印|保存用印草稿并上传文件/);
+  assert.match(contractPage, /生成用印申请并进入用印中心/);
+  assert.match(contractPage, /const \{ submit: enterSealCenter, \.\.\.sealValues \} = values/);
+  assert.match(contractPage, /if \(enterSealCenter\)[\s\S]{0,180}onNavigate\?\.\("seal-my"\)/);
   assert.match(contractPage, /合同审批中，请在详情查看进度/);
 });
