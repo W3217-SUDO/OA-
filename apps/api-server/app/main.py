@@ -3318,7 +3318,7 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
             children.append({
                 "node_type": "A", "node_original_id": f"action:{definition['code']}",
                 "node_id": f"action:{definition['code']}",
-                "node_code": definition["code"], "text": definition["label"],
+                "node_code": definition["code"], "text": definition["label"], "title": definition["label"],
                 "state": {"checked": definition["code"] in action_keys}, "children": [],
             })
         label = str(item.label or "").strip()
@@ -3326,7 +3326,7 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
             label = DEFAULT_MENU_LABEL_BY_KEY.get(item.key, "未命名菜单")
         return {
             "node_type": "M", "node_original_id": item.id, "node_id": str(item.id),
-            "node_code": item.key, "text": label,
+            "node_code": item.key, "text": label, "title": label,
             "state": {"checked": item.key in menu_keys}, "children": children,
         }
 
@@ -3339,12 +3339,12 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
             roots.append({
                 "node_type": "M", "node_original_id": f"menu:{definition['menu_key']}",
                 "node_id": f"menu:{definition['menu_key']}",
-                "node_code": definition["menu_key"], "text": definition["menu_key"],
+                "node_code": definition["menu_key"], "text": definition["menu_key"], "title": definition["menu_key"],
                 "state": {"checked": definition["menu_key"] in menu_keys},
                 "children": [{
                     "node_type": "A", "node_original_id": f"action:{definition['code']}",
                     "node_id": f"action:{definition['code']}",
-                    "node_code": definition["code"], "text": definition["label"],
+                    "node_code": definition["code"], "text": definition["label"], "title": definition["label"],
                     "state": {"checked": definition["code"] in action_keys}, "children": [],
                 }],
             })
