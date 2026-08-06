@@ -114,6 +114,19 @@ const statusColor: Record<string, string> = {
   已驳回: "red",
   已结案: "green",
 };
+const CUSTOMER_IPR_RELATION_STORAGE_KEY = "sunhold:customer-ipr-relation";
+const consumeCustomerIprRelationKeyword = () => {
+  try {
+    const raw = window.sessionStorage.getItem(CUSTOMER_IPR_RELATION_STORAGE_KEY);
+    window.sessionStorage.removeItem(CUSTOMER_IPR_RELATION_STORAGE_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { serial_no?: string; title?: string; at?: number };
+    if (!parsed || (parsed.at && Date.now() - Number(parsed.at) > 60 * 60 * 1000)) return "";
+    return String(parsed.title || parsed.serial_no || "").trim();
+  } catch {
+    return "";
+  }
+};
 
 export default function IprCenterPage({
   initialView,
@@ -290,7 +303,12 @@ export default function IprCenterPage({
     }
   };
   useEffect(() => {
-    void load(1, pageSize);
+    const relationKeyword = consumeCustomerIprRelationKeyword();
+    if (relationKeyword) {
+      setKeyword(relationKeyword);
+      setPage(1);
+    }
+    void load(1, pageSize, relationKeyword || keyword);
     void api
       .get<{ items: Customer[] }>("/customers", { params: { page_size: 100 } })
       .then(({ data }) => setCustomers(data.items || []))
@@ -625,13 +643,13 @@ export default function IprCenterPage({
     }
   };
   const openLinkedCaseCustomerCases = (customer: IprCaseCustomer) => {
-    const customerKeyword = customer.customer_no || customer.name || "";
+    const customerKeyword = customer.name || customer.customer_no || "";
     setDetail(null);
     setKeyword(customerKeyword);
     void load(1, pageSize, customerKeyword);
   };
   const openMainListCustomerCases = (record: IprRecord) => {
-    const customerKeyword = String(record.data.customer_no || record.customer || "").trim();
+    const customerKeyword = String(record.customer || record.data.customer_no || "").trim();
     if (!customerKeyword) {
       message.warning("当前案件未关联客户");
       return;

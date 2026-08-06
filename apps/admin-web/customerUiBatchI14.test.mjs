@@ -52,7 +52,9 @@ test("directory autocomplete matches both account and display name", async () =>
   assert.equal(matchesDirectoryOption("张三", { value: "zhangsan", label: "张三（zhangsan）" }), true)
   assert.equal(matchesDirectoryOption("lisi", { value: "zhangsan", label: "张三（zhangsan）" }), false)
   const page = await readFile(new URL("./src/CustomerCenterPage.tsx", import.meta.url), "utf8")
-  assert.equal((page.match(/filterOption=\{matchesDirectoryOption\}/g) || []).length, 4)
+  assert.equal((page.match(/filterOption=\{matchesDirectoryOption\}/g) || []).length, 5)
+  assert.match(page, /label="客户来源"[\s\S]*filterOption=\{matchesDirectoryOption\}/)
+  assert.match(page, /label="客户联系人账号"[\s\S]*filterOption=\{matchesDirectoryOption\}/)
 })
 
 test("document and contact photo preflight enforce old upload constraints", () => {

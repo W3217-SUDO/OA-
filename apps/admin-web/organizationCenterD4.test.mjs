@@ -17,6 +17,16 @@ test("organization matrix covers legacy department and role fields", () => {
   }
 });
 
+test("organization personnel columns render display-name fields without username fallback", () => {
+  assert.match(source, /PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"/);
+  assert.match(source, /renderPersonReference/);
+  assert.match(source, /manager_display_name/);
+  assert.match(source, /created_by_display_name/);
+  assert.match(source, /updated_by_display_name/);
+  assert.match(source, /请到人事中心员工管理补充中文姓名/);
+  assert.doesNotMatch(source, /manager"\s*,\s*width: 130,\s*render: \(value\) => value \|\|/);
+});
+
 test("organization lists retain legacy fifteen-row paging plus boundary controls", () => {
   assert.equal((source.match(/pageSize:\s*15/g) || []).length, 2);
   assert.match(source, /showSizeChanger:\s*true/);

@@ -4,9 +4,19 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
 
-test("menu tree restores the legacy expanded default after authorized menus load", () => {
-  assert.match(source, /function menuKeysWithChildren\(items: NavItem\[\]\): string\[\]/, "the shell should identify expandable menu nodes");
+test("menu tree keeps only the active branch open by default", () => {
+  assert.match(source, /function menuKeysWithChildren\(items: NavItem\[\]\): string\[\]/, "the shell should still identify expandable menu nodes");
+  assert.match(source, /export function normalizeOpenMenuKeys\(/, "the shell should normalize open menu branches");
   assert.match(source, /const \[openMenuKeys, setOpenMenuKeys\] = useState<string\[\]>\(\[\]\)/, "the shell should retain user-controlled menu state");
-  assert.match(source, /const defaults = menuKeysWithChildren\(effectiveMenuItems\)/, "menu defaults should be derived from the authorized configuration");
-  assert.match(source, /setOpenMenuKeys\(\(current\) => current\.length \? current : defaults\)/, "defaults should apply only when the menu has not been opened or collapsed by the user");
+  assert.match(source, /setOpenMenuKeys\(ancestors\)/, "the active route should open only its ancestor chain");
+  assert.doesNotMatch(source, /setOpenMenuKeys\(\(current\) => current\.length \? current : defaults\)/, "the shell should not restore the old expand-all default");
+});
+
+test("menu open-change keeps only the newly focused ancestor chain", () => {
+  assert.match(
+    source,
+    /return \[\.\.\.focusPath, focusKey\]\.filter\(\(key\) => nextKeys\.includes\(key\)\)/,
+    "open menu keys should be reduced to the focused ancestor chain instead of retaining sibling submenus",
+  );
+  assert.doesNotMatch(source, /return nextKeys\.filter\(\(key\) => \{[\s\S]*path\[0\] === rootKey[\s\S]*\}\)/);
 });

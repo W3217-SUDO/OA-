@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, RolePermission, SystemParameter, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, JobRole, RolePermission, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -31,7 +31,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         tables = [
-            User.__table__, RolePermission.__table__, BusinessRecord.__table__,
+            User.__table__, JobRole.__table__, RolePermission.__table__, BusinessRecord.__table__,
             WorkflowEvent.__table__, FileAttachment.__table__, SystemParameter.__table__,
         ]
         async with self.engine.begin() as conn:
@@ -49,6 +49,11 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             db.add(User(username="customer-auditor", display_name="客户审计员", department="上海分所", role="auditor", password_hash="test", is_active=True))
             db.add(User(username="customer-admin", display_name="客户管理员", department="上海分所", role="admin", password_hash="test", is_active=True))
             db.add(User(username="customer-user", display_name="客户专员", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="fan-recipient", display_name="范共享", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add_all([
+                BusinessRecord(module="hr", serial_no="HR-D6-FAN", title="范共享", status="在职", owner="fan-recipient", department="上海分所", data={"username": "fan-recipient"}),
+                BusinessRecord(module="hr", serial_no="HR-D6-USER", title="客户专员", status="在职", owner="customer-user", department="上海分所", data={"username": "customer-user"}),
+            ])
             db.add(SystemParameter(category="customer_type", code="customer", name="客户", is_active=True))
             customer = BusinessRecord(
                 module="customer", serial_no="KH-D6-001", title="D6 客户", customer="D6 客户",
@@ -123,6 +128,24 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["items"], [{}])
         self.assertEqual(response.json()["customer_guid"], CUSTOMER_GUID)
+
+    async def test_share_accepts_unique_person_keyword_and_stores_username(self):
+        response = await self.client.post(f"{API}/customers/{self.customer_id}/share", json={"recipients": ["范"], "comment": "关键字共享"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        self.assertIn("fan-recipient", response.json()["data"]["shared_with"])
+
+    async def test_share_rejects_active_account_without_active_hr_employee(self):
+        async with self.sessions() as db:
+            db.add(User(username="account-only", display_name="仅系统账号", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="left-employee", display_name="离职员工", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(BusinessRecord(module="hr", serial_no="HR-D6-LEFT", title="离职员工", status="离职", owner="left-employee", department="上海分所", data={"username": "left-employee"}))
+            await db.commit()
+
+        for recipient in ("account-only", "left-employee"):
+            response = await self.client.post(f"{API}/customers/{self.customer_id}/share", json={"recipients": [recipient], "comment": "不应共享"})
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+            self.assertFalse(response.json()["IsSuccess"])
+            self.assertIn("启用的在职员工", response.json()["Message"])
 
     async def test_guid_events_and_files_list_and_download(self):
         listed = await self.client.get(f"{API}/customers/guid/{CUSTOMER_GUID}/events")
@@ -206,6 +229,66 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(serial_no, f"{serial_prefix}00008")
         self.assertRegex(serial_no, r"^SHKH\d{7}$")
         self.assertNotRegex(serial_no, r"\d{10,}")
+
+    async def test_create_customer_preserves_multiple_contact_accounts(self):
+        response = await self.client.post(f"{API}/customers", json={
+            "title": "CODEX-I84-contact-accounts",
+            "status": "潜在",
+            "owner": "customer-admin",
+            "customer_type": "客户",
+            "level": "立案客户",
+            "contact": ["customer-auditor", "customer-user"],
+            "contact_accounts": ["customer-user", "customer-admin"],
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data["contact_accounts"], ["customer-auditor", "customer-user", "customer-admin"])
+        self.assertEqual(data["contact"], "customer-auditor")
+        self.assertEqual(len(data["contact_account_display_names"]), 3)
+        self.assertNotIn("customer-user", data["contact_account_display_names"])
+
+        customer_id = response.json()["id"]
+        updated = await self.client.patch(f"{API}/customers/{customer_id}", json={
+            "data": {
+                "contact_accounts": ["customer-admin", "customer-user"],
+                "contact": "customer-admin",
+            },
+        })
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
+        self.assertEqual(updated.json()["data"]["contact_accounts"], ["customer-admin", "customer-user"])
+        self.assertEqual(updated.json()["data"]["contact"], "customer-admin")
+        self.assertEqual(len(updated.json()["data"]["contact_account_display_names"]), 2)
+
+    async def test_customer_manager_directory_excludes_active_accounts_without_active_hr_records(self):
+        async with self.sessions() as db:
+            db.add(User(username="stale-account", display_name="残留账号", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="directory-user", display_name="directory-user", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="smoke_manager_84", display_name="范围经理", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(BusinessRecord(
+                module="hr", serial_no="HR-D6-DIRECTORY", title="客户专员",
+                status="在职", owner="customer-user", department="上海分所",
+                data={"username": "customer-user"},
+            ))
+            db.add(BusinessRecord(
+                module="hr", serial_no="HR-D6-DIRECTORY-NAME", title="English Name",
+                status="在职", owner="directory-user", department="上海分所",
+                data={"username": "directory-user"},
+            ))
+            db.add(BusinessRecord(
+                module="hr", serial_no="HR-D6-DIRECTORY-SMOKE", title="范围经理员工",
+                status="在职", owner="smoke_manager_84", department="上海分所",
+                data={"username": "smoke_manager_84"},
+            ))
+            await db.commit()
+
+        response = await self.client.get(f"{API}/users/directory", params={"purpose": "customer_manager"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        items = {item["username"]: item for item in response.json()["items"]}
+        self.assertFalse(items["customer-admin"]["eligible_customer_person"])
+        self.assertTrue(items["customer-user"]["eligible_customer_person"])
+        self.assertEqual(items["directory-user"]["display_name"], "English Name")
+        self.assertFalse(items["stale-account"]["eligible_customer_person"])
+        self.assertNotIn("smoke_manager_84", items)
 
     async def test_identity_field_filtering_and_workflow_audit(self):
         app.dependency_overrides[current_identity] = lambda: AUDITOR

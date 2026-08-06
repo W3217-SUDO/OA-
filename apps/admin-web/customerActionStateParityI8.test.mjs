@@ -36,7 +36,16 @@ test('legacy delete uses confirmation and local recycle keeps an explicit confir
 test('restore/public transitions map old endpoints to local action dispatch', () => {
   for (const action of ['CustomerRestore', 'CustomerOpen', 'CustomerClose']) assert.match(oldController, new RegExp(`${action}\\(long customerId\\)`))
   for (const route of ['claim', 'release', 'recycle', 'restore']) assert.match(localPage, new RegExp(`/customers/\\$\\{[^}]+\\}/\\$\\{(?:name|key)\\}`))
-  assert.match(localPage, /\["release", "recycle", "restore"\]\.includes\(key\)/)
+  assert.match(localPage, /if \(key === "release"\) releaseCustomer\(target\)/)
+  assert.match(localPage, /title: `确认将客户“\$\{confirmation\.title\}”释放到公海？`/)
+  for (const view of ['customer-mine', 'customer-dept', 'customer-company']) {
+    assert.match(localPage, new RegExp(`initialView === "${view}"`))
+  }
+})
+
+test('public customer actions hide unusable edit from non-admin users', () => {
+  assert.match(localPage, /initialView === "customer-public"[\s\S]*profile\.role === "admin"[\s\S]*\{ key: "edit", label: "客户编辑" \}[\s\S]*\{ key: "claim", label: "拾回" \}/)
+  assert.match(localPage, /: \[\{ key: "claim", label: "拾回" \}\]/)
 })
 
 test('assignment payload and UI modal retain the legacy customer-owner transfer flow', () => {
@@ -56,6 +65,7 @@ test('share payload and UI modal retain recipient/comment semantics', () => {
   assert.match(localPage, /recipients: v\.recipients/)
   assert.match(localPage, /comment: v\.comment \|\| ""/)
   assert.match(localPage, /open=\{Boolean\(sharing\)\}/)
+  assert.match(localPage, /name="recipients"[\s\S]*filterOption=\{matchesDirectoryOption\}/)
 })
 
 test('legacy action failures surface server messages and local handlers keep API detail fallback', () => {

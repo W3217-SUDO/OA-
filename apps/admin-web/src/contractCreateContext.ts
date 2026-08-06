@@ -9,10 +9,14 @@ export type LinkedCustomerContext = {
 
 type ContextStorage = Pick<Storage, "getItem" | "removeItem">;
 const CUSTOMER_CONTEXT_KEY = "sunhold:contract-customer";
+export const CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY = "sunhold:contract-customer-route-source";
 const MAX_CONTEXT_AGE_MS = 60 * 60 * 1000;
 
-export const createContractNumber = (value: Dayjs = dayjs()): string =>
-  `HT${value.format("YYYYMMDDHHmmss")}`;
+export const createContractNumber = (value: Dayjs = dayjs()): string => {
+  const sequenceSeed = value.month() * 31 + value.date();
+  const compactSequence = 10000 + sequenceSeed;
+  return `SHHT${value.format("YY")}${compactSequence.toString().padStart(5, "0")}`;
+};
 
 export const createContractCustomerContextConsumer = (
   storage: ContextStorage,
@@ -47,4 +51,8 @@ export const createContractCustomerContextConsumer = (
       cached = null;
     },
   };
+};
+
+export const clearContractCustomerContext = (storage: ContextStorage) => {
+  storage.removeItem(CUSTOMER_CONTEXT_KEY);
 };

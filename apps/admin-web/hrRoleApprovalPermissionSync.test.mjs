@@ -48,3 +48,31 @@ test('contract approval flag is cleared immediately when role switching removes 
   assert.ok(source.includes('employeeEditForm.setFieldValue(\'contract_approval_enabled\',false)'), 'role switch should clear stale approval qualification')
   assert.ok(source.includes('editingSystemRole'), 'role-switch cleanup should depend on the live selected system role')
 })
+
+test('hr edit keeps only the contract approval eligibility switch, not the removed relationship shortcut', () => {
+  assert.ok(!source.includes("openHrAdminNavigation('contract-approver-settings'"), 'HR edit modal should not link to the removed approval relationship shortcut')
+  assert.ok(editModal.includes('contract_approval_enabled'), 'HR edit modal should keep the direct eligibility switch')
+  assert.ok(!editModal.includes('审批关系'), 'approval relationship text should not appear in HR edit modal')
+})
+
+test('employee personnel-name display uses the recorded name metadata instead of username fallback', () => {
+  assert.ok(source.includes("const PERSON_NAME_PLACEHOLDER='【待补充中文姓名】"), 'HR page should use a clear Chinese placeholder for missing personnel names')
+  assert.ok(source.includes('const personDisplayName='), 'HR page should centralize personnel-name rendering')
+  assert.ok(source.includes('personDisplayName(r)'), 'employee table should render the display-name helper')
+  assert.ok(source.includes('display_name_missing'), 'employee page should surface missing Chinese-name metadata')
+  assert.ok(source.includes("String(row.person_display_name||'').trim()"), 'recorded English or job-title-like names should remain visible')
+  assert.ok(source.includes('请在修改入口补充中文姓名'), 'HR edit entry should guide administrators to complete Chinese names')
+  assert.doesNotMatch(source, /display_name:\s*account\?\.display_name\|\|row\.title/)
+})
+
+test('employee view is read-only while edit modal owns leave matter archive and commission maintenance', () => {
+  const employeeTabs = block('const employeeTabs=', 'const newPanel=')
+  const detailModal = block('const detail=', 'const editModal=')
+  const editModal = block('const editModal=', 'const transitionModal=')
+
+  assert.match(employeeTabs, /canManageSubrecords=actionAccess\.canProcessStatus/)
+  assert.match(employeeTabs, /canManage=\{canManageSubrecords\}/)
+  assert.match(detailModal, /employeeTabs\(viewing\.id,details,false\)/)
+  assert.match(editModal, /employeeTabs\(editingEmployee\.id,<Form/)
+  assert.match(editModal, /,true\)\}<\/Modal>/)
+})

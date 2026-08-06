@@ -9,7 +9,10 @@ test('提成维护入口与记录操作服从人事管理权限，普通员工�
   assert.match(source, /const commissionRecordAction=kind==='commission'&&!canManage\?readonlyAction:viewAction/)
   assert.match(source, /const canMaintainCommission=kind!=='commission'\|\|canManage/)
   assert.match(source, /\{canMaintainCommission&&\(kind!=='matter'\|\|canManage\)&&\(kind!=='leave'\|\|canManage\)&&<Button type="primary"/)
-  assert.match(source, /\{key:'commission',label:'提成设定',children:<EmployeeSubrecords employeeId=\{employeeId\} kind="commission" canManage=\{actionAccess\.canProcessStatus\}\/>\}/)
+  assert.match(source, /canManageSubrecords=actionAccess\.canProcessStatus/)
+  assert.match(source, /\{key:'commission',label:'提成设定',children:<EmployeeSubrecords employeeId=\{employeeId\} kind="commission" canManage=\{canManageSubrecords\}\/>\}/)
+  assert.match(source, /employeeTabs\(viewing\.id,details,false\)/)
+  assert.match(source, /employeeTabs\(editingEmployee\.id,[\s\S]*,true\)/)
 })
 
 test('提成页保留旧站字段、默认值、案件适用方案和15条分页', () => {

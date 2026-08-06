@@ -54,6 +54,10 @@ import {
   clearContractDetailTarget,
   type ContractDetailNavigationContext,
 } from "./contractDetailNavigation";
+import {
+  clearContractCustomerContext,
+  CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY,
+} from "./contractCreateContext";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -452,7 +456,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     (item) =>
       item.is_visible &&
       item.is_active &&
-      item.key !== "task-reminders",
+      item.key !== "task-reminders" &&
+      item.key !== "system-users",
   ).sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
   );
@@ -542,6 +547,17 @@ function ancestorMenuKeys(
   }
   return [];
 }
+export function normalizeOpenMenuKeys(
+  items: NavItem[],
+  currentKeys: string[],
+  nextKeys: string[],
+): string[] {
+  const addedKey = nextKeys.find((key) => !currentKeys.includes(key));
+  const focusKey = addedKey || nextKeys[nextKeys.length - 1] || "";
+  if (!focusKey) return [];
+  const focusPath = ancestorMenuKeys(items, focusKey);
+  return [...focusPath, focusKey].filter((key) => nextKeys.includes(key));
+}
 export function routeForMenuOpenChange(
   currentKeys: string[],
   nextKeys: string[],
@@ -554,7 +570,6 @@ export function routeForMenuOpenChange(
   return toggled && !alreadyInsideSection ? route : null;
 }
 function canonicalRoute(route: string): string {
-  if (route === "contract-approver-settings") return "system-users";
   if (route.endsWith("-schedule") && route.startsWith("case-"))
     return "case-schedule";
   if (route.endsWith("-execution") && route.startsWith("case-"))
@@ -1336,6 +1351,12 @@ export default function App() {
   }, [active, effectiveMenuItems, loggedIn]);
   const navigate = (route: string) => {
     const normalizedRoute = normalizeWorkspaceRoute(route);
+    if (normalizedRoute === "contract-new") {
+      if (sessionStorage.getItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY) !== "customer") {
+        clearContractCustomerContext(sessionStorage);
+        sessionStorage.removeItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY);
+      }
+    }
     if (normalizedRoute === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: normalizedRoute }));
     setActive(normalizedRoute);
   };
@@ -1381,14 +1402,8 @@ export default function App() {
   };
   useEffect(() => {
     const ancestors = ancestorMenuKeys(effectiveMenuItems, active);
-    if (!ancestors.length) return;
-    setOpenMenuKeys((current) => Array.from(new Set([...current, ...ancestors])));
+    setOpenMenuKeys(ancestors);
   }, [active, effectiveMenuItems]);
-  useEffect(() => {
-    const defaults = menuKeysWithChildren(effectiveMenuItems);
-    if (!defaults.length) return;
-    setOpenMenuKeys((current) => current.length ? current : defaults);
-  }, [menuConfig]);
   const logout = () => {
     endClientSession();
   };
@@ -1733,7 +1748,7 @@ export default function App() {
             selectedKeys={[active]}
             openKeys={openMenuKeys}
             onOpenChange={(keys) => {
-              const nextKeys = keys as string[];
+              const nextKeys = normalizeOpenMenuKeys(effectiveMenuItems, openMenuKeys, keys as string[]);
               const parentRoute = routeForMenuOpenChange(openMenuKeys, nextKeys, active);
               setOpenMenuKeys(nextKeys);
               if (parentRoute) navigate(parentRoute);

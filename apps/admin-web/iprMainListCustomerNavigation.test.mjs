@@ -5,8 +5,8 @@ const center = fs.readFileSync(new URL("./src/IprCenterPage.tsx", import.meta.ur
 
 assert.match(
   center,
-  /const openMainListCustomerCases = \(record: IprRecord\) => \{[\s\S]*?const customerKeyword = String\(record\.data\.customer_no \|\| record\.customer \|\| ""\)\.trim\(\);[\s\S]*?setKeyword\(customerKeyword\);[\s\S]*?setPage\(1\);[\s\S]*?void load\(1, pageSize, customerKeyword\)/,
-  "IPR main-list customer navigation should filter from page one using the customer number or name.",
+  /const openMainListCustomerCases = \(record: IprRecord\) => \{[\s\S]*?const customerKeyword = String\(record\.customer \|\| record\.data\.customer_no \|\| ""\)\.trim\(\);[\s\S]*?setKeyword\(customerKeyword\);[\s\S]*?setPage\(1\);[\s\S]*?void load\(1, pageSize, customerKeyword\)/,
+  "IPR main-list customer navigation should filter from page one using the customer name.",
 );
 
 assert.match(

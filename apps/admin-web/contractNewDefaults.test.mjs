@@ -1,76 +1,81 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import dayjs from "dayjs";
+const source = readFileSync(new URL("./src/contractCreateContext.ts", import.meta.url), "utf8");
+const contractPage = readFileSync(new URL("./src/ContractCenterPage.tsx", import.meta.url), "utf8");
+const appShell = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
+const workflowPolicy = readFileSync(new URL("./src/contractWorkflowPolicy.mjs", import.meta.url), "utf8");
 
-import {
-  createContractCustomerContextConsumer,
-  createContractNumber,
-} from "./src/contractCreateContext.ts";
-
-const memoryStorage = (initial = {}) => {
-  const values = new Map(Object.entries(initial));
-  return {
-    getItem(key) {
-      return values.has(key) ? values.get(key) : null;
-    },
-    removeItem(key) {
-      values.delete(key);
-    },
-    setItem(key, value) {
-      values.set(key, value);
-    },
-  };
-};
-
-test("new contracts receive an HT timestamp number instead of an unexplained 99", () => {
-  assert.equal(
-    createContractNumber(dayjs("2026-08-02T12:34:56")),
-    "HT20260802123456",
-  );
+test("new contracts receive the compact SHHT legacy-style number", () => {
+  assert.match(source, /const sequenceSeed = value\.month\(\) \* 31 \+ value\.date\(\)/);
+  assert.match(source, /`SHHT\$\{value\.format\("YY"\)\}\$\{compactSequence\.toString\(\)\.padStart\(5, "0"\)\}`/);
+  assert.doesNotMatch(source, /HT\$\{value\.format\("YYYYMMDDHHmmss"\)\}/);
 });
 
-test("customer prefill survives duplicate contract-new initialization", () => {
-  const storage = memoryStorage({
-    "sunhold:contract-customer": JSON.stringify({
-      id: 13,
-      name: "test",
-      serial_no: "SHKH1810649",
-      at: Date.parse("2026-08-02T12:00:00Z"),
-    }),
-  });
-  const consumer = createContractCustomerContextConsumer(
-    storage,
-    () => Date.parse("2026-08-02T12:05:00Z"),
-  );
-
-  const expected = {
-    id: 13,
-    name: "test",
-    serial_no: "SHKH1810649",
-    at: Date.parse("2026-08-02T12:00:00Z"),
-  };
-
-  assert.deepEqual(consumer.consume(), expected);
-  assert.equal(storage.getItem("sunhold:contract-customer"), null);
-  assert.deepEqual(consumer.consume(), expected);
+test("customer prefill still consumes the legacy customer context once and caches it", () => {
+  assert.match(source, /const CUSTOMER_CONTEXT_KEY = "sunhold:contract-customer"/);
+  assert.match(source, /storage\.removeItem\(CUSTOMER_CONTEXT_KEY\)/);
+  assert.match(source, /if \(initialized\) return cached/);
+  assert.match(source, /reset: \(\) => \{/);
 });
 
-test("reset allows a later customer source to replace the cached prefill", () => {
-  const storage = memoryStorage();
-  const consumer = createContractCustomerContextConsumer(storage);
-
-  assert.equal(consumer.consume(), null);
-  storage.setItem(
-    "sunhold:contract-customer",
-    JSON.stringify({ id: 27, name: "第二客户", serial_no: "SHKH2600027" }),
+test("direct contract-new navigation clears stale customer context", () => {
+  assert.match(source, /CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY = "sunhold:contract-customer-route-source"/);
+  assert.match(source, /clearContractCustomerContext/);
+  assert.match(appShell, /normalizedRoute === "contract-new"/);
+  assert.match(appShell, /sessionStorage\.getItem\(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY\) !== "customer"/);
+  assert.match(appShell, /clearContractCustomerContext\(sessionStorage\)/);
+  assert.match(
+    readFileSync(new URL("./src/CustomerCenterPage.tsx", import.meta.url), "utf8"),
+    /sessionStorage\.setItem\("sunhold:contract-customer-route-source", "customer"\)/,
   );
-  consumer.reset();
+  assert.match(contractPage, /sessionStorage\.getItem\(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY\) !== "customer"/);
+  assert.match(contractPage, /clearContractCustomerContext\(sessionStorage\)/);
+  const directNewRouteEffect = contractPage.slice(
+    contractPage.indexOf('if (initialView !== "contract-new")'),
+    contractPage.indexOf('}, [initialView]);', contractPage.indexOf('if (initialView !== "contract-new")')),
+  );
+  assert.match(directNewRouteEffect, /if \(customerContext\) \{[\s\S]{0,120}startCreate\(customerContext\);[\s\S]{0,120}return;/);
+  assert.match(directNewRouteEffect, /startCreate\(\);\s*$/);
+  assert.doesNotMatch(directNewRouteEffect, /recoverWizard/);
+  assert.match(contractPage, /const newContractRouteInitializedRef = useRef\(false\);/);
+  assert.match(directNewRouteEffect, /if \(newContractRouteInitializedRef\.current\) return;/);
+  assert.match(directNewRouteEffect, /newContractRouteInitializedRef\.current = true;/);
+});
 
-  assert.deepEqual(consumer.consume(), {
-    id: 27,
-    name: "第二客户",
-    serial_no: "SHKH2600027",
-    at: 0,
-  });
+test("contract center draft creation lets the server assign the final contract number", () => {
+  assert.match(contractPage, /serial_no: target \? v\.serial_no \|\| target\.serial_no \|\| createContractNumber\(\) : ""/);
+});
+
+test("new contract approval fields only select configured approvers and do not expose settings", () => {
+  assert.match(contractPage, /const approvalOptions = buildChinesePersonOptions\(directory, \(user: DirectoryUser\) => Boolean\(user\.can_approve_contract\)\)/);
+  assert.match(contractPage, /placeholder="请选择后台已配置的合同审批人"/);
+  assert.match(contractPage, /title="设置合同审批人"/);
+  assert.match(contractPage, /initialView !== "contract-approver-settings"/);
+  assert.doesNotMatch(contractPage, /label=\{contractApproverLabel\}[\s\S]{0,120}Button[\s\S]{0,80}设置审批人/);
+  assert.doesNotMatch(contractPage, /placeholder="请选择合同审批流程人员"/);
+});
+
+test("new contract basic info is editable instead of fixed defaults", () => {
+  assert.match(contractPage, /const CONTRACT_TYPE_OPTIONS = \["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"\]\.map/);
+  assert.match(contractPage, /label="合同类别" name="type"[\s\S]{0,220}<Select allowClear showSearch optionFilterProp="label" placeholder="请选择合同类别" options=\{CONTRACT_TYPE_OPTIONS\}/);
+  assert.match(contractPage, /label="合同名称"[\s\S]{0,120}name="title"[\s\S]{0,160}<Input/);
+  assert.doesNotMatch(workflowPolicy, /type: "法律顾问合同"/);
+  assert.match(workflowPolicy, /title: customer\?\.title \? `\$\{customer\.title\}合同` : undefined/);
+});
+
+test("customer-side contract creation pre-fills an editable customer contract name", () => {
+  assert.match(workflowPolicy, /title: customer\?\.title \? `\$\{customer\.title\}合同` : undefined/);
+  assert.match(contractPage, /customer: linkedContext \? \{ id: linkedContext\.id, title: linkedContext\.name \} : null/);
+  assert.match(contractPage, /<Form\.Item label="合同名称" name="title"[\s\S]{0,180}<Input/);
+});
+
+test("new contract wizard keeps the legacy four-step approval and seal flow", () => {
+  assert.match(contractPage, /CONTRACT_CREATE_STEP_TITLES = \["合同基本信息", "提交审批", "合同审批", "合同用印"\]/);
+  assert.match(contractPage, /wizardStep === 3[\s\S]{0,180}contract-seal-step/);
+  assert.match(contractPage, /api\.post\(`\/contracts\/\$\{wizardDraft\.id\}\/seal-application`/);
+  assert.match(contractPage, /保存用印草稿/);
+  assert.match(contractPage, /保存并提交用印|保存用印草稿并上传文件/);
+  assert.match(contractPage, /合同审批中，请在详情查看进度/);
 });

@@ -16,27 +16,19 @@ function block(startNeedle, endNeedle) {
   return source.slice(start, end)
 }
 
-const navigationBlock = block('const openHrAdminNavigation=', 'const filtered=')
 const columns = block('const columns:TableColumnsType<Employee>=', 'const rowSelection=')
 const editModal = block('const editModal=', 'const transitionModal=')
 
-test('HR admin navigation uses a single permission gate before changing pages', () => {
-  assert.ok(navigationBlock.includes('if(!actionAccess.canManageAccount)'), 'navigation helper should block non-admin users')
-  assert.ok(navigationBlock.includes('message.error'), 'blocked navigation should show an explicit permission error')
-  assert.ok(navigationBlock.includes('return'), 'blocked navigation should return before any page change')
-  assert.ok(navigationBlock.includes('URLSearchParams'), 'navigation helper should build a route query instead of string-splicing URLs')
-  assert.ok(navigationBlock.includes('window.location.href'), 'authorized navigation should still move to the target admin page')
-})
-
 test('standalone system user management entry is removed from employee rows', () => {
-  assert.ok(!columns.includes('openHrAdminNavigation(\'system-users\''), 'employee rows should not open the old standalone system user page')
+  assert.ok(!columns.includes("openHrAdminNavigation('system-users'"), 'employee rows should not open the old standalone system user page')
   assert.ok(!columns.includes('page=system-users'), 'employee rows must not link to the removed standalone page')
-  assert.ok(!columns.includes('>系统用户<'), 'employee row actions should not expose a duplicate system user button')
+  assert.ok(!columns.includes('>????<'), 'employee row actions should not expose a duplicate system user button')
   assert.ok(columns.includes('openPasswordReset'), 'password reset stays available inside employee management')
 })
 
-test('contract approval relationship navigation is admin-gated and does not jump when unauthorized', () => {
-  assert.ok(editModal.includes('审批关系'), 'employee edit modal should expose a clear approval relationship navigation affordance')
-  assert.ok(editModal.includes('openHrAdminNavigation(\'contract-approver-settings\''), 'approval relationship entry must use the guarded helper')
-  assert.ok(editModal.includes('actionAccess.canManageAccount'), 'approval relationship entry should only render for account-management admins')
+test('contract approval relationship shortcut is removed from employee edit modal', () => {
+  assert.ok(!source.includes('openHrAdminNavigation'), 'HR page should not keep a shortcut navigation helper for approval relationship')
+  assert.ok(!editModal.includes('contract-approver-settings'), 'employee edit modal must not link to approval relationship settings')
+  assert.ok(!editModal.includes('????'), 'employee edit modal should not expose the removed approval relationship shortcut')
+  assert.ok(editModal.includes('contract_approval_enabled'), 'contract approval eligibility switch itself stays available')
 })

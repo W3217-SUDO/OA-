@@ -43,12 +43,14 @@ export const normalizeContractAttachment = (item) => {
     id: Number(source.id || source.FileId || 0),
     original_name: String(source.original_name || source.FileName || ""),
     uploader: String(source.uploader || source.UploadUserName || source.UploadUser || ""),
+    uploader_display_name: String(source.uploader_display_name || source.UploadUserDisplayName || ""),
     created_at: String(source.created_at || source.UploadTime || source.upload_time || ""),
   };
 };
 export const normalizeContractApprovalHistory = (rows = []) => rows.map((item) => ({
   id: Number(item?.id || item?.AuditId || 0),
   approver: String(item?.approver || item?.AuditorName || ""),
+  approver_display_name: String(item?.approver_display_name || item?.AuditorDisplayName || ""),
   acted_at: String(item?.acted_at || item?.AuditDate || item?.audit_date || item?.created_at || ""),
   status: String(item?.status || item?.AuditStatus || ""),
   comment: String(item?.comment ?? item?.AuditContent ?? ""),
@@ -127,6 +129,10 @@ export const buildContractListRequestParams = (view, pagination, query = {}) => 
       if (typeof value[1]?.format === "function") params.signed_at_end = value[1].format("YYYY-MM-DD");
     } else if (value !== undefined) params[field] = value;
   }
+  for (const field of ["customer_id", "customer_no", "exclude_archived"]) {
+    const value = query[field];
+    if (value !== undefined && value !== null && value !== "") params[field] = value;
+  }
   if (config.statuses.length) params.statuses = config.statuses.join(",");
   return params;
 };
@@ -184,7 +190,6 @@ export const buildContractDraftDefaults = ({ serialNo, profile, customer }) => (
   status: "草稿",
   owner: profile.username || "admin",
   department: profile.department || "上海分所",
-  type: "法律顾问合同",
   contract_body: "律所",
   fee_type: "固定收费",
   amount: 0,

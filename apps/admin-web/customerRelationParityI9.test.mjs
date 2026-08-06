@@ -24,6 +24,7 @@ test('customer relation targets are one-shot and expire instead of leaking to a 
   assert.match(localRelation, /sessionStorage\.removeItem\(STORAGE_KEY\)/)
   assert.match(localRelation, /MAX_AGE_MS/)
   assert.match(localRelation, /Date\.now\(\) - Number\(parsed\.at\)/)
+  assert.match(localRelation, /\["contracts", "civil-cases"\]\.includes\(parsed\.target\)/)
 })
 
 test('shared customer UI keeps recipient projection while legacy API remains separately documented', () => {
@@ -31,6 +32,7 @@ test('shared customer UI keeps recipient projection while legacy API remains sep
   assert.match(oldShare, /List<BizCustomerCoordinator>/)
   assert.match(localPage, /r\.data\.shared_with/)
   assert.match(localPage, /target: "contracts"|target: "civil-cases"/)
+  assert.match(localPage, /name="recipients"[\s\S]*mode="multiple"[\s\S]*options=\{directoryOptions\}/)
 })
 
 test('customer event detail keeps legacy content/operator/time columns and actionable empty state', () => {

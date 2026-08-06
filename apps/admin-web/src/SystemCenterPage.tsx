@@ -78,6 +78,8 @@ type SystemUser = {
   id: number;
   username: string;
   display_name: string;
+  person_display_name?: string;
+  display_name_missing?: boolean;
   department: string;
   role: string;
   role_ids?: string[];
@@ -207,6 +209,16 @@ export function cleanCompanyDigitsInputEvent(event: {
   event.currentTarget.value = sanitized;
   return sanitized;
 }
+
+const PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】";
+const hasChineseName = (value: unknown) => /[\u4e00-\u9fff]/.test(String(value || ""));
+const personDisplayName = (row?: { person_display_name?: string; display_name?: string; display_name_missing?: boolean }) => {
+  if (!row) return PERSON_NAME_PLACEHOLDER;
+  if (row.display_name_missing) return row.person_display_name || PERSON_NAME_PLACEHOLDER;
+  if (hasChineseName(row.person_display_name)) return String(row.person_display_name);
+  if (hasChineseName(row.display_name)) return String(row.display_name);
+  return PERSON_NAME_PLACEHOLDER;
+};
 
 export default function SystemCenterPage({
   initialView = "system-parameters",
@@ -689,6 +701,15 @@ export default function SystemCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "账号解锁失败");
     }
+  };
+  const renderPersonDisplayName = (_value: string, row: SystemUser) => {
+    const name = personDisplayName(row);
+    if (!row.display_name_missing) return name;
+    return (
+      <Tooltip title="请在修改入口补充中文姓名">
+        <Tag color="orange">{name}</Tag>
+      </Tooltip>
+    );
   };
   const editRole = (row: RolePermission) => {
     setEditingRole(row);
@@ -1425,7 +1446,7 @@ export default function SystemCenterPage({
             }}
             columns={[
               { title: "登录账号", dataIndex: "username", width: 130 },
-              { title: "姓名", dataIndex: "display_name", width: 110 },
+              { title: "姓名", dataIndex: "display_name", width: 130, render: (_value, row) => renderPersonDisplayName(_value, row) },
               { title: "部门", dataIndex: "department", width: 140 },
               { title: "Email", dataIndex: "email", width: 180 },
               { title: "手机号码", dataIndex: "mobile", width: 130 },
@@ -1647,7 +1668,7 @@ export default function SystemCenterPage({
         </Modal>
         <Modal
           open={Boolean(resettingUser)}
-          title={`重置密码：${resettingUser?.username || ""}`}
+          title={`重置密码：${personDisplayName(resettingUser || undefined)}`}
           okText="确认重置"
           cancelText="取消"
           onOk={resetPassword}

@@ -221,12 +221,42 @@
 .customer-create-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 0; padding: 0; }
 .customer-control-grid { grid-template-columns: repeat(5, minmax(155px, 1fr)); }
 .customer-create-form .ant-form-item { height: 25px; min-height: 25px; margin: 0; padding: 0 6px; border-right: 1px solid #eee; border-bottom: 1px solid #eee; }
+.customer-create-form .customer-person-multi-field {
+  height: auto;
+  min-height: 25px;
+  align-self: stretch;
+}
+.customer-create-form .customer-control-grid .customer-person-multi-field {
+  grid-column: span 2;
+}
 .customer-create-form .ant-form-item-row { flex-wrap: nowrap; }
 .customer-create-form .ant-form-item-control-input { min-height: 23px; }
 .customer-create-form .ant-form-item-label { flex: 0 0 88px; padding: 0 6px 0 0; }
 .customer-create-form .ant-form-item-label > label { height: 23px; font-size: 12px; }
 .customer-create-form .ant-input,
 .customer-create-form .ant-select-selector { min-height: 23px !important; height: 23px !important; border-radius: 0 !important; font-size: 12px; }
+.customer-create-form .customer-person-multi-field .ant-select-selector {
+  height: auto !important;
+  min-height: 23px !important;
+  overflow: visible;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+}
+.customer-create-form .customer-person-multi-field .ant-select {
+  height: auto !important;
+  min-height: 23px !important;
+}
+.customer-create-form .customer-person-multi-field .ant-select-selection-overflow {
+  flex-wrap: wrap;
+  min-height: 19px;
+  row-gap: 2px;
+}
+.customer-create-form .customer-person-multi-field .ant-select-selection-item {
+  max-width: 100%;
+}
+.customer-create-form .customer-person-multi-field .ant-select-selection-search {
+  min-width: 24px;
+}
 .customer-create-form .ant-select { height: 23px; }
 .customer-create-form .ant-input { height: 23px; }
 .customer-create-tabs { margin-top: 0; border-top: 2px solid #19b894; }

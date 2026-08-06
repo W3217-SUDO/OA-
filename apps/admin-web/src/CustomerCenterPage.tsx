@@ -33,6 +33,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { buildChinesePersonOptions, displayChinesePersonName, displayChinesePersonNames } from "./contractPeoplePresentation.mjs";
 import { customerStatusLabel } from "./customerStatusLabel";
 import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
@@ -154,7 +155,10 @@ type Customer = {
   updated_at: string;
   data: {
     customer_guid?: string;
-    contact?: string;
+    contact?: string | string[];
+    contact_accounts?: string[];
+    contact_account_display_names?: string[];
+    contact_account_display_name?: string;
     phone?: string;
     level?: string;
     shared_with?: string[];
@@ -227,6 +231,7 @@ type DirectoryUser = {
   username: string;
   display_name: string;
   department: string;
+  eligible_customer_person?: boolean;
 };
 const customerRegistrationAddressRules = [{
   validator: (_rule: unknown, value: unknown) =>
@@ -324,10 +329,18 @@ export default function CustomerCenterPage({
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
-  const directoryOptions = directory.map((user) => ({
-    value: user.username,
-    label: user.display_name ? `${user.display_name}（${user.username}）` : user.username,
-  }));
+  const directoryOptions = useMemo(() => {
+    const retained = new Set([
+      ...(editing?.data.customer_managers || []),
+      ...(editing?.data.contact_accounts || []),
+      ...(Array.isArray(editing?.data.contact) ? editing.data.contact : editing?.data.contact ? [editing.data.contact] : []),
+    ].map((value) => String(value || "").trim()).filter(Boolean));
+    return buildChinesePersonOptions(
+      directory,
+      (user: DirectoryUser) => user.eligible_customer_person === true || retained.has(user.username),
+      { allowNonChinese: true },
+    );
+  }, [directory, editing]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [contactPage, setContactPage] = useState(1);
@@ -446,7 +459,7 @@ export default function CustomerCenterPage({
       }
       const [profileResult, directoryResult, customerTypeResult] = await Promise.allSettled([
         api.get("/auth/me"),
-        api.get("/users/directory"),
+        api.get("/users/directory", { params: { purpose: "customer_manager" } }),
         api.get("/customers/reference-options"),
       ]);
       if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
@@ -524,14 +537,14 @@ export default function CustomerCenterPage({
       serial_no: "",
       status: undefined,
       owner: profile.username || "admin",
-      customer_managers: [profile.username || "admin"],
+      customer_managers: directoryOptions.some((option) => option.value === profile.username) ? [profile.username] : [],
       department: profile.department || "上海分所",
       customer_type: "客户",
       level: "立案客户",
       is_shared: "否",
       is_assisted: "否",
       file_date: dayjs().format("YYYY-MM-DD"),
-      customer_source: profile.display_name || profile.username || "管理者",
+      customer_source: "",
     });
     setOpen(true);
   };
@@ -543,6 +556,13 @@ export default function CustomerCenterPage({
       customer_managers: r.data.customer_managers?.length
         ? r.data.customer_managers
         : [r.owner],
+      contact: r.data.contact_accounts?.length
+        ? r.data.contact_accounts
+        : Array.isArray(r.data.contact)
+          ? r.data.contact
+          : r.data.contact
+            ? [r.data.contact]
+            : [],
     });
     setOpen(true);
   };
@@ -589,6 +609,13 @@ export default function CustomerCenterPage({
     const details = Object.fromEntries(
       detailFields.map((key) => [key, v[key] || ""]),
     );
+    const contactAccounts = Array.isArray(v.contact)
+      ? v.contact.map((value: string) => String(value || "").trim()).filter(Boolean)
+      : String(v.contact || "").trim()
+        ? [String(v.contact).trim()]
+        : [];
+    details.contact_accounts = contactAccounts;
+    details.contact = contactAccounts[0] || "";
     if (editing) {
       details.level = editing.data.level || "";
       details.credit_code = editing.data.credit_code || "";
@@ -956,7 +983,12 @@ export default function CustomerCenterPage({
       managerKeyword,
     })));
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "contracts" });
-    onNavigate?.("contract-company");
+    const targetView = initialView === "customer-mine"
+      ? "contract-mine"
+      : ["customer-dept", "customer-dept-recycle"].includes(initialView)
+        ? "contract-dept"
+        : "contract-company";
+    onNavigate?.(targetView);
   };
   const openCustomerContractCreate = (customer: Customer) => {
     sessionStorage.setItem("sunhold:contract-customer", JSON.stringify({
@@ -965,6 +997,7 @@ export default function CustomerCenterPage({
       serial_no: customer.serial_no,
       at: Date.now(),
     }));
+    sessionStorage.setItem("sunhold:contract-customer-route-source", "customer");
     onNavigate?.("contract-new");
   };
   const openCustomerCivilCases = (customer: Customer) => {
@@ -976,7 +1009,12 @@ export default function CustomerCenterPage({
       managerKeyword,
     })));
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "civil-cases" });
-    onNavigate?.("case-company-civil");
+    const targetView = initialView === "customer-mine"
+      ? "case-mine"
+      : ["customer-dept", "customer-dept-recycle"].includes(initialView)
+        ? "case-dept"
+        : "case-company";
+    onNavigate?.(targetView);
   };
   const openCustomerIprCases = (customer: Customer) => {
     sessionStorage.setItem("sunhold:customer-return", JSON.stringify(buildCustomerDetailReturnState({
@@ -1313,6 +1351,17 @@ export default function CustomerCenterPage({
       },
     });
   };
+  const releaseCustomer = (row: Customer) => {
+    const confirmation = buildCustomerActionConfirmation("release", row.title);
+    if (!confirmation) return;
+    Modal.confirm({
+      title: `确认将客户“${confirmation.title}”释放到公海？`,
+      content: "释放后，该客户将从当前负责人名下移入公海，可由有权限的人员拾回。",
+      okText: "确认释放",
+      cancelText: "取消",
+      onOk: () => action(row, confirmation.action),
+    });
+  };
   const originalActionItems =
     (() => {
       const customerNavigationActions = [
@@ -1323,6 +1372,7 @@ export default function CustomerCenterPage({
     initialView === "customer-mine"
       ? [
           { key: "edit", label: "客户编辑" },
+          { key: "release", label: "释放到公海" },
           { key: "contract", label: "新增合同" },
           ...customerNavigationActions,
           { key: "level", label: "申请客户分级调整" },
@@ -1332,15 +1382,17 @@ export default function CustomerCenterPage({
           { key: "portal-close", label: "停用客户服务端" },
         ]
       : initialView === "customer-dept"
-        ? [{ key: "assign", label: "分配客户" }, ...customerNavigationActions]
+        ? [{ key: "assign", label: "分配客户" }, { key: "release", label: "释放到公海" }, ...customerNavigationActions]
       : initialView === "customer-company"
-        ? [{ key: "edit", label: "客户编辑" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }, ...customerNavigationActions]
+        ? [{ key: "edit", label: "客户编辑" }, { key: "release", label: "释放到公海" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }, ...customerNavigationActions]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"
             ? [...customerNavigationActions]
         : initialView === "customer-public"
-          ? [{ key: "claim", label: "拾回" }]
+          ? profile.role === "admin"
+            ? [{ key: "edit", label: "客户编辑" }, { key: "claim", label: "拾回" }]
+            : [{ key: "claim", label: "拾回" }]
           : ["customer-recent-contact", "customer-recent-update"].includes(initialView)
             ? [{ key: "edit", label: "客户编辑" }, ...customerNavigationActions]
             : []
@@ -1372,7 +1424,8 @@ export default function CustomerCenterPage({
       shareForm.setFieldsValue({ recipients: normalizeSharedObjectValues(target.data.shared_with) });
       setSharing(target);
     }
-    if (["release", "recycle", "restore"].includes(key)) void action(target, key);
+    if (key === "release") releaseCustomer(target);
+    if (["recycle", "restore"].includes(key)) void action(target, key);
   };
   const managerLocked = [
     "customer-mine",
@@ -1385,15 +1438,26 @@ export default function CustomerCenterPage({
     ["customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView)
       ? ""
       : isOriginalCustomerList && managerLocked
-      ? profile.display_name || profile.username || "管理者"
+      ? displayChinesePersonName(profile.display_name || profile.username, directory)
       : managerKeyword;
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const displayDate = (value?: string) => {
     const parsed = dayjs(value);
     return value && parsed.isValid() ? parsed.format("YYYY-M-D") : "—";
   };
-  const userLabel = (username: string) =>
-    directory.find((user) => user.username === username)?.display_name || username;
+  const userLabel = (value: string) => displayChinesePersonName(value, directory);
+  const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
+  const contactAccountLabels = (customer?: Customer | null) => userLabels(
+    customer?.data.contact_account_display_names?.length
+      ? customer.data.contact_account_display_names
+      : customer?.data.contact_accounts?.length
+      ? customer.data.contact_accounts
+      : Array.isArray(customer?.data.contact)
+        ? customer?.data.contact
+        : customer?.data.contact
+          ? [customer.data.contact]
+          : [],
+  );
   const canManageCurrentCustomer = Boolean(contacts && (
     isCustomerDetailManageable(contacts, profile)
   ));
@@ -1450,7 +1514,7 @@ export default function CustomerCenterPage({
       align: "center" as const,
       ellipsis: true,
       render: (_: unknown, r: Customer) => {
-        const managers = (r.data.customer_managers || [r.owner]).map(userLabel).join(["customer-recycle", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-recent-update"].includes(initialView) ? "," : "、");
+        const managers = userLabels((r.data as any).customer_manager_display_names || r.data.customer_managers || [r.owner]);
         return <span title={managers}>{managers}</span>;
       },
     },
@@ -1654,11 +1718,12 @@ export default function CustomerCenterPage({
             <h3>控制信息</h3>
             <div className="customer-view-fields customer-view-fields-five">
               <label><span>建档日期</span><Input disabled value={contacts.data.file_date || displayDate(contacts.created_at)} /></label>
-              <label><span>客户来源</span><Input disabled value={contacts.data.customer_source || userLabel(contacts.owner)} /></label>
+              <label><span>客户来源</span><Input disabled value={contacts.data.customer_source ? userLabel(contacts.data.customer_source) : userLabel(contacts.owner)} /></label>
               <label><span>是否共享</span><Select disabled value={contacts.data.is_shared || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
               <label><span>客户等级</span><Select disabled value={contacts.data.level || "立案客户"} options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></label>
               <label><span>上海市资助信息</span><Select disabled value={contacts.data.is_assisted || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
-              <label><span>客戶管理人</span><Input disabled value={(contacts.data.customer_managers || [contacts.owner]).map(userLabel).join("、")} /></label>
+              <label><span>客戶管理人</span><Input disabled value={userLabels((contacts.data as any).customer_manager_display_names || contacts.data.customer_managers || [contacts.owner])} /></label>
+              <label><span>客户联系人账号</span><Input disabled value={contactAccountLabels(contacts)} /></label>
             </div>
           </section>
           <section className="customer-license-section">
@@ -1703,7 +1768,7 @@ export default function CustomerCenterPage({
                 key: "notes",
                 label: "事项记录",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={contacts.data.notes || []} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到事项记录，可以去 新建" : "没有查询到事项记录"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator"},{title:"操作日期",dataIndex:"created_at"},{title:"操作",render:()=>null},
+                  {title:"序号",render:(_:unknown,_row:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator",render:(value:string)=>userLabel(value)},{title:"操作日期",dataIndex:"created_at"},{title:"操作",render:()=>null},
                 ]} />,
               },
               {
@@ -1715,7 +1780,7 @@ export default function CustomerCenterPage({
                     <Table rowKey="id" size="small" pagination={false} dataSource={customerEvents} locale={{ emptyText: "暂无客户注意事项" }} columns={[
                       { title: "事项", dataIndex: "action", width: 150 },
                       { title: "内容", dataIndex: "comment" },
-                      { title: "操作人", dataIndex: "operator", width: 100 },
+                      { title: "操作人", dataIndex: "operator", width: 100, render: (value: string) => userLabel(value) },
                       { title: "时间", dataIndex: "created_at", width: 165 },
                     ]} />
                     {canManageCurrentCustomer && (
@@ -1737,7 +1802,7 @@ export default function CustomerCenterPage({
                 children: (
                   <>
                     {sharedObjectsError && <Alert type="warning" showIcon message={sharedObjectsError} style={{ marginBottom: 8 }} />}
-                    <Table rowKey="value" size="small" pagination={false} dataSource={sharedObjects.map((value) => ({ value }))} locale={{ emptyText: "暂无共享对象" }} columns={[{ title: "共享接收人", dataIndex: "value" }]} />
+                    <Table rowKey="value" size="small" pagination={false} dataSource={sharedObjects.map((value) => ({ value }))} locale={{ emptyText: "暂无共享对象" }} columns={[{ title: "共享接收人", dataIndex: "value", render: (value: string) => userLabel(value) }]} />
                   </>
                 ),
               },
@@ -1749,7 +1814,7 @@ export default function CustomerCenterPage({
                     {historyError && <Alert type="warning" showIcon message={historyError} style={{ marginBottom: 8 }} />}
                     <Table rowKey="id" size="small" pagination={false} dataSource={events} locale={{emptyText:"暂无操作记录"}} columns={[
                       { title: "动作", dataIndex: "action" },
-                      { title: "操作人", dataIndex: "operator" },
+                      { title: "操作人", dataIndex: "operator", render: (value: string) => userLabel(value) },
                       { title: "说明", dataIndex: "comment" },
                       { title: "时间", dataIndex: "created_at" },
                     ]} />
@@ -1760,7 +1825,7 @@ export default function CustomerCenterPage({
                 key: "documents",
                 label: "客户文档",
                 children: <Table rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText: ["customer-shared", "customer-company"].includes(initialView) ? "没有查询到客户文件，可以去 上传客户文件" : "没有查询到客户文件"}} columns={[
-                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader"},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},{title:"操作",render:()=>null},
+                  {title:"序号",render:(_:unknown,_row:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",render:(value:string)=>userLabel(value)},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},{title:"操作",render:()=>null},
                 ]} />,
               },
             ]}
@@ -1965,14 +2030,14 @@ export default function CustomerCenterPage({
               <h3>控制信息</h3>
               <div className="customer-create-grid customer-control-grid">
                 <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
-                <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
+                <Form.Item label="客户来源" name="customer_source"><Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
                 <Form.Item label="是否共享" name="is_shared"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="客户等级" name="level"><Select options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
-                <Form.Item label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
+                <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
                   <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
                 </Form.Item>
-                <Form.Item label="客户联系人账号" name="contact"><AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
+                <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
               </div>
             </section>
           </Form>
@@ -1998,7 +2063,7 @@ export default function CustomerCenterPage({
                 label:"事项记录",
                 children:<>
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.notes || []} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到事项记录，可以去 <Button type="link" onClick={()=>openNewEditor("note")}>新建</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator",width:110},{title:"操作日期",dataIndex:"created_at",width:170},
+                    {title:"序号",render:(_:unknown,_r:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator",width:110,render:(value:string)=>userLabel(value)},{title:"操作日期",dataIndex:"created_at",width:170},
                     {title:"操作",render:(_:unknown,row:Note)=><Popconfirm title="删除这条记录？" onConfirm={()=>deleteNote(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
                   ]} />
                   {(contacts?.data.notes?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("note")}>新建</Button>}
@@ -2010,7 +2075,7 @@ export default function CustomerCenterPage({
                 children:<>
                   {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
                   <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},
+                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110,render:(value:string)=>userLabel(value)},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},
                     {title:"操作",render:(_:unknown,row:Attachment)=>canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null}
                   ]} />
                   {attachments.length > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button>}
@@ -2150,7 +2215,7 @@ export default function CustomerCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="客户联系人账号" name="contact">
-              <AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" />
+              <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" />
             </Form.Item>
             <Form.Item label="联系电话" name="phone">
               <Input />
@@ -2188,7 +2253,7 @@ export default function CustomerCenterPage({
               <Input />
             </Form.Item>
             <div className="span-2"><b>控制信息</b></div>
-            <Form.Item label="客户来源" name="customer_source"><AutoComplete options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
+            <Form.Item label="客户来源" name="customer_source"><Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
             <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
             <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
             <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
@@ -2256,9 +2321,7 @@ export default function CustomerCenterPage({
           <Form.Item label="原客戶管理人">
             <Input
               readOnly
-              value={(assigning?.data.customer_managers || (assigning ? [assigning.owner] : []))
-                .map(userLabel)
-                .join(",")}
+              value={userLabels((assigning?.data as any)?.customer_manager_display_names || assigning?.data.customer_managers || (assigning ? [assigning.owner] : []))}
             />
           </Form.Item>
           <Form.Item
@@ -2269,10 +2332,7 @@ export default function CustomerCenterPage({
             <Select
               showSearch
               optionFilterProp="label"
-              options={directory.map((user) => ({
-                value: user.username,
-                label: `${user.display_name || user.username}${user.department ? `（${user.department}）` : ""}`,
-              }))}
+              options={directoryOptions}
             />
           </Form.Item>
         </Form>
@@ -2291,7 +2351,7 @@ export default function CustomerCenterPage({
             rules={[{ required: true }]}
           >
             <Select
-              mode="tags"
+              mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption}
               tokenSeparators={[",", "，"]}
               placeholder="输入账号后回车，可添加多人"
             />
@@ -2443,7 +2503,7 @@ export default function CustomerCenterPage({
                         render: (v: string) => <Tag color="blue">{v}</Tag>,
                       },
                       { title: "跟进内容", dataIndex: "content" },
-                      { title: "记录人", dataIndex: "operator", width: 90 },
+                      { title: "记录人", dataIndex: "operator", width: 90, render: (value: string) => userLabel(value) },
                       { title: "时间", dataIndex: "created_at", width: 165 },
                       {
                         title: "操作",
@@ -2506,7 +2566,7 @@ export default function CustomerCenterPage({
                   <Table rowKey="id" size="small" pagination={false} dataSource={customerEvents} locale={{ emptyText: "暂无客户注意事项" }} columns={[
                     { title: "事项", dataIndex: "action", width: 150 },
                     { title: "内容", dataIndex: "comment" },
-                    { title: "操作人", dataIndex: "operator", width: 100 },
+                    { title: "操作人", dataIndex: "operator", width: 100, render: (value: string) => userLabel(value) },
                     { title: "时间", dataIndex: "created_at", width: 165 },
                   ]} />
                   {canManageCurrentCustomer && (
@@ -2540,7 +2600,7 @@ export default function CustomerCenterPage({
                   {historyError && <Alert type="warning" showIcon message={historyError} style={{ marginBottom: 8 }} />}
                   <Table rowKey="id" size="small" pagination={false} dataSource={events} locale={{emptyText:"暂无操作记录"}} columns={[
                     { title: "动作", dataIndex: "action" },
-                    { title: "操作人", dataIndex: "operator" },
+                    { title: "操作人", dataIndex: "operator", render: (value: string) => userLabel(value) },
                     { title: "说明", dataIndex: "comment" },
                     { title: "时间", dataIndex: "created_at" },
                   ]} />
@@ -2579,7 +2639,7 @@ export default function CustomerCenterPage({
                         width: 90,
                         render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
                       },
-                      { title: "上传人", dataIndex: "uploader", width: 80 },
+                      { title: "上传人", dataIndex: "uploader", width: 80, render: (value: string) => userLabel(value) },
                       { title: "文档日期", render: (_: unknown, r: Attachment) => getCustomerAttachmentDate(r) },
                       {
                         title: "操作",

@@ -24,7 +24,7 @@ export const consumeCustomerRelationTarget = (): CustomerRelationNavigationConte
   sessionStorage.removeItem(STORAGE_KEY);
   try {
     const parsed = JSON.parse(raw) as CustomerRelationNavigationContext;
-    if (!parsed || !parsed.target || (!parsed.id && !parsed.serial_no && !parsed.title)) return null;
+    if (!parsed || !["contracts", "civil-cases"].includes(parsed.target) || (!parsed.id && !parsed.serial_no && !parsed.title)) return null;
     if (parsed.at && Date.now() - Number(parsed.at) > MAX_AGE_MS) return null;
     return parsed;
   } catch {

@@ -10,6 +10,7 @@ const apiSource = fs.readFileSync(
   new URL("../api-server/app/main.py", import.meta.url),
   "utf8",
 );
+const appSource = fs.readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
 const usersStart = pageSource.indexOf('} else if (initialView === "system-users")');
 const usersEnd = pageSource.indexOf('} else if (initialView === "system-roles")', usersStart);
 const usersBlock = pageSource.slice(usersStart, usersEnd);
@@ -52,6 +53,16 @@ test("system user modal keeps required fields and cancel semantics", () => {
   assert.match(pageSource, /name="department"[\s\S]*required: true/);
   assert.match(pageSource, /name="role"[\s\S]*required: true/);
   assert.match(pageSource, /name="password"[\s\S]*min: 8/);
+});
+
+test("system user personnel-name display never falls back to username", () => {
+  assert.match(pageSource, /PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"/);
+  assert.match(pageSource, /const personDisplayName = /);
+  assert.match(usersBlock, /renderPersonDisplayName\(_value, row\)/);
+  assert.match(pageSource, /display_name_missing/);
+  assert.match(pageSource, /请在修改入口补充中文姓名/);
+  assert.match(usersBlock, /title=\{`重置密码：\$\{personDisplayName\(resettingUser \|\| undefined\)\}`\}/);
+  assert.doesNotMatch(usersBlock, /display_name\s*\|\|\s*row\.username/);
 });
 
 test("system user destructive helpers enforce admin and self boundaries", () => {
@@ -102,6 +113,20 @@ test("system user and security APIs retain administrator guards", () => {
   assert.match(securityApi, /_require_admin\(identity\)/);
   assert.match(userApi, /不能删除系统管理员账号/);
   assert.match(securityApi, /_security_policy_dict/);
+});
+
+test("standalone system user management route is hidden from the visible workspace", () => {
+  const configuredMenuItems = appSource.slice(
+    appSource.indexOf("function configuredMenuItems"),
+    appSource.indexOf("function flattenMenu"),
+  );
+  const canonicalRouteBlock = appSource.slice(
+    appSource.indexOf("function canonicalRoute(route: string): string {"),
+    appSource.indexOf("function financeRouteFromPlatform"),
+  );
+  assert.match(appSource, /"system-users": "hr-all"/);
+  assert.match(configuredMenuItems, /item\.key !== "system-users"/);
+  assert.match(canonicalRouteBlock, /route === "contract-approver-settings"\) return "hr-all"/);
 });
 
 test("organization and audit routes remain explicit integration boundaries", () => {

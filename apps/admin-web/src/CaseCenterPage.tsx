@@ -426,6 +426,7 @@ export default function CaseCenterPage({
   const [caseListReturnContext] = useState<{route?:string;page?:number;pageSize?:number;query?:Record<string,any>} | null>(() => {
     try {
       const raw = sessionStorage.getItem("sunhold:case-list-return");
+      sessionStorage.removeItem("sunhold:case-list-return");
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -777,13 +778,17 @@ export default function CaseCenterPage({
     setTab(first);
     if (isCreateView) startCreate();
     const relationTarget = consumeCustomerRelationTarget();
-    const relationQuery = relationTarget?.target === "civil-cases" ? { customer: relationTarget.title || relationTarget.serial_no || "" } : {};
+    const relationQuery = relationTarget?.target === "civil-cases" ? {
+      customer_id: relationTarget.id,
+      customer_no: relationTarget.serial_no,
+      customer: relationTarget.title,
+    } : {};
     let initialListQuery: Record<string, any> = relationQuery;
-    if (relationQuery.customer) {
+    if (relationQuery.customer_id || relationQuery.customer_no || relationQuery.customer) {
       caseQueryForm.setFieldsValue(relationQuery);
       setCaseQuery(relationQuery);
     }
-    if (!isCreateView && !isCaseDetailView && caseListReturnContext?.query) {
+    if (!relationQuery.customer_id && !relationQuery.customer_no && !relationQuery.customer && !isCreateView && !isCaseDetailView && caseListReturnContext?.query) {
       caseQueryForm.setFieldsValue(caseListReturnContext.query);
       setCaseQuery(caseListReturnContext.query);
       initialListQuery = caseListReturnContext.query;

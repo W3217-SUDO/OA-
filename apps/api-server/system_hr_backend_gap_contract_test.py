@@ -12,6 +12,7 @@ from app.database import Base, get_db
 from app.main import FIELD_KEYS, app
 from app.models import (
     BusinessRecord,
+    Department,
     JobRole,
     RolePermission,
     SecurityPolicy,
@@ -47,6 +48,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
                 RolePermission.__table__,
                 SystemMenu.__table__,
                 JobRole.__table__,
+                Department.__table__,
                 BusinessRecord.__table__,
                 WorkflowEvent.__table__,
             ]))
@@ -70,6 +72,15 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
                 is_active=True,
                 must_change_password=False,
                 profile={"position": "Leader"},
+            ))
+            db.add(User(
+                username="codex_missing_name",
+                display_name="codex_missing_name",
+                department=DEPT,
+                role="user",
+                password_hash=hash_password("MissingPass2026!"),
+                is_active=True,
+                must_change_password=False,
             ))
             await db.commit()
 
@@ -158,6 +169,84 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
             json={"manager_id": 999999},
         )
         self.assertEqual(invalid_manager.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    async def test_person_name_display_metadata_never_falls_back_to_username(self):
+        admin_headers = await self._admin_headers()
+
+        users = await self.client.get(f"{API}/system/users?keyword=codex_missing_name", headers=admin_headers)
+        self.assertEqual(users.status_code, status.HTTP_200_OK, users.text)
+        user_row = users.json()["items"][0]
+        self.assertEqual(user_row["username"], "codex_missing_name")
+        self.assertEqual(user_row["display_name"], "codex_missing_name")
+        self.assertEqual(user_row["person_display_name"], "【待补充中文姓名】")
+        self.assertTrue(user_row["display_name_missing"])
+
+        employees = await self.client.get(f"{API}/hr/employees?username=codex_missing_name", headers=admin_headers)
+        self.assertEqual(employees.status_code, status.HTTP_200_OK, employees.text)
+        employee_row = employees.json()["items"][0]
+        self.assertEqual(employee_row["data"]["username"], "codex_missing_name")
+        self.assertEqual(employee_row["title"], "【待补充中文姓名】")
+        self.assertEqual(employee_row["person_display_name"], "【待补充中文姓名】")
+        self.assertTrue(employee_row["display_name_missing"])
+
+    async def test_hr_employee_uses_linked_account_name_when_archive_title_is_empty(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            db.add(User(
+                username="codex_account_name",
+                display_name="律师助理2",
+                department=DEPT,
+                role="user",
+                password_hash=hash_password("AccountNamePass2026!"),
+                is_active=True,
+                must_change_password=False,
+            ))
+            await db.flush()
+            db.add(BusinessRecord(
+                module="hr",
+                serial_no="CODEX-HR-NAME-FALLBACK",
+                title="",
+                customer="上海申浩律师事务所",
+                status=STATUS_ACTIVE,
+                owner="codex_account_name",
+                department=DEPT,
+                data={"username": "codex_account_name"},
+            ))
+            await db.commit()
+
+        response = await self.client.get(
+            f"{API}/hr/employees?username=codex_account_name",
+            headers=admin_headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        row = response.json()["items"][0]
+        self.assertEqual(row["person_display_name"], "律师助理2")
+        self.assertEqual(row["title"], "")
+        self.assertFalse(row["display_name_missing"])
+
+    async def test_organization_person_display_fields_never_fall_back_to_username(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            db.add(Department(
+                code="CODEX-NAME",
+                name="姓名显示测试部",
+                manager="codex_missing_name",
+                created_by="codex_missing_name",
+                updated_by="leader",
+            ))
+            await db.commit()
+
+        departments = await self.client.get(f"{API}/hr/departments?keyword=CODEX-NAME", headers=admin_headers)
+        self.assertEqual(departments.status_code, status.HTTP_200_OK, departments.text)
+        department_row = departments.json()["items"][0]
+        self.assertEqual(department_row["manager"], "codex_missing_name")
+        self.assertEqual(department_row["manager_display_name"], "【待补充中文姓名】")
+        self.assertTrue(department_row["manager_display_name_missing"])
+        self.assertEqual(department_row["created_by_display_name"], "【待补充中文姓名】")
+        self.assertTrue(department_row["created_by_display_name_missing"])
+        self.assertEqual(department_row["updated_by"], "leader")
+        self.assertEqual(department_row["updated_by_display_name"], "【待补充中文姓名】")
+        self.assertTrue(department_row["updated_by_display_name_missing"])
 
     async def test_user_permission_overrides_contract(self):
         admin_headers = await self._admin_headers()
@@ -305,6 +394,131 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertEqual(unknown.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    async def test_hr_employee_edit_persists_contract_approval_flag_to_system_user(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            db.add(Department(code="CODEX-APPROVAL", name=DEPT, is_active=True))
+            db.add(JobRole(code="CODEX-APPROVER", name="审批员", is_active=True))
+            user = User(
+                username="approval_user",
+                display_name="张测试",
+                department=DEPT,
+                role="user",
+                password_hash=hash_password("ApprovalPass2026!"),
+                is_active=True,
+                must_change_password=False,
+                profile={},
+            )
+            db.add(user)
+            employee = BusinessRecord(
+                module="hr",
+                serial_no="HR-APPROVER-01",
+                title="张测试",
+                status=STATUS_ACTIVE,
+                owner="approval_user",
+                department=DEPT,
+                data={"username": "approval_user"},
+            )
+            db.add(employee)
+            await db.flush()
+            employee_id = int(employee.id)
+            await db.commit()
+
+        patched = await self.client.patch(
+            f"{API}/hr/employees/{employee_id}",
+            headers=admin_headers,
+            json={
+                "username": "approval_user",
+                "display_name": "张测试",
+                "department": DEPT,
+                "role": "user",
+                "position": "审批员",
+                "is_active": True,
+                "email": "",
+                "mobile": "",
+                "office_phone": "",
+                "joined_at": "2026-08-05",
+                "left_at": None,
+                "data": {"contract_approval_enabled": True},
+            },
+        )
+        self.assertEqual(patched.status_code, status.HTTP_200_OK, patched.text)
+        self.assertTrue(patched.json()["user"]["contract_approval_enabled"])
+        self.assertTrue(patched.json()["employee"]["data"]["contract_approval_enabled"])
+
+        users = await self.client.get(f"{API}/system/users?keyword=approval_user", headers=admin_headers)
+        self.assertEqual(users.status_code, status.HTTP_200_OK, users.text)
+        self.assertTrue(users.json()["items"][0]["contract_approval_enabled"])
+
+        employees = await self.client.get(f"{API}/hr/employees?username=approval_user", headers=admin_headers)
+        self.assertEqual(employees.status_code, status.HTTP_200_OK, employees.text)
+        self.assertTrue(employees.json()["items"][0]["data"]["contract_approval_enabled"])
+
+        settings = await self.client.get(f"{API}/contracts/approver-settings", headers=admin_headers)
+        self.assertEqual(settings.status_code, status.HTTP_200_OK, settings.text)
+        approver_row = next(item for item in settings.json()["items"] if item["username"] == "approval_user")
+        self.assertTrue(approver_row["selected"])
+
+        directory = await self.client.get(f"{API}/users/directory", headers=admin_headers)
+        self.assertEqual(directory.status_code, status.HTTP_200_OK, directory.text)
+        directory_row = next(item for item in directory.json()["items"] if item["username"] == "approval_user")
+        self.assertTrue(directory_row["can_approve_contract"])
+
+    async def test_hr_contract_approval_switch_endpoint_controls_contract_directory(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            db.add(Department(code="CODEX-SWITCH", name=DEPT, is_active=True))
+            db.add(JobRole(code="CODEX-SWITCH-ROLE", name="审批助理", is_active=True))
+            user = User(
+                username="switch_approver",
+                display_name="李测试",
+                department=DEPT,
+                role="user",
+                password_hash=hash_password("SwitchPass2026!"),
+                is_active=True,
+                must_change_password=False,
+                profile={"account_type": "员工账号", "position": "审批助理", "contract_approval_enabled": False},
+            )
+            db.add(user)
+            employee = BusinessRecord(
+                module="hr",
+                serial_no="HR-SWITCH-01",
+                title="李测试",
+                status=STATUS_ACTIVE,
+                owner="switch_approver",
+                department=DEPT,
+                data={"username": "switch_approver", "account_type": "员工账号", "contract_approval_enabled": False},
+            )
+            db.add(employee)
+            await db.flush()
+            employee_id = int(employee.id)
+            await db.commit()
+
+        enabled = await self.client.patch(
+            f"{API}/hr/employees/{employee_id}/contract-approval-status",
+            headers=admin_headers,
+            json={"contract_approval_enabled": True},
+        )
+        self.assertEqual(enabled.status_code, status.HTTP_200_OK, enabled.text)
+        self.assertTrue(enabled.json()["employee"]["data"]["contract_approval_enabled"])
+        self.assertTrue(enabled.json()["user"]["contract_approval_enabled"])
+        self.assertTrue(enabled.json()["can_approve_contract"])
+
+        directory = await self.client.get(f"{API}/users/directory", headers=admin_headers)
+        self.assertEqual(directory.status_code, status.HTTP_200_OK, directory.text)
+        directory_row = next(item for item in directory.json()["items"] if item["username"] == "switch_approver")
+        self.assertTrue(directory_row["can_approve_contract"])
+
+        disabled = await self.client.patch(
+            f"{API}/hr/employees/{employee_id}/contract-approval-status",
+            headers=admin_headers,
+            json={"contract_approval_enabled": False},
+        )
+        self.assertEqual(disabled.status_code, status.HTTP_200_OK, disabled.text)
+        self.assertFalse(disabled.json()["employee"]["data"]["contract_approval_enabled"])
+        self.assertFalse(disabled.json()["user"]["contract_approval_enabled"])
+        self.assertFalse(disabled.json()["can_approve_contract"])
 
     async def test_job_role_field_permissions_model_and_api(self):
         admin_headers = await self._admin_headers()

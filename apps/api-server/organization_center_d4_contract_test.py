@@ -64,7 +64,9 @@ def test_organization_response_and_audit_fields_match_models() -> None:
         assert field in MODELS
         assert field in MAIN
     assert '_department_dict(item' in MAIN
-    assert '_job_role_dict(item)' in MAIN
+    assert '_job_role_dict(item' in MAIN
+    for field in ("manager_display_name", "created_by_display_name", "updated_by_display_name"):
+        assert field in MAIN
 
 
 def test_organization_transaction_and_identity_audit_are_explicit() -> None:

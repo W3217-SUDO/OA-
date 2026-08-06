@@ -24,11 +24,11 @@ test("legacy navigation config keeps old LinkUrl/MenuTypeId fields", () => {
   assert.match(navTypes, /open_target\?: string;/, "legacy menus should carry an optional target");
 });
 
-test("configured menus do not hide authorized system-users and only disable legacy menus without links", () => {
-  assert.doesNotMatch(
+test("configured menus hide the removed standalone system user page and only disable legacy menus without links", () => {
+  assert.match(
     configuredMenuItems,
     /item\.key !== "system-users"/,
-    "system-users must not be hard-filtered by the frontend when the backend grants it",
+    "system-users must be hard-filtered even if an old backend menu row grants it",
   );
   assert.match(
     configuredMenuItems,

@@ -20,32 +20,16 @@ function block(source, startNeedle, endNeedle) {
   return source.slice(start, end)
 }
 
-const canonicalRouteBlock = block(appSource, 'function canonicalRoute(route: string): string {', 'function financeRouteFromPlatform')
-const routeLabelsBlock = block(appSource, 'const routePageLabels: Record<string, string> = {', 'function resolveWorkspacePageLabel')
-const requestedPageBlock = block(appSource, 'const requestedPage =', '<Card className="panel">')
 const editModalBlock = block(hrSource, 'const editModal=', 'const transitionModal=')
 
-test('HR approval relationship entry keeps its guarded frontend route', () => {
-  assert.ok(editModalBlock.includes('审批关系'), 'employee edit modal should keep the approval relationship entry')
-  assert.ok(
-    editModalBlock.includes("openHrAdminNavigation('contract-approver-settings'"),
-    'HR approval relationship entry should use the dedicated route key',
-  )
+test('HR employee edit no longer exposes the approval relationship shortcut', () => {
+  assert.ok(!hrSource.includes('openHrAdminNavigation'), 'HR page should not retain approval relationship shortcut navigation')
+  assert.ok(!editModalBlock.includes("openHrAdminNavigation('contract-approver-settings'"), 'employee edit modal must not use the removed route key')
+  assert.ok(!editModalBlock.includes('????'), 'employee edit modal should not render approval relationship text')
+  assert.ok(editModalBlock.includes('contract_approval_enabled'), 'approval eligibility switch remains in the employee form')
 })
 
-test('approval relationship route lands on existing system user approval settings page', () => {
-  assert.ok(
-    canonicalRouteBlock.includes('route === "contract-approver-settings"') &&
-      canonicalRouteBlock.includes('return "system-users"'),
-    'contract-approver-settings must canonicalize to the existing system user approval settings page',
-  )
-  assert.ok(
-    routeLabelsBlock.includes('"contract-approver-settings": "审批关系"'),
-    'workspace tab label should describe approval relationship instead of a generic business page',
-  )
-  assert.ok(
-    requestedPageBlock.indexOf('route.startsWith("system-")') <
-      requestedPageBlock.indexOf('route.startsWith("contract-")'),
-    'system canonical routes must be selected before generic contract routes can render',
-  )
+test('workspace does not expose an HR approval relationship shortcut', () => {
+  assert.ok(!appSource.includes("openHrAdminNavigation('contract-approver-settings'"), 'workspace should not expose an HR shortcut to approval relationship')
+  assert.ok(!hrSource.includes('contract-approver-settings'), 'HR source should not reference the approval relationship route')
 })

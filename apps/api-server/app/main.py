@@ -37,6 +37,47 @@ from .security import create_token, current_identity, hash_password, user_role_i
 
 logger = logging.getLogger(__name__)
 
+PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"
+PERSON_NAME_NON_PERSON_MARKERS = (
+    "经理", "总监", "主管", "主任", "专员", "助理", "顾问", "律师", "合伙人",
+    "员工", "劳务", "部门", "范围", "管理员", "管理者", "审批", "负责人", "人员", "人事",
+)
+
+
+def _is_complete_person_display_name(display_name: object, username: object = "") -> bool:
+    value = str(display_name or "").strip()
+    account = str(username or "").strip()
+    return bool(
+        value
+        and (not account or value.casefold() != account.casefold())
+    )
+
+
+def _person_display_name(display_name: object, username: object = "") -> tuple[str, bool]:
+    value = str(display_name or "").strip()
+    if _is_complete_person_display_name(value, username):
+        return value, False
+    return PERSON_NAME_PLACEHOLDER, True
+
+
+async def _user_display_map(usernames: set[str], db: AsyncSession) -> dict[str, User]:
+    normalized = {str(username or "").strip().lower() for username in usernames if str(username or "").strip()}
+    if not normalized:
+        return {}
+    users = (await db.scalars(select(User).where(User.username.in_(normalized)))).all()
+    return {user.username: user for user in users}
+
+
+def _person_reference_display(username: object, users_by_username: dict[str, User]) -> tuple[str, bool]:
+    key = str(username or "").strip()
+    if not key:
+        return "—", False
+    if key == "system":
+        return "系统", False
+    user = users_by_username.get(key.lower())
+    source = user.display_name if user else key
+    return _person_display_name(source, key)
+
 
 CASE_CREATE_PERMISSION_BY_TYPE = {
     "民事案件": "case-new-civil",
@@ -170,7 +211,7 @@ LEGACY_FINANCE_MENU_KEYS = {
 }
 LEGACY_ADMIN_MENU_KEYS = {
     "hr-active", "hr-probation", "hr-offboard",
-    "system-users", "system-roles", "system-audit", "system-security",
+    "system-roles", "system-audit", "system-security",
 }
 ORIGINAL_FINANCE_MENU_KEYS = {
     key for key, _, _, _, _ in DEFAULT_SYSTEM_MENUS
@@ -298,7 +339,7 @@ SYSTEM_ADMIN_JOB_PERMISSIONS = [
     "案件查看", "案件新建", "案件分配", "案件承办", "案件进展维护", "开庭排期", "案件办结", "案件归档申请", "案件归档审核", "调查任务发起", "调查任务办理", "线索审核", "公证管理", "证据管理",
     "任务查看", "任务派发", "任务接受", "任务协作", "任务交接", "任务完成确认", "收文登记", "发文登记", "文书模板维护", "业务附件上传/下载", "智能文档生成", "智能文档人工确认",
     "费用查看", "费用申请", "费用审批", "回款登记", "回款分配", "付款登记", "付款审批", "开票申请", "开票审批", "退款办理", "内部结算", "对账", "用印申请", "用印审批", "印章管理",
-    "员工查看", "员工新建", "员工修改", "部门管理", "岗位角色管理", "仓库查看", "仓库出入库", "报表查看", "报表导出", "系统用户管理", "系统权限配置", "系统参数配置", "审计日志查看",
+    "员工查看", "员工新建", "员工修改", "部门管理", "岗位角色管理", "仓库查看", "仓库出入库", "报表查看", "报表导出", "系统权限配置", "系统参数配置", "审计日志查看",
 ]
 DEFAULT_JOB_ROLES = [
     ("SYSTEM-ADMIN", "系统管理员", SYSTEM_ADMIN_JOB_PERMISSIONS),
@@ -1671,6 +1712,8 @@ class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
     case_types: list[str] = Field(default_factory=list, max_length=20)
     case_type: str = Field(default="", max_length=128)
+    customer_id: int | None = Field(default=None, gt=0)
+    customer_no: str = Field(default="", max_length=128)
     customer: str = Field(default="", max_length=256)
     serial_no: str = Field(default="", max_length=128)
     keyword: str = Field(default="", max_length=256)
@@ -2252,6 +2295,10 @@ class HrEmployeeLoginStatusInput(BaseModel):
     is_active: bool
 
 
+class HrEmployeeContractApprovalStatusInput(BaseModel):
+    contract_approval_enabled: bool
+
+
 class HrEmployeeCreateInput(BaseModel):
     # Only an "employee account" has a system-login counterpart.  Keeping this
     # optional lets HR retain customer/external personnel files without creating
@@ -2501,7 +2548,8 @@ class CustomerCreateInput(BaseModel):
     is_shared: str | bool | None = None
     is_assisted: str | bool | None = None
     fee_reduction: str | bool | None = None
-    contact: str | None = None
+    contact: str | list[str] | None = None
+    contact_accounts: list[str] = Field(default_factory=list, max_length=20)
     phone: str | None = None
     credit_code: str | None = None
     legal_representative: str | None = None
@@ -2544,7 +2592,7 @@ class ContractApproverSettingsInput(BaseModel):
 
 
 class ContractDraftInput(BaseModel):
-    serial_no: str = Field(min_length=1, max_length=128)
+    serial_no: str = Field(default="", max_length=128)
     title: str = Field(min_length=1, max_length=255)
     customer: str = Field(min_length=1, max_length=255)
     owner: str = Field(min_length=1, max_length=64)
@@ -2826,6 +2874,70 @@ def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None)
         })
     if record.module == "customer":
         result["customer_guid"] = _customer_guid(record)
+    return result
+
+
+CONTRACT_PERSON_NAME_PLACEHOLDER = "姓名待维护"
+CONTRACT_PERSON_NAME_PATTERN = re.compile(r"[\u3400-\u9fff]")
+CONTRACT_NON_PERSON_NAME_MARKERS = PERSON_NAME_NON_PERSON_MARKERS
+
+
+def _valid_contract_person_name(value: object, username: object = "") -> str:
+    name = unicodedata.normalize("NFKC", str(value or "")).strip()
+    compact_name = re.sub(r"\s+", "", name)
+    account = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(username or "")).strip())
+    if not compact_name or (account and compact_name.casefold() == account.casefold()):
+        return ""
+    return name
+
+
+def _valid_contract_chinese_person_name(value: object) -> str:
+    name = _valid_contract_person_name(value)
+    return name if CONTRACT_PERSON_NAME_PATTERN.search(name) else ""
+
+
+def _contract_person_display_name(value: object, names_by_username: dict[str, str] | None = None) -> str:
+    raw = unicodedata.normalize("NFKC", str(value or "")).strip()
+    direct = _valid_contract_chinese_person_name(raw)
+    if direct:
+        return direct
+    mapped = _valid_contract_person_name((names_by_username or {}).get(raw.lower(), ""), raw)
+    return mapped or CONTRACT_PERSON_NAME_PLACEHOLDER
+
+
+def _contract_person_values(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item or "").strip() for item in value if str(item or "").strip()]
+    return [item.strip() for item in re.split(r"[、,，;；]", str(value or "")) if item.strip()]
+
+
+async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields: set[str] | None, db: AsyncSession) -> dict:
+    result = _record_dict(record, allowed_fields)
+    if record.module not in {"contract", "customer"}:
+        return result
+    data = result["data"]
+    usernames = [record.owner]
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager"):
+        usernames.extend(_contract_person_values(data.get(key)))
+    usernames.extend(_contract_person_values(data.get("customer_managers")))
+    usernames.extend(_contract_person_values(data.get("contact_accounts") or data.get("contact")))
+    normalized_usernames = list(dict.fromkeys(value.lower() for value in usernames if value))
+    users = list((await db.scalars(select(User).where(User.username.in_(normalized_usernames)))).all()) if normalized_usernames else []
+    names_by_username = {user.username.lower(): user.display_name for user in users}
+    result["owner_display_name"] = _contract_person_display_name(record.owner, names_by_username)
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver"):
+        if key in data:
+            data[f"{key}_display_name"] = _contract_person_display_name(data.get(key), names_by_username)
+    managers = _contract_person_values(data.get("customer_managers") or data.get("customer_manager"))
+    if managers:
+        manager_names = [_contract_person_display_name(value, names_by_username) for value in managers]
+        data["customer_manager_display_names"] = manager_names
+        data["customer_manager_display_name"] = "、".join(manager_names)
+    contact_accounts = _contract_person_values(data.get("contact_accounts") or data.get("contact"))
+    if contact_accounts:
+        contact_names = [_contract_person_display_name(value, names_by_username) for value in contact_accounts]
+        data["contact_account_display_names"] = contact_names
+        data["contact_account_display_name"] = "、".join(contact_names)
     return result
 
 
@@ -3398,11 +3510,16 @@ async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
 
 
 async def _record_dict_for_identity(record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
-    return _record_dict(record, await _allowed_field_keys(identity, db))
+    return await _contract_customer_record_dict(record, await _allowed_field_keys(identity, db), db)
+
+
+def _is_smoke_test_username(username: object) -> bool:
+    """Only hide explicitly generated smoke accounts; recorded English names stay valid."""
+    return str(username or "").strip().casefold().startswith("smoke_")
 
 
 async def _resolve_active_customer_managers(values: list[object], db: AsyncSession) -> list[str]:
-    """Resolve customer managers to stable usernames, accepting unique display names for legacy UI clients."""
+    """Resolve customer managers to stable usernames, accepting unique display names and keywords for legacy UI clients."""
     tokens = list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
     if not tokens:
         raise HTTPException(status_code=422, detail="至少保留一名客户管理人")
@@ -3424,7 +3541,25 @@ async def _resolve_active_customer_managers(values: list[object], db: AsyncSessi
         elif username not in resolved:
             resolved.append(username)
     if invalid:
-        raise HTTPException(status_code=422, detail=f"客户管理人不存在、已停用或姓名不唯一：{'、'.join(invalid)}")
+        unresolved: list[str] = []
+        for token in invalid:
+            like = f"%{token}%"
+            matches = list((await db.scalars(select(User).where(
+                User.is_active.is_(True),
+                or_(User.username.ilike(like), User.display_name.ilike(like)),
+            ))).all())
+            match_usernames = sorted({user.username for user in matches})
+            if len(match_usernames) == 1:
+                username = match_usernames[0]
+                if username not in resolved:
+                    resolved.append(username)
+            else:
+                unresolved.append(token)
+        if unresolved:
+            raise HTTPException(status_code=422, detail=f"客户管理人不存在、已停用或姓名不唯一：{'、'.join(unresolved)}")
+    smoke_accounts = [username for username in resolved if _is_smoke_test_username(username)]
+    if smoke_accounts:
+        raise HTTPException(status_code=422, detail=f"测试账号不能作为客户管理人：{'、'.join(smoke_accounts)}")
     return resolved
 
 
@@ -3738,7 +3873,9 @@ def _require_admin(identity: dict) -> None:
 def _system_user_dict(user: User) -> dict:
     profile = user.profile or {}
     role_ids = _system_user_role_ids(user)
-    return {"id": user.id, "username": user.username, "display_name": user.display_name, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "manager_id": profile.get("manager_id"), "manager_name": profile.get("manager_name", ""), "access_level": profile.get("access_level", ""), "lead_rate": profile.get("lead_rate", ""), "copy_rate": profile.get("copy_rate", ""), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
+    person_name, person_name_missing = _person_display_name(user.display_name, user.username)
+    manager_name, manager_name_missing = _person_display_name(profile.get("manager_name", ""), "")
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "manager_id": profile.get("manager_id"), "manager_name": profile.get("manager_name", ""), "manager_person_display_name": manager_name if profile.get("manager_id") else "", "manager_name_missing": manager_name_missing if profile.get("manager_id") else False, "access_level": profile.get("access_level", ""), "lead_rate": profile.get("lead_rate", ""), "copy_rate": profile.get("copy_rate", ""), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
 
 
 @app.get(f"{settings.api_prefix}/system/users")
@@ -4985,18 +5122,43 @@ async def list_notifications(
 
 
 @app.get(f"{settings.api_prefix}/users/directory")
-async def user_directory(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def user_directory(
+    purpose: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
     items = (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
+    eligible_customer_usernames: set[str] = set()
+    employee_display_names: dict[str, str] = {}
+    if purpose == "customer_manager":
+        active_employees = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "hr",
+            BusinessRecord.status.not_in({"离职", "停用"}),
+        ))).all()
+        for employee in active_employees:
+            username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+            display_name = str(employee.title or "").strip()
+            if username and display_name:
+                employee_display_names[username] = display_name
+        eligible_customer_usernames = {
+            str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+            for employee in active_employees
+        }
     job_roles = (await db.scalars(select(JobRole).where(JobRole.is_active.is_(True)))).all()
     roles_by_name = {item.name: item for item in job_roles}
     payload = []
     for item in items:
+        if purpose == "customer_manager" and _is_smoke_test_username(item.username):
+            continue
         position = str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "")
         job_role = roles_by_name.get(position)
         job_permissions = list(job_role.permissions or []) if job_role else []
+        display_name = item.display_name
+        if purpose == "customer_manager":
+            display_name = employee_display_names.get(item.username.lower()) or item.display_name
         payload.append({
             "username": item.username,
-            "display_name": item.display_name,
+            "display_name": display_name,
             "department": item.department,
             "is_active": item.is_active,
             "role": item.role,
@@ -5004,6 +5166,7 @@ async def user_directory(identity: dict = Depends(current_identity), db: AsyncSe
             "staff_role": str((item.profile or {}).get("staff_role") or ""),
             "job_permissions": job_permissions,
             "can_approve_contract": await _is_contract_approver(item, db),
+            "eligible_customer_person": item.username.lower() in eligible_customer_usernames if purpose == "customer_manager" else None,
         })
     return {"items": payload}
 
@@ -5022,14 +5185,18 @@ async def contract_approver_settings(identity: dict = Depends(current_identity),
     users = list((await db.scalars(select(User).where(User.username.in_(usernames), User.is_active.is_(True)))).all()) if usernames else []
     by_username = {item.username: item for item in users if item.role != "admin"}
     items = []
+    seen_usernames: set[str] = set()
     for employee in employees:
         username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
         user = by_username.get(username)
-        if not user:
+        if not user or username in seen_usernames:
             continue
+        seen_usernames.add(username)
+        display_name = _valid_contract_person_name(user.display_name, username)
         items.append({
             "username": username,
-            "display_name": user.display_name or employee.title or username,
+            "display_name": display_name or CONTRACT_PERSON_NAME_PLACEHOLDER,
+            "display_name_valid": bool(display_name),
             "department": user.department or employee.department,
             "position": str((user.profile or {}).get("position") or (employee.data or {}).get("position") or ""),
             "selected": bool((user.profile or {}).get("contract_approval_enabled")),
@@ -5057,6 +5224,10 @@ async def save_contract_approver_settings(body: ContractApproverSettingsInput, i
     invalid = sorted(requested - active_usernames)
     if invalid:
         raise HTTPException(status_code=422, detail=f"所选人员账号不存在、已停用或为管理员账号：{', '.join(invalid)}")
+    users_by_username = {item.username: item for item in users}
+    invalid_names = sorted(username for username in requested if not _valid_contract_person_name(users_by_username[username].display_name, username))
+    if invalid_names:
+        raise HTTPException(status_code=422, detail="所选员工缺少有效姓名，请先在人事中心维护姓名并取消其合同审批资格")
     for user in users:
         if user.role == "admin":
             continue
@@ -5879,13 +6050,18 @@ async def import_business_records(module: str = Query(min_length=1, max_length=3
 async def list_records(
     module: str = Query(min_length=1, max_length=32),
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
+    customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     if module in {"notary", "case"}:
         await _apply_notary_auto_conversion(db)
     conditions = [BusinessRecord.module == module]
-    conditions.extend(await _record_scope_conditions(identity, db))
+    relation_customer = None
+    if module == "contract" and customer_id:
+        relation_customer = await _customer_or_404(customer_id, identity, db)
+    else:
+        conditions.extend(await _record_scope_conditions(identity, db))
     if keyword:
         like = f"%{keyword}%"
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
@@ -5900,20 +6076,37 @@ async def list_records(
                 conditions.append(BusinessRecord.status.in_(requested_statuses))
         if scope == "recycle":
             conditions.append(BusinessRecord.status == "已回收")
-        elif scope == "mine":
+        elif scope == "mine" and relation_customer is None:
             conditions.append(BusinessRecord.owner == identity["username"])
-        elif scope == "department":
+        elif scope == "department" and relation_customer is None:
             current_user = await db.scalar(select(User).where(User.username == identity["username"]))
             if current_user:
                 conditions.append(BusinessRecord.department == current_user.department)
+        if relation_customer is not None:
+            relation_no = str(relation_customer.serial_no or "").strip()
+            conditions.append(or_(
+                BusinessRecord.data["customer_id"].as_integer() == relation_customer.id,
+                BusinessRecord.data["customer_no"].as_string() == relation_no,
+            ))
+        elif customer.strip():
+            conditions.append(BusinessRecord.customer.ilike(f"%{customer.strip()}%"))
+        if customer_no.strip():
+            conditions.append(BusinessRecord.data["customer_no"].as_string() == customer_no.strip())
+        if exclude_archived:
+            conditions.append(BusinessRecord.status.notin_(["已归档", "Archived", "archived"]))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
     result = await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))
     allowed_fields = await _allowed_field_keys(identity, db)
-    return {"items": [_record_dict(item, allowed_fields) for item in result], "total": total or 0, "page": page, "page_size": page_size}
+    return {
+        "items": [await _contract_customer_record_dict(item, allowed_fields, db) for item in result],
+        "total": total or 0,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 CUSTOMER_CREATE_DATA_FIELDS = {
-    "contact", "phone", "credit_code", "legal_representative", "registered_address",
+    "contact", "contact_accounts", "phone", "credit_code", "legal_representative", "registered_address",
     "invoice_title", "taxpayer_id", "invoice_address", "invoice_phone", "bank_name", "bank_account",
     "customer_type", "short_name", "fax", "legal_agent_id_no", "legal_agent_title", "customer_source",
     "is_shared", "is_assisted", "file_date", "level", "province", "postal_code", "patent_customer_type",
@@ -6022,6 +6215,20 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
         if any(str((item.data or {}).get("credit_code") or "").strip().casefold() == credit_code.casefold() for item in existing_customers):
             raise HTTPException(status_code=409, detail="统一社会信用代码已存在")
     data["credit_code"] = credit_code
+    contact_values: list[str] = []
+    raw_contact = body.contact if "contact" in body.model_fields_set else data.get("contact")
+    if isinstance(raw_contact, list):
+        contact_values.extend(str(value).strip() for value in raw_contact if str(value).strip())
+    elif str(raw_contact or "").strip():
+        contact_values.append(str(raw_contact).strip())
+    contact_values.extend(
+        str(value).strip()
+        for value in list(body.contact_accounts or [])
+        if str(value).strip()
+    )
+    contact_values = list(dict.fromkeys(contact_values))
+    data["contact_accounts"] = contact_values
+    data["contact"] = contact_values[0] if contact_values else ""
     current_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
     if not current_user: raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
     requested_owner = body.owner.strip() or current_user.username
@@ -6462,6 +6669,18 @@ async def share_customer(customer_id: int, body: CustomerShareInput, identity: d
         await _require_record_owner_or_manager(customer, identity, db)
         if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="公海或回收站客户不能共享")
         recipients = await _resolve_active_customer_managers(body.recipients, db)
+        active_employees = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "hr",
+            BusinessRecord.status.not_in({"离职", "停用"}),
+        ))).all()
+        eligible_recipients = {
+            str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+            for employee in active_employees
+            if str((employee.data or {}).get("username") or employee.owner or "").strip()
+        }
+        ineligible = [username for username in recipients if username.lower() not in eligible_recipients]
+        if ineligible:
+            raise HTTPException(status_code=422, detail=f"共享接收人必须是启用的在职员工：{'、'.join(ineligible)}")
         customer_managers = {
             str(value).strip()
             for value in (customer.data or {}).get("customer_managers", [])
@@ -6966,8 +7185,18 @@ async def customer_portal_create_demand(body: CustomerPortalDemandInput, db: Asy
     return {"id": task.id, "serial_no": task.serial_no, "status": task.status, "owner": task.owner}
 
 
-def _approval_step_dict(step: ContractApprovalStep) -> dict:
-    return {"id": step.id, "contract_record_id": step.contract_record_id, "step_order": step.step_order, "approver": step.approver, "status": step.status, "comment": step.comment, "acted_at": step.acted_at, "created_at": step.created_at}
+def _approval_step_dict(step: ContractApprovalStep, names_by_username: dict[str, str] | None = None) -> dict:
+    return {
+        "id": step.id,
+        "contract_record_id": step.contract_record_id,
+        "step_order": step.step_order,
+        "approver": step.approver,
+        "approver_display_name": _contract_person_display_name(step.approver, names_by_username),
+        "status": step.status,
+        "comment": step.comment,
+        "acted_at": step.acted_at,
+        "created_at": step.created_at,
+    }
 
 
 def _normalize_external_contract_numbers(data: dict) -> dict:
@@ -7027,6 +7256,8 @@ async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
         return False
     if user.role == "admin":
         return True
+    if not _valid_contract_person_name(user.display_name, user.username):
+        return False
     if not bool((user.profile or {}).get("contract_approval_enabled")):
         return False
     employee_id = await db.scalar(
@@ -7113,10 +7344,24 @@ async def _ensure_contract_approval_access(contract_id: int, identity: dict, db:
     return await _ensure_record_module(contract_id, "contract", identity, db)
 
 
+async def _next_contract_serial_no(db: AsyncSession) -> str:
+    """Generate the compact legacy contract number: SHHT + YY + 5 digits."""
+    prefix = f"SHHT{datetime.now():%y}"
+    existing = (await db.scalars(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "contract",
+        BusinessRecord.serial_no.like(f"{prefix}%"),
+    ).order_by(BusinessRecord.serial_no.desc()))).all()
+    sequence = max((int(match.group(1)) for value in existing if (match := re.fullmatch(rf"{re.escape(prefix)}(\d{{5}})", value))), default=0) + 1
+    if sequence > 99999:
+        raise HTTPException(status_code=409, detail=f"{datetime.now():%Y} 合同编号已用尽")
+    return f"{prefix}{sequence:05d}"
+
+
+_contract_serial_lock = asyncio.Lock()
+
+
 @app.post(f"{settings.api_prefix}/contracts", status_code=status.HTTP_201_CREATED)
 async def create_contract_draft(body: ContractDraftInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no.strip())):
-        raise HTTPException(status_code=409, detail="合同编号已存在")
     data = _normalize_external_contract_numbers(dict(body.data or {}))
     if body.staff_id:
         staff = await db.get(BusinessRecord, body.staff_id)
@@ -7137,10 +7382,12 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
         if not current_user: raise HTTPException(status_code=401, detail="当前用户不存在")
         department = current_user.department
         if identity.get("role") == "user": owner = identity["username"]
-    item = BusinessRecord(module="contract", serial_no=body.serial_no.strip(), title=body.title.strip(), customer=customer.title, status="草稿", owner=owner, department=department, description=body.description.strip(), data=data)
-    db.add(item); await db.flush()
-    db.add(WorkflowEvent(record_id=item.id, action="创建合同草稿", to_status="草稿", operator=identity["username"], comment="通过合同专用入口创建"))
-    await db.commit(); await db.refresh(item)
+    async with _contract_serial_lock:
+        serial_no = await _next_contract_serial_no(db)
+        item = BusinessRecord(module="contract", serial_no=serial_no, title=body.title.strip(), customer=customer.title, status="草稿", owner=owner, department=department, description=body.description.strip(), data=data)
+        db.add(item); await db.flush()
+        db.add(WorkflowEvent(record_id=item.id, action="创建合同草稿", to_status="草稿", operator=identity["username"], comment="通过合同专用入口创建"))
+        await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
 
 
@@ -7320,7 +7567,12 @@ async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict
 async def contract_approvals(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_contract_approval_access(contract_id, identity, db)
     steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
-    return {"contract": await _record_dict_for_identity(contract, identity, db), "items": [_approval_step_dict(x) for x in steps], "current_step": next((_approval_step_dict(x) for x in steps if x.status == "待审批"), None)}
+    approver_usernames = list(dict.fromkeys(step.approver.lower() for step in steps if step.approver))
+    users = list((await db.scalars(select(User).where(User.username.in_(approver_usernames)))).all()) if approver_usernames else []
+    names_by_username = {user.username.lower(): user.display_name for user in users}
+    items = [_approval_step_dict(step, names_by_username) for step in steps]
+    current_step = next((item for item in items if item["status"] == "待审批"), None)
+    return {"contract": await _record_dict_for_identity(contract, identity, db), "items": items, "current_step": current_step}
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/submit")
@@ -14824,10 +15076,11 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
     for label, start_date, end_date in date_ranges:
         if start_date and end_date and start_date > end_date:
             raise HTTPException(status_code=422, detail=f"{label}范围无效")
-    records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "case",
-        *(await _record_scope_conditions(identity, db)),
-    ))).all())
+    relation_customer = await _customer_or_404(body.customer_id, identity, db) if body.customer_id else None
+    record_conditions = [BusinessRecord.module == "case"]
+    if relation_customer is None:
+        record_conditions.extend(await _record_scope_conditions(identity, db))
+    records = list((await db.scalars(select(BusinessRecord).where(*record_conditions))).all())
     requested_types = {str(item).strip() for item in body.case_types if str(item).strip()}
     if body.case_type.strip():
         requested_types.add(body.case_type.strip())
@@ -14837,10 +15090,10 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") in requested_types]
     else:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
-    if body.scope == "mine":
+    if body.scope == "mine" and relation_customer is None:
         identity_names = {str(identity.get("username") or ""), str(identity.get("display_name") or "")}
         records = [record for record in records if record.owner in identity_names]
-    elif body.scope == "department":
+    elif body.scope == "department" and relation_customer is None:
         department = str(identity.get("department") or "").strip()
         records = [record for record in records if department and record.department == department]
 
@@ -14938,7 +15191,13 @@ async def _query_counsel_cases(body: CounselCaseSearchInput, identity: dict, db:
     filtered: list[BusinessRecord] = []
     for record in records:
         data = record.data or {}
-        if not contains(record.customer, body.customer): continue
+        if relation_customer is not None:
+            linked_id = int(data.get("customer_id") or data.get("customer_record_id") or 0)
+            linked_no = str(data.get("customer_no") or "").strip()
+            if linked_id != relation_customer.id and linked_no != str(relation_customer.serial_no or "").strip(): continue
+        elif body.customer_no.strip():
+            if str(data.get("customer_no") or "").strip() != body.customer_no.strip(): continue
+        elif not contains(record.customer, body.customer): continue
         if not contains(record.serial_no, body.serial_no): continue
         if body.keyword and not contains(f"{record.serial_no} {record.title} {record.customer}", body.keyword): continue
         if not contains(value(data, "plaintiff", "plaintiffs") or record.customer, body.plaintiff): continue
@@ -18405,12 +18664,19 @@ async def delete_seal_asset(asset_id: int, identity: dict = Depends(current_iden
     await db.commit()
 
 
-def _department_dict(item: Department, parent_name: str = "") -> dict:
-    return {"id": item.id, "code": item.code, "name": item.name, "parent_department_id": item.parent_department_id, "parent_department_name": parent_name, "manager": item.manager, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
+def _department_dict(item: Department, parent_name: str = "", users_by_username: dict[str, User] | None = None) -> dict:
+    users = users_by_username or {}
+    manager_name, manager_missing = _person_reference_display(item.manager, users)
+    created_name, created_missing = _person_reference_display(item.created_by, users)
+    updated_name, updated_missing = _person_reference_display(item.updated_by, users)
+    return {"id": item.id, "code": item.code, "name": item.name, "parent_department_id": item.parent_department_id, "parent_department_name": parent_name, "manager": item.manager, "manager_display_name": manager_name, "manager_display_name_missing": manager_missing, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "created_by_display_name": created_name, "created_by_display_name_missing": created_missing, "updated_by": item.updated_by, "updated_by_display_name": updated_name, "updated_by_display_name_missing": updated_missing, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
-def _job_role_dict(item: JobRole) -> dict:
-    return {"id": item.id, "code": item.code, "name": item.name, "permissions": item.permissions or [], "field_keys": item.field_keys or [], "description": item.description, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by, "created_at": item.created_at, "updated_at": item.updated_at}
+def _job_role_dict(item: JobRole, users_by_username: dict[str, User] | None = None) -> dict:
+    users = users_by_username or {}
+    created_name, created_missing = _person_reference_display(item.created_by, users)
+    updated_name, updated_missing = _person_reference_display(item.updated_by, users)
+    return {"id": item.id, "code": item.code, "name": item.name, "permissions": item.permissions or [], "field_keys": item.field_keys or [], "description": item.description, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "created_by_display_name": created_name, "created_by_display_name_missing": created_missing, "updated_by": item.updated_by, "updated_by_display_name": updated_name, "updated_by_display_name_missing": updated_missing, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 def _normalize_job_role_field_keys(values: list[str]) -> list[str]:
@@ -18474,6 +18740,15 @@ async def list_hr_employees(
             row["department"] = account.department or row.get("department", "")
             row["data"] = {**data, **profile, "username": account.username, "role": account.role, "is_active": account.is_active, "system_user_id": account.id}
             linked_names.add(key)
+        # Employee records are authoritative, but older records may leave the
+        # title empty after the name was maintained on the linked user account.
+        person_name, person_name_missing = _person_display_name(row.get("title", ""), key)
+        if person_name_missing and account:
+            person_name, person_name_missing = _person_display_name(account.display_name, key)
+        row["person_display_name"] = person_name
+        row["display_name_missing"] = person_name_missing
+        if person_name_missing:
+            row["title"] = person_name
         rows.append(row)
     if identity.get("role") == "admin":
         for user in users_by_name.values():
@@ -18481,9 +18756,10 @@ async def list_hr_employees(
             if key in linked_names:
                 continue
             profile = user.profile or {}
+            person_name, person_name_missing = _person_display_name(user.display_name, user.username)
             rows.append({
                 "id": -int(user.id), "serial_no": profile.get("employee_no") or f"SYS-{int(user.id):04d}",
-                "title": user.display_name or user.username, "customer": profile.get("company") or "上海申浩律师事务所",
+                "title": person_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "customer": profile.get("company") or "上海申浩律师事务所",
                 "status": "在职" if user.is_active else "停用", "owner": user.username,
                 "department": user.department or "", "description": "系统账号（尚未建立独立人事档案）", "created_at": user.created_at,
                 "data": {**profile, "username": user.username, "role": user.role, "is_active": user.is_active, "system_user_id": user.id, "position": profile.get("position") or "系统管理员"},
@@ -18591,7 +18867,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if user and user.username == "admin":
         raise HTTPException(status_code=409, detail="管理员账号不能通过员工档案修改、停用或改名")
     if account_type != "员工账号" and user:
-        raise HTTPException(status_code=409, detail="请先在系统用户管理中解除登录账号关联，再变更为非员工账号")
+        raise HTTPException(status_code=409, detail="请先在人事中心员工管理中解除登录账号关联，再变更为非员工账号")
     if not user:
         previous_status = employee.status
         profile = {**(employee.data or {}), **body.data, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
@@ -18609,7 +18885,8 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     previous_status = employee.status
     profile = {**(user.profile or {}), **body.data, "account_type": "员工账号", "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
     user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.role_ids = [body.role]; user.is_active = body.is_active; user.profile = profile
-    employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "username": username, "role": body.role, "is_active": body.is_active}
+    contract_approval_enabled = bool(profile.get("contract_approval_enabled"))
+    employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": body.role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
@@ -18646,6 +18923,53 @@ async def update_hr_employee_login_status(employee_id: int, body: HrEmployeeLogi
     ))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
+
+
+@app.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}/contract-approval-status")
+async def update_hr_employee_contract_approval_status(employee_id: int, body: HrEmployeeContractApprovalStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    employee = await db.get(BusinessRecord, employee_id)
+    if not employee or employee.module != "hr":
+        raise HTTPException(status_code=404, detail="员工档案不存在")
+    if employee.status in {"离职", "停用"}:
+        raise HTTPException(status_code=409, detail="离职或停用员工不能配置为合同审批人")
+    data = dict(employee.data or {})
+    account_type = str(data.get("account_type") or "员工账号").strip()
+    if account_type != "员工账号":
+        raise HTTPException(status_code=409, detail="该员工档案未关联系统登录账号")
+    username = str(data.get("username") or employee.owner).strip().lower()
+    user = await db.scalar(select(User).where(User.username == username))
+    if not user:
+        raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在")
+    if user.role == "admin":
+        raise HTTPException(status_code=409, detail="管理员账号不能配置为合同审批人")
+    if not user.is_active and body.contract_approval_enabled:
+        raise HTTPException(status_code=409, detail="登录账号已停用，不能配置为合同审批人")
+    if body.contract_approval_enabled and not _valid_contract_person_name(user.display_name, user.username):
+        raise HTTPException(status_code=422, detail="请先在人事中心维护有效姓名")
+    previous_enabled = bool((user.profile or {}).get("contract_approval_enabled"))
+    user.profile = {**(user.profile or {}), "contract_approval_enabled": body.contract_approval_enabled}
+    data.update({
+        "username": user.username,
+        "role": user.role,
+        "is_active": user.is_active,
+        "system_user_id": user.id,
+        "contract_approval_enabled": body.contract_approval_enabled,
+    })
+    employee.data = data
+    db.add(WorkflowEvent(
+        record_id=employee.id, action="切换合同审批资格",
+        from_status="已配置" if previous_enabled else "未配置",
+        to_status="已配置" if body.contract_approval_enabled else "未配置",
+        operator=identity["username"],
+        comment="合同审批流程人员：{}；{}".format(user.username, "是" if body.contract_approval_enabled else "否"),
+    ))
+    await db.commit(); await db.refresh(employee); await db.refresh(user)
+    return {
+        "employee": _record_dict(employee),
+        "user": _system_user_dict(user),
+        "can_approve_contract": await _is_contract_approver(user, db),
+    }
 
 
 async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, identity: dict, db: AsyncSession) -> tuple[list[dict[str, object]], User | None]:
@@ -18805,8 +19129,9 @@ async def list_departments(
     parents = (await db.scalars(select(Department).where(Department.id.in_(parent_ids)))).all() if parent_ids else []
     names_by_id = {item.id: item.name for item in parents}
     page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
+    display_users = await _user_display_map({value for item in page_items for value in (item.manager, item.created_by, item.updated_by)}, db)
     return {
-        "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, "")) for item in page_items],
+        "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users) for item in page_items],
         "total": total, "page": effective_page, "page_size": effective_page_size,
     }
 
@@ -18822,7 +19147,9 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
     item = Department(**body.model_dump(exclude={"code", "name", "manager"}), code=code, name=name, manager=body.manager.strip(), created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     await _record_organization_audit(db, identity, "创建部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
-    await db.commit(); await db.refresh(item); return _department_dict(item, parent.name if parent else "")
+    await db.commit(); await db.refresh(item)
+    display_users = await _user_display_map({item.manager, item.created_by, item.updated_by}, db)
+    return _department_dict(item, parent.name if parent else "", display_users)
 
 
 @app.patch(f"{settings.api_prefix}/hr/departments/{{department_id}}")
@@ -18851,7 +19178,8 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     await _record_organization_audit(db, identity, "修改部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
     await db.commit(); await db.refresh(item)
     parent = await db.get(Department, item.parent_department_id) if item.parent_department_id else None
-    return _department_dict(item, parent.name if parent else "")
+    display_users = await _user_display_map({item.manager, item.created_by, item.updated_by}, db)
+    return _department_dict(item, parent.name if parent else "", display_users)
 
 
 @app.delete(f"{settings.api_prefix}/hr/departments/{{department_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -18879,8 +19207,9 @@ async def list_job_roles(
     if active_only: statement = statement.where(JobRole.is_active.is_(True))
     items = (await db.scalars(statement.order_by(JobRole.sort_order, JobRole.id))).all()
     page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
+    display_users = await _user_display_map({value for item in page_items for value in (item.created_by, item.updated_by)}, db)
     return {
-        "items": [_job_role_dict(item) for item in page_items],
+        "items": [_job_role_dict(item, display_users) for item in page_items],
         "total": total, "page": effective_page, "page_size": effective_page_size,
     }
 
@@ -18962,7 +19291,8 @@ async def update_job_role_permissions(
     role.updated_by = identity["username"]
     await _record_organization_audit(db, identity, "修改岗位角色权限", f"岗位角色:{role.code}", {"role_id": role.id, "permissions": permissions})
     await db.commit(); await db.refresh(role)
-    return _job_role_dict(role)
+    display_users = await _user_display_map({role.created_by, role.updated_by}, db)
+    return _job_role_dict(role, display_users)
 
 
 @app.post(f"{settings.api_prefix}/hr/job-roles", status_code=status.HTTP_201_CREATED)
@@ -18974,7 +19304,9 @@ async def create_job_role(body: JobRoleInput, identity: dict = Depends(current_i
     item = JobRole(**body.model_dump(exclude={"code", "name", "permissions", "description", "field_keys"}), code=code, name=name, permissions=permissions, field_keys=field_keys, description=body.description.strip(), created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     await _record_organization_audit(db, identity, "创建岗位角色", f"岗位角色:{item.code}", {"role_id": item.id, "code": item.code, "name": item.name})
-    await db.commit(); await db.refresh(item); return _job_role_dict(item)
+    await db.commit(); await db.refresh(item)
+    display_users = await _user_display_map({item.created_by, item.updated_by}, db)
+    return _job_role_dict(item, display_users)
 
 
 @app.patch(f"{settings.api_prefix}/hr/job-roles/{{role_id}}")
@@ -19003,7 +19335,9 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
         for record in hr_records:
             if (record.data or {}).get("position") == old_name: record.data = {**(record.data or {}), "position": item.name}
     await _record_organization_audit(db, identity, "修改岗位角色", f"岗位角色:{item.code}", {"role_id": item.id, "code": item.code, "name": item.name})
-    await db.commit(); await db.refresh(item); return _job_role_dict(item)
+    await db.commit(); await db.refresh(item)
+    display_users = await _user_display_map({item.created_by, item.updated_by}, db)
+    return _job_role_dict(item, display_users)
 
 
 @app.delete(f"{settings.api_prefix}/hr/job-roles/{{role_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -21908,7 +22242,7 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
 @app.get(f"{settings.api_prefix}/records/{{record_id}}")
 async def get_record(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_record_visible(record_id, identity, db)
-    return _record_dict(record, await _allowed_field_keys(identity, db))
+    return await _record_dict_for_identity(record, identity, db)
 
 
 @app.get(f"{settings.api_prefix}/records/{{record_id}}/history")

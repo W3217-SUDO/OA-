@@ -86,6 +86,8 @@ export const buildCaseOrdinarySearchPayload = (
   return {
     scope: ALLOWED_SCOPES.has(scope) ? scope : "company",
     case_types: normalizeList(caseTypes),
+    customer_id: normalizeInteger(input.customer_id, 0, 0, 2147483647) || null,
+    customer_no: normalizeText(input.customer_no),
     customer: normalizeText(input.customer),
     serial_no: normalizeText(input.serial_no),
     keyword: normalizeText(input.keyword),

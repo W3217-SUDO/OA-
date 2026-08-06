@@ -14,6 +14,8 @@ import {
   Space,
   Switch,
   Table,
+  Tag,
+  Tooltip,
   Tree,
 } from "antd";
 import type { TableColumnsType, TreeDataNode } from "antd";
@@ -30,11 +32,17 @@ type Department = {
   parent_department_id: number | null;
   parent_department_name: string;
   manager: string;
+  manager_display_name?: string;
+  manager_display_name_missing?: boolean;
   overdue_deduction: boolean;
   sort_order: number;
   is_active: boolean;
   created_by?: string;
+  created_by_display_name?: string;
+  created_by_display_name_missing?: boolean;
   updated_by?: string;
+  updated_by_display_name?: string;
+  updated_by_display_name_missing?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -47,9 +55,23 @@ type JobRole = {
   sort_order: number;
   is_active: boolean;
   created_by?: string;
+  created_by_display_name?: string;
+  created_by_display_name_missing?: boolean;
   updated_by?: string;
+  updated_by_display_name?: string;
+  updated_by_display_name_missing?: boolean;
   created_at?: string;
   updated_at?: string;
+};
+const PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】";
+const renderPersonReference = (displayName?: string, missing?: boolean) => {
+  const name = displayName || PERSON_NAME_PLACEHOLDER;
+  if (!missing) return name;
+  return (
+    <Tooltip title="请到人事中心员工管理补充中文姓名">
+      <Tag color="orange">{name}</Tag>
+    </Tooltip>
+  );
 };
 const permissionGroups = [
   {
@@ -173,7 +195,6 @@ const permissionGroups = [
   {
     name: "系统中心",
     items: [
-      "系统用户管理",
       "系统权限配置",
       "系统参数配置",
       "审计日志查看",
@@ -425,11 +446,11 @@ export default function OrganizationCenterPage({
       title: "部门负责人",
       dataIndex: "manager",
       width: 130,
-      render: (value) => value || "—",
+      render: (_value, row) => renderPersonReference(row.manager_display_name, row.manager_display_name_missing),
     },
     { title: "排序", dataIndex: "sort_order", width: 75 },
-    { title: "创建人", dataIndex: "created_by", width: 100, render: (value) => value || "—" },
-    { title: "更新人", dataIndex: "updated_by", width: 100, render: (value) => value || "—" },
+    { title: "创建人", dataIndex: "created_by", width: 120, render: (_value, row) => renderPersonReference(row.created_by_display_name, row.created_by_display_name_missing) },
+    { title: "更新人", dataIndex: "updated_by", width: 120, render: (_value, row) => renderPersonReference(row.updated_by_display_name, row.updated_by_display_name_missing) },
     {
       title: "可用",
       dataIndex: "is_active",
@@ -467,7 +488,7 @@ export default function OrganizationCenterPage({
     { title: "说明", dataIndex: "description", width: 220, render: (value) => value || "—" },
     { title: "排序", dataIndex: "sort_order", width: 75 },
     { title: "可用", dataIndex: "is_active", width: 75, render: (value) => (value ? "是" : "否") },
-    { title: "更新人", dataIndex: "updated_by", width: 100, render: (value) => value || "—" },
+    { title: "更新人", dataIndex: "updated_by", width: 120, render: (_value, row) => renderPersonReference(row.updated_by_display_name, row.updated_by_display_name_missing) },
     {
       title: "角色权限",
       key: "permissions",

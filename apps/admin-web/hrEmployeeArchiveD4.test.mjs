@@ -14,7 +14,10 @@ test('员工档案写入入口服从人事管理权限，查看和下载保持�
 })
 
 test('员工档案页接收与请假事项相同的人事管理权限', () => {
-  assert.match(source, /\{key:'archive',label:'员工档案',children:<EmployeeSubrecords employeeId=\{employeeId\} kind="archive" canManage=\{actionAccess\.canProcessStatus\}\/>\}/)
+  assert.match(source, /canManageSubrecords=actionAccess\.canProcessStatus/)
+  assert.match(source, /\{key:'archive',label:'员工档案',children:<EmployeeSubrecords employeeId=\{employeeId\} kind="archive" canManage=\{canManageSubrecords\}\/>\}/)
+  assert.match(source, /employeeTabs\(viewing\.id,details,false\)/)
+  assert.match(source, /employeeTabs\(editingEmployee\.id,[\s\S]*,true\)/)
 })
 
 test('员工档案保持旧站字段、空态、15条分页和可取消上传弹窗', () => {
