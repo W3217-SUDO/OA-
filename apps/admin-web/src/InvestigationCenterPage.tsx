@@ -163,6 +163,7 @@ export default function InvestigationCenterPage({
     display_name: "",
     role: "",
   });
+  const [assignmentSupervisor, setAssignmentSupervisor] = useState("");
   const [investigationActions, setInvestigationActions] = useState<
     Record<string, InvestigationActions>
   >({});
@@ -305,6 +306,12 @@ export default function InvestigationCenterPage({
       } catch {
         message.error("当前登录身份加载失败，已按普通用户范围显示");
       }
+      try {
+        const { data } = await api.get("/investigations/assignment-supervisor");
+        setAssignmentSupervisor(String(data.username || ""));
+      } catch {
+        setAssignmentSupervisor("");
+      }
       await load(initial);
     };
     void bootstrap();
@@ -373,8 +380,15 @@ export default function InvestigationCenterPage({
           dayjs(String(row.data.authorized_to)).isBefore(dayjs(), "day") &&
           !["已完成", "已取消"].includes(row.status),
       );
-    if (initialTab === "investigation-task-unassigned")
-      result = result.filter((row) => row.status === "待分配" || !row.owner);
+    if (initialTab === "investigation-task-unassigned") {
+      const supervisor = assignmentSupervisor || profile.username;
+      result = result.filter(
+        (row) =>
+          Boolean(supervisor) &&
+          row.owner === supervisor &&
+          !["已完成", "已取消"].includes(row.status),
+      );
+    }
     if (initialTab.includes("-my-") && profile.role !== "admin") {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) => names.includes(row.owner));

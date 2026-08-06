@@ -25,6 +25,11 @@ test('investigation task list does not offer a second parent-task creation entry
   assert.doesNotMatch(source, /investigation-task-mine'\]:\['查询','刷新','新建调查任务'/)
 })
 
+test('unassigned investigation tasks are scoped to the configured supervisor', () => {
+  assert.match(source, /assignment-supervisor/)
+  assert.match(source, /initialTab==='investigation-task-unassigned'[\s\S]*assignmentSupervisor[\s\S]*row\.owner===supervisor/)
+})
+
 test('clue create modal keeps legacy source, store and subject fields', () => {
   assert.match(source, /name='infringement_method'[\s\S]*name='store_url'[\s\S]*name='shop_id'[\s\S]*name='address'[\s\S]*name='investigated_at'[\s\S]*name='producer'[\s\S]*name='indictee'[\s\S]*name='investigation_assistant'/)
 })
