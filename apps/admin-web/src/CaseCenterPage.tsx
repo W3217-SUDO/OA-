@@ -528,6 +528,7 @@ export default function CaseCenterPage({
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
   const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
   const [editingCaseLitigants, setEditingCaseLitigants] = useState<CaseRow | null>(null);
+  const [createDefendantEditorOpen, setCreateDefendantEditorOpen] = useState(false);
   const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
@@ -552,6 +553,7 @@ export default function CaseCenterPage({
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const [createForm] = Form.useForm();
+  const [createDefendantEditorForm] = Form.useForm();
   const [clueConversionForm] = Form.useForm();
   const createCustomer = Form.useWatch("customer", createForm);
   const createContractId = Form.useWatch("contract_record_id", createForm);
@@ -599,6 +601,15 @@ export default function CaseCenterPage({
   const [mergeCaseForm] = Form.useForm();
   const [notaryInfoForm] = Form.useForm();
   const [settlementAmountForm] = Form.useForm();
+  const openCreateDefendantEditor = () => {
+    createDefendantEditorForm.setFieldsValue({ defendants: createForm.getFieldValue("defendants") || [] });
+    setCreateDefendantEditorOpen(true);
+  };
+  const saveCreateDefendants = async () => {
+    const values = await createDefendantEditorForm.validateFields();
+    createForm.setFieldValue("defendants", values.defendants);
+    setCreateDefendantEditorOpen(false);
+  };
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
   const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
@@ -2752,7 +2763,14 @@ export default function CaseCenterPage({
               <div className="case-create-step"><div className="case-create-section-title">当事人信息</div><div className="case-create-fields">
                 <Form.Item label={litigantLabels.plaintiff} name="plaintiffs"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-                <Form.Item label={litigantLabels.defendant} name="defendants" rules={[{ required: true, message: "请输入至少一名被告" }]}><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+                <Form.Item label={litigantLabels.defendant}>
+                  <Space.Compact block>
+                    <Form.Item name="defendants" noStyle rules={[{ required: true, message: "请输入至少一名被告" }]}>
+                      <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" style={{ width: "calc(100% - 90px)" }} />
+                    </Form.Item>
+                    <Button icon={<EditOutlined />} onClick={openCreateDefendantEditor}>编辑被告</Button>
+                  </Space.Compact>
+                </Form.Item>
                 <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.third} name="third_parties"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.thirdAgent} name="third_party_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
@@ -3588,6 +3606,30 @@ export default function CaseCenterPage({
             <Form.Item label="第三人代理人" name="third_party_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
           </div>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        width={560}
+        open={createDefendantEditorOpen}
+        title="编辑被告"
+        okText="确定"
+        cancelText="取消"
+        onOk={() => void saveCreateDefendants()}
+        onCancel={() => setCreateDefendantEditorOpen(false)}
+        destroyOnHidden
+      >
+        <Alert type="info" showIcon title="可选择已有客户，或输入名称后回车添加多个被告。" style={{ marginBottom: 12 }} />
+        <Form form={createDefendantEditorForm} layout="vertical">
+          <Form.Item label="被告" name="defendants" rules={[{ required: true, message: "请输入至少一名被告" }]}>
+            <Select
+              mode="tags"
+              tokenSeparators={[",", "，"]}
+              showSearch
+              optionFilterProp="label"
+              placeholder="输入名称后回车，可添加多人"
+              options={caseCustomers.filter((item) => !["公海", "已回收"].includes(item.status)).map((item) => ({ value: item.title, label: item.title }))}
+            />
+          </Form.Item>
         </Form>
       </Modal>
       <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
