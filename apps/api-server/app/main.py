@@ -8480,8 +8480,10 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         source_task_id = int((payload.get("data") or {}).get("source_task_id") or 0)
         if not source_task_id:
             raise HTTPException(status_code=422, detail="创建线索必须关联已接收的调查任务")
-        source_task = await _ensure_record_module(source_task_id, "task", identity, db)
-        if not (source_task.data or {}).get("investigation_record_id"):
+        source_task = await _ensure_record_visible(source_task_id, identity, db)
+        if source_task.module not in {"task", "investigation"}:
+            raise HTTPException(status_code=404, detail="调查线索来源任务不存在")
+        if source_task.module == "task" and not (source_task.data or {}).get("investigation_record_id"):
             raise HTTPException(status_code=422, detail="线索来源必须是调查中心任务")
         if identity.get("role") != "admin" and source_task.owner != identity["username"]:
             raise HTTPException(status_code=403, detail="只能在本人负责的调查任务下创建线索")
@@ -8489,7 +8491,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         payload["customer"] = source_task.customer
         payload["department"] = source_task.department
         source_data = source_task.data or {}
-        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id"), "investigation_no": source_data.get("investigation_no"), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or []))}
+        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id") or (source_task.id if source_task.module == "investigation" else None), "investigation_no": source_data.get("investigation_no") or (source_task.serial_no if source_task.module == "investigation" else ""), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or []))}
     if identity.get("role") != "admin":
         payload["department"] = user.department
         if identity.get("role") == "user":
