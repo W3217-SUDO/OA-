@@ -19364,9 +19364,12 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
             if menu.key in trail:
                 continue
             children = build(menu.key, {*trail, menu.key})
+            label = str(menu.label or "").strip()
+            if not label or label in {"---", "—", "-"}:
+                label = DEFAULT_MENU_LABEL_BY_KEY.get(menu.key, "未命名菜单")
             nodes.append({
                 "key": f"menu:{menu.key}", "node_type": "M", "node_original_id": menu.id,
-                "node_id": menu.id, "node_code": menu.key, "text": menu.label, "title": menu.label,
+                "node_id": menu.id, "node_code": menu.key, "text": label, "title": label,
                 "state": {"checked": menu.key in selected}, "children": children,
             })
         return nodes

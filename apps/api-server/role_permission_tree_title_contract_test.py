@@ -17,7 +17,8 @@ class RolePermissionTreeTitleContractTest(unittest.TestCase):
         tree_start = source.index("def _organization_permission_tree")
         tree_end = source.index('@app.get(f"{settings.api_prefix}/hr/job-roles/', tree_start)
         tree = source[tree_start:tree_end]
-        self.assertIn('"text": menu.label, "title": menu.label', tree)
+        self.assertIn('"text": label, "title": label', tree)
+        self.assertIn('label in {"---", "—", "-"}', tree)
         self.assertIn('"text": "业务动作", "title": "业务动作"', tree)
         self.assertIn('"text": action, "title": action', tree)
 
