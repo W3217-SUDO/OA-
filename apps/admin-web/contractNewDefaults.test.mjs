@@ -94,6 +94,7 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /const load = async \(queryOverride\?\: Record<string, any>\)/);
   assert.match(contractPage, /void load\(normalized\)/);
   assert.match(contractPage, /可先提交用印申请；合同审批与用印审批将分别流转/);
+  assert.doesNotMatch(contractPage, /审批通过后再从合同用印入口办理/);
   assert.doesNotMatch(contractPage, /合同审批中，请在详情查看进度/);
 });
 

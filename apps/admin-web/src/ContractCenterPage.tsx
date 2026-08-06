@@ -2731,8 +2731,8 @@ export default function ContractCenterPage({
         )}
         {!editing && wizardStep === 3 && (
           <div className="contract-wizard-panel contract-seal-step">
-            {wizardDraft?.status === "审批中" ? <Alert type="info" showIcon title="合同正在审批中" description="请在合同详情查看审批进度；审批通过后再从合同用印入口办理。" /> : <div className="contract-wizard-finished"><CheckOutlined /><h3>合同审批已通过</h3><p>合同草稿、审批意见、附件和时间线均已保存，可以继续办理合同用印。</p></div>}
-            {wizardDraft?.status !== "审批中" && (wizardDraft?.data.seal_application_id ? (
+            {wizardDraft?.status === "审批中" ? <Alert type="info" showIcon title="合同正在审批中" description="可先提交用印申请；合同审批与用印审批将分别流转。" /> : <div className="contract-wizard-finished"><CheckOutlined /><h3>合同审批已通过</h3><p>合同草稿、审批意见、附件和时间线均已保存，可以继续办理合同用印。</p></div>}
+            {wizardDraft?.data.seal_application_id ? (
               <Descriptions bordered size="small" column={2} items={[
                 { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                 { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}` },
@@ -2753,7 +2753,7 @@ export default function ContractCenterPage({
                 </div>
                 <Form.Item name="submit" valuePropName="checked" hidden><Checkbox /></Form.Item>
               </Form>
-            ))}
+            )}
             <Divider titlePlacement="start">合同附件</Divider>
             <div className="contract-attachment-list">
               {attachments.length ? attachments.map((item) => (
