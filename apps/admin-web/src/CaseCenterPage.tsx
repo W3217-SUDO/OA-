@@ -897,6 +897,10 @@ export default function CaseCenterPage({
       return;
     }
     const values = createForm.getFieldsValue(true);
+    if (!isCounselCreate && (!Array.isArray(values.defendants) || !values.defendants.some((item: unknown) => String(item || "").trim()))) {
+      Modal.info({ title: "提示", content: "请输入至少一名被告", okText: "确定" });
+      return;
+    }
     setCreateSubmitting(true);
     try {
       await api.put(`/cases/${createdCaseId}/litigants`, {
@@ -2763,7 +2767,7 @@ export default function CaseCenterPage({
               <div className="case-create-step"><div className="case-create-section-title">当事人信息</div><div className="case-create-fields">
                 <Form.Item label={litigantLabels.plaintiff} name="plaintiffs"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-                <Form.Item label={litigantLabels.defendant}>
+                <Form.Item label={litigantLabels.defendant} required={!isCounselCreate}>
                   <Space.Compact block>
                     <Form.Item name="defendants" noStyle rules={[{ required: true, message: "请输入至少一名被告" }]}>
                       <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" style={{ width: "calc(100% - 90px)" }} />

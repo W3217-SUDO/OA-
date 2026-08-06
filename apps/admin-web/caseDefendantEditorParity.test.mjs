@@ -13,8 +13,10 @@ test("new case keeps defendants required and provides a separate right-side edit
   assert.match(source, /const openCreateDefendantEditor = \(\) =>/);
   assert.match(source, /createForm\.setFieldValue\("defendants", values\.defendants\)/);
   assert.match(source, /<Button icon=\{<EditOutlined \/>} onClick=\{openCreateDefendantEditor\}>编辑被告<\/Button>/);
+  assert.match(source, /label=\{litigantLabels\.defendant\} required=\{!isCounselCreate\}/);
   assert.match(source, /title="编辑被告"/);
   assert.match(source, /name="defendants" rules=\{\[\{ required: true, message: "请输入至少一名被告" \}\]\}/);
+  assert.match(source, /请输入至少一名被告/);
 });
 
 test("defendant editor supports selecting customers and entering more than one defendant", () => {
