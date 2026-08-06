@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from app.database import SessionLocal
-from app.main import CaseCreateInput, create_case
+from app.main import CaseCreateInput, create_case, list_case_eligible_contracts
 from app.models import BusinessRecord, RolePermission, User, WorkflowEvent
 from app.security import hash_password
 
@@ -35,7 +35,7 @@ class CaseCreateRouteContractTest(unittest.TestCase):
         contract_id: int | None = None
         async with SessionLocal() as db:
             lawyer = User(
-                username=lawyer_username, display_name=lawyer_username,
+                username=lawyer_username, display_name="\u7f16\u7801\u6d4b\u8bd5\u5f8b\u5e08",
                 department="\u4e0a\u6d77\u5206\u6240", role="user", profile={"position": "\u5f8b\u5e08"},
                 password_hash=hash_password("Codex-Route-Lawyer-123!"), is_active=True,
                 must_change_password=False,
@@ -54,12 +54,16 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             await db.flush()
             contract = BusinessRecord(
                 module="contract", serial_no=f"{prefix}-CONTRACT", title=f"{prefix} contract",
-                customer=f"{prefix} customer", status=APPROVED, owner="admin",
-                department="\u4e0a\u6d77\u5206\u6240", description="", data={"type": "general", "amount": "1.00", "shared_with": []},
+                customer=f"{prefix} customer", status=APPROVED, owner=lawyer_username,
+                department="\u4e0a\u6d77\u5206\u6240", description="", data={"type": "general", "amount": "1.00", "source_person": lawyer_username, "shared_with": []},
             )
             db.add(contract)
             await db.flush()
             contract_id = contract.id
+            eligible = await list_case_eligible_contracts({"username": "admin", "role": "admin"}, db)
+            listed_contract = next(item for item in eligible["items"] if item["id"] == contract_id)
+            self.assertEqual(listed_contract["owner_display_name"], lawyer.display_name)
+            self.assertEqual(listed_contract["data"]["source_person_display_name"], lawyer.display_name)
             base = {
                 "contract_record_id": contract_id, "title": f"{prefix} criminal case",
                 "owner": "admin", "case_type": CRIMINAL, "client_position": CLIENT_POSITION,

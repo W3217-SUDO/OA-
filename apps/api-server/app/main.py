@@ -15463,8 +15463,7 @@ async def list_case_eligible_contracts(identity: dict = Depends(current_identity
     contracts = (await db.scalars(
         select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
     )).all()
-    allowed_fields = await _allowed_field_keys(identity, db)
-    return {"items": [_record_dict(item, allowed_fields) for item in contracts], "total": len(contracts)}
+    return {"items": [await _record_dict_for_identity(item, identity, db) for item in contracts], "total": len(contracts)}
 
 
 @app.get(f"{settings.api_prefix}/cases/reference-options")
