@@ -216,6 +216,16 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(node["node_code"] == action_key and node["state"]["checked"] for node in refreshed_actions))
         self.assertTrue(all(node["state"]["checked"] == (node["node_code"] == action_key) for node in refreshed_actions))
 
+    async def test_permission_tree_repairs_blank_or_placeholder_menu_labels(self):
+        async with self.sessions() as db:
+            item = await db.scalar(select(SystemMenu).where(SystemMenu.key == "system-management"))
+            item.label = "---"
+            await db.commit()
+        response = await self.client.get(f"{API}/system/role-permissions")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        labels = {node["node_code"]: node["text"] for node in flatten_tree(response.json()["permission_tree"])}
+        self.assertEqual(labels["system-management"], "系统管理")
+
     async def test_all_system_writes_emit_persisted_audit_events(self):
         created = await self.client.post(
             f"{API}/system/parameters",

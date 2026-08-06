@@ -40,12 +40,22 @@ class ContractLegacySerialContractTest(unittest.TestCase):
         self.assertIn('async with _contract_serial_lock:', source)
         self.assertIn('serial_no = await _next_contract_serial_no(db)', source)
         self.assertNotIn('requested_serial_no = body.serial_no.strip()', source)
+        self.assertIn('合同名称已存在，不能新建同名合同', source)
 
     def test_contract_submit_persists_sync_seal_choice(self):
         source = Path("app/main.py").read_text(encoding="utf-8")
 
         self.assertIn('sync_seal: bool = False', source)
         self.assertIn('"sync_seal": body.sync_seal', source)
+
+    def test_contract_investigation_uses_the_configured_supervisor_only(self):
+        source = Path("app/main.py").read_text(encoding="utf-8")
+
+        self.assertIn('"investigation_assignment"', source)
+        self.assertIn('async def _configured_investigation_supervisor', source)
+        self.assertIn('supervisor = await _configured_investigation_supervisor(db)', source)
+        self.assertIn('requested_owner != supervisor.username', source)
+        self.assertIn('调查任务必须分配给系统配置的调查主管', source)
 
 
 if __name__ == "__main__":

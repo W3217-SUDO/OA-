@@ -192,7 +192,7 @@ const colors: Record<string, string> = {
 const CONTRACT_TYPE_OPTIONS = ["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"].map((value) => ({ value, label: value }));
 const CONTRACT_FEE_MODE_OPTIONS = ["固定收费", "固定+后期", "免费代理", "法律援助", "计时收费", "全风险代理"].map((value) => ({ value, label: value }));
 const CONTRACT_CREATE_STEP_TITLES = ["合同基本信息", "提交审批", "合同审批", "合同用印"];
-const CONTRACT_SEAL_READY_STATUSES = ["已通过", "履行中", "已完成"];
+const CONTRACT_SEAL_READY_STATUSES = ["审批中", "已通过", "履行中", "已完成"];
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
 const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-return-view";
 const CONTRACT_DETAIL_TAB_STORAGE_KEY = "sunhold:contract-detail-active-tab";
@@ -355,6 +355,7 @@ export default function ContractCenterPage({
     [queryForm] = Form.useForm(),
     [eventForm] = Form.useForm(),
     [objectForm] = Form.useForm();
+  const investigationRegion = Form.useWatch("region", investigationForm);
   const listViewConfig = contractListViewConfig(initialView);
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
@@ -578,7 +579,7 @@ export default function ContractCenterPage({
       return null;
     }
   };
-  const load = async () => {
+  const load = async (queryOverride?: Record<string, any>) => {
     setLoading(true);
     const target = detailTarget || consumeContractDetailTarget() || contractDetailRouteTarget;
     if (customerRelationQueryViewRef.current && customerRelationQueryViewRef.current !== initialView) {
@@ -589,9 +590,10 @@ export default function ContractCenterPage({
     const relationQuery = consumedRelationQuery || customerRelationQueryRef.current;
     // Relationship navigation carries the immutable customer identity and must
     // replace stale customer filters restored from a previous list visit.
+    const baseQuery = queryOverride ?? query;
     const effectiveQuery = relationQuery
-      ? { ...query, customer_id: undefined, customer_no: "", customer: "", ...relationQuery }
-      : query;
+      ? { ...baseQuery, customer_id: undefined, customer_no: "", customer: "", ...relationQuery }
+      : baseQuery;
     if (relationQuery) {
       customerRelationQueryRef.current = effectiveQuery;
       customerRelationQueryViewRef.current = initialView;
@@ -983,7 +985,10 @@ export default function ContractCenterPage({
     if (!wizardDraft) return;
     try {
       const values = await submitForm.validateFields();
-      const submissionErrors = validateContractApprovalSubmission(wizardDraft.status, values.approvers, attachments.length);
+      const attachmentResponse = await api.get("/attachments", { params: { record_id: wizardDraft.id } });
+      const currentAttachments = (attachmentResponse.data.items || []).map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) }));
+      setAttachments(currentAttachments);
+      const submissionErrors = validateContractApprovalSubmission(wizardDraft.status, values.approvers, currentAttachments.length);
       if (submissionErrors.includes("status")) {
         message.warning("仅草稿或已拒绝合同可以提交审批");
         return;
@@ -1080,10 +1085,6 @@ export default function ContractCenterPage({
   };
   const createSealApplication = async () => {
     if (!wizardDraft) return;
-    if (wizardDraft.status === "审批中") {
-      message.warning("合同仍在审批中，审批通过后才能配置合同用印");
-      return;
-    }
     try {
       const values = await sealForm.validateFields();
       const { submit: enterSealCenter, ...sealValues } = values;
@@ -1329,8 +1330,13 @@ export default function ContractCenterPage({
     changeForm.resetFields();
     changeForm.setFieldsValue({
       change_type: "合同补充/修订",
+      customer: r.customer,
+      contract_body: r.data.contract_body || "律所",
+      contract_type: r.data.type || "其他",
+      fee_type: r.data.fee_type || "固定收费",
       title: r.title,
       amount: r.data.amount,
+      description: (r.data as any).description || "",
       external_contract_numbers: r.data.external_contract_numbers || (r.data.external_contract_no ? [r.data.external_contract_no] : []),
       end_date: r.data.end_date ? dayjs(r.data.end_date) : undefined,
     });
@@ -1428,6 +1434,29 @@ export default function ContractCenterPage({
       },
     });
   };
+  const deleteRecycledContract = (contract: Contract) => {
+    Modal.confirm({
+      title: "删除合同",
+      content: "仅回收站合同可以物理删除；删除会同时清理合同附件和关联记录，且无法恢复。",
+      okText: "确认删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const response = await api.post("/contracts/delete", { contract_ids: [contract.id] });
+          const feedback = normalizeContractActionResponse(response, "合同删除失败");
+          if (!feedback.ok) throw new Error(feedback.message);
+          if (viewing?.id === contract.id) closeViewing();
+          setSelectedAttachmentKeys([]);
+          message.success("合同已删除");
+          await load();
+        } catch (error: any) {
+          message.error(extractContractErrorMessage(error, "合同删除失败"));
+          throw error;
+        }
+      },
+    });
+  };
   const archive = async (r: Contract) => {
     try {
       const response = await api.post(`/contracts/${r.id}/archive`);
@@ -1440,19 +1469,25 @@ export default function ContractCenterPage({
       message.error(extractContractErrorMessage(error, "合同归档失败"));
     }
   };
-  const openInvestigation = (r: Contract) => {
+  const openInvestigation = async (r: Contract) => {
     investigationForm.resetFields();
-    investigationForm.setFieldsValue({
-      title: `${r.title}调查任务`,
-      owner: profile.username,
-      authorized_from: dayjs(),
-      authorized_to: dayjs().add(30, "day"),
-      right_type: "商标",
-      customer_review: false,
-      region: "",
-      description: `来源合同 ${r.serial_no}`,
-    });
-    setInvestigating(r);
+    try {
+      const { data: supervisor } = await api.get("/investigations/assignment-supervisor");
+      investigationForm.setFieldsValue({
+        title: `${r.title}调查任务`,
+        owner: supervisor.username,
+        authorized_from: dayjs(),
+        authorized_to: dayjs().add(30, "day"),
+        right_type: "商标",
+        customer_review: false,
+        region: "全国",
+        authorization_scope: "",
+        description: `来源合同 ${r.serial_no}`,
+      });
+      setInvestigating(r);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "调查主管配置加载失败");
+    }
   };
   const createInvestigation = async () => {
     if (!investigating) return;
@@ -1463,6 +1498,14 @@ export default function ContractCenterPage({
         authorized_from: formatRequiredDate(values.authorized_from, "授权开始日期"),
         authorized_to: formatRequiredDate(values.authorized_to, "授权结束日期"),
       });
+      if (contractFile) {
+        const attachment = new FormData();
+        attachment.append("file", contractFile);
+        attachment.append("record_id", String(data.id));
+        attachment.append("category", "调查任务资料");
+        await api.post("/attachments", attachment);
+        setContractFile(null);
+      }
       message.success(`调查任务 ${data.serial_no} 已创建`);
       setInvestigating(null);
       investigationForm.resetFields();
@@ -1564,7 +1607,7 @@ export default function ContractCenterPage({
   };
   const startSelectedSeal = async (contract: Contract) => {
     if (!CONTRACT_SEAL_READY_STATUSES.includes(contract.status)) {
-      message.warning("合同审批通过后才能申请用印");
+      message.warning("当前合同状态不支持申请用印");
       return;
     }
     try {
@@ -1770,7 +1813,7 @@ export default function ContractCenterPage({
           <Button type="link" onClick={() => openContractAttachments(r)}>合同附件</Button>
           <Button type="link" onClick={() => openContractApprovalInfo(r)}>审批信息</Button>
           <Button type="link" onClick={() => openContractRelatedCaseFromList(r)}>关联案件</Button>
-          {canOpenSubmitWizard(r) && <Button type="link" onClick={() => { startEdit(r); setWizardStep(0); }}>重新上传</Button>}
+          {canOpenSubmitWizard(r) && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>重新上传</Button>}
           {canOpenSubmitWizard(r) && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>提交审批</Button>}
         </Space>
       ),
@@ -1977,6 +2020,7 @@ export default function ContractCenterPage({
     saveContractListQuery(sessionStorage, initialView, normalized);
     setQuery(normalized);
     updateListPagination(1, listPagination.pageSize);
+    void load(normalized);
   };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());
   const customerOptions = uniqueCustomers.map((customer) => ({
@@ -2043,12 +2087,13 @@ export default function ContractCenterPage({
           <RecordImportButton module="contract" onImported={load} /><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button danger disabled={!selected || selected.status !== "草稿"} onClick={()=>needSelected(()=>revokeDraft(selected!))}>撤销草稿</Button>
+          <Button danger disabled={!selected || selected.status !== "已回收"} onClick={()=>needSelected(()=>deleteRecycledContract(selected!))}>删除合同</Button>
           <Button disabled={!selectedSecondaryActionPolicy.canEdit} onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
           <Button disabled={!selectedActionPolicy.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
           <Button disabled={!selectedActionPolicy.canInvoice} onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
           <Button disabled={!selectedActionPolicy.canCreateCase} onClick={()=>needSelected(()=>startCaseFromContract(selected!))}>新建案件</Button>
-          <Button disabled={!selectedSecondaryActionPolicy.canInvestigation} onClick={()=>needSelected(()=>openInvestigation(selected!))}>新建调查任务</Button>
+          <Button disabled={!selectedSecondaryActionPolicy.canInvestigation} onClick={()=>needSelected(()=>void openInvestigation(selected!))}>新建调查任务</Button>
           <Button disabled={!selectedSecondaryActionPolicy.canArchive} onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
         </Space></div>}
         {isAuditView && (!["contract-audit-pending", "contract-audit-refused", "contract-audit-approved"].includes(initialView) || rows.length > 0) && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>{auditActionPolicy.canReview && <Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button>}{auditActionPolicy.canReviewChange && <><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></>}</Space></div>}
@@ -2251,8 +2296,8 @@ export default function ContractCenterPage({
             <Input />
           </Form.Item>
           <div className="form-grid">
-            <Form.Item label="调查负责人" name="owner">
-              <Select allowClear showSearch optionFilterProp="label" options={directory.map(user=>({value:user.username,label:`${user.display_name}（${user.username}）`}))} />
+            <Form.Item label="调查主管" name="owner" rules={[{ required: true, message: "请选择调查主管" }]}>
+              <Select disabled showSearch optionFilterProp="label" options={directory.filter(user => user.job_permissions?.includes("调查任务发布")).map(user=>({value:user.username,label:user.display_name || user.username}))} />
             </Form.Item>
             <Form.Item label="权利类型" name="right_type" rules={[{ required: true }]}>
               <Select options={["商标","专利","著作权","不正当竞争"].map(value=>({value,label:value}))} />
@@ -2264,12 +2309,14 @@ export default function ContractCenterPage({
               <DatePicker style={{width:"100%"}} />
             </Form.Item>
           </div>
-          <Form.Item label="调查区域" name="region">
-            <Input placeholder="省、市或具体授权区域" />
+          <Form.Item label="授权范围" name="region" rules={[{ required: true, message: "请选择授权范围" }]}>
+            <Select options={["全国", "区域"].map(value=>({value,label:value}))} />
           </Form.Item>
+          {investigationRegion === "区域" && <Form.Item label="授权区域" name="authorization_scope" rules={[{ required: true, message: "请输入授权区域" }]}><Input placeholder="省、市或具体授权区域" /></Form.Item>}
           <Form.Item name="customer_review" valuePropName="checked">
             <Checkbox>调查线索需要客户审核</Checkbox>
           </Form.Item>
+          <Form.Item label="调查资料"><input type="file" accept={CONTRACT_ATTACHMENT_ACCEPT} onChange={(event) => setContractFile(event.target.files?.[0] || null)} />{contractFile && <span className="contract-upload-name">{contractFile.name}</span>}</Form.Item>
           <Form.Item label="任务说明" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -2832,6 +2879,9 @@ export default function ContractCenterPage({
         onCancel={() => setChanging(null)}
       >
         <Form form={changeForm} layout="vertical">
+          <Form.Item label="客户" name="customer">
+            <Input disabled />
+          </Form.Item>
           <Form.Item
             label="变更类型"
             name="change_type"
@@ -2855,6 +2905,15 @@ export default function ContractCenterPage({
             <Input.TextArea rows={3} />
           </Form.Item>
           <div className="form-grid">
+            <Form.Item label="合同主体" name="contract_body">
+              <Select options={["律所", "平台"].map((value) => ({ value, label: value }))} />
+            </Form.Item>
+            <Form.Item label="合同类别" name="contract_type">
+              <Select options={CONTRACT_TYPE_OPTIONS} />
+            </Form.Item>
+            <Form.Item label="收费模式" name="fee_type">
+              <Select options={CONTRACT_FEE_MODE_OPTIONS} />
+            </Form.Item>
             <Form.Item className="span-2" label="合同名称" name="title">
               <Input />
             </Form.Item>
@@ -2866,6 +2925,9 @@ export default function ContractCenterPage({
             </Form.Item>
             <Form.Item className="span-2" label="合同截止日期" name="end_date">
               <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item className="span-2" label="备注" name="description">
+              <Input.TextArea rows={3} />
             </Form.Item>
           </div>
         </Form>

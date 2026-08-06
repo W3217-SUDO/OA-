@@ -89,7 +89,7 @@ CASE_CREATE_PERMISSION_BY_TYPE = {
 CASE_CREATABLE_TYPES = {"民事案件", "刑事案件", "行政案件及国家赔偿", "法律顾问", "仲裁"}
 NORMAL_CASE_BASIC_TYPES = {"民事案件", "刑事案件", "行政案件及国家赔偿"}
 CASE_BASIC_EDITABLE_PHASES = {"等待公证书", "等待审核公证书", "待立案审批", "新案待分配", "文书准备", "一审立案受理", "一审准备开庭", "待上诉", "二审", "执行"}
-CASE_SOURCE_CONTRACT_STATUSES = {"已通过", "履行中", "已完成"}
+CASE_SOURCE_CONTRACT_STATUSES = {"审批中", "已通过", "履行中", "已完成"}
 REQUIRED_SEAL_ASSETS = (
     ("YZ-HT-001", "合同章", "行政部保险柜 A01"),
     ("YZ-GZ-001", "公章", "行政部保险柜 A02"),
@@ -153,7 +153,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("case-archive-pending", "case-archive", "待审核列表", "", 1), ("case-archive-done", "case-archive", "已归档列表", "", 2), ("case-archive-refused", "case-archive", "已拒绝列表", "", 3), ("case-archive-loss-internal", "case-archive", "亏损内审列表", "", 4), ("case-archive-loss-audit", "case-archive", "亏损审核列表", "", 5), ("case-archive-loss-done", "case-archive", "亏损归档列表", "", 6), ("case-archive-loss-refused", "case-archive", "亏损拒绝列表", "", 7),
 ]
 DEFAULT_SYSTEM_MENUS += [
-    ("investigation-task-published", "investigation", "我发布的调查任务", "", 1), ("investigation-task-mine", "investigation", "我的调查任务", "", 2), ("investigation-task-overdue", "investigation", "过期调查任务", "", 3), ("investigation-task-unassigned", "investigation", "待我分配的调查任务", "", 4), ("investigation-task-sub-published", "investigation", "我发布的调查子任务", "", 5), ("investigation-task-sub-mine", "investigation", "我的调查任务", "", 6),
+    ("investigation-task-published", "investigation", "我发布的调查任务", "", 1), ("investigation-task-mine", "investigation-task-published", "我的调查任务", "", 2), ("investigation-task-overdue", "investigation-task-published", "过期调查任务", "", 3), ("investigation-task-unassigned", "investigation-task-published", "待我分配的调查任务", "", 4), ("investigation-task-sub-published", "investigation-task-published", "我发布的调查子任务", "", 5), ("investigation-task-sub-mine", "investigation-task-published", "我的调查任务", "", 6),
     ("clue-my-draft", "clue", "待提交线索", "", 1), ("clue-my-pending", "clue", "待审核线索", "", 2), ("clue-my-customer", "clue", "待客户审核", "", 3), ("clue-my-collect", "clue", "待取证线索", "", 4), ("clue-my-collected", "clue", "已取证线索", "", 5), ("clue-my-refused", "clue", "已拒绝线索", "", 6), ("clue-my-no-fee", "clue", "未申请费用线索", "", 7), ("clue-my-fee", "clue", "已申请费用线索", "", 8),
     ("clue-audit", "investigation", "调查线索审核", "", 72), ("clue-audit-pending", "clue-audit", "待审批线索", "", 1), ("clue-audit-customer", "clue-audit", "待客户审核", "", 2), ("clue-audit-refused", "clue-audit", "已拒绝线索", "", 3), ("clue-audit-collect", "clue-audit", "待取证线索", "", 4), ("clue-audit-collected", "clue-audit", "已取证线索", "", 5),
     ("clue-company", "investigation", "公司调查线索", "", 73), ("clue-company-draft", "clue-company", "待提交线索", "", 1), ("clue-company-pending", "clue-company", "待审核线索", "", 2), ("clue-company-collect", "clue-company", "待取证线索", "", 3), ("clue-company-collected", "clue-company", "已取证线索", "", 4), ("clue-company-refused", "clue-company", "已拒绝线索", "", 5), ("clue-company-no-fee", "clue-company", "未申请费用线索", "", 6), ("clue-company-fee", "clue-company", "已申请费用线索", "", 7),
@@ -201,6 +201,7 @@ SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
 # Administrators can now instead select individual leaves to make a narrow role.
 MENU_KEYS = [key for key, *_ in DEFAULT_SYSTEM_MENUS if key != "dashboard"]
 MENU_PARENT_BY_KEY = {key: parent_key for key, parent_key, *_ in DEFAULT_SYSTEM_MENUS}
+DEFAULT_MENU_LABEL_BY_KEY = {key: label for key, _, label, _, _ in DEFAULT_SYSTEM_MENUS}
 MENU_CHILDREN_BY_KEY: dict[str, list[str]] = {}
 for _menu_key, _menu_parent_key in MENU_PARENT_BY_KEY.items():
     if _menu_parent_key:
@@ -312,6 +313,10 @@ DEFAULT_SYSTEM_CONFIGS = {
     "application_settings": {
         "label": "系统配置", "group": "运行配置", "description": "网页端显示与业务运行参数。",
         "value": {"system_name": "申浩律师协作平台", "default_department": "上海分所", "page_size": 20, "attachment_limit_mb": 20, "maintenance_mode": False},
+    },
+    "investigation_assignment": {
+        "label": "调查任务分配人", "group": "业务配置", "description": "合同新建调查任务时固定流转到该调查主管，由其再分配调查子任务。",
+        "value": {"supervisor_username": ""},
     },
 }
 SYSTEM_PARAMETER_CACHE: dict[str, list[dict]] = {}
@@ -1239,7 +1244,8 @@ INVESTIGATION_CREATE_STATUS_BY_MODULE = {
 }
 INVESTIGATION_EDIT_DATA_FIELDS = {
     "region", "address", "right_type", "deadline", "priority", "platform",
-    "product", "source", "infringement_method",
+    "product", "source", "infringement_method", "store_url", "shop_id", "producer",
+    "indictee", "investigation_assistant", "investigated_at", "customer_manager",
 }
 
 
@@ -2639,6 +2645,8 @@ class ContractInvestigationInput(BaseModel):
     authorized_from: date
     authorized_to: date
     region: str = Field(default="", max_length=300)
+    authorization_scope: str = Field(default="", max_length=1000)
+    attachment_ids: list[int] = Field(default_factory=list, max_length=100)
     right_type: str = Field(default="商标", max_length=50)
     customer_review: bool = False
     description: str = Field(default="", max_length=2000)
@@ -2647,8 +2655,12 @@ class ContractInvestigationInput(BaseModel):
 class ContractChangeInput(BaseModel):
     change_type: str
     reason: str = Field(min_length=2, max_length=1000)
+    contract_body: str | None = None
+    contract_type: str | None = None
+    fee_type: str | None = None
     title: str | None = None
     amount: float | None = Field(default=None, ge=0)
+    description: str | None = None
     external_contract_no: str | None = None
     external_contract_numbers: list[str] | None = Field(default=None, max_length=50)
     end_date: date | None = None
@@ -3309,9 +3321,12 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
                 "node_code": definition["code"], "text": definition["label"],
                 "state": {"checked": definition["code"] in action_keys}, "children": [],
             })
+        label = str(item.label or "").strip()
+        if not label or label in {"---", "—", "-"}:
+            label = DEFAULT_MENU_LABEL_BY_KEY.get(item.key, "未命名菜单")
         return {
             "node_type": "M", "node_original_id": item.id, "node_id": str(item.id),
-            "node_code": item.key, "text": item.label,
+            "node_code": item.key, "text": label,
             "state": {"checked": item.key in menu_keys}, "children": children,
         }
 
@@ -4391,6 +4406,10 @@ def _validate_system_config(key: str, value: dict) -> dict:
         if set(value) != required or not isinstance(value["maintenance_mode"], bool) or not isinstance(value["page_size"], int) or not 10 <= value["page_size"] <= 200 or not isinstance(value["attachment_limit_mb"], int) or not 1 <= value["attachment_limit_mb"] <= 100:
             raise HTTPException(status_code=422, detail="系统配置字段或数值范围无效")
         if not str(value["system_name"]).strip() or not str(value["default_department"]).strip(): raise HTTPException(status_code=422, detail="系统名称和默认部门必填")
+    elif key == "investigation_assignment":
+        if set(value) != {"supervisor_username"} or not isinstance(value["supervisor_username"], str):
+            raise HTTPException(status_code=422, detail="调查任务分配人配置无效")
+        value = {"supervisor_username": value["supervisor_username"].strip()}
     else:
         raise HTTPException(status_code=404, detail="系统配置不存在")
     return value
@@ -4416,7 +4435,12 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     _require_admin(identity)
     item = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key))
     if not item: raise HTTPException(status_code=404, detail="系统配置不存在")
-    item.value = _validate_system_config(config_key, body.value); item.updated_by = identity["username"]
+    value = _validate_system_config(config_key, body.value)
+    if config_key == "investigation_assignment":
+        supervisor = await db.scalar(select(User).where(User.username == value["supervisor_username"], User.is_active.is_(True)))
+        if not supervisor or not await _user_has_job_permission(supervisor, "调查任务发布", db):
+            raise HTTPException(status_code=422, detail="调查任务分配人必须是启用且具有调查任务发布权限的人员")
+    item.value = value; item.updated_by = identity["username"]
     await _system_audit(db, identity, "更新系统配置", f"系统配置:{item.key}", {"key": item.key})
     await db.commit(); await db.refresh(item)
     return {"key": item.key, "label": item.label, "group": item.group, "value": item.value, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at}
@@ -4729,9 +4753,12 @@ async def download_law_firm_license(law_firm_id: int, identity: dict = Depends(c
 
 
 def _system_menu_dict(item: SystemMenu) -> dict:
+    label = str(item.label or "").strip()
+    if not label or label in {"---", "—", "-"}:
+        label = DEFAULT_MENU_LABEL_BY_KEY.get(item.key, "未命名菜单")
     return {
         "id": item.id, "key": item.key, "parent_key": item.parent_key,
-        "label": item.label, "description": getattr(item, "description", ""), "icon": item.icon, "sort_order": item.sort_order,
+        "label": label, "description": getattr(item, "description", ""), "icon": item.icon, "sort_order": item.sort_order,
         "is_visible": item.is_visible, "is_active": item.is_active,
         "is_system": item.key in SYSTEM_MENU_ROUTE_KEYS,
         "updated_by": item.updated_by, "updated_at": item.updated_at,
@@ -5170,6 +5197,25 @@ async def user_directory(
             "eligible_customer_person": item.username.lower() in eligible_customer_usernames if purpose == "customer_manager" else None,
         })
     return {"items": payload}
+
+
+async def _configured_investigation_supervisor(db: AsyncSession) -> User:
+    config = await db.scalar(select(SystemConfig).where(SystemConfig.key == "investigation_assignment"))
+    configured_username = str((config.value or {}).get("supervisor_username") or "").strip() if config else ""
+    if not configured_username:
+        raise HTTPException(status_code=409, detail="请先由管理员在系统配置中设置调查任务分配人")
+    supervisor = await db.scalar(select(User).where(User.username == configured_username, User.is_active.is_(True)))
+    if not supervisor:
+        raise HTTPException(status_code=409, detail="已配置的调查任务分配人不存在或已停用，请重新设置")
+    if not await _user_has_job_permission(supervisor, "调查任务发布", db):
+        raise HTTPException(status_code=409, detail="已配置的调查任务分配人没有调查任务发布权限，请重新设置")
+    return supervisor
+
+
+@app.get(f"{settings.api_prefix}/investigations/assignment-supervisor")
+async def investigation_assignment_supervisor(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    supervisor = await _configured_investigation_supervisor(db)
+    return {"username": supervisor.username, "display_name": supervisor.display_name, "department": supervisor.department}
 
 @app.get(f"{settings.api_prefix}/contracts/approver-settings")
 async def contract_approver_settings(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -7372,6 +7418,9 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
         data = {**data, "staff_id": staff.id, "staff_no": staff.serial_no, "staff_name": staff.title, "staff_username": str(staff_data.get("username") or staff.owner or "")}
     customer = await _resolve_contract_customer(body.customer, data, identity, db)
     customer_data = customer.data or {}
+    duplicate_title = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "contract", BusinessRecord.title == body.title.strip(), BusinessRecord.status.not_in({"已删除", "已归档"})))
+    if duplicate_title:
+        raise HTTPException(status_code=409, detail="合同名称已存在，不能新建同名合同")
     # GUID is a server-owned identity; never accept a client-supplied value.
     data = {**data, "contract_guid": str(uuid4()), "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
     if float(data.get("amount") or 0) < 0:
@@ -7440,6 +7489,9 @@ async def update_contract_draft(contract_id: int, body: ContractDraftInput, iden
         raise HTTPException(status_code=409, detail="合同提交审批后不能直接编辑，请使用合同变更流程")
     duplicate = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no.strip(), BusinessRecord.id != item.id))
     if duplicate: raise HTTPException(status_code=409, detail="合同编号已存在")
+    duplicate_title = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "contract", BusinessRecord.title == body.title.strip(), BusinessRecord.id != item.id, BusinessRecord.status.not_in({"已删除", "已归档"})))
+    if duplicate_title:
+        raise HTTPException(status_code=409, detail="合同名称已存在，不能保存同名合同")
     data = _normalize_external_contract_numbers(dict(body.data or {}))
     customer = await _resolve_contract_customer(body.customer, data, identity, db)
     customer_data = customer.data or {}
@@ -7726,19 +7778,16 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
 async def create_contract_investigation(contract_id: int, body: ContractInvestigationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status not in {"已通过", "履行中", "已完成"}:
+    if contract.status not in {"审批中", "已通过", "履行中", "已完成"}:
         raise HTTPException(status_code=409, detail="合同审批通过后才能新建调查任务")
     if body.authorized_to < body.authorized_from:
         raise HTTPException(status_code=422, detail="授权结束日期不能早于开始日期")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
-    owner = body.owner.strip()
-    if identity.get("role") == "user":
-        owner = identity["username"]
-    if owner:
-        assignee = await db.scalar(select(User).where(or_(User.username == owner, User.display_name == owner), User.is_active.is_(True)))
-        if not assignee:
-            raise HTTPException(status_code=422, detail="调查任务负责人不存在或已停用")
-        owner = assignee.username
+    supervisor = await _configured_investigation_supervisor(db)
+    requested_owner = body.owner.strip()
+    if requested_owner and requested_owner != supervisor.username:
+        raise HTTPException(status_code=422, detail="调查任务必须分配给系统配置的调查主管")
+    owner = supervisor.username
     duplicate = await db.scalar(select(BusinessRecord).where(
         BusinessRecord.module == "investigation",
         BusinessRecord.data["contract_id"].as_integer() == contract.id,
@@ -7763,6 +7812,7 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
             "authorized_from": str(body.authorized_from),
             "authorized_to": str(body.authorized_to),
             "region": body.region.strip(),
+            "authorization_scope": body.authorization_scope.strip(),
             "right_type": body.right_type.strip(),
             "customer_review": body.customer_review,
             "publisher": identity["username"],
@@ -7772,6 +7822,13 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
     )
     db.add(investigation)
     await db.flush()
+    attachment_ids = list(dict.fromkeys(int(item) for item in body.attachment_ids if int(item) > 0))
+    if attachment_ids:
+        attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
+        if len(attachments) != len(attachment_ids) or any(item.record_id not in {None, contract.id} and item.uploader != identity["username"] for item in attachments):
+            raise HTTPException(status_code=422, detail="调查任务附件不存在或无权使用")
+        for attachment in attachments:
+            attachment.record_id = investigation.id
     linked_ids = list((contract.data or {}).get("investigation_ids", [])); linked_ids.append(investigation.id)
     contract.data = {**(contract.data or {}), "investigation_ids": list(dict.fromkeys(linked_ids)), "last_investigation_no": serial}
     db.add_all([
@@ -8277,12 +8334,16 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
     if requested_external_numbers is not None:
         normalized_external_numbers = _normalize_external_contract_numbers({"external_contract_numbers": requested_external_numbers})["external_contract_numbers"]
     candidates = {
+        "contract_body": (data.get("contract_body", ""), body.contract_body),
+        "contract_type": (data.get("type", ""), body.contract_type),
+        "fee_type": (data.get("fee_type", ""), body.fee_type),
         "title": (contract.title, body.title),
         "amount": (data.get("amount"), body.amount),
+        "description": (data.get("description", ""), body.description),
         "external_contract_numbers": (data.get("external_contract_numbers") or ([data.get("external_contract_no")] if data.get("external_contract_no") else []), normalized_external_numbers),
         "end_date": (data.get("end_date", ""), str(body.end_date) if body.end_date else None),
     }
-    labels = {"title": "合同名称", "amount": "合同金额", "external_contract_numbers": "外部合同号", "end_date": "合同期限"}
+    labels = {"contract_body": "合同主体", "contract_type": "合同类别", "fee_type": "收费模式", "title": "合同名称", "amount": "合同金额", "description": "备注", "external_contract_numbers": "外部合同号", "end_date": "合同期限"}
     for key, (before, after) in candidates.items():
         if after is not None and after != before:
             changes.append({"field": key, "label": labels[key], "before": before, "after": after})
@@ -8308,7 +8369,9 @@ async def review_contract_change(contract_id: int, body: ContractChangeReviewInp
             key = change.get("field"); value = change.get("after")
             if key == "title": contract.title = str(value)
             elif key == "external_contract_numbers": data = _normalize_external_contract_numbers({**data, "external_contract_numbers": value})
+            elif key == "contract_type": data["type"] = value
             elif key in {"amount", "end_date"}: data[key] = value
+            elif key in {"contract_body", "fee_type", "description"}: data[key] = value
         data["last_changed_at"] = datetime.now().isoformat(timespec="seconds")
         data["change_count"] = int(data.get("change_count", 0)) + 1
     reviewed = {**pending, "status": "已通过" if body.approved else "已驳回", "reviewed_by": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment.strip()}
@@ -8405,13 +8468,23 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
 @app.patch(f"{settings.api_prefix}/investigations/records/{{record_id}}")
 async def update_investigation_record(record_id: int, body: RecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_record_visible(record_id, identity, db)
-    if record.module not in INVESTIGATION_RECORD_MODULES:
+    if record.module not in {*INVESTIGATION_RECORD_MODULES, "task"}:
         raise HTTPException(status_code=404, detail="调查中心记录不存在")
-    await _require_record_owner_or_manager(record, identity, db)
-    if record.module == "clue" and record.status not in {"草稿", "已驳回"}:
-        raise HTTPException(status_code=409, detail="待审批、待客户审核及后续线索不可直接修改；请等待审核结果或走驳回后重提流程")
+    if record.module == "task":
+        _require_task_owner_or_initiator(record, identity, action="修改调查任务")
+    elif record.module == "clue" and record.status in {"待审批", "待客户审核", "待取证", "已取证"}:
+        reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
+        if identity.get("role") != "admin" and (not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db)):
+            await _require_record_owner_or_manager(record, identity, db)
+    else:
+        await _require_record_owner_or_manager(record, identity, db)
     changes = body.model_dump(exclude_unset=True)
-    if changes.get("status") and changes["status"] != record.status:
+    clue_editable_statuses = {"草稿", "已驳回", "待审批", "待客户审核", "待取证", "已取证"}
+    if record.module == "clue" and record.status not in clue_editable_statuses:
+        raise HTTPException(status_code=409, detail="当前线索状态不允许修改")
+    requested_status = changes.get("status")
+    reflow_clue = record.module == "clue" and requested_status == "待审批" and record.status != "待审批"
+    if requested_status and requested_status != record.status and not reflow_clue:
         raise HTTPException(status_code=409, detail="调查中心状态必须通过专用审批或办理入口变更")
     if changes.get("owner") and changes["owner"] != record.owner:
         raise HTTPException(status_code=409, detail="调查员/负责人必须通过分配调查员入口修改")
@@ -8423,7 +8496,16 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
         incoming_data = dict(changes["data"] or {})
         editable_data = {key: incoming_data[key] for key in INVESTIGATION_EDIT_DATA_FIELDS if key in incoming_data}
         record.data = {**(record.data or {}), **editable_data}
-    db.add(WorkflowEvent(record_id=record.id, action="修改调查中心资料", from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过调查中心专用入口修改基础资料"))
+    if reflow_clue:
+        record.status = "待审批"
+        record.data = {
+            **(record.data or {}),
+            "reviewer": "", "reviewed_at": "", "review_comment": "",
+            "customer_reviewer": "", "customer_reviewed_at": "", "customer_review_comment": "",
+            "rejection_reason": "", "resubmitted_at": datetime.now().isoformat(timespec="seconds"),
+            "resubmitted_by": identity["username"],
+        }
+    db.add(WorkflowEvent(record_id=record.id, action="修改并重新提交线索审批" if reflow_clue else "修改调查中心资料", from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过调查中心专用入口修改基础资料"))
     await db.commit()
     await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
@@ -15403,7 +15485,13 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     # 防止旧租户尚未配置案件文件类型时页面提交无效的静态分类。
     if not any(item["value"] == "普通附件" for item in serialized_case_file_types):
         serialized_case_file_types.append({"value": "普通附件", "label": "普通附件", "code": "COMMON", "parent_code": ""})
-    active_users = (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
+    employee_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all()
+    employee_usernames = {
+        str((item.data or {}).get("username") or item.owner or "").strip().lower()
+        for item in employee_records
+        if item.status not in {"离职", "停用"}
+    }
+    active_users = (await db.scalars(select(User).where(User.is_active.is_(True), User.username.in_(employee_usernames)).order_by(User.display_name, User.username))).all() if employee_usernames else []
     people_options = [
         {"value": item.username, "label": f"{item.display_name}（{item.department}）", "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip()}
         for item in active_users
@@ -15544,7 +15632,13 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     assistant = body.assistant.strip()
     if len(assistant) > 128:
         raise HTTPException(status_code=422, detail="律师助理姓名过长")
-    handling_lawyers, handling_usernames = await _resolve_active_case_people(handling_lawyers, db, field_name="经办律师")
+    creator_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+    creator_label = str(creator_user.display_name if creator_user else identity["username"]).strip()
+    creator_selection = len(handling_lawyers) == 1 and handling_lawyers[0] in {identity["username"], creator_label}
+    if creator_selection and creator_user:
+        handling_lawyers, handling_usernames = [creator_label], [creator_user.username]
+    else:
+        handling_lawyers, handling_usernames = await _resolve_active_case_people(handling_lawyers, db, field_name="经办律师")
     assistant_values, assistant_usernames = await _resolve_active_case_people([assistant] if assistant else [], db, field_name="律师助理")
     assistant = assistant_values[0] if assistant_values else ""
     assistant_username = assistant_usernames[0] if assistant_usernames else ""
@@ -15564,6 +15658,9 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial_no)):
         raise HTTPException(status_code=409, detail="业务编号已存在")
     contract_data = contract.data or {}
+    source_token = body.source_person.strip() or str(contract_data.get("source_person") or contract.owner or "").strip()
+    source_user = await db.scalar(select(User).where(User.username == source_token)) if source_token else None
+    source_person, _ = _person_display_name(source_user.display_name, source_user.username) if source_user else (source_token, False)
     owner = body.owner.strip() or identity["username"]
     if identity.get("role") != "admin":
         user = await db.scalar(select(User).where(User.username == identity["username"]))
@@ -15587,7 +15684,10 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
             "client_position": client_position,
             "cause_or_charge": cause_or_charge,
             "right_type": right_type,
-            "source_person": body.source_person.strip() or contract_data.get("source_person") or contract.owner,
+            "source_person": source_person,
+            "source_person_username": source_user.username if source_user else "",
+            "investigator": body.investigator.strip(),
+            "investigation_clue": body.investigation_clue.strip(),
             "counsel_type": counsel_type,
             "counsel_start": str(body.counsel_start) if body.counsel_start else "",
             "counsel_end": str(body.counsel_end) if body.counsel_end else "",

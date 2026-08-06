@@ -13,6 +13,17 @@ test('clue save sends the backend-editable investigation data fields', () => {
   assert.match(source, /platform:v\.platform\|\|''[\s\S]*product:v\.product\|\|''[\s\S]*source:v\.source\|\|''/)
 })
 
+test('clue edits from every review stage re-enter pending review', () => {
+  assert.match(source, /const resubmit=editTarget\.module==='clue'&&!\['草稿','已驳回'\]\.includes\(editTarget\.status\)/)
+  assert.match(source, /\?\{status:'待审批'\}:\{\}/)
+  assert.match(source, /线索已修改并重新进入待审核/)
+})
+
+test('investigation task list does not offer a second parent-task creation entry', () => {
+  assert.doesNotMatch(source, /investigation-task-published'\]:\['查询','刷新','新建调查任务'/)
+  assert.doesNotMatch(source, /investigation-task-mine'\]:\['查询','刷新','新建调查任务'/)
+})
+
 test('clue create modal keeps legacy source, store and subject fields', () => {
   assert.match(source, /name="infringement_method"[\s\S]*name="store_url"[\s\S]*name="shop_id"[\s\S]*name="address"[\s\S]*name="investigated_at"[\s\S]*name="producer"[\s\S]*name="indictee"[\s\S]*name="investigation_assistant"/)
 })

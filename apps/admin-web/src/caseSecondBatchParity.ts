@@ -57,6 +57,8 @@ export const buildCaseCreatePayload = (
   counsel_end: context.mode === "counsel" ? dateText(context.counselEnd ?? (Array.isArray(draft.counsel_range) ? draft.counsel_range[1] : "")) : null,
   handling_lawyers: list(draft.handling_lawyers),
   assistant: text(draft.assistant),
+  investigator: text(draft.investigator),
+  investigation_clue: text(draft.investigation_clue),
 });
 
 export const getCaseEditValidationError = (draft: Record<string, unknown>) => {

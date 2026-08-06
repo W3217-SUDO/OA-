@@ -760,7 +760,10 @@ export default function CaseCenterPage({
     createForm.setFieldsValue({
       status: "新案待分配",
       owner: profile.username || "admin",
-      handling_lawyers: [],
+      // A newly created case starts with the current creator as its sole handler.
+      handling_lawyers: [profile.display_name || profile.username || "admin"],
+      investigator: "",
+      investigation_clue: "",
       assistant: undefined,
       case_type: createRouteType,
       client_position: isCounselCreate ? "" : isCriminalCreate ? "被告人/犯罪嫌疑人" : "原告/申请人",
@@ -2737,8 +2740,9 @@ export default function CaseCenterPage({
                   {isCounselCreate && <><Form.Item label="顾问类型" name="counsel_type" rules={[{ required: true }]}><Input placeholder="请输入顾问类型" /></Form.Item><Form.Item label="顾问期限" name="counsel_range" rules={[{ required: true }]}><DatePicker.RangePicker style={{ width: "100%" }} /></Form.Item></>}
                   <Form.Item label="案件名称" name="title" rules={[{ required: true }]}><Input placeholder="请输入案件名称" /></Form.Item>
                   {!isCounselCreate && <Form.Item label="案件阶段" name="status"><Select disabled options={caseStatuses.map((value) => ({ value, label: value === "新案待分配" ? "待分配" : value }))} /></Form.Item>}
-                  <Form.Item label="经办律师" name="handling_lawyers" rules={[{ required: true, message: "请选择系统已创建的在职律师" }]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="请选择系统已创建的在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" /></Form.Item>
+                  <Form.Item label="经办律师" name="handling_lawyers" rules={[{ required: true, message: "请选择系统已创建的在职律师" }]}><Select mode="multiple" disabled={createStep === 0} showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="创建人自动作为经办律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" /></Form.Item>
                   <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
+                  {!isCounselCreate && <><Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选，选择调查员" /></Form.Item><Form.Item label="调查线索" name="investigation_clue"><Select allowClear showSearch optionFilterProp="label" options={caseClues.filter((item) => item.status !== "已转案件").map((item) => ({ value: item.serial_no, label: `${item.serial_no}｜${item.title}` }))} placeholder="可选，选择调查线索" /></Form.Item></>}
                   {!isCriminalCreate && !isCounselCreate && <Form.Item label="权利类型" name="right_type"><Select allowClear showSearch optionFilterProp="label" placeholder="请选择权利类型" options={rightTypeOptions} /></Form.Item>}
                 </div>
               </div>
@@ -2747,7 +2751,7 @@ export default function CaseCenterPage({
               <div className="case-create-step"><div className="case-create-section-title">当事人信息</div><div className="case-create-fields">
                 <Form.Item label={litigantLabels.plaintiff} name="plaintiffs"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-                <Form.Item label={litigantLabels.defendant} name="defendants"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+                <Form.Item label={litigantLabels.defendant} name="defendants" rules={[{ required: true, message: "请输入至少一名被告" }]}><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.third} name="third_parties"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
                 <Form.Item label={litigantLabels.thirdAgent} name="third_party_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>

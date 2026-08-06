@@ -57,6 +57,13 @@ test("new contract approval fields only select configured approvers and do not e
   assert.doesNotMatch(contractPage, /placeholder="请选择合同审批流程人员"/);
 });
 
+test("contract investigation loads the configured supervisor instead of choosing the first directory user", () => {
+  assert.match(contractPage, /api\.get\("\/investigations\/assignment-supervisor"\)/);
+  assert.match(contractPage, /owner: supervisor\.username/);
+  assert.doesNotMatch(contractPage, /const supervisor = directory\.find/);
+  assert.match(contractPage, /调查主管配置加载失败/);
+});
+
 test("new contract basic info is editable instead of fixed defaults", () => {
   assert.match(contractPage, /const CONTRACT_TYPE_OPTIONS = \["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"\]\.map/);
   assert.match(contractPage, /label="合同类别" name="type"[\s\S]{0,220}<Select allowClear showSearch optionFilterProp="label" placeholder="请选择合同类别" options=\{CONTRACT_TYPE_OPTIONS\}/);
@@ -82,5 +89,18 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /label="是否同步用印" name="sync_seal"/);
   assert.match(contractPage, /sync_seal: Boolean\(values\.sync_seal\)/);
   assert.match(contractPage, /if \(values\.sync_seal\)[\s\S]{0,180}setWizardStep\(3\)/);
+  assert.match(contractPage, /CONTRACT_SEAL_READY_STATUSES = \["审批中", "已通过"/);
+  assert.doesNotMatch(contractPage, /wizardDraft\.status === "审批中"\) \{\s*message\.warning\("合同仍在审批中/);
+  assert.match(contractPage, /const load = async \(queryOverride\?\: Record<string, any>\)/);
+  assert.match(contractPage, /void load\(normalized\)/);
   assert.match(contractPage, /合同审批中，请在详情查看进度/);
+});
+
+test("re-upload reopens the submit wizard and refreshes the persisted attachment list", () => {
+  assert.match(contractPage, /onClick=\{\(\) => void openSubmitWizardFromList\(r\)\}>重新上传/);
+  const submitStart = contractPage.indexOf("const submitWizard = async");
+  const submitEnd = contractPage.indexOf("const refreshWizard", submitStart);
+  const submitHandler = contractPage.slice(submitStart, submitEnd);
+  assert.match(submitHandler, /api\.get\("\/attachments", \{ params: \{ record_id: wizardDraft\.id \} \}\)/);
+  assert.match(submitHandler, /validateContractApprovalSubmission\(wizardDraft\.status, values\.approvers, currentAttachments\.length\)/);
 });
