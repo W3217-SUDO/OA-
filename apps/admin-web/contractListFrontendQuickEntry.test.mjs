@@ -89,8 +89,8 @@ test("contract list restores legacy approval, related case, and re-upload shortc
   );
   assert.match(
     columnsSource,
-    /canOpenSubmitWizard\(r\)[\s\S]*startEdit\(r\); setWizardStep\(0\);[\s\S]*重新上传/,
-    "draft/refused rows should expose the old re-upload entry",
+    /canOpenSubmitWizard\(r\)[\s\S]*openSubmitWizardFromList\(r\)[\s\S]*重新上传/,
+    "draft/refused rows should reopen the persisted submit wizard for re-upload",
   );
 });
 
