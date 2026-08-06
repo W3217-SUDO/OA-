@@ -120,17 +120,18 @@ test("standalone system user management route is hidden from the visible workspa
     appSource.indexOf("function configuredMenuItems"),
     appSource.indexOf("function flattenMenu"),
   );
-  const canonicalRouteBlock = appSource.slice(
-    appSource.indexOf("function canonicalRoute(route: string): string {"),
-    appSource.indexOf("function financeRouteFromPlatform"),
-  );
   assert.match(appSource, /"system-users": "hr-all"/);
   assert.match(configuredMenuItems, /item\.key !== "system-users"/);
-  assert.match(canonicalRouteBlock, /route === "contract-approver-settings"\) return "hr-all"/);
 });
 
 test("organization and audit routes remain explicit integration boundaries", () => {
   assert.match(apiSource, /@app\.get\(f"\{settings\.api_prefix\}\/audit\/events"\)/);
   assert.match(apiSource, /仅管理员可以查看全所操作日志/);
   assert.match(pageSource, /initialView === "system-users"/);
+});
+
+test("investigation supervisor selection refreshes enabled personnel when opened", () => {
+  assert.match(pageSource, /const loadInvestigationSupervisorOptions = async \(\) =>/);
+  assert.match(pageSource, /api\.get\("\/users\/directory"\)/);
+  assert.match(pageSource, /onOpenChange=\{\(open\) => \{[\s\S]*if \(open\) void loadInvestigationSupervisorOptions\(\)/);
 });

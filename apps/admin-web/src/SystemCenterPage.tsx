@@ -1415,7 +1415,16 @@ export default function SystemCenterPage({
         <Card className="panel system-focused" title="调查任务分配人">
           <Form form={investigationSupervisorForm} layout="inline">
             <Form.Item name="supervisor_username" label="调查主管" rules={[{ required: true, message: "请选择调查主管" }]}>
-              <Select showSearch optionFilterProp="label" placeholder="请选择启用的系统人员" options={investigationSupervisorOptions} style={{ minWidth: 320 }} />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="请选择启用的系统人员"
+                options={investigationSupervisorOptions}
+                onOpenChange={(open) => {
+                  if (open) void loadInvestigationSupervisorOptions();
+                }}
+                style={{ minWidth: 320 }}
+              />
             </Form.Item>
             <Form.Item>
               <Button type="primary" onClick={() => saveConfig("investigation_assignment", investigationSupervisorForm)}>保存</Button>
