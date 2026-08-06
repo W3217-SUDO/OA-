@@ -95,6 +95,8 @@ test("contract center integrates the fourth-batch route, query, approval, attach
   assert.match(pageSource, /const effectiveQuery = relationQuery/);
   assert.match(pageSource, /buildContractListRequestParams\(initialView, listPagination, effectiveQuery\)/);
   assert.match(pageSource, /normalizeContractQuery\(values\)/);
+  assert.match(pageSource, /queryForm\.resetFields\(\)/);
+  assert.match(pageSource, /onClick=\{clearQuery\}/);
   assert.match(pageSource, /validateContractApprovalSubmission\(/);
   assert.match(pageSource, /contractAttachmentActionPolicy\(/);
   assert.match(pageSource, /extractContractErrorMessage\(/);

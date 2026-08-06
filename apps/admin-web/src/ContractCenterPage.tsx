@@ -2048,6 +2048,10 @@ export default function ContractCenterPage({
     updateListPagination(1, listPagination.pageSize);
     void load(normalized);
   };
+  const clearQuery = () => {
+    queryForm.resetFields();
+    applyQuery({});
+  };
   const uniqueCustomers = Array.from(new Map(customers.map((customer) => [customer.title.normalize("NFKC").trim().toLocaleLowerCase(), customer])).values());
   const customerOptions = uniqueCustomers.map((customer) => ({
     value: customer.id,
@@ -2088,7 +2092,7 @@ export default function ContractCenterPage({
             <Form.Item label="案源人" name="source_person"><Input placeholder="案源人" /></Form.Item>
           )}
           <Form.Item label="合同主体" name="contract_body"><Select allowClear placeholder="请选择" options={["律所","平台"].map(value=>({value,label:value}))} /></Form.Item>
-          <Form.Item className="contract-query-submit"><Button type="primary" htmlType="submit">查询</Button></Form.Item>
+          <Form.Item className="contract-query-submit"><Space><Button type="primary" htmlType="submit">查询</Button><Button htmlType="button" onClick={clearQuery}>清空</Button></Space></Form.Item>
         </Form>
         <Table
           className="contract-original-table"
