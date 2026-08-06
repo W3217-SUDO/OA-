@@ -67,10 +67,10 @@ test("I19 submit success returns to contract detail, not approval or seal workbe
     /localStorage\.removeItem\(WIZARD_STORAGE_KEY\);\s*setOpen\(false\);\s*onNavigate\?\.\(`contract-detail-/s,
     "the create wizard should close before entering the detail page",
   );
-  assert.doesNotMatch(
+  assert.match(
     submitWizardSource,
-    /setWizardStep\([23]\)|contract-audit|seal-my|createSealApplication/,
-    "submit success must not move the applicant into approval or seal operations",
+    /if \(values\.sync_seal\) \{[\s\S]*setWizardStep\(3\)[\s\S]*else \{[\s\S]*onNavigate\?\.\(`contract-detail-/,
+    "only an explicit sync-seal choice enters the seal step; otherwise submit returns to contract detail",
   );
 });
 
@@ -92,11 +92,11 @@ test("I19 approval actions appear only for the current approver while status is 
   );
 });
 
-test("I19 independent seal setup remains available only after contract approval", () => {
+test("I19 independent seal setup supports pending approval and approved contracts", () => {
   assert.match(
     contractSource,
-    /const CONTRACT_SEAL_READY_STATUSES = \["已通过", "履行中", "已完成"\];/,
-    "approved, in-performance, and completed contracts remain eligible for independent seal setup",
+    /const CONTRACT_SEAL_READY_STATUSES = \["审批中", "已通过", "履行中", "已完成"\];/,
+    "pending, approved, in-performance, and completed contracts remain eligible for independent seal setup",
   );
   assert.match(
     startSelectedSealSource,
@@ -110,8 +110,8 @@ test("I19 independent seal setup remains available only after contract approval"
   );
   assert.match(
     createSealApplicationSource,
-    /wizardDraft\.status === "审批中"[\s\S]*合同仍在审批中，审批通过后才能配置合同用印/,
-    "pending contracts must be blocked before a seal application can be saved",
+    /contract\.status !== "审批中"\) localStorage\.removeItem\(WIZARD_STORAGE_KEY\)/,
+    "pending contracts keep the wizard context until the independent seal flow is complete",
   );
   assert.doesNotMatch(
     createSealApplicationSource,

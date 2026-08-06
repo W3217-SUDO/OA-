@@ -97,6 +97,10 @@ test("contract center integrates the fourth-batch route, query, approval, attach
   assert.match(pageSource, /normalizeContractQuery\(values\)/);
   assert.match(pageSource, /queryForm\.resetFields\(\)/);
   assert.match(pageSource, /onClick=\{clearQuery\}/);
+  assert.match(pageSource, /open=\{Boolean\(changing\)\}/);
+  assert.match(pageSource, /setChangeFile\(null\)/);
+  assert.match(pageSource, /合同变更附件/);
+  assert.match(pageSource, /CONTRACT_CREATE_STEP_TITLES\.map/);
   assert.match(pageSource, /validateContractApprovalSubmission\(/);
   assert.match(pageSource, /contractAttachmentActionPolicy\(/);
   assert.match(pageSource, /extractContractErrorMessage\(/);
