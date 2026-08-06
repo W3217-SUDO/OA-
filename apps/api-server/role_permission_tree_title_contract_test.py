@@ -12,6 +12,15 @@ class RolePermissionTreeTitleContractTest(unittest.TestCase):
         self.assertIn('"text": label, "title": label', tree)
         self.assertIn('"text": definition["menu_key"], "title": definition["menu_key"]', tree)
 
+    def test_job_role_permission_tree_exposes_ant_design_title_for_menus_and_actions(self):
+        source = (Path(__file__).parent / "app" / "main.py").read_text(encoding="utf-8")
+        tree_start = source.index("def _organization_permission_tree")
+        tree_end = source.index('@app.get(f"{settings.api_prefix}/hr/job-roles/', tree_start)
+        tree = source[tree_start:tree_end]
+        self.assertIn('"text": menu.label, "title": menu.label', tree)
+        self.assertIn('"text": "业务动作", "title": "业务动作"', tree)
+        self.assertIn('"text": action, "title": action', tree)
+
 
 if __name__ == "__main__":
     unittest.main()

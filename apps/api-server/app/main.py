@@ -19330,7 +19330,7 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
             children = build(menu.key, {*trail, menu.key})
             nodes.append({
                 "key": f"menu:{menu.key}", "node_type": "M", "node_original_id": menu.id,
-                "node_id": menu.id, "node_code": menu.key, "text": menu.label,
+                "node_id": menu.id, "node_code": menu.key, "text": menu.label, "title": menu.label,
                 "state": {"checked": menu.key in selected}, "children": children,
             })
         return nodes
@@ -19338,11 +19338,11 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
     tree = build("", set())
     tree.append({
         "key": "actions", "node_type": "M", "node_original_id": 0,
-        "node_id": 0, "node_code": "actions", "text": "业务动作",
+        "node_id": 0, "node_code": "actions", "text": "业务动作", "title": "业务动作",
         "state": {"checked": False}, "children": [
             {
                 "key": action, "node_type": "A", "node_original_id": action,
-                "node_id": action, "node_code": action, "text": action,
+                "node_id": action, "node_code": action, "text": action, "title": action,
                 "state": {"checked": action in selected}, "children": [],
             }
             for action in actions
