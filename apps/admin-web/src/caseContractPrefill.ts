@@ -3,7 +3,24 @@ export type CaseContractOptionSource = {
   serial_no: string;
   customer: string;
   title: string;
+  owner?: string;
+  owner_display_name?: string;
+  data?: {
+    source_person?: string;
+    source_person_display_name?: string;
+  };
 };
+
+export function resolveCaseSourcePerson(contract: CaseContractOptionSource | null | undefined): string {
+  if (!contract) return "";
+  return String(
+    contract.data?.source_person_display_name
+      || contract.owner_display_name
+      || contract.data?.source_person
+      || contract.owner
+      || "",
+  ).trim();
+}
 
 export function buildCaseContractOptions(
   contracts: CaseContractOptionSource[],

@@ -40,7 +40,7 @@ import { rememberInvestigationDetailTarget } from "./investigationDetailNavigati
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
-import { buildCaseContractOptions } from "./caseContractPrefill";
+import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
   buildCaseOrdinarySearchPayload,
@@ -250,6 +250,7 @@ type ContractRow = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
   department: string;
   data: Record<string, any>;
 };
@@ -684,7 +685,7 @@ export default function CaseCenterPage({
       setCaseClues(clueRes.data.items || []);
       if (isCreateView && contractPrefill?.id) {
         const selected = contractRes.data.items.find((row:ContractRow) => row.id === contractPrefill.id);
-        if (selected) createForm.setFieldsValue({customer:selected.customer,source_person:selected.data?.source_person||selected.owner});
+        if (selected) createForm.setFieldsValue({ customer: selected.customer, source_person: resolveCaseSourcePerson(selected) });
       }
     } catch {
       message.error("案件中心数据加载失败");
@@ -2733,7 +2734,7 @@ export default function CaseCenterPage({
                     <Select options={clientPositionOptions.map((value) => ({ value, label: value }))} />
                   </Form.Item>}
                   <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}>
-                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:selected?.data?.source_person||selected?.owner||"",title:selected?`${selected.title}案件`:undefined})}} />
+                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCaseSourcePerson(selected),title:selected?`${selected.title}案件`:undefined})}} />
                   </Form.Item>
                   <Form.Item label="案源人" name="source_person"><Input placeholder="由关联合同自动带入，可按本案实际情况修改" maxLength={128} /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
