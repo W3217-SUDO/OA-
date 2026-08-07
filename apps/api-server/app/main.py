@@ -9252,7 +9252,17 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         raise HTTPException(status_code=409, detail="调查事项已绑定合同，不能在创建子任务时更换合同")
     if not source_contract_id and not requested_contract_id:
         raise HTTPException(status_code=422, detail="创建调查任务前必须绑定同客户合同")
-    contract = await _ensure_record_visible(int(source_contract_id or requested_contract_id), identity, db)
+    # An assignee may create work beneath a survey they own even when the survey's
+    # already-bound contract belongs to its publisher.  The binding is fixed on
+    # the visible survey, so resolving it directly does not grant general contract
+    # browsing or editing access.  A newly selected contract still needs ordinary
+    # visibility permission.
+    if source_contract_id:
+        contract = await db.get(BusinessRecord, int(source_contract_id))
+        if not contract:
+            raise HTTPException(status_code=404, detail="已绑定合同不存在")
+    else:
+        contract = await _ensure_record_visible(int(requested_contract_id), identity, db)
     if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
         raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
     if source.customer.strip() != contract.customer.strip():
