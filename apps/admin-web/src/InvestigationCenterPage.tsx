@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -15,6 +16,7 @@ import {
   Radio,
   Select,
   Space,
+  Steps,
   Table,
   Tabs,
   Tag,
@@ -68,6 +70,14 @@ type Contract = {
   title: string;
   customer: string;
   status: string;
+};
+type ResolvedClueContract = {
+  clue_id: number;
+  clue_no?: string;
+  clue_title?: string;
+  customer?: string;
+  contract?: Contract | null;
+  error?: string;
 };
 type TaskRow = {
   id: number;
@@ -175,6 +185,7 @@ export default function InvestigationCenterPage({
   const [investigationCreateOpen, setInvestigationCreateOpen] = useState(false);
   const [clueCreateOpen, setClueCreateOpen] = useState(false);
   const [clueFiles, setClueFiles] = useState<File[]>([]);
+  const [collectionFiles, setCollectionFiles] = useState<File[]>([]);
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [clueReviewing, setClueReviewing] = useState<Row | null>(null);
   const [collectionTarget, setCollectionTarget] = useState<Row | null>(null);
@@ -193,7 +204,10 @@ export default function InvestigationCenterPage({
   >([]);
   const [selectedClues, setSelectedClues] = useState<number[]>([]);
   const [batchOpen, setBatchOpen] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [resolvedClueContracts, setResolvedClueContracts] = useState<
+    ResolvedClueContract[]
+  >([]);
+  const [batchStep, setBatchStep] = useState(0);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [materialTarget, setMaterialTarget] = useState<Row | null>(null);
   const [materials, setMaterials] = useState<Attachment[]>([]);
@@ -601,17 +615,30 @@ export default function InvestigationCenterPage({
   };
   const registerCollection = async () => {
     if (!collectionTarget) return;
+    const uploadedIds: number[] = [];
     try {
       const v = await collectionForm.validateFields();
+      for (const file of collectionFiles) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("record_id", String(collectionTarget.id));
+        form.append("category", "取证文件");
+        form.append("remark", "线索取证登记附件");
+        const { data } = await api.post("/attachments", form);
+        uploadedIds.push(data.id);
+      }
       await api.post(`/investigations/clues/${collectionTarget.id}/collect`, {
         ...v,
+        evidence_file_ids: uploadedIds,
         collected_at: formatRequiredDate(v.collected_at, "取证日期"),
       });
       message.success("取证信息已登记，线索进入已取证");
       setCollectionTarget(null);
       collectionForm.resetFields();
+      setCollectionFiles([]);
       load("clue");
     } catch (error: any) {
+      await Promise.all(uploadedIds.map((id) => api.delete(`/attachments/${id}`)));
       if (error?.errorFields) return;
       message.error(
         error?.response?.data?.detail || error?.message || "取证登记失败",
@@ -812,22 +839,16 @@ export default function InvestigationCenterPage({
       return;
     }
     try {
-      const { data } = await api.get("/records", {
-        params: { module: "contract", page_size: 100 },
+      const { data } = await api.post("/investigations/clues/case-contracts", {
+        clue_ids: selectedClues,
       });
-      setContracts(
-        data.items.filter(
-          (x: Contract) =>
-            !["草稿", "审批中", "已拒绝", "已撤回", "已作废"].includes(
-              x.status,
-            ),
-        ),
-      );
+      setResolvedClueContracts(data.items || []);
       batchForm.resetFields();
       batchForm.setFieldsValue({ case_type: "民事案件" });
+      setBatchStep(0);
       setBatchOpen(true);
-    } catch {
-      message.error("可用合同加载失败");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "来源任务关联合同解析失败");
     }
   };
   const batchCases = async () => {
@@ -847,6 +868,8 @@ export default function InvestigationCenterPage({
       else message.success(`已生成 ${data.created} 个待分配案件`);
       setBatchOpen(false);
       setSelectedClues([]);
+      setResolvedClueContracts([]);
+      setBatchStep(0);
       load("clue");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "批量转案失败");
@@ -1849,6 +1872,7 @@ export default function InvestigationCenterPage({
                   type="link"
                   onClick={() => {
                     collectionForm.resetFields();
+                    setCollectionFiles([]);
                     setCollectionTarget(r);
                   }}
                 >
@@ -3368,9 +3392,39 @@ export default function InvestigationCenterPage({
         okText="确认已取证"
         cancelText="取消"
         onOk={registerCollection}
-        onCancel={() => setCollectionTarget(null)}
+        onCancel={() => {
+          setCollectionTarget(null);
+          setCollectionFiles([]);
+        }}
       >
         <Form form={collectionForm} layout="vertical">
+          <Form.Item
+            label="取证机构"
+            name="notary_institution"
+            rules={[{ required: true, min: 2 }]}
+          >
+            <AutoComplete
+              options={Array.from(
+                new Set(
+                  rows
+                    .map((row) => String(row.data.notary_institution || "").trim())
+                    .filter(Boolean),
+                ),
+              ).map((value) => ({ value }))}
+              filterOption={(input, option) =>
+                String(option?.value || "").includes(input)
+              }
+              placeholder="输入关键词选择或填写取证机构"
+            />
+          </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="公证书号" name="notarization_no">
+              <Input />
+            </Form.Item>
+            <Form.Item label="发票号码" name="invoice_no">
+              <Input />
+            </Form.Item>
+          </div>
           <Form.Item
             label="取证日期"
             name="collected_at"
@@ -3378,12 +3432,23 @@ export default function InvestigationCenterPage({
           >
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item
-            label="公证机构"
-            name="notary_institution"
-            rules={[{ required: true, min: 2 }]}
-          >
-            <Input placeholder="例如：上海市东方公证处" />
+          <div className="form-grid">
+            <Form.Item label="证物存放处" name="storage_location">
+              <Input placeholder="例如：档案室 A-01" />
+            </Form.Item>
+            <Form.Item label="证物状态" name="evidence_status" initialValue="未入库">
+              <Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} />
+            </Form.Item>
+          </div>
+          <Form.Item label="证据文件">
+            <input
+              type="file"
+              multiple
+              onChange={(event) =>
+                setCollectionFiles(Array.from(event.target.files || []))
+              }
+            />
+            {collectionFiles.length > 0 && <div>已选择 {collectionFiles.length} 个文件</div>}
           </Form.Item>
           <Form.Item label="取证说明" name="comment">
             <Input.TextArea rows={3} />
@@ -3531,43 +3596,41 @@ export default function InvestigationCenterPage({
       </Modal>
       <Modal
         open={batchOpen}
-        title={`已取证线索批量转案件（已选 ${selectedClues.length} 条）`}
-        okText="生成等待公证书案件"
+        title={`已取证线索生成案件（已选 ${selectedClues.length} 条）`}
+        okText={batchStep === 0 ? "下一步" : "生成新案待分配案件"}
         cancelText="取消"
-        onOk={batchCases}
-        onCancel={() => setBatchOpen(false)}
+        onOk={() => {
+          if (batchStep === 0) setBatchStep(1);
+          else void batchCases();
+        }}
+        onCancel={() => {
+          setBatchOpen(false);
+          setBatchStep(0);
+          setResolvedClueContracts([]);
+        }}
       >
+        <Steps current={batchStep} size="small" items={[{ title: "基本信息" }, { title: "生成结果" }]} style={{ marginBottom: 20 }} />
         <Alert
           type="info"
           showIcon
-          title="只有已取证线索可转案；每条线索生成一个等待公证书案件，客户必须与所选合同一致。"
+          title="合同由线索来源调查任务自动绑定；每条已取证线索生成一个新案待分配案件。"
           style={{ marginBottom: 15 }}
         />
         <Form form={batchForm} layout="vertical">
-          <Form.Item
-            label="关联合同"
-            name="contract_record_id"
-            rules={[{ required: true }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={contracts.map((x) => ({
-                value: x.id,
-                label: `${x.serial_no}｜${x.customer}｜${x.title}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label="案件类型" name="case_type">
-            <Select
-              options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
-                (v) => ({ value: v, label: v }),
-              )}
-            />
-          </Form.Item>
-          <Form.Item label="拟管辖法院" name="court">
-            <Input />
-          </Form.Item>
+          {batchStep === 0 && <>
+            <Descriptions size="small" bordered column={1} items={resolvedClueContracts.map((item) => ({ key: item.clue_id, label: `${item.clue_no || "线索"}｜${item.customer || ""}`, children: item.contract ? `${item.contract.serial_no}｜${item.contract.title}` : item.error || "未解析到合同" }))} />
+            <Form.Item label="案件类型" name="case_type" style={{ marginTop: 16 }}>
+              <Select
+                options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
+                  (v) => ({ value: v, label: v }),
+                )}
+              />
+            </Form.Item>
+            <Form.Item label="拟管辖法院" name="court">
+              <Input />
+            </Form.Item>
+          </>}
+          {batchStep === 1 && <Descriptions size="small" bordered column={1} items={[{ key: "status", label: "生成后案件阶段", children: "新案待分配" }, { key: "result", label: "关联规则", children: "客户、合同、线索及来源任务信息将自动带入案件" }]} />}
         </Form>
       </Modal>
       <Modal
