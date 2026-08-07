@@ -1349,10 +1349,6 @@ export default function ContractCenterPage({
   const saveChange = async () => {
     if (!changing) return;
     const v = await changeForm.validateFields();
-    if (!changeFile) {
-      message.warning("请上传合同变更附件");
-      return;
-    }
     try {
       const response = await api.post(`/contracts/${changing.id}/changes`, {
         ...v,
@@ -1360,14 +1356,16 @@ export default function ContractCenterPage({
       });
       const feedback = normalizeContractActionResponse(response, "合同变更失败");
       if (!feedback.ok) throw new Error(feedback.message);
-      const attachment = new FormData();
-      attachment.append("file", changeFile);
-      attachment.append("record_id", String(changing.id));
-      attachment.append("category", "合同变更附件");
-      attachment.append("remark", "合同变更时上传");
-      const attachmentResponse = await api.post("/attachments", attachment);
-      const attachmentFeedback = normalizeContractActionResponse(attachmentResponse, "合同变更附件上传失败");
-      if (!attachmentFeedback.ok) throw new Error(attachmentFeedback.message);
+      if (changeFile) {
+        const attachment = new FormData();
+        attachment.append("file", changeFile);
+        attachment.append("record_id", String(changing.id));
+        attachment.append("category", "合同变更附件");
+        attachment.append("remark", "合同变更时上传");
+        const attachmentResponse = await api.post("/attachments", attachment);
+        const attachmentFeedback = normalizeContractActionResponse(attachmentResponse, "合同变更附件上传失败");
+        if (!attachmentFeedback.ok) throw new Error(attachmentFeedback.message);
+      }
       message.success("合同变更已提交审批");
       setChanging(null);
       setChangeFile(null);
@@ -2977,7 +2975,7 @@ export default function ContractCenterPage({
             <Form.Item className="span-2" label="备注" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
-            <Form.Item className="span-2" label="合同附件" required>
+            <Form.Item className="span-2" label="合同附件" extra="可选；未选择时保留原有附件">
               <input type="file" accept={CONTRACT_ATTACHMENT_ACCEPT} onChange={(event) => setChangeFile(event.target.files?.[0] || null)} />
               {changeFile && <span className="contract-upload-name">{changeFile.name}</span>}
             </Form.Item>

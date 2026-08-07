@@ -11,5 +11,11 @@ test('contract change selection keeps the latest row as the sole target across A
 
 test('contract change submission and cancellation use and clear the same selected target', () => {
   assert.match(source, /api\.post\(`\/contracts\/\$\{changing\.id\}\/changes`/)
-  assert.match(source, /onCancel=\{\(\) => setChanging\(null\)\}/)
+  assert.match(source, /onCancel=\{\(\) => \{ setChanging\(null\); setChangeFile\(null\); changeForm\.resetFields\(\); \}\}/)
+})
+
+test('contract changes retain existing attachments unless a replacement is selected', () => {
+  assert.doesNotMatch(source, /if \(!changeFile\)\s*\{\s*message\.warning\("请上传合同变更附件"\)/)
+  assert.match(source, /if \(changeFile\) \{[\s\S]*attachment\.append\("file", changeFile\)/)
+  assert.match(source, /label="合同附件" extra="可选；未选择时保留原有附件"/)
 })
