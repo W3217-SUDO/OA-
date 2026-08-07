@@ -1654,23 +1654,6 @@ export default function InvestigationCenterPage({
           ),
         },
         {
-          title: "来源调查任务",
-          width: 170,
-          render: (_: unknown, r: Row) =>
-            r.data.source_task_no ? (
-              <Button
-                type="link"
-                onClick={() =>
-                  openLinkedInvestigation(String(r.data.source_task_no), "task")
-                }
-              >
-                {String(r.data.source_task_no)}
-              </Button>
-            ) : (
-              "—"
-            ),
-        },
-        {
           title: "案件编号",
           width: 150,
           render: (_: unknown, r: Row) =>
