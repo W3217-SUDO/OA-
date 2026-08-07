@@ -2397,16 +2397,14 @@ export default function ContractCenterPage({
       <Modal
         open={investigationRegionPickerOpen}
         title="选择城市"
-        okText="确定"
-        cancelText="取消"
-        onOk={() => {
+        footer={<Space><Button onClick={() => setInvestigationRegionPickerOpen(false)}>取消</Button><Button type="primary" onClick={() => {
           if (!selectedInvestigationRegions.length) {
             message.warning("请至少选择一个省市");
             return;
           }
           investigationForm.setFieldValue("authorization_scope", selectedInvestigationRegions.join("、"));
           setInvestigationRegionPickerOpen(false);
-        }}
+        }}>确定</Button></Space>}
         onCancel={() => setInvestigationRegionPickerOpen(false)}
       >
         <Space style={{ marginBottom: 12 }}>
