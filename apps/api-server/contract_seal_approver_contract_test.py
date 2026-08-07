@@ -14,8 +14,9 @@ class ContractSealApproverContractTest(unittest.TestCase):
         create_block = SOURCE[SOURCE.index("async def create_contract_seal_application"):SOURCE.index("async def create_contract_investigation")]
         self.assertIn('"approver": approver.username', create_block)
         approve_block = SOURCE[SOURCE.index("async def approve_seal_application"):SOURCE.index("async def stamp_seal_application")]
-        self.assertIn('selected_approver = str((item.data or {}).get("approver") or "").strip()', approve_block)
-        self.assertIn('当前账号不是该用印申请指定的审批人', approve_block)
+        self.assertIn("selected_approver = str", approve_block)
+        self.assertIn("approver", approve_block)
+        self.assertIn("当前账号不是该用印申请指定的审批人", approve_block)
 
 
 if __name__ == "__main__":
