@@ -2646,6 +2646,7 @@ class CaseUnarchiveReviewInput(BaseModel):
 
 
 class ContractSealApplicationInput(BaseModel):
+    approver: str = Field(min_length=1, max_length=100)
     seal_asset_id: int
     copies: int = Field(ge=1, le=999)
     purpose: str = Field(min_length=1, max_length=500)
@@ -7773,6 +7774,11 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
     if body.submit:
         raise HTTPException(status_code=409, detail="请先保存合同用印草稿，在用印中心上传真实用印文件后再提交审批")
+    approver = await db.scalar(select(User).where(User.username == body.approver.strip(), User.is_active.is_(True)))
+    if not approver:
+        raise HTTPException(status_code=422, detail="用印审批人不存在或已停用")
+    if not await _is_contract_approver(approver, db):
+        raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
     existing_id = int((contract.data or {}).get("seal_application_id") or 0)
     if existing_id:
         existing = await db.get(BusinessRecord, existing_id)
@@ -7806,6 +7812,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
             "use_date": str(body.use_date),
             "delivery_method": body.delivery_method,
             "document_names": body.document_names,
+            "approver": approver.username,
         },
     )
     db.add(seal)
@@ -18767,6 +18774,9 @@ async def approve_seal_application(record_id: int, body: SealApprovalInput, iden
     item = await _get_seal_application(record_id, identity, db)
     if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有用印审批权限")
     if item.status != "待审批": raise HTTPException(status_code=409, detail="申请不在待审批状态")
+    selected_approver = str((item.data or {}).get("approver") or "").strip()
+    if selected_approver and identity.get("role") != "admin" and selected_approver != identity.get("username"):
+        raise HTTPException(status_code=403, detail="当前账号不是该用印申请指定的审批人")
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="驳回时必须填写审批意见")
     old = item.status; item.status = "待用印" if body.approved else "已拒绝"
