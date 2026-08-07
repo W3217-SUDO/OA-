@@ -3569,6 +3569,20 @@ def _is_smoke_test_username(username: object) -> bool:
     return str(username or "").strip().casefold().startswith("smoke_")
 
 
+async def _active_employee_usernames(db: AsyncSession) -> set[str]:
+    """Return active login identities backed by an active HR employee record."""
+    employees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all()
+    return {
+        username
+        for item in employees
+        for username in [str((item.data or {}).get("username") or item.owner or "").strip().lower()]
+        if username and not _is_smoke_test_username(username)
+    }
+
+
 async def _resolve_active_customer_managers(values: list[object], db: AsyncSession) -> list[str]:
     """Resolve customer managers to stable usernames, accepting unique display names and keywords for legacy UI clients."""
     tokens = list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
@@ -5194,35 +5208,28 @@ async def user_directory(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    items = (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
-    eligible_customer_usernames: set[str] = set()
+    eligible_customer_usernames = await _active_employee_usernames(db)
+    items = (await db.scalars(select(User).where(
+        User.is_active.is_(True), User.username.in_(eligible_customer_usernames),
+    ).order_by(User.display_name, User.username))).all() if eligible_customer_usernames else []
     employee_display_names: dict[str, str] = {}
-    if purpose == "customer_manager":
-        active_employees = (await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "hr",
-            BusinessRecord.status.not_in({"离职", "停用"}),
-        ))).all()
-        for employee in active_employees:
-            username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
-            display_name = str(employee.title or "").strip()
-            if username and display_name:
-                employee_display_names[username] = display_name
-        eligible_customer_usernames = {
-            str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
-            for employee in active_employees
-        }
+    active_employees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all()
+    for employee in active_employees:
+        username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+        display_name = str(employee.title or "").strip()
+        if username and display_name:
+            employee_display_names.setdefault(username, display_name)
     job_roles = (await db.scalars(select(JobRole).where(JobRole.is_active.is_(True)))).all()
     roles_by_name = {item.name: item for item in job_roles}
     payload = []
     for item in items:
-        if purpose == "customer_manager" and _is_smoke_test_username(item.username):
-            continue
         position = str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "")
         job_role = roles_by_name.get(position)
         job_permissions = list(job_role.permissions or []) if job_role else []
-        display_name = item.display_name
-        if purpose == "customer_manager":
-            display_name = employee_display_names.get(item.username.lower()) or item.display_name
+        display_name = employee_display_names.get(item.username.lower()) or item.display_name
         payload.append({
             "username": item.username,
             "display_name": display_name,
@@ -15718,13 +15725,27 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     employee_usernames = {
         str((item.data or {}).get("username") or item.owner or "").strip().lower()
         for item in employee_records
-        if item.status not in {"离职", "停用"}
+        if item.status not in {"离职", "停用"} and not _is_smoke_test_username((item.data or {}).get("username") or item.owner)
     }
     active_users = (await db.scalars(select(User).where(User.is_active.is_(True), User.username.in_(employee_usernames)).order_by(User.display_name, User.username))).all() if employee_usernames else []
-    people_options = [
-        {"value": item.username, "label": f"{item.display_name}（{item.department}）", "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip()}
-        for item in active_users
-    ]
+    employee_display_names = {
+        str((item.data or {}).get("username") or item.owner or "").strip().lower(): str(item.title or "").strip()
+        for item in employee_records
+        if item.status not in {"离职", "停用"}
+    }
+    people_options = []
+    seen_usernames: set[str] = set()
+    for item in active_users:
+        username = item.username.strip().lower()
+        if username in seen_usernames:
+            continue
+        seen_usernames.add(username)
+        display_name = employee_display_names.get(username) or item.display_name
+        people_options.append({
+            "value": item.username,
+            "label": f"{display_name}（{item.department}）",
+            "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip(),
+        })
     lawyer_options = [item for item in people_options if "律师" in item["position"] and "助理" not in item["position"]]
     return {
         "case_types": [
