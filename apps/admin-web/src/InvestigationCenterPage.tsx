@@ -207,6 +207,7 @@ export default function InvestigationCenterPage({
   const [resolvedClueContracts, setResolvedClueContracts] = useState<
     ResolvedClueContract[]
   >([]);
+  const [contractOptions, setContractOptions] = useState<Contract[]>([]);
   const [batchStep, setBatchStep] = useState(0);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [materialTarget, setMaterialTarget] = useState<Row | null>(null);
@@ -839,9 +840,18 @@ export default function InvestigationCenterPage({
       return;
     }
     try {
-      const { data } = await api.post("/investigations/clues/case-contracts", {
-        clue_ids: selectedClues,
-      });
+      const [{ data }, { data: contractData }] = await Promise.all([
+        api.post("/investigations/clues/case-contracts", {
+          clue_ids: selectedClues,
+        }),
+        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+      ]);
+      setContractOptions(
+        contractData.items.filter(
+          (contract: Contract) =>
+            ["审批中", "已通过", "履行中", "已完成"].includes(contract.status),
+        ),
+      );
       setResolvedClueContracts(data.items || []);
       batchForm.resetFields();
       batchForm.setFieldsValue({ case_type: "民事案件" });
@@ -873,6 +883,29 @@ export default function InvestigationCenterPage({
       load("clue");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "批量转案失败");
+    }
+  };
+  const bindMissingSourceContract = async () => {
+    if (selectedClues.length !== 1) {
+      message.warning("请一次只选择一条缺少合同绑定的历史线索");
+      return;
+    }
+    try {
+      const values = await batchForm.validateFields(["source_contract_record_id"]);
+      await api.post(
+        `/investigations/clues/${selectedClues[0]}/bind-source-contract`,
+        { contract_record_id: values.source_contract_record_id },
+      );
+      const { data } = await api.post("/investigations/clues/case-contracts", {
+        clue_ids: selectedClues,
+      });
+      setResolvedClueContracts(data.items || []);
+      batchForm.setFieldValue("source_contract_record_id", undefined);
+      message.success("已绑定来源调查任务的客户和合同，可继续生成案件");
+      load("clue");
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.detail || "来源任务合同绑定失败");
     }
   };
   const openMaterials = async (row: Row) => {
@@ -1119,7 +1152,10 @@ export default function InvestigationCenterPage({
   };
   const openTasks = async (row: Row, createSubtask = false) => {
     try {
-      const { data } = await api.get(`/investigations/${row.id}/tasks`);
+      const [{ data }, { data: contractData }] = await Promise.all([
+        api.get(`/investigations/${row.id}/tasks`),
+        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+      ]);
       const existingTasks = data.items as TaskRow[];
       const hasParent = existingTasks.length > 0;
       setTaskTarget(row);
@@ -1129,9 +1165,18 @@ export default function InvestigationCenterPage({
       taskForm.setFieldsValue({
         owner: row.owner,
         priority: "普通",
+        contract_record_id:
+          row.data.contract_id || row.data.contract_record_id || undefined,
         parent_task_id:
           createSubtask && hasParent ? existingTasks[0].id : undefined,
       });
+      setContractOptions(
+        contractData.items.filter(
+          (contract: Contract) =>
+            ["审批中", "已通过", "履行中", "已完成"].includes(contract.status) &&
+            contract.customer === row.customer,
+        ),
+      );
       if (createSubtask && !hasParent)
         message.info(
           "当前调查尚无任务，先创建首个调查任务；后续“新增子任务”将自动关联该任务",
@@ -1152,7 +1197,12 @@ export default function InvestigationCenterPage({
       const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
       setTasks(data.items);
       taskForm.resetFields();
-      taskForm.setFieldsValue({ owner: taskTarget.owner, priority: "普通" });
+      taskForm.setFieldsValue({
+        owner: taskTarget.owner,
+        priority: "普通",
+        contract_record_id:
+          taskTarget.data.contract_id || taskTarget.data.contract_record_id || undefined,
+      });
     } catch (error: any) {
       if (error?.errorFields) {
         const name = String(error.errorFields[0]?.name?.[0] || "");
@@ -3600,6 +3650,13 @@ export default function InvestigationCenterPage({
         okText={batchStep === 0 ? "下一步" : "生成新案待分配案件"}
         cancelText="取消"
         onOk={() => {
+          if (
+            batchStep === 0 &&
+            resolvedClueContracts.some((item) => !item.contract)
+          ) {
+            message.warning("请先补绑缺失的来源任务合同");
+            return;
+          }
           if (batchStep === 0) setBatchStep(1);
           else void batchCases();
         }}
@@ -3619,6 +3676,29 @@ export default function InvestigationCenterPage({
         <Form form={batchForm} layout="vertical">
           {batchStep === 0 && <>
             <Descriptions size="small" bordered column={1} items={resolvedClueContracts.map((item) => ({ key: item.clue_id, label: `${item.clue_no || "线索"}｜${item.customer || ""}`, children: item.contract ? `${item.contract.serial_no}｜${item.contract.title}` : item.error || "未解析到合同" }))} />
+            {resolvedClueContracts.some((item) => !item.contract) && (
+              <>
+                <Form.Item
+                  label="补绑来源任务合同"
+                  name="source_contract_record_id"
+                  rules={[{ required: true, message: "请选择该历史调查任务实际对应的合同" }]}
+                  style={{ marginTop: 16 }}
+                >
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="仅用于修复来源任务；不是转案时的临时选择"
+                    options={contractOptions.map((contract) => ({
+                      value: contract.id,
+                      label: `${contract.serial_no}｜${contract.customer}｜${contract.title}`,
+                    }))}
+                  />
+                </Form.Item>
+                <Button onClick={() => void bindMissingSourceContract()}>
+                  绑定来源任务合同
+                </Button>
+              </>
+            )}
             <Form.Item label="案件类型" name="case_type" style={{ marginTop: 16 }}>
               <Select
                 options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
@@ -3790,6 +3870,24 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <div className="form-grid">
+              {!taskTarget?.data.contract_id &&
+                !taskTarget?.data.contract_record_id && (
+                  <Form.Item
+                    label="关联合同"
+                    name="contract_record_id"
+                    rules={[{ required: true, message: "请绑定与调查客户一致的合同" }]}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="选择后将固定绑定到调查任务"
+                      options={contractOptions.map((contract) => ({
+                        value: contract.id,
+                        label: `${contract.serial_no}｜${contract.title}`,
+                      }))}
+                    />
+                  </Form.Item>
+                )}
               <Form.Item
                 label="负责人"
                 name="owner"

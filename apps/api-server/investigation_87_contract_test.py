@@ -10,7 +10,9 @@ from app.database import Base
 from app.main import (
     BatchClueCaseInput,
     ClueCollectionInput,
+    ClueSourceContractBindingInput,
     batch_create_cases_from_clues,
+    bind_clue_source_contract,
     register_clue_collection,
 )
 from app.models import BusinessRecord
@@ -91,6 +93,38 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(case.data["clue_no"], "XS-CODEX-87")
         self.assertEqual(case.data["client_position"], "原告")
         self.assertEqual(case.data["cause_or_charge"], "商标侵权")
+
+    async def test_legacy_clue_binding_repairs_source_task_and_customer_before_case_generation(self):
+        async with self.sessions() as db:
+            contract = BusinessRecord(
+                module="contract", serial_no="HT-CODEX-87-REPAIR", title="CODEX修复合同", customer="CODEX正确客户",
+                status="已通过", owner="admin", department="上海", data={},
+            )
+            db.add(contract)
+            await db.flush()
+            task = BusinessRecord(
+                module="task", serial_no="RW-CODEX-87-REPAIR", title="历史来源任务", customer="历史错误客户",
+                status="已完成", owner="admin", department="上海", data={"investigation_record_id": 1},
+            )
+            db.add(task)
+            await db.flush()
+            clue = BusinessRecord(
+                module="clue", serial_no="XS-CODEX-87-REPAIR", title="历史已取证线索", customer="历史错误客户",
+                status="已取证", owner="admin", department="上海", data={"source_task_id": task.id},
+            )
+            db.add(clue)
+            await db.commit()
+            result = await bind_clue_source_contract(
+                clue.id, ClueSourceContractBindingInput(contract_record_id=contract.id), IDENTITY, db,
+            )
+            await db.refresh(task)
+            await db.refresh(clue)
+
+        self.assertEqual(result["contract"]["serial_no"], "HT-CODEX-87-REPAIR")
+        self.assertEqual(task.customer, "CODEX正确客户")
+        self.assertEqual(task.data["contract_id"], contract.id)
+        self.assertEqual(clue.customer, "CODEX正确客户")
+        self.assertEqual(clue.data["contract_no"], "HT-CODEX-87-REPAIR")
 
 
 if __name__ == "__main__":

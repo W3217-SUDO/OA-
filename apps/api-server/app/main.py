@@ -1210,6 +1210,7 @@ class InvestigationTaskInput(BaseModel):
     deadline: date
     priority: str = "普通"
     parent_task_id: int | None = None
+    contract_record_id: int | None = Field(default=None, gt=0)
     description: str = ""
     contract_no: str = Field(default="", max_length=64)
     contract_name: str = Field(default="", max_length=255)
@@ -1229,6 +1230,10 @@ class BatchClueCaseInput(BaseModel):
 
 class ClueCaseContractResolveInput(BaseModel):
     clue_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class ClueSourceContractBindingInput(BaseModel):
+    contract_record_id: int = Field(gt=0)
 
 
 class InvestigationAssignmentInput(BaseModel):
@@ -9235,11 +9240,33 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
             if not attachment or attachment.record_id != source.id:
                 raise HTTPException(status_code=422, detail="所选附件不属于当前调查事项")
     source_data = source.data or {}
+    parent_data = parent.data or {} if parent else {}
+    source_contract_id = source_data.get("contract_id") or source_data.get("contract_record_id") or parent_data.get("contract_id") or parent_data.get("contract_record_id")
+    if not source_contract_id:
+        source_contract_no = str(source_data.get("contract_no") or parent_data.get("contract_no") or "").strip()
+        if source_contract_no:
+            source_contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "contract", BusinessRecord.serial_no == source_contract_no, BusinessRecord.customer == source.customer))
+            source_contract_id = source_contract.id if source_contract else None
+    requested_contract_id = body.contract_record_id
+    if source_contract_id and requested_contract_id and int(source_contract_id) != requested_contract_id:
+        raise HTTPException(status_code=409, detail="调查事项已绑定合同，不能在创建子任务时更换合同")
+    if not source_contract_id and not requested_contract_id:
+        raise HTTPException(status_code=422, detail="创建调查任务前必须绑定同客户合同")
+    contract = await _ensure_record_visible(int(source_contract_id or requested_contract_id), identity, db)
+    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
+        raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
+    if source.customer.strip() != contract.customer.strip():
+        raise HTTPException(status_code=422, detail="所选合同客户必须与调查事项客户一致")
+    if not source_contract_id:
+        source.data = {**source_data, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
+        db.add(source)
+        db.add(WorkflowEvent(record_id=source.id, action="绑定调查事项合同", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}"))
     task_data = {
         "deadline": str(body.deadline), "priority": body.priority, "source": "调查任务",
         "initiator": identity["username"], "collaborators": [], "case_no": "",
-        "contract_no": body.contract_no.strip() or str(source_data.get("contract_no") or ""),
-        "contract_name": body.contract_name.strip() or str(source_data.get("contract_name") or ""),
+        "contract_id": contract.id, "contract_record_id": contract.id,
+        "contract_no": contract.serial_no,
+        "contract_name": contract.title,
         "authorization_scope": body.authorization_scope.strip() or str(source_data.get("authorization_scope") or ""),
         "attachment_ids": attachment_ids,
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
@@ -9316,6 +9343,60 @@ async def resolve_clue_case_contracts(body: ClueCaseContractResolveInput, identi
         contract, error = await _resolve_clue_source_contract(clue, identity, db)
         items.append({"clue_id": clue.id, "clue_no": clue.serial_no, "clue_title": clue.title, "customer": clue.customer, "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer, "status": contract.status} if contract else None, "error": error})
     return {"items": items}
+
+
+@app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/bind-source-contract")
+async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """One-time repair for legacy tasks created without a contract binding.
+
+    The selected contract binds to the *source task*, then every still-open clue
+    from that task inherits the same customer and stable contract identifiers.
+    It is deliberately not a contract picker on the case-generation command.
+    """
+    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    await _require_record_owner_or_manager(clue, identity, db)
+    if clue.status == "已转案件" or (clue.data or {}).get("converted_case_id"):
+        raise HTTPException(status_code=409, detail="已转案件的线索不能补绑来源任务合同")
+    try:
+        source_task_id = int((clue.data or {}).get("source_task_id") or 0)
+    except (TypeError, ValueError):
+        source_task_id = 0
+    if not source_task_id:
+        raise HTTPException(status_code=422, detail="线索缺少来源调查任务，无法补绑合同")
+    source_task = await _ensure_record_visible(source_task_id, identity, db)
+    if source_task.module not in {"task", "investigation"}:
+        raise HTTPException(status_code=422, detail="线索来源不是可绑定合同的调查任务")
+    existing_contract, _ = await _resolve_clue_source_contract(clue, identity, db)
+    if existing_contract:
+        raise HTTPException(status_code=409, detail=f"来源调查任务已绑定合同 {existing_contract.serial_no}")
+    contract = await _ensure_record_visible(body.contract_record_id, identity, db)
+    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
+        raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
+    contract_data = {"contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
+    source_task.customer = contract.customer
+    source_task.data = {**(source_task.data or {}), **contract_data}
+    db.add(source_task)
+    related_clues = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", BusinessRecord.data["source_task_id"].as_integer() == source_task.id))).all())
+    for related in related_clues:
+        if related.status == "已转案件" or (related.data or {}).get("converted_case_id"):
+            continue
+        related.customer = contract.customer
+        related.data = {**(related.data or {}), **contract_data}
+        db.add(related)
+    try:
+        investigation_id = int((source_task.data or {}).get("investigation_record_id") or 0)
+    except (TypeError, ValueError):
+        investigation_id = 0
+    if investigation_id:
+        investigation = await db.get(BusinessRecord, investigation_id)
+        if investigation and investigation.module == "investigation":
+            investigation.customer = contract.customer
+            investigation.data = {**(investigation.data or {}), **contract_data}
+            db.add(investigation)
+    db.add(WorkflowEvent(record_id=source_task.id, action="补绑来源任务合同", from_status=source_task.status, to_status=source_task.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}；同步 {len(related_clues)} 条未转案线索"))
+    await db.commit()
+    await db.refresh(clue)
+    return {"clue": _record_dict(clue), "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer}}
 
 
 @app.post(f"{settings.api_prefix}/investigations/clues/batch-cases", status_code=status.HTTP_201_CREATED)
