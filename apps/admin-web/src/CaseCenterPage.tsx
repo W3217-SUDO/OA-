@@ -2806,7 +2806,7 @@ export default function CaseCenterPage({
                 {createStep === 1 && (isCounselCreate
                   ? <Button type="primary" loading={createSubmitting} onClick={() => void saveLitigants(true)}>完成</Button>
                   : <><Button type="primary" loading={createSubmitting} onClick={advanceCreateStep}>下一步</Button>{!isAdministrativeCreate && <Button loading={createSubmitting} onClick={() => void saveLitigants(true)}>完成</Button>}</>)}
-                {createStep === 2 && <Button type="primary" loading={createSubmitting} onClick={finishCreateFlow}>完成</Button>}
+                {createStep === 2 && <><Button disabled={createSubmitting} onClick={() => setCreateStep(1)}>上一步</Button><Button type="primary" loading={createSubmitting} onClick={finishCreateFlow}>完成</Button></>}
               </Space>
             </div>
             <Form.Item name="owner" hidden><Input /></Form.Item><Form.Item name="case_type" hidden><Input /></Form.Item>
