@@ -843,6 +843,24 @@ export default function InvestigationCenterPage({
       const { data } = await api.post("/investigations/clues/case-contracts", {
         clue_ids: selectedClues,
       });
+      const unresolved = (data.items || []).find(
+        (item: ResolvedClueContract) => !item.contract,
+      ) as ResolvedClueContract | undefined;
+      if (unresolved && selectedClues.length === 1) {
+        const { data: contractData } = await api.get("/records", {
+          params: { module: "contract", page_size: 100 },
+        });
+        setContractOptions(
+          contractData.items.filter(
+            (contract: Contract) =>
+              ["审批中", "已通过", "履行中", "已完成"].includes(
+                contract.status,
+              ) && contract.customer === unresolved.customer,
+          ),
+        );
+      } else {
+        setContractOptions([]);
+      }
       setResolvedClueContracts(data.items || []);
       batchForm.resetFields();
       batchForm.setFieldsValue({ case_type: "民事案件" });
@@ -874,6 +892,30 @@ export default function InvestigationCenterPage({
       load("clue");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "批量转案失败");
+    }
+  };
+  const bindMissingSourceContract = async () => {
+    if (selectedClues.length !== 1) {
+      message.warning("请一次只选择一条缺少合同绑定的历史线索");
+      return;
+    }
+    try {
+      const values = await batchForm.validateFields(["source_contract_record_id"]);
+      await api.post(
+        `/investigations/clues/${selectedClues[0]}/bind-source-contract`,
+        { contract_record_id: values.source_contract_record_id },
+      );
+      const { data } = await api.post("/investigations/clues/case-contracts", {
+        clue_ids: selectedClues,
+      });
+      setResolvedClueContracts(data.items || []);
+      setContractOptions([]);
+      batchForm.setFieldValue("source_contract_record_id", undefined);
+      message.success("已绑定到来源调查任务，后续将自动带入合同");
+      load("clue");
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.detail || "来源任务合同绑定失败");
     }
   };
   const openMaterials = async (row: Row) => {
@@ -3645,13 +3687,37 @@ export default function InvestigationCenterPage({
           {batchStep === 0 && <>
             <Descriptions size="small" bordered column={1} items={resolvedClueContracts.map((item) => ({ key: item.clue_id, label: `${item.clue_no || "线索"}｜${item.customer || ""}`, children: item.contract ? `${item.contract.serial_no}｜${item.contract.title}` : item.error || "未解析到合同" }))} />
             {resolvedClueContracts.some((item) => !item.contract) && (
-              <Alert
-                type="warning"
-                showIcon
-                message="来源调查任务未绑定合同，不能生成案件"
-                description="合同必须在创建调查任务时绑定并自动带入线索和案件；请补全来源调查任务后重新生成。"
-                style={{ marginTop: 16 }}
-              />
+              selectedClues.length === 1 && contractOptions.length > 0 ? (
+                <>
+                  <Form.Item
+                    label="补充来源任务合同"
+                    name="source_contract_record_id"
+                    rules={[{ required: true, message: "请选择来源调查任务实际对应的合同" }]}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="仅列出该客户可用合同"
+                      options={contractOptions.map((contract) => ({
+                        value: contract.id,
+                        label: `${contract.serial_no}｜${contract.title}`,
+                      }))}
+                    />
+                  </Form.Item>
+                  <Button onClick={() => void bindMissingSourceContract()}>
+                    绑定并自动带入
+                  </Button>
+                </>
+              ) : (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="来源调查任务未绑定合同，不能生成案件"
+                  description="合同通常由来源调查任务自动带入；当前客户没有可用合同可供补选，请先建立或补全来源任务合同。"
+                  style={{ marginTop: 16 }}
+                />
+              )
             )}
             <Form.Item label="案件类型" name="case_type" style={{ marginTop: 16 }}>
               <Select
