@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 const source = await readFile(new URL('./src/InvestigationCenterPage.tsx', import.meta.url), 'utf8')
 const contractSource = await readFile(new URL('./src/ContractCenterPage.tsx', import.meta.url), 'utf8')
+const regionSource = await readFile(new URL('./src/investigationRegionOptions.mjs', import.meta.url), 'utf8')
 
 test('8.7 row 2 keeps every legacy collection field and proof-file upload', () => {
   for (const label of ['取证机构', '公证书号', '取证日期', '发票号码', '证物存放处', '证物状态', '证据文件']) {
@@ -37,4 +38,14 @@ test('new investigation tasks visibly carry the nationwide authorization scope',
   assert.match(contractSource, /options=\{\["全国", "区域"\]/)
   assert.match(contractSource, /value === "全国" \? "全国"/)
   assert.match(contractSource, /授权区域：全国/)
+})
+
+test('regional investigation scope uses a legacy-style selectable city dialog', () => {
+  assert.match(contractSource, /title="选择城市"/)
+  assert.match(contractSource, /全选/)
+  assert.match(contractSource, /清空/)
+  assert.match(contractSource, /Checkbox\.Group/)
+  assert.match(contractSource, /INVESTIGATION_REGION_OPTIONS/)
+  assert.match(regionSource, /黑龙江省/)
+  assert.match(regionSource, /哈尔滨市/)
 })
