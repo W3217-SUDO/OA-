@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const source = await readFile(new URL('./src/InvestigationCenterPage.tsx', import.meta.url), 'utf8')
+const contractSource = await readFile(new URL('./src/ContractCenterPage.tsx', import.meta.url), 'utf8')
 
 test('8.7 row 2 keeps every legacy collection field and proof-file upload', () => {
   for (const label of ['取证机构', '公证书号', '取证日期', '发票号码', '证物存放处', '证物状态', '证据文件']) {
@@ -29,4 +30,11 @@ test('new investigation tasks bind a same-customer contract and unresolved legac
   assert.match(source, /补充来源任务合同/)
   assert.match(source, /仅列出该客户可用合同/)
   assert.match(source, /绑定并自动带入/)
+})
+
+test('new investigation tasks visibly carry the nationwide authorization scope', () => {
+  assert.match(contractSource, /label="授权范围"/)
+  assert.match(contractSource, /options=\{\["全国", "区域"\]/)
+  assert.match(contractSource, /value === "全国" \? "全国"/)
+  assert.match(contractSource, /授权区域：全国/)
 })

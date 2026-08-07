@@ -2359,9 +2359,20 @@ export default function ContractCenterPage({
             </Form.Item>
           </div>
           <Form.Item label="授权范围" name="region" rules={[{ required: true, message: "请选择授权范围" }]}>
-            <Select options={["全国", "区域"].map(value=>({value,label:value}))} />
+            <Select
+              options={["全国", "区域"].map(value=>({value,label:value}))}
+              onChange={(value) => investigationForm.setFieldValue("authorization_scope", value === "全国" ? "全国" : "")}
+            />
           </Form.Item>
-          {investigationRegion === "区域" && <Form.Item label="授权区域" name="authorization_scope" rules={[{ required: true, message: "请输入授权区域" }]}><Input placeholder="省、市或具体授权区域" /></Form.Item>}
+          <Form.Item
+            label="授权区域"
+            name="authorization_scope"
+            rules={[{ required: true, message: "请输入授权区域" }]}
+          >
+            {investigationRegion === "全国"
+              ? <Input disabled aria-label="授权区域：全国" />
+              : <Input placeholder="省、市或具体授权区域" />}
+          </Form.Item>
           <Form.Item name="customer_review" valuePropName="checked">
             <Checkbox>调查线索需要客户审核</Checkbox>
           </Form.Item>
