@@ -17,15 +17,15 @@ test('8.7 row 3 resolves the contract from source tasks rather than a manual sel
   assert.match(source, /investigations\/clues\/case-contracts/)
   assert.match(source, /合同由线索来源调查任务自动绑定/)
   assert.match(source, /生成新案待分配案件/)
-  assert.match(source, /不是转案时的临时选择/)
+  assert.match(source, /合同由线索来源调查任务自动绑定/)
   assert.match(source, /title: "基本信息"/)
   assert.match(source, /title: "生成结果"/)
 })
 
-test('new investigation tasks bind a same-customer contract and legacy clues repair their source task once', () => {
+test('new investigation tasks bind a same-customer contract and case generation never offers a contract picker', () => {
   assert.match(source, /name="contract_record_id"/)
   assert.match(source, /请绑定与调查客户一致的合同/)
-  assert.match(source, /bind-source-contract/)
-  assert.match(source, /绑定来源任务合同/)
-  assert.match(source, /请先补绑缺失的来源任务合同/)
+  assert.match(source, /合同必须在创建调查任务时绑定并自动带入线索和案件/)
+  assert.doesNotMatch(source, /source_contract_record_id/)
+  assert.doesNotMatch(source, /绑定来源任务合同/)
 })
