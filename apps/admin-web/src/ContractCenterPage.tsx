@@ -99,7 +99,7 @@ import {
   validateContractDraftValues,
 } from "./contractWorkflowPolicy.mjs";
 import { formatRequiredDate } from "./formSafety";
-import { INVESTIGATION_REGION_OPTIONS } from "./investigationRegionOptions.mjs";
+import { INVESTIGATION_REGION_GROUPS } from "./investigationRegionOptions.mjs";
 import RecordImportButton from "./RecordImportButton";
 import "./contract-center.css";
 type Contract = {
@@ -341,6 +341,7 @@ export default function ContractCenterPage({
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [investigationRegionPickerOpen, setInvestigationRegionPickerOpen] = useState(false);
   const [selectedInvestigationRegions, setSelectedInvestigationRegions] = useState<string[]>([]);
+  const [expandedInvestigationProvinces, setExpandedInvestigationProvinces] = useState<string[]>([]);
   const [changeFile, setChangeFile] = useState<File | null>(null);
   const [savingContract, setSavingContract] = useState(false);
   const [submittingWizard, setSubmittingWizard] = useState(false);
@@ -2408,15 +2409,33 @@ export default function ContractCenterPage({
         onCancel={() => setInvestigationRegionPickerOpen(false)}
       >
         <Space style={{ marginBottom: 12 }}>
-          <Button type="link" onClick={() => setSelectedInvestigationRegions(INVESTIGATION_REGION_OPTIONS.map(item => item.value))}>全选</Button>
+          <Button type="link" onClick={() => setSelectedInvestigationRegions([...new Set(INVESTIGATION_REGION_GROUPS.flatMap(({ province, cities }) => [province, ...cities]))])}>全选</Button>
           <Button type="link" onClick={() => setSelectedInvestigationRegions([])}>清空</Button>
         </Space>
-        <Checkbox.Group
-          value={selectedInvestigationRegions}
-          onChange={(values) => setSelectedInvestigationRegions(values as string[])}
-          options={INVESTIGATION_REGION_OPTIONS}
-          style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}
-        />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          {INVESTIGATION_REGION_GROUPS.map(({ province, cities }) => {
+            const expanded = expandedInvestigationProvinces.includes(province);
+            const isSelected = selectedInvestigationRegions.includes(province);
+            return <div key={province} style={{ gridColumn: expanded && cities.length ? "span 4" : undefined }}>
+              <Space size={4}>
+                <Checkbox
+                  aria-label={`选择${province}`}
+                  checked={isSelected}
+                  onChange={(event) => setSelectedInvestigationRegions(current => event.target.checked ? [...new Set([...current, province])] : current.filter(value => value !== province))}
+                />
+                {cities.length ? <Button type="link" size="small" onClick={() => setExpandedInvestigationProvinces(current => expanded ? current.filter(value => value !== province) : [...current, province])}>{province}</Button> : <span>{province}</span>}
+              </Space>
+              {expanded && cities.length > 0 && <div style={{ margin: "8px 0 4px 24px", padding: 8, background: "#fafafa", border: "1px solid #f0f0f0" }}>
+                <Checkbox.Group
+                  value={selectedInvestigationRegions.filter(value => cities.includes(value))}
+                  onChange={(values) => setSelectedInvestigationRegions(current => [...current.filter(value => !cities.includes(value)), ...(values as string[])])}
+                  options={cities.map(city => ({ label: city, value: city }))}
+                  style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}
+                />
+              </div>}
+            </div>;
+          })}
+        </div>
       </Modal>
       <Modal
         width={isContractDetailView ? "100%" : 860}

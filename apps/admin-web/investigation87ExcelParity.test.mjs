@@ -40,12 +40,18 @@ test('new investigation tasks visibly carry the nationwide authorization scope',
   assert.match(contractSource, /授权区域：全国/)
 })
 
-test('regional investigation scope uses a legacy-style selectable city dialog', () => {
+test('regional investigation scope uses a province-expanding city dialog with nationwide city data', () => {
   assert.match(contractSource, /title="选择城市"/)
   assert.match(contractSource, /全选/)
   assert.match(contractSource, /清空/)
   assert.match(contractSource, /Checkbox\.Group/)
-  assert.match(contractSource, /INVESTIGATION_REGION_OPTIONS/)
+  assert.match(contractSource, /expandedInvestigationProvinces/)
+  assert.match(contractSource, /INVESTIGATION_REGION_GROUPS/)
+  assert.match(contractSource, /cities\.map\(city/)
   assert.match(regionSource, /黑龙江省/)
   assert.match(regionSource, /哈尔滨市/)
+  assert.match(regionSource, /广东省/)
+  assert.match(regionSource, /广州市/)
+  assert.match(regionSource, /新疆维吾尔自治区/)
+  assert.match(regionSource, /乌鲁木齐市/)
 })
