@@ -70,3 +70,9 @@ test('investigation keeps query controls above the table and selected-record act
   assert.match(source, /constbusinessActionLabels=actionLabels\.filter/)
   assert.match(source, /className='investigation-actionsinvestigation-actions-bottom'/)
 })
+
+test('collection uses enabled notary offices maintained in system parameters', () => {
+  assert.match(source, /system\/parameters\/options/)
+  assert.match(source, /category:'notary_office'/)
+  assert.match(source, /notaryOfficeOptions\.map/)
+})

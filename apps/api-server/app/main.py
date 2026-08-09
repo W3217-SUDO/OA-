@@ -4270,6 +4270,18 @@ async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, g
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
 
 
+@app.get(f"{settings.api_prefix}/system/parameters/options")
+async def list_system_parameter_options(category: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Expose active, form-safe parameter choices to authenticated users."""
+    if category != "notary_office":
+        raise HTTPException(status_code=422, detail="当前参数分类不提供业务选项")
+    items = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == category,
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
+
+
 @app.get(f"{settings.api_prefix}/system/parameters")
 async def list_system_parameters(category: str = "", keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)

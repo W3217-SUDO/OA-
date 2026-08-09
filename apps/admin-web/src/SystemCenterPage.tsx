@@ -123,7 +123,7 @@ const categoryByRoute: Record<string, string> = {
   "system-parameters-fee-type": "fee_type",
   "system-parameters-case-phase": "case_phase",
   "system-parameters-court": "court",
-  "system-parameters-notary-office": "notary_office",
+  "system-parameters-notary": "notary_office",
   "system-parameters-cause": "cause",
   "system-parameters-payment": "payment_type",
   "system-parameters-customer-type": "customer_type",

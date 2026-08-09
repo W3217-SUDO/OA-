@@ -175,6 +175,9 @@ export default function InvestigationCenterPage({
     role: "",
   });
   const [assignmentSupervisor, setAssignmentSupervisor] = useState("");
+  const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<
+    { value: string }[]
+  >([]);
   const [investigationActions, setInvestigationActions] = useState<
     Record<string, InvestigationActions>
   >({});
@@ -328,6 +331,20 @@ export default function InvestigationCenterPage({
         setAssignmentSupervisor(String(data.username || ""));
       } catch {
         setAssignmentSupervisor("");
+      }
+      try {
+        const { data } = await api.get("/system/parameters/options", {
+          params: { category: "notary_office" },
+        });
+        setNotaryOfficeOptions(
+          (data.items || [])
+            .map((item: { name?: string }) => ({
+              value: String(item.name || "").trim(),
+            }))
+            .filter((item: { value: string }) => item.value),
+        );
+      } catch {
+        setNotaryOfficeOptions([]);
       }
       await load(initial);
     };
@@ -3447,13 +3464,14 @@ export default function InvestigationCenterPage({
             rules={[{ required: true, min: 2 }]}
           >
             <AutoComplete
-              options={Array.from(
-                new Set(
-                  rows
-                    .map((row) => String(row.data.notary_institution || "").trim())
-                    .filter(Boolean),
-                ),
-              ).map((value) => ({ value }))}
+            options={Array.from(
+              new Set([
+                ...notaryOfficeOptions.map((item) => item.value),
+                ...rows
+                  .map((row) => String(row.data.notary_institution || "").trim())
+                  .filter(Boolean),
+              ]),
+            ).map((value) => ({ value }))}
               filterOption={(input, option) =>
                 String(option?.value || "").includes(input)
               }
