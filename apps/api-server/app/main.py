@@ -3959,6 +3959,18 @@ async def list_system_users(keyword: str = "", identity: dict = Depends(current_
     return {"items": [_system_user_dict(user) for user in users], "total": len(users)}
 
 
+@app.get(f"{settings.api_prefix}/people/options")
+async def list_active_people_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Expose only active personnel names for authenticated internal selectors."""
+    users = list((await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all())
+    items = []
+    for user in users:
+        name = str(user.display_name or "").strip()
+        if name:
+            items.append({"value": name, "label": name})
+    return {"items": items}
+
+
 @app.post(f"{settings.api_prefix}/system/users", status_code=status.HTTP_201_CREATED)
 async def create_system_user(body: SystemUserInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)

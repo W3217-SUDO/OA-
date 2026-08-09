@@ -83,3 +83,9 @@ test('case creation from collected clues keeps a missing source contract optiona
   assert.match(source, /本次可继续生成案件；案件将保留客户和线索关联/)
   assert.doesNotMatch(source, /来源调查任务未绑定合同，不能生成案件/)
 })
+
+test('case creation selects handling lawyers and assistants from active system people', () => {
+  assert.match(source, /api\.get\('\/people\/options'\)/)
+  assert.match(source, /label='经办律师'[^]*<SelectshowSearchoptionFilterProp='label'options=\{casePeopleOptions\}/)
+  assert.match(source, /label='律师助理'[^]*<SelectallowClearshowSearchoptionFilterProp='label'options=\{casePeopleOptions\}/)
+})

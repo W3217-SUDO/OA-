@@ -96,6 +96,10 @@ type Profile = {
   role: string;
   department?: string;
 };
+type PersonOption = {
+  value: string;
+  label: string;
+};
 type InvestigationActions = {
   review_clue: boolean;
   review_customer_clue: boolean;
@@ -178,6 +182,7 @@ export default function InvestigationCenterPage({
   const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<
     { value: string }[]
   >([]);
+  const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
   const [investigationActions, setInvestigationActions] = useState<
     Record<string, InvestigationActions>
   >({});
@@ -345,6 +350,12 @@ export default function InvestigationCenterPage({
         );
       } catch {
         setNotaryOfficeOptions([]);
+      }
+      try {
+        const { data } = await api.get("/people/options");
+        setCasePeopleOptions(data.items || []);
+      } catch {
+        setCasePeopleOptions([]);
       }
       await load(initial);
     };
@@ -3731,11 +3742,11 @@ export default function InvestigationCenterPage({
             <Form.Item label="案件阶段" name="case_phase" rules={[{ required: true }]}>
               <Select options={["等待公证书", "新案待分配", "文书准备"].map((v) => ({ value: v, label: v }))} />
             </Form.Item>
-            <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请填写经办律师" }]}>
-              <Input />
+            <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请选择经办律师" }]}>
+              <Select showSearch optionFilterProp="label" options={casePeopleOptions} placeholder="请选择系统人员" />
             </Form.Item>
             <Form.Item label="律师助理" name="assistant">
-              <Input />
+              <Select allowClear showSearch optionFilterProp="label" options={casePeopleOptions} placeholder="请选择系统人员" />
             </Form.Item>
             <Form.Item label="案件类型" name="case_type">
               <Select
