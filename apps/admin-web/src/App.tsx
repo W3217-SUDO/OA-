@@ -303,14 +303,44 @@ const menuItems: NavItem[] = [
         children: [
           { key: "investigation-task-mine", label: "我的调查任务" },
           { key: "investigation-task-overdue", label: "过期调查任务" },
-          { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
-          { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
-          { key: "investigation-task-sub-mine", label: "我的调查任务（子任务）" },
         ],
       },
-      { key: "clue", label: "线索管理" },
-      { key: "notary", label: "公证管理" },
-      { key: "evidence", label: "证据管理" },
+      { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
+      { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
+      { key: "investigation-task-sub-mine", label: "我的调查任务" },
+      {
+        key: "clue",
+        label: "我的调查线索",
+        children: [
+          { key: "clue-my-draft", label: "草稿线索" },
+          { key: "clue-my-pending", label: "待审批线索" },
+          { key: "clue-my-customer", label: "待客户审核线索" },
+          { key: "clue-my-collect", label: "待取证线索" },
+          { key: "clue-my-collected", label: "已取证线索" },
+          { key: "clue-my-refused", label: "已驳回线索" },
+        ],
+      },
+      {
+        key: "clue-audit",
+        label: "调查线索审核",
+        children: [
+          { key: "clue-company-draft", label: "公司草稿线索" },
+          { key: "clue-company-pending", label: "待审核线索" },
+          { key: "clue-company-collect", label: "待取证线索" },
+          { key: "clue-company-collected", label: "已取证线索" },
+          { key: "clue-company-refused", label: "已驳回线索" },
+        ],
+      },
+      {
+        key: "notary",
+        label: "公证信息导入",
+        children: [
+          { key: "notary-import-info", label: "公证信息导入" },
+          { key: "notary-import-storage", label: "取证信息文件导入" },
+          { key: "notary-import-files", label: "公证书文件导入" },
+          { key: "notary-import-invoices", label: "发票文件导入" },
+        ],
+      },
     ],
   },
   {
@@ -495,9 +525,45 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   const taskChildren = [
     { key: "investigation-task-mine", label: "我的调查任务" },
     { key: "investigation-task-overdue", label: "过期调查任务" },
+  ];
+  const investigationChildren: NavItem[] = [
+    { key: "investigation-task-published", label: "我发布的调查任务", children: taskChildren },
     { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
     { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
-    { key: "investigation-task-sub-mine", label: "我的调查任务（子任务）" },
+    { key: "investigation-task-sub-mine", label: "我的调查任务" },
+    {
+      key: "clue",
+      label: "我的调查线索",
+      children: [
+        { key: "clue-my-draft", label: "草稿线索" },
+        { key: "clue-my-pending", label: "待审批线索" },
+        { key: "clue-my-customer", label: "待客户审核线索" },
+        { key: "clue-my-collect", label: "待取证线索" },
+        { key: "clue-my-collected", label: "已取证线索" },
+        { key: "clue-my-refused", label: "已驳回线索" },
+      ],
+    },
+    {
+      key: "clue-audit",
+      label: "调查线索审核",
+      children: [
+        { key: "clue-company-draft", label: "公司草稿线索" },
+        { key: "clue-company-pending", label: "待审核线索" },
+        { key: "clue-company-collect", label: "待取证线索" },
+        { key: "clue-company-collected", label: "已取证线索" },
+        { key: "clue-company-refused", label: "已驳回线索" },
+      ],
+    },
+    {
+      key: "notary",
+      label: "公证信息导入",
+      children: [
+        { key: "notary-import-info", label: "公证信息导入" },
+        { key: "notary-import-storage", label: "取证信息文件导入" },
+        { key: "notary-import-files", label: "公证书文件导入" },
+        { key: "notary-import-invoices", label: "发票文件导入" },
+      ],
+    },
   ];
   const hasPublishedTaskRoute = ordered.some(
     (item) => item.key === "investigation-task-published",
@@ -505,21 +571,9 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   if (!hasPublishedTaskRoute) return built;
   return built.map((item) => {
     if (item.key !== "investigation") return item;
-    const published = (item.children || []).find(
-      (child) => child.key === "investigation-task-published",
-    );
-    if (!published) return item;
-    const existingChildren = new Set(
-      (item.children || []).flatMap((child) => [child.key, ...(child.children || []).map((nested) => nested.key)]),
-    );
-    const nested = taskChildren.filter((child) => existingChildren.has(child.key));
     return {
       ...item,
-      children: (item.children || []).map((child) =>
-        child.key === "investigation-task-published"
-          ? { ...child, children: nested.length ? nested : taskChildren }
-          : child,
-      ),
+      children: investigationChildren,
     };
   });
 }
@@ -1536,7 +1590,7 @@ export default function App() {
           setContractDetailTarget(null);
         }}
       />
-    ) : active.startsWith("investigation-task-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
+    ) : active.startsWith("investigation-task-") || route.startsWith("clue-") || route.startsWith("notary-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
       <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
     ) : route === "ipr-office-files" ? (
       <IprOfficialFilePage />
