@@ -1546,7 +1546,7 @@ export default function ContractCenterPage({
         const attachment = new FormData();
         attachment.append("file", contractFile);
         attachment.append("record_id", String(data.id));
-        attachment.append("category", "调查任务资料");
+        attachment.append("category", "调查资料");
         await api.post("/attachments", attachment);
         setContractFile(null);
       }
