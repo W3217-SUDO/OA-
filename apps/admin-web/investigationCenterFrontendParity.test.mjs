@@ -76,3 +76,10 @@ test('collection uses enabled notary offices maintained in system parameters', (
   assert.match(source, /category:'notary_office'/)
   assert.match(source, /notaryOfficeOptions\.map/)
 })
+
+test('case creation from collected clues keeps a missing source contract optional', () => {
+  assert.match(source, /label='补充来源任务合同（可选）'/)
+  assert.match(source, /message='来源调查任务未自动关联合同'/)
+  assert.match(source, /本次可继续生成案件；案件将保留客户和线索关联/)
+  assert.doesNotMatch(source, /来源调查任务未绑定合同，不能生成案件/)
+})

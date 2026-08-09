@@ -94,6 +94,29 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(case.data["client_position"], "原告")
         self.assertEqual(case.data["cause_or_charge"], "商标侵权")
 
+    async def test_case_without_source_contract_can_still_be_created(self):
+        async with self.sessions() as db:
+            clue = BusinessRecord(
+                module="clue", serial_no="XS-CODEX-87-NO-CONTRACT", title="无合同已取证线索",
+                customer="CODEX客户", status="已取证", owner="admin", department="上海",
+                data={"cause_or_charge": "商标侵权"},
+            )
+            db.add(clue)
+            await db.commit()
+            result = await batch_create_cases_from_clues(
+                BatchClueCaseInput(
+                    clue_ids=[clue.id], case_type="民事案件", cause_or_charge="商标侵权",
+                    handling_lawyer="管理员",
+                ),
+                IDENTITY, db,
+            )
+            case = await db.get(BusinessRecord, result["created_ids"][0])
+
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(case.status, "等待公证书")
+        self.assertIsNone(case.data["contract_id"])
+        self.assertEqual(case.customer, "CODEX客户")
+
     async def test_legacy_clue_binding_repairs_source_task_and_customer_before_case_generation(self):
         async with self.sessions() as db:
             contract = BusinessRecord(

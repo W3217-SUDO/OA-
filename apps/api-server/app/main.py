@@ -9452,7 +9452,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
         contract, contract_error = await _resolve_clue_source_contract(clue, identity, db)
         if contract and contract.status in {"草稿", "审批中", "已拒绝", "已撤回", "已作废"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同尚未审批通过"}); continue
-        contract_data = contract.data or {}
+        contract_data = (contract.data or {}) if contract else {}
         case_customer = contract.customer if contract else clue.customer
         case_department = contract.department if contract else clue.department
         contract_reference = contract.serial_no if contract else "未关联合同"

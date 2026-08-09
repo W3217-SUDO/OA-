@@ -3693,9 +3693,8 @@ export default function InvestigationCenterPage({
               selectedClues.length === 1 && contractOptions.length > 0 ? (
                 <>
                   <Form.Item
-                    label="补充来源任务合同"
+                    label="补充来源任务合同（可选）"
                     name="source_contract_record_id"
-                    rules={[{ required: true, message: "请选择来源调查任务实际对应的合同" }]}
                     style={{ marginTop: 16 }}
                   >
                     <Select
@@ -3714,10 +3713,10 @@ export default function InvestigationCenterPage({
                 </>
               ) : (
                 <Alert
-                  type="warning"
+                  type="info"
                   showIcon
-                  message="来源调查任务未绑定合同，不能生成案件"
-                  description="合同通常由来源调查任务自动带入；当前客户没有可用合同可供补选，请先建立或补全来源任务合同。"
+                  message="来源调查任务未自动关联合同"
+                  description="本次可继续生成案件；案件将保留客户和线索关联，合同关联可在后续补全。"
                   style={{ marginTop: 16 }}
                 />
               )
