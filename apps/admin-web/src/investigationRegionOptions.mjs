@@ -496,14 +496,6 @@ export const INVESTIGATION_REGION_GROUPS = [
       "阿勒泰地区",
       "自治区直辖县级行政区划"
     ]
-  },
-  {
-    "province": "??",
-    "cities": []
-  },
-  {
-    "province": "????",
-    "cities": []
   }
 ];
 

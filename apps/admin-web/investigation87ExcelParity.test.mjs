@@ -54,4 +54,5 @@ test('regional investigation scope uses a province-expanding city dialog with na
   assert.match(regionSource, /广州市/)
   assert.match(regionSource, /新疆维吾尔自治区/)
   assert.match(regionSource, /乌鲁木齐市/)
+  assert.doesNotMatch(regionSource, /"province":\s*"\?+"/)
 })
