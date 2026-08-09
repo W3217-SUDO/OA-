@@ -46,11 +46,7 @@ PERSON_NAME_NON_PERSON_MARKERS = (
 
 def _is_complete_person_display_name(display_name: object, username: object = "") -> bool:
     value = str(display_name or "").strip()
-    account = str(username or "").strip()
-    return bool(
-        value
-        and (not account or value.casefold() != account.casefold())
-    )
+    return bool(value)
 
 
 def _person_display_name(display_name: object, username: object = "") -> tuple[str, bool]:
@@ -75,8 +71,9 @@ def _person_reference_display(username: object, users_by_username: dict[str, Use
     if key == "system":
         return "系统", False
     user = users_by_username.get(key.lower())
-    source = user.display_name if user else key
-    return _person_display_name(source, key)
+    if not user:
+        return PERSON_NAME_PLACEHOLDER, True
+    return _person_display_name(user.display_name, key)
 
 
 CASE_CREATE_PERMISSION_BY_TYPE = {
@@ -3076,6 +3073,72 @@ def _task_dict(record: BusinessRecord) -> dict:
     }
 
 
+async def _task_display_dict(record: BusinessRecord, db: AsyncSession) -> dict:
+    result = _task_dict(record)
+    data = result.get("data") or {}
+    usernames: set[str] = {record.owner}
+    for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer", "customer_manager"):
+        usernames.update(_contract_person_values(data.get(key)))
+    users_by_username = await _user_display_map(usernames, db)
+    result["owner_display_name"], result["owner_display_name_missing"] = _person_reference_display(record.owner, users_by_username)
+    for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer"):
+        if key in data:
+            display_name, display_missing = _person_reference_display(data.get(key), users_by_username)
+            result[f"{key}_display_name"] = display_name
+            result[f"{key}_display_name_missing"] = display_missing
+    if data.get("customer_manager") is not None:
+        manager_values = _contract_person_values(data.get("customer_manager"))
+        manager_names = [_person_reference_display(value, users_by_username)[0] for value in manager_values]
+        if manager_names:
+            result["customer_manager_display_name"] = "、".join(manager_names)
+    return result
+
+
+
+async def _resolve_investigation_task_root(source: BusinessRecord, identity: dict, db: AsyncSession) -> BusinessRecord:
+    if source.module == "investigation":
+        return source
+    candidate_ids: list[int] = []
+    source_data = source.data or {}
+    for key in ("investigation_record_id", "investigation_id"):
+        try:
+            candidate_id = int(source_data.get(key) or 0)
+        except (TypeError, ValueError):
+            candidate_id = 0
+        if candidate_id > 0:
+            candidate_ids.append(candidate_id)
+    try:
+        task_id = int(source_data.get("source_task_id") or 0)
+    except (TypeError, ValueError):
+        task_id = 0
+    visited: set[int] = set()
+    while task_id and task_id not in visited:
+        visited.add(task_id)
+        task = await db.get(BusinessRecord, task_id)
+        if not task or task.module not in {"task", "investigation"}:
+            break
+        if task.module == "investigation":
+            candidate_ids.insert(0, task.id)
+            break
+        task_data = task.data or {}
+        for key in ("investigation_record_id", "investigation_id"):
+            try:
+                candidate_id = int(task_data.get(key) or 0)
+            except (TypeError, ValueError):
+                candidate_id = 0
+            if candidate_id > 0:
+                candidate_ids.append(candidate_id)
+        try:
+            task_id = int(task_data.get("parent_task_id") or 0)
+        except (TypeError, ValueError):
+            task_id = 0
+    scope = await _record_scope_conditions(identity, db)
+    for candidate_id in candidate_ids:
+        root = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == candidate_id, BusinessRecord.module == "investigation", *scope))
+        if root:
+            return root
+    return source
+
 async def _add_task_message_notifications(
     task: BusinessRecord,
     event: WorkflowEvent,
@@ -3967,7 +4030,7 @@ async def list_active_people_options(identity: dict = Depends(current_identity),
     for user in users:
         name = str(user.display_name or "").strip()
         if name:
-            items.append({"value": name, "label": name})
+            items.append({"value": name, "label": name, "username": user.username})
     return {"items": items}
 
 
@@ -9228,10 +9291,21 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
 @app.get(f"{settings.api_prefix}/investigations/{{record_id}}/tasks")
 async def list_investigation_tasks(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     source = await _ensure_record_visible(record_id, identity, db)
-    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES: raise HTTPException(status_code=404, detail="调查业务记录不存在")
-    tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task", BusinessRecord.data["investigation_record_id"].as_integer() == source.id, *(await _record_scope_conditions(identity, db))).order_by(BusinessRecord.created_at, BusinessRecord.id))).all()
-    return {"record": _record_dict(source), "items": [_task_dict(item) for item in tasks], "total": len(tasks)}
-
+    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
+        raise HTTPException(status_code=404, detail="调查业务记录不存在")
+    root = await _resolve_investigation_task_root(source, identity, db)
+    tasks = (
+        await db.scalars(
+            select(BusinessRecord)
+            .where(
+                BusinessRecord.module == "task",
+                BusinessRecord.data["investigation_record_id"].as_integer() == root.id,
+                *(await _record_scope_conditions(identity, db)),
+            )
+            .order_by(BusinessRecord.created_at, BusinessRecord.id)
+        )
+    ).all()
+    return {"record": _record_dict(root), "items": [await _task_display_dict(item, db) for item in tasks], "total": len(tasks)}
 
 @app.post(f"{settings.api_prefix}/investigations/{{record_id}}/close")
 async def close_investigation(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -9265,15 +9339,20 @@ async def close_investigation(record_id: int, body: TaskActionInput, identity: d
 @app.post(f"{settings.api_prefix}/investigations/{{record_id}}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_investigation_task(record_id: int, body: InvestigationTaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     source = await _ensure_record_visible(record_id, identity, db)
-    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES: raise HTTPException(status_code=404, detail="调查业务记录不存在")
+    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
+        raise HTTPException(status_code=404, detail="调查业务记录不存在")
     await _require_record_owner_or_manager(source, identity, db)
     _validate_task_deadline(body.deadline)
+    source = await _resolve_investigation_task_root(source, identity, db)
     parent = None
     if body.parent_task_id:
         parent = await _ensure_record_module(body.parent_task_id, "task", identity, db)
-        if int((parent.data or {}).get("investigation_record_id") or 0) != source.id: raise HTTPException(status_code=409, detail="父任务不属于当前调查事项")
-    user = await db.scalar(select(User).where(User.username == identity["username"])); owner = body.owner.strip()
-    if identity.get("role") == "user": owner = identity["username"]
+        if int((parent.data or {}).get("investigation_record_id") or 0) != source.id:
+            raise HTTPException(status_code=409, detail="父任务不属于当前调查事项")
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    owner = body.owner.strip()
+    if identity.get("role") == "user":
+        owner = identity["username"]
     owner = await _active_task_username(owner, db, field_name="负责人")
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
     if attachment_ids:
@@ -9295,11 +9374,6 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         raise HTTPException(status_code=409, detail="调查事项已绑定合同，不能在创建子任务时更换合同")
     if not source_contract_id and not requested_contract_id:
         raise HTTPException(status_code=422, detail="创建调查任务前必须绑定同客户合同")
-    # An assignee may create work beneath a survey they own even when the survey's
-    # already-bound contract belongs to its publisher.  The binding is fixed on
-    # the visible survey, so resolving it directly does not grant general contract
-    # browsing or editing access.  A newly selected contract still needs ordinary
-    # visibility permission.
     if source_contract_id:
         contract = await db.get(BusinessRecord, int(source_contract_id))
         if not contract:
@@ -9332,9 +9406,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data=task_data)
     db.add(task); await db.flush()
     db.add(WorkflowEvent(record_id=source.id, action="创建调查任务", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"{serial_no}：{body.title}"))
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="创建调查任务", to_status="待接收", operator=identity["username"], comment=f"来源 {source.serial_no}" + (f"；父任务 {parent.serial_no}" if parent else "")), db, content="任务已分派.")
-    await db.commit(); await db.refresh(task); return _task_dict(task)
-
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="创建调查任务", to_status="待接收", operator=identity["username"], comment=f"来源 {source.serial_no}" + (f"；父任务 {parent.serial_no}" if parent else "")), db, content="任务已分派")
+    await db.commit(); await db.refresh(task); return await _task_display_dict(task, db)
 
 async def _resolve_clue_source_contract(clue: BusinessRecord, identity: dict, db: AsyncSession) -> tuple[BusinessRecord | None, str]:
     """Resolve a clue's contract from its source task chain, never from a UI pick."""

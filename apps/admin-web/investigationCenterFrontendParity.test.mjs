@@ -58,8 +58,8 @@ test('customer review modal shows the previous auditor and opinion', () => {
 
 test('clue lists retain customer manager presentation and review-stage edit actions', () => {
   assert.match(source, /title:'客户管理人'[\s\S]*customer_manager/)
-  assert.match(source, /owner_display_name\|\|r\.owner/)
-  assert.match(source, /source_owner_display_name\|\|r\.data\.source_owner/)
+  assert.match(source, /owner_display_name\|\|personDisplayName\(r\.owner\)/)
+  assert.match(source, /source_owner_display_name\|\|personDisplayName\(r\.data\.source_owner\)/)
   assert.match(source, /customer_manager_display_name\|\|r\.data\.customer_manager/)
   assert.match(source, /clue-audit-pending[\s\S]*clue-audit-customer/)
   assert.match(source, /clue-my-pending[\s\S]*clue-my-customer[\s\S]*clue-my-collect[\s\S]*clue-my-collected/)

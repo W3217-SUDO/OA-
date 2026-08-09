@@ -85,6 +85,8 @@ type TaskRow = {
   title: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
+  owner_display_name_missing?: boolean;
   deadline: string;
   priority: string;
   parent_task_id?: number;
@@ -99,6 +101,7 @@ type Profile = {
 type PersonOption = {
   value: string;
   label: string;
+  username?: string;
 };
 type InvestigationActions = {
   review_clue: boolean;
@@ -253,6 +256,17 @@ export default function InvestigationCenterPage({
   const [editForm] = Form.useForm();
   const [assignForm] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const personDisplayName = (value: unknown) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "—";
+    const matched = casePeopleOptions.find(
+      (item) =>
+        item.username === raw ||
+        item.value === raw ||
+        item.label === raw,
+    );
+    return matched?.label || raw;
+  };
   const load = async (key = tab) => {
     setLoading(true);
     try {
@@ -1207,7 +1221,7 @@ export default function InvestigationCenterPage({
       const hasParent = existingTasks.length > 0;
       setTaskTarget(row);
       setTasks(existingTasks);
-      setCreatingSubtask(createSubtask && hasParent);
+      setCreatingSubtask(createSubtask);
       taskForm.resetFields();
       taskForm.setFieldsValue({
         owner: row.owner,
@@ -1224,10 +1238,6 @@ export default function InvestigationCenterPage({
             contract.customer === row.customer,
         ),
       );
-      if (createSubtask && !hasParent)
-        message.info(
-          "当前调查尚无任务，先创建首个调查任务；后续“新增子任务”将自动关联该任务",
-        );
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "调查任务加载失败");
     }
@@ -1550,7 +1560,7 @@ export default function InvestigationCenterPage({
           width: 100,
           render: (_: unknown, r: Row) => r.data.right_type || "—",
         },
-          { title: "调查员", width: 100, render: (_: unknown, r: Row) => r.owner_display_name || r.owner || "—" },
+          { title: "调查员", width: 100, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
         {
           title: "调查区域",
           width: 160,
@@ -1570,7 +1580,7 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 100,
-          render: (_: unknown, r: Row) => r.data.source_owner_display_name || r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || personDisplayName(r.data.source_owner),
         },
         {
           title: "状态",
@@ -1669,13 +1679,13 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 100,
-          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || personDisplayName(r.data.source_owner),
         },
         {
           title: "任务分配人",
           width: 110,
           render: (_: unknown, r: Row) =>
-            r.data.assigner_display_name || r.data.assigned_by_display_name || r.data.assigner || r.data.assigned_by || "—",
+            r.data.assigner_display_name || r.data.assigned_by_display_name || personDisplayName(r.data.assigner || r.data.assigned_by),
         },
       ];
     if (initialTab.startsWith("clue-"))
@@ -1705,7 +1715,7 @@ export default function InvestigationCenterPage({
               "—"
             ),
         },
-        { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || r.owner || "—" },
+        { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
         {
           title: "调查时间",
           width: 110,
@@ -1757,7 +1767,7 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 95,
-          render: (_: unknown, r: Row) => r.data.source_owner_display_name || r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || personDisplayName(r.data.source_owner),
         },
         {
           title: "客户管理人",
@@ -3889,7 +3899,13 @@ export default function InvestigationCenterPage({
               width: 150,
               render: (v: string) => v || "—",
             },
-            { title: "负责人", dataIndex: "owner", width: 90 },
+            {
+              title: "负责人",
+              dataIndex: "owner",
+              width: 90,
+              render: (_value: unknown, row: TaskRow) =>
+                row.owner_display_name || personDisplayName(row.owner),
+            },
             { title: "截止日", dataIndex: "deadline", width: 110 },
             {
               title: "状态",
@@ -3942,7 +3958,15 @@ export default function InvestigationCenterPage({
                 name="owner"
                 rules={[{ required: true }]}
               >
-                <Input />
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="请选择系统人员"
+                  options={casePeopleOptions.map((item) => ({
+                    value: item.username || item.value,
+                    label: item.label || item.value,
+                  }))}
+                />
               </Form.Item>
               <Form.Item
                 label="截止日期"
@@ -3963,13 +3987,13 @@ export default function InvestigationCenterPage({
                 label={creatingSubtask ? "父任务" : "父任务（留空为主任务）"}
                 name="parent_task_id"
                 rules={
-                  creatingSubtask
+                  creatingSubtask && tasks.length > 0
                     ? [{ required: true, message: "请选择父任务" }]
                     : []
                 }
               >
                 <Select
-                  allowClear={!creatingSubtask}
+                  allowClear={!creatingSubtask || tasks.length === 0}
                   options={tasks.map((x) => ({
                     value: x.id,
                     label: `${x.serial_no}｜${x.title}`,
