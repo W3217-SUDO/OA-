@@ -58,7 +58,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["storage_location"], "档案室 A-01")
         self.assertEqual(result["data"]["evidence_status"], "已入库")
 
-    async def test_case_uses_contract_from_source_task_and_enters_pending_assignment(self):
+    async def test_case_uses_contract_from_source_task_and_enters_waiting_notary(self):
         async with self.sessions() as db:
             contract = BusinessRecord(
                 module="contract", serial_no="HT-CODEX-87", title="CODEX调查合同", customer="CODEX客户",
@@ -87,7 +87,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
             case = await db.get(BusinessRecord, result["created_ids"][0])
 
         self.assertEqual(result["created"], 1)
-        self.assertEqual(case.status, "新案待分配")
+        self.assertEqual(case.status, "等待公证书")
         self.assertEqual(case.data["contract_id"], contract.id)
         self.assertEqual(case.data["contract_no"], "HT-CODEX-87")
         self.assertEqual(case.data["clue_no"], "XS-CODEX-87")

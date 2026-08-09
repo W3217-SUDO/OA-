@@ -1226,6 +1226,11 @@ class BatchClueCaseInput(BaseModel):
     contract_record_id: int | None = None
     case_type: str = "民事案件"
     court: str = ""
+    client_position: str = Field(default="原告", max_length=64)
+    cause_or_charge: str = Field(default="", max_length=255)
+    case_phase: str = Field(default="等待公证书", max_length=64)
+    handling_lawyer: str = Field(default="", max_length=128)
+    assistant: str = Field(default="", max_length=128)
 
 
 class ClueCaseContractResolveInput(BaseModel):
@@ -9446,16 +9451,20 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if clue_data.get("converted_case_id") or clue.status == "已转案件": errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索已经转为案件"}); continue
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
         contract, contract_error = await _resolve_clue_source_contract(clue, identity, db)
-        if not contract: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": contract_error}); continue
-        if contract.status in {"草稿", "审批中", "已拒绝", "已撤回", "已作废"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同尚未审批通过"}); continue
+        if contract and contract.status in {"草稿", "审批中", "已拒绝", "已撤回", "已作废"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同尚未审批通过"}); continue
         contract_data = contract.data or {}
+        case_customer = contract.customer if contract else clue.customer
+        case_department = contract.department if contract else clue.department
+        contract_reference = contract.serial_no if contract else "未关联合同"
         serial_no = await _next_case_serial(body.case_type, db)
-        handling_lawyers = list(dict.fromkeys(clue_data.get("handling_lawyers") or []))
-        case_record = BusinessRecord(module="case", serial_no=serial_no, title=clue.title, customer=contract.customer, status="新案待分配", owner=clue.owner, department=contract.department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id, "contract_no": contract.serial_no, "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title, "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": clue_data.get("client_position", ""), "cause_or_charge": clue_data.get("cause_or_charge") or clue_data.get("cause", ""), "handling_lawyers": handling_lawyers, "investigator": clue_data.get("investigator", ""), "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
+        handling_lawyers = list(dict.fromkeys(filter(None, [body.handling_lawyer.strip(), *(clue_data.get("handling_lawyers") or [])])))
+        cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
+        case_title = "".join(filter(None, [case_customer, cause_or_charge, clue.title]))
+        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "handling_lawyers": handling_lawyers, "assistant": body.assistant.strip(), "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
         db.add(case_record); await db.flush(); previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
         notary = await db.get(BusinessRecord, int(clue_data.get("notary_record_id") or 0)) if clue_data.get("notary_record_id") else None
         if notary: notary.data = {**(notary.data or {}), "case_id": case_record.id, "case_no": serial_no}
-        db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"按来源调查任务自动关联合同 {contract.serial_no}，生成新案待分配案件 {serial_no}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status="新案待分配", operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 自动关联合同 {contract.serial_no}")])
+        db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"来源任务合同 {contract_reference}，生成案件 {serial_no}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status=case_record.status, operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 来源任务合同 {contract_reference}")])
         await _ensure_case_fixed_tasks(case_record, db, operator="system")
         created_ids.append(case_record.id)
     await db.commit()

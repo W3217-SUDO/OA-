@@ -880,7 +880,16 @@ export default function InvestigationCenterPage({
       }
       setResolvedClueContracts(data.items || []);
       batchForm.resetFields();
-      batchForm.setFieldsValue({ case_type: "民事案件" });
+      const selectedRows = rows.filter((row) => selectedClues.includes(row.id));
+      const firstClue = selectedRows[0];
+      batchForm.setFieldsValue({
+        case_type: "民事案件",
+        client_position: firstClue?.data.client_position || "原告",
+        cause_or_charge: firstClue?.data.cause_or_charge || firstClue?.data.cause || "",
+        case_phase: "等待公证书",
+        handling_lawyer: profile.display_name || profile.username || "",
+        assistant: "",
+      });
       setBatchStep(0);
       setBatchOpen(true);
     } catch (error: any) {
@@ -3658,16 +3667,9 @@ export default function InvestigationCenterPage({
       <Modal
         open={batchOpen}
         title={`已取证线索生成案件（已选 ${selectedClues.length} 条）`}
-        okText={batchStep === 0 ? "下一步" : "生成新案待分配案件"}
+        okText={batchStep === 0 ? "下一步" : "生成案件"}
         cancelText="取消"
         onOk={() => {
-          if (
-            batchStep === 0 &&
-            resolvedClueContracts.some((item) => !item.contract)
-          ) {
-            message.warning("请先补绑缺失的来源任务合同");
-            return;
-          }
           if (batchStep === 0) setBatchStep(1);
           else void batchCases();
         }}
@@ -3720,7 +3722,23 @@ export default function InvestigationCenterPage({
                 />
               )
             )}
-            <Form.Item label="案件类型" name="case_type" style={{ marginTop: 16 }}>
+            <Alert type="info" showIcon title="案件名称默认由客户名称、案由和线索店铺/事项名称组成；调查员默认从线索带入。" style={{ marginTop: 16 }} />
+            <Form.Item label="客户诉讼地位" name="client_position" rules={[{ required: true }]} style={{ marginTop: 16 }}>
+              <Select options={["原告", "被告", "第三人", "申请人", "被申请人"].map((v) => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="案由" name="cause_or_charge" rules={[{ required: true, message: "请填写案由" }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="案件阶段" name="case_phase" rules={[{ required: true }]}>
+              <Select options={["等待公证书", "新案待分配", "文书准备"].map((v) => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请填写经办律师" }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="律师助理" name="assistant">
+              <Input />
+            </Form.Item>
+            <Form.Item label="案件类型" name="case_type">
               <Select
                 options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
                   (v) => ({ value: v, label: v }),
@@ -3731,7 +3749,7 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
           </>}
-          {batchStep === 1 && <Descriptions size="small" bordered column={1} items={[{ key: "status", label: "生成后案件阶段", children: "新案待分配" }, { key: "result", label: "关联规则", children: "客户、合同、线索及来源任务信息将自动带入案件" }]} />}
+          {batchStep === 1 && <Descriptions size="small" bordered column={1} items={[{ key: "status", label: "生成后案件阶段", children: batchForm.getFieldValue("case_phase") || "等待公证书" }, { key: "result", label: "关联规则", children: "客户、合同、线索及来源任务信息将自动带入案件" }]} />}
         </Form>
       </Modal>
       <Modal
