@@ -19,7 +19,7 @@ from app.main import (
     decide_case_agent_action,
     send_case_agent_message,
 )
-from app.models import BusinessRecord, User
+from app.models import BusinessRecord, FileAttachment, User
 
 
 class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
@@ -89,10 +89,11 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(self.runtime.status()["model_configured"])
         self.assertEqual(result["last_response"], "这是基于案件空间生成的回答。")
-        snapshot, messages, skill = self.runtime._request_model.await_args.args
+        snapshot, messages, skill, images = self.runtime._request_model.await_args.args
         self.assertEqual(snapshot["case"]["serial_no"], "SHMS-MODEL-009")
         self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
         self.assertEqual(skill.id, "general-office")
+        self.assertEqual(images, [])
 
     async def test_selected_office_skill_routes_without_exposing_marker(self):
         self.runtime.api_base_url = "https://model.example/v1"
@@ -109,6 +110,23 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["messages"][0]["content"], "检查费用异常")
         self.assertNotIn("[[skill:", result["messages"][0]["content"])
         self.assertEqual(self.runtime._request_model.await_args.args[2].id, "data-analysis")
+
+    async def test_screenshot_skill_forwards_images_without_persisting_base64(self):
+        self.runtime.api_base_url = "https://model.example/v1"
+        self.runtime.api_key = "test-only"
+        self.runtime.model = "gpt-test"
+        self.runtime._request_model = AsyncMock(return_value="已分析截图。")
+        result = await self.runtime.invoke(
+            case_id=11,
+            operator="lawyer",
+            message="[[skill:screenshot-evidence]]\n分析截图证据",
+            case_snapshot={"case": {"id": 11}},
+            images=[{"id": 91, "name": "evidence.png", "mime_type": "image/png", "data_url": "data:image/png;base64,dGVzdA=="}],
+        )
+        self.assertEqual(result["active_skill"], "screenshot-evidence")
+        self.assertEqual(result["messages"][0]["attachments"][0]["name"], "evidence.png")
+        self.assertNotIn("data_url", result["messages"][0]["attachments"][0])
+        self.assertEqual(self.runtime._request_model.await_args.args[3][0]["data_url"], "data:image/png;base64,dGVzdA==")
 
     def test_sqlalchemy_postgres_url_is_normalized_for_psycopg(self):
         self.assertEqual(
@@ -200,6 +218,40 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
                     db,
                 )
         self.assertEqual(raised.exception.status_code, 404)
+
+    async def test_screenshot_attachment_is_scoped_to_case_and_forwarded(self):
+        target = main_module.UPLOAD_ROOT / "case-agent-contract-screenshot.png"
+        target.write_bytes(b"test-png")
+        try:
+            async with self.sessions() as db:
+                case = await self._seed(db)
+                attachment = FileAttachment(
+                    record_id=case.id,
+                    category="智能体截图证据",
+                    original_name="contract-screenshot.png",
+                    stored_name=target.name,
+                    content_type="image/png",
+                    size=target.stat().st_size,
+                    path=str(target),
+                    uploader="lawyer",
+                    remark="test",
+                )
+                db.add(attachment)
+                await db.commit()
+                await db.refresh(attachment)
+                result = await send_case_agent_message(
+                    case.id,
+                    CaseAgentMessageInput(
+                        message="[[skill:screenshot-evidence]]\n分析截图证据",
+                        attachment_ids=[attachment.id],
+                    ),
+                    {"username": "lawyer", "role": "admin"},
+                    db,
+                )
+                self.assertEqual(result["messages"][0]["attachments"][0]["id"], attachment.id)
+                self.assertEqual(result["messages"][0]["attachments"][0]["name"], "contract-screenshot.png")
+        finally:
+            target.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

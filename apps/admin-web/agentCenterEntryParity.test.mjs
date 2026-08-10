@@ -40,3 +40,12 @@ test("agent center routes each conversation through the selected office skill", 
   assert.match(skillSource, /\[\[skill:\$\{normalized\}\]\]/);
   assert.match(styleSource, /\.agent-skill-bar/);
 });
+
+test("screenshot evidence skill uploads case-scoped images and submits attachment ids", () => {
+  assert.match(pageSource, /skillId === "screenshot-evidence"/);
+  assert.match(pageSource, /form\.append\("record_id", String\(selected\.id\)\)/);
+  assert.match(pageSource, /form\.append\("category", "智能体截图证据"\)/);
+  assert.match(pageSource, /attachment_ids: screenshots\.map/);
+  assert.match(pageSource, /accept="\.png,\.jpg,\.jpeg,\.webp/);
+  assert.match(styleSource, /\.agent-screenshot-bar/);
+});

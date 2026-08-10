@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from contextlib import asynccontextmanager, suppress
 import csv
 import hashlib
@@ -891,6 +892,7 @@ class CaseAgentProposedAction(BaseModel):
 class CaseAgentMessageInput(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     proposed_action: CaseAgentProposedAction | None = None
+    attachment_ids: list[int] = Field(default_factory=list, max_length=4)
 
 
 class CaseAgentDecisionInput(BaseModel):
@@ -17472,6 +17474,34 @@ async def send_case_agent_message(
     proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
     if proposed_action and not context["capabilities"].get("can_write"):
         raise HTTPException(status_code=403, detail="当前账号无权为该案件发起写操作")
+    images: list[dict[str, object]] = []
+    attachment_ids = list(dict.fromkeys(body.attachment_ids))
+    if attachment_ids:
+        attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
+        if len(attachments) != len(attachment_ids) or any(item.record_id != case_id for item in attachments):
+            raise HTTPException(status_code=404, detail="截图附件不存在或不属于当前案件")
+        by_id = {item.id: item for item in attachments}
+        total_size = 0
+        mime_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+        for attachment_id in attachment_ids:
+            item = by_id[attachment_id]
+            suffix = Path(item.original_name or item.path).suffix.lower()
+            mime_type = mime_types.get(suffix)
+            if not mime_type:
+                raise HTTPException(status_code=422, detail="截图证据仅支持 PNG、JPG、JPEG 或 WebP")
+            path = Path(item.path)
+            if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+                raise HTTPException(status_code=404, detail="截图附件文件不存在")
+            content = path.read_bytes()
+            total_size += len(content)
+            if len(content) > 6 * 1024 * 1024 or total_size > 12 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="单张截图不能超过 6MB，单次分析总计不能超过 12MB")
+            images.append({
+                "id": item.id,
+                "name": item.original_name,
+                "mime_type": mime_type,
+                "data_url": f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}",
+            })
     try:
         return await case_agent_runtime.invoke(
             case_id=case_id,
@@ -17479,6 +17509,7 @@ async def send_case_agent_message(
             message=body.message,
             case_snapshot=context,
             proposed_action=proposed_action,
+            images=images,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="案件智能体调用失败") from exc

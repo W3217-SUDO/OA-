@@ -37,3 +37,11 @@ test('case drawer uses the shared office skill router', () => {
   assert.match(source, /agentStatus\?\.skills/);
   assert.match(styles, /\.case-agent-skill-select/);
 });
+
+test('case drawer can upload and analyze screenshot evidence', () => {
+  assert.match(source, /uploadCaseAgentScreenshot/);
+  assert.match(source, /attachment_ids: agentScreenshots\.map/);
+  assert.match(source, /form\.append\("record_id", String\(agentCase\.id\)\)/);
+  assert.match(source, /智能体截图证据/);
+  assert.match(styles, /\.case-agent-screenshot-bar/);
+});

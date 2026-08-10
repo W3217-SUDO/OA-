@@ -32,6 +32,7 @@ import {
   RobotOutlined,
   SendOutlined,
   TeamOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
@@ -115,6 +116,7 @@ type CaseAgentMessage = {
   content: string;
   operator?: string;
   created_at?: string;
+  attachments?: Array<{ id: number; name: string; mime_type?: string }>;
 };
 type CaseAgentAction = {
   id: string;
@@ -546,7 +548,10 @@ export default function CaseCenterPage({
   const [agentDecisionLoading, setAgentDecisionLoading] = useState("");
   const [agentInput, setAgentInput] = useState("");
   const [agentSkillId, setAgentSkillId] = useState(DEFAULT_AGENT_SKILL);
+  const [agentScreenshots, setAgentScreenshots] = useState<Array<{ id: number; name: string; mime_type?: string }>>([]);
+  const [agentScreenshotUploading, setAgentScreenshotUploading] = useState(false);
   const agentMessagesEndRef = useRef<HTMLDivElement>(null);
+  const agentScreenshotInputRef = useRef<HTMLInputElement>(null);
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
@@ -1397,21 +1402,50 @@ export default function CaseCenterPage({
     setAgentCase(row);
     setAgentOpen(true);
     setAgentInput("");
+    setAgentScreenshots([]);
     void loadCaseAgent(row);
   };
   const sendCaseAgentMessage = async (preset?: string) => {
     if (!agentCase || agentSending) return;
-    const content = String(preset ?? agentInput).trim();
+    const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的案件问题");
+    if (agentSkillId === "screenshot-evidence" && !agentScreenshots.length) return message.warning("请先上传需要分析的截图");
     setAgentSending(true);
     try {
-      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, { message: encodeAgentSkillMessage(agentSkillId, content) });
+      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, {
+        message: encodeAgentSkillMessage(agentSkillId, content),
+        attachment_ids: agentScreenshots.map((item) => item.id),
+      });
       setAgentState(data);
       setAgentInput("");
+      setAgentScreenshots([]);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件智能体响应失败");
     } finally {
       setAgentSending(false);
+    }
+  };
+  const uploadCaseAgentScreenshot = async (file?: File) => {
+    if (!file || !agentCase) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return message.error("截图仅支持 PNG、JPG、JPEG 或 WebP");
+    if (file.size > 6 * 1024 * 1024) return message.error("单张截图不能超过 6MB");
+    if (agentScreenshots.length >= 4) return message.warning("单次最多分析 4 张截图");
+    const form = new FormData();
+    form.append("file", file);
+    form.append("record_id", String(agentCase.id));
+    form.append("category", "智能体截图证据");
+    form.append("remark", "由案件智能体上传，用于截图证据分析");
+    setAgentScreenshotUploading(true);
+    try {
+      const { data } = await api.post("/attachments", form);
+      const attachment = data.attachment || data;
+      setAgentScreenshots((current) => [...current, { id: Number(attachment.id), name: String(attachment.original_name || file.name), mime_type: file.type }]);
+      message.success("截图已加入当前案件空间");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "截图上传失败");
+    } finally {
+      setAgentScreenshotUploading(false);
+      if (agentScreenshotInputRef.current) agentScreenshotInputRef.current.value = "";
     }
   };
   const decideCaseAgentAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
@@ -3624,6 +3658,11 @@ export default function CaseCenterPage({
             />
             <small>{(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}</small>
           </div>
+          {agentSkillId === "screenshot-evidence" && <div className="case-agent-screenshot-bar">
+            <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
+            <Button icon={<UploadOutlined />} loading={agentScreenshotUploading} disabled={agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()}>上传截图</Button>
+            <div>{agentScreenshots.map((item) => <Tag key={item.id} closable onClose={() => setAgentScreenshots((current) => current.filter((entry) => entry.id !== item.id))}>{item.name}</Tag>)}</div>
+          </div>}
           {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
           {agentState?.pending_actions?.length ? <section className="case-agent-actions">
             <div className="case-agent-section-title">待审批操作</div>
@@ -3647,7 +3686,7 @@ export default function CaseCenterPage({
             </div>}
             {agentState?.messages?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
               <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
-              <div className="case-agent-bubble">{item.content}</div>
+              <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
             </div>)}
             {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
             <div ref={agentMessagesEndRef} />
@@ -3659,7 +3698,7 @@ export default function CaseCenterPage({
             <Input.TextArea
               value={agentInput}
               autoSize={{ minRows: 2, maxRows: 5 }}
-              placeholder="询问案件文档、合同费用、期限、人员或任务"
+              placeholder={agentSkillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问案件文档、合同费用、期限、人员或任务"}
               disabled={!agentStatus?.ready || agentSending}
               onChange={(event) => setAgentInput(event.target.value)}
               onPressEnter={(event) => {
@@ -3669,7 +3708,7 @@ export default function CaseCenterPage({
                 }
               }}
             />
-            <Button type="primary" icon={<SendOutlined />} loading={agentSending} disabled={!agentStatus?.ready || !agentInput.trim()} title="发送" onClick={() => void sendCaseAgentMessage()} />
+            <Button type="primary" icon={<SendOutlined />} loading={agentSending} disabled={!agentStatus?.ready || (!agentInput.trim() && !agentScreenshots.length)} title="发送" onClick={() => void sendCaseAgentMessage()} />
           </div>
         </div>
       </Drawer>

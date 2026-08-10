@@ -24,9 +24,11 @@ class AgentSkillRegistryContractTest(unittest.TestCase):
         self.assertEqual(fallback, GENERAL_SKILL)
         self.assertEqual(untouched, "普通问题")
 
-    def test_unavailable_media_skills_explain_their_runtime_boundary(self):
+    def test_screenshot_skill_is_available_while_audio_skills_explain_their_boundary(self):
         catalog = {item["id"]: item for item in public_skill_catalog()}
-        for skill_id in ("screenshot-evidence", "speech-output", "meeting-transcription"):
+        self.assertTrue(catalog["screenshot-evidence"]["available"])
+        self.assertFalse(catalog["screenshot-evidence"]["unavailable_reason"])
+        for skill_id in ("speech-output", "meeting-transcription"):
             self.assertFalse(catalog[skill_id]["available"])
             self.assertTrue(catalog[skill_id]["unavailable_reason"])
 

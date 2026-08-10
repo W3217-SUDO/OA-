@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, List, message, Select, Space, Spin, Tag, Tooltip } from "antd";
-import { CloseOutlined, ReloadOutlined, RobotOutlined, SendOutlined } from "@ant-design/icons";
+import { CloseOutlined, ReloadOutlined, RobotOutlined, SendOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import "./agent-center.css";
 
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
-type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; created_at?: string };
+type AgentAttachment = { id: number; name: string; mime_type?: string };
+type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; created_at?: string; attachments?: AgentAttachment[] };
 type AgentAction = { id: string; type: string; summary: string; status: "pending" | "approved" | "rejected" };
 type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
@@ -23,7 +24,10 @@ export default function AgentCenterPage() {
   const [state, setState] = useState<AgentState | null>(null);
   const [input, setInput] = useState("");
   const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
+  const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
+  const [screenshotUploading, setScreenshotUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const screenshotInputRef = useRef<HTMLInputElement>(null);
 
   const loadCases = async (nextKeyword = keyword) => {
     setListLoading(true);
@@ -60,6 +64,7 @@ export default function AgentCenterPage() {
   };
   useEffect(() => { void loadCases(""); }, []);
   useEffect(() => {
+    setScreenshots([]);
     if (selected) void loadAgent(selected);
     else { setStatus(null); setState(null); }
   }, [selected?.id]);
@@ -67,17 +72,54 @@ export default function AgentCenterPage() {
 
   const send = async (preset?: string) => {
     if (!selected || sending) return;
-    const content = String(preset ?? input).trim();
+    const content = String(preset ?? input).trim() || (skillId === "screenshot-evidence" && screenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的问题");
+    if (skillId === "screenshot-evidence" && !screenshots.length) return message.warning("请先上传需要分析的截图");
     setSending(true);
     try {
-      const { data } = await api.post(`/case-spaces/${selected.id}/agent/messages`, { message: encodeAgentSkillMessage(skillId, content) });
+      const { data } = await api.post(`/case-spaces/${selected.id}/agent/messages`, {
+        message: encodeAgentSkillMessage(skillId, content),
+        attachment_ids: screenshots.map((item) => item.id),
+      });
       setState(data);
       setInput("");
+      setScreenshots([]);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "智能体响应失败");
     } finally {
       setSending(false);
+    }
+  };
+  const uploadScreenshot = async (file?: File) => {
+    if (!file || !selected) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      message.error("截图仅支持 PNG、JPG、JPEG 或 WebP");
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      message.error("单张截图不能超过 6MB");
+      return;
+    }
+    if (screenshots.length >= 4) {
+      message.warning("单次最多分析 4 张截图");
+      return;
+    }
+    const form = new FormData();
+    form.append("file", file);
+    form.append("record_id", String(selected.id));
+    form.append("category", "智能体截图证据");
+    form.append("remark", "由智能体中心上传，用于截图证据分析");
+    setScreenshotUploading(true);
+    try {
+      const { data } = await api.post("/attachments", form);
+      const attachment = data.attachment || data;
+      setScreenshots((current) => [...current, { id: Number(attachment.id), name: String(attachment.original_name || file.name), mime_type: file.type }]);
+      message.success("截图已加入当前案件空间");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "截图上传失败");
+    } finally {
+      setScreenshotUploading(false);
+      if (screenshotInputRef.current) screenshotInputRef.current.value = "";
     }
   };
   const decide = async (action: AgentAction, decision: "approved" | "rejected") => {
@@ -137,18 +179,24 @@ export default function AgentCenterPage() {
             />
             <small>{selectedSkill?.description || "选择技能后，LangGraph 会按对应办公流程处理本轮对话"}</small>
           </div>
+          {skillId === "screenshot-evidence" && <div className="agent-screenshot-bar">
+            <input ref={screenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadScreenshot(event.target.files?.[0])} />
+            <Button icon={<UploadOutlined />} loading={screenshotUploading} disabled={screenshots.length >= 4} onClick={() => screenshotInputRef.current?.click()}>上传截图</Button>
+            <div>{screenshots.map((item) => <Tag key={item.id} closable onClose={() => setScreenshots((current) => current.filter((entry) => entry.id !== item.id))}>{item.name}</Tag>)}</div>
+            <small>截图将保存到当前案件空间，单张不超过 6MB，单次最多 4 张。</small>
+          </div>}
           {pendingActions.length > 0 && <section className="agent-global-actions">
             <Alert type="info" showIcon title="待审批操作不会自动改写业务数据" />
             {pendingActions.map((action) => <div key={action.id}><span><strong>{action.summary}</strong><small>{action.type}</small></span><Space><Button size="small" type="primary" loading={decisionLoading === action.id} onClick={() => void decide(action, "approved")}>批准</Button><Button size="small" danger icon={<CloseOutlined />} onClick={() => void decide(action, "rejected")}>驳回</Button></Space></div>)}
           </section>}
           <div className="agent-global-messages">
             {!agentLoading && !state?.messages?.length && <div className="agent-global-empty"><RobotOutlined /><strong>开始分析当前业务空间</strong><span>回答会综合关联的客户、合同、案件、线索、调查和财务数据。</span></div>}
-            {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.content}</div></div>)}
+            {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.attachments?.length ? <div className="agent-message-attachments">{item.attachments.map((attachment) => <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div></div>)}
             {(agentLoading || sending) && <div className="agent-global-loading"><RobotOutlined /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
             <div ref={messagesEndRef} />
           </div>
           {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
-          <div className="agent-global-composer"><Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="询问当前空间的业务信息" disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || !input.trim()} onClick={() => void send()} /></div>
+          <div className="agent-global-composer"><Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问当前空间的业务信息"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} /></div>
         </>}
       </main>
     </div>

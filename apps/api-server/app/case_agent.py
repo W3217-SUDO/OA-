@@ -24,6 +24,7 @@ class CaseAgentState(TypedDict, total=False):
     last_operator: str
     updated_at: str
     active_skill: str
+    request_images: list[dict[str, Any]]
 
 
 def _now() -> str:
@@ -169,6 +170,7 @@ class CaseAgentRuntime:
         snapshot = state.get("case_snapshot") or {}
         pending_actions = list(state.get("pending_actions") or [])
         proposed_action = latest.get("proposed_action") or None
+        request_images = list(state.get("request_images") or [])
         if proposed_action:
             action = {
                 "id": uuid4().hex,
@@ -190,7 +192,7 @@ class CaseAgentRuntime:
             if not selected_skill.available:
                 response = f"“{selected_skill.name}”已接入技能目录，但暂不可执行：{selected_skill.unavailable_reason}。"
             else:
-                response = await self._request_model(snapshot, messages, selected_skill)
+                response = await self._request_model(snapshot, messages, selected_skill, request_images)
         else:
             response = _case_summary(snapshot)
         return {
@@ -200,13 +202,20 @@ class CaseAgentRuntime:
             "last_operator": latest.get("operator", ""),
             "updated_at": _now(),
             "active_skill": str(latest.get("skill_id") or GENERAL_SKILL.id),
+            "request_images": [],
         }
 
-    async def _request_model(self, snapshot: dict[str, Any], messages: list[dict[str, Any]], skill: AgentSkill = GENERAL_SKILL) -> str:
+    async def _request_model(
+        self,
+        snapshot: dict[str, Any],
+        messages: list[dict[str, Any]],
+        skill: AgentSkill = GENERAL_SKILL,
+        request_images: list[dict[str, Any]] | None = None,
+    ) -> str:
         context = json.dumps(snapshot, ensure_ascii=False, default=str)
         if len(context) > 80_000:
             context = context[:80_000] + "\n[案件空间内容过长，已截断]"
-        prompt_messages: list[dict[str, str]] = [
+        prompt_messages: list[dict[str, Any]] = [
             {
                 "role": "system",
                 "content": (
@@ -219,11 +228,20 @@ class CaseAgentRuntime:
                 ),
             }
         ]
-        for message in messages[-10:]:
+        recent_messages = messages[-10:]
+        for index, message in enumerate(recent_messages):
             role = str(message.get("role") or "").strip()
             content = str(message.get("content") or "").strip()
             if role in {"user", "assistant"} and content:
-                prompt_messages.append({"role": role, "content": content[:8_000]})
+                if role == "user" and index == len(recent_messages) - 1 and request_images:
+                    multimodal_content: list[dict[str, Any]] = [{"type": "text", "text": content[:8_000]}]
+                    multimodal_content.extend(
+                        {"type": "image_url", "image_url": {"url": image["data_url"]}}
+                        for image in request_images
+                    )
+                    prompt_messages.append({"role": role, "content": multimodal_content})
+                else:
+                    prompt_messages.append({"role": role, "content": content[:8_000]})
         try:
             async with httpx.AsyncClient(timeout=90) as client:
                 response = await client.post(
@@ -257,6 +275,7 @@ class CaseAgentRuntime:
         message: str,
         case_snapshot: dict[str, Any],
         proposed_action: dict[str, Any] | None = None,
+        images: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
@@ -269,12 +288,16 @@ class CaseAgentRuntime:
             "skill_name": skill.name,
             "operator": operator,
             "created_at": _now(),
+            "attachments": [
+                {"id": image.get("id", ""), "name": image.get("name", ""), "mime_type": image.get("mime_type", "")}
+                for image in (images or [])
+            ],
         }
         if proposed_action:
             user_message["proposed_action"] = proposed_action
         async with self._semaphore:
             result = await self.graph.ainvoke(
-                {"messages": [user_message], "case_snapshot": case_snapshot},
+                {"messages": [user_message], "case_snapshot": case_snapshot, "request_images": list(images or [])},
                 self.config(case_id),
             )
         return self._public_state(case_id, result)
