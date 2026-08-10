@@ -796,7 +796,7 @@ const supportTools = [
 ];
 
 type DashboardData = {
-  metrics: { label: string; value: string; tone: string }[];
+  metrics: { key: string; label: string; value: string; tone: string; route: string }[];
   todos: (string | number)[][];
   hearings: Record<string, string>[];
   latest_cases: Record<string, string>[];
@@ -1176,21 +1176,23 @@ function CivilDistribution({
 function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
   useEffect(() => {
-    api
-      .get("/dashboard")
-      .then((r) => setData(r.data))
-      .catch(() => message.error("看板加载失败"));
+    let active = true;
+    const loadDashboard = () => {
+      api
+        .get("/dashboard")
+        .then((r) => active && setData(r.data))
+        .catch(() => active && message.error("看板加载失败"));
+    };
+    const refreshOnFocus = () => loadDashboard();
+    loadDashboard();
+    const timer = window.setInterval(loadDashboard, 30_000);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
   }, []);
-  const metricRoutes = [
-    "finance-fee-query",
-    "finance-fee-query",
-    "evidence",
-    "case-company",
-    "case-company",
-    "case-execution",
-    "case-company",
-    "finance-fee-query",
-  ];
   const todoRoutes: Record<string, string> = {
     待处理任务: "task-my",
     待审批官方费用: "finance-payment-audit",
@@ -1283,11 +1285,11 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
           {data.metrics.map((m, i) => (
             <div
               className={`metric target-${i}`}
-              key={m.label}
+              key={m.key}
               role="button"
               tabIndex={0}
-              onClick={() => onNavigate(metricRoutes[i])}
-              onKeyDown={(event) => keyboardNavigate(event, metricRoutes[i])}
+              onClick={() => onNavigate(m.route)}
+              onKeyDown={(event) => keyboardNavigate(event, m.route)}
             >
               <div className="metric-icon">
                 {["◷", "✉", "♟", "⚖", "⚑", "▤", "☕", "¥"][i]}

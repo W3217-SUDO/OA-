@@ -5372,18 +5372,49 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
     def count(rows, statuses, owner_only=False, predicate=None):
         return sum(item.status in statuses and (not owner_only or item.owner == username) and (predicate is None or predicate(item.data or {})) for item in rows)
     def fee_match(word): return lambda data: word in str(data.get("fee_type") or data.get("expense_scope") or "")
-    official = lambda data: any(word in str(data.get("fee_type") or data.get("expense_scope") or "") for word in ("官方", "律所"))
+    official = lambda data: any(word in str(data.get("fee_type") or data.get("expense_scope") or "") for word in ("官方", "官费", "律所"))
     unpaid_official = [item for item in finances if official(item.data or {}) and item.status not in {"已付款", "已完成", "已驳回", "已拒绝"}]
-    unpaid_amount = sum(max(float((item.data or {}).get("amount") or 0) - float((item.data or {}).get("paid_amount") or 0), 0) for item in unpaid_official)
+    def amount(value: object) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    unpaid_amount = sum(max(amount((item.data or {}).get("amount")) - amount((item.data or {}).get("paid_amount")), 0) for item in unpaid_official)
+    pending_refunds = [
+        item for item in finances
+        if item.status not in {"已完成", "已付款", "已驳回", "已拒绝", "已作废"}
+        and (
+            item.module == "refund"
+            or amount((item.data or {}).get("refund_requested_amount")) > amount((item.data or {}).get("refunded_amount"))
+            or "退费" in str((item.data or {}).get("fee_type") or "")
+        )
+    ]
+    def case_signal(item: BusinessRecord, *words: str) -> bool:
+        data = item.data or {}
+        values = [
+            item.status, data.get("case_phase"), data.get("execution_status"),
+            data.get("required_action"), data.get("review_action"), data.get("supplement_type"),
+        ]
+        return any(word in str(value or "") for word in words for value in values)
+    supplement_evidence = [item for item in cases if case_signal(item, "补充证据")]
+    supplement_opinion = [item for item in cases if case_signal(item, "补充意见")]
+    pending_appeal = [item for item in cases if case_signal(item, "待上诉")]
+    pending_execution = [item for item in cases if case_signal(item, "一审待执行", "二审待执行", "待执行")]
+    urgent_cases = [
+        item for item in cases
+        if bool((item.data or {}).get("urgent"))
+        or str((item.data or {}).get("priority") or "") in {"紧急", "特急"}
+        or "紧急" in item.status
+    ]
     metrics = [
-        {"label": "待缴官费", "value": f"{len(unpaid_official)}件", "tone": "amber"},
-        {"label": "待退费", "value": f"{sum(item.status not in {'已完成','已驳回','已拒绝'} for item in by_module['refund'])}件", "tone": "cyan"},
-        {"label": "补充证据", "value": f"{sum('补充证据' in item.status for item in cases)}件", "tone": "green"},
-        {"label": "补充意见", "value": f"{sum('补充意见' in item.status for item in cases)}件", "tone": "blue"},
-        {"label": "待上诉", "value": f"{sum('待上诉' in item.status for item in cases)}件", "tone": "red"},
-        {"label": "待执行", "value": f"{sum('待执行' in item.status for item in cases)}件", "tone": "purple"},
-        {"label": "紧急案件", "value": f"{sum(bool((item.data or {}).get('urgent')) or '紧急' in item.status for item in cases)}件", "tone": "orange"},
-        {"label": "未到官费金额", "value": f"{unpaid_amount:.2f}元", "tone": "navy"},
+        {"key": "official-fee-unpaid", "label": "待缴官费", "value": f"{len(unpaid_official)}件", "tone": "amber", "route": "finance-fee-query"},
+        {"key": "refund-pending", "label": "待退费", "value": f"{len(pending_refunds)}件", "tone": "cyan", "route": "finance-refund"},
+        {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company"},
+        {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company"},
+        {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-company"},
+        {"key": "execution-pending", "label": "待执行", "value": f"{len(pending_execution)}件", "tone": "purple", "route": "case-company-execution"},
+        {"key": "urgent-cases", "label": "紧急案件", "value": f"{len(urgent_cases)}件", "tone": "orange", "route": "case-company"},
+        {"key": "official-fee-unreceived", "label": "未到官费金额", "value": f"{unpaid_amount:.2f}元", "tone": "navy", "route": "finance-fee-query"},
     ]
     todo_specs = [
         ("待处理任务", tasks, {"待接收", "待处理", "处理中"}, None, "待审批官方费用", finances, pending_statuses, official),
