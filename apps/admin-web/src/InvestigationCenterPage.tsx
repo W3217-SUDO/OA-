@@ -411,7 +411,8 @@ export default function InvestigationCenterPage({
       );
     if (
       initialTab === "investigation-task-sub-published" &&
-      profile.role !== "admin"
+      profile.role !== "admin" &&
+      Boolean(profile.username)
     ) {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
@@ -420,7 +421,8 @@ export default function InvestigationCenterPage({
     }
     if (
       initialTab === "investigation-task-sub-mine" &&
-      profile.role !== "admin"
+      profile.role !== "admin" &&
+      Boolean(profile.username)
     ) {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) => names.includes(row.owner));

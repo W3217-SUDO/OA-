@@ -107,4 +107,5 @@ test('investigation supervisor creates a child directly under the contract inves
 test('investigation records load in parallel with auxiliary dropdown options', () => {
   assert.match(source, /awaitPromise\.all\(\[load\(initial\),api\.get\('\/auth\/me'\)/)
   assert.match(source, /api\.get\('\/people\/options'\)/)
+  assert.match(source, /profile\.role!=='admin'&&Boolean\(profile\.username\)/)
 })
