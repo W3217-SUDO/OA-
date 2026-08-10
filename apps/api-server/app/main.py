@@ -3817,11 +3817,15 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     # case records and stable username projections; it does not widen financial,
     # archive or team-management authority.
     case_team = and_(BusinessRecord.module == "case", BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token))
+    published_investigation = and_(
+        BusinessRecord.module == "investigation",
+        BusinessRecord.data["publisher"].as_string() == user.username,
+    )
     if scope == "本部门数据":
-        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team)]
+        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation)]
     if scope == "授权审批数据":
-        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, and_(BusinessRecord.module.in_(["contract", "finance", "invoice", "refund", "seal", "clue", "notary"]), BusinessRecord.status.in_(["待审批", "审批中", "待审核"])))]
-    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team)]
+        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation, and_(BusinessRecord.module.in_(["contract", "finance", "invoice", "refund", "seal", "clue", "notary"]), BusinessRecord.status.in_(["待审批", "审批中", "待审核"])))]
+    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation)]
 
 
 async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:

@@ -406,7 +406,11 @@ export default function InvestigationCenterPage({
     }
     if (initialTab === "investigation-task-mine") {
       const names = [profile.username, profile.display_name].filter(Boolean);
-      result = result.filter((row) => names.includes(row.owner));
+      result = result.filter(
+        (row) =>
+          names.includes(row.owner) ||
+          names.includes(String(row.data.publisher || "")),
+      );
     }
     if (initialTab.startsWith("investigation-task-sub-"))
       result = result.filter((row) =>

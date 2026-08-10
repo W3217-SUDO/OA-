@@ -25,6 +25,10 @@ test('investigation task list does not offer a second parent-task creation entry
   assert.doesNotMatch(source, /investigation-task-mine'\]:\['查询','刷新','新建调查任务'/)
 })
 
+test('my investigation tasks include records published or owned by the current user', () => {
+  assert.match(source, /initialTab==='investigation-task-mine'[\s\S]*names\.includes\(row\.owner\)\|\|names\.includes\(String\(row\.data\.publisher\|\|''\)\)/)
+})
+
 test('unassigned investigation tasks are scoped to the configured supervisor', () => {
   assert.match(source, /assignment-supervisor/)
   assert.match(source, /initialTab==='investigation-task-unassigned'[\s\S]*assignmentSupervisor[\s\S]*row\.owner===supervisor/)
