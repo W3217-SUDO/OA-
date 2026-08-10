@@ -6,7 +6,7 @@ import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from ".
 import "./agent-center.css";
 
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
-type AgentAttachment = { id: number; name: string; mime_type?: string };
+type AgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
 type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; created_at?: string; attachments?: AgentAttachment[] };
 type AgentAction = { id: string; type: string; summary: string; status: "pending" | "approved" | "rejected" };
 type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
@@ -28,6 +28,28 @@ export default function AgentCenterPage() {
   const [screenshotUploading, setScreenshotUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
+  const screenshotPreviewUrlsRef = useRef(new Map<number, string>());
+
+  const stateWithScreenshotPreviews = (nextState: AgentState) => ({
+    ...nextState,
+    messages: (nextState.messages || []).map((item) => ({
+      ...item,
+      attachments: item.attachments?.map((attachment) => ({
+        ...attachment,
+        preview_url: screenshotPreviewUrlsRef.current.get(attachment.id),
+      })),
+    })),
+  });
+  const clearScreenshotPreviews = () => {
+    screenshotPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    screenshotPreviewUrlsRef.current.clear();
+  };
+  const removeScreenshot = (attachment: AgentAttachment) => {
+    const previewUrl = screenshotPreviewUrlsRef.current.get(attachment.id);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    screenshotPreviewUrlsRef.current.delete(attachment.id);
+    setScreenshots((current) => current.filter((entry) => entry.id !== attachment.id));
+  };
 
   const loadCases = async (nextKeyword = keyword) => {
     setListLoading(true);
@@ -64,10 +86,12 @@ export default function AgentCenterPage() {
   };
   useEffect(() => { void loadCases(""); }, []);
   useEffect(() => {
+    clearScreenshotPreviews();
     setScreenshots([]);
     if (selected) void loadAgent(selected);
     else { setStatus(null); setState(null); }
   }, [selected?.id]);
+  useEffect(() => () => clearScreenshotPreviews(), []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: "end" }); }, [state?.messages.length]);
 
   const send = async (preset?: string) => {
@@ -81,7 +105,7 @@ export default function AgentCenterPage() {
         message: encodeAgentSkillMessage(skillId, content),
         attachment_ids: screenshots.map((item) => item.id),
       });
-      setState(data);
+      setState(stateWithScreenshotPreviews(data));
       setInput("");
       setScreenshots([]);
     } catch (error: any) {
@@ -113,7 +137,10 @@ export default function AgentCenterPage() {
     try {
       const { data } = await api.post("/attachments", form);
       const attachment = data.attachment || data;
-      setScreenshots((current) => [...current, { id: Number(attachment.id), name: String(attachment.original_name || file.name), mime_type: file.type }]);
+      const id = Number(attachment.id);
+      const previewUrl = URL.createObjectURL(file);
+      screenshotPreviewUrlsRef.current.set(id, previewUrl);
+      setScreenshots((current) => [...current, { id, name: String(attachment.original_name || file.name), mime_type: file.type, preview_url: previewUrl }]);
       message.success("截图已加入当前案件空间");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "截图上传失败");
@@ -182,7 +209,6 @@ export default function AgentCenterPage() {
           {skillId === "screenshot-evidence" && <div className="agent-screenshot-bar">
             <input ref={screenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadScreenshot(event.target.files?.[0])} />
             <Button icon={<UploadOutlined />} loading={screenshotUploading} disabled={screenshots.length >= 4} onClick={() => screenshotInputRef.current?.click()}>上传截图</Button>
-            <div>{screenshots.map((item) => <Tag key={item.id} closable onClose={() => setScreenshots((current) => current.filter((entry) => entry.id !== item.id))}>{item.name}</Tag>)}</div>
             <small>截图将保存到当前案件空间，单张不超过 6MB，单次最多 4 张。</small>
           </div>}
           {pendingActions.length > 0 && <section className="agent-global-actions">
@@ -191,12 +217,15 @@ export default function AgentCenterPage() {
           </section>}
           <div className="agent-global-messages">
             {!agentLoading && !state?.messages?.length && <div className="agent-global-empty"><RobotOutlined /><strong>开始分析当前业务空间</strong><span>回答会综合关联的客户、合同、案件、线索、调查和财务数据。</span></div>}
-            {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.attachments?.length ? <div className="agent-message-attachments">{item.attachments.map((attachment) => <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div></div>)}
+            {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.attachments?.length ? <div className="agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><img src={attachment.preview_url} alt={attachment.name} /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div></div>)}
             {(agentLoading || sending) && <div className="agent-global-loading"><RobotOutlined /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
             <div ref={messagesEndRef} />
           </div>
           {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
-          <div className="agent-global-composer"><Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问当前空间的业务信息"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} /></div>
+          <div className="agent-global-composer">
+            {screenshots.length ? <div className="agent-composer-attachments" aria-label="待发送截图">{screenshots.map((item) => <div key={item.id}><img src={item.preview_url} alt={item.name} /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeScreenshot(item)} /></div>)}</div> : null}
+            <Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问当前空间的业务信息"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} />
+          </div>
         </>}
       </main>
     </div>

@@ -44,4 +44,8 @@ test('case drawer can upload and analyze screenshot evidence', () => {
   assert.match(source, /form\.append\("record_id", String\(agentCase\.id\)\)/);
   assert.match(source, /智能体截图证据/);
   assert.match(styles, /\.case-agent-screenshot-bar/);
+  assert.match(source, /preview_url: previewUrl/);
+  assert.match(source, /case-agent-composer-attachments/);
+  assert.match(source, /case-agent-message-attachments[\s\S]*?<img src=\{attachment\.preview_url\}/);
+  assert.match(styles, /\.case-agent-composer-attachments/);
 });

@@ -110,13 +110,14 @@ type CaseRow = {
   description: string;
   data: Record<string, any>;
 };
+type CaseAgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
 type CaseAgentMessage = {
   id?: string;
   role: "user" | "assistant";
   content: string;
   operator?: string;
   created_at?: string;
-  attachments?: Array<{ id: number; name: string; mime_type?: string }>;
+  attachments?: CaseAgentAttachment[];
 };
 type CaseAgentAction = {
   id: string;
@@ -548,10 +549,31 @@ export default function CaseCenterPage({
   const [agentDecisionLoading, setAgentDecisionLoading] = useState("");
   const [agentInput, setAgentInput] = useState("");
   const [agentSkillId, setAgentSkillId] = useState(DEFAULT_AGENT_SKILL);
-  const [agentScreenshots, setAgentScreenshots] = useState<Array<{ id: number; name: string; mime_type?: string }>>([]);
+  const [agentScreenshots, setAgentScreenshots] = useState<CaseAgentAttachment[]>([]);
   const [agentScreenshotUploading, setAgentScreenshotUploading] = useState(false);
   const agentMessagesEndRef = useRef<HTMLDivElement>(null);
   const agentScreenshotInputRef = useRef<HTMLInputElement>(null);
+  const agentScreenshotPreviewUrlsRef = useRef(new Map<number, string>());
+  const stateWithAgentScreenshotPreviews = (nextState: CaseAgentState) => ({
+    ...nextState,
+    messages: (nextState.messages || []).map((item) => ({
+      ...item,
+      attachments: item.attachments?.map((attachment) => ({
+        ...attachment,
+        preview_url: agentScreenshotPreviewUrlsRef.current.get(attachment.id),
+      })),
+    })),
+  });
+  const clearAgentScreenshotPreviews = () => {
+    agentScreenshotPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    agentScreenshotPreviewUrlsRef.current.clear();
+  };
+  const removeAgentScreenshot = (attachment: CaseAgentAttachment) => {
+    const previewUrl = agentScreenshotPreviewUrlsRef.current.get(attachment.id);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    agentScreenshotPreviewUrlsRef.current.delete(attachment.id);
+    setAgentScreenshots((current) => current.filter((entry) => entry.id !== attachment.id));
+  };
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
@@ -1399,6 +1421,7 @@ export default function CaseCenterPage({
     }
   };
   const openCaseAgent = (row: CaseRow) => {
+    clearAgentScreenshotPreviews();
     setAgentCase(row);
     setAgentOpen(true);
     setAgentInput("");
@@ -1416,7 +1439,7 @@ export default function CaseCenterPage({
         message: encodeAgentSkillMessage(agentSkillId, content),
         attachment_ids: agentScreenshots.map((item) => item.id),
       });
-      setAgentState(data);
+      setAgentState(stateWithAgentScreenshotPreviews(data));
       setAgentInput("");
       setAgentScreenshots([]);
     } catch (error: any) {
@@ -1439,7 +1462,10 @@ export default function CaseCenterPage({
     try {
       const { data } = await api.post("/attachments", form);
       const attachment = data.attachment || data;
-      setAgentScreenshots((current) => [...current, { id: Number(attachment.id), name: String(attachment.original_name || file.name), mime_type: file.type }]);
+      const id = Number(attachment.id);
+      const previewUrl = URL.createObjectURL(file);
+      agentScreenshotPreviewUrlsRef.current.set(id, previewUrl);
+      setAgentScreenshots((current) => [...current, { id, name: String(attachment.original_name || file.name), mime_type: file.type, preview_url: previewUrl }]);
       message.success("截图已加入当前案件空间");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "截图上传失败");
@@ -1468,6 +1494,7 @@ export default function CaseCenterPage({
     if (!agentOpen) return;
     agentMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [agentOpen, agentState?.messages.length]);
+  useEffect(() => () => clearAgentScreenshotPreviews(), []);
   const duplicateCase = async (row: CaseRow) => {
     const blocked = getCaseMutationBlockReason(row.status);
     if (blocked) return message.warning(blocked);
@@ -3661,7 +3688,7 @@ export default function CaseCenterPage({
           {agentSkillId === "screenshot-evidence" && <div className="case-agent-screenshot-bar">
             <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
             <Button icon={<UploadOutlined />} loading={agentScreenshotUploading} disabled={agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()}>上传截图</Button>
-            <div>{agentScreenshots.map((item) => <Tag key={item.id} closable onClose={() => setAgentScreenshots((current) => current.filter((entry) => entry.id !== item.id))}>{item.name}</Tag>)}</div>
+            <small>截图会显示在下方对话输入框内。</small>
           </div>}
           {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
           {agentState?.pending_actions?.length ? <section className="case-agent-actions">
@@ -3686,7 +3713,7 @@ export default function CaseCenterPage({
             </div>}
             {agentState?.messages?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
               <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
-              <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
+              <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><img src={attachment.preview_url} alt={attachment.name} /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
             </div>)}
             {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
             <div ref={agentMessagesEndRef} />
@@ -3695,6 +3722,7 @@ export default function CaseCenterPage({
             {["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"].map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
           </div>}
           <div className="case-agent-composer">
+            {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><img src={item.preview_url} alt={item.name} /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
             <Input.TextArea
               value={agentInput}
               autoSize={{ minRows: 2, maxRows: 5 }}
