@@ -14,7 +14,7 @@ test("global agent center is a first-level routed workspace", () => {
 });
 
 test("chat composer stays inside the visible application workspace", () => {
-  assert.match(styleSource, /\.agent-center-page\{[^}]*height:calc\(100dvh - 106px\)/);
+  assert.match(styleSource, /\.agent-center-page\{[^}]*height:calc\(100dvh - 154px\)/);
   assert.match(styleSource, /\.agent-center-page\{[^}]*overflow:hidden/);
   assert.match(styleSource, /\.agent-global-composer\{[^}]*grid-template-columns/);
   assert.doesNotMatch(styleSource, /@media\(max-width:850px\)\{\.agent-center-page\{height:auto/);
