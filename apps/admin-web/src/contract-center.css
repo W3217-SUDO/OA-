@@ -191,7 +191,7 @@
 
 @media (max-width: 720px) {
   .content:has(.contract-original-panel),
-  .content:has(.contract-create-page) { padding: 0 8px calc(76px + env(safe-area-inset-bottom)); }
+  .content:has(.contract-create-page) { padding: 0 8px 12px; }
   .contract-original-panel > .ant-card-body { padding: 8px 10px 12px; }
   .contract-query { grid-template-columns: minmax(0, 1fr); width: 100%; gap: 8px; }
   .contract-query .ant-form-item { width: 100%; }

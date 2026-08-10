@@ -421,7 +421,7 @@
 
 @media (max-width: 720px) {
   .content:has(.task-original-panel) {
-    padding: 0 8px calc(76px + env(safe-area-inset-bottom));
+    padding: 0 8px 12px;
   }
   .task-original-panel > .ant-card-head {
     min-height: 42px;
