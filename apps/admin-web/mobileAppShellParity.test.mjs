@@ -7,6 +7,8 @@ const styles = fs.readFileSync(new URL("./src/styles.css", import.meta.url), "ut
 const dashboardStyles = fs.readFileSync(new URL("./src/dashboard.css", import.meta.url), "utf8");
 const taskStyles = fs.readFileSync(new URL("./src/task-center.css", import.meta.url), "utf8");
 const taskPageSource = fs.readFileSync(new URL("./src/TaskCenterPage.tsx", import.meta.url), "utf8");
+const customerStyles = fs.readFileSync(new URL("./src/customer-center.css", import.meta.url), "utf8");
+const contractStyles = fs.readFileSync(new URL("./src/contract-center.css", import.meta.url), "utf8");
 
 test("mobile shell exposes app-style navigation and an overlay feature drawer", () => {
   assert.match(appSource, /mobile-bottom-nav/);
@@ -46,4 +48,12 @@ test("task center replaces its desktop grid and wide table on phones", () => {
   assert.match(taskPageSource, /className="task-mobile-list"/);
   assert.match(taskPageSource, /className="task-mobile-card-body"/);
   assert.match(taskPageSource, /className="task-mobile-filter-toggle"/);
+});
+
+test("core customer and contract forms shed desktop fixed widths on phones", () => {
+  assert.match(customerStyles, /\.customer-create-grid,[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(customerStyles, /grid-template-columns: 96px minmax\(0, 1fr\)/);
+  assert.match(contractStyles, /\.contract-query \{ grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(contractStyles, /\.contract-page-form \.ant-form-item-row \{ display: block/);
+  assert.match(styles, /\.finance-original-query-grid,[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/);
 });

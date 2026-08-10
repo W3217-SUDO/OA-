@@ -335,4 +335,36 @@
 
 @media (max-width: 640px) {
   .customer-view-fields-four, .customer-view-fields-five { grid-template-columns: minmax(0, 1fr); }
+  .content:has(.customer-create-page) { padding-inline: 8px; }
+  .customer-create-page > .ant-card-body { padding: 0 10px 12px; }
+  .customer-create-grid,
+  .customer-control-grid { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .customer-create-form section { min-width: 0; }
+  .customer-create-form section h3 { height: 34px; padding-inline: 10px; font-size: 14px; }
+  .customer-create-form .ant-form-item,
+  .customer-create-form .customer-person-multi-field,
+  .customer-create-form .customer-control-grid .customer-person-multi-field {
+    grid-column: auto;
+    width: 100%;
+    height: auto;
+    min-height: 48px;
+    padding: 4px 8px;
+    border-right: 0;
+  }
+  .customer-create-form .ant-form-item-row {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: center;
+  }
+  .customer-create-form .ant-form-item-label { flex-basis: auto; padding-right: 8px; text-align: left; }
+  .customer-create-form .ant-form-item-label > label { height: auto; font-size: 13px; }
+  .customer-create-form .ant-input,
+  .customer-create-form .ant-select,
+  .customer-create-form .ant-select-selector {
+    width: 100%;
+    min-height: 40px !important;
+    height: auto !important;
+    font-size: 14px;
+  }
+  .customer-create-tabs > .ant-tabs-nav { overflow-x: auto; }
 }

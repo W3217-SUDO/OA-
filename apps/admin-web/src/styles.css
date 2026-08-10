@@ -658,4 +658,70 @@ body {
   .form-grid .span-2 {
     grid-column: span 1;
   }
+  :is(
+    .customer-query,
+    .case-advanced-query,
+    .case-archive-query,
+    .case-special-query,
+    .investigation-query,
+    .finance-original-query-grid,
+    .finance-original-fee-query,
+    .receipt-filter-grid,
+    .platform-finance-query-grid,
+    .report-filter,
+    .seal-query,
+    .system-query,
+    .warehouse-query
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  :is(
+    .case-archive-query-actions,
+    .case-special-query-actions,
+    .finance-original-query-actions,
+    .receipt-query-actions,
+    .seal-query-actions
+  ) {
+    grid-column: auto !important;
+    padding-left: 0 !important;
+  }
+  .ant-table-wrapper {
+    border-radius: 6px;
+    background: #fff;
+    touch-action: pan-x pan-y;
+  }
+  .ant-table-content,
+  .ant-table-body {
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    min-height: 44px;
+    padding-block: 9px !important;
+  }
+  .ant-pagination .ant-pagination-options,
+  .ant-pagination .ant-pagination-total-text {
+    display: none;
+  }
+  .ant-tabs-nav-list {
+    min-width: max-content;
+  }
+  .ant-tabs-nav-wrap {
+    overflow-x: auto !important;
+    touch-action: pan-x;
+  }
+  .ant-modal-content,
+  .ant-drawer-content {
+    max-height: calc(100dvh - 24px);
+    overflow: hidden;
+  }
+  .ant-modal-body,
+  .ant-drawer-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
