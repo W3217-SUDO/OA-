@@ -26,7 +26,8 @@ test('investigation task list does not offer a second parent-task creation entry
 })
 
 test('my investigation tasks include records published or owned by the current user', () => {
-  assert.match(source, /initialTab==='investigation-task-mine'[\s\S]*names\.includes\(row\.owner\)\|\|names\.includes\(String\(row\.data\.publisher\|\|''\)\)/)
+  assert.match(source, /initialTab==='investigation-task-mine'\?'mine':'all'/)
+  assert.doesNotMatch(source, /initialTab==='investigation-task-mine'[\s\S]{0,240}result=result\.filter/)
 })
 
 test('unassigned investigation tasks are scoped to the configured supervisor', () => {

@@ -278,7 +278,14 @@ export default function InvestigationCenterPage({
       const { data } =
         initialTab === "notary-query-files"
           ? await api.get("/investigations/notaries/files")
-          : await api.get("/records", { params: { module, page_size: 100 } });
+          : await api.get("/records", {
+              params: {
+                module,
+                page_size: 100,
+                scope:
+                  initialTab === "investigation-task-mine" ? "mine" : "all",
+              },
+            });
       const loadedRows = data.items as Row[];
       setRows(loadedRows);
       setInvestigationActions({});
@@ -402,14 +409,6 @@ export default function InvestigationCenterPage({
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
         names.includes(String(row.data.publisher || row.owner || "")),
-      );
-    }
-    if (initialTab === "investigation-task-mine") {
-      const names = [profile.username, profile.display_name].filter(Boolean);
-      result = result.filter(
-        (row) =>
-          names.includes(row.owner) ||
-          names.includes(String(row.data.publisher || "")),
       );
     }
     if (initialTab.startsWith("investigation-task-sub-"))

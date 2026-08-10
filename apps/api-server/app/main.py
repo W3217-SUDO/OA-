@@ -6254,6 +6254,11 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
+    if module == "investigation" and scope == "mine":
+        conditions.append(or_(
+            BusinessRecord.owner == identity["username"],
+            BusinessRecord.data["publisher"].as_string() == identity["username"],
+        ))
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
         # them server-side so mine/dept/company/audit/recycle stay isolated.
