@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { Alert, Button, Empty, Input, List, message, Select, Space, Spin, Tag, Tooltip } from "antd";
 import { CloseOutlined, ReloadOutlined, RobotOutlined, SendOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "./api";
@@ -149,6 +149,16 @@ export default function AgentCenterPage() {
       if (screenshotInputRef.current) screenshotInputRef.current.value = "";
     }
   };
+  const pasteScreenshot = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const itemFile = Array.from(event.clipboardData.items)
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"))
+      ?.getAsFile();
+    const file = itemFile || Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    if (skillId !== "screenshot-evidence") setSkillId("screenshot-evidence");
+    void uploadScreenshot(file);
+  };
   const decide = async (action: AgentAction, decision: "approved" | "rejected") => {
     if (!selected || decisionLoading) return;
     setDecisionLoading(action.id);
@@ -224,7 +234,7 @@ export default function AgentCenterPage() {
           {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
           <div className="agent-global-composer">
             {screenshots.length ? <div className="agent-composer-attachments" aria-label="待发送截图">{screenshots.map((item) => <div key={item.id}><img src={item.preview_url} alt={item.name} /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeScreenshot(item)} /></div>)}</div> : null}
-            <Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "可直接粘贴截图，并补充需要核验的问题" : "询问当前空间的业务信息"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPaste={(event) => { if (skillId !== "screenshot-evidence") return; const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/")); if (file) { event.preventDefault(); void uploadScreenshot(file); } }} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} />
+            <Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "可直接粘贴截图，并补充需要核验的问题" : "询问当前空间的业务信息，可直接粘贴截图"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPaste={pasteScreenshot} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} />
           </div>
         </>}
       </main>

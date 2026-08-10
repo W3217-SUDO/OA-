@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import type { Key } from "react";
 import {
   Alert,
@@ -1473,6 +1473,16 @@ export default function CaseCenterPage({
       setAgentScreenshotUploading(false);
       if (agentScreenshotInputRef.current) agentScreenshotInputRef.current.value = "";
     }
+  };
+  const pasteCaseAgentScreenshot = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const itemFile = Array.from(event.clipboardData.items)
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"))
+      ?.getAsFile();
+    const file = itemFile || Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    if (agentSkillId !== "screenshot-evidence") setAgentSkillId("screenshot-evidence");
+    void uploadCaseAgentScreenshot(file);
   };
   const decideCaseAgentAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
     if (!agentCase || agentDecisionLoading) return;
@@ -3726,17 +3736,10 @@ export default function CaseCenterPage({
             <Input.TextArea
               value={agentInput}
               autoSize={{ minRows: 2, maxRows: 5 }}
-              placeholder={agentSkillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问案件文档、合同费用、期限、人员或任务"}
+              placeholder={agentSkillId === "screenshot-evidence" ? "可直接粘贴截图，并补充需要核验的问题" : "询问案件信息，也可直接粘贴截图"}
               disabled={!agentStatus?.ready || agentSending}
               onChange={(event) => setAgentInput(event.target.value)}
-              onPaste={(event) => {
-                if (agentSkillId !== "screenshot-evidence") return;
-                const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
-                if (file) {
-                  event.preventDefault();
-                  void uploadCaseAgentScreenshot(file);
-                }
-              }}
+              onPaste={pasteCaseAgentScreenshot}
               onPressEnter={(event) => {
                 if (!event.shiftKey) {
                   event.preventDefault();
