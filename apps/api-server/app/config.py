@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     dingtalk_app_key: str = ""
     dingtalk_app_secret: str = ""
     dingtalk_app_url: str = ""
+    # Comma-separated OA display names allowed to bind and use DingTalk SSO.
+    # Empty keeps the integration unrestricted for local development.
+    dingtalk_allowed_display_names: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -4128,6 +4128,19 @@ async def dingtalk_login_config():
     }
 
 
+def _dingtalk_allowed_display_names() -> set[str]:
+    raw = str(settings.dingtalk_allowed_display_names or "")
+    for separator in ("，", ";", "；", "\n"):
+        raw = raw.replace(separator, ",")
+    return {name.strip() for name in raw.split(",") if name.strip()}
+
+
+def _require_dingtalk_access(user: User) -> None:
+    allowed_names = _dingtalk_allowed_display_names()
+    if allowed_names and str(user.display_name or "").strip() not in allowed_names:
+        raise HTTPException(status_code=403, detail="当前员工未开通钉钉登录，请联系管理员")
+
+
 @app.post(f"{settings.api_prefix}/auth/dingtalk/login")
 async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(get_db)):
     if not dingtalk_client.configured:
@@ -4146,6 +4159,7 @@ async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(ge
     if len(matched) != 1:
         raise HTTPException(status_code=403, detail="钉钉账号尚未绑定系统员工，请联系管理员在员工账号中绑定")
     user = matched[0]
+    _require_dingtalk_access(user)
     user.last_login_at = datetime.now()
     await db.commit()
     return await _login_response(user, db, require_password_change=False)
@@ -4162,8 +4176,9 @@ async def bind_dingtalk_login(body: DingTalkBindInput, db: AsyncSession = Depend
     user = await db.scalar(select(User).where(User.username == body.username.strip().lower(), User.is_active.is_(True)))
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="OA 账号或密码错误")
+    _require_dingtalk_access(user)
     profile = {**(user.profile or {}), "dingtalk_user_id": ding_user["user_id"]}
-    await _ensure_unique_dingtalk_user_id(profile, db, user.id)
+    await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
     user.profile = profile
     user.last_login_at = datetime.now()
     await db.commit()
@@ -4243,6 +4258,7 @@ async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, id
         raise HTTPException(status_code=404, detail="系统用户不存在")
     ding_user_id = body.user_id.strip()
     if ding_user_id:
+        _require_dingtalk_access(user)
         users = (await db.scalars(select(User).where(User.id != user_id))).all()
         if any(str((item.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for item in users):
             raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
@@ -4268,10 +4284,13 @@ async def list_active_people_options(identity: dict = Depends(current_identity),
     return {"items": items}
 
 
-async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None) -> None:
+async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None, display_name: str = "") -> None:
     ding_user_id = str(profile.get("dingtalk_user_id") or "").strip()
     if not ding_user_id:
         return
+    allowed_names = _dingtalk_allowed_display_names()
+    if allowed_names and str(display_name or "").strip() not in allowed_names:
+        raise HTTPException(status_code=403, detail="当前员工未开通钉钉登录，请联系管理员")
     users = (await db.scalars(select(User))).all()
     if any(user.id != exclude_user_id and str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for user in users):
         raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
@@ -4287,7 +4306,7 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
     policy = await _security_policy(db)
     if len(body.password) < policy.min_password_length: raise HTTPException(status_code=422, detail=f"密码至少需要 {policy.min_password_length} 位")
     profile = {**body.profile, "access_level": body.access_level.strip(), "lead_rate": body.lead_rate.strip(), "copy_rate": body.copy_rate.strip(), **(await _system_user_manager_profile(body.manager_id, db))}
-    await _ensure_unique_dingtalk_user_id(profile, db)
+    await _ensure_unique_dingtalk_user_id(profile, db, display_name=body.display_name)
     user = User(
         username=username,
         display_name=body.display_name.strip(),
@@ -4439,7 +4458,7 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
             profile[key] = (value or "").strip()
     if body.profile is not None:
         profile = {**profile, **body.profile}
-    await _ensure_unique_dingtalk_user_id(profile, db, user.id)
+    await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
     user.profile = profile
     await db.commit(); await db.refresh(user)
     return _system_user_dict(user)

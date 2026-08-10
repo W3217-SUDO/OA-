@@ -23,6 +23,7 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
             db.add(SecurityPolicy(id=1, token_minutes=720, updated_by="test"))
             db.add(RolePermission(role="user", display_name="普通用户", data_scope="本人及共享数据", menu_keys=[], field_keys=[]))
             db.add(User(username="staff", display_name="测试员工", department="调查部", role="user", role_ids=["user"], password_hash=hash_password("StaffPass2026!"), profile={"mobile": "13800000000"}, is_active=True))
+            db.add(User(username="outsider", display_name="未授权员工", department="调查部", role="user", role_ids=["user"], password_hash=hash_password("StaffPass2026!"), profile={"mobile": "13900000000"}, is_active=True))
             await db.commit()
 
         async def override_db():
@@ -31,12 +32,13 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
 
         app.dependency_overrides[get_db] = override_db
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://dingtalk.test")
-        self.old_config = (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url)
+        self.old_config = (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url, settings.dingtalk_allowed_display_names)
         settings.dingtalk_corp_id = "ding-corp"
         settings.dingtalk_agent_id = "123"
         settings.dingtalk_app_key = "app-key"
         settings.dingtalk_app_secret = "app-secret"
         settings.dingtalk_app_url = "https://oa.example.com/"
+        settings.dingtalk_allowed_display_names = "测试员工"
         self.old_user_lookup = dingtalk_client.user_by_auth_code
         self.old_sender = dingtalk_client.send_work_notification
 
@@ -48,7 +50,7 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         dingtalk_client.user_by_auth_code = self.old_user_lookup
         dingtalk_client.send_work_notification = self.old_sender
-        (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url) = self.old_config
+        (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url, settings.dingtalk_allowed_display_names) = self.old_config
         app.dependency_overrides.clear()
         await self.client.aclose()
         await self.engine.dispose()
@@ -62,6 +64,19 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(user.profile["dingtalk_user_id"], "ding-user-1")
         sso = await self.client.post("/api/v1/auth/dingtalk/login", json={"auth_code": "next-code"})
         self.assertEqual(sso.status_code, 200, sso.text)
+
+    async def test_user_outside_allowlist_cannot_bind_or_use_existing_binding(self):
+        denied_bind = await self.client.post("/api/v1/auth/dingtalk/bind", json={"auth_code": "one-time-code", "username": "outsider", "password": "StaffPass2026!"})
+        self.assertEqual(denied_bind.status_code, 403, denied_bind.text)
+        self.assertIn("未开通钉钉登录", denied_bind.json()["detail"])
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == "outsider"))
+            self.assertNotIn("dingtalk_user_id", user.profile)
+            user.profile = {**user.profile, "dingtalk_user_id": "ding-user-1"}
+            await db.commit()
+        denied_sso = await self.client.post("/api/v1/auth/dingtalk/login", json={"auth_code": "next-code"})
+        self.assertEqual(denied_sso.status_code, 403, denied_sso.text)
+        self.assertIn("未开通钉钉登录", denied_sso.json()["detail"])
 
     async def test_pending_notification_is_sent_to_bound_dingtalk_user(self):
         sent = []
