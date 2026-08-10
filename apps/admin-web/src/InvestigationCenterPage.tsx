@@ -282,8 +282,7 @@ export default function InvestigationCenterPage({
               params: {
                 module,
                 page_size: 100,
-                scope:
-                  initialTab === "investigation-task-mine" ? "mine" : "all",
+                scope: "all",
               },
             });
       const loadedRows = data.items as Row[];

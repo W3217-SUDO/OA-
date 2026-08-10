@@ -26,7 +26,7 @@ test('investigation task list does not offer a second parent-task creation entry
 })
 
 test('my investigation tasks include records published or owned by the current user', () => {
-  assert.match(source, /initialTab==='investigation-task-mine'\?'mine':'all'/)
+  assert.match(source, /module,page_size:100,scope:'all'/)
   assert.doesNotMatch(source, /initialTab==='investigation-task-mine'[\s\S]{0,240}result=result\.filter/)
 })
 
