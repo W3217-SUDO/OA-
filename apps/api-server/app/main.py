@@ -29,6 +29,7 @@ from sqlalchemy import String, and_, delete, false, func, inspect, or_, select, 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .case_agent import CaseAgentRuntime
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .dingtalk import DingTalkError, dingtalk_client
@@ -37,6 +38,15 @@ from .security import create_token, current_identity, hash_password, user_role_i
 
 
 logger = logging.getLogger(__name__)
+
+case_agent_runtime = CaseAgentRuntime(
+    enabled=settings.langgraph_enabled,
+    database_url=settings.database_url,
+    checkpoint_url=settings.langgraph_checkpoint_url,
+    model_provider=settings.langgraph_model_provider,
+    model=settings.langgraph_model,
+    max_concurrency=settings.langgraph_max_concurrency,
+)
 
 PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"
 PERSON_NAME_NON_PERSON_MARKERS = (
@@ -820,6 +830,7 @@ async def lifespan(_: FastAPI):
             if not await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)):
                 db.add(ContractApprovalStep(contract_record_id=contract.id, step_order=1, approver="admin", status="待审批", comment="历史合同补充默认审批节点"))
         await db.commit()
+    await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
     dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
     try:
@@ -831,6 +842,7 @@ async def lifespan(_: FastAPI):
             await rule_task
         with suppress(asyncio.CancelledError):
             await dingtalk_task
+        await case_agent_runtime.stop()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
@@ -852,6 +864,22 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 class DifyRequest(BaseModel):
     query: str
     conversation_id: str | None = None
+
+
+class CaseAgentProposedAction(BaseModel):
+    type: str = Field(default="case.update", min_length=2, max_length=100)
+    summary: str = Field(min_length=2, max_length=500)
+    payload: dict = Field(default_factory=dict)
+
+
+class CaseAgentMessageInput(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    proposed_action: CaseAgentProposedAction | None = None
+
+
+class CaseAgentDecisionInput(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+    comment: str = Field(default="", max_length=1000)
 
 
 class AgentDocumentInput(BaseModel):
@@ -17251,8 +17279,85 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         "documents": document_payload,
         "tasks": [await _task_display_dict(item, db) for item in tasks],
         "capabilities": await _case_detail_action_capabilities(case_record, identity, db),
-        "agent": {"enabled": False, "thread_namespace": f"case:{case_record.id}", "write_requires_approval": True},
+        "agent": {
+            **case_agent_runtime.status(),
+            "thread_namespace": f"case:{case_record.id}",
+        },
     }
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/status")
+async def case_agent_status(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _ensure_record_module(case_id, "case", identity, db)
+    return {
+        "case_id": case_id,
+        "thread_id": f"case:{case_id}",
+        **case_agent_runtime.status(),
+    }
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/state")
+async def case_agent_state(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _ensure_record_module(case_id, "case", identity, db)
+    if not case_agent_runtime.status()["ready"]:
+        raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
+    try:
+        return await case_agent_runtime.get_state(case_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="案件智能体状态读取失败") from exc
+
+
+@app.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/messages")
+async def send_case_agent_message(
+    case_id: int,
+    body: CaseAgentMessageInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    context = await get_case_space_context(case_id, identity, db)
+    if not case_agent_runtime.status()["ready"]:
+        raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
+    proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
+    if proposed_action and not context["capabilities"].get("can_write"):
+        raise HTTPException(status_code=403, detail="当前账号无权为该案件发起写操作")
+    try:
+        return await case_agent_runtime.invoke(
+            case_id=case_id,
+            operator=identity["username"],
+            message=body.message,
+            case_snapshot=context,
+            proposed_action=proposed_action,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="案件智能体调用失败") from exc
+
+
+@app.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/actions/{{action_id}}/decision")
+async def decide_case_agent_action(
+    case_id: int,
+    action_id: str,
+    body: CaseAgentDecisionInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    if not capabilities.get("can_write"):
+        raise HTTPException(status_code=403, detail="当前账号无权审批该案件的智能体操作")
+    try:
+        return await case_agent_runtime.decide_action(
+            case_id=case_id,
+            action_id=action_id,
+            decision=body.decision,
+            operator=identity["username"],
+            comment=body.comment,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="待审批操作不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="该操作已经完成审批") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="案件智能体尚未就绪") from exc
 
 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")

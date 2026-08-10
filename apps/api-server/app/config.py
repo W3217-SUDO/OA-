@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin123"
     dify_base_url: str = ""
     dify_api_key: str = ""
+    langgraph_enabled: bool = False
+    langgraph_checkpoint_url: str = ""
+    langgraph_model_provider: str = ""
+    langgraph_model: str = ""
+    langgraph_max_concurrency: int = 4
     sms_webhook_url: str = ""
     sms_webhook_token: str = ""
     dingtalk_corp_id: str = ""
