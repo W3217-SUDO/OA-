@@ -6256,8 +6256,8 @@ async def list_records(
         conditions.append(BusinessRecord.status == record_status)
     if module == "investigation" and scope == "mine":
         conditions.append(or_(
-            BusinessRecord.owner == identity["username"],
-            BusinessRecord.data["publisher"].as_string() == identity["username"],
+            func.lower(BusinessRecord.owner) == identity["username"].lower(),
+            func.lower(BusinessRecord.data["publisher"].as_string()) == identity["username"].lower(),
         ))
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
