@@ -4,12 +4,19 @@ import test from "node:test";
 
 const appSource = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("./src/AgentCenterPage.tsx", import.meta.url), "utf8");
+const styleSource = readFileSync(new URL("./src/agent-center.css", import.meta.url), "utf8");
 
 test("global agent center is a first-level routed workspace", () => {
   assert.match(appSource, /lazyWithVersionRecovery\("agent-center"/);
   assert.match(appSource, /key:\s*"agent-center"[\s\S]*?label:\s*"智能体中心"/);
   assert.match(appSource, /route === "agent-center"[\s\S]*?<AgentCenterPage/);
   assert.match(appSource, /name === "robot"[\s\S]*?<RobotOutlined/);
+});
+
+test("chat composer stays inside the visible application workspace", () => {
+  assert.match(styleSource, /\.agent-center-page\{[^}]*height:calc\(100dvh - 106px\)/);
+  assert.match(styleSource, /\.agent-center-page\{[^}]*overflow:hidden/);
+  assert.match(styleSource, /\.agent-global-composer\{[^}]*grid-template-columns/);
 });
 
 test("agent center resumes authorized case spaces and all linked business areas", () => {
