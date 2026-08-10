@@ -1754,6 +1754,7 @@ export default function App() {
           {collapsed ? "S" : "Sunhold"}
         </div>
         <Button
+          className="sidebar-toggle"
           type="text"
           aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
           title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
@@ -1766,6 +1767,9 @@ export default function App() {
             setCollapsed((v) => !v);
           }}
         />
+        <div className="mobile-top-title" aria-live="polite">
+          {currentPageLabel}
+        </div>
         <div className="global-search">
           <GlobalSearch
             onNavigate={navigate}
@@ -1887,6 +1891,17 @@ export default function App() {
             </Button>
           </Dropdown>
         </Space>
+        <Space className="mobile-top-actions">
+          <NotificationCenter onNavigate={navigate} />
+          <Badge count={taskUnreadCount} size="small" overflowCount={99}>
+            <Button
+              type="text"
+              aria-label="任务消息"
+              icon={<MessageOutlined />}
+              onClick={() => navigate("task-reminders")}
+            />
+          </Badge>
+        </Space>
       </Header>
       <Layout className="app-body">
         <Sider
@@ -1943,9 +1958,11 @@ export default function App() {
               if (!item || item.disabled) return;
               if (item.link_url) {
                 openLegacyMenuItem(item);
+                if (isNarrowViewport) setMobileSidebarOpen(false);
                 return;
               }
               navigate(key);
+              if (isNarrowViewport) setMobileSidebarOpen(false);
             }}
           />
           {(isNarrowViewport ? mobileSidebarOpen : !collapsed) && (
@@ -1965,6 +1982,14 @@ export default function App() {
             </div>
           )}
         </Sider>
+        {isNarrowViewport && mobileSidebarOpen && (
+          <button
+            type="button"
+            className="mobile-sidebar-mask"
+            aria-label="关闭功能菜单"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
         <Content
           className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") ? "case-detail-content" : ""}`}
           onClick={() => {
@@ -2024,6 +2049,52 @@ export default function App() {
           </PageLoadBoundary>
         </Content>
       </Layout>
+      <nav className="mobile-bottom-nav" aria-label="移动端主导航">
+        <button
+          type="button"
+          className={active === "dashboard" ? "active" : ""}
+          aria-current={active === "dashboard" ? "page" : undefined}
+          onClick={() => navigate("dashboard")}
+        >
+          <HomeOutlined />
+          <span>首页</span>
+        </button>
+        <button
+          type="button"
+          className={mobileSidebarOpen ? "active" : ""}
+          aria-expanded={mobileSidebarOpen}
+          onClick={() => setMobileSidebarOpen((open) => !open)}
+        >
+          <MenuOutlined />
+          <span>功能</span>
+        </button>
+        <button
+          type="button"
+          className={active.startsWith("task-") ? "active" : ""}
+          onClick={() => navigate("task-my")}
+        >
+          <Badge count={taskUnreadCount} size="small" overflowCount={99}>
+            <UnorderedListOutlined />
+          </Badge>
+          <span>待办</span>
+        </button>
+        <button
+          type="button"
+          className={active === "task-reminders" ? "active" : ""}
+          onClick={() => navigate("task-reminders")}
+        >
+          <MessageOutlined />
+          <span>消息</span>
+        </button>
+        <button
+          type="button"
+          className={active === accountProfileRoute ? "active" : ""}
+          onClick={() => navigate(accountProfileRoute)}
+        >
+          <UserOutlined />
+          <span>我的</span>
+        </button>
+      </nav>
     </Layout>
   );
 }
