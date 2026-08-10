@@ -346,39 +346,29 @@ export default function InvestigationCenterPage({
       setCreateModule(initial);
       setListQuery({});
       setSelectedClues([]);
-      try {
-        const { data } = await api.get("/auth/me");
-        setProfile(data);
-      } catch {
-        message.error("当前登录身份加载失败，已按普通用户范围显示");
-      }
-      try {
-        const { data } = await api.get("/investigations/assignment-supervisor");
-        setAssignmentSupervisor(String(data.username || ""));
-      } catch {
-        setAssignmentSupervisor("");
-      }
-      try {
-        const { data } = await api.get("/system/parameters/options", {
+      await Promise.all([
+        load(initial),
+        api.get("/auth/me").then(({ data }) => setProfile(data)).catch(() =>
+          message.error("当前登录身份加载失败，已按普通用户范围显示"),
+        ),
+        api.get("/investigations/assignment-supervisor")
+          .then(({ data }) => setAssignmentSupervisor(String(data.username || "")))
+          .catch(() => setAssignmentSupervisor("")),
+        api.get("/system/parameters/options", {
           params: { category: "notary_office" },
-        });
-        setNotaryOfficeOptions(
-          (data.items || [])
-            .map((item: { name?: string }) => ({
-              value: String(item.name || "").trim(),
-            }))
-            .filter((item: { value: string }) => item.value),
-        );
-      } catch {
-        setNotaryOfficeOptions([]);
-      }
-      try {
-        const { data } = await api.get("/people/options");
-        setCasePeopleOptions(data.items || []);
-      } catch {
-        setCasePeopleOptions([]);
-      }
-      await load(initial);
+        }).then(({ data }) =>
+          setNotaryOfficeOptions(
+            (data.items || [])
+              .map((item: { name?: string }) => ({
+                value: String(item.name || "").trim(),
+              }))
+              .filter((item: { value: string }) => item.value),
+          ),
+        ).catch(() => setNotaryOfficeOptions([])),
+        api.get("/people/options")
+          .then(({ data }) => setCasePeopleOptions(data.items || []))
+          .catch(() => setCasePeopleOptions([])),
+      ]);
     };
     void bootstrap();
   }, [initialTab]);

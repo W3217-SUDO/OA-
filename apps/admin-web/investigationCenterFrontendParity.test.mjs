@@ -103,3 +103,8 @@ test('investigation supervisor creates a child directly under the contract inves
   assert.match(source, /r\.data\.started_at\|\|r\.data\.authorized_from/)
   assert.match(source, /r\.data\.ended_at\|\|r\.data\.authorized_to\|\|r\.data\.deadline/)
 })
+
+test('investigation records load in parallel with auxiliary dropdown options', () => {
+  assert.match(source, /awaitPromise\.all\(\[load\(initial\),api\.get\('\/auth\/me'\)/)
+  assert.match(source, /api\.get\('\/people\/options'\)/)
+})
