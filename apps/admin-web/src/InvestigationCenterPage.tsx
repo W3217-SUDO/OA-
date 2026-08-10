@@ -91,6 +91,7 @@ type TaskRow = {
   priority: string;
   parent_task_id?: number;
   parent_task_no?: string;
+  investigation_no?: string;
 };
 type Profile = {
   username: string;
@@ -1220,18 +1221,14 @@ export default function InvestigationCenterPage({
         api.get("/records", { params: { module: "contract", page_size: 100 } }),
       ]);
       const existingTasks = data.items as TaskRow[];
-      const hasParent = existingTasks.length > 0;
       setTaskTarget(row);
       setTasks(existingTasks);
       setCreatingSubtask(createSubtask);
       taskForm.resetFields();
       taskForm.setFieldsValue({
-        owner: row.owner,
         priority: "普通",
         contract_record_id:
           row.data.contract_id || row.data.contract_record_id || undefined,
-        parent_task_id:
-          createSubtask && hasParent ? existingTasks[0].id : undefined,
       });
       setContractOptions(
         contractData.items.filter(
@@ -1252,12 +1249,11 @@ export default function InvestigationCenterPage({
         ...v,
         deadline: formatRequiredDate(v.deadline, "截止日期"),
       });
-      message.success(v.parent_task_id ? "子任务已创建" : "调查任务已创建");
+      message.success("子任务已创建");
       const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
       setTasks(data.items);
       taskForm.resetFields();
       taskForm.setFieldsValue({
-        owner: taskTarget.owner,
         priority: "普通",
         contract_record_id:
           taskTarget.data.contract_id || taskTarget.data.contract_record_id || undefined,
@@ -1269,7 +1265,6 @@ export default function InvestigationCenterPage({
           title: "任务名称",
           owner: "负责人",
           deadline: "截止日期",
-          parent_task_id: "父任务",
         };
         taskForm.scrollToField(error.errorFields[0].name);
         message.warning(`请填写${labels[name] || "必填信息"}后再创建任务`);
@@ -1572,12 +1567,14 @@ export default function InvestigationCenterPage({
         {
           title: "开始时间",
           width: 110,
-          render: (_: unknown, r: Row) => r.data.started_at || "—",
+          render: (_: unknown, r: Row) =>
+            r.data.started_at || r.data.authorized_from || "—",
         },
         {
           title: "结束时间",
           width: 110,
-          render: (_: unknown, r: Row) => r.data.ended_at || "—",
+          render: (_: unknown, r: Row) =>
+            r.data.ended_at || r.data.authorized_to || r.data.deadline || "—",
         },
         {
           title: "案源人",
@@ -3896,10 +3893,11 @@ export default function InvestigationCenterPage({
               ellipsis: { showTitle: true },
             },
             {
-              title: "父任务",
+              title: "父调查任务",
               dataIndex: "parent_task_no",
               width: 150,
-              render: (v: string) => v || "—",
+              render: (v: string, row: TaskRow) =>
+                v || row.investigation_no || taskTarget?.serial_no || "—",
             },
             {
               title: "负责人",
@@ -3985,29 +3983,12 @@ export default function InvestigationCenterPage({
                   }))}
                 />
               </Form.Item>
-              <Form.Item
-                label={creatingSubtask ? "父任务" : "父任务（留空为主任务）"}
-                name="parent_task_id"
-                rules={
-                  creatingSubtask && tasks.length > 0
-                    ? [{ required: true, message: "请选择父任务" }]
-                    : []
-                }
-              >
-                <Select
-                  allowClear={!creatingSubtask || tasks.length === 0}
-                  options={tasks.map((x) => ({
-                    value: x.id,
-                    label: `${x.serial_no}｜${x.title}`,
-                  }))}
-                />
-              </Form.Item>
             </div>
             <Form.Item label="任务说明" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
             <Button type="primary" onClick={createTask}>
-              {creatingSubtask ? "创建子任务" : "创建调查任务"}
+              创建子任务
             </Button>
           </Form>
         </Card>

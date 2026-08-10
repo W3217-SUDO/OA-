@@ -94,3 +94,12 @@ test('case creation selects handling lawyers and assistants from active system p
   assert.match(source, /label='经办律师'[^]*<SelectshowSearchoptionFilterProp='label'options=\{casePeopleOptions\}/)
   assert.match(source, /label='律师助理'[^]*<SelectallowClearshowSearchoptionFilterProp='label'options=\{casePeopleOptions\}/)
 })
+
+test('investigation supervisor creates a child directly under the contract investigation', () => {
+  assert.doesNotMatch(source, /name='parent_task_id'/)
+  assert.match(source, /taskForm\.setFieldsValue\(\{priority:'普通'/)
+  assert.match(source, /title:'父调查任务'/)
+  assert.match(source, /row\.investigation_no\|\|taskTarget\?\.serial_no/)
+  assert.match(source, /r\.data\.started_at\|\|r\.data\.authorized_from/)
+  assert.match(source, /r\.data\.ended_at\|\|r\.data\.authorized_to\|\|r\.data\.deadline/)
+})

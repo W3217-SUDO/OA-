@@ -2949,6 +2949,18 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
     if record.module not in {"contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
     data = result["data"]
+    if record.module == "task" and data.get("investigation_record_id"):
+        try:
+            investigation_id = int(data.get("investigation_record_id") or 0)
+        except (TypeError, ValueError):
+            investigation_id = 0
+        investigation = await db.get(BusinessRecord, investigation_id) if investigation_id else None
+        if investigation and investigation.module == "investigation":
+            investigation_data = investigation.data or {}
+            for key in ("right_type", "region", "authorized_from", "authorized_to", "source_owner", "assigner", "assigned_by"):
+                if not data.get(key) and investigation_data.get(key):
+                    data[key] = investigation_data[key]
+            data.setdefault("investigation_no", investigation.serial_no)
     usernames = [record.owner]
     for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer", "investigator", "source_owner", "assigner", "assigned_by"):
         usernames.extend(_contract_person_values(data.get(key)))
@@ -9403,6 +9415,12 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
         "investigation_module": source.module,
         "customer_review": bool(source_data.get("customer_review")),
+        "right_type": str(source_data.get("right_type") or ""),
+        "region": str(source_data.get("region") or source_data.get("address") or ""),
+        "authorized_from": str(source_data.get("authorized_from") or ""),
+        "authorized_to": str(source_data.get("authorized_to") or ""),
+        "source_owner": str(source_data.get("source_owner") or ""),
+        "assigner": str(source_data.get("assigner") or source_data.get("assigned_by") or identity["username"]),
         "parent_task_id": parent.id if parent else None,
         "parent_task_no": parent.serial_no if parent else "",
     }

@@ -14,6 +14,7 @@ from app.main import (
     batch_create_cases_from_clues,
     bind_clue_source_contract,
     register_clue_collection,
+    _contract_customer_record_dict,
 )
 from app.models import BusinessRecord
 
@@ -148,6 +149,32 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.data["contract_id"], contract.id)
         self.assertEqual(clue.customer, "CODEX正确客户")
         self.assertEqual(clue.data["contract_no"], "HT-CODEX-87-REPAIR")
+
+    async def test_investigation_child_inherits_parent_schedule_region_and_source(self):
+        async with self.sessions() as db:
+            investigation = BusinessRecord(
+                module="investigation", serial_no="DC-CODEX-PARENT", title="合同调查项目",
+                customer="CODEX客户", status="进行中", owner="fwl", department="上海",
+                data={
+                    "right_type": "商标", "region": "全国", "authorized_from": "2026-08-10",
+                    "authorized_to": "2026-09-09", "source_owner": "admin", "assigner": "admin",
+                },
+            )
+            db.add(investigation)
+            await db.flush()
+            task = BusinessRecord(
+                module="task", serial_no="RW-CODEX-CHILD", title="调查子任务",
+                customer="CODEX客户", status="待接收", owner="fwl", department="上海",
+                data={"investigation_record_id": investigation.id, "investigation_no": investigation.serial_no},
+            )
+            db.add(task)
+            await db.commit()
+            result = await _contract_customer_record_dict(task, None, db)
+
+        self.assertEqual(result["data"]["region"], "全国")
+        self.assertEqual(result["data"]["authorized_from"], "2026-08-10")
+        self.assertEqual(result["data"]["authorized_to"], "2026-09-09")
+        self.assertEqual(result["data"]["source_owner"], "admin")
 
 
 if __name__ == "__main__":
