@@ -61,6 +61,20 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
         )
         db.add(case)
         await db.flush()
+        investigation = BusinessRecord(
+            module="investigation", serial_no="DC-SPACE-001", title="案件关联调查任务", customer=case.customer,
+            status="调查中", owner="lawyer", department="上海",
+            data={"case_record_id": case.id, "case_no": case.serial_no, "contract_record_id": contract.id},
+        )
+        db.add(investigation)
+        await db.flush()
+        clue = BusinessRecord(
+            module="clue", serial_no="XS-SPACE-001", title="案件关联调查线索", customer=case.customer,
+            status="已转案件", owner="lawyer", department="上海",
+            data={"converted_case_id": case.id, "investigation_record_id": investigation.id, "investigation_no": investigation.serial_no},
+        )
+        db.add(clue)
+        await db.flush()
         finance = BusinessRecord(
             module="finance", serial_no="FY-SPACE-001", title="案件诉讼费", customer=case.customer,
             status="待付款", owner="lawyer", department="上海",
@@ -103,8 +117,9 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
                 case.id, {"username": "lawyer", "role": "user"}, db,
             )
 
-        self.assertEqual(result["schema_version"], "1.0")
+        self.assertEqual(result["schema_version"], "1.1")
         self.assertEqual(result["space"]["id"], f"case:{case.id}")
+        self.assertEqual(result["space"]["kind"], "business_graph")
         self.assertEqual(result["case"]["serial_no"], "SHMS2600999")
         self.assertEqual(result["customer"]["title"], "案件空间客户")
         self.assertEqual(result["contracts"][0]["serial_no"], "HT-SPACE-001")
@@ -114,6 +129,10 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({item["original_name"] for item in result["documents"]}, {"证据.pdf", "合同.pdf"})
         self.assertEqual({item["type"] for item in result["deadlines"]}, {"案件提醒", "开庭排期", "案件任务"})
         self.assertIn({"role": "案件负责人", "username": "lawyer", "name": "范文玲"}, result["people"])
+        self.assertEqual(result["relationships"]["clues"][0]["serial_no"], "XS-SPACE-001")
+        self.assertEqual(result["relationships"]["investigations"][0]["serial_no"], "DC-SPACE-001")
+        self.assertIn("converted_to_case", {item["type"] for item in result["relationships"]["edges"]})
+        self.assertIn("supports_case", {item["type"] for item in result["relationships"]["edges"]})
         self.assertFalse(result["agent"]["enabled"])
         self.assertTrue(result["agent"]["write_requires_approval"])
 

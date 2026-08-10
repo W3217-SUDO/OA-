@@ -17196,6 +17196,77 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
     customer_conditions.append(BusinessRecord.id == customer_id if customer_id else BusinessRecord.title == case_record.customer)
     customer = await db.scalar(select(BusinessRecord).where(*customer_conditions).order_by(BusinessRecord.id))
 
+    clue_ids = {
+        int(value)
+        for value in (
+            case_data.get("clue_record_id"), case_data.get("investigation_clue_id"),
+        )
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    clue_nos = {
+        str(value or "").strip()
+        for value in [
+            case_data.get("clue_no"), case_data.get("investigation_clue"),
+            case_data.get("source_clue_no"), *(case_data.get("investigation_clue_nos") or []),
+        ]
+        if str(value or "").strip()
+    }
+    clue_matches = [
+        BusinessRecord.data["converted_case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+    ]
+    if clue_ids:
+        clue_matches.append(BusinessRecord.id.in_(clue_ids))
+    if clue_nos:
+        clue_matches.append(BusinessRecord.serial_no.in_(clue_nos))
+    clues = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "clue", or_(*clue_matches), *scope_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+
+    source_task_ids = {
+        int((item.data or {}).get("source_task_id") or 0)
+        for item in clues
+        if str((item.data or {}).get("source_task_id") or "").isdigit()
+        and int((item.data or {}).get("source_task_id") or 0) > 0
+    }
+    source_tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(source_task_ids),
+        BusinessRecord.module.in_(["investigation", "task"]),
+        *scope_conditions,
+    ))).all()) if source_task_ids else []
+    investigation_ids = {
+        int(value)
+        for value in [
+            case_data.get("investigation_record_id"),
+            *[(item.data or {}).get("investigation_record_id") for item in clues],
+            *[item.id if item.module == "investigation" else (item.data or {}).get("investigation_record_id") for item in source_tasks],
+        ]
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    investigation_nos = {
+        str(value or "").strip()
+        for value in [
+            case_data.get("investigation_no"),
+            *[(item.data or {}).get("investigation_no") for item in clues],
+            *[item.serial_no if item.module == "investigation" else (item.data or {}).get("investigation_no") for item in source_tasks],
+        ]
+        if str(value or "").strip()
+    }
+    investigation_matches = [
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+    ]
+    if investigation_ids:
+        investigation_matches.append(BusinessRecord.id.in_(investigation_ids))
+    if investigation_nos:
+        investigation_matches.append(BusinessRecord.serial_no.in_(investigation_nos))
+    investigations = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "investigation", or_(*investigation_matches), *scope_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+
     receivables = list((await db.scalars(select(ReceivablePlan).where(
         ReceivablePlan.contract_record_id.in_(contract_ids),
     ).order_by(ReceivablePlan.due_date, ReceivablePlan.id))).all()) if contract_ids else []
@@ -17204,7 +17275,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         IncomingPayment.contract_record_id.in_(contract_ids) if contract_ids else false(),
     )).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
 
-    source_records = [case_record, *contracts, *finance_records, *invoice_records, *tasks, *payment_records]
+    source_records = [case_record, *contracts, *clues, *investigations, *finance_records, *invoice_records, *tasks, *payment_records]
     source_by_id = {item.id: item for item in source_records}
     source_ids = set(source_by_id)
     attachments = list((await db.scalars(select(FileAttachment).where(
@@ -17268,8 +17339,8 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
     ]
 
     return {
-        "schema_version": "1.0",
-        "space": {"id": f"case:{case_record.id}", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
+        "schema_version": "1.1",
+        "space": {"id": f"case:{case_record.id}", "kind": "business_graph", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
         "case": await _record_dict_for_identity(case_record, identity, db),
         "customer": await _record_dict_for_identity(customer, identity, db) if customer else None,
         "people": people,
@@ -17283,6 +17354,18 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         "deadlines": deadline_items,
         "documents": document_payload,
         "tasks": [await _task_display_dict(item, db) for item in tasks],
+        "relationships": {
+            "clues": [await _record_dict_for_identity(item, identity, db) for item in clues],
+            "investigations": [await _record_dict_for_identity(item, identity, db) for item in investigations],
+            "edges": [
+                *([{"from": f"case:{case_record.id}", "to": f"customer:{customer.id}", "type": "belongs_to_customer"}] if customer else []),
+                *[{"from": f"case:{case_record.id}", "to": f"contract:{item.id}", "type": "covered_by_contract"} for item in contracts],
+                *[{"from": f"clue:{item.id}", "to": f"case:{case_record.id}", "type": "converted_to_case"} for item in clues],
+                *[{"from": f"investigation:{item.id}", "to": f"case:{case_record.id}", "type": "supports_case"} for item in investigations],
+                *[{"from": f"finance:{item.id}", "to": f"case:{case_record.id}", "type": "financial_record"} for item in finance_records],
+                *[{"from": f"invoice:{item.id}", "to": f"case:{case_record.id}", "type": "invoice_record"} for item in invoice_records],
+            ],
+        },
         "capabilities": await _case_detail_action_capabilities(case_record, identity, db),
         "agent": {
             **case_agent_runtime.status(),
