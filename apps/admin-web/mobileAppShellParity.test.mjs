@@ -21,6 +21,8 @@ test("mobile shell exposes app-style navigation and an overlay feature drawer", 
 test("mobile workspace removes desktop chrome and keeps touch targets usable", () => {
   assert.match(styles, /\.workspace-tabs\s*\{[\s\S]*display:\s*none;/);
   assert.match(styles, /\.mobile-bottom-nav button[\s\S]*touch-action:\s*manipulation/);
+  assert.match(styles, /width:\s*88px !important;[\s\S]*flex:\s*0 0 88px/);
+  assert.match(styles, /\.ant-menu-submenu-popup\s*\{[\s\S]*display:\s*none !important/);
   assert.match(styles, /\.ant-input,[\s\S]*min-height:\s*40px/);
   assert.match(styles, /padding:\s*0 12px calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
 });

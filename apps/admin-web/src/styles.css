@@ -487,8 +487,9 @@ body {
     display: none;
   }
   .logo {
-    width: auto;
-    min-width: 82px;
+    width: 88px !important;
+    min-width: 88px;
+    flex: 0 0 88px;
     height: 56px;
     padding: 0 6px;
     background: transparent;
@@ -541,6 +542,9 @@ body {
   }
   .sidebar.ant-layout-sider-collapsed {
     box-shadow: none;
+  }
+  .ant-menu-submenu-popup {
+    display: none !important;
   }
   .mobile-sidebar-mask {
     position: fixed;
