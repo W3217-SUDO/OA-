@@ -953,9 +953,16 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     setLoading(true);
     try {
       const form = new URLSearchParams(values);
-      const { data } = dingtalkAuthCode
-        ? await api.post("/auth/dingtalk/bind", { ...values, auth_code: dingtalkAuthCode })
-        : await api.post("/auth/login", form);
+      let data: any;
+      if (dingtalkAuthCode) {
+        // DingTalk auth codes are single-use. The initial SSO probe consumes its
+        // code before an unbound user reaches this form, so binding needs a new one.
+        const { data: config } = await api.get("/auth/dingtalk/config");
+        const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
+        ({ data } = await api.post("/auth/dingtalk/bind", { ...values, auth_code: result.code }));
+      } else {
+        ({ data } = await api.post("/auth/login", form));
+      }
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
       if (data.must_change_password) {

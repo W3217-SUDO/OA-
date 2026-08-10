@@ -10,6 +10,11 @@ test("DingTalk workbench login supports first-time OA binding and later SSO", ()
   assert.match(appSource, /requestDingTalkAuthCode\(\{ corpId: config\.corp_id \}\)/);
   assert.match(appSource, /api\.post\("\/auth\/dingtalk\/login"/);
   assert.match(appSource, /api\.post\("\/auth\/dingtalk\/bind"/);
+  assert.equal(
+    appSource.match(/requestDingTalkAuthCode\(\{ corpId: config\.corp_id \}\)/g)?.length,
+    2,
+    "first-time binding must request a fresh one-time DingTalk auth code",
+  );
   assert.match(appSource, /绑定钉钉并登录/);
   assert.match(appSource, /以后从钉钉工作台打开将直接登录/);
 });
