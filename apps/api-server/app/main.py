@@ -18192,8 +18192,6 @@ async def upload_attachment(
         expected_category = FINANCE_DEFAULT_VOUCHER_CATEGORY[transaction.transaction_type]
         if category == "普通附件":
             category = expected_category
-        if category not in FINANCE_VOUCHER_CATEGORIES:
-            raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
         if customer_metadata_provided:
@@ -18207,6 +18205,8 @@ async def upload_attachment(
                 raise HTTPException(status_code=422, detail="客户记录 customer_guid 不能为空")
             if normalized_customer_guid != _customer_guid(record):
                 raise HTTPException(status_code=409, detail="附件 customer_guid 与客户记录不一致")
+        if record.module == "hr":
+            category = "员工档案"
         await _require_hr_attachment_write_access(record, category, identity, db)
         if record.module == "ipr_case":
             raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
@@ -18214,17 +18214,11 @@ async def upload_attachment(
             await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
             await _require_case_detail_write_access(record, identity, db)
-            permitted_case_file_types = set((await db.scalars(select(SystemParameter.name).where(
-                SystemParameter.category == "case_file_type", SystemParameter.is_active.is_(True),
-            ))).all())
-            permitted_case_file_types.update({"案件票据文件", "案件发票文件", "普通附件"})
-            if category not in permitted_case_file_types:
-                raise HTTPException(status_code=422, detail="案件文件类型不存在或已停用")
         if record.module == "task":
             if not _is_task_participant(record, identity):
                 raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")
             if category not in {"任务反馈附件", "任务资料附件"}:
-                raise HTTPException(status_code=422, detail="任务附件类型无效")
+                category = "任务资料附件"
         if record.module == "customer":
             await _require_record_owner_or_manager(record, identity, db)
         if record.module == "seal":
@@ -18232,24 +18226,22 @@ async def upload_attachment(
             if record.status not in {"草稿", "待用印"}:
                 raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
             if category != "用印文件":
-                raise HTTPException(status_code=422, detail="用印申请附件类型必须为用印文件")
+                category = "用印文件"
         if record.module == "official_outgoing":
             await _require_record_owner_or_manager(record, identity, db)
             if record.status not in {"草稿", "已拒绝", "已撤回"}:
                 raise HTTPException(status_code=409, detail="仅草稿、已拒绝或已撤回正式发文可以上传或替换发文文件")
             if category != "正式发文附件":
-                raise HTTPException(status_code=422, detail="正式发文附件类型必须为正式发文附件")
+                category = "正式发文附件"
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES:
             await _require_record_owner_or_manager(record, identity, db)
             if category == "公证书扫描件":
                 operator = await db.scalar(select(User).where(User.username == identity["username"]))
                 if not operator or not await _user_has_job_permission(operator, "扫描上传", db):
                     raise HTTPException(status_code=403, detail="当前账号没有公证书扫描上传岗位权限")
-        if record.module in INVESTIGATION_MATERIAL_CATEGORIES and category != "普通附件" and category not in INVESTIGATION_MATERIAL_CATEGORIES[record.module]:
-            raise HTTPException(status_code=422, detail="材料类型与当前调查业务不匹配")
     suffix = Path(file.filename or "").suffix.lower()
     # 旧普通案件文件库不按扩展名拒收：案件资料常含法院专用格式、加密包和
-    # 其他业务文件。文件仍受大小、案件权限、分类和受控下载约束；知识产权
+    # 其他业务文件。文件仍受大小、案件权限和受控下载约束；知识产权
     # 案件继续走自己的专用格式校验接口。
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
     if (not record or record.module != "case") and suffix not in allowed:
