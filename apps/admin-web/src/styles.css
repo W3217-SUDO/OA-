@@ -733,4 +733,54 @@ body {
   }
   .ant-modal .ant-modal-header { margin-bottom: 12px; }
   .ant-modal .ant-modal-body { padding-inline: 0; }
+  .ant-modal {
+    top: 8px;
+    padding-bottom: 8px;
+  }
+  .ant-modal .ant-modal-content {
+    padding: 16px 14px;
+  }
+  .ant-modal .ant-modal-body {
+    max-height: calc(100dvh - 150px);
+    overflow-x: hidden;
+  }
+  .ant-modal .ant-form-horizontal .ant-form-item-row {
+    display: block;
+  }
+  .ant-modal .ant-form-item-label {
+    padding: 0 0 5px;
+    text-align: left;
+  }
+  .ant-modal .ant-form-item-control {
+    width: 100%;
+    max-width: none;
+  }
+  .ant-modal .ant-descriptions-view,
+  .ant-modal .ant-table-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .ant-modal .ant-descriptions-item-content,
+  .ant-modal .ant-list-item-meta-title,
+  .ant-modal .ant-list-item-meta-description {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .ant-modal .ant-list-item-meta {
+    min-width: 0;
+  }
+  .ant-modal .ant-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .ant-modal .ant-modal-footer .ant-btn {
+    margin-inline-start: 0;
+  }
+  .ant-drawer .form-grid,
+  .ant-drawer .employee-form-grid,
+  .ant-drawer .organization-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }

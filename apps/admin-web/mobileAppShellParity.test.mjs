@@ -66,3 +66,10 @@ test("core customer and contract forms shed desktop fixed widths on phones", () 
   assert.match(contractStyles, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(styles, /\.finance-original-query-grid,[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/);
 });
+
+test("mobile dialogs and drawers reflow instead of clipping desktop layouts", () => {
+  assert.match(styles, /\.ant-modal \.ant-form-horizontal \.ant-form-item-row\s*\{\s*display: block/);
+  assert.match(styles, /\.ant-modal \.ant-modal-body\s*\{[\s\S]*?overflow-x: hidden/);
+  assert.match(styles, /\.ant-modal \.ant-modal-footer\s*\{[\s\S]*?flex-wrap: wrap/);
+  assert.match(styles, /\.ant-drawer \.form-grid,[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/);
+});
