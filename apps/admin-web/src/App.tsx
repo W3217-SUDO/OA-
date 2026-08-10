@@ -42,6 +42,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
@@ -298,19 +299,28 @@ const menuItems: NavItem[] = [
     label: "调查大厅",
     children: [
       {
-        key: "investigation-task-published",
-        label: "我发布的调查任务",
+        key: "investigation-tasks",
+        label: "调查任务",
+        icon: <UnorderedListOutlined />,
         children: [
-          { key: "investigation-task-mine", label: "我的调查任务" },
-          { key: "investigation-task-overdue", label: "过期调查任务" },
+          { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
+          {
+            key: "investigation-task-published",
+            label: "我发布的调查任务",
+            icon: <UnorderedListOutlined />,
+            children: [
+              { key: "investigation-task-mine", label: "我的调查任务" },
+              { key: "investigation-task-overdue", label: "过期调查任务" },
+            ],
+          },
+          { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
+          { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
         ],
       },
-      { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
-      { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
-      { key: "investigation-task-sub-mine", label: "我的调查任务" },
       {
         key: "clue",
         label: "我的调查线索",
+        icon: <UnorderedListOutlined />,
         children: [
           { key: "clue-my-draft", label: "待提交线索" },
           { key: "clue-my-pending", label: "待审核线索" },
@@ -325,6 +335,7 @@ const menuItems: NavItem[] = [
       {
         key: "clue-audit",
         label: "调查线索审核",
+        icon: <UnorderedListOutlined />,
         children: [
           { key: "clue-audit-pending", label: "待审批线索" },
           { key: "clue-audit-customer", label: "待客户审核" },
@@ -336,6 +347,7 @@ const menuItems: NavItem[] = [
       {
         key: "notary",
         label: "公证信息导入",
+        icon: <UnorderedListOutlined />,
         children: [
           { key: "notary-import-info", label: "公证信息导入" },
           { key: "notary-import-storage", label: "取证信息文件导入" },
@@ -529,13 +541,21 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     { key: "investigation-task-overdue", label: "过期调查任务" },
   ];
   const investigationChildren: NavItem[] = [
-    { key: "investigation-task-published", label: "我发布的调查任务", children: taskChildren },
-    { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
-    { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
-    { key: "investigation-task-sub-mine", label: "我的调查任务" },
+    {
+      key: "investigation-tasks",
+      label: "调查任务",
+      icon: <UnorderedListOutlined />,
+      children: [
+        { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
+        { key: "investigation-task-published", label: "我发布的调查任务", icon: <UnorderedListOutlined />, children: taskChildren },
+        { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
+        { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
+      ],
+    },
     {
       key: "clue",
       label: "我的调查线索",
+      icon: <UnorderedListOutlined />,
       children: [
         { key: "clue-my-draft", label: "待提交线索" },
         { key: "clue-my-pending", label: "待审核线索" },
@@ -550,6 +570,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     {
       key: "clue-audit",
       label: "调查线索审核",
+      icon: <UnorderedListOutlined />,
       children: [
         { key: "clue-audit-pending", label: "待审批线索" },
         { key: "clue-audit-customer", label: "待客户审核" },
@@ -561,6 +582,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     {
       key: "notary",
       label: "公证信息导入",
+      icon: <UnorderedListOutlined />,
       children: [
         { key: "notary-import-info", label: "公证信息导入" },
         { key: "notary-import-storage", label: "取证信息文件导入" },

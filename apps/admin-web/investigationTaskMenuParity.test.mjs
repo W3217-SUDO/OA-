@@ -41,3 +41,22 @@ test("investigation hall matches the legacy investigation directory hierarchy", 
   assert.match(source, /route\.startsWith\("clue-"\)/);
   assert.match(source, /route\.startsWith\("notary-"\)/);
 });
+
+test("investigation task entries are ordered inside one collapsible group", () => {
+  const groupStart = source.indexOf('key: "investigation-tasks"');
+  const clueStart = source.indexOf('key: "clue"', groupStart);
+  const taskGroup = source.slice(groupStart, clueStart);
+
+  assert.ok(groupStart >= 0, "the investigation task group should exist");
+  assert.match(taskGroup, /label: "调查任务"/);
+  assert.match(taskGroup, /icon: <UnorderedListOutlined\s*\/>/);
+  const orderedKeys = [
+    "investigation-task-unassigned",
+    "investigation-task-published",
+    "investigation-task-sub-published",
+    "investigation-task-sub-mine",
+  ];
+  const positions = orderedKeys.map((key) => taskGroup.indexOf(`key: "${key}"`));
+  assert.ok(positions.every((position) => position >= 0));
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions);
+});
