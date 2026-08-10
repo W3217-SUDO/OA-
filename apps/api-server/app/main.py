@@ -5492,7 +5492,7 @@ def _notification_dict(item: Notification) -> dict:
 
 
 async def _dispatch_dingtalk_notifications() -> None:
-    if not dingtalk_client.configured:
+    if not settings.dingtalk_notifications_enabled or not dingtalk_client.configured:
         return
     async with SessionLocal() as db:
         notices = (await db.scalars(

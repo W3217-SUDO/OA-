@@ -32,13 +32,14 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
 
         app.dependency_overrides[get_db] = override_db
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://dingtalk.test")
-        self.old_config = (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url, settings.dingtalk_allowed_display_names)
+        self.old_config = (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url, settings.dingtalk_allowed_display_names, settings.dingtalk_notifications_enabled)
         settings.dingtalk_corp_id = "ding-corp"
         settings.dingtalk_agent_id = "123"
         settings.dingtalk_app_key = "app-key"
         settings.dingtalk_app_secret = "app-secret"
         settings.dingtalk_app_url = "https://oa.example.com/"
         settings.dingtalk_allowed_display_names = "测试员工"
+        settings.dingtalk_notifications_enabled = True
         self.old_user_lookup = dingtalk_client.user_by_auth_code
         self.old_sender = dingtalk_client.send_work_notification
 
@@ -50,7 +51,7 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         dingtalk_client.user_by_auth_code = self.old_user_lookup
         dingtalk_client.send_work_notification = self.old_sender
-        (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url, settings.dingtalk_allowed_display_names) = self.old_config
+        (settings.dingtalk_corp_id, settings.dingtalk_agent_id, settings.dingtalk_app_key, settings.dingtalk_app_secret, settings.dingtalk_app_url, settings.dingtalk_allowed_display_names, settings.dingtalk_notifications_enabled) = self.old_config
         app.dependency_overrides.clear()
         await self.client.aclose()
         await self.engine.dispose()
@@ -102,6 +103,31 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             notice = await db.scalar(select(Notification).where(Notification.source_key == "test-ding-notice"))
             self.assertEqual(notice.dingtalk_status, "sent")
+
+    async def test_disabled_notifications_never_call_dingtalk_sender(self):
+        sent = []
+
+        async def fake_sender(user_id: str, title: str, content: str):
+            sent.append((user_id, title, content))
+
+        dingtalk_client.send_work_notification = fake_sender
+        settings.dingtalk_notifications_enabled = False
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == "staff"))
+            user.profile = {**user.profile, "dingtalk_user_id": "ding-user-1"}
+            db.add(Notification(source_key="test-ding-disabled", source_type="task", recipient="staff", title="不应推送", content="推送总开关已关闭"))
+            await db.commit()
+        main_module = __import__("app.main", fromlist=["SessionLocal"])
+        original_session_local = main_module.SessionLocal
+        main_module.SessionLocal = self.sessions
+        try:
+            await _dispatch_dingtalk_notifications()
+        finally:
+            main_module.SessionLocal = original_session_local
+        self.assertEqual(sent, [])
+        async with self.sessions() as db:
+            notice = await db.scalar(select(Notification).where(Notification.source_key == "test-ding-disabled"))
+            self.assertEqual(notice.dingtalk_status, "pending")
 
 
 if __name__ == "__main__":
