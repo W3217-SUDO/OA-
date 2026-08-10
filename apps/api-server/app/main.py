@@ -17106,6 +17106,155 @@ async def case_detail_action_capabilities(case_id: int, identity: dict = Depends
     return {"case_id": case_record.id, **(await _case_detail_action_capabilities(case_record, identity, db))}
 
 
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/context")
+async def get_case_space_context(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Aggregate one authorized case into the stable context contract used by agents."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_data = case_record.data or {}
+    allowed_fields = await _allowed_field_keys(identity, db)
+    scope_conditions = await _record_scope_conditions(identity, db)
+
+    contract_ids = {
+        int(value)
+        for value in (case_data.get("contract_id"), case_data.get("contract_record_id"))
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    contract_objects = list((await db.scalars(select(ContractObject).where(
+        ContractObject.case_record_id == case_record.id,
+    ).order_by(ContractObject.id))).all())
+    contract_ids.update(item.contract_record_id for item in contract_objects)
+    contract_no = str(case_data.get("contract_no") or "").strip()
+    contract_match = BusinessRecord.id.in_(contract_ids)
+    if contract_no:
+        contract_match = or_(contract_match, BusinessRecord.serial_no == contract_no)
+    contracts = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract", contract_match, *scope_conditions,
+    ).order_by(BusinessRecord.id))).all()) if contract_ids or contract_no else []
+    contract_ids = {item.id for item in contracts}
+
+    payment_record_ids = set((await db.scalars(select(ContractPaymentLine.payment_record_id).where(
+        ContractPaymentLine.case_record_id == case_record.id,
+    ))).all())
+    linked_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_(["finance", "invoice", "task", "contract_payment"]),
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+            BusinessRecord.id.in_(payment_record_ids),
+        ),
+        *scope_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    finance_records = [item for item in linked_records if item.module == "finance"]
+    invoice_records = [item for item in linked_records if item.module == "invoice"]
+    tasks = [item for item in linked_records if item.module == "task"]
+    payment_records = [item for item in linked_records if item.module == "contract_payment"]
+
+    reminders = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_reminder",
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+    ).order_by(BusinessRecord.data["deadline"].as_string(), BusinessRecord.id))).all())
+    hearings = list((await db.scalars(select(HearingSchedule).where(
+        HearingSchedule.case_record_id == case_record.id,
+    ).order_by(HearingSchedule.hearing_date, HearingSchedule.hearing_time, HearingSchedule.id))).all())
+
+    customer_id = int(case_data.get("customer_id") or case_data.get("customer_record_id") or 0)
+    customer_conditions = [BusinessRecord.module == "customer", *scope_conditions]
+    customer_conditions.append(BusinessRecord.id == customer_id if customer_id else BusinessRecord.title == case_record.customer)
+    customer = await db.scalar(select(BusinessRecord).where(*customer_conditions).order_by(BusinessRecord.id))
+
+    receivables = list((await db.scalars(select(ReceivablePlan).where(
+        ReceivablePlan.contract_record_id.in_(contract_ids),
+    ).order_by(ReceivablePlan.due_date, ReceivablePlan.id))).all()) if contract_ids else []
+    incoming = list((await db.scalars(select(IncomingPayment).where(or_(
+        IncomingPayment.case_no == case_record.serial_no,
+        IncomingPayment.contract_record_id.in_(contract_ids) if contract_ids else false(),
+    )).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
+
+    source_records = [case_record, *contracts, *finance_records, *invoice_records, *tasks, *payment_records]
+    source_by_id = {item.id: item for item in source_records}
+    source_ids = set(source_by_id)
+    attachments = list((await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id.in_(source_ids),
+    ).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all()) if source_ids else []
+    attachments = await _filter_visible_attachments(attachments, identity, db)
+
+    users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    users_by_username = {item.username.casefold(): item for item in users}
+    users_by_name = {str(item.display_name or "").strip().casefold(): item for item in users if str(item.display_name or "").strip()}
+
+    def person(role: str, value: object) -> dict | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        user = users_by_username.get(raw.casefold()) or users_by_name.get(raw.casefold())
+        return {"role": role, "username": user.username if user else "", "name": user.display_name if user else raw}
+
+    people_values = [
+        person("案件负责人", case_record.owner),
+        *[person("经办律师", item) for item in list(case_data.get("handling_lawyers") or [])],
+        person("律师助理", case_data.get("assistant") or case_data.get("assistant_username")),
+        person("开庭律师", case_data.get("hearing_lawyer")),
+        person("客户管理人", case_data.get("customer_manager")),
+        person("案源人", case_data.get("business_owner") or case_data.get("source_person")),
+        person("调查员", case_data.get("investigator")),
+    ]
+    people = []
+    seen_people = set()
+    for item in filter(None, people_values):
+        key = (item["role"], item["username"] or item["name"])
+        if key not in seen_people:
+            seen_people.add(key)
+            people.append(item)
+
+    show_finance_amount = "finance.amount" in allowed_fields
+    contract_payload = []
+    for contract in contracts:
+        objects = [item for item in contract_objects if item.contract_record_id == contract.id]
+        plans = [item for item in receivables if item.contract_record_id == contract.id]
+        contract_payload.append({
+            **_record_dict(contract, allowed_fields),
+            "objects": [{"id": item.id, "case_record_id": item.case_record_id, "fee_type": item.fee_type, "amount": item.amount if "contract.amount" in allowed_fields else None, "remark": item.remark} for item in objects],
+            "receivables": [{**_receivable_dict(item, contract), **({} if show_finance_amount else {"amount": None, "received_amount": None, "remaining_amount": None})} for item in plans],
+        })
+
+    document_payload = []
+    for item in attachments:
+        source = source_by_id.get(item.record_id)
+        document_payload.append({**_attachment_dict(item, source), "source_module": source.module if source else "", "source_status": source.status if source else ""})
+
+    deadline_items = [
+        {"type": "案件提醒", "id": item.id, "title": item.title, "reminder_date": (item.data or {}).get("reminder_date", ""), "deadline": (item.data or {}).get("deadline", ""), "status": item.status}
+        for item in reminders
+    ] + [
+        {"type": "开庭排期", "id": item.id, "title": item.hearing_type, "deadline": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "courtroom": item.courtroom, "status": item.status}
+        for item in hearings
+    ] + [
+        {"type": "案件任务", "id": item.id, "title": item.title, "deadline": str((item.data or {}).get("deadline") or ""), "status": item.status, "owner": item.owner}
+        for item in tasks if (item.data or {}).get("deadline")
+    ]
+
+    return {
+        "schema_version": "1.0",
+        "space": {"id": f"case:{case_record.id}", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
+        "case": await _record_dict_for_identity(case_record, identity, db),
+        "customer": await _record_dict_for_identity(customer, identity, db) if customer else None,
+        "people": people,
+        "contracts": contract_payload,
+        "finances": {
+            "fees": [_record_dict(item, allowed_fields) for item in finance_records],
+            "invoices": [_record_dict(item, allowed_fields) for item in invoice_records],
+            "contract_payments": [_record_dict(item, allowed_fields) for item in payment_records],
+            "incoming_payments": [_incoming_payment_dict(item, show_amount=show_finance_amount) for item in incoming],
+        },
+        "deadlines": deadline_items,
+        "documents": document_payload,
+        "tasks": [await _task_display_dict(item, db) for item in tasks],
+        "capabilities": await _case_detail_action_capabilities(case_record, identity, db),
+        "agent": {"enabled": False, "thread_namespace": f"case:{case_record.id}", "write_requires_approval": True},
+    }
+
+
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")
 async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
