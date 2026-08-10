@@ -130,6 +130,7 @@ COURT_JUDICIAL_KEYS = {
 }
 DEFAULT_SYSTEM_MENUS = [
     ("dashboard", "", "控制台", "dashboard", 0),
+    ("agent-center", "", "智能体中心", "robot", 5),
     ("seal", "", "用印中心", "file-text", 10), ("seal-my", "seal", "我的用印申请", "", 11), ("seal-audit", "seal", "用印审核", "", 12), ("seal-admin", "seal", "行政用印", "", 13),
     ("task", "", "事务中心", "file-text", 20), ("task-my", "task", "我的任务", "", 21), ("task-dept", "task", "部门任务", "", 22), ("task-company", "task", "公司任务", "", 23),
     ("customer", "", "客户管理", "team", 30), ("customer-new", "customer", "新建客户", "", 31), ("customer-mine", "customer", "我的客户", "", 32), ("customer-recycle", "customer", "个人回收站", "", 33), ("customer-dept", "customer", "部门客户", "", 34), ("customer-dept-recycle", "customer", "部门回收站", "", 35), ("customer-company", "customer", "公司客户", "", 36), ("customer-public", "customer", "公海客户", "", 37), ("customer-shared", "customer", "我的共享客户", "", 38), ("customer-recent-contact", "customer", "最近联系的客户", "", 39), ("customer-recent-update", "customer", "最近更新的客户", "", 40), ("customer-company-recycle", "customer", "公司回收站", "", 41), ("customer-conflict", "customer", "客户利益检索", "", 42),
@@ -241,9 +242,9 @@ LEGACY_TASK_MENU_KEYS = {"task-reminders"}
 FIELD_KEYS = ["customer.billing", "customer.bank", "customer.legal", "contract.amount", "finance.amount", "hr.identity"]
 DEFAULT_ROLE_PERMISSIONS = {
     "admin": {"display_name": "系统管理员", "data_scope": "全所数据", "menu_keys": MENU_KEYS, "field_keys": FIELD_KEYS},
-    "manager": {"display_name": "部门负责人", "data_scope": "本部门数据", "menu_keys": ["task", "seal", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center", "hr", "warehouse", "reports"], "field_keys": FIELD_KEYS},
-    "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
-    "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
+    "manager": {"display_name": "部门负责人", "data_scope": "本部门数据", "menu_keys": ["agent-center", "task", "seal", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center", "hr", "warehouse", "reports"], "field_keys": FIELD_KEYS},
+    "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["agent-center", "task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
+    "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["agent-center", "task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
 }
 SYSTEM_USER_ROLE_CODES = frozenset(DEFAULT_ROLE_PERMISSIONS)
 ROLE_DATA_SCOPES = frozenset({
@@ -484,6 +485,19 @@ def _upgrade_schema(connection) -> None:
                 role = str(role_row["role"]).replace("'", "''")
                 connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('case_create_leaf_capabilities_v1')"))
+    agent_center_menu_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'agent_center_menu_v1'"
+    )).first()
+    if not agent_center_menu_migrated:
+        role_rows = connection.execute(text("SELECT role, menu_keys FROM role_permissions")).mappings().all()
+        for role_row in role_rows:
+            raw_keys = role_row["menu_keys"]
+            keys = list(raw_keys if isinstance(raw_keys, list) else json.loads(raw_keys or "[]"))
+            if "case" in keys and "agent-center" not in keys:
+                encoded_keys = json.dumps([*keys, "agent-center"], ensure_ascii=False).replace("'", "''")
+                role = str(role_row["role"]).replace("'", "''")
+                connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('agent_center_menu_v1')"))
     leaf_menu_permissions_migrated = connection.execute(text(
         "SELECT key FROM schema_migrations WHERE key = 'role_menu_leaf_permissions_v1'"
     )).first()

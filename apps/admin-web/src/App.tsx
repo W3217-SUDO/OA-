@@ -40,6 +40,7 @@ import {
   MenuOutlined,
   MenuUnfoldOutlined,
   ReloadOutlined,
+  RobotOutlined,
   SearchOutlined,
   TeamOutlined,
   UnorderedListOutlined,
@@ -141,6 +142,7 @@ const CustomerCenterPage = lazyWithVersionRecovery("customer", () => import("./C
 const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./ContractCenterPage"));
 const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
 const AgentDocumentPage = lazyWithVersionRecovery("agent-document", () => import("./AgentDocumentPage"));
+const AgentCenterPage = lazyWithVersionRecovery("agent-center", () => import("./AgentCenterPage"));
 const SealCenterPage = lazyWithVersionRecovery("seal", () => import("./SealCenterPage"));
 const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCenterPage"));
 const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
@@ -184,6 +186,11 @@ const menuItems: NavItem[] = [
     icon: <DashboardOutlined />,
     label: "控制台",
     badge: "hot",
+  },
+  {
+    key: "agent-center",
+    icon: <RobotOutlined />,
+    label: "智能体中心",
   },
   {
     key: "seal",
@@ -506,6 +513,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   const icon = (name: string) =>
     name === "dashboard" ? (
       <DashboardOutlined />
+    ) : name === "robot" ? (
+      <RobotOutlined />
     ) : name === "team" ? (
       <TeamOutlined />
     ) : name === "search" ? (
@@ -1674,6 +1683,8 @@ export default function App() {
   const requestedPage =
     route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />
+    ) : route === "agent-center" ? (
+      <AgentCenterPage />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "customer-conflict" ? (
