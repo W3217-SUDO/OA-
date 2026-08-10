@@ -56,6 +56,7 @@ test("core customer and contract forms shed desktop fixed widths on phones", () 
   assert.match(contractStyles, /\.contract-query \{ grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(contractStyles, /\.contract-page-form \.ant-form-item-row \{ display: block/);
   assert.match(contractStyles, /\.contract-query \.ant-form-item-control \{[\s\S]*?min-width: 0/);
+  assert.match(contractStyles, /\.ant-form-item:has\(button\[type="submit"\]\) \.ant-form-item-row/);
   assert.match(contractStyles, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(styles, /\.finance-original-query-grid,[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/);
 });
