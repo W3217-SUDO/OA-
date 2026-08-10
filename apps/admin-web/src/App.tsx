@@ -630,13 +630,15 @@ type RenderableMenuItem = Omit<NavItem, "label" | "children"> & { label: ReactNo
 function menuItemsWithDoubleClickReload(
   items: NavItem[],
   onReload: (item: NavItem) => void,
+  depth = 0,
 ): RenderableMenuItem[] {
   return items.map((item) => {
     const children = item.children
-      ? menuItemsWithDoubleClickReload(item.children, onReload)
+      ? menuItemsWithDoubleClickReload(item.children, onReload, depth + 1)
       : undefined;
     return {
       ...item,
+      icon: item.icon || (depth > 0 ? <UnorderedListOutlined /> : undefined),
       ...(children ? { children } : {}),
       label: children ? item.label : (
         <span
