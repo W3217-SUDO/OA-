@@ -25,9 +25,12 @@ import {
 import {
   CalendarOutlined,
   CheckSquareOutlined,
+  CloseOutlined,
   EditOutlined,
   FileTextOutlined,
   ReloadOutlined,
+  RobotOutlined,
+  SendOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -104,6 +107,40 @@ type CaseRow = {
   department: string;
   description: string;
   data: Record<string, any>;
+};
+type CaseAgentMessage = {
+  id?: string;
+  role: "user" | "assistant";
+  content: string;
+  operator?: string;
+  created_at?: string;
+};
+type CaseAgentAction = {
+  id: string;
+  type: string;
+  summary: string;
+  status: "pending" | "approved" | "rejected";
+  requested_by?: string;
+  requested_at?: string;
+  decided_by?: string;
+  decided_at?: string;
+  decision_comment?: string;
+};
+type CaseAgentState = {
+  thread_id: string;
+  messages: CaseAgentMessage[];
+  pending_actions: CaseAgentAction[];
+  last_response: string;
+  updated_at?: string;
+};
+type CaseAgentStatus = {
+  enabled: boolean;
+  ready: boolean;
+  checkpoint_backend: string;
+  model: string;
+  model_configured: boolean;
+  write_requires_approval: boolean;
+  error?: string | null;
 };
 type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; sort_order?: number };
 export const scopeCasesByListRoute = (rows: CaseRow[], initialView: string) => {
@@ -497,6 +534,15 @@ export default function CaseCenterPage({
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
+  const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<CaseAgentStatus | null>(null);
+  const [agentState, setAgentState] = useState<CaseAgentState | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentSending, setAgentSending] = useState(false);
+  const [agentDecisionLoading, setAgentDecisionLoading] = useState("");
+  const [agentInput, setAgentInput] = useState("");
+  const agentMessagesEndRef = useRef<HTMLDivElement>(null);
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
@@ -1313,6 +1359,74 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
   };
+  const loadCaseAgent = async (row: CaseRow) => {
+    setAgentLoading(true);
+    try {
+      const [statusRes, stateRes] = await Promise.all([
+        api.get(`/case-spaces/${row.id}/agent/status`),
+        api.get(`/case-spaces/${row.id}/agent/state`),
+      ]);
+      setAgentStatus(statusRes.data);
+      setAgentState(stateRes.data);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      setAgentState(null);
+      if (status === 503) {
+        try {
+          const { data } = await api.get(`/case-spaces/${row.id}/agent/status`);
+          setAgentStatus(data);
+        } catch {
+          setAgentStatus(null);
+        }
+      } else {
+        setAgentStatus(null);
+      }
+      message.error(error?.response?.data?.detail || "案件智能体加载失败");
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+  const openCaseAgent = (row: CaseRow) => {
+    setAgentCase(row);
+    setAgentOpen(true);
+    setAgentInput("");
+    void loadCaseAgent(row);
+  };
+  const sendCaseAgentMessage = async (preset?: string) => {
+    if (!agentCase || agentSending) return;
+    const content = String(preset ?? agentInput).trim();
+    if (!content) return message.warning("请输入要询问的案件问题");
+    setAgentSending(true);
+    try {
+      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, { message: content });
+      setAgentState(data);
+      setAgentInput("");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件智能体响应失败");
+    } finally {
+      setAgentSending(false);
+    }
+  };
+  const decideCaseAgentAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
+    if (!agentCase || agentDecisionLoading) return;
+    setAgentDecisionLoading(action.id);
+    try {
+      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/decision`, {
+        decision,
+        comment: decision === "approved" ? "在案件智能体面板批准" : "在案件智能体面板驳回",
+      });
+      setAgentState(data);
+      message.success(decision === "approved" ? "已记录批准决定" : "已记录驳回决定");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "审批操作失败");
+    } finally {
+      setAgentDecisionLoading("");
+    }
+  };
+  useEffect(() => {
+    if (!agentOpen) return;
+    agentMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [agentOpen, agentState?.messages.length]);
   const duplicateCase = async (row: CaseRow) => {
     const blocked = getCaseMutationBlockReason(row.status);
     if (blocked) return message.warning(blocked);
@@ -3397,6 +3511,7 @@ export default function CaseCenterPage({
         onClose={() => isCaseDetailView ? returnToCaseList() : setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
           {isCaseDetailView && <Button data-testid="case-detail-back" onClick={returnToCaseList}>返回案件列表</Button>}
+          <Button type="primary" icon={<RobotOutlined />} onClick={() => openCaseAgent(viewingCounselCase)}>案件智能体</Button>
           {shouldUseCompanyScheduleDetailOperationMenu(initialView,caseListReturnContext?.route)?<Dropdown trigger={["click"]} dropdownRender={()=><Card size="small"><div style={{display:"grid",gap:8}}>{companyScheduleDetailActionButtons}</div></Card>}><Button>操作</Button></Dropdown>:caseDetailActionButtons}
         </Space>}
       >
@@ -3474,6 +3589,73 @@ export default function CaseCenterPage({
             </aside>
           </div>
         </div>}
+      </Drawer>
+      <Drawer
+        className="case-agent-drawer"
+        width={560}
+        open={agentOpen}
+        title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
+        onClose={() => setAgentOpen(false)}
+        destroyOnHidden
+      >
+        <div className="case-agent-panel" data-testid="case-agent-panel">
+          <div className="case-agent-status">
+            <Space size={[6, 6]} wrap>
+              <Tag color={agentStatus?.ready ? "success" : "warning"}>{agentStatus?.ready ? "服务正常" : "服务未就绪"}</Tag>
+              <Tag>{agentStatus?.model || "模型未配置"}</Tag>
+              <Tag color={agentStatus?.checkpoint_backend === "postgresql" ? "blue" : "default"}>案件独立记忆</Tag>
+              {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
+            </Space>
+            <Button type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
+          </div>
+          {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
+          {agentState?.pending_actions?.length ? <section className="case-agent-actions">
+            <div className="case-agent-section-title">待审批操作</div>
+            <Alert type="info" showIcon title="批准只记录人工审批决定，当前不会自动改写案件业务数据。" />
+            {[...agentState.pending_actions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
+              <div>
+                <strong>{action.summary}</strong>
+                <span>{action.type}</span>
+              </div>
+              {action.status === "pending" ? <Space>
+                <Button size="small" type="primary" disabled={!counselDetailCapabilities.can_write} loading={agentDecisionLoading === action.id} onClick={() => void decideCaseAgentAction(action, "approved")}>批准</Button>
+                <Button size="small" danger icon={<CloseOutlined />} disabled={!counselDetailCapabilities.can_write} onClick={() => void decideCaseAgentAction(action, "rejected")}>驳回</Button>
+              </Space> : <Tag color={action.status === "approved" ? "success" : "error"}>{action.status === "approved" ? "已批准" : "已驳回"}</Tag>}
+            </div>)}
+          </section> : null}
+          <div className="case-agent-messages" aria-live="polite">
+            {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
+              <RobotOutlined />
+              <strong>可以开始分析这个案件</strong>
+              <span>智能体仅使用你有权查看的案件空间数据。</span>
+            </div>}
+            {agentState?.messages?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
+              <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
+              <div className="case-agent-bubble">{item.content}</div>
+            </div>)}
+            {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
+            <div ref={agentMessagesEndRef} />
+          </div>
+          {!agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
+            {["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"].map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
+          </div>}
+          <div className="case-agent-composer">
+            <Input.TextArea
+              value={agentInput}
+              autoSize={{ minRows: 2, maxRows: 5 }}
+              placeholder="询问案件文档、合同费用、期限、人员或任务"
+              disabled={!agentStatus?.ready || agentSending}
+              onChange={(event) => setAgentInput(event.target.value)}
+              onPressEnter={(event) => {
+                if (!event.shiftKey) {
+                  event.preventDefault();
+                  void sendCaseAgentMessage();
+                }
+              }}
+            />
+            <Button type="primary" icon={<SendOutlined />} loading={agentSending} disabled={!agentStatus?.ready || !agentInput.trim()} title="发送" onClick={() => void sendCaseAgentMessage()} />
+          </div>
+        </div>
       </Drawer>
       <Modal
         open={Boolean(attachmentPreview)}

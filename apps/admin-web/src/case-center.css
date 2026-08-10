@@ -68,3 +68,34 @@
   .case-detail-body-grid{grid-template-columns:180px minmax(0,1fr)}
   .case-counsel-detail-card .form-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}
 }
+.case-agent-drawer .ant-drawer-header{padding:12px 16px;border-bottom:1px solid #dce2e8}
+.case-agent-drawer .ant-drawer-body{padding:0;background:#f4f6f8}
+.case-agent-panel{display:flex;flex-direction:column;height:100%;min-height:0}
+.case-agent-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
+.case-agent-actions{padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
+.case-agent-section-title{margin-bottom:8px;font-weight:600}
+.case-agent-actions .ant-alert{margin-bottom:8px}
+.case-agent-action{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #edf0f2}
+.case-agent-action>div{display:flex;min-width:0;flex-direction:column}
+.case-agent-action strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-agent-action span{color:#7a8189;font-size:12px}
+.case-agent-messages{min-height:220px;flex:1;overflow:auto;padding:16px 14px}
+.case-agent-empty{display:flex;min-height:210px;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#737b84;text-align:center}
+.case-agent-empty>.anticon{font-size:34px;color:#00a870}
+.case-agent-empty strong{color:#222;font-size:15px}
+.case-agent-message{display:flex;margin-bottom:14px;flex-direction:column}
+.case-agent-message-user{align-items:flex-end}
+.case-agent-message-assistant{align-items:flex-start}
+.case-agent-message-meta{margin-bottom:4px;color:#737b84;font-size:11px}
+.case-agent-bubble{max-width:88%;padding:9px 11px;border:1px solid #dce2e8;border-radius:6px;background:#fff;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.case-agent-message-user .case-agent-bubble{border-color:#bce8d7;background:#eaf8f2}
+.case-agent-thinking{padding:8px 0;color:#737b84}
+.case-agent-suggestions{display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto;white-space:nowrap}
+.case-agent-composer{display:grid;grid-template-columns:minmax(0,1fr) 40px;align-items:end;gap:8px;padding:12px 14px;background:#fff;border-top:1px solid #dce2e8}
+.case-agent-composer .ant-btn{width:40px;height:40px;padding:0}
+.case-agent-composer textarea{letter-spacing:0}
+@media(max-width:700px){
+  .case-agent-drawer{width:100%!important}
+  .case-agent-status{align-items:flex-start}
+  .case-agent-bubble{max-width:96%}
+}
