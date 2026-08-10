@@ -209,7 +209,7 @@ export default function AgentCenterPage() {
           {skillId === "screenshot-evidence" && <div className="agent-screenshot-bar">
             <input ref={screenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadScreenshot(event.target.files?.[0])} />
             <Button icon={<UploadOutlined />} loading={screenshotUploading} disabled={screenshots.length >= 4} onClick={() => screenshotInputRef.current?.click()}>上传截图</Button>
-            <small>截图将保存到当前案件空间，单张不超过 6MB，单次最多 4 张。</small>
+            <small>可上传或直接粘贴截图；单张不超过 6MB，单次最多 4 张。</small>
           </div>}
           {pendingActions.length > 0 && <section className="agent-global-actions">
             <Alert type="info" showIcon title="待审批操作不会自动改写业务数据" />
@@ -224,7 +224,7 @@ export default function AgentCenterPage() {
           {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
           <div className="agent-global-composer">
             {screenshots.length ? <div className="agent-composer-attachments" aria-label="待发送截图">{screenshots.map((item) => <div key={item.id}><img src={item.preview_url} alt={item.name} /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeScreenshot(item)} /></div>)}</div> : null}
-            <Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问当前空间的业务信息"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} />
+            <Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={skillId === "screenshot-evidence" ? "可直接粘贴截图，并补充需要核验的问题" : "询问当前空间的业务信息"} disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPaste={(event) => { if (skillId !== "screenshot-evidence") return; const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/")); if (file) { event.preventDefault(); void uploadScreenshot(file); } }} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || (!input.trim() && !screenshots.length)} onClick={() => void send()} />
           </div>
         </>}
       </main>

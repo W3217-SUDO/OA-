@@ -3688,7 +3688,7 @@ export default function CaseCenterPage({
           {agentSkillId === "screenshot-evidence" && <div className="case-agent-screenshot-bar">
             <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
             <Button icon={<UploadOutlined />} loading={agentScreenshotUploading} disabled={agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()}>上传截图</Button>
-            <small>截图会显示在下方对话输入框内。</small>
+            <small>可上传或直接粘贴截图，截图会显示在下方输入框内。</small>
           </div>}
           {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
           {agentState?.pending_actions?.length ? <section className="case-agent-actions">
@@ -3729,6 +3729,14 @@ export default function CaseCenterPage({
               placeholder={agentSkillId === "screenshot-evidence" ? "上传截图后，可补充需要核验的问题" : "询问案件文档、合同费用、期限、人员或任务"}
               disabled={!agentStatus?.ready || agentSending}
               onChange={(event) => setAgentInput(event.target.value)}
+              onPaste={(event) => {
+                if (agentSkillId !== "screenshot-evidence") return;
+                const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
+                if (file) {
+                  event.preventDefault();
+                  void uploadCaseAgentScreenshot(file);
+                }
+              }}
               onPressEnter={(event) => {
                 if (!event.shiftKey) {
                   event.preventDefault();

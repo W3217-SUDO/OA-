@@ -50,6 +50,8 @@ test("screenshot evidence skill uploads case-scoped images and submits attachmen
   assert.match(styleSource, /\.agent-screenshot-bar/);
   assert.match(pageSource, /preview_url: previewUrl/);
   assert.match(pageSource, /aria-label="待发送截图"/);
+  assert.match(pageSource, /onPaste=\{\(event\)[\s\S]*?clipboardData\.files/);
+  assert.match(pageSource, /可上传或直接粘贴截图/);
   assert.match(pageSource, /agent-message-attachments[\s\S]*?<img src=\{attachment\.preview_url\}/);
   assert.match(styleSource, /\.agent-composer-attachments/);
 });

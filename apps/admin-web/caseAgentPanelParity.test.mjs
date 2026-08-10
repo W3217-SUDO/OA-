@@ -46,6 +46,8 @@ test('case drawer can upload and analyze screenshot evidence', () => {
   assert.match(styles, /\.case-agent-screenshot-bar/);
   assert.match(source, /preview_url: previewUrl/);
   assert.match(source, /case-agent-composer-attachments/);
+  assert.match(source, /onPaste=\{\(event\)[\s\S]*?clipboardData\.files/);
+  assert.match(source, /可上传或直接粘贴截图/);
   assert.match(source, /case-agent-message-attachments[\s\S]*?<img src=\{attachment\.preview_url\}/);
   assert.match(styles, /\.case-agent-composer-attachments/);
 });
