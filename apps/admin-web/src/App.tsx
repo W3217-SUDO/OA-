@@ -299,16 +299,6 @@ const menuItems: NavItem[] = [
     label: "调查大厅",
     children: [
       {
-        key: "investigation-tasks",
-        label: "调查任务",
-        icon: <UnorderedListOutlined />,
-        children: [
-          { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
-          { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
-          { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
-        ],
-      },
-      {
         key: "investigation-task-published",
         label: "我发布的调查任务",
         icon: <UnorderedListOutlined />,
@@ -317,6 +307,9 @@ const menuItems: NavItem[] = [
           { key: "investigation-task-overdue", label: "过期调查任务" },
         ],
       },
+      { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
+      { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
+      { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
       {
         key: "clue",
         label: "我的调查线索",
@@ -342,6 +335,20 @@ const menuItems: NavItem[] = [
           { key: "clue-audit-refused", label: "已拒绝线索" },
           { key: "clue-audit-collect", label: "待取证线索" },
           { key: "clue-audit-collected", label: "已取证线索" },
+        ],
+      },
+      {
+        key: "clue-company",
+        label: "公司调查线索",
+        icon: <UnorderedListOutlined />,
+        children: [
+          { key: "clue-company-draft", label: "待提交线索" },
+          { key: "clue-company-pending", label: "待审核线索" },
+          { key: "clue-company-collect", label: "待取证线索" },
+          { key: "clue-company-collected", label: "已取证线索" },
+          { key: "clue-company-refused", label: "已拒绝线索" },
+          { key: "clue-company-no-fee", label: "未申请费用线索" },
+          { key: "clue-company-fee", label: "已申请费用线索" },
         ],
       },
       {
@@ -541,17 +548,10 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     { key: "investigation-task-overdue", label: "过期调查任务" },
   ];
   const investigationChildren: NavItem[] = [
-    {
-      key: "investigation-tasks",
-      label: "调查任务",
-      icon: <UnorderedListOutlined />,
-      children: [
-        { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
-        { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
-        { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
-      ],
-    },
     { key: "investigation-task-published", label: "我发布的调查任务", icon: <UnorderedListOutlined />, children: taskChildren },
+    { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
+    { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
+    { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
     {
       key: "clue",
       label: "我的调查线索",
@@ -577,6 +577,20 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
         { key: "clue-audit-refused", label: "已拒绝线索" },
         { key: "clue-audit-collect", label: "待取证线索" },
         { key: "clue-audit-collected", label: "已取证线索" },
+      ],
+    },
+    {
+      key: "clue-company",
+      label: "公司调查线索",
+      icon: <UnorderedListOutlined />,
+      children: [
+        { key: "clue-company-draft", label: "待提交线索" },
+        { key: "clue-company-pending", label: "待审核线索" },
+        { key: "clue-company-collect", label: "待取证线索" },
+        { key: "clue-company-collected", label: "已取证线索" },
+        { key: "clue-company-refused", label: "已拒绝线索" },
+        { key: "clue-company-no-fee", label: "未申请费用线索" },
+        { key: "clue-company-fee", label: "已申请费用线索" },
       ],
     },
     {

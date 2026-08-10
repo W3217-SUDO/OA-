@@ -14,6 +14,7 @@ test("investigation hall matches the legacy investigation directory hierarchy", 
     ["investigation-task-sub-mine", "我的调查任务"],
     ["clue", "我的调查线索"],
     ["clue-audit", "调查线索审核"],
+    ["clue-company", "公司调查线索"],
     ["notary", "公证信息导入"],
     ["clue-my-draft", "待提交线索"],
     ["clue-my-pending", "待审核线索"],
@@ -42,26 +43,23 @@ test("investigation hall matches the legacy investigation directory hierarchy", 
   assert.match(source, /route\.startsWith\("notary-"\)/);
 });
 
-test("investigation task entries are ordered without a third-level published group", () => {
-  const groupStart = source.indexOf('key: "investigation-tasks"');
-  const publishedStart = source.indexOf('key: "investigation-task-published"', groupStart);
+test("investigation task entries follow the legacy sibling hierarchy", () => {
+  const publishedStart = source.indexOf('key: "investigation-task-published"');
   const clueStart = source.indexOf('key: "clue"', publishedStart);
-  const taskGroup = source.slice(groupStart, publishedStart);
-  const publishedGroup = source.slice(publishedStart, clueStart);
+  const taskSection = source.slice(publishedStart, clueStart);
 
-  assert.ok(groupStart >= 0, "the investigation task group should exist");
-  assert.match(taskGroup, /label: "调查任务"/);
-  assert.match(taskGroup, /icon: <UnorderedListOutlined\s*\/>/);
+  assert.ok(publishedStart >= 0, "the published investigation task group should exist");
+  assert.doesNotMatch(source, /key: "investigation-tasks"/);
   const orderedKeys = [
+    "investigation-task-published",
     "investigation-task-unassigned",
     "investigation-task-sub-published",
     "investigation-task-sub-mine",
   ];
-  const positions = orderedKeys.map((key) => taskGroup.indexOf(`key: "${key}"`));
+  const positions = orderedKeys.map((key) => taskSection.indexOf(`key: "${key}"`));
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
-  assert.doesNotMatch(taskGroup, /key: "investigation-task-published"/);
-  assert.match(publishedGroup, /label: "我发布的调查任务"/);
-  assert.match(publishedGroup, /key: "investigation-task-mine"/);
-  assert.match(publishedGroup, /key: "investigation-task-overdue"/);
+  assert.match(taskSection, /label: "我发布的调查任务"/);
+  assert.match(taskSection, /key: "investigation-task-mine"/);
+  assert.match(taskSection, /key: "investigation-task-overdue"/);
 });
