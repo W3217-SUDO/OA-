@@ -9,6 +9,7 @@ import {
   Dropdown,
   Drawer,
   Form,
+  Image,
   Input,
   InputNumber,
   message,
@@ -28,9 +29,11 @@ import {
   CloseOutlined,
   EditOutlined,
   FileTextOutlined,
+  PaperClipOutlined,
   ReloadOutlined,
   RobotOutlined,
   SendOutlined,
+  StopOutlined,
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -554,6 +557,7 @@ export default function CaseCenterPage({
   const agentMessagesEndRef = useRef<HTMLDivElement>(null);
   const agentScreenshotInputRef = useRef<HTMLInputElement>(null);
   const agentScreenshotPreviewUrlsRef = useRef(new Map<number, string>());
+  const activeCaseAgentRequestRef = useRef<AbortController | null>(null);
   const stateWithAgentScreenshotPreviews = (nextState: CaseAgentState) => ({
     ...nextState,
     messages: (nextState.messages || []).map((item) => ({
@@ -1429,24 +1433,46 @@ export default function CaseCenterPage({
     void loadCaseAgent(row);
   };
   const sendCaseAgentMessage = async (preset?: string) => {
-    if (!agentCase || agentSending) return;
+    if (!agentCase) return;
     const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的案件问题");
-    if (agentSkillId === "screenshot-evidence" && !agentScreenshots.length) return message.warning("请先上传需要分析的截图");
+    if (agentSending) activeCaseAgentRequestRef.current?.abort();
+    const outgoingScreenshots = [...agentScreenshots];
+    const optimisticId = `pending-${Date.now()}`;
+    setAgentState((current) => current ? {
+      ...current,
+      messages: [...(current.messages || []), { id: optimisticId, role: "user", content, attachments: outgoingScreenshots }],
+    } : current);
+    setAgentInput("");
+    setAgentScreenshots([]);
+    const controller = new AbortController();
+    activeCaseAgentRequestRef.current = controller;
     setAgentSending(true);
     try {
       const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, {
         message: encodeAgentSkillMessage(agentSkillId, content),
-        attachment_ids: agentScreenshots.map((item) => item.id),
-      });
+        attachment_ids: outgoingScreenshots.map((item) => item.id),
+      }, { signal: controller.signal });
       setAgentState(stateWithAgentScreenshotPreviews(data));
-      setAgentInput("");
-      setAgentScreenshots([]);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "案件智能体响应失败");
+      if (!controller.signal.aborted) {
+        setAgentState((current) => current ? { ...current, messages: current.messages.filter((item) => item.id !== optimisticId) } : current);
+        setAgentInput(content);
+        setAgentScreenshots(outgoingScreenshots);
+        message.error(error?.response?.data?.detail || "案件智能体响应失败");
+      }
     } finally {
-      setAgentSending(false);
+      if (activeCaseAgentRequestRef.current === controller) {
+        activeCaseAgentRequestRef.current = null;
+        setAgentSending(false);
+      }
     }
+  };
+  const stopCaseAgentResponse = () => {
+    activeCaseAgentRequestRef.current?.abort();
+    activeCaseAgentRequestRef.current = null;
+    setAgentSending(false);
+    message.info("已停止本轮生成，可以继续补充要求");
   };
   const uploadCaseAgentScreenshot = async (file?: File) => {
     if (!file || !agentCase) return;
@@ -3695,11 +3721,6 @@ export default function CaseCenterPage({
             />
             <small>{(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}</small>
           </div>
-          {agentSkillId === "screenshot-evidence" && <div className="case-agent-screenshot-bar">
-            <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
-            <Button icon={<UploadOutlined />} loading={agentScreenshotUploading} disabled={agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()}>上传截图</Button>
-            <small>可上传或直接粘贴截图，截图会显示在下方输入框内。</small>
-          </div>}
           {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
           {agentState?.pending_actions?.length ? <section className="case-agent-actions">
             <div className="case-agent-section-title">待审批操作</div>
@@ -3723,7 +3744,7 @@ export default function CaseCenterPage({
             </div>}
             {agentState?.messages?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
               <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
-              <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><img src={attachment.preview_url} alt={attachment.name} /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
+              <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
             </div>)}
             {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
             <div ref={agentMessagesEndRef} />
@@ -3732,12 +3753,14 @@ export default function CaseCenterPage({
             {["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"].map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
           </div>}
           <div className="case-agent-composer">
-            {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><img src={item.preview_url} alt={item.name} /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
+            {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
+            <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
+            <Button className="case-agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={agentScreenshotUploading} disabled={!agentStatus?.ready || agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()} />
             <Input.TextArea
               value={agentInput}
               autoSize={{ minRows: 2, maxRows: 5 }}
               placeholder={agentSkillId === "screenshot-evidence" ? "可直接粘贴截图，并补充需要核验的问题" : "询问案件信息，也可直接粘贴截图"}
-              disabled={!agentStatus?.ready || agentSending}
+              disabled={!agentStatus?.ready}
               onChange={(event) => setAgentInput(event.target.value)}
               onPaste={pasteCaseAgentScreenshot}
               onPressEnter={(event) => {
@@ -3747,7 +3770,7 @@ export default function CaseCenterPage({
                 }
               }}
             />
-            <Button type="primary" icon={<SendOutlined />} loading={agentSending} disabled={!agentStatus?.ready || (!agentInput.trim() && !agentScreenshots.length)} title="发送" onClick={() => void sendCaseAgentMessage()} />
+            <Button type="primary" icon={agentSending && !agentInput.trim() && !agentScreenshots.length ? <StopOutlined /> : <SendOutlined />} disabled={!agentStatus?.ready || (!agentSending && !agentInput.trim() && !agentScreenshots.length)} title={agentSending && !agentInput.trim() && !agentScreenshots.length ? "停止生成" : agentSending ? "发送引导并打断当前生成" : "发送"} onClick={() => agentSending && !agentInput.trim() && !agentScreenshots.length ? stopCaseAgentResponse() : void sendCaseAgentMessage()} />
           </div>
         </div>
       </Drawer>

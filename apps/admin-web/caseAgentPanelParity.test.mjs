@@ -40,16 +40,23 @@ test('case drawer uses the shared office skill router', () => {
 
 test('case drawer can upload and analyze screenshot evidence', () => {
   assert.match(source, /uploadCaseAgentScreenshot/);
-  assert.match(source, /attachment_ids: agentScreenshots\.map/);
+  assert.match(source, /attachment_ids: outgoingScreenshots\.map/);
   assert.match(source, /form\.append\("record_id", String\(agentCase\.id\)\)/);
   assert.match(source, /智能体截图证据/);
-  assert.match(styles, /\.case-agent-screenshot-bar/);
+  assert.doesNotMatch(source, />上传截图<\/Button>/);
+  assert.doesNotMatch(styles, /\.case-agent-screenshot-bar/);
+  assert.match(source, /className="case-agent-composer-upload"/);
+  assert.match(source, /PaperClipOutlined/);
   assert.match(source, /preview_url: previewUrl/);
   assert.match(source, /case-agent-composer-attachments/);
   assert.match(source, /clipboardData\.items[\s\S]*?getAsFile\(\)/);
   assert.match(source, /if \(agentSkillId !== "screenshot-evidence"\) setAgentSkillId\("screenshot-evidence"\)/);
   assert.match(source, /onPaste=\{pasteCaseAgentScreenshot\}/);
-  assert.match(source, /可上传或直接粘贴截图/);
-  assert.match(source, /case-agent-message-attachments[\s\S]*?<img src=\{attachment\.preview_url\}/);
+  assert.match(source, /可直接粘贴截图/);
+  assert.match(source, /<Image src=\{attachment\.preview_url\}[\s\S]*?preview/);
   assert.match(styles, /\.case-agent-composer-attachments/);
+  assert.match(source, /new AbortController\(\)/);
+  assert.match(source, /signal: controller\.signal/);
+  assert.match(source, /stopCaseAgentResponse/);
+  assert.match(source, /发送引导并打断当前生成/);
 });
