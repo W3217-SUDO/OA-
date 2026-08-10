@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     dify_api_key: str = ""
     langgraph_enabled: bool = False
     langgraph_checkpoint_url: str = ""
+    langgraph_api_base_url: str = ""
+    langgraph_api_key: str = ""
     langgraph_model_provider: str = ""
     langgraph_model: str = ""
     langgraph_max_concurrency: int = 4

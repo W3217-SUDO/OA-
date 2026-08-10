@@ -1,6 +1,7 @@
 """MVP contract tests for the LangGraph-backed case agent."""
 
 import unittest
+from unittest.mock import AsyncMock
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -73,6 +74,24 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decided["pending_actions"][0]["status"], "approved")
         self.assertEqual(decided["pending_actions"][0]["decided_by"], "manager")
         self.assertEqual(len((await self.runtime.get_state(8))["messages"]), 0)
+
+    async def test_configured_model_receives_authorized_case_snapshot(self):
+        self.runtime.api_base_url = "https://model.example/v1"
+        self.runtime.api_key = "test-only"
+        self.runtime.model_provider = "openai-compatible"
+        self.runtime.model = "gpt-test"
+        self.runtime._request_model = AsyncMock(return_value="这是基于案件空间生成的回答。")
+        result = await self.runtime.invoke(
+            case_id=9,
+            operator="lawyer",
+            message="案件有哪些期限风险？",
+            case_snapshot={"case": {"id": 9, "serial_no": "SHMS-MODEL-009"}, "deadlines": [{}]},
+        )
+        self.assertTrue(self.runtime.status()["model_configured"])
+        self.assertEqual(result["last_response"], "这是基于案件空间生成的回答。")
+        snapshot, messages = self.runtime._request_model.await_args.args
+        self.assertEqual(snapshot["case"]["serial_no"], "SHMS-MODEL-009")
+        self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
 
     def test_sqlalchemy_postgres_url_is_normalized_for_psycopg(self):
         self.assertEqual(

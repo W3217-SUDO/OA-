@@ -34,7 +34,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .dingtalk import DingTalkError, dingtalk_client
 from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
-from .security import create_token, current_identity, hash_password, user_role_ids, verify_password
+from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,8 @@ case_agent_runtime = CaseAgentRuntime(
     enabled=settings.langgraph_enabled,
     database_url=settings.database_url,
     checkpoint_url=settings.langgraph_checkpoint_url,
+    api_base_url=settings.langgraph_api_base_url,
+    api_key=settings.langgraph_api_key,
     model_provider=settings.langgraph_model_provider,
     model=settings.langgraph_model,
     max_concurrency=settings.langgraph_max_concurrency,
@@ -2288,7 +2290,7 @@ class ReconciliationInput(BaseModel):
 
 
 class SystemUserInput(BaseModel):
-    username: str = Field(min_length=3, max_length=64)
+    username: str = Field(min_length=2, max_length=64)
     display_name: str = Field(min_length=1, max_length=64)
     department: str = Field(default="上海分所", min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
@@ -2311,7 +2313,7 @@ class CacheBatchClearInput(BaseModel):
 
 
 class SystemUserUpdate(BaseModel):
-    username: str | None = Field(default=None, min_length=3, max_length=64)
+    username: str | None = Field(default=None, min_length=2, max_length=64)
     display_name: str | None = Field(default=None, min_length=1, max_length=64)
     department: str | None = Field(default=None, min_length=1, max_length=64)
     role: str | None = None
@@ -2339,7 +2341,7 @@ class SystemUserPasswordResetInput(BaseModel):
 
 
 class HrEmployeeUpdateInput(BaseModel):
-    username: str = Field(min_length=3, max_length=64)
+    username: str = Field(min_length=2, max_length=64)
     display_name: str = Field(min_length=1, max_length=64)
     department: str = Field(min_length=1, max_length=64)
     role: str
@@ -2393,7 +2395,7 @@ class DingTalkLoginInput(BaseModel):
 
 
 class DingTalkBindInput(DingTalkLoginInput):
-    username: str = Field(min_length=3, max_length=64)
+    username: str = Field(min_length=2, max_length=64)
     password: str = Field(min_length=1, max_length=128)
 
 
@@ -4095,6 +4097,9 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
         await db.commit()
         if user.locked_until: raise HTTPException(status_code=423, detail=f"登录失败次数过多，账号已锁定 {policy.lock_minutes} 分钟")
         raise HTTPException(status_code=401, detail=f"账号或密码错误，还可尝试 {policy.max_failed_attempts - user.failed_login_attempts} 次")
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(form.password)
+        user.password_changed_at = now
     user.failed_login_attempts = 0; user.locked_until = None; user.last_login_at = now
     await db.commit()
     return await _login_response(user, db)
@@ -4309,7 +4314,7 @@ def _replace_username_value(value: object, old_username: str, new_username: str)
 async def _rename_system_username(user: User, requested_username: str, identity: dict, db: AsyncSession) -> str:
     new_username = requested_username.strip().lower()
     old_username = user.username
-    if not re.fullmatch(r"[a-z0-9._-]+", new_username):
+    if not re.fullmatch(r"[a-z0-9._-]{2,64}", new_username):
         raise HTTPException(status_code=422, detail="登录账号只能包含小写字母、数字、点、下划线或短横线")
     if new_username == old_username:
         return old_username
@@ -19784,7 +19789,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
             raise HTTPException(status_code=422, detail="员工账号必须填写登录用户名")
         if username == "admin":
             raise HTTPException(status_code=409, detail="不能通过员工档案创建或覆盖管理员账号")
-        if not re.fullmatch(r"[a-z0-9._-]+", username):
+        if not re.fullmatch(r"[a-z0-9._-]{2,64}", username):
             raise HTTPException(status_code=422, detail="登录账号只能包含小写字母、数字、点、下划线或短横线")
         existing_employee = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "hr", or_(BusinessRecord.owner == username, BusinessRecord.data["username"].as_string() == username)))
         if existing_employee:

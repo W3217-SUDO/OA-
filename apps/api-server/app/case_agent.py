@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import operator
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import Annotated, Any, TypedDict
 from uuid import uuid4
 
+import httpx
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
@@ -71,9 +73,9 @@ def _case_assistant_node(state: CaseAgentState) -> dict[str, Any]:
     }
 
 
-def build_case_agent_graph(checkpointer: Any):
+def build_case_agent_graph(checkpointer: Any, assistant_node: Any = _case_assistant_node):
     builder = StateGraph(CaseAgentState)
-    builder.add_node("case_assistant", _case_assistant_node)
+    builder.add_node("case_assistant", assistant_node)
     builder.add_edge(START, "case_assistant")
     builder.add_edge("case_assistant", END)
     return builder.compile(checkpointer=checkpointer, name="sunhold-case-agent")
@@ -95,6 +97,8 @@ class CaseAgentRuntime:
         enabled: bool,
         database_url: str,
         checkpoint_url: str = "",
+        api_base_url: str = "",
+        api_key: str = "",
         model_provider: str = "",
         model: str = "",
         max_concurrency: int = 4,
@@ -102,6 +106,8 @@ class CaseAgentRuntime:
         self.enabled = enabled
         self.database_url = database_url
         self.checkpoint_url = checkpoint_url
+        self.api_base_url = api_base_url.strip().rstrip("/")
+        self.api_key = api_key.strip()
         self.model_provider = model_provider.strip()
         self.model = model.strip()
         self.max_concurrency = max(1, min(max_concurrency, 32))
@@ -124,10 +130,10 @@ class CaseAgentRuntime:
             else:
                 checkpointer = InMemorySaver()
                 self.backend = "memory"
-            self.graph = build_case_agent_graph(checkpointer)
+            self.graph = build_case_agent_graph(checkpointer, self._case_assistant_node)
             self.error = ""
         except Exception as exc:
-            self.error = str(exc)
+            self.error = "checkpoint_initialization_failed"
             self.backend = "unavailable"
             if self._checkpoint_context:
                 await self._checkpoint_context.__aexit__(type(exc), exc, exc.__traceback__)
@@ -146,11 +152,86 @@ class CaseAgentRuntime:
             "checkpoint_backend": self.backend,
             "model_provider": self.model_provider,
             "model": self.model,
-            "model_configured": bool(self.model_provider and self.model),
+            "model_configured": bool(self.api_base_url and self.api_key and self.model),
             "max_concurrency": self.max_concurrency,
             "write_requires_approval": True,
             "error": self.error,
         }
+
+    async def _case_assistant_node(self, state: CaseAgentState) -> dict[str, Any]:
+        messages = state.get("messages") or []
+        latest = messages[-1] if messages else {}
+        snapshot = state.get("case_snapshot") or {}
+        pending_actions = list(state.get("pending_actions") or [])
+        proposed_action = latest.get("proposed_action") or None
+        if proposed_action:
+            action = {
+                "id": uuid4().hex,
+                "type": proposed_action.get("type", "case.update"),
+                "summary": proposed_action.get("summary") or "案件写操作",
+                "payload": proposed_action.get("payload") or {},
+                "status": "pending",
+                "requested_by": latest.get("operator", ""),
+                "requested_at": _now(),
+                "decided_by": "",
+                "decided_at": "",
+                "decision_comment": "",
+            }
+            pending_actions.append(action)
+            response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
+        elif self.status()["model_configured"]:
+            response = await self._request_model(snapshot, messages)
+        else:
+            response = _case_summary(snapshot)
+        return {
+            "messages": [{"role": "assistant", "content": response, "created_at": _now()}],
+            "pending_actions": pending_actions,
+            "last_response": response,
+            "last_operator": latest.get("operator", ""),
+            "updated_at": _now(),
+        }
+
+    async def _request_model(self, snapshot: dict[str, Any], messages: list[dict[str, Any]]) -> str:
+        context = json.dumps(snapshot, ensure_ascii=False, default=str)
+        if len(context) > 80_000:
+            context = context[:80_000] + "\n[案件空间内容过长，已截断]"
+        prompt_messages: list[dict[str, str]] = [
+            {
+                "role": "system",
+                "content": (
+                    "你是法律服务机构管理系统中的案件智能体。"
+                    "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
+                    "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
+                    "回答使用简洁、专业的中文，并区分事实、期限风险和建议。\n\n"
+                    f"当前案件空间数据：\n{context}"
+                ),
+            }
+        ]
+        for message in messages[-10:]:
+            role = str(message.get("role") or "").strip()
+            content = str(message.get("content") or "").strip()
+            if role in {"user", "assistant"} and content:
+                prompt_messages.append({"role": role, "content": content[:8_000]})
+        try:
+            async with httpx.AsyncClient(timeout=90) as client:
+                response = await client.post(
+                    f"{self.api_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={
+                        "model": self.model,
+                        "messages": prompt_messages,
+                        "temperature": 0.2,
+                    },
+                )
+            if response.is_error:
+                raise RuntimeError(f"model_http_{response.status_code}")
+            payload = response.json()
+            content = str(payload["choices"][0]["message"]["content"]).strip()
+            if not content:
+                raise RuntimeError("model_empty_response")
+            return content
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+            raise RuntimeError("model_request_failed") from exc
 
     @staticmethod
     def config(case_id: int) -> dict[str, Any]:
