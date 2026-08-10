@@ -5,6 +5,8 @@ import test from "node:test";
 const appSource = fs.readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("./src/styles.css", import.meta.url), "utf8");
 const dashboardStyles = fs.readFileSync(new URL("./src/dashboard.css", import.meta.url), "utf8");
+const taskStyles = fs.readFileSync(new URL("./src/task-center.css", import.meta.url), "utf8");
+const taskPageSource = fs.readFileSync(new URL("./src/TaskCenterPage.tsx", import.meta.url), "utf8");
 
 test("mobile shell exposes app-style navigation and an overlay feature drawer", () => {
   assert.match(appSource, /mobile-bottom-nav/);
@@ -34,4 +36,12 @@ test("mobile dashboard uses compact two-column summary cards", () => {
   assert.match(dashboardStyles, /\.todo-table\{display:none\}/);
   assert.match(dashboardStyles, /\.mobile-todo-list\{display:grid/);
   assert.match(appSource, /className="mobile-todo-list"/);
+});
+
+test("task center replaces its desktop grid and wide table on phones", () => {
+  assert.match(taskStyles, /\.task-original-standard \.task-query\s*{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(taskStyles, /\.task-original-table\s*{\s*display: none;/);
+  assert.match(taskStyles, /\.task-mobile-list\s*{\s*display: grid;/);
+  assert.match(taskPageSource, /className="task-mobile-list"/);
+  assert.match(taskPageSource, /className="task-mobile-card-body"/);
 });

@@ -1465,6 +1465,42 @@ export default function TaskCenterPage({
           }}
         />
 
+        <div className="task-mobile-list" aria-label="移动端任务列表">
+          {filteredTasks.length ? filteredTasks.map((row) => (
+            <article
+              key={row.id}
+              className={`task-mobile-card${selectedKeys.includes(row.id) ? " selected" : ""}`}
+            >
+              <div className="task-mobile-card-head">
+                <label className="task-mobile-select">
+                  <input
+                    type="checkbox"
+                    checked={selectedKeys.includes(row.id)}
+                    onChange={(event) => {
+                      setSelectedKeys((keys) => event.target.checked
+                        ? Array.from(new Set([...keys, row.id]))
+                        : keys.filter((key) => key !== row.id));
+                    }}
+                  />
+                  <span className="sr-only">选择任务</span>
+                </label>
+                <Button type="link" onClick={() => openCommunication(row)}>
+                  {row.title || row.serial_no}
+                </Button>
+                <Tag color={statusColors[row.status] || "default"}>{row.status || "-"}</Tag>
+              </div>
+              <button type="button" className="task-mobile-card-body" onClick={() => openCommunication(row)}>
+                <span><b>任务编号</b>{row.serial_no || "-"}</span>
+                <span><b>案件编号</b>{row.case_no || "-"}</span>
+                <span><b>负责人</b>{row.owner || "-"}</span>
+                <span><b>优先级</b>{row.priority || "-"}</span>
+                <span><b>发起时间</b>{formatTaskDate(row.created_at) || "-"}</span>
+                <span><b>截止时间</b>{formatTaskDate(row.deadline) || "-"}</span>
+              </button>
+            </article>
+          )) : <div className="task-mobile-empty">没有符合条件的任务</div>}
+        </div>
+
         {!hideTaskFooter && (
           <div className="task-bottom-actions">
             <Space size={5} wrap>
