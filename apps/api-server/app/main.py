@@ -8675,9 +8675,19 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         raise HTTPException(status_code=422, detail="调查中心记录类型无效")
     if body.module in {"notary", "evidence"}:
         raise HTTPException(status_code=422, detail="公证和证据必须从线索专用办理入口创建")
-    if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no)):
-        raise HTTPException(status_code=409, detail="业务编号已存在")
     payload = body.model_dump()
+    if body.module == "clue":
+        # Legacy clue numbers use XS plus the local creation timestamp. The
+        # server owns the value so it cannot be edited or duplicated by users.
+        serial_time = datetime.now()
+        while True:
+            generated_serial = f"XS{serial_time:%Y%m%d%H%M%S}"
+            if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == generated_serial)):
+                break
+            serial_time += timedelta(seconds=1)
+        payload["serial_no"] = generated_serial
+    if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == payload["serial_no"])):
+        raise HTTPException(status_code=409, detail="业务编号已存在")
     payload["status"] = INVESTIGATION_CREATE_STATUS_BY_MODULE[body.module]
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:

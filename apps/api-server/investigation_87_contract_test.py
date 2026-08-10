@@ -11,8 +11,10 @@ from app.main import (
     BatchClueCaseInput,
     ClueCollectionInput,
     ClueSourceContractBindingInput,
+    RecordInput,
     batch_create_cases_from_clues,
     bind_clue_source_contract,
+    create_investigation_record,
     list_records,
     register_clue_collection,
     _contract_customer_record_dict,
@@ -59,6 +61,27 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["invoice_no"], "INV-CODEX-87")
         self.assertEqual(result["data"]["storage_location"], "档案室 A-01")
         self.assertEqual(result["data"]["evidence_status"], "已入库")
+
+    async def test_clue_number_is_generated_by_server_in_legacy_format(self):
+        async with self.sessions() as db:
+            db.add(User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin"))
+            source = BusinessRecord(
+                module="investigation", serial_no="DC-CODEX-AUTO-CLUE", title="来源调查任务",
+                customer="测试客户", status="进行中", owner="admin", department="上海", data={},
+            )
+            db.add(source)
+            await db.commit()
+            result = await create_investigation_record(
+                RecordInput(
+                    module="clue", serial_no="用户不能指定", title="自动编号线索",
+                    owner="fwl", data={"source_task_id": source.id},
+                ),
+                IDENTITY, db,
+            )
+
+        self.assertRegex(result["serial_no"], r"^XS\d{14}$")
+        self.assertNotEqual(result["serial_no"], "用户不能指定")
+        self.assertEqual(result["owner"], "admin")
 
     async def test_case_uses_contract_from_source_task_and_enters_waiting_notary(self):
         async with self.sessions() as db:

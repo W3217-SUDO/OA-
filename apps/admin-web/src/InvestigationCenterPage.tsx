@@ -311,6 +311,17 @@ export default function InvestigationCenterPage({
     );
     return matched?.label || raw;
   };
+  const systemPersonOptions = casePeopleOptions.map((item) => ({
+    value: item.username || item.value,
+    label: item.label,
+  }));
+  const systemPersonValue = (value: unknown) => {
+    const raw = String(value || "").trim();
+    const matched = casePeopleOptions.find(
+      (item) => item.username === raw || item.value === raw || item.label === raw,
+    );
+    return matched?.username || matched?.value || raw;
+  };
   const load = async (key = tab) => {
     setLoading(true);
     try {
@@ -578,7 +589,7 @@ export default function InvestigationCenterPage({
     try {
       const { data: created } = await api.post("/investigations/records", {
         module: targetModule,
-        serial_no: values.serial_no,
+        serial_no: targetModule === "clue" ? "" : values.serial_no,
         title: values.title,
         customer: values.customer || "",
         status: initialStatus,
@@ -2312,12 +2323,12 @@ export default function InvestigationCenterPage({
         setCreateContextTask(row);
         setCreateModule("clue");
         createForm.setFieldsValue({
-          serial_no: serial("XS"),
+          serial_no: "自动生成",
           status: "草稿",
           owner: row.owner,
           customer: row.customer,
           right_type: row.data.right_type || "商标",
-          source_owner: row.data.source_owner || "",
+          source_owner: systemPersonValue(row.data.source_owner),
           region: row.data.region || "",
           address: row.data.address || "",
           platform: "",
@@ -3132,12 +3143,16 @@ export default function InvestigationCenterPage({
             <Form.Item
               label="线索编号"
               name="serial_no"
-              rules={[{ required: true }]}
             >
-              <Input />
+              <Input disabled />
             </Form.Item>
-            <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-              <Input />
+            <Form.Item label="调查员" name="owner" rules={[{ required: true }]}>
+              <Select
+                disabled
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item
               className="span-2"
@@ -3208,7 +3223,12 @@ export default function InvestigationCenterPage({
               />
             </Form.Item>
             <Form.Item label="案源人" name="source_owner">
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item label="调查区域" name="region">
               <Input />

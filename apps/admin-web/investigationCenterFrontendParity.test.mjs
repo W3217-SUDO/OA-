@@ -42,6 +42,14 @@ test('clue create modal keeps legacy source, store and subject fields', () => {
   assert.match(source, /name='infringement_method'[\s\S]*name='store_url'[\s\S]*name='shop_id'[\s\S]*name='address'[\s\S]*name='investigated_at'[\s\S]*name='producer'[\s\S]*name='indictee'[\s\S]*name='investigation_assistant'/)
 })
 
+test('clue create uses server numbering and system person display labels', () => {
+  assert.match(source, /serial_no:targetModule==='clue'\?'':values\.serial_no/)
+  assert.match(source, /label='线索编号'name='serial_no'><Inputdisabled\/>/)
+  assert.match(source, /label='调查员'name='owner'[^]*options=\{systemPersonOptions\}/)
+  assert.match(source, /label='案源人'name='source_owner'[^]*options=\{systemPersonOptions\}/)
+  assert.match(source, /value:item\.username\|\|item\.value,label:item\.label/)
+})
+
 test('clue create payload keeps legacy source, store and subject fields', () => {
   for (const key of ['infringement_method', 'store_url', 'shop_id', 'address', 'producer', 'indictee', 'investigation_assistant']) {
     assert.match(source, new RegExp(key + ':values\\.' + key + '\\|\\|\'\''))
