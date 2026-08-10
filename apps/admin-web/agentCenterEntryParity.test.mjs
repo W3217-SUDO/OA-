@@ -5,6 +5,7 @@ import test from "node:test";
 const appSource = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("./src/AgentCenterPage.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("./src/agent-center.css", import.meta.url), "utf8");
+const skillSource = readFileSync(new URL("./src/agentSkillRouting.ts", import.meta.url), "utf8");
 
 test("global agent center is a first-level routed workspace", () => {
   assert.match(appSource, /lazyWithVersionRecovery\("agent-center"/);
@@ -29,4 +30,13 @@ test("agent center resumes authorized case spaces and all linked business areas"
   for (const label of ["客户", "合同", "案件", "线索", "调查", "财务"]) {
     assert.ok(pageSource.includes(`<Tag>${label}</Tag>`), `missing ${label} relation label`);
   }
+});
+
+test("agent center routes each conversation through the selected office skill", () => {
+  assert.match(pageSource, /办公技能/);
+  assert.match(pageSource, /status\?\.skills/);
+  assert.match(pageSource, /encodeAgentSkillMessage\(skillId, content\)/);
+  assert.match(pageSource, /disabled: !item\.available/);
+  assert.match(skillSource, /\[\[skill:\$\{normalized\}\]\]/);
+  assert.match(styleSource, /\.agent-skill-bar/);
 });

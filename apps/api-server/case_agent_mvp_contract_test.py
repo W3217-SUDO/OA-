@@ -89,9 +89,26 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(self.runtime.status()["model_configured"])
         self.assertEqual(result["last_response"], "这是基于案件空间生成的回答。")
-        snapshot, messages = self.runtime._request_model.await_args.args
+        snapshot, messages, skill = self.runtime._request_model.await_args.args
         self.assertEqual(snapshot["case"]["serial_no"], "SHMS-MODEL-009")
         self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
+        self.assertEqual(skill.id, "general-office")
+
+    async def test_selected_office_skill_routes_without_exposing_marker(self):
+        self.runtime.api_base_url = "https://model.example/v1"
+        self.runtime.api_key = "test-only"
+        self.runtime.model = "gpt-test"
+        self.runtime._request_model = AsyncMock(return_value="已完成数据分析。")
+        result = await self.runtime.invoke(
+            case_id=10,
+            operator="lawyer",
+            message="[[skill:data-analysis]]\n检查费用异常",
+            case_snapshot={"case": {"id": 10}, "finances": {"fees": []}},
+        )
+        self.assertEqual(result["active_skill"], "data-analysis")
+        self.assertEqual(result["messages"][0]["content"], "检查费用异常")
+        self.assertNotIn("[[skill:", result["messages"][0]["content"])
+        self.assertEqual(self.runtime._request_model.await_args.args[2].id, "data-analysis")
 
     def test_sqlalchemy_postgres_url_is_normalized_for_psycopg(self):
         self.assertEqual(

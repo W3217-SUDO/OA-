@@ -30,3 +30,10 @@ test('agent write proposals remain behind explicit human approval', () => {
   assert.match(source, /decideCaseAgentAction\(action, "rejected"\)/);
   assert.match(source, /disabled=\{!counselDetailCapabilities\.can_write\}/);
 });
+
+test('case drawer uses the shared office skill router', () => {
+  assert.match(source, /case-agent-skill-select/);
+  assert.match(source, /encodeAgentSkillMessage\(agentSkillId, content\)/);
+  assert.match(source, /agentStatus\?\.skills/);
+  assert.match(styles, /\.case-agent-skill-select/);
+});

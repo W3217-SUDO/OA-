@@ -35,6 +35,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
@@ -132,6 +133,7 @@ type CaseAgentState = {
   pending_actions: CaseAgentAction[];
   last_response: string;
   updated_at?: string;
+  active_skill?: string;
 };
 type CaseAgentStatus = {
   enabled: boolean;
@@ -140,6 +142,7 @@ type CaseAgentStatus = {
   model: string;
   model_configured: boolean;
   write_requires_approval: boolean;
+  skills?: AgentSkill[];
   error?: string | null;
 };
 type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; sort_order?: number };
@@ -542,6 +545,7 @@ export default function CaseCenterPage({
   const [agentSending, setAgentSending] = useState(false);
   const [agentDecisionLoading, setAgentDecisionLoading] = useState("");
   const [agentInput, setAgentInput] = useState("");
+  const [agentSkillId, setAgentSkillId] = useState(DEFAULT_AGENT_SKILL);
   const agentMessagesEndRef = useRef<HTMLDivElement>(null);
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
@@ -612,7 +616,7 @@ export default function CaseCenterPage({
     const normalized = String(source || "").trim();
     if (!normalized) return "";
     const option = caseAssistantOptions.find((item) =>
-      item.value === normalized || item.label === normalized || item.label.startsWith(`${normalized}（`),
+      item.value === normalized || item.label === normalized || item.label.startsWith(`${normalized}\uFF08`),
     );
     return option?.value || normalized;
   };
@@ -1368,6 +1372,9 @@ export default function CaseCenterPage({
       ]);
       setAgentStatus(statusRes.data);
       setAgentState(stateRes.data);
+      const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
+      const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
+      setAgentSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
     } catch (error: any) {
       const status = error?.response?.status;
       setAgentState(null);
@@ -1398,7 +1405,7 @@ export default function CaseCenterPage({
     if (!content) return message.warning("请输入要询问的案件问题");
     setAgentSending(true);
     try {
-      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, { message: content });
+      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, { message: encodeAgentSkillMessage(agentSkillId, content) });
       setAgentState(data);
       setAgentInput("");
     } catch (error: any) {
@@ -2873,7 +2880,7 @@ export default function CaseCenterPage({
                   <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}>
                     <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCasePersonValue(resolveCaseSourcePerson(selected)),title:selected?`${selected.title}案件`:undefined})}} />
                   </Form.Item>
-                  <Form.Item label="案源人" name="source_person"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="由关联合同自动带入，可搜索并选择系统在职员工" /></Form.Item>
+                  <Form.Item label="案源人" name="source_person"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="由关联合同自动带入，可按本案实际情况修改" /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
                   {isCounselCreate && <><Form.Item label="顾问类型" name="counsel_type" rules={[{ required: true }]}><Input placeholder="请输入顾问类型" /></Form.Item><Form.Item label="顾问期限" name="counsel_range" rules={[{ required: true }]}><DatePicker.RangePicker style={{ width: "100%" }} /></Form.Item></>}
                   <Form.Item label="案件名称" name="title" rules={[{ required: true }]}><Input placeholder="请输入案件名称" /></Form.Item>
@@ -3607,6 +3614,15 @@ export default function CaseCenterPage({
               {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
             </Space>
             <Button type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
+          </div>
+          <div className="case-agent-skill-select">
+            <span>办公技能</span>
+            <Select
+              value={agentSkillId}
+              onChange={setAgentSkillId}
+              options={(agentStatus?.skills || []).map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))}
+            />
+            <small>{(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}</small>
           </div>
           {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
           {agentState?.pending_actions?.length ? <section className="case-agent-actions">

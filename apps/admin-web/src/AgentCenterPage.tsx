@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Empty, Input, List, message, Space, Spin, Tag } from "antd";
+import { Alert, Button, Empty, Input, List, message, Select, Space, Spin, Tag, Tooltip } from "antd";
 import { CloseOutlined, ReloadOutlined, RobotOutlined, SendOutlined } from "@ant-design/icons";
 import { api } from "./api";
+import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import "./agent-center.css";
 
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
 type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; created_at?: string };
 type AgentAction = { id: string; type: string; summary: string; status: "pending" | "approved" | "rejected" };
-type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[] };
-type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean };
+type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
+type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
 
 export default function AgentCenterPage() {
   const [cases, setCases] = useState<CaseOption[]>([]);
@@ -21,6 +22,7 @@ export default function AgentCenterPage() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [state, setState] = useState<AgentState | null>(null);
   const [input, setInput] = useState("");
+  const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadCases = async (nextKeyword = keyword) => {
@@ -45,6 +47,9 @@ export default function AgentCenterPage() {
       ]);
       setStatus(statusRes.data);
       setState(stateRes.data);
+      const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
+      const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
+      setSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
     } catch (error: any) {
       setStatus(null);
       setState(null);
@@ -66,7 +71,7 @@ export default function AgentCenterPage() {
     if (!content) return message.warning("请输入要询问的问题");
     setSending(true);
     try {
-      const { data } = await api.post(`/case-spaces/${selected.id}/agent/messages`, { message: content });
+      const { data } = await api.post(`/case-spaces/${selected.id}/agent/messages`, { message: encodeAgentSkillMessage(skillId, content) });
       setState(data);
       setInput("");
     } catch (error: any) {
@@ -89,6 +94,8 @@ export default function AgentCenterPage() {
     }
   };
   const pendingActions = useMemo(() => (state?.pending_actions || []).filter((item) => item.status === "pending"), [state]);
+  const skills = status?.skills || [];
+  const selectedSkill = skills.find((item) => item.id === skillId);
 
   return <div className="agent-center-page" data-testid="agent-center-page">
     <header className="agent-center-header">
@@ -117,6 +124,19 @@ export default function AgentCenterPage() {
             <div><strong>{selected.serial_no}</strong><span>{selected.title}</span></div>
             <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">关系图</Tag><Tag color="gold">人工审批</Tag></Space>
           </div>
+          <div className="agent-skill-bar">
+            <span><RobotOutlined /> 办公技能</span>
+            <Select
+              value={skillId}
+              onChange={setSkillId}
+              options={skills.map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))}
+              optionRender={(option) => {
+                const item = skills.find((skill) => skill.id === option.value);
+                return <Tooltip title={item?.available ? item?.description : item?.unavailable_reason}>{option.label}</Tooltip>;
+              }}
+            />
+            <small>{selectedSkill?.description || "选择技能后，LangGraph 会按对应办公流程处理本轮对话"}</small>
+          </div>
           {pendingActions.length > 0 && <section className="agent-global-actions">
             <Alert type="info" showIcon title="待审批操作不会自动改写业务数据" />
             {pendingActions.map((action) => <div key={action.id}><span><strong>{action.summary}</strong><small>{action.type}</small></span><Space><Button size="small" type="primary" loading={decisionLoading === action.id} onClick={() => void decide(action, "approved")}>批准</Button><Button size="small" danger icon={<CloseOutlined />} onClick={() => void decide(action, "rejected")}>驳回</Button></Space></div>)}
@@ -127,7 +147,7 @@ export default function AgentCenterPage() {
             {(agentLoading || sending) && <div className="agent-global-loading"><RobotOutlined /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
             <div ref={messagesEndRef} />
           </div>
-          {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{["概括业务空间现状", "检查期限与任务风险", "汇总合同、费用与发票", "梳理线索和调查进度"].map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
+          {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
           <div className="agent-global-composer"><Input.TextArea value={input} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="询问当前空间的业务信息" disabled={!status?.ready || sending} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} /><Button type="primary" icon={<SendOutlined />} title="发送" loading={sending} disabled={!status?.ready || !input.trim()} onClick={() => void send()} /></div>
         </>}
       </main>

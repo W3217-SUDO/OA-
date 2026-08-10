@@ -13,6 +13,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 
+from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, AgentSkill, parse_skill_message, public_skill_catalog
+
 
 class CaseAgentState(TypedDict, total=False):
     messages: Annotated[list[dict[str, Any]], operator.add]
@@ -21,6 +23,7 @@ class CaseAgentState(TypedDict, total=False):
     last_response: str
     last_operator: str
     updated_at: str
+    active_skill: str
 
 
 def _now() -> str:
@@ -155,6 +158,8 @@ class CaseAgentRuntime:
             "model_configured": bool(self.api_base_url and self.api_key and self.model),
             "max_concurrency": self.max_concurrency,
             "write_requires_approval": True,
+            "skills": public_skill_catalog(),
+            "skill_count": len(public_skill_catalog()),
             "error": self.error,
         }
 
@@ -180,7 +185,12 @@ class CaseAgentRuntime:
             pending_actions.append(action)
             response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
         elif self.status()["model_configured"]:
-            response = await self._request_model(snapshot, messages)
+            skill_id = str(latest.get("skill_id") or GENERAL_SKILL.id)
+            selected_skill = SKILLS_BY_ID.get(skill_id, GENERAL_SKILL)
+            if not selected_skill.available:
+                response = f"“{selected_skill.name}”已接入技能目录，但暂不可执行：{selected_skill.unavailable_reason}。"
+            else:
+                response = await self._request_model(snapshot, messages, selected_skill)
         else:
             response = _case_summary(snapshot)
         return {
@@ -189,9 +199,10 @@ class CaseAgentRuntime:
             "last_response": response,
             "last_operator": latest.get("operator", ""),
             "updated_at": _now(),
+            "active_skill": str(latest.get("skill_id") or GENERAL_SKILL.id),
         }
 
-    async def _request_model(self, snapshot: dict[str, Any], messages: list[dict[str, Any]]) -> str:
+    async def _request_model(self, snapshot: dict[str, Any], messages: list[dict[str, Any]], skill: AgentSkill = GENERAL_SKILL) -> str:
         context = json.dumps(snapshot, ensure_ascii=False, default=str)
         if len(context) > 80_000:
             context = context[:80_000] + "\n[案件空间内容过长，已截断]"
@@ -203,6 +214,7 @@ class CaseAgentRuntime:
                     "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
                     "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
                     "回答使用简洁、专业的中文，并区分事实、期限风险和建议。\n\n"
+                    f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
                     f"当前案件空间数据：\n{context}"
                 ),
             }
@@ -248,10 +260,13 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
+        skill, clean_message = parse_skill_message(message)
         user_message = {
             "id": uuid4().hex,
             "role": "user",
-            "content": message,
+            "content": clean_message,
+            "skill_id": skill.id,
+            "skill_name": skill.name,
             "operator": operator,
             "created_at": _now(),
         }
@@ -319,4 +334,5 @@ class CaseAgentRuntime:
             "last_response": state.get("last_response", ""),
             "last_operator": state.get("last_operator", ""),
             "updated_at": state.get("updated_at", ""),
+            "active_skill": state.get("active_skill", GENERAL_SKILL.id),
         }
