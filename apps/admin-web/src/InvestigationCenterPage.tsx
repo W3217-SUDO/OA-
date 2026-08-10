@@ -110,6 +110,39 @@ type InvestigationActions = {
   review_notary: boolean;
   register_notary_certificate: boolean;
 };
+type InvestigationBootstrapData = {
+  profile: Profile;
+  assignmentSupervisor: string;
+  notaryOfficeOptions: { value: string }[];
+  casePeopleOptions: PersonOption[];
+};
+let investigationBootstrapPromise: Promise<InvestigationBootstrapData> | null = null;
+const loadInvestigationBootstrap = () => {
+  if (!investigationBootstrapPromise) {
+    investigationBootstrapPromise = Promise.all([
+      api.get("/auth/me").then(({ data }) => data as Profile),
+      api.get("/investigations/assignment-supervisor")
+        .then(({ data }) => String(data.username || ""))
+        .catch(() => ""),
+      api.get("/system/parameters/options", { params: { category: "notary_office" } })
+        .then(({ data }) =>
+          (data.items || [])
+            .map((item: { name?: string }) => ({ value: String(item.name || "").trim() }))
+            .filter((item: { value: string }) => item.value),
+        )
+        .catch(() => [] as { value: string }[]),
+      api.get("/people/options")
+        .then(({ data }) => data.items || [])
+        .catch(() => [] as PersonOption[]),
+    ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions]) => ({
+      profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions,
+    })).catch((error) => {
+      investigationBootstrapPromise = null;
+      throw error;
+    });
+  }
+  return investigationBootstrapPromise;
+};
 type SubtaskLifecycleAction = "accept" | "complete";
 const investigationListView = (route: string) => {
   if (route === "investigation-task-unassigned") return "assigned";
@@ -363,26 +396,14 @@ export default function InvestigationCenterPage({
       setSelectedClues([]);
       await Promise.all([
         load(initial),
-        api.get("/auth/me").then(({ data }) => setProfile(data)).catch(() =>
-          message.error("当前登录身份加载失败，已按普通用户范围显示"),
+        loadInvestigationBootstrap().then((bootstrapData) => {
+          setProfile(bootstrapData.profile);
+          setAssignmentSupervisor(bootstrapData.assignmentSupervisor);
+          setNotaryOfficeOptions(bootstrapData.notaryOfficeOptions);
+          setCasePeopleOptions(bootstrapData.casePeopleOptions);
+        }).catch(() =>
+          message.error("调查辅助数据加载失败，业务列表仍可正常使用"),
         ),
-        api.get("/investigations/assignment-supervisor")
-          .then(({ data }) => setAssignmentSupervisor(String(data.username || "")))
-          .catch(() => setAssignmentSupervisor("")),
-        api.get("/system/parameters/options", {
-          params: { category: "notary_office" },
-        }).then(({ data }) =>
-          setNotaryOfficeOptions(
-            (data.items || [])
-              .map((item: { name?: string }) => ({
-                value: String(item.name || "").trim(),
-              }))
-              .filter((item: { value: string }) => item.value),
-          ),
-        ).catch(() => setNotaryOfficeOptions([])),
-        api.get("/people/options")
-          .then(({ data }) => setCasePeopleOptions(data.items || []))
-          .catch(() => setCasePeopleOptions([])),
       ]);
     };
     void bootstrap();
