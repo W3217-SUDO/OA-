@@ -2944,7 +2944,14 @@ def _contract_person_values(value: object) -> list[str]:
     return [item.strip() for item in re.split(r"[、,，;；]", str(value or "")) if item.strip()]
 
 
-async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields: set[str] | None, db: AsyncSession) -> dict:
+async def _contract_customer_record_dict(
+    record: BusinessRecord,
+    allowed_fields: set[str] | None,
+    db: AsyncSession,
+    *,
+    investigations_by_id: dict[int, BusinessRecord] | None = None,
+    names_by_username: dict[str, str] | None = None,
+) -> dict:
     result = _record_dict(record, allowed_fields)
     if record.module not in {"contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
@@ -2954,7 +2961,11 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
             investigation_id = int(data.get("investigation_record_id") or 0)
         except (TypeError, ValueError):
             investigation_id = 0
-        investigation = await db.get(BusinessRecord, investigation_id) if investigation_id else None
+        investigation = (
+            investigations_by_id.get(investigation_id)
+            if investigations_by_id is not None
+            else await db.get(BusinessRecord, investigation_id) if investigation_id else None
+        )
         if investigation and investigation.module == "investigation":
             investigation_data = investigation.data or {}
             for key in ("right_type", "region", "authorized_from", "authorized_to", "source_owner", "assigner", "assigned_by"):
@@ -2966,9 +2977,10 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
         usernames.extend(_contract_person_values(data.get(key)))
     usernames.extend(_contract_person_values(data.get("customer_managers")))
     usernames.extend(_contract_person_values(data.get("contact_accounts") or data.get("contact")))
-    normalized_usernames = list(dict.fromkeys(value.lower() for value in usernames if value))
-    users = list((await db.scalars(select(User).where(User.username.in_(normalized_usernames)))).all()) if normalized_usernames else []
-    names_by_username = {user.username.lower(): user.display_name for user in users}
+    if names_by_username is None:
+        normalized_usernames = list(dict.fromkeys(value.lower() for value in usernames if value))
+        users = list((await db.scalars(select(User).where(User.username.in_(normalized_usernames)))).all()) if normalized_usernames else []
+        names_by_username = {user.username.lower(): user.display_name for user in users}
     result["owner_display_name"] = _contract_person_display_name(record.owner, names_by_username)
     for key in ("source_person", "customer_source", "submitted_by", "current_approver", "investigator", "source_owner", "assigner", "assigned_by"):
         if key in data:
@@ -3001,6 +3013,51 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
         if record.module == "clue" and manager_label and reviewer_label:
             data["customer_manager"] = f"{manager_label}（审核人：{reviewer_label}）"
     return result
+
+
+async def _contract_customer_record_dicts(
+    records: list[BusinessRecord], allowed_fields: set[str] | None, db: AsyncSession,
+) -> list[dict]:
+    investigation_ids: set[int] = set()
+    for record in records:
+        if record.module != "task":
+            continue
+        try:
+            investigation_id = int((record.data or {}).get("investigation_record_id") or 0)
+        except (TypeError, ValueError):
+            investigation_id = 0
+        if investigation_id:
+            investigation_ids.add(investigation_id)
+    investigations = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "investigation", BusinessRecord.id.in_(investigation_ids),
+    ))).all()) if investigation_ids else []
+    investigations_by_id = {item.id: item for item in investigations}
+
+    usernames: set[str] = set()
+    person_keys = (
+        "source_person", "customer_source", "submitted_by", "current_approver", "customer_manager",
+        "reviewer", "customer_reviewer", "investigator", "source_owner", "assigner", "assigned_by",
+    )
+    for record in records:
+        usernames.add(str(record.owner or "").lower())
+        data = record.data or {}
+        investigation = investigations_by_id.get(int(data.get("investigation_record_id") or 0)) if record.module == "task" and str(data.get("investigation_record_id") or "").isdigit() else None
+        inherited_data = investigation.data or {} if investigation else {}
+        for key in person_keys:
+            usernames.update(value.lower() for value in _contract_person_values(data.get(key) or inherited_data.get(key)))
+        usernames.update(value.lower() for value in _contract_person_values(data.get("customer_managers")))
+        usernames.update(value.lower() for value in _contract_person_values(data.get("contact_accounts") or data.get("contact")))
+    usernames.discard("")
+    users = list((await db.scalars(select(User).where(User.username.in_(usernames)))).all()) if usernames else []
+    names_by_username = {user.username.lower(): user.display_name for user in users}
+    return [
+        await _contract_customer_record_dict(
+            record, allowed_fields, db,
+            investigations_by_id=investigations_by_id,
+            names_by_username=names_by_username,
+        )
+        for record in records
+    ]
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord) -> dict:
@@ -6294,10 +6351,10 @@ async def list_records(
         if exclude_archived:
             conditions.append(BusinessRecord.status.notin_(["已归档", "Archived", "archived"]))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
-    result = await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))
+    result = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all())
     allowed_fields = await _allowed_field_keys(identity, db)
     return {
-        "items": [await _contract_customer_record_dict(item, allowed_fields, db) for item in result],
+        "items": await _contract_customer_record_dicts(result, allowed_fields, db),
         "total": total or 0,
         "page": page,
         "page_size": page_size,
