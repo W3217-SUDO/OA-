@@ -46,11 +46,14 @@ test("task center replaces its desktop grid and wide table on phones", () => {
   assert.match(taskStyles, /\.task-original-table\s*{\s*display: none;/);
   assert.match(taskStyles, /\.task-mobile-list\s*{\s*display: grid;/);
   assert.match(taskStyles, /\.task-original-standard \.task-query\.mobile-open\s*{\s*display: grid;/);
+  assert.match(taskStyles, /@media \(max-width: 640px\)[\s\S]*?\.task-detail-meta\s*\{\s*grid-template-columns: 1fr/);
+  assert.match(taskStyles, /\.task-detail-section-title \+ \.ant-table-wrapper[\s\S]*?:nth-child\(2\)/);
   assert.match(taskPageSource, /className="task-mobile-list"/);
   assert.match(taskPageSource, /className="task-mobile-card-body"/);
   assert.match(taskPageSource, /className="task-mobile-filter-toggle"/);
   assert.match(taskPageSource, /aria-label=\{`选择任务 \$\{row\.title \|\| row\.serial_no\}`\}/);
   assert.doesNotMatch(taskPageSource, /<span className="sr-only">选择任务<\/span>/);
+  assert.match(styles, /body:has\(\.ant-modal-wrap\) \.mobile-bottom-nav\s*\{\s*display: none/);
 });
 
 test("core customer and contract forms shed desktop fixed widths on phones", () => {

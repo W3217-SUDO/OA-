@@ -724,4 +724,13 @@ body {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
+  body:has(.ant-modal-wrap) .mobile-bottom-nav {
+    display: none;
+  }
+  .ant-modal-root .ant-modal-wrap,
+  .ant-modal-root .ant-modal-mask {
+    z-index: 1300;
+  }
+  .ant-modal .ant-modal-header { margin-bottom: 12px; }
+  .ant-modal .ant-modal-body { padding-inline: 0; }
 }
