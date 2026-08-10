@@ -36,8 +36,10 @@ test('new investigation tasks bind a same-customer contract and unresolved legac
 test('new investigation tasks visibly carry the nationwide authorization scope', () => {
   assert.match(contractSource, /label="授权范围"/)
   assert.match(contractSource, /options=\{\["全国", "区域"\]/)
+  assert.match(contractSource, /authorization_scope:\s*"全国"/)
   assert.match(contractSource, /value === "全国" \? "全国"/)
-  assert.match(contractSource, /授权区域：全国/)
+  assert.match(contractSource, /investigationRegion === "区域" && \(/)
+  assert.doesNotMatch(contractSource, /授权区域：全国/)
 })
 
 test('regional investigation scope uses a province-expanding city dialog with nationwide city data', () => {

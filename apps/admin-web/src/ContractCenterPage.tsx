@@ -1525,7 +1525,7 @@ export default function ContractCenterPage({
         right_type: "商标",
         customer_review: false,
         region: "全国",
-        authorization_scope: "",
+        authorization_scope: "全国",
         description: `来源合同 ${r.serial_no}`,
       });
       setInvestigating(r);
@@ -2372,20 +2372,20 @@ export default function ContractCenterPage({
               }}
             />
           </Form.Item>
-          <Form.Item
-            label="授权区域"
-            name="authorization_scope"
-            rules={[{ required: true, message: "请输入授权区域" }]}
-          >
-            {investigationRegion === "全国"
-              ? <Input disabled aria-label="授权区域：全国" />
-              : <Input
+          {investigationRegion === "区域" && (
+            <Form.Item
+              label="授权区域"
+              name="authorization_scope"
+              rules={[{ required: true, message: "请选择授权区域" }]}
+            >
+              <Input
                 readOnly
                 placeholder="请选择省、市或具体授权区域"
                 onClick={() => setInvestigationRegionPickerOpen(true)}
                 suffix={<Button type="link" size="small" onClick={() => setInvestigationRegionPickerOpen(true)}>选择城市</Button>}
-              />}
-          </Form.Item>
+              />
+            </Form.Item>
+          )}
           <Form.Item name="customer_review" valuePropName="checked">
             <Checkbox>调查线索需要客户审核</Checkbox>
           </Form.Item>
