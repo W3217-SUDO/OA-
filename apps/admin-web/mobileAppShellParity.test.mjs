@@ -49,6 +49,8 @@ test("task center replaces its desktop grid and wide table on phones", () => {
   assert.match(taskPageSource, /className="task-mobile-list"/);
   assert.match(taskPageSource, /className="task-mobile-card-body"/);
   assert.match(taskPageSource, /className="task-mobile-filter-toggle"/);
+  assert.match(taskPageSource, /aria-label=\{`选择任务 \$\{row\.title \|\| row\.serial_no\}`\}/);
+  assert.doesNotMatch(taskPageSource, /<span className="sr-only">选择任务<\/span>/);
 });
 
 test("core customer and contract forms shed desktop fixed widths on phones", () => {

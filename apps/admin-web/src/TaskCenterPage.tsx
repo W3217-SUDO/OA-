@@ -1486,6 +1486,7 @@ export default function TaskCenterPage({
                 <label className="task-mobile-select">
                   <input
                     type="checkbox"
+                    aria-label={`选择任务 ${row.title || row.serial_no}`}
                     checked={selectedKeys.includes(row.id)}
                     onChange={(event) => {
                       setSelectedKeys((keys) => event.target.checked
@@ -1493,7 +1494,6 @@ export default function TaskCenterPage({
                         : keys.filter((key) => key !== row.id));
                     }}
                   />
-                  <span className="sr-only">选择任务</span>
                 </label>
                 <Button type="link" onClick={() => openCommunication(row)}>
                   {row.title || row.serial_no}
