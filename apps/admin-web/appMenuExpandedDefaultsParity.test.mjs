@@ -26,3 +26,8 @@ test("all nested sidebar entries receive the legacy list icon", () => {
   assert.match(source, /menuItemsWithDoubleClickReload\(item\.children, onReload, depth \+ 1\)/);
   assert.match(source, /icon: item\.icon \|\| \(depth > 0 \? <UnorderedListOutlined \/> : undefined\)/);
 });
+
+test("expanded sidebar leaves enough room for full nested labels", () => {
+  assert.match(source, /<Sider[\s\S]*width=\{280\}/);
+  assert.match(source, /<Menu[\s\S]*inlineIndent=\{16\}/);
+});

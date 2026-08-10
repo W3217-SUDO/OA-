@@ -42,21 +42,26 @@ test("investigation hall matches the legacy investigation directory hierarchy", 
   assert.match(source, /route\.startsWith\("notary-"\)/);
 });
 
-test("investigation task entries are ordered inside one collapsible group", () => {
+test("investigation task entries are ordered without a third-level published group", () => {
   const groupStart = source.indexOf('key: "investigation-tasks"');
-  const clueStart = source.indexOf('key: "clue"', groupStart);
-  const taskGroup = source.slice(groupStart, clueStart);
+  const publishedStart = source.indexOf('key: "investigation-task-published"', groupStart);
+  const clueStart = source.indexOf('key: "clue"', publishedStart);
+  const taskGroup = source.slice(groupStart, publishedStart);
+  const publishedGroup = source.slice(publishedStart, clueStart);
 
   assert.ok(groupStart >= 0, "the investigation task group should exist");
   assert.match(taskGroup, /label: "调查任务"/);
   assert.match(taskGroup, /icon: <UnorderedListOutlined\s*\/>/);
   const orderedKeys = [
     "investigation-task-unassigned",
-    "investigation-task-published",
     "investigation-task-sub-published",
     "investigation-task-sub-mine",
   ];
   const positions = orderedKeys.map((key) => taskGroup.indexOf(`key: "${key}"`));
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
+  assert.doesNotMatch(taskGroup, /key: "investigation-task-published"/);
+  assert.match(publishedGroup, /label: "我发布的调查任务"/);
+  assert.match(publishedGroup, /key: "investigation-task-mine"/);
+  assert.match(publishedGroup, /key: "investigation-task-overdue"/);
 });

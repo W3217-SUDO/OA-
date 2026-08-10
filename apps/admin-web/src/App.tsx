@@ -304,17 +304,17 @@ const menuItems: NavItem[] = [
         icon: <UnorderedListOutlined />,
         children: [
           { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
-          {
-            key: "investigation-task-published",
-            label: "我发布的调查任务",
-            icon: <UnorderedListOutlined />,
-            children: [
-              { key: "investigation-task-mine", label: "我的调查任务" },
-              { key: "investigation-task-overdue", label: "过期调查任务" },
-            ],
-          },
           { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
           { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
+        ],
+      },
+      {
+        key: "investigation-task-published",
+        label: "我发布的调查任务",
+        icon: <UnorderedListOutlined />,
+        children: [
+          { key: "investigation-task-mine", label: "我的调查任务" },
+          { key: "investigation-task-overdue", label: "过期调查任务" },
         ],
       },
       {
@@ -547,11 +547,11 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       icon: <UnorderedListOutlined />,
       children: [
         { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
-        { key: "investigation-task-published", label: "我发布的调查任务", icon: <UnorderedListOutlined />, children: taskChildren },
         { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
         { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
       ],
     },
+    { key: "investigation-task-published", label: "我发布的调查任务", icon: <UnorderedListOutlined />, children: taskChildren },
     {
       key: "clue",
       label: "我的调查线索",
@@ -1830,7 +1830,7 @@ export default function App() {
       </Header>
       <Layout className="app-body">
         <Sider
-          width={230}
+          width={280}
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsNarrowViewport(broken);
@@ -1867,6 +1867,7 @@ export default function App() {
           )}
           <Menu
             mode="inline"
+            inlineIndent={16}
             theme="dark"
             items={sidebarReloadableItems}
             selectedKeys={[active]}
