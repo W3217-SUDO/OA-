@@ -92,6 +92,8 @@ type SystemUser = {
   is_active: boolean;
   must_change_password?: boolean;
   contract_approval_enabled?: boolean;
+  dingtalk_user_id?: string;
+  dingtalk_bound?: boolean;
   profile?: Record<string, any>;
   email: string;
   mobile: string;
@@ -1509,6 +1511,12 @@ export default function SystemCenterPage({
               { title: "手机号码", dataIndex: "mobile", width: 130 },
               { title: "固定电话", dataIndex: "office_phone", width: 130 },
               {
+                title: "钉钉",
+                dataIndex: "dingtalk_bound",
+                width: 90,
+                render: (value) => <Tag color={value ? "blue" : "default"}>{value ? "已绑定" : "未绑定"}</Tag>,
+              },
+              {
                 title: "系统角色",
                 dataIndex: "role",
                 width: 105,
@@ -1654,6 +1662,9 @@ export default function SystemCenterPage({
                   placeholder="请选择部门"
                   options={userDepartmentOptions}
                 />
+              </Form.Item>
+              <Form.Item label="钉钉 UserId" name={["profile", "dingtalk_user_id"]} tooltip="在钉钉开发者后台的通讯录中查看；每个 UserId 只能绑定一个系统员工。">
+                <Input allowClear placeholder="留空表示未绑定" />
               </Form.Item>
               <Form.Item
                 label={

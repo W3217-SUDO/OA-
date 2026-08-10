@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     dify_api_key: str = ""
     sms_webhook_url: str = ""
     sms_webhook_token: str = ""
+    dingtalk_corp_id: str = ""
+    dingtalk_agent_id: str = ""
+    dingtalk_app_key: str = ""
+    dingtalk_app_secret: str = ""
+    dingtalk_app_url: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
+from .dingtalk import DingTalkError, dingtalk_client
 from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, user_role_ids, verify_password
 
@@ -489,12 +490,17 @@ def _upgrade_schema(connection) -> None:
     # Remove the short-lived internal marker used by an earlier development
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
+    timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
     notification_columns = {item["name"] for item in inspect(connection).get_columns("notifications")}
     for column, definition in {
         "sender": "VARCHAR(64) NOT NULL DEFAULT 'system'",
         "notification_type": "VARCHAR(32) NOT NULL DEFAULT '系统通知'",
         "recipient_deleted": "BOOLEAN NOT NULL DEFAULT 0",
         "sender_deleted": "BOOLEAN NOT NULL DEFAULT 0",
+        "dingtalk_status": "VARCHAR(16) NOT NULL DEFAULT 'skipped'",
+        "dingtalk_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "dingtalk_sent_at": timestamp_type,
+        "dingtalk_error": "VARCHAR(500) NOT NULL DEFAULT ''",
     }.items():
         if column not in notification_columns: connection.execute(text(f"ALTER TABLE notifications ADD COLUMN {column} {definition}"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_sender ON notifications (sender)"))
@@ -513,7 +519,6 @@ def _upgrade_schema(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_bank_source ON incoming_payments (bank_source)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_notification_type ON notifications (notification_type)"))
     agent_document_columns = {item["name"] for item in inspect(connection).get_columns("agent_documents")}
-    timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
     for column, definition in {
         "content_version": "INTEGER NOT NULL DEFAULT 1",
         "confirmed_by": "VARCHAR(64) NOT NULL DEFAULT ''",
@@ -816,12 +821,16 @@ async def lifespan(_: FastAPI):
                 db.add(ContractApprovalStep(contract_record_id=contract.id, step_order=1, approver="admin", status="待审批", comment="历史合同补充默认审批节点"))
         await db.commit()
     rule_task = asyncio.create_task(_business_rule_loop())
+    dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
     try:
         yield
     finally:
         rule_task.cancel()
+        dingtalk_task.cancel()
         with suppress(asyncio.CancelledError):
             await rule_task
+        with suppress(asyncio.CancelledError):
+            await dingtalk_task
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
@@ -2349,6 +2358,19 @@ class CurrentUserUpdate(BaseModel):
     menu_auto_collapse: str | None = Field(default=None, pattern="^(yes|no)$")
     current_password: str | None = Field(default=None, min_length=1, max_length=128)
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class DingTalkLoginInput(BaseModel):
+    auth_code: str = Field(min_length=1, max_length=512)
+
+
+class DingTalkBindInput(DingTalkLoginInput):
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class DingTalkBindingInput(BaseModel):
+    user_id: str = Field(default="", max_length=128)
 
 
 class UserMessageInput(BaseModel):
@@ -4003,6 +4025,28 @@ def _security_policy_dict(policy: SecurityPolicy) -> dict:
     return {"min_password_length": policy.min_password_length, "max_failed_attempts": policy.max_failed_attempts, "lock_minutes": policy.lock_minutes, "token_minutes": policy.token_minutes, "updated_by": policy.updated_by, "updated_at": policy.updated_at}
 
 
+async def _login_response(user: User, db: AsyncSession, *, require_password_change: bool | None = None) -> dict:
+    policy = await _security_policy(db)
+    permission = await _user_permission_payload(user, db)
+    role_ids = _system_user_role_ids(user)
+    must_change = user.must_change_password if require_password_change is None else require_password_change
+    return {
+        "access_token": create_token(user.username, role_ids[0], policy.token_minutes),
+        "token_type": "bearer",
+        "expires_in": policy.token_minutes * 60,
+        "must_change_password": must_change,
+        "user": {
+            "username": user.username,
+            "display_name": user.display_name,
+            "department": user.department,
+            "role": role_ids[0],
+            "role_ids": role_ids,
+            "must_change_password": must_change,
+            **permission,
+        },
+    }
+
+
 @app.post(f"{settings.api_prefix}/auth/login")
 async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.username == form.username))
@@ -4025,9 +4069,58 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
         raise HTTPException(status_code=401, detail=f"账号或密码错误，还可尝试 {policy.max_failed_attempts - user.failed_login_attempts} 次")
     user.failed_login_attempts = 0; user.locked_until = None; user.last_login_at = now
     await db.commit()
-    permission = await _user_permission_payload(user, db)
-    role_ids = _system_user_role_ids(user)
-    return {"access_token": create_token(user.username, role_ids[0], policy.token_minutes), "token_type": "bearer", "expires_in": policy.token_minutes * 60, "must_change_password": user.must_change_password, "user": {"username": user.username, "display_name": user.display_name, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "must_change_password": user.must_change_password, **permission}}
+    return await _login_response(user, db)
+
+
+@app.get(f"{settings.api_prefix}/auth/dingtalk/config")
+async def dingtalk_login_config():
+    return {
+        "enabled": dingtalk_client.configured,
+        "corp_id": settings.dingtalk_corp_id if dingtalk_client.configured else "",
+        "agent_id": settings.dingtalk_agent_id if dingtalk_client.configured else "",
+    }
+
+
+@app.post(f"{settings.api_prefix}/auth/dingtalk/login")
+async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(get_db)):
+    if not dingtalk_client.configured:
+        raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
+    try:
+        ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
+    except (DingTalkError, httpx.HTTPError) as exc:
+        logger.warning("DingTalk login failed: %s", exc)
+        raise HTTPException(status_code=502, detail="钉钉身份校验失败，请稍后重试") from exc
+    users = (await db.scalars(select(User).where(User.is_active.is_(True)))).all()
+    matched = [user for user in users if str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user["user_id"]]
+    if not matched and ding_user.get("mobile"):
+        matched = [user for user in users if str((user.profile or {}).get("mobile") or "").strip() == ding_user["mobile"]]
+        if len(matched) == 1:
+            matched[0].profile = {**(matched[0].profile or {}), "dingtalk_user_id": ding_user["user_id"]}
+    if len(matched) != 1:
+        raise HTTPException(status_code=403, detail="钉钉账号尚未绑定系统员工，请联系管理员在员工账号中绑定")
+    user = matched[0]
+    user.last_login_at = datetime.now()
+    await db.commit()
+    return await _login_response(user, db, require_password_change=False)
+
+
+@app.post(f"{settings.api_prefix}/auth/dingtalk/bind")
+async def bind_dingtalk_login(body: DingTalkBindInput, db: AsyncSession = Depends(get_db)):
+    if not dingtalk_client.configured:
+        raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
+    try:
+        ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
+    except (DingTalkError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail="钉钉身份校验失败，请从工作台重新打开系统") from exc
+    user = await db.scalar(select(User).where(User.username == body.username.strip().lower(), User.is_active.is_(True)))
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="OA 账号或密码错误")
+    profile = {**(user.profile or {}), "dingtalk_user_id": ding_user["user_id"]}
+    await _ensure_unique_dingtalk_user_id(profile, db, user.id)
+    user.profile = profile
+    user.last_login_at = datetime.now()
+    await db.commit()
+    return await _login_response(user, db)
 
 
 @app.get(f"{settings.api_prefix}/auth/me")
@@ -4081,7 +4174,7 @@ def _system_user_dict(user: User) -> dict:
     role_ids = _system_user_role_ids(user)
     person_name, person_name_missing = _person_display_name(user.display_name, user.username)
     manager_name, manager_name_missing = _person_display_name(profile.get("manager_name", ""), "")
-    return {"id": user.id, "username": user.username, "display_name": user.display_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "manager_id": profile.get("manager_id"), "manager_name": profile.get("manager_name", ""), "manager_person_display_name": manager_name if profile.get("manager_id") else "", "manager_name_missing": manager_name_missing if profile.get("manager_id") else False, "access_level": profile.get("access_level", ""), "lead_rate": profile.get("lead_rate", ""), "copy_rate": profile.get("copy_rate", ""), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "dingtalk_user_id": profile.get("dingtalk_user_id", ""), "dingtalk_bound": bool(profile.get("dingtalk_user_id")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "manager_id": profile.get("manager_id"), "manager_name": profile.get("manager_name", ""), "manager_person_display_name": manager_name if profile.get("manager_id") else "", "manager_name_missing": manager_name_missing if profile.get("manager_id") else False, "access_level": profile.get("access_level", ""), "lead_rate": profile.get("lead_rate", ""), "copy_rate": profile.get("copy_rate", ""), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
 
 
 @app.get(f"{settings.api_prefix}/system/users")
@@ -4093,6 +4186,27 @@ async def list_system_users(keyword: str = "", identity: dict = Depends(current_
         statement = statement.where(or_(User.username.ilike(like), User.display_name.ilike(like)))
     users = (await db.scalars(statement.order_by(User.id))).all()
     return {"items": [_system_user_dict(user) for user in users], "total": len(users)}
+
+
+@app.patch(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk")
+async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="系统用户不存在")
+    ding_user_id = body.user_id.strip()
+    if ding_user_id:
+        users = (await db.scalars(select(User).where(User.id != user_id))).all()
+        if any(str((item.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for item in users):
+            raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
+    profile = dict(user.profile or {})
+    if ding_user_id:
+        profile["dingtalk_user_id"] = ding_user_id
+    else:
+        profile.pop("dingtalk_user_id", None)
+    user.profile = profile
+    await db.commit(); await db.refresh(user)
+    return _system_user_dict(user)
 
 
 @app.get(f"{settings.api_prefix}/people/options")
@@ -4107,6 +4221,15 @@ async def list_active_people_options(identity: dict = Depends(current_identity),
     return {"items": items}
 
 
+async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None) -> None:
+    ding_user_id = str(profile.get("dingtalk_user_id") or "").strip()
+    if not ding_user_id:
+        return
+    users = (await db.scalars(select(User))).all()
+    if any(user.id != exclude_user_id and str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for user in users):
+        raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
+
+
 @app.post(f"{settings.api_prefix}/system/users", status_code=status.HTTP_201_CREATED)
 async def create_system_user(body: SystemUserInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
@@ -4117,6 +4240,7 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
     policy = await _security_policy(db)
     if len(body.password) < policy.min_password_length: raise HTTPException(status_code=422, detail=f"密码至少需要 {policy.min_password_length} 位")
     profile = {**body.profile, "access_level": body.access_level.strip(), "lead_rate": body.lead_rate.strip(), "copy_rate": body.copy_rate.strip(), **(await _system_user_manager_profile(body.manager_id, db))}
+    await _ensure_unique_dingtalk_user_id(profile, db)
     user = User(
         username=username,
         display_name=body.display_name.strip(),
@@ -4268,6 +4392,7 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
             profile[key] = (value or "").strip()
     if body.profile is not None:
         profile = {**profile, **body.profile}
+    await _ensure_unique_dingtalk_user_id(profile, db, user.id)
     user.profile = profile
     await db.commit(); await db.refresh(user)
     return _system_user_dict(user)
@@ -5264,7 +5389,51 @@ async def global_search(q: str = Query(min_length=2, max_length=100), identity: 
 
 
 def _notification_dict(item: Notification) -> dict:
-    return {"id": item.id, "source_type": item.source_type, "source_id": item.source_id, "sender": item.sender, "recipient": item.recipient, "notification_type": item.notification_type, "title": item.title, "content": item.content, "level": item.level, "is_read": item.is_read, "read_at": item.read_at, "created_at": item.created_at}
+    return {"id": item.id, "source_type": item.source_type, "source_id": item.source_id, "sender": item.sender, "recipient": item.recipient, "notification_type": item.notification_type, "title": item.title, "content": item.content, "level": item.level, "is_read": item.is_read, "read_at": item.read_at, "dingtalk_status": item.dingtalk_status, "dingtalk_sent_at": item.dingtalk_sent_at, "created_at": item.created_at}
+
+
+async def _dispatch_dingtalk_notifications() -> None:
+    if not dingtalk_client.configured:
+        return
+    async with SessionLocal() as db:
+        notices = (await db.scalars(
+            select(Notification).where(
+                Notification.is_read.is_(False),
+                Notification.recipient_deleted.is_(False),
+                Notification.dingtalk_status.in_(("pending", "failed")),
+                Notification.dingtalk_attempts < 5,
+            ).order_by(Notification.id).limit(50)
+        )).all()
+        if not notices:
+            return
+        usernames = {notice.recipient for notice in notices}
+        users = (await db.scalars(select(User).where(User.username.in_(usernames), User.is_active.is_(True)))).all()
+        users_by_username = {user.username: user for user in users}
+        for notice in notices:
+            user = users_by_username.get(notice.recipient)
+            ding_user_id = str(((user.profile if user else {}) or {}).get("dingtalk_user_id") or "").strip()
+            if not ding_user_id:
+                continue
+            try:
+                await dingtalk_client.send_work_notification(ding_user_id, notice.title, notice.content)
+                notice.dingtalk_status = "sent"
+                notice.dingtalk_sent_at = datetime.now()
+                notice.dingtalk_error = ""
+            except (DingTalkError, httpx.HTTPError, ValueError) as exc:
+                notice.dingtalk_status = "failed"
+                notice.dingtalk_attempts = int(notice.dingtalk_attempts or 0) + 1
+                notice.dingtalk_error = str(exc)[:500]
+                logger.warning("DingTalk notification %s failed: %s", notice.id, exc)
+        await db.commit()
+
+
+async def _dingtalk_notification_loop() -> None:
+    while True:
+        try:
+            await _dispatch_dingtalk_notifications()
+        except Exception:
+            logger.exception("DingTalk notification loop failed")
+        await asyncio.sleep(10)
 
 
 async def _sync_notifications(identity: dict, db: AsyncSession) -> None:

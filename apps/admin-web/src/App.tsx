@@ -46,6 +46,9 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import "dingtalk-jsapi/entry/union";
+import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
+import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -914,13 +917,45 @@ function readStoredUser(): SessionUser | null {
 
 function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const [loading, setLoading] = useState(false);
+  const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
+  const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
+  useEffect(() => {
+    let active = true;
+    const loginFromDingTalk = async () => {
+      try {
+        const { data: config } = await api.get("/auth/dingtalk/config");
+        if (!active || !config.enabled) return;
+        setDingtalkEnabled(true);
+        if (getDingTalkEnvironment().platform === "notInDingTalk") return;
+        setLoading(true);
+        const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
+        const { data } = await api.post("/auth/dingtalk/login", { auth_code: result.code });
+        localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        if (active) onSuccess(data.user);
+      } catch (error: any) {
+        if (active && error?.response?.status === 403 && error?.config?.data) {
+          try { setDingtalkAuthCode(JSON.parse(error.config.data).auth_code || ""); } catch { setDingtalkAuthCode(""); }
+          message.info("首次使用钉钉登录，请输入一次现有 OA 账号和密码完成绑定");
+        } else if (active && getDingTalkEnvironment().platform !== "notInDingTalk") {
+          message.error(error?.response?.data?.detail || "钉钉免登失败，请联系管理员检查账号绑定");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loginFromDingTalk();
+    return () => { active = false; };
+  }, [onSuccess]);
   const submit = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {
       const form = new URLSearchParams(values);
-      const { data } = await api.post("/auth/login", form);
+      const { data } = dingtalkAuthCode
+        ? await api.post("/auth/dingtalk/bind", { ...values, auth_code: dingtalkAuthCode })
+        : await api.post("/auth/login", form);
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
       if (data.must_change_password) {
@@ -931,7 +966,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
         onSuccess(data.user);
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "账号或密码错误");
+        message.error(error?.response?.data?.detail || "账号或密码错误");
     } finally {
       setLoading(false);
     }
@@ -961,6 +996,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
       <Card className="login-card">
         <h2>系统登录</h2>
         <p>欢迎进入思法汇成协作平台</p>
+        {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
         <Form
           onFinish={submit}
           layout="vertical"
@@ -978,8 +1014,11 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
             htmlType="submit"
             loading={loading}
           >
-            登 录
+            {dingtalkAuthCode ? "绑定钉钉并登录" : "登 录"}
           </Button>
+          {dingtalkEnabled && getDingTalkEnvironment().platform === "notInDingTalk" && (
+            <Button block size="large" style={{ marginTop: 12 }} onClick={() => message.info("请从钉钉工作台打开本系统，即可自动登录")}>钉钉免登</Button>
+          )}
         </Form>
       </Card>
       <Modal open={Boolean(pendingUser)} title="首次登录修改密码" closable={false} maskClosable={false} keyboard={false} okText="修改密码并进入系统" cancelButtonProps={{style:{display:"none"}}} confirmLoading={loading} onOk={forcePasswordChange}>
