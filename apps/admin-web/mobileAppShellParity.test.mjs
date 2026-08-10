@@ -42,6 +42,8 @@ test("task center replaces its desktop grid and wide table on phones", () => {
   assert.match(taskStyles, /\.task-original-standard \.task-query\s*{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(taskStyles, /\.task-original-table\s*{\s*display: none;/);
   assert.match(taskStyles, /\.task-mobile-list\s*{\s*display: grid;/);
+  assert.match(taskStyles, /\.task-original-standard \.task-query\.mobile-open\s*{\s*display: grid;/);
   assert.match(taskPageSource, /className="task-mobile-list"/);
   assert.match(taskPageSource, /className="task-mobile-card-body"/);
+  assert.match(taskPageSource, /className="task-mobile-filter-toggle"/);
 });

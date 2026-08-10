@@ -252,6 +252,7 @@ export default function TaskCenterPage({
   const [statusTab, setStatusTab] = useState("");
   const [queryForm] = Form.useForm<TaskQuery>();
   const [query, setQuery] = useState<TaskQuery>({});
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [taskSort, setTaskSort] = useState<TaskSort>(null);
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -1335,9 +1336,19 @@ export default function TaskCenterPage({
           ))}
         </div>}
 
+        <button
+          type="button"
+          className="task-mobile-filter-toggle"
+          aria-expanded={mobileFiltersOpen}
+          onClick={() => setMobileFiltersOpen((open) => !open)}
+        >
+          <span>筛选条件</span>
+          <span>{mobileFiltersOpen ? "收起" : "展开"}</span>
+        </button>
+
         <Form<TaskQuery>
           form={queryForm}
-          className="task-query"
+          className={`task-query${mobileFiltersOpen ? " mobile-open" : ""}`}
           colon
           onFinish={(values) => {
             setQuery(values);
