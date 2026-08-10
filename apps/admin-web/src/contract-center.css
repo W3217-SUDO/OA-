@@ -201,13 +201,30 @@
     align-items: center;
   }
   .contract-query .ant-form-item-label { flex-basis: auto; text-align: left; }
+  .contract-query .ant-form-item-control {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
   .contract-query .ant-input,
   .contract-query .ant-picker,
   .contract-query .ant-select-selector,
   .contract-query .ant-btn { min-height: 40px !important; height: 40px !important; font-size: 14px; }
   .contract-query-submit { padding-left: 82px; }
   .contract-create-page > .ant-card-body { padding: 12px 0; }
-  .contract-page-steps { height: auto; overflow-x: auto; grid-template-columns: repeat(4, minmax(112px, 1fr)); }
+  .contract-page-steps {
+    height: auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    line-height: 18px;
+  }
+  .contract-page-steps > div {
+    display: grid;
+    min-height: 44px;
+    padding: 4px 2px;
+    place-items: center;
+    font-size: 11px;
+    line-height: 16px;
+  }
   .contract-page-form { min-height: 0; padding: 14px 10px; }
   .contract-page-form .ant-form-item { width: 100%; margin-bottom: 14px; }
   .contract-page-form .ant-form-item-row { display: block; }
