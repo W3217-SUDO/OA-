@@ -3819,7 +3819,7 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     case_team = and_(BusinessRecord.module == "case", BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token))
     published_investigation = and_(
         BusinessRecord.module == "investigation",
-        BusinessRecord.data["publisher"].as_string() == user.username,
+        func.lower(BusinessRecord.data["publisher"].as_string()) == user.username.lower(),
     )
     if scope == "本部门数据":
         return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation)]
