@@ -13,10 +13,11 @@ from app.main import (
     ClueSourceContractBindingInput,
     batch_create_cases_from_clues,
     bind_clue_source_contract,
+    list_records,
     register_clue_collection,
     _contract_customer_record_dict,
 )
-from app.models import BusinessRecord
+from app.models import BusinessRecord, User
 
 
 IDENTITY = {"username": "admin", "role": "admin"}
@@ -175,6 +176,51 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["authorized_from"], "2026-08-10")
         self.assertEqual(result["data"]["authorized_to"], "2026-09-09")
         self.assertEqual(result["data"]["source_owner"], "admin")
+
+    async def test_investigation_parent_views_separate_published_and_assigned_tasks(self):
+        async with self.sessions() as db:
+            db.add_all([
+                User(username="fwl", display_name="范文玲", department="上海", password_hash="x", role="user"),
+                User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin"),
+                BusinessRecord(
+                    module="investigation", serial_no="DC-CODEX-ASSIGNED", title="管理员发布给范文玲",
+                    customer="CODEX客户", status="进行中", owner="fwl", department="上海",
+                    data={"publisher": "admin", "authorized_to": "2026-09-09"},
+                ),
+                BusinessRecord(
+                    module="investigation", serial_no="DC-CODEX-FWL-PUBLISHED", title="范文玲自己发布",
+                    customer="CODEX客户", status="进行中", owner="fwl", department="上海",
+                    data={"publisher": "fwl", "authorized_to": "2026-09-09"},
+                ),
+                BusinessRecord(
+                    module="investigation", serial_no="DC-CODEX-FWL-LEGACY", title="历史范文玲发布",
+                    customer="CODEX客户", status="进行中", owner="fwl", department="上海",
+                    data={"authorized_to": "2026-09-09"},
+                ),
+            ])
+            await db.commit()
+
+            published = await list_records(
+                module="investigation", keyword="", record_status="", scope="mine", statuses="",
+                customer_id=None, customer="", customer_no="", exclude_archived=False,
+                investigation_view="published", page=1, page_size=100,
+                identity={"username": "fwl", "role": "user"}, db=db,
+            )
+            assigned = await list_records(
+                module="investigation", keyword="", record_status="", scope="mine", statuses="",
+                customer_id=None, customer="", customer_no="", exclude_archived=False,
+                investigation_view="assigned", page=1, page_size=100,
+                identity={"username": "fwl", "role": "user"}, db=db,
+            )
+
+        self.assertEqual(
+            {item["serial_no"] for item in published["items"]},
+            {"DC-CODEX-FWL-PUBLISHED", "DC-CODEX-FWL-LEGACY"},
+        )
+        self.assertEqual(
+            {item["serial_no"] for item in assigned["items"]},
+            {"DC-CODEX-ASSIGNED", "DC-CODEX-FWL-PUBLISHED", "DC-CODEX-FWL-LEGACY"},
+        )
 
 
 if __name__ == "__main__":

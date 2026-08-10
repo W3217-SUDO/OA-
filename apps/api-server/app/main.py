@@ -6307,6 +6307,7 @@ async def list_records(
     module: str = Query(min_length=1, max_length=32),
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
+    investigation_view: str = Query("", pattern="^(|published|assigned)$"),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -6323,6 +6324,19 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
+    if module == "investigation" and investigation_view:
+        publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
+        legacy_publisher_missing = or_(
+            BusinessRecord.data["publisher"].as_string().is_(None),
+            BusinessRecord.data["publisher"].as_string() == "",
+        )
+        if investigation_view == "published":
+            conditions.append(or_(
+                publisher_expr == identity["username"].lower(),
+                and_(legacy_publisher_missing, BusinessRecord.owner == identity["username"]),
+            ))
+        elif investigation_view == "assigned" and identity.get("role") != "admin":
+            conditions.append(BusinessRecord.owner == identity["username"])
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
         # them server-side so mine/dept/company/audit/recycle stay isolated.

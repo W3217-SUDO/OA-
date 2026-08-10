@@ -111,6 +111,16 @@ type InvestigationActions = {
   register_notary_certificate: boolean;
 };
 type SubtaskLifecycleAction = "accept" | "complete";
+const investigationListView = (route: string) => {
+  if (route === "investigation-task-unassigned") return "assigned";
+  if (
+    route === "investigation-task-published" ||
+    route === "investigation-task-mine" ||
+    route === "investigation-task-overdue"
+  )
+    return "published";
+  return "";
+};
 const moduleMeta = {
   investigation: {
     title: "调查任务",
@@ -283,7 +293,12 @@ export default function InvestigationCenterPage({
               params: {
                 module,
                 page_size: 100,
-                scope: "all",
+                scope:
+                  initialTab.startsWith("investigation-task-") &&
+                  !initialTab.startsWith("investigation-task-sub-")
+                    ? "mine"
+                    : "all",
+                investigation_view: investigationListView(initialTab),
               },
             });
       const loadedRows = data.items as Row[];

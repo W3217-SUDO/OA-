@@ -25,9 +25,12 @@ test('investigation task list does not offer a second parent-task creation entry
   assert.doesNotMatch(source, /investigation-task-mine'\]:\['查询','刷新','新建调查任务'/)
 })
 
-test('my investigation tasks include records published or owned by the current user', () => {
-  assert.match(source, /module,page_size:100,scope:'all'/)
-  assert.doesNotMatch(source, /initialTab==='investigation-task-mine'[\s\S]{0,240}result=result\.filter/)
+test('parent investigation routes request server-side scoped views', () => {
+  assert.match(source, /investigationListView=\(route:string\)=>/)
+  assert.match(source, /route==='investigation-task-unassigned'[\s\S]*return'assigned'/)
+  assert.match(source, /route==='investigation-task-mine'[\s\S]*return'published'/)
+  assert.match(source, /investigation_view:investigationListView\(initialTab\)/)
+  assert.match(source, /scope:initialTab\.startsWith\('investigation-task-'\)&&!initialTab\.startsWith\('investigation-task-sub-'\)\?'mine':'all'/)
 })
 
 test('unassigned investigation tasks are scoped to the configured supervisor', () => {
