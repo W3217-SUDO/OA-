@@ -6254,7 +6254,7 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
-    if module == "investigation" and scope == "mine":
+    if module == "investigation" and scope == "mine" and identity.get("role") != "admin":
         conditions.append(or_(
             func.lower(BusinessRecord.owner) == identity["username"].lower(),
             func.lower(BusinessRecord.data["publisher"].as_string()) == identity["username"].lower(),
