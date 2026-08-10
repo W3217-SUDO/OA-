@@ -20,6 +20,7 @@ test("mobile shell exposes app-style navigation and an overlay feature drawer", 
 
 test("mobile workspace removes desktop chrome and keeps touch targets usable", () => {
   assert.match(styles, /\.workspace-tabs\s*\{[\s\S]*display:\s*none;/);
+  assert.match(styles, /\.page-head\s*\{[\s\S]*display:\s*none;/);
   assert.match(styles, /\.mobile-bottom-nav button[\s\S]*touch-action:\s*manipulation/);
   assert.match(styles, /width:\s*88px !important;[\s\S]*flex:\s*0 0 88px/);
   assert.match(styles, /\.ant-menu-submenu-popup\s*\{[\s\S]*display:\s*none !important/);
@@ -30,4 +31,7 @@ test("mobile workspace removes desktop chrome and keeps touch targets usable", (
 test("mobile dashboard uses compact two-column summary cards", () => {
   assert.match(dashboardStyles, /reference-metrics\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(dashboardStyles, /reference-metrics \.metric\{height:96px/);
+  assert.match(dashboardStyles, /\.todo-table\{display:none\}/);
+  assert.match(dashboardStyles, /\.mobile-todo-list\{display:grid/);
+  assert.match(appSource, /className="mobile-todo-list"/);
 });

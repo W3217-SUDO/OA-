@@ -602,13 +602,8 @@ body {
     padding: 0 12px calc(78px + env(safe-area-inset-bottom));
   }
   .page-head {
-    height: 54px;
+    display: none;
   }
-  .page-head h1 {
-    font-size: 20px;
-    font-weight: 600;
-  }
-  .page-head span,
   .dashboard-hot,
   .workspace-tabs {
     display: none;

@@ -1321,6 +1321,28 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
               ))}
             </tbody>
           </table>
+          <div className="mobile-todo-list">
+            {data.todos.flatMap((row, rowIndex) =>
+              [
+                { label: row[0], primary: row[1], secondary: row[2] },
+                { label: row[3], primary: row[4], secondary: row[5] },
+              ].map((item, itemIndex) => {
+                const route = todoRoutes[String(item.label)] || "dashboard";
+                return (
+                  <button
+                    type="button"
+                    className="mobile-todo-item"
+                    key={`${rowIndex}-${itemIndex}`}
+                    onClick={() => onNavigate(route)}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.primary}</strong>
+                    <small>{item.secondary}</small>
+                  </button>
+                );
+              }),
+            )}
+          </div>
         </Card>
         <Card title="◩ 案件趋势" className="dashboard-card target-trend-card">
           <CaseTrendChart items={data.case_trend} />
