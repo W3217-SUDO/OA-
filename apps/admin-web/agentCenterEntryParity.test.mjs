@@ -54,6 +54,20 @@ test("agent center routes skills internally without a standalone office skill mo
   assert.doesNotMatch(styleSource, /\.agent-skill-bar/);
 });
 
+test("users can manage private declarative skills from the chat composer", () => {
+  assert.match(pageSource, /data-testid="agent-skill-manager"/);
+  assert.match(pageSource, /api\.get\("\/agent\/skills"\)/);
+  assert.match(pageSource, /api\.post\("\/agent\/skills"/);
+  assert.match(pageSource, /api\.post\("\/agent\/skills\/upload"/);
+  assert.match(pageSource, /api\.patch\(`\/agent\/skills\/\$\{skill\.id\}`/);
+  assert.match(pageSource, /api\.delete\(`\/agent\/skills\/\$\{skill\.id\}`/);
+  assert.match(pageSource, /accept="\.json,\.md,\.markdown/);
+  assert.match(pageSource, /skill_id: skillId/);
+  assert.match(pageSource, /className="agent-composer-skill"/);
+  assert.match(styleSource, /\.agent-skill-manager\{display:grid/);
+  assert.match(styleSource, /\.agent-composer-skill\{display:flex;grid-column:1\/-1/);
+});
+
 test("agent write proposals open an explicit approval dialog with before and after values", () => {
   assert.match(pageSource, /<Modal[\s\S]*?title="智能体操作审批"/);
   assert.match(pageSource, /data-testid="agent-action-approval"/);

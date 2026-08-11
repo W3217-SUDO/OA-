@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.main as main_module
 from app.case_agent import CaseAgentRuntime, _checkpoint_url, _extract_proposed_action
+from app.agent_skills import AgentSkill
 from app.database import Base
 from app.main import (
     CaseAgentDecisionInput,
@@ -157,6 +158,34 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
         self.assertEqual(skill.id, "general-office")
         self.assertEqual(images, [])
+
+    async def test_user_skill_override_reaches_model_without_changing_case_scope(self):
+        self.runtime.api_base_url = "https://model.example/v1"
+        self.runtime.api_key = "test-only"
+        self.runtime.model = "gpt-test"
+        self.runtime._request_model = AsyncMock(return_value="custom skill response")
+        custom_skill = AgentSkill(
+            id="custom-test",
+            name="Custom Review",
+            category="Custom",
+            description="Review",
+            source="user-custom",
+            available=True,
+            unavailable_reason="",
+            instruction="User preference with system boundary.",
+            quick_prompts=(),
+        )
+        await self.runtime.invoke(
+            case_id=19,
+            operator="lawyer",
+            message="[[skill:custom-test]]\nreview this case",
+            case_snapshot={"case": {"id": 19, "serial_no": "SHMS-CUSTOM-019"}},
+            skill_override=custom_skill,
+        )
+        snapshot, messages, selected_skill, _ = self.runtime._request_model.await_args.args
+        self.assertEqual(snapshot["case"]["serial_no"], "SHMS-CUSTOM-019")
+        self.assertEqual(messages[-1]["content"], "review this case")
+        self.assertEqual(selected_skill.id, "custom-test")
 
     async def test_model_write_proposal_is_blocked_by_original_user_capability(self):
         self.runtime.api_base_url = "https://model.example/v1"

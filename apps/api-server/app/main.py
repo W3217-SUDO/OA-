@@ -31,12 +31,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .case_agent import CaseAgentRuntime
+from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, public_skill_catalog
 from .case_workflow_rules import build_case_workflow_guide
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .dingtalk import DingTalkError, dingtalk_client
 from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
+from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 
 logger = logging.getLogger(__name__)
@@ -892,8 +894,27 @@ class CaseAgentProposedAction(BaseModel):
 
 class CaseAgentMessageInput(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
+    skill_id: str = Field(default="general-office", min_length=1, max_length=100)
     proposed_action: CaseAgentProposedAction | None = None
     attachment_ids: list[int] = Field(default_factory=list, max_length=4)
+
+
+class UserAgentSkillInput(BaseModel):
+    name: str = Field(min_length=2, max_length=64)
+    category: str = Field(default="自定义", min_length=1, max_length=32)
+    description: str = Field(min_length=2, max_length=500)
+    instruction: str = Field(min_length=10, max_length=6000)
+    quick_prompts: list[str] = Field(default_factory=list, max_length=5)
+    enabled: bool = True
+
+
+class UserAgentSkillUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=64)
+    category: str | None = Field(default=None, min_length=1, max_length=32)
+    description: str | None = Field(default=None, min_length=2, max_length=500)
+    instruction: str | None = Field(default=None, min_length=10, max_length=6000)
+    quick_prompts: list[str] | None = Field(default=None, max_length=5)
+    enabled: bool | None = None
 
 
 class CaseAgentDecisionInput(BaseModel):
@@ -17462,6 +17483,123 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
     return context
 
 
+async def _user_agent_skill_store(username: str, db: AsyncSession) -> tuple[SystemConfig | None, list[dict]]:
+    key = user_skill_config_key(username)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == key))
+    value = item.value if item else {}
+    if item and str(value.get("owner_username") or "").strip().casefold() != username.strip().casefold():
+        raise HTTPException(status_code=403, detail="个人技能库归属校验失败")
+    skills = value.get("skills") or []
+    return item, [dict(skill) for skill in skills if isinstance(skill, dict)]
+
+
+async def _save_user_agent_skills(username: str, skills: list[dict], identity: dict, db: AsyncSession) -> None:
+    key = user_skill_config_key(username)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == key))
+    value = {"owner_username": username, "skills": skills}
+    if item:
+        item.value = value
+        item.updated_by = username
+    else:
+        db.add(SystemConfig(
+            key=key,
+            label="个人智能体技能库",
+            group="智能体",
+            value=value,
+            description="当前账号创建或上传的声明式智能体技能",
+            updated_by=username,
+        ))
+    await _system_audit(db, identity, "更新个人智能体技能", f"个人技能库:{username}", {"skill_count": len(skills)})
+    await db.commit()
+
+
+async def _agent_skill_catalog_for_identity(identity: dict, db: AsyncSession) -> list[dict]:
+    _, custom_records = await _user_agent_skill_store(identity["username"], db)
+    return [*public_skill_catalog(), *[custom_skill_public(item) for item in custom_records]]
+
+
+async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSession):
+    normalized = str(skill_id or GENERAL_SKILL.id).strip()
+    if normalized in SKILLS_BY_ID:
+        skill = SKILLS_BY_ID[normalized]
+        if not skill.available:
+            raise HTTPException(status_code=409, detail=skill.unavailable_reason or "该技能暂不可用")
+        return skill
+    _, custom_records = await _user_agent_skill_store(identity["username"], db)
+    record = next((item for item in custom_records if item.get("id") == normalized), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="技能不存在或不属于当前账号")
+    skill = custom_skill_agent(record)
+    if not skill.available:
+        raise HTTPException(status_code=409, detail="该技能已停用")
+    return skill
+
+
+@app.get(f"{settings.api_prefix}/agent/skills")
+async def list_user_agent_skills(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return {"items": await _agent_skill_catalog_for_identity(identity, db)}
+
+
+@app.post(f"{settings.api_prefix}/agent/skills")
+async def create_user_agent_skill(body: UserAgentSkillInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    if len(skills) >= CUSTOM_SKILL_LIMIT:
+        raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
+    try:
+        record = normalize_custom_skill(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"技能字段格式不正确：{exc}") from exc
+    skills.append(record)
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(record)
+
+
+@app.post(f"{settings.api_prefix}/agent/skills/upload")
+async def upload_user_agent_skill(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    if len(skills) >= CUSTOM_SKILL_LIMIT:
+        raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
+    content = await file.read(CUSTOM_SKILL_FILE_LIMIT + 1)
+    try:
+        record = parse_uploaded_skill(file.filename or "", content)
+    except ValueError as exc:
+        errors = {
+            "file_too_large": "技能文件不能超过 64KB",
+            "file_type": "仅支持 JSON、Markdown 技能文件",
+            "encoding": "技能文件必须使用 UTF-8 编码",
+            "json": "JSON 技能文件格式不正确",
+        }
+        raise HTTPException(status_code=422, detail=errors.get(str(exc), f"技能字段格式不正确：{exc}")) from exc
+    skills.append(record)
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(record)
+
+
+@app.patch(f"{settings.api_prefix}/agent/skills/{{skill_id}}")
+async def update_user_agent_skill(skill_id: str, body: UserAgentSkillUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    index = next((index for index, item in enumerate(skills) if item.get("id") == skill_id), -1)
+    if index < 0:
+        raise HTTPException(status_code=404, detail="自定义技能不存在")
+    merged = {**skills[index], **body.model_dump(exclude_unset=True)}
+    try:
+        skills[index] = normalize_custom_skill(merged, skill_id=skill_id, source=str(skills[index].get("source") or "user-custom"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"技能字段格式不正确：{exc}") from exc
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(skills[index])
+
+
+@app.delete(f"{settings.api_prefix}/agent/skills/{{skill_id}}")
+async def delete_user_agent_skill(skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    retained = [item for item in skills if item.get("id") != skill_id]
+    if len(retained) == len(skills):
+        raise HTTPException(status_code=404, detail="自定义技能不存在")
+    await _save_user_agent_skills(identity["username"], retained, identity, db)
+    return {"deleted": True, "skill_id": skill_id}
+
+
 @app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/workflow-guide")
 async def get_case_workflow_guide(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     context = await get_case_space_context(case_id, identity, db)
@@ -17471,11 +17609,13 @@ async def get_case_workflow_guide(case_id: int, identity: dict = Depends(current
 @app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/status")
 async def case_agent_status(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     await _ensure_record_module(case_id, "case", identity, db)
+    runtime_status = case_agent_runtime.status()
     return {
         "case_id": case_id,
         "shared_space_id": f"case:{case_id}",
         "thread_id": case_agent_runtime.thread_id(case_id, identity["username"]),
-        **case_agent_runtime.status(),
+        **runtime_status,
+        "skills": await _agent_skill_catalog_for_identity(identity, db),
     }
 
 
@@ -17501,6 +17641,7 @@ async def send_case_agent_message(
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
+    selected_skill = await _agent_skill_for_identity(body.skill_id, identity, db)
     if proposed_action and not context["capabilities"].get("can_write"):
         raise HTTPException(status_code=403, detail="当前账号无权为该案件发起写操作")
     images: list[dict[str, object]] = []
@@ -17539,6 +17680,7 @@ async def send_case_agent_message(
             case_snapshot=context,
             proposed_action=proposed_action,
             images=images,
+            skill_override=selected_skill,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="案件智能体调用失败") from exc

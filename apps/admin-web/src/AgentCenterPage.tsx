@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { Button, Empty, Image, Input, List, message, Modal, Space, Spin, Tag } from "antd";
-import { CheckCircleOutlined, CloseOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
+import { Button, Empty, Form, Image, Input, List, message, Modal, Select, Space, Spin, Switch, Tag } from "antd";
+import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import "./agent-center.css";
@@ -12,6 +12,7 @@ type AgentActionPreview = { target?: string; changes?: { field: string; before: 
 type AgentAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" };
 type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
+type CustomAgentSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string };
 type WorkflowPhase = { code: string; name: string; state: "completed" | "current" | "pending"; target_days?: number | null };
 type WorkflowGuide = { phases: WorkflowPhase[] };
 const PHASE_SHORT_NAMES: Record<string, string> = {
@@ -57,10 +58,15 @@ export default function AgentCenterPage() {
   const [workflowGuide, setWorkflowGuide] = useState<WorkflowGuide | null>(null);
   const [input, setInput] = useState("");
   const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
+  const [skillManagerOpen, setSkillManagerOpen] = useState(false);
+  const [skillSaving, setSkillSaving] = useState(false);
+  const [editingSkillId, setEditingSkillId] = useState("");
+  const [skillForm] = Form.useForm();
   const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
   const [screenshotUploading, setScreenshotUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
+  const skillFileInputRef = useRef<HTMLInputElement>(null);
   const screenshotPreviewUrlsRef = useRef(new Map<number, string>());
   const activeAgentRequestRef = useRef<AbortController | null>(null);
 
@@ -151,6 +157,7 @@ export default function AgentCenterPage() {
     try {
       const { data } = await api.post(`/case-spaces/${selected.id}/agent/messages`, {
         message: encodeAgentSkillMessage(skillId, content),
+        skill_id: skillId,
         attachment_ids: outgoingScreenshots.map((item) => item.id),
       }, { signal: controller.signal });
       setState(stateWithScreenshotPreviews(data));
@@ -232,9 +239,89 @@ export default function AgentCenterPage() {
       setDecisionLoading("");
     }
   };
+  const refreshSkillCatalog = async () => {
+    const { data } = await api.get("/agent/skills");
+    const items = (data.items || []) as CustomAgentSkill[];
+    setStatus((current) => current ? { ...current, skills: items } : current);
+    if (!items.some((item) => item.id === skillId && item.available)) setSkillId(DEFAULT_AGENT_SKILL);
+    return items;
+  };
+  const openSkillManager = async () => {
+    setSkillManagerOpen(true);
+    try { await refreshSkillCatalog(); } catch (error: any) { message.error(error?.response?.data?.detail || "技能库加载失败"); }
+  };
+  const resetSkillEditor = () => {
+    setEditingSkillId("");
+    skillForm.resetFields();
+  };
+  const editSkill = (skill: CustomAgentSkill) => {
+    setEditingSkillId(skill.id);
+    skillForm.setFieldsValue({
+      name: skill.name,
+      category: skill.category,
+      description: skill.description,
+      instruction: skill.instruction || "",
+      quick_prompts: (skill.quick_prompts || []).join("\n"),
+    });
+  };
+  const saveSkill = async (values: Record<string, string>) => {
+    setSkillSaving(true);
+    const payload = {
+      ...values,
+      quick_prompts: String(values.quick_prompts || "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+    };
+    try {
+      if (editingSkillId) await api.patch(`/agent/skills/${editingSkillId}`, payload);
+      else await api.post("/agent/skills", payload);
+      await refreshSkillCatalog();
+      resetSkillEditor();
+      message.success(editingSkillId ? "技能已更新" : "技能已添加");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "技能保存失败");
+    } finally { setSkillSaving(false); }
+  };
+  const uploadSkill = async (file?: File) => {
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    setSkillSaving(true);
+    try {
+      const { data } = await api.post("/agent/skills/upload", form);
+      await refreshSkillCatalog();
+      setSkillId(data.id);
+      message.success("技能已上传并选中");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "技能上传失败");
+    } finally {
+      setSkillSaving(false);
+      if (skillFileInputRef.current) skillFileInputRef.current.value = "";
+    }
+  };
+  const toggleSkill = async (skill: CustomAgentSkill, enabled: boolean) => {
+    try {
+      await api.patch(`/agent/skills/${skill.id}`, { enabled });
+      await refreshSkillCatalog();
+      message.success(enabled ? "技能已启用" : "技能已停用");
+    } catch (error: any) { message.error(error?.response?.data?.detail || "技能状态更新失败"); }
+  };
+  const deleteSkill = (skill: CustomAgentSkill) => {
+    Modal.confirm({
+      title: `删除技能“${skill.name}”？`,
+      content: "删除后不会影响既有聊天记录。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        await api.delete(`/agent/skills/${skill.id}`);
+        await refreshSkillCatalog();
+        if (editingSkillId === skill.id) resetSkillEditor();
+        message.success("技能已删除");
+      },
+    });
+  };
   const pendingActions = useMemo(() => (state?.pending_actions || []).filter((item) => item.status === "pending"), [state]);
   const activeAction = pendingActions[0] || null;
-  const skills = status?.skills || [];
+  const skills = (status?.skills || []) as CustomAgentSkill[];
   const selectedSkill = skills.find((item) => item.id === skillId);
 
   return <div className="agent-center-page" data-testid="agent-center-page">
@@ -242,6 +329,39 @@ export default function AgentCenterPage() {
       <div><h2>智能体中心</h2><span>统一业务空间</span></div>
       <Space wrap><Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag></Space>
     </header>
+    <Modal open={skillManagerOpen} title="我的技能" width={760} footer={null} onCancel={() => { setSkillManagerOpen(false); resetSkillEditor(); }}>
+      <div className="agent-skill-manager" data-testid="agent-skill-manager">
+        <div className="agent-skill-list">
+          <div className="agent-skill-list-head">
+            <strong>自定义技能</strong>
+            <Space>
+              <input ref={skillFileInputRef} hidden type="file" accept=".json,.md,.markdown,application/json,text/markdown" onChange={(event) => void uploadSkill(event.target.files?.[0])} />
+              <Button icon={<UploadOutlined />} loading={skillSaving} onClick={() => skillFileInputRef.current?.click()}>上传</Button>
+              <Button type="primary" icon={<AppstoreAddOutlined />} onClick={resetSkillEditor}>新增</Button>
+            </Space>
+          </div>
+          {skills.filter((item) => item.custom).length ? skills.filter((item) => item.custom).map((skill) => <div className="agent-skill-row" key={skill.id}>
+            <div><strong>{skill.name}</strong><span>{skill.description}</span><small>{skill.category}</small></div>
+            <Space>
+              <Switch size="small" checked={skill.available} onChange={(checked) => void toggleSkill(skill, checked)} />
+              <Button type="text" icon={<EditOutlined />} title="编辑技能" onClick={() => editSkill(skill)} />
+              <Button type="text" danger icon={<DeleteOutlined />} title="删除技能" onClick={() => deleteSkill(skill)} />
+            </Space>
+          </div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无自定义技能" />}
+        </div>
+        <Form form={skillForm} layout="vertical" className="agent-skill-form" onFinish={(values) => void saveSkill(values)}>
+          <div className="agent-skill-form-title"><strong>{editingSkillId ? "编辑技能" : "新增技能"}</strong>{editingSkillId ? <Button type="link" onClick={resetSkillEditor}>取消编辑</Button> : null}</div>
+          <div className="agent-skill-form-grid">
+            <Form.Item label="技能名称" name="name" rules={[{ required: true, min: 2, max: 64 }]}><Input /></Form.Item>
+            <Form.Item label="分类" name="category" initialValue="自定义" rules={[{ required: true, max: 32 }]}><Input /></Form.Item>
+          </div>
+          <Form.Item label="说明" name="description" rules={[{ required: true, min: 2, max: 500 }]}><Input /></Form.Item>
+          <Form.Item label="技能指令" name="instruction" rules={[{ required: true, min: 10, max: 6000 }]}><Input.TextArea autoSize={{ minRows: 5, maxRows: 10 }} /></Form.Item>
+          <Form.Item label="快捷指令" name="quick_prompts"><Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} /></Form.Item>
+          <Button type="primary" htmlType="submit" loading={skillSaving}>{editingSkillId ? "保存修改" : "添加技能"}</Button>
+        </Form>
+      </div>
+    </Modal>
     <div className="agent-center-layout">
       <aside className="agent-space-list">
         <div className="agent-space-search">
@@ -301,6 +421,15 @@ export default function AgentCenterPage() {
           </div>
           {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}
           <div className="agent-global-composer">
+            <div className="agent-composer-skill">
+              <Select
+                value={skillId}
+                onChange={setSkillId}
+                options={skills.map((skill) => ({ value: skill.id, label: skill.custom ? `${skill.name} · 我的` : skill.name, disabled: !skill.available }))}
+                popupMatchSelectWidth={false}
+              />
+              <Button type="text" icon={<AppstoreAddOutlined />} title="管理我的技能" onClick={() => void openSkillManager()} />
+            </div>
             {screenshots.length ? <div className="agent-composer-attachments" aria-label="待发送截图">{screenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeScreenshot(item)} /></div>)}</div> : null}
             <input ref={screenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadScreenshot(event.target.files?.[0])} />
             <Button className="agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={screenshotUploading} disabled={!status?.ready || screenshots.length >= 4} onClick={() => screenshotInputRef.current?.click()} />

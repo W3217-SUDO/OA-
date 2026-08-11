@@ -442,11 +442,14 @@ class CaseAgentRuntime:
         case_snapshot: dict[str, Any],
         proposed_action: dict[str, Any] | None = None,
         images: list[dict[str, Any]] | None = None,
+        skill_override: AgentSkill | None = None,
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
         await self._ensure_private_state(case_id, operator)
         skill, clean_message = parse_skill_message(message)
+        if skill_override is not None:
+            skill = skill_override
         user_message = {
             "id": uuid4().hex,
             "role": "user",
