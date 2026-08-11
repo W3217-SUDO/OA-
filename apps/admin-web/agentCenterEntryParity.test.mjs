@@ -32,24 +32,20 @@ test("agent center resumes authorized case spaces and all linked business areas"
   }
 });
 
-test("agent center routes each conversation through the selected office skill", () => {
-  assert.match(pageSource, /办公技能/);
+test("agent center routes skills internally without a standalone office skill module", () => {
+  assert.doesNotMatch(pageSource, /办公技能/);
+  assert.doesNotMatch(pageSource, /agent-skill-bar/);
   assert.match(pageSource, /status\?\.skills/);
   assert.match(pageSource, /encodeAgentSkillMessage\(skillId, content\)/);
-  assert.match(pageSource, /disabled: !item\.available/);
   assert.match(skillSource, /\[\[skill:\$\{normalized\}\]\]/);
-  assert.match(styleSource, /\.agent-skill-bar/);
+  assert.doesNotMatch(styleSource, /\.agent-skill-bar/);
 });
 
-test("manual-driven workflow guide exposes phases deadlines materials roles and agent rules", () => {
-  assert.match(pageSource, /data-testid="case-standard-workflow"/);
-  assert.match(pageSource, /\/case-spaces\/\$\{record\.id\}\/workflow-guide/);
-  for (const label of ["案件流程", "期限提醒", "材料清单", "岗位任务", "智能体规则"]) {
-    assert.ok(pageSource.includes(label), `missing ${label} workflow tab`);
-  }
-  assert.match(pageSource, /material_progress\.completed/);
-  assert.match(pageSource, /deadline_missing_inputs/);
-  assert.match(styleSource, /\.agent-standard-workflow/);
+test("manual-driven workflow stays in agent context without a standalone workbench module", () => {
+  assert.doesNotMatch(pageSource, /data-testid="case-standard-workflow"/);
+  assert.doesNotMatch(pageSource, /\/workflow-guide/);
+  assert.doesNotMatch(pageSource, /案件标准化工作台/);
+  assert.doesNotMatch(styleSource, /\.agent-standard-workflow/);
 });
 
 test("screenshot evidence skill uploads case-scoped images and submits attachment ids", () => {
