@@ -62,6 +62,8 @@ test("agent write proposals open an explicit approval dialog with before and aft
   assert.match(pageSource, /操作权限继承当前账号原有业务权限/);
   assert.match(pageSource, /change\.before/);
   assert.match(pageSource, /change\.after/);
+  assert.match(pageSource, /"customer\.update": "修改客户资料"/);
+  assert.match(pageSource, /"contract\.update": "修改合同资料"/);
   assert.match(styleSource, /\.agent-action-changes/);
   assert.doesNotMatch(styleSource, /\.agent-global-actions/);
 });

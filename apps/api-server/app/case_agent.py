@@ -22,12 +22,16 @@ ALLOWED_ACTION_TYPES = {
     "case.data.update",
     "case.task.create",
     "case.reminder.create",
+    "customer.update",
+    "contract.update",
 }
 ACTION_CAPABILITY_BY_TYPE = {
     "case.update": "can_edit_basic",
     "case.data.update": "can_edit_basic",
     "case.task.create": "can_create_case_task",
     "case.reminder.create": "can_create_reminder",
+    "customer.update": "can_update_customer",
+    "contract.update": "can_update_contract",
 }
 ACTION_BLOCK_PATTERN = re.compile(r"<proposed_action>\s*(\{.*?\})\s*</proposed_action>", re.DOTALL)
 
@@ -94,14 +98,20 @@ def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -
     payload = proposed_action.get("payload") or {}
     case = snapshot.get("case") or {}
     case_data = case.get("data") or {}
-    if action_type in {"case.update", "case.data.update"}:
+    if action_type in {"case.update", "case.data.update", "customer.update", "contract.update"}:
         changes = payload.get("changes") if isinstance(payload.get("changes"), dict) else payload
-        source = case_data if action_type == "case.data.update" else case
+        if action_type == "customer.update":
+            source = snapshot.get("customer") or {}
+        elif action_type == "contract.update":
+            target_id = int(payload.get("target_id") or 0)
+            source = next((item for item in snapshot.get("contracts") or [] if int(item.get("id") or 0) == target_id), {})
+        else:
+            source = case_data if action_type == "case.data.update" else case
         return {
-            "target": case.get("serial_no") or case.get("id") or "当前案件",
+            "target": source.get("serial_no") or source.get("title") or case.get("serial_no") or case.get("id") or "当前案件",
             "changes": [
                 {"field": key, "before": source.get(key), "after": value}
-                for key, value in changes.items()
+                for key, value in changes.items() if key != "target_id"
             ],
         }
     return {
@@ -306,7 +316,8 @@ class CaseAgentRuntime:
                     "但不得在缺少起算依据时自行推算法定期限。"
                     "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
                     "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
-                    "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create。"
+                    "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update。"
+                    "客户或合同修改必须在 payload 中提供 target_id 和 changes；target_id 只能是当前案件空间已关联记录。"
                     "案件任务 payload 使用 title、owner、deadline、priority、description；"
                     "案件提醒 payload 使用 content、reminder_date、deadline。"
                     "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。"

@@ -31,6 +31,8 @@ const ACTION_TYPE_NAMES: Record<string, string> = {
   "case.data.update": "修改案件信息",
   "case.task.create": "新建案件任务",
   "case.reminder.create": "新建期限提醒",
+  "customer.update": "修改客户资料",
+  "contract.update": "修改合同资料",
 };
 const ACTION_FIELD_NAMES: Record<string, string> = {
   title: "名称", customer: "客户", status: "状态", description: "说明",

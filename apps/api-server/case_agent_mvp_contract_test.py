@@ -208,6 +208,29 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
         await db.refresh(case)
         return case
 
+    async def _seed_linked_customer_and_contract(self, db: AsyncSession, case: BusinessRecord):
+        customer = BusinessRecord(
+            module="customer", serial_no="SHKH-MVP-001", title="测试客户", customer="测试客户",
+            status="签约", owner="lawyer", department="上海", description="原客户说明",
+            data={"customer_type": "企业客户", "customer_managers": ["lawyer"]},
+        )
+        db.add(customer)
+        await db.flush()
+        contract = BusinessRecord(
+            module="contract", serial_no="HT-MVP-001", title="测试客户服务合同", customer=customer.title,
+            status="草稿", owner="lawyer", department="上海", description="原合同说明",
+            data={"customer_id": customer.id, "customer_no": customer.serial_no, "amount": 1000},
+        )
+        db.add(contract)
+        await db.flush()
+        case.customer = customer.title
+        case.data = {**(case.data or {}), "customer_id": customer.id, "contract_id": contract.id, "contract_no": contract.serial_no}
+        await db.commit()
+        await db.refresh(customer)
+        await db.refresh(contract)
+        await db.refresh(case)
+        return customer, contract
+
     async def test_authorized_api_flow_and_action_decision(self):
         async with self.sessions() as db:
             case = await self._seed(db)
@@ -279,6 +302,85 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(updated.description, "已完成客户沟通")
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == case.id))).all())
             self.assertTrue(any(item.action == "智能体审批后更新案件" for item in events))
+
+    async def test_approved_linked_customer_update_uses_customer_business_guard(self):
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            customer, _ = await self._seed_linked_customer_and_contract(db, case)
+            identity = {"username": "lawyer", "role": "admin"}
+            result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="修改关联客户说明",
+                    proposed_action=CaseAgentProposedAction(
+                        type="customer.update",
+                        summary="更新客户说明",
+                        payload={"target_id": customer.id, "changes": {"description": "智能体审批后的客户说明"}},
+                    ),
+                ),
+                identity,
+                db,
+            )
+            action = result["pending_actions"][-1]
+            self.assertEqual(action["preview"]["target"], customer.serial_no)
+            await decide_case_agent_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            updated = await db.get(BusinessRecord, customer.id)
+            self.assertEqual(updated.description, "智能体审批后的客户说明")
+
+    async def test_approved_linked_contract_update_uses_contract_draft_guard(self):
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            _, contract = await self._seed_linked_customer_and_contract(db, case)
+            identity = {"username": "lawyer", "role": "admin"}
+            result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="修改关联合同说明",
+                    proposed_action=CaseAgentProposedAction(
+                        type="contract.update",
+                        summary="更新合同说明",
+                        payload={"target_id": contract.id, "changes": {"description": "智能体审批后的合同说明"}},
+                    ),
+                ),
+                identity,
+                db,
+            )
+            action = result["pending_actions"][-1]
+            self.assertEqual(action["preview"]["target"], contract.serial_no)
+            await decide_case_agent_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            updated = await db.get(BusinessRecord, contract.id)
+            self.assertEqual(updated.description, "智能体审批后的合同说明")
+
+    async def test_agent_cannot_update_customer_outside_current_case_space(self):
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            _, _ = await self._seed_linked_customer_and_contract(db, case)
+            outsider = BusinessRecord(
+                module="customer", serial_no="SHKH-MVP-OUTSIDE", title="其他客户", customer="其他客户",
+                status="签约", owner="lawyer", department="上海", description="不可修改",
+            )
+            db.add(outsider)
+            await db.commit()
+            identity = {"username": "lawyer", "role": "admin"}
+            result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="尝试修改空间外客户",
+                    proposed_action=CaseAgentProposedAction(
+                        type="customer.update",
+                        summary="错误目标测试",
+                        payload={"target_id": outsider.id, "changes": {"description": "不应写入"}},
+                    ),
+                ),
+                identity,
+                db,
+            )
+            action = result["pending_actions"][-1]
+            with self.assertRaises(HTTPException) as raised:
+                await decide_case_agent_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            self.assertEqual(raised.exception.status_code, 404)
+            unchanged = await db.get(BusinessRecord, outsider.id)
+            self.assertEqual(unchanged.description, "不可修改")
 
     async def test_assistant_cannot_approve_manager_only_case_update(self):
         async with self.sessions() as db:

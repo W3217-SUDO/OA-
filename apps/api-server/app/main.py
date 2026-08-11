@@ -885,7 +885,7 @@ class DifyRequest(BaseModel):
 
 
 class CaseAgentProposedAction(BaseModel):
-    type: str = Field(default="case.update", pattern=r"^(case\.update|case\.data\.update|case\.task\.create|case\.reminder\.create)$")
+    type: str = Field(default="case.update", pattern=r"^(case\.update|case\.data\.update|case\.task\.create|case\.reminder\.create|customer\.update|contract\.update)$")
     summary: str = Field(min_length=2, max_length=500)
     payload: dict = Field(default_factory=dict)
 
@@ -17405,6 +17405,24 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         for item in tasks if (item.data or {}).get("deadline")
     ]
 
+    capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    capabilities["can_update_customer"] = False
+    if customer:
+        try:
+            await _require_record_owner_or_manager(customer, identity, db)
+            capabilities["can_update_customer"] = True
+        except HTTPException:
+            pass
+    capabilities["can_update_contract"] = False
+    for contract in contracts:
+        try:
+            await _require_record_owner_or_manager(contract, identity, db)
+            if contract.status in {"草稿", "已拒绝"}:
+                capabilities["can_update_contract"] = True
+                break
+        except HTTPException:
+            continue
+
     context = {
         "schema_version": "1.1",
         "space": {"id": f"case:{case_record.id}", "kind": "business_graph", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
@@ -17433,7 +17451,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
                 *[{"from": f"invoice:{item.id}", "to": f"case:{case_record.id}", "type": "invoice_record"} for item in invoice_records],
             ],
         },
-        "capabilities": await _case_detail_action_capabilities(case_record, identity, db),
+        "capabilities": capabilities,
         "agent": {
             **case_agent_runtime.status(),
             "thread_namespace": f"case:{case_record.id}",
@@ -17536,6 +17554,8 @@ AGENT_ACTION_CAPABILITY = {
     "case.data.update": "can_edit_basic",
     "case.task.create": "can_create_case_task",
     "case.reminder.create": "can_create_reminder",
+    "customer.update": "can_update_customer",
+    "contract.update": "can_update_contract",
 }
 
 
@@ -17575,11 +17595,64 @@ async def _execute_case_agent_action(
     action: dict,
     identity: dict,
     db: AsyncSession,
+    context: dict | None = None,
 ) -> dict:
     action_type = str(action.get("type") or "")
     payload = action.get("payload") or {}
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="智能体操作参数格式错误")
+
+    if action_type == "customer.update":
+        target_id = int(payload.get("target_id") or 0)
+        linked_customer = (context or {}).get("customer") or {}
+        if not target_id or int(linked_customer.get("id") or 0) != target_id:
+            raise HTTPException(status_code=404, detail="目标客户不属于当前案件空间")
+        changes = _case_agent_changes(payload)
+        changes.pop("target_id", None)
+        invalid = sorted(set(changes) - ({"description"} | CUSTOMER_CREATE_DATA_FIELDS))
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改客户字段：{', '.join(invalid)}")
+        description = changes.pop("description", None)
+        updated = await patch_customer(
+            target_id,
+            CustomerPatchInput(description=description, data=changes),
+            identity,
+            db,
+        )
+        return {"record_id": target_id, "operation": action_type, "updated_fields": {**changes, **({"description": description} if description is not None else {})}, "record": updated}
+
+    if action_type == "contract.update":
+        target_id = int(payload.get("target_id") or 0)
+        linked_contract = next((item for item in (context or {}).get("contracts") or [] if int(item.get("id") or 0) == target_id), None)
+        if not target_id or not linked_contract:
+            raise HTTPException(status_code=404, detail="目标合同不属于当前案件空间")
+        changes = _case_agent_changes(payload)
+        changes.pop("target_id", None)
+        invalid = sorted(set(changes) - {"title", "description", "data"})
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改合同字段：{', '.join(invalid)}")
+        data_changes = changes.get("data") or {}
+        if not isinstance(data_changes, dict):
+            raise HTTPException(status_code=422, detail="合同资料变更必须为字段对象")
+        protected = {"contract_guid", "customer_id", "customer_no", "customer_manager", "approval_steps", "current_approver", "investigation_ids"}
+        if protected.intersection(data_changes):
+            raise HTTPException(status_code=422, detail="智能体不能修改合同关系或审批控制字段")
+        current = await _ensure_record_module(target_id, "contract", identity, db)
+        updated = await update_contract_draft(
+            target_id,
+            ContractDraftInput(
+                serial_no=current.serial_no,
+                title=str(changes.get("title", current.title)),
+                customer=current.customer,
+                owner=current.owner,
+                department=current.department,
+                description=str(changes.get("description", current.description or "")),
+                data={**(current.data or {}), **data_changes},
+            ),
+            identity,
+            db,
+        )
+        return {"record_id": target_id, "operation": action_type, "updated_fields": changes, "record": updated}
 
     if action_type == "case.update":
         changes = _case_agent_changes(payload)
@@ -17671,7 +17744,8 @@ async def decide_case_agent_action(
     db: AsyncSession = Depends(get_db),
 ):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    context = await get_case_space_context(case_id, identity, db)
+    capabilities = context.get("capabilities") or {}
     try:
         state = await case_agent_runtime.get_state(case_id)
         action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
@@ -17682,7 +17756,7 @@ async def decide_case_agent_action(
         _require_case_agent_action_access(str(action.get("type") or ""), capabilities)
         execution_result = None
         if body.decision == "approved":
-            execution_result = await _execute_case_agent_action(case_record, action, identity, db)
+            execution_result = await _execute_case_agent_action(case_record, action, identity, db, context)
         return await case_agent_runtime.decide_action(
             case_id=case_id,
             action_id=action_id,
