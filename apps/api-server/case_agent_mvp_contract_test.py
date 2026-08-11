@@ -57,7 +57,8 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
             message="请概括案件空间",
             case_snapshot=snapshot,
         )
-        self.assertEqual(first["thread_id"], "case:7")
+        self.assertEqual(first["thread_id"], self.runtime.thread_id(7, "lawyer"))
+        self.assertEqual(first["shared_space_id"], "case:7")
         self.assertIn("SHMS-MVP-007", first["last_response"])
         self.assertEqual(len(first["messages"]), 2)
 
@@ -80,12 +81,38 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
             case_id=7,
             action_id=action_id,
             decision="approved",
-            operator="manager",
+            operator="lawyer",
             comment="同意测试",
         )
         self.assertEqual(decided["pending_actions"][0]["status"], "approved")
-        self.assertEqual(decided["pending_actions"][0]["decided_by"], "manager")
-        self.assertEqual(len((await self.runtime.get_state(8))["messages"]), 0)
+        self.assertEqual(decided["pending_actions"][0]["decided_by"], "lawyer")
+        self.assertEqual(len((await self.runtime.get_state(8, "lawyer"))["messages"]), 0)
+
+    async def test_same_case_keeps_private_conversations_separate(self):
+        snapshot = {"case": {"id": 17, "serial_no": "SHMS-SHARED-017"}, "documents": [{"id": 1}]}
+        lawyer_state = await self.runtime.invoke(
+            case_id=17,
+            operator="lawyer",
+            message="private lawyer note",
+            case_snapshot=snapshot,
+        )
+        assistant_before = await self.runtime.get_state(17, "assistant")
+        self.assertEqual(assistant_before["messages"], [])
+        self.assertEqual(assistant_before["pending_actions"], [])
+        self.assertEqual(assistant_before["shared_space_id"], lawyer_state["shared_space_id"])
+        self.assertNotEqual(assistant_before["thread_id"], lawyer_state["thread_id"])
+
+        assistant_state = await self.runtime.invoke(
+            case_id=17,
+            operator="assistant",
+            message="private assistant note",
+            case_snapshot=snapshot,
+        )
+        self.assertIn("SHMS-SHARED-017", assistant_state["last_response"])
+        self.assertEqual(len(assistant_state["messages"]), 2)
+        lawyer_after = await self.runtime.get_state(17, "lawyer")
+        self.assertEqual(len(lawyer_after["messages"]), 2)
+        self.assertEqual(lawyer_after["messages"][0]["content"], "private lawyer note")
 
     async def test_configured_model_receives_authorized_case_snapshot(self):
         self.runtime.api_base_url = "https://model.example/v1"
@@ -256,7 +283,8 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(result["pending_actions"][0]["status"], "pending")
             state = await case_agent_state(case.id, identity, db)
-            self.assertEqual(state["thread_id"], f"case:{case.id}")
+            self.assertEqual(state["thread_id"], main_module.case_agent_runtime.thread_id(case.id, identity["username"]))
+            self.assertEqual(state["shared_space_id"], f"case:{case.id}")
             result = await decide_case_agent_action(
                 case.id,
                 result["pending_actions"][0]["id"],
@@ -382,7 +410,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             unchanged = await db.get(BusinessRecord, outsider.id)
             self.assertEqual(unchanged.description, "不可修改")
 
-    async def test_assistant_cannot_approve_manager_only_case_update(self):
+    async def test_assistant_cannot_see_or_approve_another_users_pending_action(self):
         async with self.sessions() as db:
             case = await self._seed(db)
             manager_identity = {"username": "lawyer", "role": "admin"}
@@ -400,15 +428,21 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
                 db,
             )
             action = result["pending_actions"][0]
+            assistant_identity = {"username": "assistant", "role": "user"}
+            assistant_state = await case_agent_state(case.id, assistant_identity, db)
+            self.assertEqual(assistant_state["messages"], [])
+            self.assertEqual(assistant_state["pending_actions"], [])
+            self.assertEqual(assistant_state["shared_space_id"], result["shared_space_id"])
+            self.assertNotEqual(assistant_state["thread_id"], result["thread_id"])
             with self.assertRaises(HTTPException) as raised:
                 await decide_case_agent_action(
                     case.id,
                     action["id"],
                     CaseAgentDecisionInput(decision="approved"),
-                    {"username": "assistant", "role": "user"},
+                    assistant_identity,
                     db,
                 )
-            self.assertEqual(raised.exception.status_code, 403)
+            self.assertEqual(raised.exception.status_code, 404)
             unchanged = await db.get(BusinessRecord, case.id)
             self.assertEqual(unchanged.description, "")
 

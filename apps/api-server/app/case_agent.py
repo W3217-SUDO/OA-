@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import operator
 import re
@@ -364,8 +365,16 @@ class CaseAgentRuntime:
             raise RuntimeError("model_request_failed") from exc
 
     @staticmethod
-    def config(case_id: int) -> dict[str, Any]:
-        return {"configurable": {"thread_id": f"case:{case_id}"}}
+    def thread_id(case_id: int, operator: str) -> str:
+        normalized_operator = str(operator or "").strip().casefold()
+        if not normalized_operator:
+            raise ValueError("operator_required")
+        operator_key = hashlib.sha256(normalized_operator.encode("utf-8")).hexdigest()[:24]
+        return f"case:{case_id}:user:{operator_key}"
+
+    @classmethod
+    def config(cls, case_id: int, operator: str) -> dict[str, Any]:
+        return {"configurable": {"thread_id": cls.thread_id(case_id, operator)}}
 
     async def invoke(
         self,
@@ -398,15 +407,15 @@ class CaseAgentRuntime:
         async with self._semaphore:
             result = await self.graph.ainvoke(
                 {"messages": [user_message], "case_snapshot": case_snapshot, "request_images": list(images or [])},
-                self.config(case_id),
+                self.config(case_id, operator),
             )
-        return self._public_state(case_id, result)
+        return self._public_state(case_id, operator, result)
 
-    async def get_state(self, case_id: int) -> dict[str, Any]:
+    async def get_state(self, case_id: int, operator: str) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        snapshot = await self.graph.aget_state(self.config(case_id))
-        return self._public_state(case_id, snapshot.values or {})
+        snapshot = await self.graph.aget_state(self.config(case_id, operator))
+        return self._public_state(case_id, operator, snapshot.values or {})
 
     async def decide_action(
         self,
@@ -420,7 +429,7 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        snapshot = await self.graph.aget_state(self.config(case_id))
+        snapshot = await self.graph.aget_state(self.config(case_id, operator))
         values = snapshot.values or {}
         actions = [dict(item) for item in values.get("pending_actions") or []]
         action = next((item for item in actions if item.get("id") == action_id), None)
@@ -437,7 +446,7 @@ class CaseAgentRuntime:
         })
         response = "待审批操作已批准并写入系统。" if decision == "approved" else "待审批操作已驳回，系统数据未修改。"
         await self.graph.aupdate_state(
-            self.config(case_id),
+            self.config(case_id, operator),
             {
                 "pending_actions": actions,
                 "messages": [{"role": "assistant", "content": response, "created_at": _now()}],
@@ -447,13 +456,14 @@ class CaseAgentRuntime:
             },
             as_node="case_assistant",
         )
-        return await self.get_state(case_id)
+        return await self.get_state(case_id, operator)
 
-    @staticmethod
-    def _public_state(case_id: int, state: dict[str, Any]) -> dict[str, Any]:
+    @classmethod
+    def _public_state(cls, case_id: int, operator: str, state: dict[str, Any]) -> dict[str, Any]:
         return {
-            "thread_id": f"case:{case_id}",
-            "thread_namespace": "sunhold.case-agent.v1",
+            "thread_id": cls.thread_id(case_id, operator),
+            "thread_namespace": "sunhold.case-agent.private.v1",
+            "shared_space_id": f"case:{case_id}",
             "messages": state.get("messages") or [],
             "pending_actions": state.get("pending_actions") or [],
             "last_response": state.get("last_response", ""),

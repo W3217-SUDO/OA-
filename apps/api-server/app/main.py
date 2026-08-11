@@ -17454,7 +17454,8 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         "capabilities": capabilities,
         "agent": {
             **case_agent_runtime.status(),
-            "thread_namespace": f"case:{case_record.id}",
+            "shared_space_id": f"case:{case_record.id}",
+            "private_thread_id": case_agent_runtime.thread_id(case_record.id, identity["username"]),
         },
     }
     context["standard_workflow"] = build_case_workflow_guide(context)
@@ -17472,7 +17473,8 @@ async def case_agent_status(case_id: int, identity: dict = Depends(current_ident
     await _ensure_record_module(case_id, "case", identity, db)
     return {
         "case_id": case_id,
-        "thread_id": f"case:{case_id}",
+        "shared_space_id": f"case:{case_id}",
+        "thread_id": case_agent_runtime.thread_id(case_id, identity["username"]),
         **case_agent_runtime.status(),
     }
 
@@ -17483,7 +17485,7 @@ async def case_agent_state(case_id: int, identity: dict = Depends(current_identi
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     try:
-        return await case_agent_runtime.get_state(case_id)
+        return await case_agent_runtime.get_state(case_id, identity["username"])
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="案件智能体状态读取失败") from exc
 
@@ -17747,7 +17749,7 @@ async def decide_case_agent_action(
     context = await get_case_space_context(case_id, identity, db)
     capabilities = context.get("capabilities") or {}
     try:
-        state = await case_agent_runtime.get_state(case_id)
+        state = await case_agent_runtime.get_state(case_id, identity["username"])
         action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
         if not action:
             raise KeyError(action_id)
