@@ -41,11 +41,16 @@ test("agent center routes skills internally without a standalone office skill mo
   assert.doesNotMatch(styleSource, /\.agent-skill-bar/);
 });
 
-test("manual-driven workflow stays in agent context without a standalone workbench module", () => {
+test("manual-driven workflow uses a compact top phase strip without a standalone workbench", () => {
   assert.doesNotMatch(pageSource, /data-testid="case-standard-workflow"/);
-  assert.doesNotMatch(pageSource, /\/workflow-guide/);
   assert.doesNotMatch(pageSource, /案件标准化工作台/);
   assert.doesNotMatch(styleSource, /\.agent-standard-workflow/);
+  assert.match(pageSource, /data-testid="case-phase-strip"/);
+  assert.match(pageSource, /\/case-spaces\/\$\{record\.id\}\/workflow-guide/);
+  assert.match(pageSource, /<header className="agent-center-header">[\s\S]*?data-testid="case-phase-strip"[\s\S]*?<Space wrap>/);
+  assert.match(styleSource, /\.agent-center-header\{[^}]*grid-template-columns:auto minmax\(240px,1fr\) auto/);
+  assert.match(styleSource, /\.agent-phase-strip\{[^}]*height:42px/);
+  assert.match(styleSource, /\.agent-phase-strip\{[^}]*overflow-x:auto/);
 });
 
 test("screenshot evidence skill uploads case-scoped images and submits attachment ids", () => {

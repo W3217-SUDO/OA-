@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { Alert, Button, Empty, Image, Input, List, message, Space, Spin, Tag } from "antd";
-import { CloseOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, CloseOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import "./agent-center.css";
@@ -11,6 +11,8 @@ type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; 
 type AgentAction = { id: string; type: string; summary: string; status: "pending" | "approved" | "rejected" };
 type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
+type WorkflowPhase = { code: string; name: string; state: "completed" | "current" | "pending"; target_days?: number | null };
+type WorkflowGuide = { phases: WorkflowPhase[] };
 export default function AgentCenterPage() {
   const [cases, setCases] = useState<CaseOption[]>([]);
   const [selected, setSelected] = useState<CaseOption | null>(null);
@@ -21,6 +23,7 @@ export default function AgentCenterPage() {
   const [decisionLoading, setDecisionLoading] = useState("");
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [state, setState] = useState<AgentState | null>(null);
+  const [workflowGuide, setWorkflowGuide] = useState<WorkflowGuide | null>(null);
   const [input, setInput] = useState("");
   const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
   const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
@@ -66,6 +69,10 @@ export default function AgentCenterPage() {
   };
   const loadAgent = async (record: CaseOption) => {
     setAgentLoading(true);
+    setWorkflowGuide(null);
+    void api.get(`/case-spaces/${record.id}/workflow-guide`)
+      .then((response) => setWorkflowGuide(response.data || null))
+      .catch(() => setWorkflowGuide(null));
     try {
       const [statusRes, stateRes] = await Promise.all([
         api.get(`/case-spaces/${record.id}/agent/status`),
@@ -89,7 +96,7 @@ export default function AgentCenterPage() {
     clearScreenshotPreviews();
     setScreenshots([]);
     if (selected) void loadAgent(selected);
-    else { setStatus(null); setState(null); }
+    else { setStatus(null); setState(null); setWorkflowGuide(null); }
   }, [selected?.id]);
   useEffect(() => () => clearScreenshotPreviews(), []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: "end" }); }, [state?.messages.length]);
@@ -201,6 +208,13 @@ export default function AgentCenterPage() {
   return <div className="agent-center-page" data-testid="agent-center-page">
     <header className="agent-center-header">
       <div><h2>智能体中心</h2><span>统一业务空间</span></div>
+      {workflowGuide?.phases?.length ? <div className="agent-phase-strip" data-testid="case-phase-strip">
+        {workflowGuide.phases.map((phase) => <div key={phase.code} className={`agent-phase-strip-item agent-phase-strip-${phase.state}`}>
+          <CheckCircleOutlined />
+          <span>{phase.name}</span>
+          {phase.target_days ? <small>目标 {phase.target_days} 天</small> : null}
+        </div>)}
+      </div> : <div className="agent-phase-strip-placeholder" />}
       <Space wrap><Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag></Space>
     </header>
     <div className="agent-center-layout">
