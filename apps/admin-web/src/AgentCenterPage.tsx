@@ -248,7 +248,7 @@ export default function AgentCenterPage() {
                 <span>{PHASE_SHORT_NAMES[phase.code] || phase.name}</span>
               </div>)}
             </div> : <div className="agent-phase-strip-placeholder" />}
-            <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">关系图</Tag><Tag color="gold">人工审批</Tag></Space>
+            <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">已关联业务数据</Tag><Tag color="gold">人工审批</Tag></Space>
           </div>
           {pendingActions.length > 0 && <section className="agent-global-actions">
             <Alert type="info" showIcon title="待审批操作不会自动改写业务数据" />

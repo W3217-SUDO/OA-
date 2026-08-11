@@ -30,6 +30,8 @@ test("agent center resumes authorized case spaces and all linked business areas"
   for (const label of ["客户", "合同", "案件", "线索", "调查", "财务"]) {
     assert.ok(pageSource.includes(`<Tag>${label}</Tag>`), `missing ${label} relation label`);
   }
+  assert.match(pageSource, />已关联业务数据<\/Tag>/);
+  assert.doesNotMatch(pageSource, />关系图<\/Tag>/);
 });
 
 test("agent center routes skills internally without a standalone office skill module", () => {
