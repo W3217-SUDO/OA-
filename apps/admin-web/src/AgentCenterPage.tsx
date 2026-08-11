@@ -335,8 +335,8 @@ export default function AgentCenterPage() {
           <div className="agent-skill-list-head">
             <strong>自定义技能</strong>
             <Space>
-              <input ref={skillFileInputRef} hidden type="file" accept=".json,.md,.markdown,application/json,text/markdown" onChange={(event) => void uploadSkill(event.target.files?.[0])} />
-              <Button icon={<UploadOutlined />} loading={skillSaving} onClick={() => skillFileInputRef.current?.click()}>上传</Button>
+              <input ref={skillFileInputRef} hidden type="file" accept=".json,.md,.markdown,.docx,application/json,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void uploadSkill(event.target.files?.[0])} />
+              <Button icon={<UploadOutlined />} title="支持 JSON、Markdown 和 Word（.docx），Word 将自动转为 Markdown" loading={skillSaving} onClick={() => skillFileInputRef.current?.click()}>上传</Button>
               <Button type="primary" icon={<AppstoreAddOutlined />} onClick={resetSkillEditor}>新增</Button>
             </Space>
           </div>

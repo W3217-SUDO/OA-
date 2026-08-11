@@ -3,14 +3,22 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from io import BytesIO
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+from docx import Document
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from .agent_skills import AgentSkill
 
 
 CUSTOM_SKILL_SOURCE = "user-custom"
-CUSTOM_SKILL_FILE_LIMIT = 64 * 1024
+CUSTOM_SKILL_FILE_LIMIT = 2 * 1024 * 1024
 CUSTOM_SKILL_LIMIT = 30
 
 
@@ -45,10 +53,72 @@ def normalize_custom_skill(payload: dict[str, Any], *, skill_id: str = "", sourc
     }
 
 
+def _docx_markdown(filename: str, content: bytes) -> tuple[str, str, str]:
+    try:
+        document = Document(BytesIO(content))
+    except Exception as exc:
+        raise ValueError("word") from exc
+
+    blocks: list[str] = []
+    first_heading = ""
+    first_paragraph = ""
+    for child in document.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            paragraph = Paragraph(child, document)
+            text = paragraph.text.strip()
+            if not text:
+                continue
+            style = str(paragraph.style.name if paragraph.style else "").strip()
+            heading_match = re.search(r"(?:heading|标题)\s*(\d+)", style, re.IGNORECASE)
+            if heading_match:
+                level = min(max(int(heading_match.group(1)), 1), 6)
+                blocks.append(f"{'#' * level} {text}")
+                if not first_heading:
+                    first_heading = text
+            elif "list bullet" in style.casefold() or "项目符号" in style:
+                blocks.append(f"- {text}")
+            elif "list number" in style.casefold() or "编号" in style:
+                blocks.append(f"1. {text}")
+            else:
+                blocks.append(text)
+                if not first_paragraph:
+                    first_paragraph = text
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, document)
+            rows = [
+                [cell.text.strip().replace("|", "\\|").replace("\n", "<br>") for cell in row.cells]
+                for row in table.rows
+            ]
+            if not rows or not any(any(cell for cell in row) for row in rows):
+                continue
+            width = max(len(row) for row in rows)
+            normalized_rows = [row + [""] * (width - len(row)) for row in rows]
+            blocks.append("| " + " | ".join(normalized_rows[0]) + " |")
+            blocks.append("| " + " | ".join(["---"] * width) + " |")
+            blocks.extend("| " + " | ".join(row) + " |" for row in normalized_rows[1:])
+
+    markdown = "\n\n".join(blocks).strip()
+    if len(markdown) > 6000:
+        markdown = markdown[:5940].rstrip() + "\n\n> Word 内容较长，已截取前部作为技能指令。"
+    properties = document.core_properties
+    name = str(properties.title or first_heading or Path(filename).stem).strip()
+    description = str(properties.subject or first_paragraph or f"从 Word 文档 {Path(filename).name} 导入").strip()[:500]
+    return name, description, markdown
+
+
 def parse_uploaded_skill(filename: str, content: bytes) -> dict[str, Any]:
     if len(content) > CUSTOM_SKILL_FILE_LIMIT:
         raise ValueError("file_too_large")
     suffix = "." + str(filename or "").rsplit(".", 1)[-1].lower() if "." in str(filename or "") else ""
+    if suffix == ".docx":
+        name, description, instruction = _docx_markdown(filename, content)
+        return normalize_custom_skill({
+            "name": name,
+            "category": "Word 导入",
+            "description": description,
+            "instruction": instruction,
+            "quick_prompts": [],
+        }, source="user-upload-word")
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:

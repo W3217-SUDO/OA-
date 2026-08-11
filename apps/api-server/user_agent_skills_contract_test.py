@@ -1,6 +1,7 @@
 import io
 import unittest
 
+from docx import Document
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -29,6 +30,29 @@ class UserAgentSkillParserTest(unittest.TestCase):
         self.assertEqual(md_skill["quick_prompts"], ["检查本案期限"])
         with self.assertRaises(ValueError):
             parse_uploaded_skill("unsafe.py", b"print('no')")
+
+    def test_word_upload_is_converted_to_markdown(self):
+        document = Document()
+        document.core_properties.title = "案件材料核验"
+        document.core_properties.subject = "核验案件材料、期限和责任人"
+        document.add_heading("核验规则", level=1)
+        document.add_paragraph("逐项检查案件空间中的材料是否齐全。")
+        document.add_paragraph("确认期限", style="List Bullet")
+        table = document.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = "字段"
+        table.cell(0, 1).text = "要求"
+        table.cell(1, 0).text = "负责人"
+        table.cell(1, 1).text = "必须存在"
+        content = io.BytesIO()
+        document.save(content)
+
+        skill = parse_uploaded_skill("case-review.docx", content.getvalue())
+
+        self.assertEqual(skill["name"], "案件材料核验")
+        self.assertEqual(skill["source"], "user-upload-word")
+        self.assertIn("# 核验规则", skill["instruction"])
+        self.assertIn("- 确认期限", skill["instruction"])
+        self.assertIn("| 字段 | 要求 |", skill["instruction"])
 
 
 class UserAgentSkillApiTest(unittest.IsolatedAsyncioTestCase):

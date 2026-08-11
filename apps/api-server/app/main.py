@@ -17564,10 +17564,11 @@ async def upload_user_agent_skill(file: UploadFile = File(...), identity: dict =
         record = parse_uploaded_skill(file.filename or "", content)
     except ValueError as exc:
         errors = {
-            "file_too_large": "技能文件不能超过 64KB",
-            "file_type": "仅支持 JSON、Markdown 技能文件",
+            "file_too_large": "技能文件不能超过 2MB",
+            "file_type": "仅支持 JSON、Markdown、Word（.docx）技能文件",
             "encoding": "技能文件必须使用 UTF-8 编码",
             "json": "JSON 技能文件格式不正确",
+            "word": "Word 技能文件损坏或无法识别",
         }
         raise HTTPException(status_code=422, detail=errors.get(str(exc), f"技能字段格式不正确：{exc}")) from exc
     skills.append(record)

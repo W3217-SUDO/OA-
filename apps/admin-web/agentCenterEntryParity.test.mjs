@@ -61,7 +61,8 @@ test("users can manage private declarative skills from the chat composer", () =>
   assert.match(pageSource, /api\.post\("\/agent\/skills\/upload"/);
   assert.match(pageSource, /api\.patch\(`\/agent\/skills\/\$\{skill\.id\}`/);
   assert.match(pageSource, /api\.delete\(`\/agent\/skills\/\$\{skill\.id\}`/);
-  assert.match(pageSource, /accept="\.json,\.md,\.markdown/);
+  assert.match(pageSource, /accept="\.json,\.md,\.markdown,\.docx/);
+  assert.match(pageSource, /Word（\.docx），Word 将自动转为 Markdown/);
   assert.match(pageSource, /skill_id: skillId/);
   assert.match(pageSource, /className="agent-composer-skill"/);
   assert.match(styleSource, /\.agent-skill-manager\{display:grid/);
