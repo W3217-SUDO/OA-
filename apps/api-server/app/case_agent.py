@@ -46,6 +46,7 @@ class CaseAgentState(TypedDict, total=False):
     updated_at: str
     active_skill: str
     request_images: list[dict[str, Any]]
+    skill_override: dict[str, Any] | None
     legacy_migrated: bool
 
 
@@ -268,7 +269,21 @@ class CaseAgentRuntime:
             response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
         elif self.status()["model_configured"]:
             skill_id = str(latest.get("skill_id") or GENERAL_SKILL.id)
-            selected_skill = SKILLS_BY_ID.get(skill_id, GENERAL_SKILL)
+            skill_override = state.get("skill_override")
+            if isinstance(skill_override, dict) and str(skill_override.get("id") or "") == skill_id:
+                selected_skill = AgentSkill(
+                    id=skill_id,
+                    name=str(skill_override.get("name") or skill_id),
+                    category=str(skill_override.get("category") or "Custom"),
+                    description=str(skill_override.get("description") or ""),
+                    source="user-custom",
+                    available=True,
+                    unavailable_reason="",
+                    instruction=str(skill_override.get("instruction") or ""),
+                    quick_prompts=tuple(skill_override.get("quick_prompts") or ()),
+                )
+            else:
+                selected_skill = SKILLS_BY_ID.get(skill_id, GENERAL_SKILL)
             if not selected_skill.available:
                 response = f"“{selected_skill.name}”已接入技能目录，但暂不可执行：{selected_skill.unavailable_reason}。"
             else:
@@ -465,9 +480,24 @@ class CaseAgentRuntime:
         }
         if proposed_action:
             user_message["proposed_action"] = proposed_action
+        skill_override_payload = None
+        if skill_override is not None:
+            skill_override_payload = {
+                "id": skill_override.id,
+                "name": skill_override.name,
+                "category": skill_override.category,
+                "description": skill_override.description,
+                "instruction": skill_override.instruction,
+                "quick_prompts": list(skill_override.quick_prompts),
+            }
         async with self._semaphore:
             result = await self.graph.ainvoke(
-                {"messages": [user_message], "case_snapshot": case_snapshot, "request_images": list(images or [])},
+                {
+                    "messages": [user_message],
+                    "case_snapshot": case_snapshot,
+                    "request_images": list(images or []),
+                    "skill_override": skill_override_payload,
+                },
                 self.config(case_id, operator),
             )
         return self._public_state(case_id, operator, result)
