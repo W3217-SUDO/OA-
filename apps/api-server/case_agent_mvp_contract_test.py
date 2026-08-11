@@ -1,14 +1,16 @@
 """MVP contract tests for the LangGraph-backed case agent."""
 
 import unittest
+from datetime import date, timedelta
 from unittest.mock import AsyncMock
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 import app.main as main_module
-from app.case_agent import CaseAgentRuntime, _checkpoint_url
+from app.case_agent import CaseAgentRuntime, _checkpoint_url, _extract_proposed_action
 from app.database import Base
 from app.main import (
     CaseAgentDecisionInput,
@@ -20,7 +22,7 @@ from app.main import (
     get_case_workflow_guide,
     send_case_agent_message,
 )
-from app.models import BusinessRecord, FileAttachment, User
+from app.models import BusinessRecord, FileAttachment, User, WorkflowEvent
 
 
 class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
@@ -30,6 +32,14 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.runtime.stop()
+
+    def test_model_action_block_is_removed_from_chat_and_normalized(self):
+        content, action = _extract_proposed_action(
+            '我可以为你更新案件说明。<proposed_action>{"type":"case.update","summary":"更新说明","payload":{"changes":{"description":"已沟通"}}}</proposed_action>'
+        )
+        self.assertEqual(content, "我可以为你更新案件说明。")
+        self.assertEqual(action["type"], "case.update")
+        self.assertEqual(action["payload"]["changes"]["description"], "已沟通")
 
     async def test_case_thread_persists_messages_and_approval_state(self):
         snapshot = {
@@ -212,6 +222,82 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["pending_actions"][0]["status"], "rejected")
             unchanged = await db.get(BusinessRecord, case.id)
             self.assertEqual(unchanged.description, "")
+
+    async def test_approved_case_update_is_applied_and_audited(self):
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            identity = {"username": "lawyer", "role": "admin"}
+            result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="把案件说明改为已完成客户沟通",
+                    proposed_action=CaseAgentProposedAction(
+                        type="case.update",
+                        summary="更新案件说明",
+                        payload={"changes": {"description": "已完成客户沟通"}},
+                    ),
+                ),
+                identity,
+                db,
+            )
+            action = result["pending_actions"][0]
+            self.assertEqual(action["preview"]["changes"][0]["before"], "")
+            self.assertEqual(action["preview"]["changes"][0]["after"], "已完成客户沟通")
+            decided = await decide_case_agent_action(
+                case.id,
+                action["id"],
+                CaseAgentDecisionInput(decision="approved", comment="同意执行"),
+                identity,
+                db,
+            )
+            approved = decided["pending_actions"][0]
+            self.assertEqual(approved["status"], "approved")
+            self.assertEqual(approved["execution_result"]["updated_fields"]["description"], "已完成客户沟通")
+            updated = await db.get(BusinessRecord, case.id)
+            self.assertEqual(updated.description, "已完成客户沟通")
+            events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == case.id))).all())
+            self.assertTrue(any(item.action == "智能体审批后更新案件" for item in events))
+
+    async def test_approved_task_and_reminder_proposals_create_linked_records(self):
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            identity = {"username": "lawyer", "role": "admin"}
+            deadline = date.today() + timedelta(days=5)
+            task_result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="创建案件任务",
+                    proposed_action=CaseAgentProposedAction(
+                        type="case.task.create",
+                        summary="创建补充材料任务",
+                        payload={"title": "补充立案材料", "owner": "lawyer", "deadline": str(deadline), "priority": "普通"},
+                    ),
+                ),
+                identity,
+                db,
+            )
+            task_action = task_result["pending_actions"][-1]
+            await decide_case_agent_action(case.id, task_action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
+            self.assertTrue(any((item.data or {}).get("case_record_id") == case.id for item in tasks))
+
+            reminder_result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="创建案件提醒",
+                    proposed_action=CaseAgentProposedAction(
+                        type="case.reminder.create",
+                        summary="创建材料期限提醒",
+                        payload={"content": "检查立案材料", "reminder_date": str(date.today() + timedelta(days=2)), "deadline": str(deadline)},
+                    ),
+                ),
+                identity,
+                db,
+            )
+            reminder_action = reminder_result["pending_actions"][-1]
+            await decide_case_agent_action(case.id, reminder_action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            reminders = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case_reminder"))).all())
+            self.assertTrue(any((item.data or {}).get("case_id") == case.id for item in reminders))
 
     async def test_unauthorized_user_cannot_open_case_agent(self):
         async with self.sessions() as db:

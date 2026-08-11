@@ -43,6 +43,17 @@ test("agent center routes skills internally without a standalone office skill mo
   assert.doesNotMatch(styleSource, /\.agent-skill-bar/);
 });
 
+test("agent write proposals open an explicit approval dialog with before and after values", () => {
+  assert.match(pageSource, /<Modal[\s\S]*?title="智能体操作审批"/);
+  assert.match(pageSource, /data-testid="agent-action-approval"/);
+  assert.match(pageSource, /批准并执行/);
+  assert.match(pageSource, /驳回，不修改/);
+  assert.match(pageSource, /change\.before/);
+  assert.match(pageSource, /change\.after/);
+  assert.match(styleSource, /\.agent-action-changes/);
+  assert.doesNotMatch(styleSource, /\.agent-global-actions/);
+});
+
 test("manual-driven workflow uses a compact top phase strip without a standalone workbench", () => {
   assert.doesNotMatch(pageSource, /data-testid="case-standard-workflow"/);
   assert.doesNotMatch(pageSource, /案件标准化工作台/);

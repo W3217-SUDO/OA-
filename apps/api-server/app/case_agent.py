@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import operator
+import re
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import Annotated, Any, TypedDict
@@ -14,6 +15,15 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 
 from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, AgentSkill, parse_skill_message, public_skill_catalog
+
+
+ALLOWED_ACTION_TYPES = {
+    "case.update",
+    "case.data.update",
+    "case.task.create",
+    "case.reminder.create",
+}
+ACTION_BLOCK_PATTERN = re.compile(r"<proposed_action>\s*(\{.*?\})\s*</proposed_action>", re.DOTALL)
 
 
 class CaseAgentState(TypedDict, total=False):
@@ -50,6 +60,67 @@ def _case_summary(snapshot: dict[str, Any]) -> str:
     )
 
 
+def _normalize_proposed_action(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    action_type = str(value.get("type") or "").strip()
+    summary = str(value.get("summary") or "").strip()
+    payload = value.get("payload")
+    if action_type not in ALLOWED_ACTION_TYPES or not summary or not isinstance(payload, dict):
+        return None
+    return {"type": action_type, "summary": summary[:500], "payload": payload}
+
+
+def _extract_proposed_action(content: str) -> tuple[str, dict[str, Any] | None]:
+    match = ACTION_BLOCK_PATTERN.search(content)
+    if not match:
+        return content.strip(), None
+    cleaned = ACTION_BLOCK_PATTERN.sub("", content).strip()
+    try:
+        action = _normalize_proposed_action(json.loads(match.group(1)))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        action = None
+    return cleaned, action
+
+
+def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
+    action_type = proposed_action["type"]
+    payload = proposed_action.get("payload") or {}
+    case = snapshot.get("case") or {}
+    case_data = case.get("data") or {}
+    if action_type in {"case.update", "case.data.update"}:
+        changes = payload.get("changes") if isinstance(payload.get("changes"), dict) else payload
+        source = case_data if action_type == "case.data.update" else case
+        return {
+            "target": case.get("serial_no") or case.get("id") or "当前案件",
+            "changes": [
+                {"field": key, "before": source.get(key), "after": value}
+                for key, value in changes.items()
+            ],
+        }
+    return {
+        "target": case.get("serial_no") or case.get("id") or "当前案件",
+        "create": payload,
+    }
+
+
+def _pending_action(proposed_action: dict[str, Any], latest: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": uuid4().hex,
+        "type": proposed_action.get("type", "case.update"),
+        "summary": proposed_action.get("summary") or "案件写操作",
+        "payload": proposed_action.get("payload") or {},
+        "preview": _action_preview(proposed_action, snapshot),
+        "status": "pending",
+        "requested_by": latest.get("operator", ""),
+        "requested_at": _now(),
+        "decided_by": "",
+        "decided_at": "",
+        "decision_comment": "",
+        "execution_result": None,
+    }
+
+
 def _case_assistant_node(state: CaseAgentState) -> dict[str, Any]:
     messages = state.get("messages") or []
     latest = messages[-1] if messages else {}
@@ -57,18 +128,7 @@ def _case_assistant_node(state: CaseAgentState) -> dict[str, Any]:
     pending_actions = list(state.get("pending_actions") or [])
     proposed_action = latest.get("proposed_action") or None
     if proposed_action:
-        action = {
-            "id": uuid4().hex,
-            "type": proposed_action.get("type", "case.update"),
-            "summary": proposed_action.get("summary") or "案件写操作",
-            "payload": proposed_action.get("payload") or {},
-            "status": "pending",
-            "requested_by": latest.get("operator", ""),
-            "requested_at": _now(),
-            "decided_by": "",
-            "decided_at": "",
-            "decision_comment": "",
-        }
+        action = _pending_action(proposed_action, latest, snapshot)
         pending_actions.append(action)
         response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
     else:
@@ -177,18 +237,7 @@ class CaseAgentRuntime:
         proposed_action = latest.get("proposed_action") or None
         request_images = list(state.get("request_images") or [])
         if proposed_action:
-            action = {
-                "id": uuid4().hex,
-                "type": proposed_action.get("type", "case.update"),
-                "summary": proposed_action.get("summary") or "案件写操作",
-                "payload": proposed_action.get("payload") or {},
-                "status": "pending",
-                "requested_by": latest.get("operator", ""),
-                "requested_at": _now(),
-                "decided_by": "",
-                "decided_at": "",
-                "decision_comment": "",
-            }
+            action = _pending_action(proposed_action, latest, snapshot)
             pending_actions.append(action)
             response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
         elif self.status()["model_configured"]:
@@ -197,7 +246,15 @@ class CaseAgentRuntime:
             if not selected_skill.available:
                 response = f"“{selected_skill.name}”已接入技能目录，但暂不可执行：{selected_skill.unavailable_reason}。"
             else:
-                response = await self._request_model(snapshot, messages, selected_skill, request_images)
+                model_result = await self._request_model(snapshot, messages, selected_skill, request_images)
+                if isinstance(model_result, tuple):
+                    response, model_action = model_result
+                else:
+                    response, model_action = str(model_result), None
+                if model_action:
+                    action = _pending_action(model_action, latest, snapshot)
+                    pending_actions.append(action)
+                    response = f"{response}\n\n已生成待审批操作：{action['summary']}。批准后才会写入系统。".strip()
         else:
             response = _case_summary(snapshot)
         return {
@@ -216,7 +273,7 @@ class CaseAgentRuntime:
         messages: list[dict[str, Any]],
         skill: AgentSkill = GENERAL_SKILL,
         request_images: list[dict[str, Any]] | None = None,
-    ) -> str:
+    ) -> tuple[str, dict[str, Any] | None]:
         context = json.dumps(snapshot, ensure_ascii=False, default=str)
         if len(context) > 80_000:
             context = context[:80_000] + "\n[案件空间内容过长，已截断]"
@@ -230,7 +287,13 @@ class CaseAgentRuntime:
                     "回答使用简洁、专业的中文，并区分事实、期限风险和建议。"
                     "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
                     "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
-                    "但不得在缺少起算依据时自行推算法定期限。\n\n"
+                    "但不得在缺少起算依据时自行推算法定期限。"
+                    "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
+                    "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
+                    "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create。"
+                    "案件任务 payload 使用 title、owner、deadline、priority、description；"
+                    "案件提醒 payload 使用 content、reminder_date、deadline。"
+                    "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。\n\n"
                     f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
                     f"当前案件空间数据：\n{context}"
                 ),
@@ -267,7 +330,7 @@ class CaseAgentRuntime:
             content = str(payload["choices"][0]["message"]["content"]).strip()
             if not content:
                 raise RuntimeError("model_empty_response")
-            return content
+            return _extract_proposed_action(content)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise RuntimeError("model_request_failed") from exc
 
@@ -324,6 +387,7 @@ class CaseAgentRuntime:
         decision: str,
         operator: str,
         comment: str = "",
+        execution_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
@@ -340,8 +404,9 @@ class CaseAgentRuntime:
             "decided_by": operator,
             "decided_at": _now(),
             "decision_comment": comment,
+            "execution_result": execution_result,
         })
-        response = "待审批操作已批准。" if decision == "approved" else "待审批操作已驳回。"
+        response = "待审批操作已批准并写入系统。" if decision == "approved" else "待审批操作已驳回，系统数据未修改。"
         await self.graph.aupdate_state(
             self.config(case_id),
             {

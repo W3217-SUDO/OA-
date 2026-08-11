@@ -885,7 +885,7 @@ class DifyRequest(BaseModel):
 
 
 class CaseAgentProposedAction(BaseModel):
-    type: str = Field(default="case.update", min_length=2, max_length=100)
+    type: str = Field(default="case.update", pattern=r"^(case\.update|case\.data\.update|case\.task\.create|case\.reminder\.create)$")
     summary: str = Field(min_length=2, max_length=500)
     payload: dict = Field(default_factory=dict)
 
@@ -17524,6 +17524,130 @@ async def send_case_agent_message(
         raise HTTPException(status_code=503, detail="案件智能体调用失败") from exc
 
 
+AGENT_CASE_UPDATE_FIELDS = {"title", "customer", "status", "description"}
+AGENT_CASE_DATA_FIELDS = {
+    "court", "first_instance_court", "first_instance_case_no", "second_instance_court",
+    "second_instance_case_no", "cause_or_charge", "case_stage", "filing_date",
+    "acceptance_date", "judgment_date", "effective_date", "archive_no",
+    "paper_archive_location", "client_position",
+}
+
+
+def _case_agent_changes(payload: dict) -> dict:
+    changes = payload.get("changes") if isinstance(payload.get("changes"), dict) else payload
+    if not isinstance(changes, dict) or not changes:
+        raise HTTPException(status_code=422, detail="智能体操作没有可执行的字段变更")
+    return changes
+
+
+def _case_agent_date(value: object, field_name: str) -> date:
+    try:
+        return date.fromisoformat(str(value or "").strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name}必须使用 YYYY-MM-DD 日期格式") from exc
+
+
+def _case_agent_required_text(value: object, field_name: str, max_length: int = 1000) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=422, detail=f"{field_name}不能为空")
+    if len(normalized) > max_length:
+        raise HTTPException(status_code=422, detail=f"{field_name}内容过长")
+    return normalized
+
+
+async def _execute_case_agent_action(
+    case_record: BusinessRecord,
+    action: dict,
+    identity: dict,
+    db: AsyncSession,
+) -> dict:
+    action_type = str(action.get("type") or "")
+    payload = action.get("payload") or {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="智能体操作参数格式错误")
+
+    if action_type == "case.update":
+        changes = _case_agent_changes(payload)
+        invalid = sorted(set(changes) - AGENT_CASE_UPDATE_FIELDS)
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改字段：{', '.join(invalid)}")
+        before_status = case_record.status
+        applied = {}
+        limits = {"title": 255, "customer": 255, "status": 32, "description": 5000}
+        for field, value in changes.items():
+            normalized = str(value or "").strip()
+            if field in {"title", "status"} and not normalized:
+                raise HTTPException(status_code=422, detail=f"{field}不能为空")
+            if len(normalized) > limits[field]:
+                raise HTTPException(status_code=422, detail=f"{field}内容过长")
+            setattr(case_record, field, normalized)
+            applied[field] = normalized
+        db.add(WorkflowEvent(
+            record_id=case_record.id,
+            action="智能体审批后更新案件",
+            from_status=before_status,
+            to_status=case_record.status,
+            operator=identity["username"],
+            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(applied)}",
+        ))
+        await db.commit()
+        await db.refresh(case_record)
+        return {"record_id": case_record.id, "operation": action_type, "updated_fields": applied}
+
+    if action_type == "case.data.update":
+        changes = _case_agent_changes(payload)
+        invalid = sorted(set(changes) - AGENT_CASE_DATA_FIELDS)
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改案件扩展字段：{', '.join(invalid)}")
+        normalized_changes = {}
+        for field, value in changes.items():
+            if isinstance(value, (dict, list)):
+                raise HTTPException(status_code=422, detail=f"{field}不接受复合数据")
+            normalized = value if isinstance(value, (bool, int, float)) else str(value or "").strip()
+            if isinstance(normalized, str) and len(normalized) > 1000:
+                raise HTTPException(status_code=422, detail=f"{field}内容过长")
+            normalized_changes[field] = normalized
+        case_record.data = {**(case_record.data or {}), **normalized_changes}
+        db.add(WorkflowEvent(
+            record_id=case_record.id,
+            action="智能体审批后更新案件信息",
+            from_status=case_record.status,
+            to_status=case_record.status,
+            operator=identity["username"],
+            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(normalized_changes)}",
+        ))
+        await db.commit()
+        await db.refresh(case_record)
+        return {"record_id": case_record.id, "operation": action_type, "updated_fields": normalized_changes}
+
+    if action_type == "case.task.create":
+        collaborators = payload.get("collaborators") or []
+        if not isinstance(collaborators, list):
+            raise HTTPException(status_code=422, detail="协作人必须为人员列表")
+        task = await create_task(TaskInput(
+            title=_case_agent_required_text(payload.get("title"), "任务名称", 255),
+            owner=_case_agent_required_text(payload.get("owner"), "任务负责人", 128),
+            deadline=_case_agent_date(payload.get("deadline"), "任务截止日期"),
+            priority=str(payload.get("priority") or "普通").strip(),
+            source="案件任务",
+            collaborators=[str(item).strip() for item in collaborators if str(item).strip()],
+            case_no=case_record.serial_no,
+            description=str(payload.get("description") or "").strip(),
+        ), identity, db)
+        return {"record_id": task.get("id"), "operation": action_type, "serial_no": task.get("serial_no")}
+
+    if action_type == "case.reminder.create":
+        reminder = await create_case_reminder(case_record.id, CaseReminderInput(
+            content=_case_agent_required_text(payload.get("content"), "提醒内容"),
+            reminder_date=_case_agent_date(payload.get("reminder_date"), "提醒日期"),
+            deadline=_case_agent_date(payload.get("deadline"), "截止日期"),
+        ), identity, db)
+        return {"record_id": reminder.get("id"), "operation": action_type, "serial_no": reminder.get("serial_no")}
+
+    raise HTTPException(status_code=422, detail="该智能体操作类型不在系统白名单中")
+
+
 @app.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/actions/{{action_id}}/decision")
 async def decide_case_agent_action(
     case_id: int,
@@ -17537,12 +17661,22 @@ async def decide_case_agent_action(
     if not capabilities.get("can_write"):
         raise HTTPException(status_code=403, detail="当前账号无权审批该案件的智能体操作")
     try:
+        state = await case_agent_runtime.get_state(case_id)
+        action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
+        if not action:
+            raise KeyError(action_id)
+        if action.get("status") != "pending":
+            raise ValueError("action_already_decided")
+        execution_result = None
+        if body.decision == "approved":
+            execution_result = await _execute_case_agent_action(case_record, action, identity, db)
         return await case_agent_runtime.decide_action(
             case_id=case_id,
             action_id=action_id,
             decision=body.decision,
             operator=identity["username"],
             comment=body.comment,
+            execution_result=execution_result,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="待审批操作不存在") from exc
