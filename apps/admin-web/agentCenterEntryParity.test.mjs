@@ -53,6 +53,10 @@ test("manual-driven workflow uses a compact top phase strip without a standalone
   assert.match(styleSource, /\.agent-phase-strip\{[^}]*overflow:hidden/);
   assert.match(styleSource, /\.agent-phase-strip-item\{[^}]*flex:1 1 0/);
   assert.doesNotMatch(styleSource, /\.agent-phase-strip\{[^}]*overflow-x:auto/);
+  assert.match(pageSource, /PHASE_SHORT_NAMES/);
+  for (const label of ["文书", "盖章", "待立案", "补取证", "提立案", "一审", "二审", "再审", "执行", "归档"]) {
+    assert.ok(pageSource.includes(`"${label}"`), `missing compact phase label ${label}`);
+  }
 });
 
 test("screenshot evidence skill uploads case-scoped images and submits attachment ids", () => {

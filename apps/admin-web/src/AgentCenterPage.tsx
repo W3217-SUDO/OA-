@@ -13,6 +13,18 @@ type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; ac
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
 type WorkflowPhase = { code: string; name: string; state: "completed" | "current" | "pending"; target_days?: number | null };
 type WorkflowGuide = { phases: WorkflowPhase[] };
+const PHASE_SHORT_NAMES: Record<string, string> = {
+  "document-preparation": "文书",
+  "customer-seal": "盖章",
+  "waiting-filing": "待立案",
+  "supplement-evidence": "补取证",
+  filing: "提立案",
+  "first-instance": "一审",
+  "second-instance": "二审",
+  retrial: "再审",
+  enforcement: "执行",
+  archive: "归档",
+};
 export default function AgentCenterPage() {
   const [cases, setCases] = useState<CaseOption[]>([]);
   const [selected, setSelected] = useState<CaseOption | null>(null);
@@ -233,7 +245,7 @@ export default function AgentCenterPage() {
             {workflowGuide?.phases?.length ? <div className="agent-phase-strip" data-testid="case-phase-strip">
               {workflowGuide.phases.map((phase) => <div key={phase.code} title={phase.target_days ? `${phase.name} · 目标 ${phase.target_days} 天` : phase.name} className={`agent-phase-strip-item agent-phase-strip-${phase.state}`}>
                 <CheckCircleOutlined />
-                <span>{phase.name}</span>
+                <span>{PHASE_SHORT_NAMES[phase.code] || phase.name}</span>
               </div>)}
             </div> : <div className="agent-phase-strip-placeholder" />}
             <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">关系图</Tag><Tag color="gold">人工审批</Tag></Space>
