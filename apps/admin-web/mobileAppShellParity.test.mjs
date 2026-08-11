@@ -15,6 +15,7 @@ test("mobile shell exposes app-style navigation and an overlay feature drawer", 
   assert.match(appSource, /移动端主导航/);
   assert.match(appSource, /mobile-sidebar-mask/);
   assert.match(appSource, /<span>首页<\/span>/);
+  assert.match(appSource, /<span>智能体<\/span>/);
   assert.match(appSource, /<span>功能<\/span>/);
   assert.match(appSource, /<span>待办<\/span>/);
   assert.match(appSource, /<span>消息<\/span>/);
@@ -31,6 +32,7 @@ test("mobile workspace removes desktop chrome and keeps touch targets usable", (
   assert.match(styles, /\.ant-input,[\s\S]*min-height:\s*40px/);
   assert.match(styles, /\.content\s*\{[\s\S]*?padding:\s*0 12px 16px/);
   assert.match(styles, /height:\s*calc\(100dvh - 120px - env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
 });
 
 test("mobile dashboard uses compact two-column summary cards", () => {

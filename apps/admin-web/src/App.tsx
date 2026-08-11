@@ -2096,6 +2096,15 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={active === "agent-center" ? "active" : ""}
+          aria-current={active === "agent-center" ? "page" : undefined}
+          onClick={() => navigate("agent-center")}
+        >
+          <RobotOutlined />
+          <span>智能体</span>
+        </button>
+        <button
+          type="button"
           className={mobileSidebarOpen ? "active" : ""}
           aria-expanded={mobileSidebarOpen}
           onClick={() => setMobileSidebarOpen((open) => !open)}

@@ -21,6 +21,15 @@ test("chat composer stays inside the visible application workspace", () => {
   assert.doesNotMatch(styleSource, /@media\(max-width:850px\)\{\.agent-center-page\{height:auto/);
 });
 
+test("agent center uses a compact, scrollable phone workspace", () => {
+  assert.match(styleSource, /@media\(max-width:850px\)/);
+  assert.match(styleSource, /grid-template-rows:104px minmax\(0,1fr\)/);
+  assert.match(styleSource, /\.agent-space-list \.ant-list-items\{display:flex;width:max-content/);
+  assert.match(styleSource, /\.agent-phase-strip\{height:34px;overflow-x:auto/);
+  assert.match(styleSource, /\.agent-global-message>div\{max-width:94%/);
+  assert.match(styleSource, /@media\(max-width:560px\)/);
+});
+
 test("agent center resumes authorized case spaces and all linked business areas", () => {
   assert.match(pageSource, /data-testid="agent-center-page"/);
   assert.match(pageSource, /module:\s*"case"/);
@@ -66,7 +75,6 @@ test("manual-driven workflow uses a compact top phase strip without a standalone
   assert.match(styleSource, /\.agent-phase-strip\{[^}]*height:38px/);
   assert.match(styleSource, /\.agent-phase-strip\{[^}]*overflow:hidden/);
   assert.match(styleSource, /\.agent-phase-strip-item\{[^}]*flex:1 1 0/);
-  assert.doesNotMatch(styleSource, /\.agent-phase-strip\{[^}]*overflow-x:auto/);
   assert.match(pageSource, /PHASE_SHORT_NAMES/);
   for (const label of ["文书", "盖章", "待立案", "补取证", "提立案", "一审", "二审", "再审", "执行", "归档"]) {
     assert.ok(pageSource.includes(`"${label}"`), `missing compact phase label ${label}`);
