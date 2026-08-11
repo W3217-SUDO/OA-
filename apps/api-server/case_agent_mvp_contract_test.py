@@ -44,6 +44,7 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
     async def test_case_thread_persists_messages_and_approval_state(self):
         snapshot = {
             "case": {"id": 7, "serial_no": "SHMS-MVP-007"},
+            "capabilities": {"can_create_reminder": True},
             "contracts": [{}],
             "documents": [{}, {}],
             "deadlines": [{}],
@@ -105,6 +106,26 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
         self.assertEqual(skill.id, "general-office")
         self.assertEqual(images, [])
+
+    async def test_model_write_proposal_is_blocked_by_original_user_capability(self):
+        self.runtime.api_base_url = "https://model.example/v1"
+        self.runtime.api_key = "test-only"
+        self.runtime.model = "gpt-test"
+        self.runtime._request_model = AsyncMock(return_value=(
+            "我可以修改案件说明。",
+            {"type": "case.update", "summary": "越权修改案件", "payload": {"changes": {"description": "不应写入"}}},
+        ))
+        result = await self.runtime.invoke(
+            case_id=12,
+            operator="assistant",
+            message="修改案件说明",
+            case_snapshot={
+                "case": {"id": 12, "serial_no": "SHMS-MODEL-012"},
+                "capabilities": {"can_write": True, "can_edit_basic": False},
+            },
+        )
+        self.assertEqual(result["pending_actions"], [])
+        self.assertIn("原有业务权限不允许", result["last_response"])
 
     async def test_selected_office_skill_routes_without_exposing_marker(self):
         self.runtime.api_base_url = "https://model.example/v1"
@@ -169,6 +190,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
     async def _seed(self, db: AsyncSession) -> BusinessRecord:
         db.add_all([
             User(username="lawyer", display_name="范文玲", department="上海", password_hash="x", role="admin"),
+            User(username="assistant", display_name="律师助理", department="上海", password_hash="x", role="user"),
             User(username="outsider", display_name="外部人员", department="北京", password_hash="x", role="user"),
         ])
         case = BusinessRecord(
@@ -179,7 +201,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             status="办理中",
             owner="lawyer",
             department="上海",
-            data={"case_type": "民事案件", "handling_lawyer_usernames": ["lawyer"]},
+            data={"case_type": "民事案件", "handling_lawyer_usernames": ["lawyer"], "assistant_username": "assistant", "case_team_usernames": ["lawyer", "assistant"]},
         )
         db.add(case)
         await db.commit()
@@ -257,6 +279,36 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(updated.description, "已完成客户沟通")
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == case.id))).all())
             self.assertTrue(any(item.action == "智能体审批后更新案件" for item in events))
+
+    async def test_assistant_cannot_approve_manager_only_case_update(self):
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            manager_identity = {"username": "lawyer", "role": "admin"}
+            result = await send_case_agent_message(
+                case.id,
+                CaseAgentMessageInput(
+                    message="修改案件说明",
+                    proposed_action=CaseAgentProposedAction(
+                        type="case.update",
+                        summary="修改案件说明",
+                        payload={"changes": {"description": "不应由助理写入"}},
+                    ),
+                ),
+                manager_identity,
+                db,
+            )
+            action = result["pending_actions"][0]
+            with self.assertRaises(HTTPException) as raised:
+                await decide_case_agent_action(
+                    case.id,
+                    action["id"],
+                    CaseAgentDecisionInput(decision="approved"),
+                    {"username": "assistant", "role": "user"},
+                    db,
+                )
+            self.assertEqual(raised.exception.status_code, 403)
+            unchanged = await db.get(BusinessRecord, case.id)
+            self.assertEqual(unchanged.description, "")
 
     async def test_approved_task_and_reminder_proposals_create_linked_records(self):
         async with self.sessions() as db:

@@ -281,7 +281,7 @@ export default function AgentCenterPage() {
           >
             {activeAction ? <div className="agent-action-approval" data-testid="agent-action-approval">
               <div className="agent-action-summary"><Tag color="processing">{ACTION_TYPE_NAMES[activeAction.type] || activeAction.type}</Tag><strong>{activeAction.summary}</strong><small>目标：{activeAction.preview?.target || selected.serial_no}</small></div>
-              <div className="agent-action-warning">批准后将立即写入系统并记录操作日志；驳回不会修改任何数据。</div>
+              <div className="agent-action-warning">操作权限继承当前账号原有业务权限。批准后将立即写入系统并记录操作日志；驳回不会修改任何数据。</div>
               {activeAction.preview?.changes?.length ? <div className="agent-action-changes">
                 <div className="agent-action-change-head"><span>字段</span><span>修改前</span><span>修改后</span></div>
                 {activeAction.preview.changes.map((change) => <div key={change.field}><strong>{ACTION_FIELD_NAMES[change.field] || change.field}</strong><span>{actionValue(change.before)}</span><span>{actionValue(change.after)}</span></div>)}

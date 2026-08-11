@@ -48,6 +48,7 @@ test("agent write proposals open an explicit approval dialog with before and aft
   assert.match(pageSource, /data-testid="agent-action-approval"/);
   assert.match(pageSource, /批准并执行/);
   assert.match(pageSource, /驳回，不修改/);
+  assert.match(pageSource, /操作权限继承当前账号原有业务权限/);
   assert.match(pageSource, /change\.before/);
   assert.match(pageSource, /change\.after/);
   assert.match(styleSource, /\.agent-action-changes/);

@@ -23,6 +23,12 @@ ALLOWED_ACTION_TYPES = {
     "case.task.create",
     "case.reminder.create",
 }
+ACTION_CAPABILITY_BY_TYPE = {
+    "case.update": "can_edit_basic",
+    "case.data.update": "can_edit_basic",
+    "case.task.create": "can_create_case_task",
+    "case.reminder.create": "can_create_reminder",
+}
 ACTION_BLOCK_PATTERN = re.compile(r"<proposed_action>\s*(\{.*?\})\s*</proposed_action>", re.DOTALL)
 
 
@@ -121,16 +127,24 @@ def _pending_action(proposed_action: dict[str, Any], latest: dict[str, Any], sna
     }
 
 
+def _action_is_authorized(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -> bool:
+    capability = ACTION_CAPABILITY_BY_TYPE.get(str(proposed_action.get("type") or ""))
+    capabilities = snapshot.get("capabilities") or {}
+    return bool(capability and capabilities.get(capability))
+
+
 def _case_assistant_node(state: CaseAgentState) -> dict[str, Any]:
     messages = state.get("messages") or []
     latest = messages[-1] if messages else {}
     snapshot = state.get("case_snapshot") or {}
     pending_actions = list(state.get("pending_actions") or [])
     proposed_action = latest.get("proposed_action") or None
-    if proposed_action:
+    if proposed_action and _action_is_authorized(proposed_action, snapshot):
         action = _pending_action(proposed_action, latest, snapshot)
         pending_actions.append(action)
         response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
+    elif proposed_action:
+        response = "当前账号原有业务权限不允许执行该操作，智能体不会生成审批或修改数据。"
     else:
         response = _case_summary(snapshot)
     return {
@@ -251,10 +265,12 @@ class CaseAgentRuntime:
                     response, model_action = model_result
                 else:
                     response, model_action = str(model_result), None
-                if model_action:
+                if model_action and _action_is_authorized(model_action, snapshot):
                     action = _pending_action(model_action, latest, snapshot)
                     pending_actions.append(action)
                     response = f"{response}\n\n已生成待审批操作：{action['summary']}。批准后才会写入系统。".strip()
+                elif model_action:
+                    response = f"{response}\n\n当前账号原有业务权限不允许执行该操作，未生成审批。".strip()
         else:
             response = _case_summary(snapshot)
         return {
@@ -293,7 +309,9 @@ class CaseAgentRuntime:
                     "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create。"
                     "案件任务 payload 使用 title、owner、deadline、priority、description；"
                     "案件提醒 payload 使用 content、reminder_date、deadline。"
-                    "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。\n\n"
+                    "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。"
+                    "任何写操作都必须服从当前案件空间 capabilities；对应能力为 false 时，"
+                    "只能说明无权限，不能输出 proposed_action，也不能建议绕过权限。\n\n"
                     f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
                     f"当前案件空间数据：\n{context}"
                 ),

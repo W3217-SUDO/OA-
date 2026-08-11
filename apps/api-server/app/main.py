@@ -17531,6 +17531,20 @@ AGENT_CASE_DATA_FIELDS = {
     "acceptance_date", "judgment_date", "effective_date", "archive_no",
     "paper_archive_location", "client_position",
 }
+AGENT_ACTION_CAPABILITY = {
+    "case.update": "can_edit_basic",
+    "case.data.update": "can_edit_basic",
+    "case.task.create": "can_create_case_task",
+    "case.reminder.create": "can_create_reminder",
+}
+
+
+def _require_case_agent_action_access(action_type: str, capabilities: dict) -> None:
+    capability = AGENT_ACTION_CAPABILITY.get(action_type)
+    if not capability:
+        raise HTTPException(status_code=422, detail="该智能体操作类型不在系统白名单中")
+    if not capabilities.get(capability):
+        raise HTTPException(status_code=403, detail="智能体不能超出当前账号原有业务权限执行该操作")
 
 
 def _case_agent_changes(payload: dict) -> dict:
@@ -17658,8 +17672,6 @@ async def decide_case_agent_action(
 ):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     capabilities = await _case_detail_action_capabilities(case_record, identity, db)
-    if not capabilities.get("can_write"):
-        raise HTTPException(status_code=403, detail="当前账号无权审批该案件的智能体操作")
     try:
         state = await case_agent_runtime.get_state(case_id)
         action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
@@ -17667,6 +17679,7 @@ async def decide_case_agent_action(
             raise KeyError(action_id)
         if action.get("status") != "pending":
             raise ValueError("action_already_decided")
+        _require_case_agent_action_access(str(action.get("type") or ""), capabilities)
         execution_result = None
         if body.decision == "approved":
             execution_result = await _execute_case_agent_action(case_record, action, identity, db)
