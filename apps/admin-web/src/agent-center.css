@@ -18,7 +18,7 @@
 @media(max-width:1400px){.agent-phase-strip-item{gap:0;padding:0 2px;font-size:11px}.agent-phase-strip-item .anticon{display:none}}
 @media(max-width:1100px){.agent-workspace-status{grid-template-columns:minmax(150px,210px) minmax(300px,1fr)}.agent-workspace-status>.ant-space{display:none}}
 @media(max-width:850px){
-  .agent-center-page{height:calc(100dvh - 120px - env(safe-area-inset-bottom));min-height:0}
+  .agent-center-page{position:fixed;z-index:2;top:56px;right:0;bottom:calc(64px + env(safe-area-inset-bottom));left:0;width:auto;height:auto;min-height:0}
   .agent-center-header{height:48px;flex:0 0 48px;padding:7px 12px}.agent-center-header h2{font-size:17px}.agent-center-header>div span,.agent-center-header>.ant-space{display:none}
   .agent-center-layout{grid-template-columns:1fr;grid-template-rows:104px minmax(0,1fr)}
   .agent-space-list{max-height:none;overflow:hidden;border-right:0;border-bottom:1px solid #dce2e8}
@@ -28,7 +28,7 @@
   .agent-phase-strip{height:34px;overflow-x:auto;scrollbar-width:none}.agent-phase-strip::-webkit-scrollbar{display:none}.agent-phase-strip-item{min-width:58px;flex:0 0 58px;gap:3px;padding:0 4px;font-size:11px}.agent-phase-strip-item .anticon{display:inline-flex}
   .agent-global-messages{padding:10px}.agent-global-empty{min-height:160px;padding:16px;text-align:center}.agent-global-message{margin-bottom:10px}.agent-global-message>div{max-width:94%;padding:8px 10px;font-size:14px;line-height:1.55}
   .agent-global-suggestions{gap:5px;padding:0 8px 7px}.agent-global-suggestions .ant-btn{height:30px;padding-inline:10px;font-size:12px}
-  .agent-global-composer{grid-template-columns:34px minmax(0,1fr) 38px;gap:6px;padding:8px}.agent-global-composer>.ant-btn{width:38px;height:38px}.agent-global-composer>.agent-composer-upload{width:34px}.agent-global-composer textarea{max-height:92px!important}
+  .agent-global-composer{position:relative;z-index:2;grid-template-columns:34px minmax(0,1fr) 38px;flex:0 0 auto;gap:6px;padding:8px}.agent-global-composer>.ant-btn{width:38px;height:38px}.agent-global-composer>.agent-composer-upload{width:34px}.agent-global-composer textarea{max-height:92px!important}
 }
 @media(max-width:560px){
   .agent-action-summary{grid-template-columns:1fr}.agent-action-summary small{grid-column:1}.agent-action-summary .ant-tag{width:max-content}

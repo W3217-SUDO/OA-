@@ -2105,15 +2105,6 @@ export default function App() {
         </button>
         <button
           type="button"
-          className={mobileSidebarOpen ? "active" : ""}
-          aria-expanded={mobileSidebarOpen}
-          onClick={() => setMobileSidebarOpen((open) => !open)}
-        >
-          <MenuOutlined />
-          <span>功能</span>
-        </button>
-        <button
-          type="button"
           className={active.startsWith("task-") ? "active" : ""}
           onClick={() => navigate("task-my")}
         >

@@ -24,6 +24,8 @@ test("chat composer stays inside the visible application workspace", () => {
 test("agent center uses a compact, scrollable phone workspace", () => {
   assert.match(styleSource, /@media\(max-width:850px\)/);
   assert.match(styleSource, /grid-template-rows:104px minmax\(0,1fr\)/);
+  assert.match(styleSource, /position:fixed;z-index:2;top:56px/);
+  assert.match(styleSource, /bottom:calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styleSource, /\.agent-space-list \.ant-list-items\{display:flex;width:max-content/);
   assert.match(styleSource, /\.agent-phase-strip\{height:34px;overflow-x:auto/);
   assert.match(styleSource, /\.agent-global-message>div\{max-width:94%/);
