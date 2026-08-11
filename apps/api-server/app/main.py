@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .case_agent import CaseAgentRuntime
+from .case_workflow_rules import build_case_workflow_guide
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .dingtalk import DingTalkError, dingtalk_client
@@ -17404,7 +17405,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         for item in tasks if (item.data or {}).get("deadline")
     ]
 
-    return {
+    context = {
         "schema_version": "1.1",
         "space": {"id": f"case:{case_record.id}", "kind": "business_graph", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
         "case": await _record_dict_for_identity(case_record, identity, db),
@@ -17438,6 +17439,14 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
             "thread_namespace": f"case:{case_record.id}",
         },
     }
+    context["standard_workflow"] = build_case_workflow_guide(context)
+    return context
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/workflow-guide")
+async def get_case_workflow_guide(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    context = await get_case_space_context(case_id, identity, db)
+    return context["standard_workflow"]
 
 
 @app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/status")

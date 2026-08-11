@@ -17,6 +17,7 @@ from app.main import (
     case_agent_state,
     case_agent_status,
     decide_case_agent_action,
+    get_case_workflow_guide,
     send_case_agent_message,
 )
 from app.models import BusinessRecord, FileAttachment, User
@@ -181,6 +182,10 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             identity = {"username": "lawyer", "role": "admin"}
             status = await case_agent_status(case.id, identity, db)
             self.assertTrue(status["ready"])
+            workflow = await get_case_workflow_guide(case.id, identity, db)
+            self.assertEqual(workflow["manual"]["version"], "2026-08")
+            self.assertEqual(workflow["current_phase"]["code"], "document-preparation")
+            self.assertTrue(workflow["materials"])
             result = await send_case_agent_message(
                 case.id,
                 CaseAgentMessageInput(

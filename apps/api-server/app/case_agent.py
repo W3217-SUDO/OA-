@@ -34,6 +34,9 @@ def _now() -> str:
 def _case_summary(snapshot: dict[str, Any]) -> str:
     case = snapshot.get("case") or {}
     finances = snapshot.get("finances") or {}
+    workflow = snapshot.get("standard_workflow") or {}
+    phase = workflow.get("current_phase") or {}
+    risks = workflow.get("risk_summary") or {}
     return (
         f"案件 {case.get('serial_no') or case.get('id') or '-'} 的空间已加载："
         f"合同 {len(snapshot.get('contracts') or [])} 份，"
@@ -41,7 +44,9 @@ def _case_summary(snapshot: dict[str, Any]) -> str:
         f"期限 {len(snapshot.get('deadlines') or [])} 项，"
         f"任务 {len(snapshot.get('tasks') or [])} 项，"
         f"费用记录 {len(finances.get('fees') or [])} 条，"
-        f"发票 {len(finances.get('invoices') or [])} 条。"
+        f"发票 {len(finances.get('invoices') or [])} 条；"
+        f"当前标准阶段为 {phase.get('name') or '待识别'}，"
+        f"逾期 {risks.get('overdue', 0)} 项，缺少必备材料 {risks.get('missing_required_materials', 0)} 项。"
     )
 
 
@@ -222,7 +227,10 @@ class CaseAgentRuntime:
                     "你是法律服务机构管理系统中的案件智能体。"
                     "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
                     "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
-                    "回答使用简洁、专业的中文，并区分事实、期限风险和建议。\n\n"
+                    "回答使用简洁、专业的中文，并区分事实、期限风险和建议。"
+                    "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
+                    "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
+                    "但不得在缺少起算依据时自行推算法定期限。\n\n"
                     f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
                     f"当前案件空间数据：\n{context}"
                 ),

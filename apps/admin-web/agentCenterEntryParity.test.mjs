@@ -41,6 +41,17 @@ test("agent center routes each conversation through the selected office skill", 
   assert.match(styleSource, /\.agent-skill-bar/);
 });
 
+test("manual-driven workflow guide exposes phases deadlines materials roles and agent rules", () => {
+  assert.match(pageSource, /data-testid="case-standard-workflow"/);
+  assert.match(pageSource, /\/case-spaces\/\$\{record\.id\}\/workflow-guide/);
+  for (const label of ["案件流程", "期限提醒", "材料清单", "岗位任务", "智能体规则"]) {
+    assert.ok(pageSource.includes(label), `missing ${label} workflow tab`);
+  }
+  assert.match(pageSource, /material_progress\.completed/);
+  assert.match(pageSource, /deadline_missing_inputs/);
+  assert.match(styleSource, /\.agent-standard-workflow/);
+});
+
 test("screenshot evidence skill uploads case-scoped images and submits attachment ids", () => {
   assert.match(pageSource, /skillId === "screenshot-evidence"/);
   assert.match(pageSource, /form\.append\("record_id", String\(selected\.id\)\)/);

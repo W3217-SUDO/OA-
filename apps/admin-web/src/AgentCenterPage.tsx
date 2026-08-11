@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { Alert, Button, Empty, Image, Input, List, message, Select, Space, Spin, Tag, Tooltip } from "antd";
-import { CloseOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
+import { Alert, Button, Empty, Image, Input, List, message, Progress, Select, Space, Spin, Tabs, Tag, Tooltip } from "antd";
+import { CheckCircleOutlined, CloseOutlined, ClockCircleOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, TeamOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import "./agent-center.css";
@@ -11,6 +11,30 @@ type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; 
 type AgentAction = { id: string; type: string; summary: string; status: "pending" | "approved" | "rejected" };
 type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
+type WorkflowPhase = { code: string; name: string; state: "completed" | "current" | "pending"; target_days?: number | null; warning_days?: number | null };
+type WorkflowDeadline = { code: string; title: string; deadline: string; risk: "overdue" | "critical" | "high" | "medium" | "normal"; days_remaining: number; source: string; owner_role: string };
+type WorkflowMaterial = { code: string; name: string; required: boolean; status: "uploaded" | "missing" | "optional"; matched_document_count: number };
+type WorkflowRoleTask = { role: string; owner_name: string; task: string; assignment_status: "assigned" | "unassigned"; task_status: string };
+type WorkflowGuide = {
+  manual: { name: string; version: string };
+  current_phase: WorkflowPhase;
+  phases: WorkflowPhase[];
+  deadlines: WorkflowDeadline[];
+  deadline_missing_inputs: string[];
+  materials: WorkflowMaterial[];
+  material_progress: { completed: number; required: number };
+  role_tasks: WorkflowRoleTask[];
+  agent_rules: string[];
+  risk_summary: { overdue: number; critical: number; missing_required_materials: number; unassigned_roles: number };
+};
+
+const deadlineRiskMeta = {
+  overdue: { color: "error", label: "已逾期" },
+  critical: { color: "error", label: "3天内" },
+  high: { color: "warning", label: "7天内" },
+  medium: { color: "processing", label: "30天内" },
+  normal: { color: "default", label: "正常" },
+} as const;
 
 export default function AgentCenterPage() {
   const [cases, setCases] = useState<CaseOption[]>([]);
@@ -22,6 +46,7 @@ export default function AgentCenterPage() {
   const [decisionLoading, setDecisionLoading] = useState("");
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [state, setState] = useState<AgentState | null>(null);
+  const [workflowGuide, setWorkflowGuide] = useState<WorkflowGuide | null>(null);
   const [input, setInput] = useState("");
   const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
   const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
@@ -67,6 +92,10 @@ export default function AgentCenterPage() {
   };
   const loadAgent = async (record: CaseOption) => {
     setAgentLoading(true);
+    setWorkflowGuide(null);
+    void api.get(`/case-spaces/${record.id}/workflow-guide`)
+      .then((response) => setWorkflowGuide(response.data || null))
+      .catch(() => setWorkflowGuide(null));
     try {
       const [statusRes, stateRes] = await Promise.all([
         api.get(`/case-spaces/${record.id}/agent/status`),
@@ -80,6 +109,7 @@ export default function AgentCenterPage() {
     } catch (error: any) {
       setStatus(null);
       setState(null);
+      setWorkflowGuide(null);
       message.error(error?.response?.data?.detail || "智能体会话加载失败");
     } finally {
       setAgentLoading(false);
@@ -90,7 +120,7 @@ export default function AgentCenterPage() {
     clearScreenshotPreviews();
     setScreenshots([]);
     if (selected) void loadAgent(selected);
-    else { setStatus(null); setState(null); }
+    else { setStatus(null); setState(null); setWorkflowGuide(null); }
   }, [selected?.id]);
   useEffect(() => () => clearScreenshotPreviews(), []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: "end" }); }, [state?.messages.length]);
@@ -239,6 +269,33 @@ export default function AgentCenterPage() {
             />
             <small>{selectedSkill?.description || "选择技能后，LangGraph 会按对应办公流程处理本轮对话"}</small>
           </div>
+          {workflowGuide && <section className="agent-standard-workflow" data-testid="case-standard-workflow">
+            <div className="agent-standard-workflow-header">
+              <span><strong>案件标准化工作台</strong><small>{workflowGuide.manual.name} · {workflowGuide.manual.version}</small></span>
+              <Space wrap>
+                <Tag color="blue">当前：{workflowGuide.current_phase.name}</Tag>
+                <Tag color={workflowGuide.risk_summary.overdue ? "error" : "success"}>逾期 {workflowGuide.risk_summary.overdue}</Tag>
+                <Tag color={workflowGuide.risk_summary.missing_required_materials ? "warning" : "success"}>缺材料 {workflowGuide.risk_summary.missing_required_materials}</Tag>
+              </Space>
+            </div>
+            <Tabs size="small" items={[
+              {
+                key: "phases", label: "案件流程", children: <div className="agent-workflow-phases">{workflowGuide.phases.map((phase) => <div key={phase.code} className={`agent-workflow-phase agent-workflow-phase-${phase.state}`}><CheckCircleOutlined /><span>{phase.name}</span>{phase.target_days ? <small>目标 {phase.target_days} 天</small> : null}</div>)}</div>,
+              },
+              {
+                key: "deadlines", label: `期限提醒 ${workflowGuide.deadlines.length}`, children: <div className="agent-workflow-list">{workflowGuide.deadlines.length ? workflowGuide.deadlines.map((item) => { const meta = deadlineRiskMeta[item.risk]; return <div key={item.code}><ClockCircleOutlined /><span><strong>{item.title}</strong><small>{item.deadline} · {item.owner_role} · {item.source}</small></span><Tag color={meta.color}>{meta.label}</Tag></div>; }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已登记期限" />}{workflowGuide.deadline_missing_inputs.length ? <Alert type="warning" showIcon title="期限起算信息待补充" description={workflowGuide.deadline_missing_inputs.join("；")} /> : null}</div>,
+              },
+              {
+                key: "materials", label: "材料清单", children: <div className="agent-workflow-materials"><div className="agent-material-progress"><span>必备材料 {workflowGuide.material_progress.completed}/{workflowGuide.material_progress.required}</span><Progress percent={workflowGuide.material_progress.required ? Math.round(workflowGuide.material_progress.completed / workflowGuide.material_progress.required * 100) : 100} showInfo={false} /></div>{workflowGuide.materials.map((item) => <div key={item.code}><span>{item.name}</span><Tag color={item.status === "uploaded" ? "success" : item.status === "missing" ? "error" : "default"}>{item.status === "uploaded" ? `已上传${item.matched_document_count ? ` ${item.matched_document_count}` : ""}` : item.status === "missing" ? "缺失" : "按需"}</Tag></div>)}</div>,
+              },
+              {
+                key: "roles", label: "岗位任务", children: <div className="agent-workflow-list">{workflowGuide.role_tasks.map((item) => <div key={`${item.role}-${item.task}`}><TeamOutlined /><span><strong>{item.role}{item.owner_name ? ` · ${item.owner_name}` : ""}</strong><small>{item.task}</small></span><Tag color={item.assignment_status === "assigned" ? "success" : "warning"}>{item.assignment_status === "assigned" ? "已明确" : "待指定"}</Tag></div>)}</div>,
+              },
+              {
+                key: "agent-rules", label: "智能体规则", children: <div className="agent-workflow-rules">{workflowGuide.agent_rules.map((rule, index) => <div key={rule}><span>{index + 1}</span><p>{rule}</p></div>)}</div>,
+              },
+            ]} />
+          </section>}
           {pendingActions.length > 0 && <section className="agent-global-actions">
             <Alert type="info" showIcon title="待审批操作不会自动改写业务数据" />
             {pendingActions.map((action) => <div key={action.id}><span><strong>{action.summary}</strong><small>{action.type}</small></span><Space><Button size="small" type="primary" loading={decisionLoading === action.id} onClick={() => void decide(action, "approved")}>批准</Button><Button size="small" danger icon={<CloseOutlined />} onClick={() => void decide(action, "rejected")}>驳回</Button></Space></div>)}
