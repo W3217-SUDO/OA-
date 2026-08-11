@@ -208,13 +208,6 @@ export default function AgentCenterPage() {
   return <div className="agent-center-page" data-testid="agent-center-page">
     <header className="agent-center-header">
       <div><h2>智能体中心</h2><span>统一业务空间</span></div>
-      {workflowGuide?.phases?.length ? <div className="agent-phase-strip" data-testid="case-phase-strip">
-        {workflowGuide.phases.map((phase) => <div key={phase.code} className={`agent-phase-strip-item agent-phase-strip-${phase.state}`}>
-          <CheckCircleOutlined />
-          <span>{phase.name}</span>
-          {phase.target_days ? <small>目标 {phase.target_days} 天</small> : null}
-        </div>)}
-      </div> : <div className="agent-phase-strip-placeholder" />}
       <Space wrap><Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag></Space>
     </header>
     <div className="agent-center-layout">
@@ -237,6 +230,13 @@ export default function AgentCenterPage() {
         {!selected ? <Empty description="请选择业务空间" /> : <>
           <div className="agent-workspace-status">
             <div><strong>{selected.serial_no}</strong><span>{selected.title}</span></div>
+            {workflowGuide?.phases?.length ? <div className="agent-phase-strip" data-testid="case-phase-strip">
+              {workflowGuide.phases.map((phase) => <div key={phase.code} className={`agent-phase-strip-item agent-phase-strip-${phase.state}`}>
+                <CheckCircleOutlined />
+                <span>{phase.name}</span>
+                {phase.target_days ? <small>目标 {phase.target_days} 天</small> : null}
+              </div>)}
+            </div> : <div className="agent-phase-strip-placeholder" />}
             <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">关系图</Tag><Tag color="gold">人工审批</Tag></Space>
           </div>
           {pendingActions.length > 0 && <section className="agent-global-actions">
