@@ -231,10 +231,9 @@ export default function AgentCenterPage() {
           <div className="agent-workspace-status">
             <div><strong>{selected.serial_no}</strong><span>{selected.title}</span></div>
             {workflowGuide?.phases?.length ? <div className="agent-phase-strip" data-testid="case-phase-strip">
-              {workflowGuide.phases.map((phase) => <div key={phase.code} className={`agent-phase-strip-item agent-phase-strip-${phase.state}`}>
+              {workflowGuide.phases.map((phase) => <div key={phase.code} title={phase.target_days ? `${phase.name} · 目标 ${phase.target_days} 天` : phase.name} className={`agent-phase-strip-item agent-phase-strip-${phase.state}`}>
                 <CheckCircleOutlined />
                 <span>{phase.name}</span>
-                {phase.target_days ? <small>目标 {phase.target_days} 天</small> : null}
               </div>)}
             </div> : <div className="agent-phase-strip-placeholder" />}
             <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">关系图</Tag><Tag color="gold">人工审批</Tag></Space>

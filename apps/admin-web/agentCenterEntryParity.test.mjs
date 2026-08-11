@@ -48,9 +48,11 @@ test("manual-driven workflow uses a compact top phase strip without a standalone
   assert.match(pageSource, /data-testid="case-phase-strip"/);
   assert.match(pageSource, /\/case-spaces\/\$\{record\.id\}\/workflow-guide/);
   assert.match(pageSource, /className="agent-workspace-status"[\s\S]*?data-testid="case-phase-strip"[\s\S]*?<Space wrap>/);
-  assert.match(styleSource, /\.agent-workspace-status\{[^}]*grid-template-columns:minmax\(160px,auto\) minmax\(240px,1fr\) auto/);
-  assert.match(styleSource, /\.agent-phase-strip\{[^}]*height:42px/);
-  assert.match(styleSource, /\.agent-phase-strip\{[^}]*overflow-x:auto/);
+  assert.match(styleSource, /\.agent-workspace-status\{[^}]*grid-template-columns:minmax\(190px,250px\) minmax\(420px,1fr\) auto/);
+  assert.match(styleSource, /\.agent-phase-strip\{[^}]*height:38px/);
+  assert.match(styleSource, /\.agent-phase-strip\{[^}]*overflow:hidden/);
+  assert.match(styleSource, /\.agent-phase-strip-item\{[^}]*flex:1 1 0/);
+  assert.doesNotMatch(styleSource, /\.agent-phase-strip\{[^}]*overflow-x:auto/);
 });
 
 test("screenshot evidence skill uploads case-scoped images and submits attachment ids", () => {
