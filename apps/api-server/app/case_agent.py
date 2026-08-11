@@ -46,6 +46,7 @@ class CaseAgentState(TypedDict, total=False):
     updated_at: str
     active_skill: str
     request_images: list[dict[str, Any]]
+    legacy_migrated: bool
 
 
 def _now() -> str:
@@ -376,6 +377,62 @@ class CaseAgentRuntime:
     def config(cls, case_id: int, operator: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": cls.thread_id(case_id, operator)}}
 
+    @staticmethod
+    def legacy_config(case_id: int) -> dict[str, Any]:
+        return {"configurable": {"thread_id": f"case:{case_id}"}}
+
+    @staticmethod
+    def _legacy_messages_for_operator(messages: list[dict[str, Any]], operator: str) -> list[dict[str, Any]]:
+        normalized_operator = str(operator or "").strip().casefold()
+        selected: list[dict[str, Any]] = []
+        include_response = False
+        for message in messages:
+            item = dict(message)
+            if item.get("role") == "user":
+                include_response = str(item.get("operator") or "").strip().casefold() == normalized_operator
+                if include_response:
+                    selected.append(item)
+            elif item.get("role") == "assistant" and include_response:
+                selected.append(item)
+        return selected
+
+    async def _ensure_private_state(self, case_id: int, operator: str) -> dict[str, Any]:
+        private_config = self.config(case_id, operator)
+        private_snapshot = await self.graph.aget_state(private_config)
+        private_state = private_snapshot.values or {}
+        if private_state.get("legacy_migrated") or private_state.get("messages") or private_state.get("pending_actions"):
+            return private_state
+
+        legacy_snapshot = await self.graph.aget_state(self.legacy_config(case_id))
+        legacy_state = legacy_snapshot.values or {}
+        messages = self._legacy_messages_for_operator(list(legacy_state.get("messages") or []), operator)
+        normalized_operator = str(operator or "").strip().casefold()
+        actions = [
+            dict(item)
+            for item in (legacy_state.get("pending_actions") or [])
+            if str(item.get("requested_by") or "").strip().casefold() == normalized_operator
+        ]
+        last_response = next(
+            (str(item.get("content") or "") for item in reversed(messages) if item.get("role") == "assistant"),
+            "",
+        )
+        last_user = next((item for item in reversed(messages) if item.get("role") == "user"), {})
+        await self.graph.aupdate_state(
+            private_config,
+            {
+                "messages": messages,
+                "pending_actions": actions,
+                "last_response": last_response,
+                "last_operator": operator if messages else "",
+                "updated_at": str(legacy_state.get("updated_at") or ""),
+                "active_skill": str(last_user.get("skill_id") or GENERAL_SKILL.id),
+                "legacy_migrated": True,
+            },
+            as_node="case_assistant",
+        )
+        migrated_snapshot = await self.graph.aget_state(private_config)
+        return migrated_snapshot.values or {}
+
     async def invoke(
         self,
         *,
@@ -388,6 +445,7 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
+        await self._ensure_private_state(case_id, operator)
         skill, clean_message = parse_skill_message(message)
         user_message = {
             "id": uuid4().hex,
@@ -414,8 +472,8 @@ class CaseAgentRuntime:
     async def get_state(self, case_id: int, operator: str) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        snapshot = await self.graph.aget_state(self.config(case_id, operator))
-        return self._public_state(case_id, operator, snapshot.values or {})
+        state = await self._ensure_private_state(case_id, operator)
+        return self._public_state(case_id, operator, state)
 
     async def decide_action(
         self,
@@ -429,8 +487,7 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        snapshot = await self.graph.aget_state(self.config(case_id, operator))
-        values = snapshot.values or {}
+        values = await self._ensure_private_state(case_id, operator)
         actions = [dict(item) for item in values.get("pending_actions") or []]
         action = next((item for item in actions if item.get("id") == action_id), None)
         if not action:

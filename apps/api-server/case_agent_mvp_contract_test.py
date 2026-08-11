@@ -114,6 +114,30 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(lawyer_after["messages"]), 2)
         self.assertEqual(lawyer_after["messages"][0]["content"], "private lawyer note")
 
+    async def test_legacy_shared_thread_is_partitioned_by_message_owner(self):
+        snapshot = {"case": {"id": 18, "serial_no": "SHMS-LEGACY-018"}, "capabilities": {"can_edit_basic": True}}
+        for operator, message in (("lawyer", "legacy lawyer note"), ("assistant", "legacy assistant note")):
+            await self.runtime.graph.ainvoke(
+                {
+                    "messages": [{
+                        "id": operator,
+                        "role": "user",
+                        "content": message,
+                        "operator": operator,
+                        "created_at": "2026-08-11T00:00:00+00:00",
+                    }],
+                    "case_snapshot": snapshot,
+                },
+                self.runtime.legacy_config(18),
+            )
+
+        lawyer_state = await self.runtime.get_state(18, "lawyer")
+        assistant_state = await self.runtime.get_state(18, "assistant")
+        self.assertEqual([item["content"] for item in lawyer_state["messages"] if item["role"] == "user"], ["legacy lawyer note"])
+        self.assertEqual([item["content"] for item in assistant_state["messages"] if item["role"] == "user"], ["legacy assistant note"])
+        self.assertEqual(lawyer_state["shared_space_id"], assistant_state["shared_space_id"])
+        self.assertNotEqual(lawyer_state["thread_id"], assistant_state["thread_id"])
+
     async def test_configured_model_receives_authorized_case_snapshot(self):
         self.runtime.api_base_url = "https://model.example/v1"
         self.runtime.api_key = "test-only"
