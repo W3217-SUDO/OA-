@@ -29,6 +29,7 @@ import {
 import {
   BankOutlined,
   DashboardOutlined,
+  DownloadOutlined,
   DownOutlined,
   FileTextOutlined,
   FullscreenExitOutlined,
@@ -928,8 +929,17 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const [loading, setLoading] = useState(false);
   const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
   const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
+  useEffect(() => {
+    const rememberInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener("beforeinstallprompt", rememberInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", rememberInstallPrompt);
+  }, []);
   useEffect(() => {
     let active = true;
     const loginFromDingTalk = async () => {
@@ -1003,6 +1013,19 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
       setLoading(false);
     }
   };
+  const installExternalApp = async () => {
+    const prompt = installPrompt as (Event & {
+      prompt?: () => Promise<void>;
+      userChoice?: Promise<{ outcome: string }>;
+    }) | null;
+    if (!prompt?.prompt) {
+      message.info("请打开浏览器菜单，选择“添加到主屏幕”或“安装应用”");
+      return;
+    }
+    await prompt.prompt();
+    await prompt.userChoice;
+    setInstallPrompt(null);
+  };
   return (
     <div className="login-page">
       <div className="login-brand">
@@ -1034,6 +1057,17 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
           </Button>
           {dingtalkEnabled && getDingTalkEnvironment().platform === "notInDingTalk" && (
             <Button block size="large" style={{ marginTop: 12 }} onClick={() => message.info("请从钉钉工作台打开本系统，即可自动登录")}>钉钉免登</Button>
+          )}
+          {getDingTalkEnvironment().platform === "notInDingTalk" && (
+            <Button
+              block
+              size="large"
+              icon={<DownloadOutlined />}
+              style={{ marginTop: 12 }}
+              onClick={() => void installExternalApp()}
+            >
+              安装到手机桌面
+            </Button>
           )}
         </Form>
       </Card>
