@@ -576,6 +576,59 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated_role.status_code, status.HTTP_200_OK, updated_role.text)
         self.assertEqual(updated_role.json()["field_keys"], ["finance.amount"])
 
+    async def test_job_role_menu_permissions_can_be_saved_and_reach_login_session(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            role = JobRole(
+                code="CODEX-ASSISTANT",
+                name="律师助理测试",
+                permissions=["合同审批"],
+                is_active=True,
+                created_by="admin",
+                updated_by="admin",
+            )
+            user = User(
+                username="assistant_menu_user",
+                display_name="助理测试",
+                department=DEPT,
+                role="user",
+                password_hash=hash_password("AssistantPass2026!"),
+                is_active=True,
+                must_change_password=False,
+                profile={"position": "律师助理测试"},
+            )
+            db.add_all([role, user])
+            await db.commit()
+            role_id = role.id
+
+        updated = await self.client.patch(
+            f"{API}/hr/job-roles/{role_id}/permissions",
+            headers=admin_headers,
+            json={
+                "permissions": [
+                    "contract-audit",
+                    "contract-audit-pending",
+                    "seal",
+                    "seal-my",
+                    "seal-audit",
+                    "seal-audit-pending",
+                    "合同审批",
+                    "用印审批",
+                ],
+            },
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
+
+        login = await self._login("assistant_menu_user", "AssistantPass2026!")
+        self.assertEqual(login.status_code, status.HTTP_200_OK, login.text)
+        me = await self.client.get(
+            f"{API}/auth/me",
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        )
+        self.assertEqual(me.status_code, status.HTTP_200_OK, me.text)
+        self.assertIn("contract-audit-pending", me.json()["menu_keys"])
+        self.assertIn("seal-audit-pending", me.json()["menu_keys"])
+
 
 if __name__ == "__main__":
     unittest.main()

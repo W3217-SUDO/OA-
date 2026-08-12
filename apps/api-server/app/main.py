@@ -3760,6 +3760,13 @@ def _user_permission_overrides(user: User) -> dict:
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     """Expose the contract workbench to explicitly configured contract auditors."""
     permission = await _permission_payload_for_roles(_system_user_role_ids(user), db)
+    profile = user.profile or {}
+    job_role_name = str(profile.get("position") or profile.get("staff_role") or "").strip()
+    if job_role_name:
+        job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
+        if job_role:
+            job_menu_keys = [key for key in (job_role.permissions or []) if key in SYSTEM_MENU_ROUTE_KEYS]
+            permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *job_menu_keys])
     overrides = _user_permission_overrides(user)
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
@@ -20795,8 +20802,12 @@ async def get_job_role_permissions(role_id: int, identity: dict = Depends(curren
     if not role:
         raise HTTPException(status_code=404, detail="岗位角色不存在")
     menus = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
+    menu_keys = {menu.key for menu in menus} | set(SYSTEM_MENU_ROUTE_KEYS)
     role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
-    actions = sorted({action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS))
+    actions = sorted(
+        ({action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS))
+        - menu_keys
+    )
     permissions = list(dict.fromkeys(value.strip() for value in (role.permissions or []) if value.strip()))
     return {
         "role_id": role.id, "role_code": role.code, "permissions": permissions,
@@ -20822,10 +20833,15 @@ async def update_job_role_permissions(
             raise HTTPException(status_code=422, detail="系统管理员角色权限不可修改")
     else:
         role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
-        allowed = {action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
+        configured_menu_keys = set((await db.scalars(select(SystemMenu.key))).all()) | set(SYSTEM_MENU_ROUTE_KEYS)
+        allowed_actions = (
+            {action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()}
+            | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
+        ) - configured_menu_keys
+        allowed = configured_menu_keys | allowed_actions
         invalid = sorted(set(permissions) - allowed)
         if invalid:
-            raise HTTPException(status_code=422, detail=f"无效业务动作权限：{', '.join(invalid)}")
+            raise HTTPException(status_code=422, detail=f"无效菜单或业务动作权限：{', '.join(invalid)}")
     role.permissions = permissions
     role.field_keys = field_keys
     role.updated_by = identity["username"]
