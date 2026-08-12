@@ -63,5 +63,7 @@ test("fee settlement and task tabs preserve legacy tables and bottom actions", (
   for (const heading of ["\u7ebf\u7d22\u53f7", "\u8c03\u67e5\u65f6\u95f4", "\u5e97\u94fa\u540d\u79f0", "\u5e97\u94fa\u5730\u5740", "\u516c\u8bc1\u4e66\u53f7", "\u516c\u8bc1\u4e66\u72b6\u6001", "\u516c\u8bc1\u4e66\u5165\u5e93\u65f6\u95f4", "\u4ef6\u6570", "\u4ed3\u5e93\u540d\u79f0", "\u4ed3\u5e93\u4f4d\u7f6e", "\u8bc1\u7269\u72b6\u6001"]) {
     assert.match(page, new RegExp(`title:"${heading}"`));
   }
+  assert.match(page, /const casePersonDisplayName =/);
+  assert.match(page, /row\.owner_display_name\|\|casePersonDisplayName\(row\.owner\)/);
   assert.match(styles, /\.case-legacy-bottom-actions\{margin:/);
 });

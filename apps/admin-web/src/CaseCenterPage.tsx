@@ -660,6 +660,11 @@ export default function CaseCenterPage({
     );
     return option?.value || normalized;
   };
+  const casePersonDisplayName = (source: string) => {
+    const normalized = String(source || "").trim();
+    if (!normalized) return "—";
+    return caseAssistantOptions.find((item) => item.value === normalized || item.label === normalized)?.label || normalized;
+  };
   const firstCourtEnabled = Form.useWatch("first_court_enabled", createForm);
   const secondCourtEnabled = Form.useWatch("second_court_enabled", createForm);
   const retrialCourtEnabled = Form.useWatch("retrial_court_enabled", createForm);
@@ -3665,7 +3670,7 @@ export default function CaseCenterPage({
               <p><strong>案件类型：</strong>{viewingCounselCase.data.case_type||"—"}</p>
               <p><strong>案件阶段：</strong>{viewingCounselCase.status||"—"}</p>
               <p><strong>案件名称：</strong>{viewingCounselCase.title}</p>
-              <p><strong>案源人：</strong>{viewingCounselCase.data.business_owner||viewingCounselCase.data.source_person||viewingCounselCase.owner||"—"}</p>
+              <p><strong>案源人：</strong>{viewingCounselCase.data.business_owner_display_name||viewingCounselCase.data.source_person_display_name||casePersonDisplayName(viewingCounselCase.data.business_owner||viewingCounselCase.data.source_person||viewingCounselCase.owner)}</p>
               <p><strong>客户：</strong><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCounselCase.data.customer_id) || undefined, serial_no: viewingCounselCase.data.customer_no, title: viewingCounselCase.customer })}>{viewingCounselCase.customer || "—"}</Button></p>
               <p><strong>经办律师：</strong>{(viewingCounselCase.data.handling_lawyers||[]).join("、")||"—"}</p>
               <p><strong>合同号：</strong>{viewingCounselCase.data.contract_no ? <Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCounselCase.data.contract_record_id) || undefined, serial_no: viewingCounselCase.data.contract_no })}>{viewingCounselCase.data.contract_no}</Button> : "—"}</p>
@@ -3735,7 +3740,7 @@ export default function CaseCenterPage({
                   {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
                   {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>row.data.amount??0},
                   {title:"退费",width:90,align:"right",render:(_:unknown,row:CaseRow)=>row.data.refund_amount??row.data.refund_requested_amount??0},
-                  {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner||"—"},
+                  {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
                   {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.data.created_at||"").slice(0,10)||"—"},
                   {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
                   {title:"回款金额",width:110,align:"right",render:(_:unknown,row:CaseRow)=>row.data.received_amount??row.data.cashed_amount??"/"},
@@ -3757,7 +3762,7 @@ export default function CaseCenterPage({
                   {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.paid_amount??0},
                   {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.data.created_at||"").slice(0,10)||"—"},
                   {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.paid_at||row.data.payment_date||"").slice(0,10)||"—"},
-                  {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner||"—"},
+                  {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
                   {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>row.description||row.data.remark||"—"},
                 ]}/>
                 <Space className="case-legacy-bottom-actions">
