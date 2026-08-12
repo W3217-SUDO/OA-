@@ -1,0 +1,8 @@
+artifacts/*
+!artifacts/.gitkeep
+.env
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.tsbuildinfo
