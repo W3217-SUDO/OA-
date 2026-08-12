@@ -28,10 +28,10 @@ class OrdinaryUserSealMenuContractTest(unittest.TestCase):
         self.assertIn('_stored_menu_permission_keys(["seal-my"])', SOURCE)
         self.assertIn("UPDATE role_permissions SET menu_keys", SOURCE)
 
-    def test_assistant_job_role_cannot_approve_or_administer_seals(self) -> None:
-        self.assertIn("assistant_seal_my_scope_v1", SOURCE)
-        self.assertIn('not str(value).startswith("seal")', SOURCE)
-        self.assertIn('str(value) != "用印审批"', SOURCE)
+    def test_configured_assistant_permissions_are_restored(self) -> None:
+        self.assertIn("assistant_configured_seal_permissions_restore_v1", SOURCE)
+        self.assertIn('"seal", "seal-my", "seal-audit", "seal-admin"', SOURCE)
+        self.assertIn('"seal-admin-pending", "seal-admin-used", "seal-admin-query", "用印审批"', SOURCE)
         self.assertIn("UPDATE job_roles SET permissions", SOURCE)
 
 

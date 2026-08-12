@@ -547,6 +547,24 @@ def _upgrade_schema(connection) -> None:
             encoded_permissions = json.dumps(migrated_permissions, ensure_ascii=False).replace("'", "''")
             connection.execute(text(f"UPDATE job_roles SET permissions = '{encoded_permissions}' WHERE code = 'ASSISTANT'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('assistant_seal_my_scope_v1')"))
+    assistant_configured_seal_permissions_restored = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'assistant_configured_seal_permissions_restore_v1'"
+    )).first()
+    if not assistant_configured_seal_permissions_restored:
+        role_row = connection.execute(text("SELECT permissions FROM job_roles WHERE code = 'ASSISTANT'")).mappings().first()
+        if role_row:
+            raw_permissions = role_row["permissions"]
+            permissions = list(raw_permissions if isinstance(raw_permissions, list) else json.loads(raw_permissions or "[]"))
+            configured_seal_permissions = [
+                "seal", "seal-my", "seal-audit", "seal-admin",
+                "seal-my-pending", "seal-my-stamping", "seal-my-used", "seal-my-refused", "seal-my-withdrawn",
+                "seal-audit-pending", "seal-audit-stamping", "seal-audit-refused",
+                "seal-admin-pending", "seal-admin-used", "seal-admin-query", "用印审批",
+            ]
+            restored_permissions = [*permissions, *(value for value in configured_seal_permissions if value not in permissions)]
+            encoded_permissions = json.dumps(restored_permissions, ensure_ascii=False).replace("'", "''")
+            connection.execute(text(f"UPDATE job_roles SET permissions = '{encoded_permissions}' WHERE code = 'ASSISTANT'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('assistant_configured_seal_permissions_restore_v1')"))
     # Remove the short-lived internal marker used by an earlier development
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
