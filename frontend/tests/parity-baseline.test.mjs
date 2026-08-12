@@ -15,3 +15,10 @@ test("frontend reads the legacy menu tree instead of a hand-maintained menu", ()
   assert.match(source, /MenuCode/);
   assert.match(source, /ParentMenuId/);
 });
+
+test("official-document status menus retain captured legacy menu-code mappings", () => {
+  const source = readFileSync(new URL("../src/App.vue", import.meta.url), "utf8");
+  assert.match(source, /"8101001001": 10/);
+  assert.match(source, /"8101001003": 60/);
+  assert.match(source, /"8101001005": 40/);
+});

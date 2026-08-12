@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import OfficialDocumentList from "./components/OfficialDocumentList.vue";
 
 type MenuNode = {
   MenuId: number;
@@ -20,6 +21,21 @@ const activeMenuCode = ref("");
 const openCodes = ref<string[]>([]);
 const loading = ref(true);
 const error = ref("");
+const workspace = ref<"dashboard" | "official-documents">("dashboard");
+const officialDocumentStatus = ref<number | null>(null);
+
+const officialDocumentStatusByMenuCode: Record<string, number> = {
+  "8101001001": 10,
+  "8101001002": 20,
+  "8101001003": 60,
+  "8101001004": 30,
+  "8101001005": 40,
+  "8101002001": 10,
+  "8101002002": 20,
+  "8101002003": 30,
+  "8101003001": 20,
+  "8101003002": 60,
+};
 
 const filteredMenus = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -43,6 +59,10 @@ function toggleMenu(menu: MenuNode) {
 
 function activate(menu: MenuNode) {
   activeMenuCode.value = menu.MenuCode;
+  if (menu.MenuCode.startsWith("8101")) {
+    workspace.value = "official-documents";
+    officialDocumentStatus.value = officialDocumentStatusByMenuCode[menu.MenuCode] ?? null;
+  }
 }
 
 onMounted(async () => {
@@ -86,13 +106,16 @@ onMounted(async () => {
       </nav>
     </aside>
     <section class="legacy-workspace">
-      <div class="legacy-tabs"><span class="active">控制台</span></div>
+      <div class="legacy-tabs"><span class="active">{{ workspace === 'official-documents' ? '用印申请' : '控制台' }}</span></div>
+      <OfficialDocumentList v-if="workspace === 'official-documents'" :status-filter="officialDocumentStatus" :key="activeMenuCode" />
+      <template v-else>
       <div class="workspace-heading"><h1>控制台</h1><span>首页 / 控制台</span></div>
       <div class="baseline-grid">
         <article><b>旧系统等价重建</b><p>菜单、字段、权限和流程均以 8091 为基准。</p></article>
         <article><b>旧库只读</b><p>FastAPI 当前只读映射旧库，不会写入历史数据。</p></article>
         <article><b>扩展能力</b><p>钉钉与智能体将用扩展表接入，不改变旧表语义。</p></article>
       </div>
+      </template>
     </section>
   </main>
 </template>

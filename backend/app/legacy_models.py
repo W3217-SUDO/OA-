@@ -76,3 +76,28 @@ class IprUserRole(LegacyBase):
     user_role_id = Column("UserRoleId", Integer, primary_key=True)
     user_id = Column("UserId", Integer)
     role_id = Column("RoleId", Integer)
+
+
+class AwsOfficialDocument(LegacyBase):
+    __tablename__ = "AWS_OfficialDocument"
+
+    official_document_id = Column("OfficialDocumentId", BigInteger, primary_key=True)
+    official_document_no = Column("OfficialDocumentNo", String(50))
+    official_document_guid = Column("OfficialDocumentGuid", String(50))
+    case_no = Column("CaseNo", String(50))
+    contract_no = Column("ContractNo", String(50))
+    customer_no = Column("CustomerNo", String(50))
+    official_document_name = Column("OfficialDocumentName", String(256))
+    business_owner = Column("BusinessOwner", String(50))
+    official_document_type = Column("OfficialDocumentType", Integer)
+    is_electronic_seal = Column("IsElectronicSeal", String(1))
+    is_offline_print = Column("IsOfflinePrint", String(1))
+    print_quantity = Column("PrintQuantity", Integer)
+    seal_type = Column("SealType", Integer)
+    official_document_status = Column("OfficialDocumentStatus", Integer)
+    application_date = Column("ApplicationDate", DateTime)
+    remark = Column("Remark", String(1000))
+    auditor = Column("Auditor", String(50))
+    audit_time = Column("AuditTime", DateTime)
+    audit_remark = Column("AuditRemark", String(1000))
+    is_actived = Column("IsActived", String(1))
