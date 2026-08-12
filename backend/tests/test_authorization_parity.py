@@ -33,6 +33,23 @@ def test_menu_api_preserves_legacy_column_names_and_count() -> None:
     assert {"MenuId", "MenuCode", "MenuName", "ParentMenuId", "LinkUrl", "IsActived"} <= set(rows[0])
 
 
+def test_menu_tree_only_exposes_true_legacy_roots() -> None:
+    client = TestClient(app)
+    response = client.get("/api/v1/legacy/authorization/menu-tree")
+    assert response.status_code == 200
+    assert all(row["ParentMenuId"] == "-1" for row in response.json())
+
+
+def test_staff_menu_tree_follows_hr_role_menu_permissions() -> None:
+    client = TestClient(app)
+    response = client.get("/api/v1/legacy/authorization/staff/1/menu-tree")
+    assert response.status_code == 200
+    roots = response.json()
+    assert all(row["ParentMenuId"] == "-1" for row in roots)
+    assert any(row["MenuName"] == "用印中心" for row in roots)
+    assert client.get("/api/v1/legacy/authorization/staff/999999/menu-tree").status_code == 404
+
+
 def test_parity_capture_api_is_read_only() -> None:
     client = TestClient(app)
     assert client.get("/health").json()["legacy_read_only"] is True
