@@ -46,6 +46,16 @@ test("case detail follows the legacy court and document-table layout", () => {
   assert.match(styles, /\.case-detail-body-grid\{grid-template-columns:minmax\(0,1fr\) 250px/);
 });
 
+test("customer and contract document folders load attachments from their linked records", () => {
+  assert.match(page, /setCounselDetailCustomerAttachments/);
+  assert.match(page, /setCounselDetailContractAttachments/);
+  assert.match(page, /customerRecordId \? api\.get\("\/attachments"/);
+  assert.match(page, /contractRecordId \? api\.get\("\/attachments"/);
+  assert.match(page, /activeCounselDocCategory==="客户文档"[\s\S]*counselDetailCustomerAttachments/);
+  assert.match(page, /activeCounselDocCategory==="合同文档"[\s\S]*counselDetailContractAttachments/);
+  assert.match(page, /data\.append\("record_id", String\(targetRecordId\)\)/);
+});
+
 test("fee settlement and task tabs preserve legacy tables and bottom actions", () => {
   for (const heading of ["合同编号", "费用类型", "退费", "回款日期", "回款金额", "开票日期", "发票号"]) {
     assert.match(page, new RegExp(`title:\"${heading}\"`));

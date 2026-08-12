@@ -595,6 +595,8 @@ export default function CaseCenterPage({
   const [counselDetailTaskTotal, setCounselDetailTaskTotal] = useState(0);
   const [counselDetailTaskPages, setCounselDetailTaskPages] = useState(0);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
+  const [counselDetailCustomerAttachments, setCounselDetailCustomerAttachments] = useState<AttachmentRow[]>([]);
+  const [counselDetailContractAttachments, setCounselDetailContractAttachments] = useState<AttachmentRow[]>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
@@ -1376,20 +1378,28 @@ export default function CaseCenterPage({
       // 基础案件详情必须先打开；历史、附件、提醒等附加面板不能因为单点失败
       // 阻断案号关联、搜索或通知进入详情。
       const recordRes = await api.get(`/records/${row.id}`);
-      setViewingCounselCase(recordRes.data);
+      const detailRecord = recordRes.data as CaseRow;
+      setViewingCounselCase(detailRecord);
       document.querySelector<HTMLElement>(".content")?.scrollTo({top:0,left:0});
       setSelectedCounselAttachmentKeys([]);
       setActiveCounselDocCategory("");
-      const [historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes] = await Promise.allSettled([
+      const contractRecordId = Number(detailRecord.data.contract_record_id || detailRecord.data.contract_id)
+        || contracts.find((item) => item.serial_no === detailRecord.data.contract_no)?.id;
+      const customerRecordId = Number(detailRecord.data.customer_record_id || detailRecord.data.customer_id)
+        || caseCustomers.find((item) => item.title === detailRecord.customer)?.id;
+      const emptyAttachmentResponse = { data: { items: [] } };
+      const [historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes] = await Promise.allSettled([
         api.get(`/records/${row.id}/history`),
         api.get(`/cases/${row.id}/tasks`, {
           params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE },
         }),
-        api.get("/attachments", { params: { record_id: row.id } }),
+        api.get("/attachments", { params: { record_id: row.id, page_size: 200 } }),
         api.get(`/cases/${row.id}/reminders`),
         api.get(`/cases/${row.id}/logs`),
         api.get(`/cases/${row.id}/action-capabilities`),
         api.get(`/cases/${row.id}/relations`),
+        customerRecordId ? api.get("/attachments", { params: { record_id: customerRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
+        contractRecordId ? api.get("/attachments", { params: { record_id: contractRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
       ]);
       setCounselDetailHistory(historyRes.status === "fulfilled" ? historyRes.value.data.items || [] : []);
       if (taskRes.status === "fulfilled") {
@@ -1398,12 +1408,14 @@ export default function CaseCenterPage({
         applyCounselDetailTaskPageState({ items: [], total: 0, page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, pages: 0 }, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
       }
       setCounselDetailAttachments(attachmentRes.status === "fulfilled" ? attachmentRes.value.data.items || [] : []);
+      setCounselDetailCustomerAttachments(customerAttachmentRes.status === "fulfilled" ? customerAttachmentRes.value.data.items || [] : []);
+      setCounselDetailContractAttachments(contractAttachmentRes.status === "fulfilled" ? contractAttachmentRes.value.data.items || [] : []);
       setCounselReminders(reminderRes.status === "fulfilled" ? reminderRes.value.data.items || [] : []);
       setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
       setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
       setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
       setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
-      if ([historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes].some((result) => result.status === "rejected")) {
+      if ([historyRes, taskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes].some((result) => result.status === "rejected")) {
         message.warning("部分案件附加信息加载失败，已打开基础详情");
       }
     } catch (error: any) {
@@ -1851,9 +1863,22 @@ export default function CaseCenterPage({
     if (!file || !viewingCounselCase) return message.warning("请先打开案件详情再上传文件");
     const data = new FormData();
     data.append("file", file);
-    data.append("record_id", String(viewingCounselCase.id));
-    data.append("category", counselUploadCategory || DEFAULT_CASE_ATTACHMENT_CATEGORY);
-    data.append("remark", `案件详情文档：${counselUploadCategory || DEFAULT_CASE_ATTACHMENT_CATEGORY}`);
+    const customerRecordId = Number(viewingCounselCase.data.customer_record_id || viewingCounselCase.data.customer_id)
+      || caseCustomers.find((item) => item.title === viewingCounselCase.customer)?.id;
+    const contractRecordId = Number(viewingCounselCase.data.contract_record_id || viewingCounselCase.data.contract_id)
+      || contracts.find((item) => item.serial_no === viewingCounselCase.data.contract_no)?.id;
+    const targetRecordId = activeCounselDocCategory === "客户文档"
+      ? customerRecordId
+      : activeCounselDocCategory === "合同文档"
+        ? contractRecordId
+        : viewingCounselCase.id;
+    if (!targetRecordId) return message.warning(`当前案件没有可用的${activeCounselDocCategory}关联记录`);
+    const uploadCategory = activeCounselDocCategory === "客户文档" || activeCounselDocCategory === "合同文档"
+      ? activeCounselDocCategory
+      : counselUploadCategory || DEFAULT_CASE_ATTACHMENT_CATEGORY;
+    data.append("record_id", String(targetRecordId));
+    data.append("category", uploadCategory);
+    data.append("remark", `案件详情关联文档：${uploadCategory}`);
     try {
       await api.post("/attachments", data);
       message.success("案件文件已上传");
@@ -2903,20 +2928,33 @@ export default function CaseCenterPage({
   const counselDocTree=[
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
-    {label:"案件文档",category:"案件文件",type:"folder-open"},
+    {label:"案件文档",category:"案件文档全部",type:"folder-open"},
     {label:"主体及委托资料",category:"主体及委托资料",type:"child"},
     {label:"起诉材料及证据",category:"起诉材料及证据",type:"child"},
     {label:"答辩材料及证据",category:"答辩材料及证据",type:"child"},
     {label:"法院诉讼文书",category:"法院诉讼文书",type:"child"},
     {label:"庭审及庭后文件",category:"庭审及庭后文件",type:"child"},
-    {label:"调查文档",category:"调查文档",type:"folder-open"},
+    {label:"调查文档",category:"调查文档全部",type:"folder-open"},
     {label:"鉴别资料",category:"鉴别资料",type:"child"},
     {label:"调查文档",category:"调查文档",type:"child"},
     {label:"取证文档",category:"取证文档",type:"child"},
   ];
+  const counselDocCategoryGroups:Record<string,string[]>={
+    调查文档全部:["调查文档","鉴别资料","取证文档"],
+  };
+  const activeCounselDocCategories=counselDocCategoryGroups[activeCounselDocCategory]||[activeCounselDocCategory];
+  const nonCaseDocumentCategories=["客户文档","合同文档",...counselDocCategoryGroups.调查文档全部];
   const filteredCounselDetailAttachments=activeCounselDocCategory
-    ? counselDetailAttachments.filter(row=>String(row.category||"").includes(activeCounselDocCategory))
+    ? activeCounselDocCategory==="客户文档"
+      ? counselDetailCustomerAttachments
+      : activeCounselDocCategory==="合同文档"
+        ? counselDetailContractAttachments
+        : counselDetailAttachments.filter(row=>activeCounselDocCategory==="案件文档全部"
+          ? !nonCaseDocumentCategories.includes(String(row.category||""))
+          : activeCounselDocCategories.some(category=>String(row.category||"")===category))
     : counselDetailAttachments;
+  const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档";
+  const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
   const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));
   const platformFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="平台");
   const internalFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部"));
@@ -3729,8 +3767,8 @@ export default function CaseCenterPage({
                   <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={caseFileTypeOptions}/>
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
-                  {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
-                  {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}
+                  {counselDetailCapabilities.can_delete_attachment && !isRelatedDocumentFolder && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
+                  {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
                 </div>
               </div>},
