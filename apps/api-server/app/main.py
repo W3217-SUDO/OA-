@@ -248,7 +248,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     "admin": {"display_name": "系统管理员", "data_scope": "全所数据", "menu_keys": MENU_KEYS, "field_keys": FIELD_KEYS},
     "manager": {"display_name": "部门负责人", "data_scope": "本部门数据", "menu_keys": ["agent-center", "task", "seal", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center", "hr", "warehouse", "reports"], "field_keys": FIELD_KEYS},
     "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["agent-center", "task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
-    "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["agent-center", "task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
+    "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["agent-center", "seal-my", "task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
 }
 SYSTEM_USER_ROLE_CODES = frozenset(DEFAULT_ROLE_PERMISSIONS)
 ROLE_DATA_SCOPES = frozenset({
@@ -517,6 +517,19 @@ def _upgrade_schema(connection) -> None:
             role = str(role_row["role"]).replace("'", "''")
             connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('role_menu_leaf_permissions_v1')"))
+    ordinary_user_seal_menu_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'ordinary_user_seal_my_menu_v1'"
+    )).first()
+    if not ordinary_user_seal_menu_migrated:
+        role_row = connection.execute(text("SELECT menu_keys FROM role_permissions WHERE role = 'user'")).mappings().first()
+        if role_row:
+            raw_keys = role_row["menu_keys"]
+            keys = list(raw_keys if isinstance(raw_keys, list) else json.loads(raw_keys or "[]"))
+            seal_my_keys = _stored_menu_permission_keys(["seal-my"])
+            migrated_keys = [*keys, *(key for key in seal_my_keys if key not in keys)]
+            encoded_keys = json.dumps(migrated_keys, ensure_ascii=False).replace("'", "''")
+            connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = 'user'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('ordinary_user_seal_my_menu_v1')"))
     # Remove the short-lived internal marker used by an earlier development
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
