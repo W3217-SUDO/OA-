@@ -29,6 +29,8 @@ import {
   CloseOutlined,
   EditOutlined,
   FileTextOutlined,
+  FolderOpenOutlined,
+  FolderOutlined,
   PaperClipOutlined,
   ReloadOutlined,
   RobotOutlined,
@@ -2886,16 +2888,16 @@ export default function CaseCenterPage({
   const counselDocTree=[
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
-    {label:"调查文档",category:"调查文档",type:"folder-open"},
-    {label:"鉴别资料",category:"鉴别资料",type:"child"},
-    {label:"调查文档",category:"调查文档",type:"child"},
-    {label:"取证文档",category:"取证文档",type:"child"},
     {label:"案件文档",category:"案件文件",type:"folder-open"},
     {label:"主体及委托资料",category:"主体及委托资料",type:"child"},
     {label:"起诉材料及证据",category:"起诉材料及证据",type:"child"},
     {label:"答辩材料及证据",category:"答辩材料及证据",type:"child"},
     {label:"法院诉讼文书",category:"法院诉讼文书",type:"child"},
     {label:"庭审及庭后文件",category:"庭审及庭后文件",type:"child"},
+    {label:"调查文档",category:"调查文档",type:"folder-open"},
+    {label:"鉴别资料",category:"鉴别资料",type:"child"},
+    {label:"调查文档",category:"调查文档",type:"child"},
+    {label:"取证文档",category:"取证文档",type:"child"},
   ];
   const filteredCounselDetailAttachments=activeCounselDocCategory
     ? counselDetailAttachments.filter(row=>String(row.category||"").includes(activeCounselDocCategory))
@@ -3637,23 +3639,25 @@ export default function CaseCenterPage({
             </div>
           </Card>
           <div className="case-detail-body-grid">
-            <aside className="case-detail-doc-tree">
-              <button className={`case-doc-all ${!activeCounselDocCategory?"case-doc-active":""}`} onClick={()=>selectCounselDocCategory("")}>全部文档</button>
-              {counselDocTree.map((item,index)=>(
-                <button
-                  key={`${item.category}-${item.type}-${index}`}
-                  className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.type==="folder-open"?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
-                  onClick={()=>selectCounselDocCategory(item.category)}
-                  title={`查看${item.label}`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </aside>
             <div className="case-detail-tab-area">
           <Tabs
             items={[
-              {key:"documents",label:"文档信息",children:<>
+              {key:"documents",label:"文档信息",children:<div className="case-documents-layout">
+                <aside className="case-detail-doc-tree" aria-label="案件文档目录">
+                  {counselDocTree.map((item,index)=>(
+                    <button
+                      key={`${item.category}-${item.type}-${index}`}
+                      className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.type==="folder-open"?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
+                      onClick={()=>selectCounselDocCategory(item.category)}
+                      title={`查看${item.label}`}
+                    >
+                      <span className="case-doc-caret" aria-hidden="true">{item.type==="folder-open"?"▾":""}</span>
+                      {item.type==="folder-open"?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </aside>
+                <div className="case-document-list">
                 <input ref={counselDetailUploadRef} hidden type="file" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
                 <Space wrap style={{marginBottom:10}}>
                   <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={caseFileTypeOptions}/>
@@ -3669,7 +3673,8 @@ export default function CaseCenterPage({
                   {title:"上传时间",dataIndex:"created_at",width:170},
                   {title:"操作",key:"actions",width:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
                 ]}/>
-              </>},
+                </div>
+              </div>},
               {key:"firm-fees",label:"律所费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"律所")}>新增律所费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
               {key:"platform-fees",label:"平台费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&row.data.expense_scope==="平台")} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
               {key:"internal-fees",label:"内部结算",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"内部")}>新增内部结算</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&(row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部")))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>((row.status==="草稿"||row.status==="已审批")&&counselDetailCapabilities.can_create_finance)?<Dropdown trigger={["click"]} menu={{items:row.status==="已审批"?[{key:"pay",label:"申请付款"}]:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="pay"?void previewInternalPayment(row):key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},

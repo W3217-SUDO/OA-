@@ -101,3 +101,28 @@
   .case-agent-status{align-items:flex-start}
   .case-agent-bubble{max-width:96%}
 }
+
+/* Keep the document tabs above the complete workspace, matching the legacy case view. */
+.case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
+.case-detail-tab-area{padding:0 8px 14px}
+.case-documents-layout{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:360px;border-top:1px solid #edf0f3}
+.case-detail-doc-tree{padding:8px 10px;border-right:1px solid #dce2e8;background:#fff}
+.case-document-list{min-width:0;padding:8px 0 0 10px}
+.case-doc-folder,.case-doc-child{display:flex;align-items:center;gap:6px;height:22px;padding:0 4px;color:#111;line-height:22px}
+.case-doc-child{padding-left:25px}
+.case-doc-folder::before,.case-doc-folder::after,.case-doc-child::before{content:none}
+.case-doc-caret{flex:0 0 12px;width:12px;color:#7b838b;font-size:11px;text-align:center}
+.case-doc-child .case-doc-caret{display:none}
+.case-doc-icon{flex:0 0 16px;color:#e8b834;font-size:16px}
+.case-doc-folder-open .case-doc-icon{color:#e2aa20}
+.case-doc-folder>span:last-child,.case-doc-child>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media(max-width:1280px){
+  .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
+  .case-detail-side-panel{grid-column:auto;display:block;border-top:0;border-left:1px solid #dce2e8}
+}
+@media(max-width:900px){
+  .case-detail-body-grid{grid-template-columns:1fr}
+  .case-documents-layout{grid-template-columns:180px minmax(0,1fr)}
+  .case-detail-side-panel{grid-column:1;display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #dce2e8;border-left:0}
+}
