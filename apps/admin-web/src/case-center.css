@@ -150,3 +150,10 @@
   .case-court-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .case-documents-layout{grid-template-columns:210px minmax(0,1fr)}
 }
+
+.case-legacy-tab-panel{min-height:330px;padding:8px 0 0}
+.case-legacy-tab-panel .ant-table-thead>tr>th{height:32px;padding:5px 9px!important;text-align:center}
+.case-legacy-tab-panel .ant-table-tbody>tr>td{height:32px;padding:4px 9px!important}
+.case-legacy-tab-panel .ant-pagination{margin:8px 8px 0}
+.case-legacy-bottom-actions{margin:0 0 8px 8px}
+.case-legacy-bottom-actions .ant-btn{height:32px}

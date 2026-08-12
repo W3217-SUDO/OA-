@@ -38,10 +38,30 @@ test("case detail follows the legacy court and document-table layout", () => {
   assert.match(page, /<strong>一审法院<\/strong>/);
   assert.match(page, /<strong>执行法院<\/strong>/);
   assert.match(page, /title:"序号"/);
-  assert.match(page, /title:"文档日期"/);
+  assert.match(page, /title:"上传时间"/);
 
   const table = page.indexOf('pagination={getCaseFilePagination()}');
   const toolbar = page.indexOf('className="case-document-toolbar"');
   assert.ok(table >= 0 && toolbar > table, "legacy action toolbar should render below the file table");
   assert.match(styles, /\.case-detail-body-grid\{grid-template-columns:minmax\(0,1fr\) 250px/);
+});
+
+test("fee settlement and task tabs preserve legacy tables and bottom actions", () => {
+  for (const heading of ["合同编号", "费用类型", "退费", "回款日期", "回款金额", "开票日期", "发票号"]) {
+    assert.match(page, new RegExp(`title:\"${heading}\"`));
+  }
+  assert.match(page, /label:"法院退费"/);
+  assert.match(page, /label:"申请付款"/);
+  assert.match(page, /label:"申请开票"/);
+  for (const heading of ["收款人", "提成类型", "已申请付款金额", "已付款金额", "付款时间", "备注"]) {
+    assert.match(page, new RegExp(`title:\"${heading}\"`));
+  }
+  assert.match(page, /<Button onClick=\{\(\)=>handleInternalFeeAction\("create"\)\}>新增费用<\/Button>/);
+  assert.match(page, /title:"标题"/);
+  assert.match(page, /title:"提交时间"/);
+  assert.match(page, />发布任务<\/Button>/);
+  for (const heading of ["\u7ebf\u7d22\u53f7", "\u8c03\u67e5\u65f6\u95f4", "\u5e97\u94fa\u540d\u79f0", "\u5e97\u94fa\u5730\u5740", "\u516c\u8bc1\u4e66\u53f7", "\u516c\u8bc1\u4e66\u72b6\u6001", "\u516c\u8bc1\u4e66\u5165\u5e93\u65f6\u95f4", "\u4ef6\u6570", "\u4ed3\u5e93\u540d\u79f0", "\u4ed3\u5e93\u4f4d\u7f6e", "\u8bc1\u7269\u72b6\u6001"]) {
+    assert.match(page, new RegExp(`title:"${heading}"`));
+  }
+  assert.match(styles, /\.case-legacy-bottom-actions\{margin:/);
 });
