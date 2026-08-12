@@ -1330,6 +1330,11 @@ class InvestigationTaskInput(BaseModel):
     title: str
     owner: str
     deadline: date
+    start_date: date | None = None
+    end_date: date | None = None
+    province: str = Field(default="", max_length=100)
+    city: str = Field(default="", max_length=100)
+    district: str = Field(default="", max_length=100)
     priority: str = "普通"
     parent_task_id: int | None = None
     contract_record_id: int | None = Field(default=None, gt=0)
@@ -1338,6 +1343,16 @@ class InvestigationTaskInput(BaseModel):
     contract_name: str = Field(default="", max_length=255)
     authorization_scope: str = Field(default="", max_length=1000)
     attachment_ids: list[int] = Field(default_factory=list, max_length=100)
+
+
+def _investigation_task_date(value: object) -> date | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        return None
 
 
 class BatchClueCaseInput(BaseModel):
@@ -1390,6 +1405,8 @@ INVESTIGATION_EDIT_DATA_FIELDS = {
     "region", "address", "right_type", "deadline", "priority", "platform",
     "product", "source", "infringement_method", "store_url", "shop_id", "producer",
     "indictee", "investigation_assistant", "investigated_at", "customer_manager",
+    "start_date", "end_date", "authorized_from", "authorized_to", "authorization_scope",
+    "province", "city", "district",
 }
 
 
@@ -10018,21 +10035,32 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         source.data = {**source_data, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
         db.add(source)
         db.add(WorkflowEvent(record_id=source.id, action="绑定调查事项合同", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}"))
+    start_date = body.start_date or _investigation_task_date(parent_data.get("start_date") or parent_data.get("authorized_from")) or _investigation_task_date(source_data.get("authorized_from"))
+    end_date = body.end_date or body.deadline or _investigation_task_date(parent_data.get("end_date") or parent_data.get("deadline") or parent_data.get("authorized_to")) or _investigation_task_date(source_data.get("authorized_to"))
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="调查结束时间必须不早于开始时间")
+    parent_or_source = parent_data or source_data
+    province = body.province.strip() or str(parent_or_source.get("province") or "").strip()
+    city = body.city.strip() or str(parent_or_source.get("city") or "").strip()
+    district = body.district.strip() or str(parent_or_source.get("district") or "").strip()
+    region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
+    if not region:
+        region = " ".join(part for part in (province, city, district) if part)
     task_data = {
-        "deadline": str(body.deadline), "priority": body.priority, "source": "调查任务",
+        "deadline": str(end_date or body.deadline), "priority": body.priority, "source": "调查任务",
         "initiator": identity["username"], "collaborators": [], "case_no": "",
         "contract_id": contract.id, "contract_record_id": contract.id,
         "contract_no": contract.serial_no,
         "contract_name": contract.title,
-        "authorization_scope": body.authorization_scope.strip() or str(source_data.get("authorization_scope") or ""),
+        "authorization_scope": body.authorization_scope.strip() or str(parent_or_source.get("authorization_scope") or ""),
         "attachment_ids": attachment_ids,
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
         "investigation_module": source.module,
         "customer_review": bool(source_data.get("customer_review")),
         "right_type": str(source_data.get("right_type") or ""),
-        "region": str(source_data.get("region") or source_data.get("address") or ""),
-        "authorized_from": str(source_data.get("authorized_from") or ""),
-        "authorized_to": str(source_data.get("authorized_to") or ""),
+        "region": region, "province": province, "city": city, "district": district,
+        "start_date": str(start_date or ""), "end_date": str(end_date or ""),
+        "authorized_from": str(start_date or ""), "authorized_to": str(end_date or ""),
         "source_owner": str(source_data.get("source_owner") or ""),
         "assigner": str(source_data.get("assigner") or source_data.get("assigned_by") or identity["username"]),
         "parent_task_id": parent.id if parent else None,

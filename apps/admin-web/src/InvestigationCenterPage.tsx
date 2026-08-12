@@ -93,6 +93,7 @@ type TaskRow = {
   parent_task_id?: number;
   parent_task_no?: string;
   investigation_no?: string;
+  data?: Record<string, unknown>;
 };
 type Profile = {
   username: string;
@@ -1277,6 +1278,12 @@ export default function InvestigationCenterPage({
       taskForm.resetFields();
       taskForm.setFieldsValue({
         priority: "普通",
+        start_date: row.data.authorized_from ? dayjs(String(row.data.authorized_from)) : undefined,
+        end_date: row.data.authorized_to ? dayjs(String(row.data.authorized_to)) : undefined,
+        deadline: row.data.authorized_to ? dayjs(String(row.data.authorized_to)) : undefined,
+        province: row.data.province || "",
+        city: row.data.city || "",
+        district: row.data.district || "",
         contract_record_id:
           row.data.contract_id || row.data.contract_record_id || undefined,
       });
@@ -1298,6 +1305,8 @@ export default function InvestigationCenterPage({
       await api.post(`/investigations/${taskTarget.id}/tasks`, {
         ...v,
         deadline: formatRequiredDate(v.deadline, "截止日期"),
+        start_date: v.start_date ? formatRequiredDate(v.start_date, "开始日期") : undefined,
+        end_date: v.end_date ? formatRequiredDate(v.end_date, "结束日期") : undefined,
       });
       message.success("子任务已创建");
       const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
@@ -1305,6 +1314,12 @@ export default function InvestigationCenterPage({
       taskForm.resetFields();
       taskForm.setFieldsValue({
         priority: "普通",
+        start_date: taskTarget.data.authorized_from ? dayjs(String(taskTarget.data.authorized_from)) : undefined,
+        end_date: taskTarget.data.authorized_to ? dayjs(String(taskTarget.data.authorized_to)) : undefined,
+        deadline: taskTarget.data.authorized_to ? dayjs(String(taskTarget.data.authorized_to)) : undefined,
+        province: taskTarget.data.province || "",
+        city: taskTarget.data.city || "",
+        district: taskTarget.data.district || "",
         contract_record_id:
           taskTarget.data.contract_id || taskTarget.data.contract_record_id || undefined,
       });
@@ -1588,6 +1603,14 @@ export default function InvestigationCenterPage({
               {value}
             </Button>
           ),
+        },
+        {
+          title: "父调查编号",
+          width: 170,
+          render: (_: unknown, r: Row) => {
+            const no = String(r.data.parent_task_no || r.data.investigation_no || "");
+            return no ? <Button type="link" onClick={() => void openLinkedInvestigation(no, r.data.parent_task_no ? "task" : "investigation")}>{no}</Button> : "—";
+          },
         },
         {
           title: "权利人",
@@ -2734,17 +2757,17 @@ export default function InvestigationCenterPage({
         {
           key: "region",
           label: "调查区域",
-          children: investigationDetail.data.region || "—",
+          children: investigationDetail.data.region || [investigationDetail.data.province, investigationDetail.data.city, investigationDetail.data.district].filter(Boolean).join(" ") || "—",
         },
         {
-          key: "authorized-from",
-          label: "授权开始",
-          children: investigationDetail.data.authorized_from || "—",
+          key: "started-at",
+          label: "开始时间",
+          children: investigationDetail.data.started_at || investigationDetail.data.start_date || investigationDetail.data.authorized_from || "—",
         },
         {
-          key: "authorized-to",
-          label: "授权结束",
-          children: investigationDetail.data.authorized_to || "—",
+          key: "ended-at",
+          label: "结束时间",
+          children: investigationDetail.data.ended_at || investigationDetail.data.end_date || investigationDetail.data.deadline || investigationDetail.data.authorized_to || "—",
         },
         {
           key: "source-owner",
@@ -2765,6 +2788,15 @@ export default function InvestigationCenterPage({
                 investigationDetail.data.assigned_by,
             ),
         },
+        ...((investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)
+          ? [{
+              key: "parent-investigation",
+              label: "父调查编号",
+              children: <Button className="business-relation-link" type="link" onClick={() => void openLinkedInvestigation(String(investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no), investigationDetail.data.parent_task_no ? "task" : "investigation")}>
+                {String(investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)}
+              </Button>,
+            }]
+          : []),
         ...(investigationDetail.data.source_task_no
           ? [
               {
@@ -4024,7 +4056,22 @@ export default function InvestigationCenterPage({
               render: (_value: unknown, row: TaskRow) =>
                 row.owner_display_name || personDisplayName(row.owner),
             },
-            { title: "截止日", dataIndex: "deadline", width: 110 },
+            {
+              title: "调查区域",
+              width: 160,
+              render: (_value: unknown, row: TaskRow) =>
+                row.data?.region || [row.data?.province, row.data?.city, row.data?.district].filter(Boolean).join(" ") || "—",
+            },
+            {
+              title: "开始时间",
+              width: 110,
+              render: (_value: unknown, row: TaskRow) => row.data?.start_date || row.data?.authorized_from || "—",
+            },
+            {
+              title: "结束时间",
+              width: 110,
+              render: (_value: unknown, row: TaskRow) => row.data?.end_date || row.deadline || row.data?.authorized_to || "—",
+            },
             {
               title: "状态",
               dataIndex: "status",
@@ -4087,6 +4134,18 @@ export default function InvestigationCenterPage({
                 />
               </Form.Item>
               <Form.Item
+                label="开始日期"
+                name="start_date"
+              >
+                <DatePicker style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item
+                label="结束日期"
+                name="end_date"
+              >
+                <DatePicker style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item
                 label="截止日期"
                 name="deadline"
                 rules={[{ required: true }]}
@@ -4101,6 +4160,11 @@ export default function InvestigationCenterPage({
                   }))}
                 />
               </Form.Item>
+            </div>
+            <div className="form-grid">
+              <Form.Item label="省份" name="province"><Input /></Form.Item>
+              <Form.Item label="城市" name="city"><Input /></Form.Item>
+              <Form.Item label="区县" name="district"><Input /></Form.Item>
             </div>
             <Form.Item label="任务说明" name="description">
               <Input.TextArea rows={3} />
