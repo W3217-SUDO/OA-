@@ -360,7 +360,7 @@ const normalizeCaseTaskPageState = (
       : 0;
   return { items, total, page, pageSize, pages };
 };
-type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;created_at:string;size:number;remark?:string};
+type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string};
 type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;options?:CaseFileTypeOption[]};
 type AttachmentPreview = {name:string;kind:"image"|"pdf"|"text"|"docx";url?:string;text?:string};
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
@@ -3638,6 +3638,23 @@ export default function CaseCenterPage({
               {viewingCounselCase.data.case_type === "法律顾问" ? <><p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p><p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p></> : <><p><strong>原告/申请人：</strong>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</p><p><strong>被告/被申请人：</strong>{viewingCounselCase.data.opponent||"—"}</p><p><strong>法院/机构：</strong>{viewingCounselCase.data.court||viewingCounselCase.data.first_court_name||"—"}</p><p><strong>案由/罪名：</strong>{viewingCounselCase.data.cause_or_charge||"—"}</p><p><strong>调查员：</strong>{viewingCounselCase.data.investigator||"—"}</p>{viewingCounselCase.data.case_type === "行政案件及国家赔偿" && <p><strong>权利类型：</strong>{viewingCounselCase.data.right_type||"—"}</p>}</>}
             </div>
           </Card>
+          {viewingCounselCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
+            <div className="case-court-summary-title">法院信息</div>
+            <div className="case-court-summary-grid">
+              <p><strong>一审法院</strong><span>{viewingCounselCase.data.first_court_name||viewingCounselCase.data.court||"—"}</span></p>
+              <p><strong>法庭</strong><span>{viewingCounselCase.data.first_court_courtroom||"—"}</span></p>
+              <p><strong>一审案号</strong><span>{viewingCounselCase.data.first_court_case_no||viewingCounselCase.data.court_case_no||"—"}</span></p>
+              <p><strong>立案时间</strong><span>{viewingCounselCase.data.first_court_filing_date||viewingCounselCase.data.filing_date||"—"}</span></p>
+              <p><strong>开庭时间</strong><span>{viewingCounselCase.data.first_court_hearing_date||viewingCounselCase.data.hearing_date||"—"}</span></p>
+              <p><strong>判决日期</strong><span>{viewingCounselCase.data.first_court_judgment_date||viewingCounselCase.data.judgment_date||"—"}</span></p>
+              <p><strong>执行法院</strong><span>{viewingCounselCase.data.execution_court_name||"—"}</span></p>
+              <p><strong>法庭</strong><span>{viewingCounselCase.data.execution_court_courtroom||"—"}</span></p>
+              <p><strong>执行案号</strong><span>{viewingCounselCase.data.execution_court_case_no||"—"}</span></p>
+              <p><strong>立案时间</strong><span>{viewingCounselCase.data.execution_court_filing_date||"—"}</span></p>
+              <p><strong>开庭时间</strong><span>{viewingCounselCase.data.execution_court_hearing_date||"—"}</span></p>
+              <p><strong>生效日期</strong><span>{viewingCounselCase.data.effective_date||"—"}</span></p>
+            </div>
+          </section>}
           <div className="case-detail-body-grid">
             <div className="case-detail-tab-area">
           <Tabs
@@ -3659,20 +3676,20 @@ export default function CaseCenterPage({
                 </aside>
                 <div className="case-document-list">
                 <input ref={counselDetailUploadRef} hidden type="file" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
-                <Space wrap style={{marginBottom:10}}>
+                <Table rowKey="id" size="small" pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
+                  {title:"序号",key:"sequence",width:70,render:(_:unknown,_row:AttachmentRow,index:number)=>index+1},
+                  {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
+                  {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
+                  {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
+                  {title:"操作",key:"actions",width:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
+                ]}/>
+                <Space wrap className="case-document-toolbar">
                   <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={caseFileTypeOptions}/>
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
                   {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocCategory}</Tag>}
                 </Space>
-                <Table rowKey="id" size="small" pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
-                  {title:"文件名称",dataIndex:"original_name",width:280,ellipsis:true},
-                  {title:"分类",dataIndex:"category",width:150,ellipsis:true},
-                  {title:"上传人",dataIndex:"uploader",width:110},
-                  {title:"上传时间",dataIndex:"created_at",width:170},
-                  {title:"操作",key:"actions",width:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
-                ]}/>
                 </div>
               </div>},
               {key:"firm-fees",label:"律所费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"律所")}>新增律所费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={financeRows.filter(row=>row.module==="finance"&&row.data.case_no===viewingCounselCase.serial_no&&row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"))} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"类型",render:(_:unknown,row:CaseRow)=>row.data.fee_type||""},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},

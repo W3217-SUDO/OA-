@@ -14,7 +14,7 @@ test("case detail document tabs wrap the folder tree and file list", () => {
   assert.ok(tree > documentTab);
   assert.ok(fileList > tree);
   assert.doesNotMatch(page.slice(documentTab, fileList), /case-doc-all|全部文档/);
-  assert.match(styles, /\.case-documents-layout\{display:grid;grid-template-columns:210px minmax\(0,1fr\)/);
+  assert.match(styles, /\.case-documents-layout\{grid-template-columns:280px minmax\(0,1fr\)/);
 });
 
 test("case folders use the legacy order and aligned yellow folder icons", () => {
@@ -31,4 +31,17 @@ test("case folders use the legacy order and aligned yellow folder icons", () => 
   assert.match(page, /FolderOutlined className="case-doc-icon"/);
   assert.match(styles, /\.case-doc-icon\{[^}]*color:#e8b834/);
   assert.match(styles, /\.case-doc-child\{padding-left:25px\}/);
+});
+
+test("case detail follows the legacy court and document-table layout", () => {
+  assert.match(page, /className="case-court-summary" aria-label="法院信息"/);
+  assert.match(page, /<strong>一审法院<\/strong>/);
+  assert.match(page, /<strong>执行法院<\/strong>/);
+  assert.match(page, /title:"序号"/);
+  assert.match(page, /title:"文档日期"/);
+
+  const table = page.indexOf('pagination={getCaseFilePagination()}');
+  const toolbar = page.indexOf('className="case-document-toolbar"');
+  assert.ok(table >= 0 && toolbar > table, "legacy action toolbar should render below the file table");
+  assert.match(styles, /\.case-detail-body-grid\{grid-template-columns:minmax\(0,1fr\) 250px/);
 });
