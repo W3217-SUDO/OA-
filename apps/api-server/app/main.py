@@ -530,6 +530,23 @@ def _upgrade_schema(connection) -> None:
             encoded_keys = json.dumps(migrated_keys, ensure_ascii=False).replace("'", "''")
             connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = 'user'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('ordinary_user_seal_my_menu_v1')"))
+    assistant_seal_scope_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'assistant_seal_my_scope_v1'"
+    )).first()
+    if not assistant_seal_scope_migrated:
+        role_row = connection.execute(text("SELECT permissions FROM job_roles WHERE code = 'ASSISTANT'")).mappings().first()
+        if role_row:
+            raw_permissions = role_row["permissions"]
+            permissions = list(raw_permissions if isinstance(raw_permissions, list) else json.loads(raw_permissions or "[]"))
+            retained = [
+                value for value in permissions
+                if not str(value).startswith("seal") and str(value) != "用印审批"
+            ]
+            seal_my_keys = _stored_menu_permission_keys(["seal-my"])
+            migrated_permissions = [*retained, *(key for key in seal_my_keys if key not in retained)]
+            encoded_permissions = json.dumps(migrated_permissions, ensure_ascii=False).replace("'", "''")
+            connection.execute(text(f"UPDATE job_roles SET permissions = '{encoded_permissions}' WHERE code = 'ASSISTANT'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('assistant_seal_my_scope_v1')"))
     # Remove the short-lived internal marker used by an earlier development
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
