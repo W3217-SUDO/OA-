@@ -29,7 +29,7 @@ test("contract approver options keep unique recorded person names", () => {
   assert.equal(isChinesePersonName("alice"), false);
 });
 
-test("contract and customer people never render usernames as names", () => {
+test("contract and customer people hide unregistered account identifiers", () => {
   const directory = [{ username: "zhangsan", display_name: "张三" }];
 
   assert.equal(displayChinesePersonName("zhangsan", directory), "张三");
@@ -37,7 +37,7 @@ test("contract and customer people never render usernames as names", () => {
   assert.equal(displayChinesePersonNames(["zhangsan", "alice"], directory), `张三、${PERSON_NAME_PLACEHOLDER}`);
 });
 
-test("customer people options allow a real English HR name when requested", () => {
+test("customer people options accept every non-empty system display name", () => {
   const options = buildChinesePersonOptions(
     [
       { username: "alice-account", display_name: "Alice Smith", eligible_customer_person: true },
@@ -51,13 +51,31 @@ test("customer people options allow a real English HR name when requested", () =
   assert.deepEqual(options, [
     { value: "alice-account", label: "Alice Smith" },
     { value: "range-manager", label: "范围经理员工" },
+    { value: "login-only", label: "login-only" },
   ]);
 });
 
-test("person display keeps a verified English HR name but never promotes an account name", () => {
-  const directory = [{ username: "alice-account", display_name: "Alice Smith" }];
+test("legacy option flags cannot invalidate a stored English display name", () => {
+  assert.deepEqual(
+    buildChinesePersonOptions(
+      [{ username: "fwl", display_name: "fwl" }],
+      () => true,
+      { allowNonChinese: false },
+    ),
+    [{ value: "fwl", label: "fwl" }],
+  );
+});
+
+test("person display accepts English names and names identical to usernames", () => {
+  const directory = [
+    { username: "alice-account", display_name: "Alice Smith" },
+    { username: "fwl", display_name: "fwl" },
+    { username: "missing", display_name: "" },
+  ];
 
   assert.equal(displayChinesePersonName("alice-account", directory), "Alice Smith");
   assert.equal(displayChinesePersonName("Alice Smith", directory), "Alice Smith");
+  assert.equal(displayChinesePersonName("fwl", directory), "fwl");
+  assert.equal(displayChinesePersonName("missing", directory), PERSON_NAME_PLACEHOLDER);
   assert.equal(displayChinesePersonName("alice", directory), PERSON_NAME_PLACEHOLDER);
 });

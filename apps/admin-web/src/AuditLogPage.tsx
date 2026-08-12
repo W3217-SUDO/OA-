@@ -19,9 +19,12 @@ type Log = {
   from_status: string;
   to_status: string;
   operator: string;
+  operator_display_name?: string;
   comment: string;
   created_at: string;
 };
+
+const personDisplayName = (value?: unknown) => String(value || "").trim() || "姓名待维护";
 
 const labels: Record<string, string> = {
   customer: "客户",
@@ -103,7 +106,7 @@ export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: stri
       width: 180,
       render: (_: unknown, row: Log) => row.from_status && row.from_status !== row.to_status ? <><Tag>{row.from_status}</Tag> → <Tag color="green">{row.to_status}</Tag></> : row.to_status || "—",
     },
-    { title: "操作人", dataIndex: "operator", width: 100 },
+    { title: "操作人", dataIndex: "operator_display_name", width: 100, render: personDisplayName },
     { title: "意见/说明", dataIndex: "comment", ellipsis: true },
   ];
 

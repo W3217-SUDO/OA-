@@ -41,6 +41,7 @@ type TaskRow = {
   status: string;
   workflow_status: string;
   owner: string;
+  owner_display_name?: string;
   description: string;
   deadline: string;
   days_remaining: number | null;
@@ -49,7 +50,9 @@ type TaskRow = {
   reminder_due: boolean;
   reminder_text: string;
   initiator: string;
+  initiator_display_name?: string;
   collaborators: string[];
+  collaborator_display_names?: string[];
   case_no: string;
   plaintiff: string;
   defendant: string;
@@ -67,6 +70,7 @@ type TaskRow = {
   exception_request?: { action?: string; status?: string; reason?: string };
   latest_unread_message: string;
   latest_unread_sender: string;
+  latest_unread_sender_display_name?: string;
   latest_unread_at: string;
   unread_count: number;
   latest_unread_notification_id?: number;
@@ -99,6 +103,7 @@ type HistoryItem = {
   id: number;
   action: string;
   operator: string;
+  operator_display_name?: string;
   comment: string;
   from_status: string;
   to_status: string;
@@ -110,6 +115,7 @@ type TaskFeedbackAttachment = {
   original_name: string;
   category: string;
   uploader: string;
+  uploader_display_name?: string;
   created_at: string;
   size: number;
   remark?: string;
@@ -125,6 +131,7 @@ type CaseRecord = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
 };
 type CaseContextTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 type DialogAction = "reject" | "resend";
@@ -150,6 +157,16 @@ type StatusTab = { key: string; label: string; statuses: string[] };
 
 const CASE_CONTEXT_TASK_DEFAULT_PAGE = 1;
 const CASE_CONTEXT_TASK_DEFAULT_PAGE_SIZE = 15;
+const PERSON_NAME_PLACEHOLDER = "姓名待维护";
+const visiblePersonName = (displayName?: string | null) =>
+  String(displayName || "").trim() || PERSON_NAME_PLACEHOLDER;
+const visibleOptionalPersonName = (reference?: string | null, displayName?: string | null) =>
+  String(reference || "").trim() ? visiblePersonName(displayName) : "—";
+const visibleCollaboratorNames = (row?: TaskRow | null) => {
+  if (!row?.collaborators?.length) return "—";
+  const names = (row.collaborator_display_names || []).map((name) => String(name || "").trim()).filter(Boolean);
+  return names.length === row.collaborators.length ? names.join("、") : PERSON_NAME_PLACEHOLDER;
+};
 const normalizeCaseContextTaskPageState = (
   payload: any,
   fallbackPage = CASE_CONTEXT_TASK_DEFAULT_PAGE,
@@ -1114,23 +1131,23 @@ export default function TaskCenterPage({
       title: "发起人",
       dataIndex: "initiator",
       width: 95,
-      render: (value: string) => value || "",
+      render: (_: string, row: TaskRow) => visiblePersonName(row.initiator_display_name),
     },
     {
       title: "负责人",
       dataIndex: "owner",
       width: 95,
-      render: (value: string) => value || "",
+      render: (_: string, row: TaskRow) => visiblePersonName(row.owner_display_name),
     },
   ];
   const unreadColumns: any[] = [
     { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true, render: (value: string, row: TaskRow) => { const label = `(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`; return <Button className="task-cell-link task-table-identifier" type="link" title={label} onClick={() => openCommunication(row)}>{label}</Button> } },
     { title: "关联案号", dataIndex: "case_no", width: 180, ellipsis: true, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>{value}</Button> : "—" },
     { title: "未读内容", dataIndex: "latest_unread_message", width: 360, ellipsis: true, render: (value: string) => value || "—" },
-    { title: "发送人", dataIndex: "latest_unread_sender", width: 140, ellipsis: true, render: (value: string) => value || "—" },
+    { title: "发送人", dataIndex: "latest_unread_sender", width: 140, ellipsis: true, render: (value: string, row: TaskRow) => visibleOptionalPersonName(value, row.latest_unread_sender_display_name) },
     { title: "发送时间", dataIndex: "latest_unread_at", width: 165, sorter: true, sortOrder: taskSort?.field === "updated_at" ? taskSort.order : null, render: (value: string) => value ? formatTaskDateTime(value) : "—" },
     { title: "任务状态", dataIndex: "status", width: 105, ellipsis: true, render: (value: string) => value || "—" },
-    { title: "负责人", dataIndex: "owner", width: 120, ellipsis: true, render: (value: string) => value || "—" },
+    { title: "负责人", dataIndex: "owner", width: 120, ellipsis: true, render: (_: string, row: TaskRow) => visiblePersonName(row.owner_display_name) },
   ];
   const columns = isUnread ? unreadColumns : standardColumns;
   const caseTaskContextPagination = {
@@ -1176,7 +1193,7 @@ export default function TaskCenterPage({
   const documentLabels = { authorization: "授权委托书", lawFirmLetter: "律所函", identity: "身份证明", settlement: "结算提成表" } as const;
   const openFee = (key: FeeAction, subtype: FeeSubtype) => requireOne((row) => {
     feeForm.resetFields();
-    feeForm.setFieldsValue({ amount: undefined, expense_date: dayjs(), applicant: profile.display_name || profile.username || row.owner, description: "" });
+    feeForm.setFieldsValue({ amount: undefined, expense_date: dayjs(), applicant: visiblePersonName(profile.display_name || row.owner_display_name), description: "" });
     setFeeAction(key);
     setFeeSubtype(subtype);
   });
@@ -1503,7 +1520,7 @@ export default function TaskCenterPage({
               <button type="button" className="task-mobile-card-body" onClick={() => openCommunication(row)}>
                 <span><b>任务编号</b>{row.serial_no || "-"}</span>
                 <span><b>案件编号</b>{row.case_no || "-"}</span>
-                <span><b>负责人</b>{row.owner || "-"}</span>
+                <span><b>负责人</b>{visiblePersonName(row.owner_display_name)}</span>
                 <span><b>优先级</b>{row.priority || "-"}</span>
                 <span><b>发起时间</b>{formatTaskDate(row.created_at) || "-"}</span>
                 <span><b>截止时间</b>{formatTaskDate(row.deadline) || "-"}</span>
@@ -1907,7 +1924,7 @@ export default function TaskCenterPage({
             columns={[
               { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true },
               { title: "任务名称", dataIndex: "title", width: 280, ellipsis: true },
-              { title: "负责人", dataIndex: "owner", width: 100 },
+              { title: "负责人", dataIndex: "owner", width: 100, render: (_: string, row: TaskRow) => visiblePersonName(row.owner_display_name) },
               { title: "截止日期", dataIndex: "deadline", width: 115 },
               { title: "状态", dataIndex: "status", width: 95, render: (value: string) => <Tag color={statusColors[value] || "blue"}>{value}</Tag> },
             ]}
@@ -1920,7 +1937,7 @@ export default function TaskCenterPage({
             renderItem={(item) => (
               <List.Item>
                 <List.Item.Meta
-                  title={<Space><Tag>{item.action}</Tag><b>{item.operator}</b><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></Space>}
+                  title={<Space><Tag>{item.action}</Tag><b>{visiblePersonName(item.operator_display_name)}</b><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></Space>}
                   description={<><div>{item.from_status && item.to_status ? `${item.from_status} → ${item.to_status}` : ""}</div><p>{item.comment || "-"}</p></>}
                 />
               </List.Item>
@@ -1967,12 +1984,12 @@ export default function TaskCenterPage({
         <div className="task-detail-meta">
           <span><b>任务标题：</b>{communication?.title || "-"}</span>
           <span><b>任务编号：</b>{communication?.serial_no?.replace(/^\([^)]*\)/, "") || "-"}</span>
-          <span><b>当前负责人：</b>{communication?.owner || "-"}</span>
-          <span><b>发布人：</b>{communication?.initiator || "-"}</span>
+          <span><b>当前负责人：</b>{visiblePersonName(communication?.owner_display_name)}</span>
+          <span><b>发布人：</b>{visiblePersonName(communication?.initiator_display_name)}</span>
           <span><b>关联案号：</b>{communication?.case_no ? <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(communication)}>{communication.case_no}</Button> : "-"}</span>
           <span><b>截止日期：</b>{communication?.deadline || "-"}</span>
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
-          <span><b>当前协作人：</b>{communication?.collaborators?.join(",") || "-"}</span>
+          <span><b>当前协作人：</b>{visibleCollaboratorNames(communication)}</span>
         </div>
         {communication && canWithdrawTask(communication) && (
           <div className="task-detail-actions">
@@ -2003,7 +2020,7 @@ export default function TaskCenterPage({
                   title={
                     <Space>
                       <Tag color={item.action === "任务沟通" ? "blue" : "default"}>{item.action}</Tag>
-                      <b>{item.operator}</b>
+                      <b>{visiblePersonName(item.operator_display_name)}</b>
                       <span>{new Date(item.created_at).toLocaleString("zh-CN")}</span>
                     </Space>
                   }
@@ -2021,7 +2038,7 @@ export default function TaskCenterPage({
             dataSource={taskMaterialAttachments}
             columns={[
               { title: "文件名", dataIndex: "original_name", ellipsis: true },
-              { title: "上传人", dataIndex: "uploader", width: 110 },
+              { title: "上传人", dataIndex: "uploader", width: 110, render: (_: string, item: TaskFeedbackAttachment) => visiblePersonName(item.uploader_display_name) },
               { title: "上传时间", dataIndex: "created_at", width: 168, render: (value: string) => formatTaskDateTime(value) },
               {
                 title: "操作",
@@ -2061,7 +2078,7 @@ export default function TaskCenterPage({
             dataSource={feedbackAttachments}
             columns={[
               { title: "文件名", dataIndex: "original_name", ellipsis: true },
-              { title: "上传人", dataIndex: "uploader", width: 110 },
+              { title: "上传人", dataIndex: "uploader", width: 110, render: (_: string, item: TaskFeedbackAttachment) => visiblePersonName(item.uploader_display_name) },
               { title: "上传时间", dataIndex: "created_at", width: 168, render: (value: string) => formatTaskDateTime(value) },
               {
                 title: "操作",

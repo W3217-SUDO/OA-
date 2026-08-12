@@ -7,10 +7,11 @@ import type {Dayjs} from 'dayjs'
 import {api} from './api'
 import './message-center.css'
 
-type Notice={id:number;sender:string;recipient:string;notification_type:string;title:string;content:string;level:string;is_read:boolean;read_at:string|null;created_at:string}
+type Notice={id:number;sender:string;sender_display_name?:string;recipient:string;recipient_display_name?:string;notification_type:string;title:string;content:string;level:string;is_read:boolean;read_at:string|null;created_at:string}
 type DirectoryUser={username:string;display_name:string;department:string}
 
 const levelColors:Record<string,string>={error:'red',warning:'orange',info:'blue'}
+const personDisplayName=(value?:unknown)=>String(value||'').trim()||'姓名待维护'
 const tabItems=[
   {key:'all',label:'全部消息'},
   {key:'unread',label:'未读消息'},
@@ -82,8 +83,8 @@ export default function MessageCenterPage(){
 
   const columns:TableColumnsType<Notice>=[
     {title:'序号',key:'sequence',width:62,align:'center',render:(_value,_row,index)=>index+1},
-    {title:'发送者',dataIndex:'sender',width:105,ellipsis:true},
-    {title:'接收者',dataIndex:'recipient',width:105,ellipsis:true},
+    {title:'发送者',dataIndex:'sender_display_name',width:105,ellipsis:true,render:personDisplayName},
+    {title:'接收者',dataIndex:'recipient_display_name',width:105,ellipsis:true,render:personDisplayName},
     {title:'标题',dataIndex:'title',width:190,ellipsis:true,render:(value:string,row)=><Button type="link" className="message-title" onClick={()=>openNotice(row)}>{value}</Button>},
     {title:'内容',dataIndex:'content',ellipsis:true},
     {title:'提交时间',dataIndex:'created_at',width:160,sorter:(a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime(),render:(value:string)=>new Date(value).toLocaleString('zh-CN',{hour12:false})},
@@ -110,10 +111,10 @@ export default function MessageCenterPage(){
     </Card>
     <Drawer open={Boolean(selected)} width={520} title={<Space><MailOutlined/>{selected?.title}</Space>} onClose={()=>setSelected(null)}>
       <p><Tag>{selected?.notification_type}</Tag><Tag color={selected?.is_read?'default':'red'}>{selected?.is_read?'已读':'未读'}</Tag></p>
-      <p>发送者：{selected?.sender}</p><p>接收者：{selected?.recipient}</p>
+      <p>发送者：{personDisplayName(selected?.sender_display_name)}</p><p>接收者：{personDisplayName(selected?.recipient_display_name)}</p>
       <p>时间：{selected?.created_at?new Date(selected.created_at).toLocaleString('zh-CN',{hour12:false}):''}</p>
       <Card size="small"><div className="message-content">{selected?.content}</div></Card>
     </Drawer>
-    <Modal open={composeOpen} title="发送站内消息" okText="发送" cancelText="取消" onOk={sendMessage} onCancel={()=>setComposeOpen(false)} destroyOnHidden><Form form={composeForm} layout="vertical"><Form.Item name="recipients" label="接收人" rules={[{required:true,message:'请选择接收人'}]}><Select mode="multiple" showSearch optionFilterProp="label" options={directory.map(user=>({value:user.username,label:`${user.display_name}（${user.username}｜${user.department}）`}))}/></Form.Item><Form.Item name="title" label="标题" rules={[{required:true},{max:200}]}><Input/></Form.Item><Form.Item name="content" label="消息内容" rules={[{required:true},{max:4000}]}><Input.TextArea rows={6} showCount maxLength={4000}/></Form.Item></Form></Modal>
+    <Modal open={composeOpen} title="发送站内消息" okText="发送" cancelText="取消" onOk={sendMessage} onCancel={()=>setComposeOpen(false)} destroyOnHidden><Form form={composeForm} layout="vertical"><Form.Item name="recipients" label="接收人" rules={[{required:true,message:'请选择接收人'}]}><Select mode="multiple" showSearch optionFilterProp="label" options={directory.map(user=>({value:user.username,label:`${personDisplayName(user.display_name)}｜${user.department||'未设置部门'}`}))}/></Form.Item><Form.Item name="title" label="标题" rules={[{required:true},{max:200}]}><Input/></Form.Item><Form.Item name="content" label="消息内容" rules={[{required:true},{max:4000}]}><Input.TextArea rows={6} showCount maxLength={4000}/></Form.Item></Form></Modal>
   </>
 }

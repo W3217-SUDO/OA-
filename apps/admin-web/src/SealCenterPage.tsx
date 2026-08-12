@@ -90,6 +90,7 @@ type SealRow = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
   description: string;
   data: Record<string, any>;
   seal_asset?: SealAsset;
@@ -109,6 +110,7 @@ type EventRow = {
   from_status: string;
   to_status: string;
   operator: string;
+  operator_display_name?: string;
   comment: string;
   created_at: string;
   audit_status?: string;
@@ -122,8 +124,10 @@ type AttachmentRow = {
   category: string;
   size: number;
   uploader: string;
+  uploader_display_name?: string;
   created_at: string;
 };
+const personDisplayName = (value?: unknown) => String(value || "").trim() || "姓名待维护";
 type SealPreviewMode = "binary" | "text" | "unsupported";
 function getSealPreviewMode(payload: { kind?: string }): SealPreviewMode {
   if (payload.kind === "image" || payload.kind === "pdf") return "binary";
@@ -1756,7 +1760,7 @@ export default function SealCenterPage({
         </Button>
       ),
     },
-    { title: "申请人", dataIndex: "owner", width: 90 },
+    { title: "申请人", dataIndex: "owner_display_name", width: 90, render: personDisplayName },
     {
       title: "申请时间",
       dataIndex: "created_at",
@@ -1877,7 +1881,7 @@ export default function SealCenterPage({
     {
       title: "审核人",
       width: 90,
-      render: (_: unknown, r: SealRow) => r.data.approver || "—",
+      render: (_: unknown, r: SealRow) => personDisplayName(r.data.approver_display_name),
     },
     {
       title: "审核时间",
@@ -2663,7 +2667,7 @@ export default function SealCenterPage({
               locale={{ emptyText: "暂无审计记录" }}
               columns={[
                 { title: "动作", dataIndex: "action", width: 150 },
-                { title: "操作人", dataIndex: "operator", width: 110 },
+                { title: "操作人", dataIndex: "operator_display_name", width: 110, render: personDisplayName },
                 { title: "备注", dataIndex: "comment", ellipsis: true },
                 { title: "时间", dataIndex: "created_at", width: 170, render: (value: string) => dayjs(value).format("YYYY-MM-DD HH:mm:ss") },
               ]}
@@ -2821,7 +2825,7 @@ export default function SealCenterPage({
                   placeholder="选择已上传盖章附件"
                   options={stampAttachments.map((file) => ({
                     value: file.id,
-                    label: file.original_name + "｜" + file.uploader,
+                    label: file.original_name + "｜" + personDisplayName(file.uploader_display_name),
                   }))}
                   onChange={(value) => setStampAttachmentId(Number(value) || null)}
                   dropdownRender={(menu) => (
@@ -3051,7 +3055,7 @@ export default function SealCenterPage({
                     </Tag>
                   ),
                 },
-                { key: "owner", label: "申请人", children: detail.owner },
+                { key: "owner", label: "申请人", children: personDisplayName(detail.owner_display_name) },
               ]}
             />
             <h3 className="seal-history-title">
@@ -3139,7 +3143,7 @@ export default function SealCenterPage({
                   dataIndex: "size",
                   render: (value: number) => formatSealAttachmentSize(value),
                 },
-                { title: "上传人", dataIndex: "uploader", width: 90 },
+                { title: "上传人", dataIndex: "uploader_display_name", width: 90, render: personDisplayName },
                 {
                   title: "上传时间",
                   dataIndex: "created_at",
@@ -3195,7 +3199,7 @@ export default function SealCenterPage({
                       {x.from_status || "创建"} → {x.to_status}
                     </Tag>
                     <div>
-                      {x.operator} ·{" "}
+                      {personDisplayName(x.operator_display_name)} ·{" "}
                       {dayjs(x.created_at).format("YYYY-MM-DD HH:mm")}
                     </div>
                     {x.comment && <small>{x.comment}</small>}
@@ -3277,7 +3281,7 @@ export default function SealCenterPage({
           locale={{ emptyText: "" }}
           dataSource={fileListAttachments}
           columns={[
-            { title: "上传人", dataIndex: "uploader" },
+            { title: "上传人", dataIndex: "uploader_display_name", render: personDisplayName },
             { title: "文件名称", dataIndex: "original_name" },
             {
               title: "类型",

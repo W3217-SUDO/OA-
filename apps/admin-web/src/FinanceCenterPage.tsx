@@ -81,6 +81,7 @@ type Fee = {
   updated_at?: string;
 };
 type FinanceFlow = Fee;
+type FinancePersonOption = { value: string; label: string; username: string };
 type Attachment = {
   id: number;
   original_name: string;
@@ -565,11 +566,14 @@ type PaymentPrintDocumentData = {
   contractNo: string;
   contractTitle: string;
   applicant: string;
+  applicantDisplayName: string;
   payer: string;
+  payerDisplayName: string;
   payee: string;
   amount: string;
   voucherNo: string;
   operator: string;
+  operatorDisplayName: string;
   remark: string;
   creator: string;
   printTime: string;
@@ -609,11 +613,16 @@ const createPaymentPrintPreview = (
     contractNo: row.data.contract_no,
     contractTitle: row.data.contract_title || "",
     applicant: row.data.applicant || row.owner || "",
+    applicantDisplayName:
+      row.data.applicant_display_name || row.data.owner_display_name || "",
     payer: row.data.payer || row.data.payer_name || row.customer || "",
+    payerDisplayName:
+      row.data.payer_display_name || row.data.payer_name_display_name || "",
     payee: payment.counterparty || row.data.payee,
     amount: money(payment.amount || 0),
     voucherNo: payment.voucher_no,
     operator: payment.operator,
+    operatorDisplayName: (payment as any).operator_display_name || "",
     remark: payment.remark || row.data.description || row.data.remark,
     creator,
     printTime,
@@ -840,6 +849,34 @@ export default function FinanceCenterPage({
     username: sessionUser.username || "",
     displayName: sessionUser.display_name || "",
   });
+  const [financePeople, setFinancePeople] = useState<FinancePersonOption[]>([]);
+  const financePersonNameMap = useMemo(() => {
+    const names = new Map<string, string>();
+    financePeople.forEach((person) => {
+      const displayName = String(person.label || person.value || "").trim();
+      if (!displayName) return;
+      [person.username, person.value, person.label].forEach((identity) => {
+        const key = String(identity || "").trim();
+        if (key) names.set(key, displayName);
+      });
+    });
+    if (currentUser.username && currentUser.displayName) {
+      names.set(currentUser.username, currentUser.displayName);
+    }
+    return names;
+  }, [financePeople, currentUser]);
+  const financePersonDisplayName = (identity: unknown, displayName?: unknown) => {
+    const explicitName = String(displayName || "").trim();
+    if (explicitName) return explicitName;
+    const key = String(identity || "").trim();
+    return financePersonNameMap.get(key) || "姓名待维护";
+  };
+  const financePersonDisplayNames = (identities: unknown, displayNames?: unknown) => {
+    const values = Array.isArray(identities) ? identities : [identities];
+    const names = Array.isArray(displayNames) ? displayNames : [];
+    const rendered = values.filter(Boolean).map((value, index) => financePersonDisplayName(value, names[index]));
+    return rendered.length ? rendered.join("、") : "姓名待维护";
+  };
   const [originalQueryDraft, setOriginalQueryDraft] = useState<
     Record<string, any>
   >({});
@@ -1056,12 +1093,58 @@ export default function FinanceCenterPage({
       }
     }
   };
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [invoiceEditTarget, setInvoiceEditTarget] =
+    useState<FinanceFlow | null>(null);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [invoiceForm] = Form.useForm();
+  const [refundForm] = Form.useForm();
   useEffect(() => {
     const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund", "finance_package", "finance_settlement", "finance_archive_settlement"]);
     if (!target) return;
     void (async () => {
       try {
         const { data } = await api.get(`/records/${target.id}`);
+        if (data.module === "finance" && target.action === "create_invoice") {
+          const contractResponse = await api.get("/records", {
+            params: { module: "contract", page_size: 100 },
+          });
+          setContracts(Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : []);
+          invoiceForm.resetFields();
+          invoiceForm.setFieldsValue({
+            case_no: data.data?.case_no || "",
+            case_record_id: data.data?.case_id || undefined,
+            contract_record_id: data.data?.contract_id || undefined,
+            case_fee_ids: [data.id],
+            customer: data.customer || "",
+            amount: Math.abs(Number(data.data?.amount || 0)) || undefined,
+            invoice_title: data.customer || "",
+            extra_amount: 0,
+            invoice_type: "增值税普通发票",
+            invoice_content: "法律服务费",
+            delivery_method: "电子发票",
+          });
+          setTab("invoices");
+          setInvoiceOpen(true);
+          return;
+        }
+        if (data.module === "finance" && target.action === "create_refund") {
+          const profile = await api.get("/auth/me");
+          refundForm.resetFields();
+          refundForm.setFieldsValue({
+            fee_record_id: data.id,
+            case_no: data.data?.case_no || "",
+            customer: data.customer || "",
+            court: data.data?.court || data.data?.payee || "",
+            original_payment_no: data.data?.document_no || "",
+            amount: Math.abs(Number(data.data?.amount || 0)) || undefined,
+            applicant: profile.data?.display_name || data.owner_display_name || "姓名待维护",
+            reason: "诉讼费退费",
+          });
+          setTab("refunds");
+          setRefundOpen(true);
+          return;
+        }
         if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(data.module)) {
           setFeeDetail(data);
         } else if (data.module === "invoice") {
@@ -1076,10 +1159,6 @@ export default function FinanceCenterPage({
       }
     })();
   }, []);
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [invoiceEditTarget, setInvoiceEditTarget] =
-    useState<FinanceFlow | null>(null);
-  const [refundOpen, setRefundOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [incomingOpen, setIncomingOpen] = useState(false);
@@ -1106,8 +1185,6 @@ export default function FinanceCenterPage({
   const [writeoffTarget, setWriteoffTarget] = useState<Fee | null>(null);
   const bankUploadRef = useRef<HTMLInputElement>(null);
   const [feeForm] = Form.useForm();
-  const [invoiceForm] = Form.useForm();
-  const [refundForm] = Form.useForm();
   const [issueForm] = Form.useForm();
   const [voidForm] = Form.useForm();
   const [invoiceNumberForm] = Form.useForm();
@@ -1396,7 +1473,7 @@ export default function FinanceCenterPage({
       payee:
         query.routeField9 ||
         (initialView === "finance-internal-detail"
-          ? currentUser.displayName || currentUser.username
+          ? currentUser.displayName || "姓名待维护"
           : ""),
       case_stages: listValue(query.routeField10),
       fee_types: listValue(query.routeField11),
@@ -1722,6 +1799,7 @@ export default function FinanceCenterPage({
         generalSettlementRes,
         archiveSettlementRes,
         feeQueryRes,
+        peopleRes,
       ] = await Promise.all([
         initialView === "finance-payment-query"
           ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
@@ -1779,7 +1857,7 @@ export default function FinanceCenterPage({
                   ? {
                       routeField7: "全部",
                       routeField9:
-                        currentUser.displayName || currentUser.username,
+                        currentUser.displayName || "姓名待维护",
                     }
                   : { routeField7: "全部" },
                 1,
@@ -1890,6 +1968,7 @@ export default function FinanceCenterPage({
           : Promise.resolve({
               data: { items: [], total: 0, totals: {}, page: 1, page_size: 15 },
             }),
+        api.get("/people/options").catch(() => ({ data: { items: [] } })),
       ]);
       setFees(feeRes.data.items);
       setFinanceFeeListMeta({
@@ -1942,6 +2021,7 @@ export default function FinanceCenterPage({
         username: profileRes.data.username || "",
         displayName: profileRes.data.display_name || "",
       });
+      setFinancePeople(peopleRes.data.items || []);
       setPendingSettlements(settlementRes.data.items);
       setRefundReviewFees(refundReviewRes.data.items);
       const normalizedPaymentPackages = normalizePaymentPackageResponse(
@@ -2073,7 +2153,7 @@ export default function FinanceCenterPage({
                   ? {
                       routeField7: "全部",
                       routeField9:
-                        currentUser.displayName || currentUser.username,
+                        currentUser.displayName || "姓名待维护",
                     }
                   : initialView === "finance-internal-company"
                     ? { routeField7: "全部" }
@@ -2525,7 +2605,7 @@ export default function FinanceCenterPage({
     const preview = createPaymentPrintPreview(
       printRow,
       transactions,
-      currentUser.displayName || currentUser.username,
+      currentUser.displayName || "姓名待维护",
       dayjs().format("YYYY-MM-DD HH:mm"),
     );
     if (!preview) {
@@ -3072,7 +3152,7 @@ export default function FinanceCenterPage({
       title: "认领人",
       dataIndex: "claimant",
       width: 90,
-      render: (v: string) => v || "—",
+      render: (v: string, row: IncomingPayment) => financePersonDisplayName(v, (row as any).claimant_display_name),
     },
     { title: "备注", dataIndex: "remark", ellipsis: true },
     {
@@ -3462,7 +3542,7 @@ export default function FinanceCenterPage({
       ),
     },
     { title: "对方单位", dataIndex: "counterparty", width: 190 },
-    { title: "登记人", dataIndex: "operator", width: 90 },
+    { title: "登记人", dataIndex: "operator", width: 90, render: (value:string,row:Transaction) => financePersonDisplayName(value,(row as any).operator_display_name) },
     { title: "备注", dataIndex: "remark" },
     ...(role === "admin"
       ? [
@@ -3511,7 +3591,7 @@ export default function FinanceCenterPage({
         <Tag color={v === "已确认" ? "green" : "orange"}>{v}</Tag>
       ),
     },
-    { title: "操作人", dataIndex: "operator", width: 90 },
+    { title: "操作人", dataIndex: "operator", width: 90, render: (value:string,row:Reconciliation) => financePersonDisplayName(value,(row as any).operator_display_name) },
     { title: "备注", dataIndex: "remark" },
     {
       title: "操作",
@@ -4507,12 +4587,12 @@ export default function FinanceCenterPage({
     {
       title: "申请人",
       width: 90,
-      render: (_: unknown, row: Fee) => row.data.applicant || row.owner || "—",
+      render: (_: unknown, row: Fee) => financePersonDisplayName(row.data.applicant || row.owner, row.data.applicant_display_name || (row as any).owner_display_name),
     },
     {
       title: "客户管理人",
       width: 100,
-      render: (_: unknown, row: Fee) => row.data.customer_manager || "—",
+      render: (_: unknown, row: Fee) => financePersonDisplayName(row.data.customer_manager, row.data.customer_manager_display_name),
     },
     {
       title: "交款人",
@@ -4545,7 +4625,7 @@ export default function FinanceCenterPage({
     {
       title: "申请人",
       width: 90,
-      render: (_: unknown, row: Fee) => row.data.applicant || row.owner || "—",
+      render: (_: unknown, row: Fee) => financePersonDisplayName(row.data.applicant || row.owner, row.data.applicant_display_name || (row as any).owner_display_name),
     },
     {
       title: "申请付款金额",
@@ -4642,7 +4722,7 @@ export default function FinanceCenterPage({
     {
       title: "申请人",
       width: 90,
-      render: (_: unknown, row: Fee) => row.data.applicant || row.owner || "—",
+      render: (_: unknown, row: Fee) => financePersonDisplayName(row.data.applicant || row.owner, row.data.applicant_display_name || (row as any).owner_display_name),
     },
   ];
   const feeQueryOriginalColumns = [
@@ -4704,12 +4784,12 @@ export default function FinanceCenterPage({
     {
       title: "申请人",
       width: 90,
-      render: (_: unknown, row: Fee) => row.data.applicant || row.owner || "—",
+      render: (_: unknown, row: Fee) => financePersonDisplayName(row.data.applicant || row.owner, row.data.applicant_display_name || (row as any).owner_display_name),
     },
     {
       title: "经办人",
       width: 90,
-      render: (_: unknown, row: Fee) => row.data.handler || row.owner || "—",
+      render: (_: unknown, row: Fee) => financePersonDisplayName(row.data.handler || row.owner, row.data.handler_display_name || (row as any).owner_display_name),
     },
     {
       title: "收款单位",
@@ -5905,7 +5985,10 @@ export default function FinanceCenterPage({
   const openInvoiceProcess = (row: FinanceFlow) => {
     issueForm.setFieldsValue({
       invoice_holder:
-        row.data?.recipient || currentUser.displayName || currentUser.username,
+        financePersonDisplayName(
+          row.data?.recipient || currentUser.username,
+          row.data?.recipient_display_name || currentUser.displayName,
+        ),
       extra_amount: Number(row.data?.extra_amount || 0),
       invoice_no: "",
       invoice_date: dayjs(),
@@ -6098,33 +6181,33 @@ export default function FinanceCenterPage({
       票据状态: isFeeQueryRoute ? caseFeeRefundStatusLabel(row) : row.status,
       客户: row.customer || row.claimed_customer,
       客户名称: row.customer || row.claimed_customer,
-      客户管理人: data.customer_manager || linkedCaseData.customer_manager,
+      客户管理人: financePersonDisplayName(
+        data.customer_manager || linkedCaseData.customer_manager,
+        data.customer_manager_display_name || linkedCaseData.customer_manager_display_name,
+      ),
       案号: data.case_no,
       案件编号: data.case_no,
       案件阶段:
         data.case_stage || linkedCaseData.case_stage || linkedCase?.status,
       结算状态: data.settlement_status || row.status,
-      案源人:
-        data.case_source ||
-        data.source_person ||
-        linkedCaseData.case_source ||
-        linkedCaseData.business_owner,
-      调查员: data.investigator || linkedCaseData.investigator,
-      调查人: data.investigator || linkedCaseData.investigator,
-      经办律师:
-        data.handling_lawyer ||
-        data.handler ||
-        linkedCaseData.handling_lawyer ||
-        linkedCaseData.case_lawyer,
-      律师助理:
-        data.lawyer_assistant ||
-        data.assistant ||
-        linkedCaseData.lawyer_assistant ||
-        linkedCaseData.assistant,
-      品管: data.quality_manager || data.quality_control,
+      案源人: financePersonDisplayName(
+        data.case_source || data.source_person || linkedCaseData.case_source || linkedCaseData.business_owner,
+        data.case_source_display_name || data.source_person_display_name || linkedCaseData.case_source_display_name || linkedCaseData.business_owner_display_name,
+      ),
+      调查员: financePersonDisplayName(data.investigator || linkedCaseData.investigator, data.investigator_display_name || linkedCaseData.investigator_display_name),
+      调查人: financePersonDisplayName(data.investigator || linkedCaseData.investigator, data.investigator_display_name || linkedCaseData.investigator_display_name),
+      经办律师: financePersonDisplayNames(
+        data.handling_lawyers || data.handling_lawyer || data.handler || linkedCaseData.handling_lawyers || linkedCaseData.handling_lawyer || linkedCaseData.case_lawyer,
+        data.handling_lawyer_display_names || linkedCaseData.handling_lawyer_display_names,
+      ),
+      律师助理: financePersonDisplayName(
+        data.lawyer_assistant || data.assistant || linkedCaseData.lawyer_assistant || linkedCaseData.assistant,
+        data.lawyer_assistant_display_name || data.assistant_display_name || linkedCaseData.lawyer_assistant_display_name || linkedCaseData.assistant_display_name,
+      ),
+      品管: financePersonDisplayName(data.quality_manager || data.quality_control, data.quality_manager_display_name || data.quality_control_display_name),
       公证书号: data.certificate_no,
-      助理: data.assistant || data.lawyer_assistant,
-      开庭律师: data.hearing_lawyer,
+      助理: financePersonDisplayName(data.assistant || data.lawyer_assistant, data.assistant_display_name || data.lawyer_assistant_display_name),
+      开庭律师: financePersonDisplayName(data.hearing_lawyer, data.hearing_lawyer_display_name),
       法院案号: data.court_case_no,
       法院名称: data.court_name,
       案件名称:
@@ -6145,17 +6228,22 @@ export default function FinanceCenterPage({
         linkedCaseData.defendant ||
         linkedCaseData.appellee_names ||
         linkedCaseData.opponent,
-      申请人: data.applicant || row.owner,
+      申请人: financePersonDisplayName(data.applicant || row.owner, data.applicant_display_name || row.owner_display_name),
       申请日期: (data.application_date || row.created_at || "").slice?.(0, 10),
-      提交人:
+      提交人: financePersonDisplayName(
         data.archive_payment_submitted_by || data.submitted_by || row.owner,
+        data.archive_payment_submitter_display_name || data.submitted_by_display_name || row.owner_display_name,
+      ),
       提交日期: (
         data.archive_payment_submitted_at ||
         data.settlement_paid_at ||
         row.created_at ||
         ""
       ).slice?.(0, 10),
-      审核人: data.archive_payment_reviewer || data.reviewer,
+      审核人: financePersonDisplayName(
+        data.archive_payment_reviewer || data.reviewer,
+        data.archive_payment_reviewer_display_name || data.reviewer_display_name,
+      ),
       审核日期: (
         data.archive_payment_reviewed_at ||
         data.audit_date ||
@@ -7092,7 +7180,7 @@ export default function FinanceCenterPage({
         ...(initialView === "finance-internal-detail"
           ? {
               routeField9:
-                currentUser.displayName || currentUser.username || "管理者",
+                currentUser.displayName || "姓名待维护",
             }
           : {}),
       };
@@ -8023,7 +8111,10 @@ export default function FinanceCenterPage({
             {feeDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(feeDetail.customer, feeDetail.data.customer_no)}>{feeDetail.customer}</Button> : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="客户管理人">
-            {feeDetail.data.customer_manager || "—"}
+            {financePersonDisplayName(
+              feeDetail.data.customer_manager,
+              feeDetail.data.customer_manager_display_name,
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="申请编号">
             {feeDetail.serial_no || "—"}
@@ -8079,10 +8170,16 @@ export default function FinanceCenterPage({
                     {
                       index: 1,
                       payee:
-                        feeDetail.data.payee ||
-                        feeDetail.data.applicant ||
-                        feeDetail.owner ||
-                        "—",
+                        feeDetail.data.payee && !feeDetail.data.payee_username
+                          ? feeDetail.data.payee
+                          : financePersonDisplayName(
+                              feeDetail.data.payee_username ||
+                                feeDetail.data.applicant ||
+                                feeDetail.owner,
+                              feeDetail.data.payee_display_name ||
+                                feeDetail.data.applicant_display_name ||
+                                feeDetail.data.owner_display_name,
+                            ),
                       fee_type: feeDetail.data.fee_type || "—",
                       base: Number(
                         feeDetail.data.commission_base || 0,
@@ -8248,9 +8345,10 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="开票申请号">{invoiceDisplay.serial_no}</Descriptions.Item>
           <Descriptions.Item label="客户名称">{invoiceDisplay.customer ? <Button type="link" onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button> : "—"}</Descriptions.Item>
           <Descriptions.Item label="开票申请人">
-            {(invoiceDetailData.applicant || invoiceDisplay.owner) === currentUser.username
-              ? currentUser.displayName || currentUser.username
-              : invoiceDetailData.applicant || invoiceDisplay.owner}
+            {financePersonDisplayName(
+              invoiceDetailData.applicant || invoiceDisplay.owner,
+              invoiceDetailData.applicant_display_name || invoiceDetailData.owner_display_name,
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="申请备注" span={4}>{invoiceDetailData.remark || ""}</Descriptions.Item>
         </> : invoiceCancel ? <>
@@ -8259,9 +8357,10 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="合同名称">{invoiceDetailData.contract_name || ""}</Descriptions.Item>
           <Descriptions.Item label="客户名称">{invoiceDisplay.customer ? <Button type="link" onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button> : "—"}</Descriptions.Item>
           <Descriptions.Item label="开票申请人">
-            {(invoiceDetailData.applicant || invoiceDisplay.owner) === currentUser.username
-              ? currentUser.displayName || currentUser.username
-              : invoiceDetailData.applicant || invoiceDisplay.owner}
+            {financePersonDisplayName(
+              invoiceDetailData.applicant || invoiceDisplay.owner,
+              invoiceDetailData.applicant_display_name || invoiceDetailData.owner_display_name,
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="开票申请号">{invoiceDisplay.serial_no}</Descriptions.Item>
           <Descriptions.Item label="申请日期">
@@ -8270,12 +8369,18 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="申请备注">{invoiceDetailData.remark || ""}</Descriptions.Item>
           <Descriptions.Item label="发票号">{invoiceDetailData.invoice_no || ""}</Descriptions.Item>
           <Descriptions.Item label="票据状态">{invoiceDisplay.status}</Descriptions.Item>
-          <Descriptions.Item label="领票人">{invoiceDetailData.recipient || ""}</Descriptions.Item>
+          <Descriptions.Item label="领票人">
+            {financePersonDisplayName(
+              invoiceDetailData.recipient || invoiceDetailData.invoice_holder,
+              invoiceDetailData.recipient_display_name || invoiceDetailData.invoice_holder_display_name,
+            )}
+          </Descriptions.Item>
         </> : <>
           <Descriptions.Item label="开票申请人">
-            {(invoiceDetailData.applicant || invoiceDisplay.owner) === currentUser.username
-              ? currentUser.displayName || currentUser.username
-              : invoiceDetailData.applicant || invoiceDisplay.owner}
+            {financePersonDisplayName(
+              invoiceDetailData.applicant || invoiceDisplay.owner,
+              invoiceDetailData.applicant_display_name || invoiceDetailData.owner_display_name,
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="开票申请号">{invoiceDisplay.serial_no}</Descriptions.Item>
           <Descriptions.Item label="申请日期">
@@ -8284,7 +8389,12 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="客户名称">{invoiceDisplay.customer ? <Button type="link" onClick={() => openCustomerDetail(invoiceDisplay.customer, invoiceDetailData.customer_no)}>{invoiceDisplay.customer}</Button> : "—"}</Descriptions.Item>
           <Descriptions.Item label="发票号">{invoiceDetailData.invoice_no || ""}</Descriptions.Item>
           <Descriptions.Item label="票据状态">{invoiceDisplay.status}</Descriptions.Item>
-          <Descriptions.Item label="领票人">{invoiceDetailData.recipient || ""}</Descriptions.Item>
+          <Descriptions.Item label="领票人">
+            {financePersonDisplayName(
+              invoiceDetailData.recipient || invoiceDetailData.invoice_holder,
+              invoiceDetailData.recipient_display_name || invoiceDetailData.invoice_holder_display_name,
+            )}
+          </Descriptions.Item>
           <Descriptions.Item label="申请备注">{invoiceDetailData.remark || ""}</Descriptions.Item>
           <Descriptions.Item label="开票意见" span={4}>{invoiceDetailData.invoiced_opinion || invoiceDetailData.review_comment || ""}</Descriptions.Item>
         </>}
@@ -8452,7 +8562,7 @@ export default function FinanceCenterPage({
               <th>付款凭证号：</th>
               <td>{paymentPrintPreview.voucherNo || "—"}</td>
               <th>经办人：</th>
-              <td>{paymentPrintPreview.operator || "—"}</td>
+              <td>{financePersonDisplayName(paymentPrintPreview.operator, paymentPrintPreview.operatorDisplayName)}</td>
             </tr>
           </tbody>
         </table>
@@ -8473,8 +8583,8 @@ export default function FinanceCenterPage({
               <td>{paymentPrintPreview.amount || "—"}</td>
               <td>{paymentPrintPreview.feeType || "—"}</td>
               <td>{paymentPrintPreview.feeTitle || "—"}</td>
-              <td>{paymentPrintPreview.applicant || "—"}</td>
-              <td>{paymentPrintPreview.payer || "—"}</td>
+              <td>{financePersonDisplayName(paymentPrintPreview.applicant, paymentPrintPreview.applicantDisplayName)}</td>
+              <td>{financePersonDisplayName(paymentPrintPreview.payer, paymentPrintPreview.payerDisplayName)}</td>
             </tr>
             <tr>
               <th>备注：</th>
@@ -8482,7 +8592,7 @@ export default function FinanceCenterPage({
             </tr>
             <tr className="finance-payment-print-subtotal">
               <td colSpan={4}>
-                制单：{paymentPrintPreview.creator || "—"}　打印时间：
+                制单：{financePersonDisplayName(paymentPrintPreview.creator, paymentPrintPreview.creator)}　打印时间：
                 {paymentPrintPreview.printTime || "—"}
               </td>
               <th>小计</th>
@@ -8786,8 +8896,8 @@ export default function FinanceCenterPage({
                                   <br />提交时间: {String(row.data?.applied_at || row.created_at || "").replace("T", " ")}
                                 </span>
                                 <span>
-                                  审核人: {row.data?.reviewer || "—"}
-                                  <br />提交人: {row.data?.applied_by || row.owner || "—"}
+                                  审核人: {financePersonDisplayName(row.data?.reviewer, row.data?.reviewer_display_name)}
+                                  <br />提交人: {financePersonDisplayName(row.data?.applied_by || row.owner, row.data?.applied_by_display_name || row.data?.owner_display_name)}
                                 </span>
                                 <span>
                                   审核备注: <em>{row.data?.review_comment || ""}</em>
@@ -8810,8 +8920,8 @@ export default function FinanceCenterPage({
                                   <br />提交时间: {String(row.data?.applied_at || row.created_at || "").replace("T", " ")}
                                 </span>
                                 <span>
-                                  审核人: {row.data?.reviewer || "—"}
-                                  <br />提交人: {row.data?.applied_by || row.owner || "—"}
+                                  审核人: {financePersonDisplayName(row.data?.reviewer, row.data?.reviewer_display_name)}
+                                  <br />提交人: {financePersonDisplayName(row.data?.applied_by || row.owner, row.data?.applied_by_display_name || row.data?.owner_display_name)}
                                 </span>
                                 <span>
                                   审核备注: <em>{row.data?.review_comment || row.data?.rejection_comment || ""}</em>
@@ -8826,7 +8936,7 @@ export default function FinanceCenterPage({
                               <div className="finance-settlement-audit-context">
                                 <span>
                                   提交时间: {String(row.data?.applied_at || row.created_at || "").replace("T", " ")}
-                                  <br />提交人: {row.data?.applied_by || row.owner || "—"}
+                                  <br />提交人: {financePersonDisplayName(row.data?.applied_by || row.owner, row.data?.applied_by_display_name || row.data?.owner_display_name)}
                                 </span>
                                 <span>
                                   提交备注:
@@ -8887,8 +8997,8 @@ export default function FinanceCenterPage({
                                   { title: <span className="finance-stacked-header"><span>本笔</span><span>结算金额</span></span>, dataIndex: "settlement_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
                                   { title: <span className="finance-stacked-header"><span>本笔</span><span>归档费</span></span>, dataIndex: "archive_fee", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
                                   { title: "客户", dataIndex: "customer", width: 216, render: (value, detail: any) => value ? <Button type="link" onClick={() => openCustomerDetail(value, detail.customer_no)}>{value}</Button> : "—" },
-                                  { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 115 },
-                                  { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 115 },
+                                  { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 115, render: (value, detail: any) => financePersonDisplayNames(detail.handling_lawyers || value, detail.handling_lawyer_display_names || detail.handling_lawyer_display_name) },
+                                  { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 115, render: (value, detail: any) => financePersonDisplayName(value, detail.assistant_display_name || detail.lawyer_assistant_display_name) },
                                   { title: "合同号", dataIndex: "contract_no", width: 144, render: (value) => value ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—" },
                                 ]}
                               />
@@ -8906,10 +9016,10 @@ export default function FinanceCenterPage({
                             <div className="finance-archive-payment-context">
                               <span>
                                 {(isArchiveSettlementPaidRoute || isArchiveSettlementRejectedRoute) && (
-                                  <>归档费审核人: {row.data?.archive_payment_reviewer || "—"}<br /></>
+                                  <>归档费审核人: {financePersonDisplayName(row.data?.archive_payment_reviewer, row.data?.archive_payment_reviewer_display_name)}<br /></>
                                 )}
-                                归档审核人: {row.data?.archive_reviewer || "—"}
-                                <br />归档申请人: {row.data?.archive_submitter || "—"}
+                                归档审核人: {financePersonDisplayName(row.data?.archive_reviewer, row.data?.archive_reviewer_display_name)}
+                                <br />归档申请人: {financePersonDisplayName(row.data?.archive_submitter, row.data?.archive_submitter_display_name)}
                               </span>
                               <span>
                                 {(isArchiveSettlementPaidRoute || isArchiveSettlementRejectedRoute) && (
@@ -10314,9 +10424,7 @@ export default function FinanceCenterPage({
                         feeForm.setFieldsValue({
                           fee_type: "官方费用",
                           handler:
-                            currentUser.displayName ||
-                            currentUser.username ||
-                            "管理者",
+                            currentUser.displayName || "姓名待维护",
                         });
                         setFeeOpen(true);
                       }}
@@ -10441,10 +10549,7 @@ export default function FinanceCenterPage({
                       icon={<PlusOutlined />}
                       onClick={() => {
                         refundForm.setFieldsValue({
-                          applicant:
-                            currentUser.displayName ||
-                            currentUser.username ||
-                            "管理者",
+                          applicant: currentUser.displayName || "姓名待维护",
                           reason: "诉讼费退费",
                         });
                         setRefundOpen(true);
@@ -10823,7 +10928,7 @@ export default function FinanceCenterPage({
                   { title: "任务编号", dataIndex: "serial_no", width: 150 },
                   { title: "任务名称", dataIndex: "title", width: 200 },
                   { title: "状态", dataIndex: "status", width: 90 },
-                  { title: "负责人", dataIndex: "owner", width: 100 },
+                  { title: "负责人", dataIndex: "owner", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.owner_display_name) },
                   { title: "截止日期", dataIndex: "deadline", width: 120 },
                 ]
               : [
@@ -10835,7 +10940,7 @@ export default function FinanceCenterPage({
                     render: (_: unknown, row: any) =>
                       `${row.from_status || "—"} → ${row.to_status || "—"}`,
                   },
-                  { title: "操作人", dataIndex: "operator", width: 100 },
+                  { title: "操作人", dataIndex: "operator", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.operator_display_name) },
                   { title: "说明", dataIndex: "comment" },
                   {
                     title: "时间",
@@ -10959,7 +11064,7 @@ export default function FinanceCenterPage({
               render: (value: number) => money(value),
             },
             { title: "分配方式", dataIndex: "payment_method", width: 110 },
-            { title: "分配人", dataIndex: "allocated_by", width: 100 },
+            { title: "分配人", dataIndex: "allocated_by", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.allocated_by_display_name) },
             { title: "分配时间", dataIndex: "allocated_at", width: 180 },
           ]}
         />
@@ -11350,7 +11455,10 @@ export default function FinanceCenterPage({
               {latestTransaction(feeDetail)?.transaction_date || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="申请人">
-              {feeDetail.data.applicant || feeDetail.owner || "—"}
+              {financePersonDisplayName(
+                feeDetail.data.applicant || feeDetail.owner,
+                feeDetail.data.applicant_display_name || feeDetail.data.owner_display_name,
+              )}
             </Descriptions.Item>
             <Descriptions.Item label="缴费法院/机构">
               {feeDetail.data.court || "—"}
@@ -11383,7 +11491,7 @@ export default function FinanceCenterPage({
             <Descriptions.Item label="退款账户">{refundDetail.data.refund_account_name || "—"}</Descriptions.Item>
             <Descriptions.Item label="实际到账">{refundDetail.data.actual_date || "—"}</Descriptions.Item>
             <Descriptions.Item label="退款凭证号">{refundDetail.data.voucher_no || "—"}</Descriptions.Item>
-            <Descriptions.Item label="申请人">{refundDetail.data.applicant || refundDetail.owner || "—"}</Descriptions.Item>
+            <Descriptions.Item label="申请人">{financePersonDisplayName(refundDetail.data.applicant || refundDetail.owner, refundDetail.data.applicant_display_name || refundDetail.data.owner_display_name)}</Descriptions.Item>
             <Descriptions.Item label="说明" span={2}>{refundDetail.description || refundDetail.data.remark || "—"}</Descriptions.Item>
           </Descriptions>
         )}
@@ -11620,6 +11728,9 @@ export default function FinanceCenterPage({
         onCancel={() => setRefundOpen(false)}
       >
         <Form form={refundForm} layout="vertical">
+          <Form.Item name="fee_record_id" hidden>
+            <Input />
+          </Form.Item>
           <div className="form-grid">
             <Form.Item
               className="span-2"

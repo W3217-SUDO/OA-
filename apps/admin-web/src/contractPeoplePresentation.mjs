@@ -18,21 +18,13 @@ const directoryName = (value, directory) => {
   return displayLabel(matched?.display_name);
 };
 
-const isDirectoryPersonName = (value, directory) => {
-  const identifier = normalize(value);
-  return directory.some((user) =>
-    (normalize(user?.username) === identifier || normalize(user?.display_name) === identifier) &&
-    normalize(user?.display_name) !== normalize(user?.username),
-  );
-};
-
 export const displayChinesePersonName = (value, directory = []) => {
   const raw = normalize(value);
   const candidate = directoryName(raw, directory);
   if (isChinesePersonName(raw)) return raw;
-  if (isChinesePersonName(candidate)) return candidate;
-  // English names are valid only when the directory identifies them as an employee's name.
-  return isDirectoryPersonName(raw, directory) ? candidate : PERSON_NAME_PLACEHOLDER;
+  // A non-empty system display_name is authoritative, regardless of language or
+  // whether it is identical to the login account.
+  return candidate || PERSON_NAME_PLACEHOLDER;
 };
 
 export const displayChinesePersonNames = (values, directory = []) => {
@@ -41,15 +33,13 @@ export const displayChinesePersonNames = (values, directory = []) => {
   return names.length ? names.join("、") : PERSON_NAME_PLACEHOLDER;
 };
 
-export const buildChinesePersonOptions = (users = [], predicate = () => true, { allowNonChinese = true } = {}) => {
+export const buildChinesePersonOptions = (users = [], predicate = () => true, _options = {}) => {
   const candidates = users
     .filter((user) => predicate(user))
     .map((user) => ({ username: normalize(user?.username), display_name: displayLabel(user?.display_name) }))
     .filter((user) => {
       if (!user.username || !user.display_name || user.display_name === PERSON_NAME_PLACEHOLDER) return false;
-      if (isChinesePersonName(user.display_name)) return true;
-      // A non-Chinese name is valid when HR stores it separately from the login account.
-      return allowNonChinese && normalize(user.display_name) !== user.username;
+      return true;
     });
   const counts = candidates.reduce((result, user) => {
     result.set(user.display_name, (result.get(user.display_name) || 0) + 1);

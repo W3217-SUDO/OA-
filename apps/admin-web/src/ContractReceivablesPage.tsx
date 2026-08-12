@@ -30,6 +30,7 @@ type Contract = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
   department: string;
   data: Record<string, any>;
 };
@@ -38,6 +39,11 @@ export type ReceivableDetailAmountFilter = "official-unreceived" | "official-los
 type ReceivableDetailContext = { contract_no: string; return_view: string; amount_filter?: ReceivableDetailAmountFilter };
 
 const money = (value: unknown) => Number(value || 0).toFixed(2);
+const personDisplayName = (value: unknown) => String(value || "").trim() || "姓名待维护";
+const peopleDisplayNames = (value: unknown) => {
+  const names = (Array.isArray(value) ? value : [value]).map((item) => String(item || "").trim()).filter(Boolean);
+  return names.length ? names.join("、") : "姓名待维护";
+};
 export const shouldUseMyReceivablesPagination = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView);
 export const shouldShowMyReceivablesSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => ["contract-receivable-mine", "contract-receivable-dept"].includes(initialView) && rowCount > 0 && rowCount <= pageSize;
 export const receivablesDetailPageSizes = [10, 15, 20, 50, 100, 200];
@@ -260,8 +266,8 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     { title: "代理费总金额", key: "agency_total", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.agency_total) },
     { title: "代理费到账金额", key: "agency_received", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => money(row.data.agency_received) },
     { title: "代理费待收金额", key: "agency_due", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openReceivableDetail(row, "agency-due")}>{money(row.data.agency_due)}</Button> },
-    { title: "案源人", key: "source", width: 90, render: (_: unknown, row: Contract) => row.data.source_person || row.owner },
-    { title: "客户管理人", key: "manager", width: 100, render: (_: unknown, row: Contract) => row.data.customer_manager || "—" },
+    { title: "案源人", key: "source", width: 90, render: (_: unknown, row: Contract) => personDisplayName(row.data.source_person_display_name || row.owner_display_name) },
+    { title: "客户管理人", key: "manager", width: 100, render: (_: unknown, row: Contract) => peopleDisplayNames(row.data.customer_manager_display_names || row.data.customer_manager_display_name) },
     { title: "签订日期", key: "signed_at", width: 105, render: (_: unknown, row: Contract) => row.data.signed_at || "—" },
     { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string) => <Button type="link" onClick={() => openCustomer(value)}>{value}</Button> },
   ];
@@ -296,7 +302,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
           const contract = contractById.get(row.contract_record_id);
           return [row.contract_no, row.contract_title, contract?.data.official_paid, contract?.data.official_received, contract?.data.official_unreceived, contract?.data.official_loss, contract?.data.agency_total, contract?.data.agency_received, contract?.data.agency_due, contract?.data.case_no, row.phase, contract?.data.case_type, contract?.data.fee_type || "代理费", row.amount, row.received_amount, row.remaining_amount];
         })
-      : visibleContracts.map((row) => [row.serial_no, row.title, row.status, row.data.official_paid, row.data.official_received, row.data.official_unreceived, row.data.official_loss, row.data.agency_total, row.data.agency_received, row.data.agency_due, row.data.source_person || row.owner, row.data.customer_manager || "", row.data.signed_at || "", row.customer]);
+      : visibleContracts.map((row) => [row.serial_no, row.title, row.status, row.data.official_paid, row.data.official_received, row.data.official_unreceived, row.data.official_loss, row.data.agency_total, row.data.agency_received, row.data.agency_due, personDisplayName(row.data.source_person_display_name || row.owner_display_name), peopleDisplayNames(row.data.customer_manager_display_names || row.data.customer_manager_display_name), row.data.signed_at || "", row.customer]);
     const quote = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
     const csv = `\ufeff${[header, ...body].map((row) => row.map(quote).join(",")).join("\r\n")}`;
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));

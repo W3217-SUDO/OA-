@@ -121,3 +121,21 @@ test('investigation records load in parallel with auxiliary dropdown options', (
   assert.match(source, /profile\.role!=='admin'&&Boolean\(profile\.username\)/)
   assert.match(source, /letinvestigationBootstrapPromise:/)
 })
+
+test('investigation people fields always render system display labels or the maintenance placeholder', () => {
+  assert.match(source, /returnmatched\?\.label\|\|'姓名待维护'/)
+  assert.match(source, /projectedPersonDisplayName\(row\.owner_display_name,row\.owner\)/)
+  assert.match(source, /investigationDetail\.data\.source_owner_display_name/)
+  assert.match(source, /investigationDetail\.data\.assigner_display_name/)
+  assert.match(source, /clueReviewing\.data\.reviewer_display_name/)
+  assert.match(source, /row\.uploader_display_name,row\.uploader/)
+  assert.doesNotMatch(source, /\{title:'负责人',dataIndex:'owner',width:90\}/)
+  assert.doesNotMatch(source, /children:linkedCase\.owner/)
+})
+
+test('investigation personnel inputs use system person selectors instead of username text inputs', () => {
+  assert.match(source, /label='负责人\/调查员'name='owner'[^]*options=\{systemPersonOptions\}/)
+  assert.match(source, /label='调查辅助员'name='investigation_assistant'[^]*options=\{systemPersonOptions\}/)
+  assert.match(source, /label='调查员'name='investigator'[^]*options=\{systemPersonOptions\}/)
+  assert.doesNotMatch(source, /label='调查员账号'/)
+})

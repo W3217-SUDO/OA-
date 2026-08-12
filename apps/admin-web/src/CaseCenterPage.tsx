@@ -662,10 +662,21 @@ export default function CaseCenterPage({
     );
     return option?.value || normalized;
   };
-  const casePersonDisplayName = (source: string) => {
+  const casePersonDisplayName = (source: unknown, displayName?: unknown) => {
+    const explicitName = String(displayName || "").trim();
+    if (explicitName) return explicitName;
     const normalized = String(source || "").trim();
-    if (!normalized) return "—";
-    return caseAssistantOptions.find((item) => item.value === normalized || item.label === normalized)?.label || normalized;
+    if (!normalized) return "姓名待维护";
+    const option = caseAssistantOptions.find((item) => {
+      const personName = item.label.replace(/（[^（）]*）$/, "").trim();
+      return item.value === normalized || item.label === normalized || personName === normalized;
+    });
+    return option?.label.replace(/（[^（）]*）$/, "").trim() || "姓名待维护";
+  };
+  const casePersonDisplayNames = (sources: unknown) => {
+    const values = Array.isArray(sources) ? sources : [sources];
+    const names = values.filter(Boolean).map((value) => casePersonDisplayName(value));
+    return names.length ? names.join("、") : "姓名待维护";
   };
   const firstCourtEnabled = Form.useWatch("first_court_enabled", createForm);
   const secondCourtEnabled = Form.useWatch("second_court_enabled", createForm);
@@ -720,15 +731,16 @@ export default function CaseCenterPage({
   const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
   const loadCaseCapabilities = async (rows: CaseRow[]) => {
     const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
-    const results = await Promise.all(uniqueRows.map(async (row) => {
-      try {
-        const { data } = await api.get(`/cases/${row.id}/action-capabilities`);
-        return [row.id, data as CaseDetailCapabilities] as const;
-      } catch {
-        return [row.id, noCaseDetailWriteCapability] as const;
-      }
-    }));
-    setCaseActionCapabilities((previous) => ({ ...previous, ...Object.fromEntries(results) }));
+    if (!uniqueRows.length) return;
+    const fallback = Object.fromEntries(uniqueRows.map((row) => [row.id, noCaseDetailWriteCapability]));
+    try {
+      const { data } = await api.get("/cases/action-capabilities", {
+        params: { record_ids: uniqueRows.map((row) => row.id).join(",") },
+      });
+      setCaseActionCapabilities((previous) => ({ ...previous, ...fallback, ...(data.items || {}) }));
+    } catch {
+      setCaseActionCapabilities((previous) => ({ ...previous, ...fallback }));
+    }
   };
   const load = async () => {
     setLoading(true);
@@ -2229,6 +2241,35 @@ export default function CaseCenterPage({
     } catch (error: any) { message.error(error?.response?.data?.detail || "付款申请预览失败"); }
     finally { setPaymentPackageLoading(false); }
   };
+  const submitCaseFeePayment = async (row: CaseRow) => {
+    if (row.data.expense_scope === "内部" || row.data.fee_type === "内部费用") {
+      await previewInternalPayment(row);
+      return;
+    }
+    if (["待审批", "已审批", "部分付款", "已付款"].includes(row.status)) {
+      const labels: Record<string, string> = {
+        待审批: "付款申请已经提交，正在等待审批",
+        已审批: "付款申请已经审批，可由财务登记付款",
+        部分付款: "付款申请正在分次付款",
+        已付款: "该费用已经付款",
+      };
+      message.info(labels[row.status]);
+      rememberBusinessRecordDetailTarget({ id: row.id, module: "finance" });
+      onNavigate?.("finance-payment-mine");
+      return;
+    }
+    if (!["草稿", "已退回"].includes(row.status)) {
+      message.warning(`当前费用状态“${row.status}”不能申请付款`);
+      return;
+    }
+    try {
+      await api.post(`/finance/fees/${row.id}/submit`, { comment: `案件 ${row.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款` });
+      message.success("付款申请已提交审批");
+      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "付款申请提交失败");
+    }
+  };
   const submitInternalPayment = async () => {
     if (!paymentPackagePreview || paymentPackageLoading) return;
     setPaymentPackageLoading(true);
@@ -2429,20 +2470,19 @@ export default function CaseCenterPage({
         title: "开庭律师",
         key: "hearing_lawyer",
         width: 90,
-        render: (_: unknown, r: CaseRow) => r.data.hearing_lawyer || "-",
+        render: (_: unknown, r: CaseRow) => casePersonDisplayName(r.data.hearing_lawyer, r.data.hearing_lawyer_display_name),
       },
       {
         title: "经办律师",
         key: "handlers",
         width: 130,
-        render: (_: unknown, r: CaseRow) =>
-          (r.data.handling_lawyers || []).join("、") || "-",
+        render: (_: unknown, r: CaseRow) => casePersonDisplayNames(r.data.handling_lawyers),
       },
       {
         title: "律师助理",
         key: "assistant",
         width: 90,
-        render: (_: unknown, r: CaseRow) => r.data.assistant || "-",
+        render: (_: unknown, r: CaseRow) => casePersonDisplayName(r.data.assistant, r.data.assistant_display_name),
       },
       {
         title: "操作",
@@ -2525,7 +2565,7 @@ export default function CaseCenterPage({
     },
     { title: "客户", dataIndex: "customer", width: 190, render: (value: string) => value ? <Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ title: value })}>{value}</Button> : "—" },
     { title: "开庭类型", dataIndex: "hearing_type", width: 100 },
-    { title: "开庭律师", dataIndex: "hearing_lawyer", width: 90 },
+    { title: "开庭律师", dataIndex: "hearing_lawyer", width: 90, render: (value:string) => casePersonDisplayName(value) },
     {
       title: "状态",
       dataIndex: "status",
@@ -2774,9 +2814,9 @@ export default function CaseCenterPage({
       case "status": return row.status;
       case "court": return row.data.court||row.data.first_court_name||"";
       case "hearing_at": return row.data.hearing_date||row.data.first_court_hearing_date||"";
-      case "handling_lawyer": return Array.isArray(row.data.handling_lawyers)?row.data.handling_lawyers.join(","):row.data.handling_lawyers||"";
-      case "assistant": return row.data.assistant||"";
-      case "source_person": return row.data.source_person||row.owner||"";
+      case "handling_lawyer": return casePersonDisplayNames(row.data.handling_lawyers);
+      case "assistant": return casePersonDisplayName(row.data.assistant, row.data.assistant_display_name);
+      case "source_person": return casePersonDisplayName(row.data.source_person||row.owner, row.data.source_person_display_name||row.owner_display_name);
       case "remaining_days": return row.data.remaining_days??0;
       default: return "";
     }
@@ -2789,9 +2829,9 @@ export default function CaseCenterPage({
     {title:"阶段信息",key:"phase",width:175,render:(_:unknown,row:CaseRow)=><><p>案件阶段:{row.status}</p><p>变更时间:{row.data.phase_changed_at||""}</p></>},
     {title:"法院信息",key:"court",width:205,render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>法院案号:{row.data.court_case_no||""}</p></>},
     {title:"法官信息",key:"judge",width:170,render:(_:unknown,row:CaseRow)=><><p>法官:{row.data.judge||""}</p><p>联系方式:{row.data.judge_phone||""}</p></>},
-    {title:"委托律师",key:"lawyer",width:180,render:(_:unknown,row:CaseRow)=><><p>经办:{(row.data.handling_lawyers||[]).join(",")}</p><p>开庭:{row.data.hearing_lawyer||""}　助理:{row.data.assistant||""}</p></>},
+    {title:"委托律师",key:"lawyer",width:180,render:(_:unknown,row:CaseRow)=><><p>经办:{casePersonDisplayNames(row.data.handling_lawyers)}</p><p>开庭:{casePersonDisplayName(row.data.hearing_lawyer,row.data.hearing_lawyer_display_name)}　助理:{casePersonDisplayName(row.data.assistant,row.data.assistant_display_name)}</p></>},
     {title:"判决信息",key:"judgment",width:190,render:(_:unknown,row:CaseRow)=><><p>判决日期:{row.data.judgment_date||""}</p><p>判决结果:{row.data.judgment_result||""}</p></>},
-    {title:"调查信息",key:"investigation",width:190,render:(_:unknown,row:CaseRow)=><><p>调查员:{row.data.investigator||""}</p><p>取证机构:{row.data.evidence_org||""}</p></>},
+    {title:"调查信息",key:"investigation",width:190,render:(_:unknown,row:CaseRow)=><><p>调查员:{casePersonDisplayName(row.data.investigator,row.data.investigator_display_name)}</p><p>取证机构:{row.data.evidence_org||""}</p></>},
     {title:"阶段信息",key:"phase-detail",width:190,render:(_:unknown,row:CaseRow)=><><p>当前阶段:{row.status}</p><p>执行进度:{row.data.execution_progress||""}</p></>},
     {title:"任务信息",key:"task",width:255,render:(_:unknown,row:CaseRow)=><><p>名称:<Button type="link" className="case-cell-link" onClick={()=>openCaseTasks(row)}>{row.data.task_name||""}</Button></p><p>内容:{row.data.task_content||""}</p></>},
     {title:"主体信息",key:"entity",width:190,render:(_:unknown,row:CaseRow)=><><p>主体:{row.customer?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:row.customer})}>{row.data.subject_name||row.customer}</Button>:row.data.subject_name||""}</p><p>披露状态:{row.data.subject_status||""}</p></>},
@@ -2803,9 +2843,9 @@ export default function CaseCenterPage({
     {title:"顾问类型",key:"counsel_type",width:150,render:(_:unknown,row:CaseRow)=>row.data.counsel_type||"—"},
     {title:"客户",dataIndex:"customer",width:230,ellipsis:true,render:(value:string,row:CaseRow)=>value?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:value})}>{value}</Button>:"—"},
     {title:"顾问期限",key:"counsel_range",width:225,render:(_:unknown,row:CaseRow)=>row.data.counsel_start&&row.data.counsel_end?`${row.data.counsel_start} 至 ${row.data.counsel_end}`:"—"},
-    {title:"经办律师",key:"handling_lawyers",width:150,render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join("、")||"—"},
-    {title:"律师助理",key:"assistant",width:120,render:(_:unknown,row:CaseRow)=>row.data.assistant||"—"},
-    {title:"案源人",key:"source_person",width:120,render:(_:unknown,row:CaseRow)=>row.data.source_person||row.owner||"—"},
+    {title:"经办律师",key:"handling_lawyers",width:150,render:(_:unknown,row:CaseRow)=>casePersonDisplayNames(row.data.handling_lawyers)},
+    {title:"律师助理",key:"assistant",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.assistant,row.data.assistant_display_name)},
+    {title:"案源人",key:"source_person",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.source_person||row.owner,row.data.source_person_display_name||row.owner_display_name)},
     {title:"剩余时间",key:"remaining_days",width:105,render:(_:unknown,row:CaseRow)=>{const end=dayjs(String(row.data.counsel_end||""));const days=end.isValid()?Math.max(0,end.startOf("day").diff(dayjs().startOf("day"),"day")):0;return <span style={{color:days<10?"red":"green"}}>{days} 天</span>;}},
     {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={["待归档审核","已归档"].includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
   ];
@@ -2822,16 +2862,16 @@ export default function CaseCenterPage({
     return match(row.data.plaintiff||row.customer,"plaintiff")&&match(row.serial_no,"serial_no")&&match(row.data.assistant,"assistant")&&match(row.data.court,"court")&&match(row.data.opponent,"defendant")&&match(row.data.notary_no,"notary_no")&&match(row.data.hearing_lawyer,"hearing_lawyer")&&match((row.data.handling_lawyers||[]).join(","),"handling_lawyer")&&match(row.data.archive_submitter||row.owner,"submitter");
   });
   const originalArchiveColumns:any[]=[
-    {title:"提交人",key:"submitter",width:105,render:(_:unknown,row:CaseRow)=>row.data.archive_submitter||row.owner},
+    {title:"提交人",key:"submitter",width:105,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.archive_submitter||row.owner,row.data.archive_submitter_display_name||row.owner_display_name)},
     {title:"提交日期",key:"submitted",width:150,render:(_:unknown,row:CaseRow)=>row.data.archive_submitted_at||""},
-    ...(archiveDone||archiveRefused?[{title:"审核人",key:"reviewer",width:105,render:(_:unknown,row:CaseRow)=>row.data.archive_reviewer||""},{title:"审核日期",key:"reviewed",width:150,render:(_:unknown,row:CaseRow)=>row.data.archive_reviewed_at||row.data.archived_at||""}]:[{title:"提交人备注",key:"comment",width:160,render:(_:unknown,row:CaseRow)=>row.data.archive_submit_comment||row.description||""}]),
+    ...(archiveDone||archiveRefused?[{title:"审核人",key:"reviewer",width:105,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.archive_reviewer,row.data.archive_reviewer_display_name)},{title:"审核日期",key:"reviewed",width:150,render:(_:unknown,row:CaseRow)=>row.data.archive_reviewed_at||row.data.archived_at||""}]:[{title:"提交人备注",key:"comment",width:160,render:(_:unknown,row:CaseRow)=>row.data.archive_submit_comment||row.description||""}]),
     {title:"案件编号",width:145,render:(_:unknown,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>{row.serial_no}</Button>},{title:"案件阶段",dataIndex:"status",width:110},
     {title:"法院名称",key:"court",width:190,render:(_:unknown,row:CaseRow)=>row.data.court||""},
     {title:"原告",key:"plaintiff",width:180,render:(_:unknown,row:CaseRow)=>row.data.plaintiff||row.customer},
     {title:"被告",key:"defendant",width:180,render:(_:unknown,row:CaseRow)=>row.data.opponent||""},
-    {title:"开庭律师",key:"hearing",width:105,render:(_:unknown,row:CaseRow)=>row.data.hearing_lawyer||""},
-    {title:"经办律师",key:"handlers",width:130,render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join(",")},
-    {title:"律师助理",key:"assistant",width:105,render:(_:unknown,row:CaseRow)=>row.data.assistant||""},
+    {title:"开庭律师",key:"hearing",width:105,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.hearing_lawyer,row.data.hearing_lawyer_display_name)},
+    {title:"经办律师",key:"handlers",width:130,render:(_:unknown,row:CaseRow)=>casePersonDisplayNames(row.data.handling_lawyers)},
+    {title:"律师助理",key:"assistant",width:105,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.assistant,row.data.assistant_display_name)},
   ];
   // All data columns below declare their widths. Keep the selection column inside
   // the horizontal viewport so the fixed right action column never overlays data.
@@ -2914,16 +2954,16 @@ export default function CaseCenterPage({
       {title:"法庭",dataIndex:"courtroom"},
       {title:"原告",render:(_:unknown,row:any)=>row.case?.data.plaintiff||row.customer},
       {title:"被告",render:(_:unknown,row:any)=>row.case?.data.opponent||""},
-      {title:"开庭律师",dataIndex:"hearing_lawyer"},
-      {title:"经办律师",render:(_:unknown,row:any)=>(row.case?.data.handling_lawyers||[]).join(",")},
-      {title:"律师助理",render:(_:unknown,row:any)=>row.case?.data.assistant||""},
+      {title:"开庭律师",dataIndex:"hearing_lawyer",render:(value:string)=>casePersonDisplayName(value)},
+      {title:"经办律师",render:(_:unknown,row:any)=>casePersonDisplayNames(row.case?.data.handling_lawyers)},
+      {title:"律师助理",render:(_:unknown,row:any)=>casePersonDisplayName(row.case?.data.assistant,row.case?.data.assistant_display_name)},
     ],
-    execution:[{title:"基本信息",render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button></p><p>阶段:{row.status}</p><p>执行状态:{row.data.execution_status||"—"}</p></>},{title:"当事人信息",render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},{title:"法院信息",render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>案号:{row.data.court_case_no||""}</p></>},{title:"法官信息",render:(_:unknown,row:CaseRow)=>row.data.judge||""},{title:"委托律师",render:(_:unknown,row:CaseRow)=>(row.data.handling_lawyers||[]).join(",")},{title:"判决信息",render:(_:unknown,row:CaseRow)=>row.data.judgment_result||""},{title:"进度时长",render:(_:unknown,row:CaseRow)=>row.data.execution_days??0},{title:"操作",render:(_:unknown,row:CaseRow)=>getCaseCapability(row).can_update_progress?<Space><Button type="link" onClick={()=>openProgress(row)}>修改进度</Button><Button type="link" onClick={()=>openExecutionStatus([row])}>执行状态</Button></Space>:null}],
-    unclaimed:["案号","原告","被告","金额","回款单位","到账金额","到账时间","结算状态","案件阶段","案源人","开庭律师","律师助理","调查员","品管"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.amount,row.data.payer,row.data.received_amount,row.data.received_at,row.data.settlement_status,row.status,row.data.source_person,row.data.hearing_lawyer,row.data.assistant,row.data.investigator,row.data.quality_manager][i-1]||""})),
+    execution:[{title:"基本信息",render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button></p><p>阶段:{row.status}</p><p>执行状态:{row.data.execution_status||"—"}</p></>},{title:"当事人信息",render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},{title:"法院信息",render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>案号:{row.data.court_case_no||""}</p></>},{title:"法官信息",render:(_:unknown,row:CaseRow)=>row.data.judge||""},{title:"委托律师",render:(_:unknown,row:CaseRow)=>casePersonDisplayNames(row.data.handling_lawyers)},{title:"判决信息",render:(_:unknown,row:CaseRow)=>row.data.judgment_result||""},{title:"进度时长",render:(_:unknown,row:CaseRow)=>row.data.execution_days??0},{title:"操作",render:(_:unknown,row:CaseRow)=>getCaseCapability(row).can_update_progress?<Space><Button type="link" onClick={()=>openProgress(row)}>修改进度</Button><Button type="link" onClick={()=>openExecutionStatus([row])}>执行状态</Button></Space>:null}],
+    unclaimed:["案号","原告","被告","金额","回款单位","到账金额","到账时间","结算状态","案件阶段","案源人","开庭律师","律师助理","调查员","品管"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.amount,row.data.payer,row.data.received_amount,row.data.received_at,row.data.settlement_status,row.status,casePersonDisplayName(row.data.source_person||row.owner,row.data.source_person_display_name||row.owner_display_name),casePersonDisplayName(row.data.hearing_lawyer,row.data.hearing_lawyer_display_name),casePersonDisplayName(row.data.assistant,row.data.assistant_display_name),casePersonDisplayName(row.data.investigator,row.data.investigator_display_name),casePersonDisplayName(row.data.quality_manager,row.data.quality_manager_display_name)][i-1]||""})),
     stage:[{title:"姓名",dataIndex:"name"},{title:"日期",dataIndex:"date"},{title:"立案进度",dataIndex:"filing"},{title:"退费进度",dataIndex:"refund"},{title:"执行进度",dataIndex:"execution"},{title:"线索进度",dataIndex:"clue"}],
-    refund:["案号","原告","被告","案件阶段","律师助理","开庭律师","费用类型","金额","退费金额","新建时间","法院名称","退费进度","进度时长","操作"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail({case_no:row.data.case_no||row.serial_no})}>{row.data.case_no||row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.case_stage||row.status,row.data.assistant,row.data.hearing_lawyer,row.data.fee_type,row.data.amount,row.data.refund_amount,row.data.created_at||"",row.data.court,row.data.refund_status,row.data.progress_days,"查看"][i-1]||""})),
-    receipt:["案号","案件名称","客户","费用类型","金额","申请人","通知日期","已收","已付","已开票"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>:i===2&&row.customer?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:row.customer})}>{row.customer}</Button>:[row.title,row.customer,row.data.fee_type,row.data.amount,row.owner,row.data.notice_date,row.data.received_amount,row.data.paid_amount,row.data.invoiced_amount][i-1]||""})),
-    invoice:[{title:"文件名",dataIndex:"original_name"},{title:"案件编号",render:(_:unknown,row:AttachmentRow)=>{const target=invoiceCase(row);const caseNo=target?.serial_no||relatedFinance(row.record_id||0)?.data?.case_no||"";return caseNo?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(target||{case_no:caseNo})}>{caseNo}</Button>:""}},{title:"案件类型",render:(_:unknown,row:AttachmentRow)=>invoiceCase(row)?.data.case_type||""},{title:"发票申请人",dataIndex:"uploader"},{title:"费用类型",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.fee_type||row.category},{title:"费用金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据编号",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_no||row.remark||""},{title:"票据金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_amount??relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据日期",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_date||row.created_at}],
+    refund:["案号","原告","被告","案件阶段","律师助理","开庭律师","费用类型","金额","退费金额","新建时间","法院名称","退费进度","进度时长","操作"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail({case_no:row.data.case_no||row.serial_no})}>{row.data.case_no||row.serial_no}</Button>:[row.data.plaintiff||row.customer,row.data.opponent,row.data.case_stage||row.status,casePersonDisplayName(row.data.assistant,row.data.assistant_display_name),casePersonDisplayName(row.data.hearing_lawyer,row.data.hearing_lawyer_display_name),row.data.fee_type,row.data.amount,row.data.refund_amount,row.data.created_at||"",row.data.court,row.data.refund_status,row.data.progress_days,"查看"][i-1]||""})),
+    receipt:["案号","案件名称","客户","费用类型","金额","申请人","通知日期","已收","已付","已开票"].map((title,i)=>({title,key:String(i),render:(_:unknown,row:CaseRow)=>i===0?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(row)}>{row.serial_no}</Button>:i===2&&row.customer?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:row.customer})}>{row.customer}</Button>:[row.title,row.customer,row.data.fee_type,row.data.amount,casePersonDisplayName(row.owner,row.owner_display_name),row.data.notice_date,row.data.received_amount,row.data.paid_amount,row.data.invoiced_amount][i-1]||""})),
+    invoice:[{title:"文件名",dataIndex:"original_name"},{title:"案件编号",render:(_:unknown,row:AttachmentRow)=>{const target=invoiceCase(row);const caseNo=target?.serial_no||relatedFinance(row.record_id||0)?.data?.case_no||"";return caseNo?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(target||{case_no:caseNo})}>{caseNo}</Button>:""}},{title:"案件类型",render:(_:unknown,row:AttachmentRow)=>invoiceCase(row)?.data.case_type||""},{title:"发票申请人",render:(_:unknown,row:AttachmentRow)=>casePersonDisplayName(row.uploader,row.uploader_display_name)},{title:"费用类型",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.fee_type||row.category},{title:"费用金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据编号",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_no||row.remark||""},{title:"票据金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_amount??relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据日期",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_date||row.created_at}],
   };
   const counselDocTree=[
     {label:"客户文档",category:"客户文档",type:"folder"},
@@ -2972,9 +3012,13 @@ export default function CaseCenterPage({
   };
   const handleFirmFeeOperation=(key:string)=>{
     if(!requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":"申请开票"))return;
-    if(key==="payment")return void previewInternalPayment(selectedFirmFee!);
-    rememberBusinessRecordDetailTarget({id:selectedFirmFee!.id,module:"finance"});
-    onNavigate?.(key==="invoice"?"finance-invoice-mine":"finance-fee-query");
+    if(key==="payment")return void submitCaseFeePayment(selectedFirmFee!);
+    rememberBusinessRecordDetailTarget({
+      id:selectedFirmFee!.id,
+      module:"finance",
+      action:key==="invoice"?"create_invoice":"create_refund",
+    });
+    onNavigate?.(key==="invoice"?"finance-invoice-mine":"finance-refund");
   };
   const handleInternalFeeAction=(key:string)=>{
     if(key==="create")return openCaseFeeBySubtype("内部","内部费用");
@@ -3708,14 +3752,14 @@ export default function CaseCenterPage({
               <p><strong>案件类型：</strong>{viewingCounselCase.data.case_type||"—"}</p>
               <p><strong>案件阶段：</strong>{viewingCounselCase.status||"—"}</p>
               <p><strong>案件名称：</strong>{viewingCounselCase.title}</p>
-              <p><strong>案源人：</strong>{viewingCounselCase.data.business_owner_display_name||viewingCounselCase.data.source_person_display_name||casePersonDisplayName(viewingCounselCase.data.business_owner||viewingCounselCase.data.source_person||viewingCounselCase.owner)}</p>
+              <p><strong>案源人：</strong>{casePersonDisplayName(viewingCounselCase.data.business_owner||viewingCounselCase.data.source_person||viewingCounselCase.owner,viewingCounselCase.data.business_owner_display_name||viewingCounselCase.data.source_person_display_name||viewingCounselCase.owner_display_name)}</p>
               <p><strong>客户：</strong><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCounselCase.data.customer_id) || undefined, serial_no: viewingCounselCase.data.customer_no, title: viewingCounselCase.customer })}>{viewingCounselCase.customer || "—"}</Button></p>
-              <p><strong>经办律师：</strong>{(viewingCounselCase.data.handling_lawyers||[]).join("、")||"—"}</p>
+              <p><strong>经办律师：</strong>{casePersonDisplayNames(viewingCounselCase.data.handling_lawyers)}</p>
               <p><strong>合同号：</strong>{viewingCounselCase.data.contract_no ? <Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCounselCase.data.contract_record_id) || undefined, serial_no: viewingCounselCase.data.contract_no })}>{viewingCounselCase.data.contract_no}</Button> : "—"}</p>
-              <p><strong>律师助理：</strong>{viewingCounselCase.data.assistant||"—"}</p>
+              <p><strong>律师助理：</strong>{casePersonDisplayName(viewingCounselCase.data.assistant,viewingCounselCase.data.assistant_display_name)}</p>
               {String(viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no || "").trim() && <p><strong>关联线索：</strong><Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCounselCase.data.clue_record_id || viewingCounselCase.data.investigation_clue_id) || undefined, serial_no: viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no })}>{viewingCounselCase.data.investigation_clue_nos?.join("、") || viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no}</Button></p>}
               {String(viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no || "").trim() && <p><strong>原案件号：</strong><Button type="link" className="case-cell-link" onClick={() => openRelatedOriginalCase({ id: Number(viewingCounselCase.data.original_case_record_id || viewingCounselCase.data.origin_case_record_id || viewingCounselCase.data.source_case_record_id) || undefined, serial_no: viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no })}>{viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no}</Button></p>}
-              {viewingCounselCase.data.case_type === "法律顾问" ? <><p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p><p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p></> : <><p><strong>原告/申请人：</strong>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</p><p><strong>被告/被申请人：</strong>{viewingCounselCase.data.opponent||"—"}</p><p><strong>法院/机构：</strong>{viewingCounselCase.data.court||viewingCounselCase.data.first_court_name||"—"}</p><p><strong>案由/罪名：</strong>{viewingCounselCase.data.cause_or_charge||"—"}</p><p><strong>调查员：</strong>{viewingCounselCase.data.investigator||"—"}</p>{viewingCounselCase.data.case_type === "行政案件及国家赔偿" && <p><strong>权利类型：</strong>{viewingCounselCase.data.right_type||"—"}</p>}</>}
+              {viewingCounselCase.data.case_type === "法律顾问" ? <><p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p><p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p></> : <><p><strong>原告/申请人：</strong>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</p><p><strong>被告/被申请人：</strong>{viewingCounselCase.data.opponent||"—"}</p><p><strong>法院/机构：</strong>{viewingCounselCase.data.court||viewingCounselCase.data.first_court_name||"—"}</p><p><strong>案由/罪名：</strong>{viewingCounselCase.data.cause_or_charge||"—"}</p><p><strong>调查员：</strong>{casePersonDisplayName(viewingCounselCase.data.investigator,viewingCounselCase.data.investigator_display_name)}</p>{viewingCounselCase.data.case_type === "行政案件及国家赔偿" && <p><strong>权利类型：</strong>{viewingCounselCase.data.right_type||"—"}</p>}</>}
             </div>
           </Card>
           {viewingCounselCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
@@ -3793,11 +3837,12 @@ export default function CaseCenterPage({
               {key:"platform-fees",label:"平台费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={platformFeeRows} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
               {key:"internal-fees",label:"内部结算",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1120}} dataSource={internalFeeRows} rowSelection={{selectedRowKeys:selectedInternalFeeKeys,onChange:setSelectedInternalFeeKeys}} columns={[
-                  {title:"收款人",width:130,render:(_:unknown,row:CaseRow)=>row.data.payee||row.data.handler_display_name||row.owner||"—"},
+                  {title:"收款人",width:130,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.payee||row.data.handler||row.owner,row.data.payee_display_name||row.data.handler_display_name||row.owner_display_name)},
                   {title:"提成类型",width:170,render:(_:unknown,row:CaseRow)=>row.data.commission_type||row.data.expense_subtype||row.data.fee_type||"内部费用"},
                   {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>row.data.amount??0},
                   {title:"已申请付款金额",width:150,align:"right",render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??row.data.applied_amount??0},
                   {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.paid_amount??0},
+                  {title:"状态",dataIndex:"status",width:100},
                   {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.data.created_at||"").slice(0,10)||"—"},
                   {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.paid_at||row.data.payment_date||"").slice(0,10)||"—"},
                   {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
@@ -3809,9 +3854,9 @@ export default function CaseCenterPage({
                   <Button danger onClick={()=>handleInternalFeeAction("delete")}>删除</Button>
                 </Space>
               </div>},
-              {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",dataIndex:"owner",width:110},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
-              {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",dataIndex:"operator_display_name",width:110}]}/></>},
-              {key:"logs",label:"系统日志",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",dataIndex:"operator_display_name",width:110},{title:"说明",dataIndex:"comment"}]}/>},
+              {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",width:110,render:(_:unknown,row:CaseReminderRow)=>casePersonDisplayName(row.owner)},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
+              {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",width:110,render:(_:unknown,row:CaseLogRow)=>casePersonDisplayName(row.operator,row.operator_display_name)}]}/></>},
+              {key:"logs",label:"系统日志",children:<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",width:110,render:(_:unknown,row:any)=>casePersonDisplayName(row.operator,row.operator_display_name)},{title:"说明",dataIndex:"comment"}]}/>},
               {key:"tasks",label:"案件任务",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1180}} dataSource={counselDetailTasks.filter(row=>row.source!=="客户任务")} columns={[
                   {title:"序号",width:65,render:(_:unknown,_row:TaskRow,index:number)=>index+1},
@@ -3820,14 +3865,15 @@ export default function CaseCenterPage({
                   {title:"标题",dataIndex:"title",width:280,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},
                   {title:"提交时间",width:120,render:(_:unknown,row:TaskRow)=>String((row as any).created_at||(row as any).submitted_at||"").slice(0,10)||"—"},
                   {title:"截止日期",dataIndex:"deadline",width:120,ellipsis:true},
+                  {title:"优先级",dataIndex:"priority",width:90,ellipsis:true},
                   {title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},
-                  {title:"发起人",dataIndex:"initiator_display_name",width:110,ellipsis:true},
-                  {title:"负责人",dataIndex:"owner_display_name",width:110,ellipsis:true},
+                  {title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},
+                  {title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},
                   {title:"状态",dataIndex:"status",width:110,render:(value:string)=><Tag color={value==="已完成"||value==="已验收"?"green":value==="处理中"?"blue":"default"}>{value||"—"}</Tag>},
                 ]}/>
                 {counselDetailCapabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button></div>}
               </div>},
-              {key:"customer-tasks",label:"客户任务",children:<Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",dataIndex:"initiator_display_name",width:110,ellipsis:true},{title:"负责人",dataIndex:"owner_display_name",width:110,ellipsis:true},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>},
+              {key:"customer-tasks",label:"客户任务",children:<Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>},
               {key:"clues",label:"线索信息",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1540}} dataSource={counselDetailClues} columns={[
                   {title:"序号",width:65,align:"center",render:(_:unknown,_row:CaseRow,index:number)=>index+1},
@@ -4151,7 +4197,7 @@ export default function CaseCenterPage({
               ),
             },
             { title: "发起/验收人", dataIndex: "initiator", width: 105 },
-            { title: "负责人", dataIndex: "owner", width: 90 },
+            { title: "负责人", width: 90, render: (_:unknown,row:TaskRow) => casePersonDisplayName(row.owner,row.owner_display_name) },
             { title: "截止日", dataIndex: "deadline", width: 110 },
             { title: "优先级", dataIndex: "priority", width: 90 },
             {

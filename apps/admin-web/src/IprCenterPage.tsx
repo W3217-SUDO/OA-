@@ -48,6 +48,7 @@ type IprRecord = {
   title: string;
   customer: string;
   owner: string;
+  owner_display_name?: string;
   status: string;
   description: string;
   data: Record<string, any>;
@@ -59,11 +60,13 @@ type Attachment = {
   original_name: string;
   size: number;
   uploader: string;
+  uploader_display_name?: string;
   category?: string;
   document_date?: string | null;
   requires_transmission?: boolean;
   is_transmitted?: boolean;
   transmitted_by?: string;
+  transmitted_by_display_name?: string;
 };
 type IprFileType = {
   code: string;
@@ -79,8 +82,10 @@ type AssistedFee = {
   status: string;
   request_date: string;
   request_user: string;
+  request_user_display_name?: string;
   response_date: string | null;
   response_user: string;
+  response_user_display_name?: string;
   remark: string;
   receipt: Attachment | null;
 };
@@ -92,6 +97,7 @@ type IprReminder = {
   deadline: string;
   content: string;
   creator: string;
+  creator_display_name?: string;
 };
 type ReminderEventType = { id: number; name: string; suppressed: boolean };
 type IprLawFirm = { id: number; law_firm_id: number; code: string; name: string; phone: string; email: string };
@@ -100,13 +106,14 @@ type IprCaseCustomer = { id: number | null; customer_id: number; customer_no: st
 type IprCaseCustomerCandidate = { id: number; customer_no: string; name: string; status: string; selected: boolean };
 type CustomerContact = { id: string; name: string; phone?: string; email?: string; position?: string; is_valid?: boolean };
 type IprCaseContact = CustomerContact & { customer_id: number; customer_name: string; contact_id: string; contact_role: "document" | "technology" };
-type IprBusinessLog = { id: number; content: string; created_by: string; created_at: string };
-type IprOperationLog = { id: number; action: string; operator: string; comment: string; from_status?: string; to_status?: string; created_at: string };
-type IprHistoryItem = { id: number; action: string; operator: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
+type IprBusinessLog = { id: number; content: string; created_by: string; created_by_display_name?: string; created_at: string };
+type IprOperationLog = { id: number; action: string; operator: string; operator_display_name?: string; comment: string; from_status?: string; to_status?: string; created_at: string };
+type IprHistoryItem = { id: number; action: string; operator: string; operator_display_name?: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
 type IprDetailPageState = { page: number; pageSize: number; total: number; pages: number };
 type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number };
 const IPR_DETAIL_DEFAULT_PAGE = 1;
 const IPR_DETAIL_DEFAULT_PAGE_SIZE = 15;
+const personDisplayName = (value?: unknown) => String(value || "").trim() || "姓名待维护";
 const statusColor: Record<string, string> = {
   草稿: "default",
   待立案审核: "gold",
@@ -1560,7 +1567,7 @@ export default function IprCenterPage({
                       </Button>
                     ),
                   },
-                  { title: "创建人", dataIndex: "created_by", width: 110 },
+                  { title: "创建人", dataIndex: "created_by_display_name", width: 110, render: personDisplayName },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                   { title: "操作", width: 90, render: (_, row) => row.created_by === profile.username || ["admin", "manager"].includes(profile.role || "") ? <Button danger type="link" size="small" onClick={() => confirmIprDeletion("log", row.content, () => deleteIprLog(row.id))}>删除</Button> : "—" },
                 ]}
@@ -1584,7 +1591,7 @@ export default function IprCenterPage({
                     ),
                   },
                   { title: "说明", dataIndex: "comment", ellipsis: true, render: (value) => value || "—" },
-                  { title: "操作人", dataIndex: "operator", width: 110 },
+                  { title: "操作人", dataIndex: "operator_display_name", width: 110, render: personDisplayName },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                 ]}
               />
@@ -1613,7 +1620,7 @@ export default function IprCenterPage({
                   },
                   { title: "状态变化", width: 180, render: (_, row: IprHistoryItem) => row.from_status || row.to_status ? `${row.from_status || "—"} → ${row.to_status || "—"}` : "—" },
                   { title: "说明", dataIndex: "comment", ellipsis: true },
-                  { title: "操作人", dataIndex: "operator", width: 110 },
+                  { title: "操作人", dataIndex: "operator_display_name", width: 110, render: personDisplayName },
                   { title: "时间", dataIndex: "created_at", width: 170, render: (value) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                 ]}
               />
@@ -1765,7 +1772,7 @@ export default function IprCenterPage({
                     </Space>
                   ),
                 },
-                { title: "上传人", dataIndex: "uploader", width: 95 },
+                { title: "上传人", dataIndex: "uploader_display_name", width: 95, render: personDisplayName },
                 { title: "文档日期", dataIndex: "document_date", width: 110, render: (value) => value || "—" },
                 {
                   title: "待转文",
@@ -1823,14 +1830,14 @@ export default function IprCenterPage({
                     title: "提交",
                     width: 145,
                     render: (_, row: AssistedFee) =>
-                      `${row.request_date || "—"} / ${row.request_user || "—"}`,
+                    `${row.request_date || "—"} / ${personDisplayName(row.request_user_display_name)}`,
                   },
                   {
                     title: "办理",
                     width: 145,
                     render: (_, row: AssistedFee) =>
                       row.response_date
-                        ? `${row.response_date} / ${row.response_user || "—"}`
+                      ? `${row.response_date} / ${personDisplayName(row.response_user_display_name)}`
                         : "待办理",
                   },
                   {
@@ -1961,7 +1968,7 @@ export default function IprCenterPage({
                       </Button>
                     ),
                   },
-                  { title: "创建人", dataIndex: "creator", width: 100 },
+              { title: "创建人", dataIndex: "creator_display_name", width: 100, render: personDisplayName },
                   {
                     title: "操作",
                     width: 80,
@@ -2146,7 +2153,7 @@ export default function IprCenterPage({
             <Descriptions.Item label="提醒类型">{reminderDetail.event_type}</Descriptions.Item>
             <Descriptions.Item label="提醒日期">{reminderDetail.reminder_date}</Descriptions.Item>
             <Descriptions.Item label="截止日期">{reminderDetail.deadline}</Descriptions.Item>
-            <Descriptions.Item label="创建人">{reminderDetail.creator}</Descriptions.Item>
+            <Descriptions.Item label="创建人">{personDisplayName(reminderDetail.creator_display_name)}</Descriptions.Item>
             <Descriptions.Item label="提醒内容">{reminderDetail.content}</Descriptions.Item>
           </Descriptions>
         )}
@@ -2197,7 +2204,7 @@ export default function IprCenterPage({
         {iprBusinessLogDetail && (
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="日志内容">{iprBusinessLogDetail.content}</Descriptions.Item>
-            <Descriptions.Item label="创建人">{iprBusinessLogDetail.created_by}</Descriptions.Item>
+            <Descriptions.Item label="创建人">{personDisplayName(iprBusinessLogDetail.created_by_display_name)}</Descriptions.Item>
             <Descriptions.Item label="创建时间">{iprBusinessLogDetail.created_at}</Descriptions.Item>
           </Descriptions>
         )}
@@ -2212,7 +2219,7 @@ export default function IprCenterPage({
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="操作">{iprOperationLogDetail.action}</Descriptions.Item>
             <Descriptions.Item label="说明">{iprOperationLogDetail.comment || "—"}</Descriptions.Item>
-            <Descriptions.Item label="操作人">{iprOperationLogDetail.operator}</Descriptions.Item>
+            <Descriptions.Item label="操作人">{personDisplayName(iprOperationLogDetail.operator_display_name)}</Descriptions.Item>
             <Descriptions.Item label="原状态">{iprOperationLogDetail.from_status || "—"}</Descriptions.Item>
             <Descriptions.Item label="目标状态">{iprOperationLogDetail.to_status || "—"}</Descriptions.Item>
             <Descriptions.Item label="时间">{iprOperationLogDetail.created_at}</Descriptions.Item>
@@ -2234,7 +2241,7 @@ export default function IprCenterPage({
                 : "—"}
             </Descriptions.Item>
             <Descriptions.Item label="说明">{iprHistoryDetail.comment || "—"}</Descriptions.Item>
-            <Descriptions.Item label="操作人">{iprHistoryDetail.operator}</Descriptions.Item>
+            <Descriptions.Item label="操作人">{personDisplayName(iprHistoryDetail.operator_display_name)}</Descriptions.Item>
             <Descriptions.Item label="时间">{iprHistoryDetail.created_at}</Descriptions.Item>
           </Descriptions>
         )}

@@ -13,14 +13,15 @@ import {resolveDetailRelation} from './detailRelationResolver'
 import './warehouse.css'
 
 type EvidenceData=Record<string, string|number>
-type Item={id:number;serial_no:string;title:string;customer:string;status:string;owner:string;department:string;description:string;data:EvidenceData}
-type WorkflowItem={id:number;action:string;from_status:string;to_status:string;operator:string;comment:string;created_at:string}
+type Item={id:number;serial_no:string;title:string;customer:string;status:string;owner:string;owner_display_name?:string;department:string;description:string;data:EvidenceData}
+type WorkflowItem={id:number;action:string;from_status:string;to_status:string;operator:string;operator_display_name?:string;comment:string;created_at:string}
 type ActionKind='check-in'|'check-out'|'recheck-in'|'destroy'
 
 const warehouses=['上海一仓','上海二仓','嘉兴一仓','无锡一仓','合肥一仓','武汉一仓','重庆一仓','时间戳']
 const evidenceStatuses=['未入库','已入库','已出库','已重新入库','已销毁']
 const statusColor:Record<string,string>={未入库:'default',已入库:'green',已出库:'orange',已重新入库:'cyan',已销毁:'red'}
 const statusOf=(row:Item)=>String(row.data?.evidence_status||({在库:'已入库',借出:'已出库',归还中:'已出库',报废:'已销毁'} as Record<string,string>)[row.status]||'未入库')
+const personDisplayName=(value:unknown)=>String(value||'').trim()||'姓名待维护'
 
 export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=>void}){
   const [allRows,setAllRows]=useState<Item[]>([])
@@ -100,7 +101,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
     {title:'公证书号',key:'notary',width:150,render:(_v,row)=>row.data.notary_no?<Button type="link" onClick={()=>void openNotaryDetail(row.data.notary_no)}>{row.data.notary_no}</Button>:'—'},
     {title:'案件编号',key:'caseNo',width:145,render:(_v,row)=>row.data.case_no?<Button type="link" onClick={()=>openCaseDetail(row.data.case_no)}>{row.data.case_no}</Button>:'—'},
     {title:'货物出售店铺',key:'shop',width:180,render:(_v,row)=>row.data.shop_name||row.title||'—'},
-    {title:'调查员',key:'investigator',width:110,render:(_v,row)=>row.data.investigator||row.owner||'—'},
+    {title:'调查员',key:'investigator',width:110,render:(_v,row)=>personDisplayName(row.data.investigator_display_name||row.owner_display_name)},
     {title:'公证处',key:'notaryOffice',width:180,render:(_v,row)=>row.data.notary_office||'—'},
     {title:'权利人',key:'rightsHolder',width:160,render:(_v,row)=>row.data.rights_holder?<Button type="link" onClick={()=>void openCustomerDetail(row.data.rights_holder)}>{row.data.rights_holder}</Button>:'—'},
     {title:'取证日期',key:'date',width:115,render:(_v,row)=>row.data.evidence_date||row.data.collected_at||'—'},
@@ -170,7 +171,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
 
     <Modal width={720} title={`证物流程记录${historyRow?` · ${historyRow.serial_no}`:''}`} open={Boolean(historyRow)} footer={null} onCancel={()=>setHistoryRow(null)}>
       {historyRow&&<Descriptions size="small" column={2} bordered items={[{key:'shop',label:'货物出售店铺',children:String(historyRow.data.shop_name||historyRow.title)},{key:'status',label:'当前状态',children:<Tag color={statusColor[statusOf(historyRow)]}>{statusOf(historyRow)}</Tag>}]}/>} 
-      {history.length?<Timeline className="warehouse-history" items={history.map(item=>({color:item.to_status==='已销毁'?'red':'green',children:<div><strong>{item.action}</strong> <Tag>{item.from_status||'起始'} → {item.to_status}</Tag><div>{item.operator} · {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}</div>{item.comment&&<div className="warehouse-history-comment">{item.comment}</div>}</div>}))}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无流程记录"/>}
+      {history.length?<Timeline className="warehouse-history" items={history.map(item=>({color:item.to_status==='已销毁'?'red':'green',children:<div><strong>{item.action}</strong> <Tag>{item.from_status||'起始'} → {item.to_status}</Tag><div>{personDisplayName(item.operator_display_name)} · {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}</div>{item.comment&&<div className="warehouse-history-comment">{item.comment}</div>}</div>}))}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无流程记录"/>}
     </Modal>
   </Card>
 }

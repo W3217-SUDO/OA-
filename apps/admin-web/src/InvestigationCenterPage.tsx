@@ -62,6 +62,7 @@ type Attachment = {
   original_name: string;
   size: number;
   uploader: string;
+  uploader_display_name?: string;
   created_at: string;
 };
 type Contract = {
@@ -309,7 +310,17 @@ export default function InvestigationCenterPage({
         item.value === raw ||
         item.label === raw,
     );
-    return matched?.label || raw;
+    return matched?.label || "姓名待维护";
+  };
+  const projectedPersonDisplayName = (displayName: unknown, username: unknown) => {
+    const projected = String(displayName || "").trim();
+    if (projected && projected !== String(username || "").trim()) return projected;
+    const matched = casePeopleOptions.find(
+      (item) =>
+        item.username === String(username || "").trim() ||
+        item.value === String(username || "").trim(),
+    );
+    return matched?.label || personDisplayName(username);
   };
   const systemPersonOptions = casePeopleOptions.map((item) => ({
     value: item.username || item.value,
@@ -876,8 +887,8 @@ export default function InvestigationCenterPage({
             发票号:
               initialTab === "notary-import-invoices" ? data.reference_no : "",
             线索编号: "",
-            调查员: data.attachment?.uploader,
-            处理人: data.attachment?.uploader,
+            调查员: projectedPersonDisplayName(data.attachment?.uploader_display_name, data.attachment?.uploader),
+            处理人: projectedPersonDisplayName(data.attachment?.uploader_display_name, data.attachment?.uploader),
             导入时间: data.attachment?.created_at,
           },
         ]);
@@ -892,7 +903,7 @@ export default function InvestigationCenterPage({
             id: row.id,
             来源线索编号: row.data.clue_no,
             公证标题: row.title,
-            负责人: row.owner,
+            负责人: projectedPersonDisplayName(row.owner_display_name, row.owner),
             审核截止日: row.data.review_due_date,
             公证书编号: row.data.certificate_no,
             签发日期: row.data.certificate_issued_date,
@@ -1516,11 +1527,14 @@ export default function InvestigationCenterPage({
             r.data.notary_institution,
             r.data.clue_no,
             r.data.case_no,
-            r.owner,
+            projectedPersonDisplayName(r.owner_display_name, r.owner),
             r.data.document_type,
             r.data.shop_name,
             r.customer,
-            r.data.handler,
+            projectedPersonDisplayName(
+              r.data.handler_display_name,
+              r.data.handler,
+            ),
             r.data.certificate_no,
             r.data.imported_at,
           ][index];
@@ -1875,7 +1889,13 @@ export default function InvestigationCenterPage({
         width: 100,
         render: (v: string) => <Tag color={statusColors[v] || "blue"}>{v}</Tag>,
       },
-      { title: "负责人", dataIndex: "owner", width: 90 },
+      {
+        title: "负责人",
+        dataIndex: "owner",
+        width: 90,
+        render: (_: unknown, row: Row) =>
+          projectedPersonDisplayName(row.owner_display_name, row.owner),
+      },
     ];
     const materialButton = (r: Row) => (
       <Button
@@ -2706,7 +2726,10 @@ export default function InvestigationCenterPage({
         {
           key: "owner",
           label: "调查员",
-          children: investigationDetail.owner || "—",
+          children: projectedPersonDisplayName(
+            investigationDetail.owner_display_name,
+            investigationDetail.owner,
+          ),
         },
         {
           key: "region",
@@ -2726,15 +2749,21 @@ export default function InvestigationCenterPage({
         {
           key: "source-owner",
           label: "案源人",
-          children: investigationDetail.data.source_owner || "—",
+          children: projectedPersonDisplayName(
+            investigationDetail.data.source_owner_display_name,
+            investigationDetail.data.source_owner,
+          ),
         },
         {
           key: "assigner",
           label: "任务分配人",
           children:
-            investigationDetail.data.assigner ||
-            investigationDetail.data.assigned_by ||
-            "—",
+            projectedPersonDisplayName(
+              investigationDetail.data.assigner_display_name ||
+                investigationDetail.data.assigned_by_display_name,
+              investigationDetail.data.assigner ||
+                investigationDetail.data.assigned_by,
+            ),
         },
         ...(investigationDetail.data.source_task_no
           ? [
@@ -2910,9 +2939,11 @@ export default function InvestigationCenterPage({
                 key: "assistant",
                 label: "调查辅助",
                 children:
-                  investigationDetail.data.investigation_assistant ||
-                  investigationDetail.data.assistant ||
-                  "—",
+                  projectedPersonDisplayName(
+                    investigationDetail.data.investigation_assistant_display_name,
+                    investigationDetail.data.investigation_assistant ||
+                      investigationDetail.data.assistant,
+                  ),
               },
               {
                 key: "collected-at",
@@ -3044,7 +3075,11 @@ export default function InvestigationCenterPage({
               name="owner"
               rules={[{ required: true, message: "请填写负责人" }]}
             >
-              <Input />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item
               className="span-2"
@@ -3060,7 +3095,12 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="案源人" name="source_owner">
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item
               label="调查区域"
@@ -3213,7 +3253,13 @@ export default function InvestigationCenterPage({
               <Input placeholder="主体信息" />
             </Form.Item>
             <Form.Item label="调查辅助员" name="investigation_assistant">
-              <Input placeholder="调查辅助员" />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="请选择系统人员"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item label="权利类型" name="right_type">
               <Select
@@ -3443,7 +3489,12 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="负责人" name="owner">
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             {tab === "clue" && (
               <>
@@ -3484,7 +3535,13 @@ export default function InvestigationCenterPage({
           {clueReviewing?.status === "待客户审核" && (
             <div className="form-grid audit-reference">
               <Form.Item label="上一级审核员">
-                <Input value={clueReviewing.data.reviewer || "—"} readOnly />
+                <Input
+                  value={projectedPersonDisplayName(
+                    clueReviewing.data.reviewer_display_name,
+                    clueReviewing.data.reviewer,
+                  )}
+                  readOnly
+                />
               </Form.Item>
               <Form.Item label="上一级审核意见">
                 <Input.TextArea
@@ -3607,7 +3664,11 @@ export default function InvestigationCenterPage({
           </Form.Item>
           <div className="form-grid">
             <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-              <Input />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item label="材料来源" name="source">
               <Input />
@@ -3852,7 +3913,16 @@ export default function InvestigationCenterPage({
               width: 90,
               render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
             },
-            { title: "上传人", dataIndex: "uploader", width: 85 },
+            {
+              title: "上传人",
+              dataIndex: "uploader",
+              width: 85,
+              render: (_: unknown, row: Attachment) =>
+                projectedPersonDisplayName(
+                  row.uploader_display_name,
+                  row.uploader,
+                ),
+            },
             {
               title: "操作",
               key: "action",
@@ -4082,7 +4152,7 @@ export default function InvestigationCenterPage({
               name="owner"
               rules={[{ required: true }]}
             >
-              <Input disabled />
+              <Select disabled options={systemPersonOptions} />
             </Form.Item>
             <Form.Item label="调查区域" name="region">
               <Input />
@@ -4154,11 +4224,15 @@ export default function InvestigationCenterPage({
       >
         <Form form={assignForm} layout="vertical">
           <Form.Item
-            label="调查员账号"
+            label="调查员"
             name="investigator"
             rules={[{ required: true, min: 1 }]}
           >
-            <Input />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={systemPersonOptions}
+            />
           </Form.Item>
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
@@ -4245,7 +4319,14 @@ export default function InvestigationCenterPage({
                     label: "法院",
                     children: linkedCase.data.court || "—",
                   },
-                  { key: "owner", label: "负责人", children: linkedCase.owner },
+                  {
+                    key: "owner",
+                    label: "负责人",
+                    children: projectedPersonDisplayName(
+                      linkedCase.owner_display_name,
+                      linkedCase.owner,
+                    ),
+                  },
                   {
                     key: "description",
                     label: "说明",
