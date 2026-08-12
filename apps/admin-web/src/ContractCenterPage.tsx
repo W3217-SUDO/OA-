@@ -2127,7 +2127,7 @@ export default function ContractCenterPage({
             },
           }}
           tableLayout="fixed"
-          scroll={{ x: isAuditView ? 1450 : 1480 }}
+          scroll={{ x: isAuditView ? 1450 : 1480, y: "calc(100dvh - 390px)" }}
           pagination={{current:listPagination.current,pageSize:listPagination.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:<Button size="small">GO</Button>},showTotal:()=>`共有${rows.length}条`,onChange:updateListPagination}}
           summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />

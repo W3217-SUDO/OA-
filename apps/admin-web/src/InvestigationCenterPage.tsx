@@ -3467,7 +3467,7 @@ export default function InvestigationCenterPage({
                     }
                   : undefined
               }
-              scroll={{ x: tableScrollX }}
+              scroll={{ x: tableScrollX, y: "calc(100dvh - 395px)" }}
               pagination={{ pageSize: 20, showTotal: (n) => `共 ${n} 条` }}
               locale={{ emptyText: "没有查询到符合条件的记录" }}
             />

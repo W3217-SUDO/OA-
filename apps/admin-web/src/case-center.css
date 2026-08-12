@@ -10,6 +10,11 @@
 .case-original-panel > .ant-card-head .ant-card-head-title { position:relative; padding:6px 0 6px 10px; font-size:14px; font-weight:400; }
 .case-original-panel > .ant-card-head .ant-card-head-title::before { position:absolute; top:7px; bottom:7px; left:0; width:2px; background:#21a5d5; content:''; }
 .case-original-panel > .ant-card-body { padding:5px 0 8px; }
+.page-workbench:has(.case-original-layout) { overflow: hidden; }
+.page-workbench > .case-original-layout { height: 100%; min-height: 0; }
+.case-original-layout > .case-original-panel { display: flex; min-height: 0; flex-direction: column; }
+.case-original-layout > .case-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.case-original-layout .case-original-table { min-height: 0; }
 .case-advanced-query { display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:2px 7px; padding:0 8px 5px; overflow:hidden; }
 .case-advanced-query:not(.case-query-expanded) { max-height:0; padding-top:0; padding-bottom:0; }
 .case-advanced-query .ant-form-item { margin-bottom:0; }

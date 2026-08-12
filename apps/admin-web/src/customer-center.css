@@ -23,6 +23,11 @@
 
 .customer-list-panel > .ant-card-body { padding: 7px 8px 0; }
 
+.page-workbench:has(.customer-list-panel) { overflow: hidden; }
+.page-workbench > .customer-list-panel { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+.page-workbench > .customer-list-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.customer-list-panel .ant-table-wrapper { min-height: 0; }
+
 .customer-query {
   display: grid;
   grid-template-columns: auto 150px auto 140px auto 150px auto;
