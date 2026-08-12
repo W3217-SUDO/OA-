@@ -8,6 +8,17 @@ export default defineConfig(({ mode }) => {
     plugins:[react()],
     server:{proxy:apiProxy},
     preview:{proxy:apiProxy},
-    build:{chunkSizeWarningLimit:1100},
+    build:{
+      chunkSizeWarningLimit:1100,
+      rollupOptions:{
+        output:{
+          manualChunks(id) {
+            if (id.indexOf('/node_modules/dingtalk-jsapi/') >= 0) return 'dingtalk-vendor'
+            if (id.indexOf('/node_modules/antd/') >= 0 || id.indexOf('/node_modules/@ant-design/') >= 0) return 'antd-vendor'
+            if (id.indexOf('/node_modules/react/') >= 0 || id.indexOf('/node_modules/react-dom/') >= 0 || id.indexOf('/node_modules/scheduler/') >= 0) return 'react-vendor'
+          },
+        },
+      },
+    },
   }
 })
