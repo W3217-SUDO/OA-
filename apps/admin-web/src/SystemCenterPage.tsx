@@ -702,18 +702,11 @@ export default function SystemCenterPage({
     }
   };
   const openPasswordReset = (row: SystemUser) => {
-    if (row.username === currentUsername) {
-      message.error("不能重置当前登录账号密码");
-      return;
-    }
     resetPasswordForm.resetFields();
     setResettingUser(row);
   };
   const resetPassword = async () => {
-    if (!resettingUser || resettingUser.username === currentUsername) {
-      if (resettingUser) message.error("不能重置当前登录账号密码");
-      return;
-    }
+    if (!resettingUser) return;
     try {
       const value = await resetPasswordForm.validateFields();
       await api.post(`/system/users/${resettingUser.id}/reset-password`, {
@@ -1593,7 +1586,6 @@ export default function SystemCenterPage({
                     </Button>
                     <Button
                       type="link"
-                      disabled={row.username === currentUsername}
                       onClick={() => openPasswordReset(row)}
                     >
                       重置密码

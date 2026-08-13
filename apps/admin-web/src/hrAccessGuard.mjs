@@ -19,6 +19,7 @@ export function canDeleteOrganizationRole(roleCode) {
 }
 
 export function hrTransitionOptions(status) {
+  if (status === '\u79bb\u804c' || status === '\u505c\u7528') return ['\u5728\u804c']
   return {
     '试用': ['在职', '离职'],
     '在职': ['离职', '停用'],

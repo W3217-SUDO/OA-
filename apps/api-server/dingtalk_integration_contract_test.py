@@ -66,6 +66,18 @@ class DingTalkIntegrationContractTest(unittest.IsolatedAsyncioTestCase):
         sso = await self.client.post("/api/v1/auth/dingtalk/login", json={"auth_code": "next-code"})
         self.assertEqual(sso.status_code, 200, sso.text)
 
+    async def test_allowlisted_employee_can_first_login_by_unique_dingtalk_name(self):
+        async def fake_name_only_lookup(_code: str):
+            return {"user_id": "ding-name-only", "name": "测试员工", "mobile": ""}
+
+        dingtalk_client.user_by_auth_code = fake_name_only_lookup
+        sso = await self.client.post("/api/v1/auth/dingtalk/login", json={"auth_code": "name-only-code"})
+        self.assertEqual(sso.status_code, 200, sso.text)
+        self.assertEqual(sso.json()["user"]["display_name"], "测试员工")
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == "staff"))
+            self.assertEqual(user.profile["dingtalk_user_id"], "ding-name-only")
+
     async def test_user_outside_allowlist_cannot_bind_or_use_existing_binding(self):
         denied_bind = await self.client.post("/api/v1/auth/dingtalk/bind", json={"auth_code": "one-time-code", "username": "outsider", "password": "StaffPass2026!"})
         self.assertEqual(denied_bind.status_code, 403, denied_bind.text)

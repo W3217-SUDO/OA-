@@ -60,6 +60,12 @@ class CaseFinanceClosureContract(unittest.IsolatedAsyncioTestCase):
                 department=case.department,
                 data={"amount": 320.0, "fee_type": "其他费用", "expense_scope": "律所", "expense_subtype": "第三方费用", "handler": IDENTITY["username"], "case_id": case.id, "case_no": case.serial_no, "payee": "第三方机构"},
             )
+            payment_ready = BusinessRecord(
+                module="finance", serial_no="FEE-PAYMENT-001", title="可申请付款费用",
+                customer=case.customer, status="草稿", owner=IDENTITY["username"],
+                department=case.department,
+                data={"amount": 320.0, "fee_type": "其他费用", "expense_scope": "律所", "expense_subtype": "第三方费用", "handler": IDENTITY["username"], "case_id": case.id, "case_no": case.serial_no, "payee": "第三方机构"},
+            )
             internal = BusinessRecord(
                 module="finance", serial_no="FEE-INTERNAL-001", title="内部提成",
                 customer=case.customer, status="已审批", owner=IDENTITY["username"],
@@ -72,9 +78,10 @@ class CaseFinanceClosureContract(unittest.IsolatedAsyncioTestCase):
                 department=case.department,
                 data={"amount": 500.0, "fee_type": "官方费用", "expense_scope": "律所", "expense_subtype": "法院费用", "handler": IDENTITY["username"], "case_id": case.id, "case_no": case.serial_no, "payee": "上海市人民法院", "court": "上海市人民法院", "document_no": "PAY-OFFICIAL-001"},
             )
-            session.add_all([ordinary, internal, official])
+            session.add_all([ordinary, payment_ready, internal, official])
             await session.flush()
             self.ordinary_id = ordinary.id
+            self.payment_ready_id = payment_ready.id
             self.internal_id = internal.id
             self.official_id = official.id
             await session.commit()
@@ -89,6 +96,21 @@ class CaseFinanceClosureContract(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post(f"{API}/finance/fees/{self.ordinary_id}/submit", json={"comment": "案件详情申请付款"})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["status"], "待审批")
+
+    async def test_payment_request_from_draft_persists_amount_and_payment_account(self):
+        response = await self.client.post(
+            f"{API}/finance/fees/{self.payment_ready_id}/submit",
+            json={"amount": 120, "payment_account": "ROW28-TEST-ACCOUNT", "comment": "第28行付款申请"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "待审批")
+        self.assertEqual(response.json()["data"]["payment_requested_amount"], 120.0)
+        self.assertEqual(response.json()["data"]["payment_account"], "ROW28-TEST-ACCOUNT")
+
+        async with self.session_factory() as session:
+            fee = await session.get(BusinessRecord, self.payment_ready_id)
+            self.assertEqual(fee.data["payment_requested_amount"], 120.0)
+            self.assertEqual(fee.data["payment_account"], "ROW28-TEST-ACCOUNT")
 
     async def test_internal_package_is_pending_until_writeoff_and_syncs_amounts(self):
         preview = await self.client.post(f"{API}/finance/payment-packages/preview", json={"fee_ids": [self.internal_id]})

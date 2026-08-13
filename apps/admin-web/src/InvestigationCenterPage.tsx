@@ -454,7 +454,7 @@ export default function InvestigationCenterPage({
     const statuses = routeStatuses[initialTab] || [];
     if (statuses.length)
       result = result.filter((row) => statuses.includes(row.status));
-    if (initialTab === "investigation-task-published") {
+    if (initialTab === "investigation-task-published" && profile.role !== "admin") {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
         names.includes(String(row.data.publisher || row.owner || "")),

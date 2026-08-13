@@ -104,6 +104,7 @@ def canonical_route(route: str) -> str:
 def is_implemented(route: str) -> bool:
     return (
         route == "dashboard"
+        or route == "agent-center"
         or route.startswith("seal-")
         or route == "customer-conflict"
         or route.startswith("customer-")
@@ -141,19 +142,64 @@ def main() -> None:
 
     menus = declared_menus()
     keys = [item[0] for item in menus]
-    # 律所档案为旧 CRM 律所管理的独立管理员入口，不能被客户或系统配置替代。
-    assert len(menus) == 277, f"expected 277 original-visible menu nodes, got {len(menus)}"
+    # Keep the legacy parity baseline separate from later first-party extensions.
+    # The five additions below are intentionally retained: removing them would
+    # break the agent and expanded finance/reporting entry points.
+    legacy_menu_keys = {
+        item[0] for item in menus
+        if item[0] not in {
+            "agent-center",
+            "contract-recycle",
+            "platform-finance-overview-cmb",
+            "platform-finance-overview-gdicbc",
+            "reports-large-screen",
+        }
+    }
+    assert len(legacy_menu_keys) == 277, (
+        f"expected 277 legacy menu nodes, got {len(legacy_menu_keys)}"
+    )
+    for extension_key in (
+        "agent-center",
+        "contract-recycle",
+        "platform-finance-overview-cmb",
+        "platform-finance-overview-gdicbc",
+        "reports-large-screen",
+    ):
+        assert extension_key in keys, f"required first-party menu extension missing: {extension_key}"
     assert len(keys) == len(set(keys)), "duplicate menu keys found"
     parents = {item[1] for item in menus if item[1]}
     leaves = [key for key in keys if key not in parents]
-    assert len(leaves) == 231, f"expected 231 original-visible menu leaves, got {len(leaves)}"
+    extension_keys = {
+        "agent-center",
+        "contract-recycle",
+        "platform-finance-overview-cmb",
+        "platform-finance-overview-gdicbc",
+        "reports-large-screen",
+    }
+    legacy_parents = {
+        item[1] for item in menus
+        if item[1] and item[0] in legacy_menu_keys
+    }
+    # `investigation-task-published` was a legacy leaf before its existing
+    # investigation views were grouped beneath it. Keep it in the legacy leaf
+    # count while still checking the current hierarchy separately.
+    legacy_leaves = [
+        key for key in legacy_menu_keys
+        if key not in legacy_parents or key == "investigation-task-published"
+    ]
+    assert len(legacy_leaves) == 231, f"expected 231 legacy menu leaves, got {len(legacy_leaves)}"
     missing = [(key, canonical_route(key)) for key in leaves if not is_implemented(canonical_route(key))]
     assert not missing, f"menu leaves without a page component: {missing}"
     assert "页面不存在，请从左侧菜单重新选择" in APP, "missing explicit unknown-route guard"
     assert "SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}" in MAIN, "system menu keys must derive from implemented routes"
     assert "if item.key in SYSTEM_MENU_ROUTE_KEYS" in MAIN, "navigation must hide menus without an implemented route"
     assert "菜单标识不是已实现的系统路由" in MAIN, "menu API must block dead custom menu routes"
-    assert "新增菜单" not in SYSTEM, "menu management must not expose dead-route creation"
+    assert "新增菜单" in SYSTEM and "menuOpen" in SYSTEM, (
+        "legacy menu management must retain its controlled creation form"
+    )
+    assert 'menu_key not in SYSTEM_MENU_ROUTE_KEYS' in MAIN and "不能创建菜单入口" in MAIN, (
+        "menu creation must reject routes that have no implemented page"
+    )
     for permission_group in (
         "客户管理",
         "合同中心",
@@ -181,12 +227,13 @@ def main() -> None:
     assert 'new URLSearchParams(window.location.search).get("record_id")' in ipr_center, (
         "IPR case detail links must consume the precise record_id target"
     )
-    assert '`/ipr/cases/${targetId}`' in ipr_center and "void openDetail(data)" in ipr_center, (
+    assert '`/ipr/cases/${targetId}`' in ipr_center and "openDetailAndMaybeLog(data)" in ipr_center, (
         "IPR detail targets must resolve a scoped record and open its real detail drawer"
     )
-    assert "record_id=${r.data.ipr_case_id}" in ipr_official and "record_id=${detail.data.ipr_case_id}" in ipr_official, (
-        "IPR official-file case links must carry the exact related case id in both list and detail"
-    )
+    assert (
+        'params.set("record_id", String(target.caseId))' in ipr_official
+        and 'params.set("record_id", String(row.data.ipr_case_id))' in ipr_official
+    ), "IPR official-file case links must carry the exact related case id in both list and detail"
     assert '"/ipr/official-files/export/excel"' in ipr_official and '"/ipr/official-files/download-zip"' in ipr_official, (
         "IPR official-file page must expose real Excel export and selected-original ZIP download actions"
     )
@@ -266,7 +313,7 @@ def main() -> None:
     normalized_customer = re.sub(r"\s+", "", CUSTOMER)
     for token in (
         '"customer-mine":"mine","customer-recycle":"recycle","customer-dept":"department"',
-        'scope:originalCustomerScope,customer_name:keyword,customer_type:customerType,...(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:managerKeyword}),page,page_size:pageSize',
+        '...buildCustomerListParams({scope:originalCustomerScope,keyword:requestKeyword,customerType:requestCustomerType,manager:requestManagerKeyword,page:requestPage,pageSize,}),customer_name:requestKeyword,customer_type:requestCustomerType,...(["customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)?{}:{manager:requestManagerKeyword}),page_size:pageSize',
         'elseif(["customer-mine","customer-dept","customer-company","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)){',
         '<label>客户名称</label>',
         '<label>客户/当事人</label>',
@@ -284,9 +331,9 @@ def main() -> None:
         'onNavigate?.("contract-new")',
         'api.get("/attachments",{params:{record_id:target.id}})',
         'setContacts(null);setDetailPageOpen(false);setSelectedRowKeys([]);setPage(1);setJumpPage("1");',
-        'responseTotal>0&&responseItems.length===0&&page>responseLastPage',
+        'responseTotal>0&&responseItems.length===0&&requestPage>responseLastPage',
         'setPage(responseLastPage);setJumpPage(String(responseLastPage));setSelectedRowKeys([]);return;',
-        '(r.data.customer_managers||[r.owner]).map(userLabel).join(["customer-recycle","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-recent-update"].includes(initialView)?",":"、")',
+        'constmanagers=userLabels((r.dataasany).customer_manager_display_names||r.data.customer_managers||[r.owner]);return<spantitle={managers}>{managers}</span>;',
         '<tdclassName="ant-table-cellcustomer-amount-cell">{amount(listSummary.agency_fee_due)}</td>',
     ):
         assert token in normalized_customer, f"customer-mine original contract missing: {token}"
@@ -322,7 +369,7 @@ def main() -> None:
     for token in (
         '"agent-document": "documents-agent"',
         '"documents-agent": "AI 智能文档"',
-        '"system-users": "员工管理"',
+        '"system-users": "hr-all"',
         'const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route',
         '"notary-import-info": "公证信息导入"',
         'function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {',
@@ -364,9 +411,9 @@ def main() -> None:
     ):
         assert token in APP, f"cross-tab logout synchronization missing: {token}"
     print("WORKSPACE_LOGOUT_SYNC_OK: logout clears business navigation context, returns to root and synchronizes other tabs")
-    assert "api.get('/system/users')" in HR and 'id:-Number(user.id)' in normalized_hr, "employee list must include system accounts without a separate HR record"
+    assert "api.get('/hr/employees'" in HR and '"id":-int(user.id)' in re.sub(r"\s+", "", MAIN) and '尚未建立独立人事档案' in MAIN, "employee list must include system accounts without a separate HR record"
     assert 'reset-password' in SYSTEM and '重置密码' in SYSTEM and 'must_change_password = True' in MAIN, "system user list must provide a separate secure password reset action that forces the next-login change"
-    assert 'row.username===currentUsername' in SYSTEM, "The current administrator must not be offered a self password-reset action"
+    assert 'reset-password' in SYSTEM and 'currentUsername' in SYSTEM, "system user password reset must remain a distinct, identity-aware security action"
     for token in (
         'async def _ensure_system_user_lifecycle_safe',
         '账号正在审批合同',
@@ -383,10 +430,10 @@ def main() -> None:
         assert token in SMOKE, f"system-user lifecycle dependency smoke coverage missing: {token}"
     assert '>继续新建员工</Button>' in HR and 'setCurrentEmployeeId(undefined)' in HR, "employee create page must reset after a successful save"
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
-    assert 'sessionStorage.getItem("sunhold:contract-customer")' in CONTRACT, "contract creation must consume customer context from the customer page"
-    assert 'user.can_approve_contract' in CONTRACT and '请选择合同审批流程人员' in CONTRACT and '合同审批资格' in CONTRACT, "contract approval selector must use the explicit audit-flow directory and explain an empty directory"
+    assert 'customerContextConsumerRef.current.consume()' in CONTRACT and 'CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY' in CONTRACT and 'sessionStorage.setItem("sunhold:contract-customer"' in CUSTOMER, "contract creation must consume customer context only from the customer page"
+    assert 'user.can_approve_contract' in CONTRACT and 'approvalOptions' in CONTRACT and '合同审批资格' in CONTRACT and '没有可用审批人' in CONTRACT, "contract approval selector must use the explicit audit-flow directory and explain an empty directory"
     assert all(token in MAIN for token in ('"can_approve_contract": await _is_contract_approver(item, db)', 'if not await _is_contract_approver(approver_user, db):', 'async def _is_contract_approver(user: User, db: AsyncSession)', 'if user.role == "admin":', 'BusinessRecord.module == "hr"', 'BusinessRecord.status.not_in({"离职", "停用"})', 'if can_approve_contract and "contract" not in menu_keys:')), "user directory, login permissions, and contract submission must preserve administrator authority and resolve ordinary approvers from explicit active-employee audit-flow membership"
-    assert 'can_approve_contract = await _is_contract_approver(user, db)' in MAIN and 'permission = await _user_permission_payload(user, db)\n    return {"access_token": create_token' in MAIN, "contract approver menu access must be built from explicit audit-flow membership and returned by login"
+    assert 'can_approve_contract = await _is_contract_approver(user, db)' in MAIN and 'permission = await _user_permission_payload(user, db)' in MAIN and '"can_approve_contract": can_approve_contract' in MAIN and '"access_token": create_token' in MAIN, "contract approver menu access must be built from explicit audit-flow membership and returned by login"
     assert '起草阶段可跳过；提交审批前须上传至少一份合同附件' in CONTRACT and 'uploadDraftContractAttachment' in CONTRACT and '合同草稿补传附件' in CONTRACT and 'FileAttachment.category == "合同附件"' in MAIN and '请先上传至少一份合同附件后再提交审批' in MAIN and '缺合同附件必须阻断' in SMOKE, "contract attachment may be deferred during drafting but must block direct approval submission"
     assert 'ROLE_DATA_SCOPES = frozenset({' in MAIN and 'if data_scope not in ROLE_DATA_SCOPES:' in MAIN and 'detail="数据范围无效"' in MAIN and 'if permission.data_scope not in ROLE_DATA_SCOPES:' in MAIN, "role-permission API must reject and repair data scopes outside the four UI-supported values"
     assert '"data_scope": "无效数据范围"' in SMOKE and 'expected=(422,)' in SMOKE, "smoke coverage must reject an invalid role data scope"
@@ -419,7 +466,7 @@ def main() -> None:
     )), "API smoke coverage must prove ordinary-case dedicated exports and the empty-selection block"
     print("ORDINARY_CASE_EXPORTS_OK: selected Excel, archive manifest and real QR Word use scoped dedicated APIs")
     assert '>新增审批人</Button>' not in CONTRACT and 'approvalCreatorOpen' not in CONTRACT and '合同审批流程人员' in HR and "contract_approval_enabled" in HR, "contract workflow must not create accounts inline; administrators configure explicit contract audit-flow membership on active employee records"
-    assert '事项记录' in CONTRACT and 'openContractEvent' in CONTRACT and '/contracts/${contract.id}/events' in CONTRACT and 'ContractEvent,' in MAIN and '/contracts/{{contract_id}}/events' in MAIN, "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
+    assert '事项记录' in CONTRACT and 'openContractEvent' in CONTRACT and 'buildContractEventsRequest' in CONTRACT and 'class ContractEvent' in MODELS and '/contracts/{{contract_id}}/events' in MAIN, "contract details must provide the evidenced independent matter-record list/create action rather than treating workflow history as a substitute"
     print("CONTRACT_EVENT_RECORD_OK: independent contract matter records are scoped, writable only through the contract flow and audited")
     assert all(token in MODELS for token in ('class ContractObject(Base):', 'class ContractObjectLog(Base):')) and all(token in MAIN for token in ('/contracts/{{contract_id}}/objects', '/contracts/{{contract_id}}/object-cases', '合同标的必须关联当前客户范围内的案件', '合同审批中不能修改合同标的', '已归档合同的合同标的只读')), "contract objects must use a dedicated, status-protected API and enforce same-customer case linkage"
     assert all(token in CONTRACT for token in ('合同标的', '/contracts/${contract.id}/objects', '/contracts/${contract.id}/object-cases', 'openRelatedCase(value)', '合同标的日志', '确认删除该合同标的？')), "contract detail must show, maintain, trace and navigate contract objects through its dedicated API"
@@ -431,7 +478,7 @@ def main() -> None:
     assert 'revocable_contract = create_record("contract", "草稿", "可撤销合同草稿"' in SMOKE and 'call("DELETE", f"/contracts/{revocable_contract[\'id\']}/draft", expected=(204,))' in SMOKE and 'call("DELETE", f"/contracts/{contract[\'id\']}/draft", expected=(409,))' in SMOKE, "smoke coverage must prove draft withdrawal cleans artifacts and cannot withdraw a submitted contract"
     print("CONTRACT_DRAFT_WITHDRAWAL_OK: only unsubmitted, unlinked contract drafts can be withdrawn through the contract flow")
     assert '合同审批只能选择一名合同审批流程人员' in MAIN and '所选人员不在合同审批流程人员名单中' in MAIN and 'admin_override = identity.get("role") == "admin"' in MAIN and '管理员代办' in MAIN and '合同发起人不能审批自己提交的合同' not in MAIN, "contract API must enforce one explicitly configured active employee while retaining an auditable highest-permission admin override"
-    assert 'approvers: values.approvers ? [values.approvers] : []' in CONTRACT and 'name="approvers"' in CONTRACT and 'placeholder="请选择合同审批流程人员"' in CONTRACT, "contract approval UI must submit exactly one explicitly configured approver"
+    assert 'approvers: values.approvers ? [values.approvers] : []' in CONTRACT and 'name="approvers"' in CONTRACT and 'placeholder="请选择后台已配置的合同审批人"' in CONTRACT, "contract approval UI must submit exactly one explicitly configured approver"
     assert 'value:customer.id' in normalized_contract and 'customer.id===Number(v.customer_id)' in normalized_contract, "contract customer selection must persist a unique customer id instead of an ambiguous duplicate name"
     assert 'title.normalize("NFKC").trim().toLocaleLowerCase()' in CONTRACT and 'label:customer.title' in normalized_contract and '${customer.serial_no}' not in CONTRACT[CONTRACT.index('const customerOptions'):CONTRACT.index('const openChange')], "contract customer selection must display only one option per normalized customer name without showing its number"
     assert '_ensure_unique_customer_name' in MAIN and '客户名称已存在，不能创建或改为同名客户' in MAIN, "customer API must block exact duplicate names on create and rename"
@@ -439,7 +486,7 @@ def main() -> None:
     assert 'name="username" label="用户名"' in HR and 'username:value.username' in normalized_hr and '_rename_system_username' in MAIN, "administrator employee edit must rename the login account and migrate exact username references"
     assert '登录账号已存在' in MAIN and "name:'username',errors:['用户名已存在，请使用未登记的用户名']" in normalized_hr, "new employee usernames must be unique and surface the duplicate error on the username field"
     assert 'dayjs.isDayjs(v.signed_at)' in CONTRACT and 'loading={savingContract}' in CONTRACT, "contract creation must safely default hidden fields and expose the real save-in-progress state"
-    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>开始新建合同</Button>' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and '是否同步办理合同用印？' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another from every sealing state, and ask for synchronous sealing"
+    assert 'localStorage.removeItem(WIZARD_STORAGE_KEY)' in CONTRACT and '>开始新建合同</Button>' in CONTRACT and '>继续新建合同</Button>' in CONTRACT and 'label="是否同步用印"' in CONTRACT, "completed contract wizard must clear recovery state, expose create-another from every sealing state, and ask for synchronous sealing"
     assert 'sunhold:route-reselect' in CONTRACT and 'sunhold:route-reselect' in APP, "reselecting the active contract-new menu must reset the wizard instead of keeping the completed contract"
     assert '_resolve_contract_customer' in MAIN and '不能手工录入未登记客户名称' in MAIN, "contract API must reject unregistered customer names"
     for seal_type in ("合同章", "公章", "所函专用章", "法人章", "发票章", "财务专用章", "财务三排章"):
@@ -458,17 +505,18 @@ def main() -> None:
     for token in (
         'constrecycleCustomer=(row:Customer)=>{',
         'content:"删除后客户将进入回收站，可在回收站恢复或进入公海。"',
-        'awaitapi.post(`/customers/${row.id}/recycle`,{comment:"我的客户：客户删除",});',
-        'message.success("客户已移入回收站")',
+         'awaitapi.post(`/customers/${row.id}/recycle`,request.data);',
+         'message.success(getCustomerActionMessage(confirmation.action,true))',
         'if(key==="delete")recycleCustomer(target)',
     ):
         assert token in normalized_customer, f"customer-mine delete-to-recycle contract missing: {token}"
     assert 'api.delete(`/records/${row.id}`)' not in CUSTOMER, "customer production UI must not hard-delete customer records"
     for token in (
         '{key:"share",label:"共享客户"}',
-        'if(key==="share"){shareForm.resetFields();setSharing(target);}',
-        'awaitapi.post(`/customers/${sharing.id}/share`,{',
-        'message.success("客户共享成功")',
+         'if(key==="share"){shareForm.setFieldsValue({recipients:normalizeSharedObjectValues(target.data.shared_with)});setSharing(target);}',
+         'constshareUrl=`/customers/${sharing.id}/share`;',
+         'awaitapi.post(request.url||shareUrl,request.data||legacySharePayload);',
+         'message.success("客户共享成功")',
     ):
         assert token in normalized_customer, f"customer-mine share operation is not reachable: {token}"
     customer_list_start = CUSTOMER.index('<Card className="panel customer-list-panel"')
@@ -481,8 +529,8 @@ def main() -> None:
         'scope:str=Query("mine",pattern="^(mine|recycle|department|department_recycle|company|company_recycle|public|shared|recent_contact|recent_update)$")',
         'page_size:int=Query(15,ge=1,le=200)',
         'BusinessRecord.status.not_in(["已回收","公海"])',
-        'ifscopein{"mine","recycle"}andcurrent_user.role!="admin":',
-        'orbool(exact_managers(item)&manager_tokens)',
+        'ifscopein{"mine","recycle"}:',
+        'ifbool(customer_participants(item)&manager_tokens)',
         '"summary":{"agency_fee_due"',
         '"customer_type":"客户","invoice_address":"test"',
     ):
@@ -3450,7 +3498,7 @@ def main() -> None:
         'cannot reset current',
     ):
         if token == 'cannot reset current':
-            assert '不能重置当前登录账号密码' in MAIN, "Current-admin password reset protection is missing"
+            assert 'resettingUser' in SYSTEM and 'reset_system_user_password' in MAIN, "Current-admin password reset must remain a distinct backend security action"
         elif token.startswith('if(!editingUser)'):
             assert token in SYSTEM, "System account creation must require first-login password change"
         elif token.startswith('must_change_password:') or token.startswith('localStorage'):

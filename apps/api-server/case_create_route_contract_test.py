@@ -9,8 +9,8 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from app.database import SessionLocal
-from app.main import CaseCreateInput, create_case, list_case_eligible_contracts
-from app.models import BusinessRecord, RolePermission, User, WorkflowEvent
+from app.main import CaseCreateInput, CaseLitigantsInput, create_case, list_case_eligible_contracts, update_case_litigants
+from app.models import BusinessRecord, LegacyCase, LegacyCaseParticipant, RolePermission, User, WorkflowEvent
 from app.security import hash_password
 
 DB = pathlib.Path(__file__).with_name("legal_platform.db")
@@ -20,6 +20,8 @@ INVALID_STATUS = "\u5df2\u5f52\u6863"
 CRIMINAL = "\u5211\u4e8b\u6848\u4ef6"
 CLIENT_POSITION = "\u88ab\u544a\u4eba/\u72af\u7f6a\u5acc\u7591\u4eba"
 APPROVED = "\u5df2\u901a\u8fc7"
+CIVIL = "\u6c11\u4e8b\u6848\u4ef6"
+CIVIL_CLIENT_POSITION = "\u539f\u544a/\u7533\u8bf7\u4eba"
 
 
 class CaseCreateRouteContractTest(unittest.TestCase):
@@ -83,9 +85,32 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                 with self.assertRaises(HTTPException) as forbidden:
                     await create_case(CaseCreateInput(**base, serial_no=f"{prefix}-FORBIDDEN", status=NEW_STATUS), {"username": denied_username, "role": denied_role}, db)
                 self.assertEqual(forbidden.exception.status_code, 403)
+
+                legacy_case_no = f"CX{uuid.uuid4().hex[:18]}"
+                civil = await create_case(CaseCreateInput(
+                    **{**base, "title": f"{prefix} civil case", "case_type": CIVIL, "client_position": CIVIL_CLIENT_POSITION},
+                    serial_no=legacy_case_no,
+                    status=NEW_STATUS,
+                ), {"username": "admin", "role": "admin"}, db)
+                case_ids.append(civil["id"])
+                litigants = await update_case_litigants(
+                    civil["id"],
+                    CaseLitigantsInput(plaintiffs=[f"{prefix} plaintiff"], defendants=[f"{prefix} defendant"]),
+                    {"username": "admin", "role": "admin"},
+                    db,
+                )
+                self.assertEqual(litigants["data"]["defendants"], [f"{prefix} defendant"])
+                self.assertEqual(litigants["data"]["opponent"], f"{prefix} defendant")
+                legacy_case = await db.scalar(select(LegacyCase).where(LegacyCase.CaseNo == legacy_case_no))
+                self.assertIsNotNone(legacy_case)
+                self.assertEqual(legacy_case.CaseId, -civil["id"])
+                self.assertEqual(legacy_case.AppelleeNames, f"{prefix} defendant")
                 rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no.like(prefix + "%")))).all()
-                self.assertEqual({row.id for row in rows}, set(case_ids))
+                self.assertEqual({row.id for row in rows}, set(case_ids[:-1]))
             finally:
+                if "legacy_case_no" in locals():
+                    await db.execute(delete(LegacyCaseParticipant).where(LegacyCaseParticipant.CaseNo == legacy_case_no))
+                    await db.execute(delete(LegacyCase).where(LegacyCase.CaseNo == legacy_case_no))
                 await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_(case_ids)))
                 await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(case_ids)))
                 if contract_id:

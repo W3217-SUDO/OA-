@@ -239,6 +239,15 @@ export const filterContractLinkedRows = (rows = [], contract = {}) => {
   const contractNo = String(contract?.serial_no || "").trim();
   return rows.filter((item) => {
     const data = item?.data || {};
+    const allocations = Array.isArray(data.contract_allocations) ? data.contract_allocations : [];
+    const allocationMatch = allocations.some((allocation) => {
+      const allocationId = Number(allocation?.contract_record_id || allocation?.contract_id || 0);
+      const allocationNo = String(allocation?.contract_no || "").trim();
+      if (allocationId > 0 && allocationNo) return contractId > 0 && Boolean(contractNo) && allocationId === contractId && allocationNo === contractNo;
+      if (allocationId > 0) return contractId > 0 && allocationId === contractId;
+      return Boolean(allocationNo) && Boolean(contractNo) && allocationNo === contractNo;
+    });
+    if (allocationMatch) return true;
     const linkedIds = [item?.contract_record_id, item?.contract_id, data.contract_record_id, data.contract_id]
       .map((value) => Number(value || 0))
       .filter((value) => Number.isFinite(value) && value > 0);

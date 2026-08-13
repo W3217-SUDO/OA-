@@ -8,7 +8,9 @@ const navigation = fs.readFileSync(new URL("./src/businessRecordDetailNavigation
 
 test("律所付款使用普通费用审批而不是内部付款包", () => {
   assert.match(casePage, /const submitCaseFeePayment = async/);
-  assert.match(casePage, /api\.post\(`\/finance\/fees\/\$\{row\.id\}\/submit`/);
+  assert.match(casePage, /const submitPaymentRequest = async/);
+  assert.match(casePage, /api\.post\(`\/finance\/fees\/\$\{paymentRequestFee\.id\}\/submit`/);
+  assert.match(casePage, /openPaymentRequest\(row\)/);
   assert.match(casePage, /if\(key===\"payment\"\)return void submitCaseFeePayment\(selectedFirmFee!\)/);
   assert.doesNotMatch(casePage, /if\(key===\"payment\"\)return void previewInternalPayment\(selectedFirmFee!\)/);
 });
@@ -18,6 +20,11 @@ test("案件费用退费和开票携带动作并打开预填表单", () => {
   assert.match(casePage, /action:key===\"invoice\"\?\"create_invoice\":\"create_refund\"/);
   assert.match(casePage, /key===\"invoice\"\?\"finance-invoice-mine\":\"finance-refund\"/);
   assert.match(financePage, /target\.action === \"create_invoice\"/);
+  assert.match(financePage, /api\.get\("\/records", \{ params: \{ module: "contract", page_size: 100 \} \}\)/);
+  assert.match(financePage, /api\.get\("\/finance\/case-fees\/invoice-status", \{ params: \{ scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" \} \}\)/);
+  assert.doesNotMatch(financePage, /api\.get\("\/finance\/case-fees\/invoice-status", \{ params: \{ scope: "company", invoice_status: "未开票", page: 1, page_size: 200, fee_types: "" \} \}\)/);
+  assert.match(financePage, /所选案件费用已经申请开票，不能重复申请/);
+  assert.match(financePage, /\(invoice\.data\?\.case_fee_ids \|\| \[\]\)\.some/);
   assert.match(financePage, /case_fee_ids: \[data\.id\]/);
   assert.match(financePage, /setInvoiceOpen\(true\)/);
   assert.match(financePage, /target\.action === \"create_refund\"/);

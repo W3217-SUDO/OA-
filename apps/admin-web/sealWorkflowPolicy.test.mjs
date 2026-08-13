@@ -38,6 +38,7 @@ const {
   sealAttachmentListFailureMessage,
   formatSealAttachmentSize,
   getSealAttachmentExtension,
+  legacySealApplicationDefaults,
   canViewSealAssetAudit,
   shouldCloseSealAssetAuditAfterDelete,
   sealAssetAuditFailureMessage,
@@ -49,6 +50,27 @@ const {
   compareSealDateValues,
   toSealAuditRows,
 } = module.exports;
+
+test("new seal application defaults match the legacy case-seal flow and prefer a contract seal", () => {
+  assert.deepEqual(
+    legacySealApplicationDefaults([
+      { id: 1, seal_type: "公章", status: "可用" },
+      { id: 2, seal_type: "合同章", status: "可用" },
+      { id: 3, seal_type: "合同章", status: "停用" },
+    ]),
+    {
+      use_type: "案件用印",
+      seal_asset_id: 2,
+      copies: 1,
+      source_attachment_ids: [],
+      delivery_method: "现场用印",
+      is_electronic_seal: true,
+      is_offline_print: true,
+    },
+  );
+  assert.equal(legacySealApplicationDefaults([{ id: 1, seal_type: "公章", status: "可用" }]).seal_asset_id, 1);
+  assert.equal(legacySealApplicationDefaults([]).seal_asset_id, undefined);
+});
 
 test("seal file pagination keeps the legacy default, six options and GO", () => {
   assert.equal(sealFilePagination.defaultPageSize, 15);

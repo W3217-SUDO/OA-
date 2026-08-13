@@ -24,6 +24,7 @@ test("legacy create defaults electronic seal and offline print to enabled", () =
   );
   assert.match(
     page,
-    /openApplication = \(row\?: SealRow\) =>[\s\S]*?is_electronic_seal:\s*true[\s\S]*?is_offline_print:\s*true/,
+    /openApplication = \(row\?: SealRow\) =>[\s\S]*?legacySealApplicationDefaults\(assets\)/,
   );
+  assert.match(page, /legacySealApplicationDefaults\(assets\)/);
 });

@@ -31,7 +31,9 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
+  MinusCircleOutlined,
   PaperClipOutlined,
+  PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
   SendOutlined,
@@ -114,6 +116,7 @@ type CaseRow = {
   owner_display_name?: string;
   department: string;
   description: string;
+  created_at?: string;
   data: Record<string, any>;
 };
 type CaseAgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
@@ -379,6 +382,7 @@ type CaseDetailCapabilities = {
   can_update_progress: boolean;
   can_manage_hearing: boolean;
   can_create_case_task: boolean;
+  can_delete_case: boolean;
   can_duplicate_case: boolean;
   can_merge_case: boolean;
   can_assign_team: boolean;
@@ -392,7 +396,7 @@ type CaseDetailCapabilities = {
 const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_write: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
-  can_update_progress: false, can_manage_hearing: false, can_create_case_task: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
+  can_update_progress: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_basic: false, can_close_case: false, can_archive: false,
   can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
@@ -625,6 +629,7 @@ export default function CaseCenterPage({
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
+  const [paymentRequestFee, setPaymentRequestFee] = useState<CaseRow | null>(null);
   const [paymentPackagePreview, setPaymentPackagePreview] = useState<any | null>(null);
   const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
@@ -696,6 +701,8 @@ export default function CaseCenterPage({
   const [reviewForm] = Form.useForm();
   const [taskForm] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const [paymentRequestForm] = Form.useForm();
+  const [courtRefundForm] = Form.useForm();
   const [progressForm] = Form.useForm();
   const [phaseForm] = Form.useForm();
   const [executionStatusForm] = Form.useForm();
@@ -708,6 +715,7 @@ export default function CaseCenterPage({
   const [caseHearingLawyerForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
+  const [courtRefundFee, setCourtRefundFee] = useState<CaseRow | null>(null);
   const [reminderForm] = Form.useForm();
   const [caseLogForm] = Form.useForm();
   const [attachmentRenameForm] = Form.useForm();
@@ -728,6 +736,9 @@ export default function CaseCenterPage({
   };
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
+  const feeExpenseSubtype = Form.useWatch("expense_subtype", feeForm);
+  const feeItems = Form.useWatch("items", feeForm) || [];
+  const feeEmployeeOptions = caseAssistantOptions;
   const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
   const loadCaseCapabilities = async (rows: CaseRow[]) => {
     const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
@@ -1236,6 +1247,29 @@ export default function CaseCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "立案审批失败");
     }
+  };
+  const deleteCompanyCase = async (row: CaseRow) => {
+    if (initialView !== "case-company" || !getCaseCapability(row).can_delete_case) {
+      return message.warning("当前账号没有删除该案件的权限");
+    }
+    Modal.confirm({
+      title: "删除案件",
+      content: `确认删除案件“${row.serial_no} ${row.title}”吗？案件任务、附件、费用、排期和操作记录也会一并删除。`,
+      okText: "删除",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.delete(`/cases/${row.id}`);
+          message.success("案件已删除");
+          setSelectedCaseKeys([]);
+          await loadOrdinaryCases(caseQuery, originalPage, originalPageSize);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "案件删除失败");
+          throw error;
+        }
+      },
+    });
   };
   const requestUnarchive = (row: CaseRow) => {
     let reason = "";
@@ -2188,17 +2222,15 @@ export default function CaseCenterPage({
   const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所") => {
     if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
     feeForm.resetFields();
-    feeForm.setFieldsValue({
-      title: `${row.title}案件费用`,
-      amount: row.data.amount || undefined,
-      expense_scope: expenseScope,
-      expense_subtype: expenseScope === "内部" ? "内部费用" : "官费",
+    feeForm.setFieldsValue({ items: [{
+      title: `${row.title}案件费用`, amount: row.data.amount || undefined,
+      contract_record_id: Number(row.data.contract_record_id || row.data.contract_id) || undefined,
+      expense_scope: expenseScope, expense_subtype: expenseScope === "内部" ? "内部费用" : "官费",
       fee_type: expenseScope === "内部" ? "内部费用" : "官方费用",
-      handler: profile.username || row.owner,
-      court: row.data.court || "",
-      payee: row.data.court || "",
-      description: `来源案件 ${row.serial_no}`,
-    });
+      commission_details: [],
+      handler: profile.username || row.owner, court: row.data.court || "", payee: row.data.court || "",
+      deadline: undefined, description: `来源案件 ${row.serial_no}`,
+    }] });
     setFeeCase(row);
   };
   const createCaseFee = async () => {
@@ -2206,12 +2238,57 @@ export default function CaseCenterPage({
     if (!caseSource) return;
     const values = await feeForm.validateFields();
     try {
-      const payload = { ...values, customer: feeCase?.customer || editingFeeRow?.customer || "", case_no: feeCase?.serial_no || editingFeeRow?.data.case_no || "", case_record_id: feeCase?.id || editingFeeRow?.data.case_id };
-      const { data } = editingFeeRow ? await api.put(`/finance/fees/${editingFeeRow.id}`, payload) : await api.post("/finance/fees", payload);
-      message.success(`费用 ${data.serial_no} 已保存`);
+      const commonPayload = { customer: feeCase?.customer || editingFeeRow?.customer || "", case_no: feeCase?.serial_no || editingFeeRow?.data.case_no || "", case_record_id: feeCase?.id || editingFeeRow?.data.case_id };
+      if (editingFeeRow) {
+        const payload = { ...values, ...commonPayload, deadline: values.deadline ? formatRequiredDate(values.deadline, "截止日期") : undefined };
+        const { data } = await api.put(`/finance/fees/${editingFeeRow.id}`, payload);
+        message.success(`费用 ${data.serial_no} 已保存`);
+      } else {
+        const created: string[] = [];
+        for (const item of values.items || []) {
+          const payload = { ...item, ...commonPayload, deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : undefined };
+          const { data } = await api.post("/finance/fees", payload);
+          created.push(data.serial_no);
+        }
+        message.success(`已创建 ${created.length} 条费用草稿`);
+      }
       setFeeCase(null); setEditingFeeRow(null); feeForm.resetFields(); await load();
       if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
     } catch (error: any) { message.error(error?.response?.data?.detail || "费用保存失败"); }
+  };
+  const openCourtRefund = (row: CaseRow) => {
+    const amount = Number(row.data.amount || 0);
+    const refunded = Number(row.data.refund_amount || row.data.refund_requested_amount || 0);
+    courtRefundForm.resetFields();
+    courtRefundForm.setFieldsValue({ amount: Math.max(amount - refunded, 0) });
+    setCourtRefundFee(row);
+  };
+  const createCourtRefund = async () => {
+    if (!courtRefundFee || !viewingCounselCase) return;
+    try {
+      const values = await courtRefundForm.validateFields();
+      await api.post("/finance/refunds", {
+        fee_record_id: courtRefundFee.id,
+        case_no: viewingCounselCase.serial_no,
+        customer: viewingCounselCase.customer,
+        court: courtRefundFee.data.court || viewingCounselCase.data.court || "",
+        original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
+        amount: Number(values.amount),
+        applicant: profile.display_name || profile.username,
+        refund_account_name: values.refund_account_name,
+        refund_bank: values.refund_bank,
+        refund_account: values.refund_account,
+        expected_date: values.expected_date?.format("YYYY-MM-DD") || null,
+        reason: "诉讼费退款",
+        remark: values.remark || "",
+      });
+      message.success("法院退费申请已创建");
+      setCourtRefundFee(null);
+      courtRefundForm.resetFields();
+      await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "法院退费申请创建失败");
+    }
   };
   const deleteCaseFee = (row: CaseRow) => {
     if (row.status !== "草稿") return message.warning("仅草稿费用可以删除");
@@ -2220,10 +2297,58 @@ export default function CaseCenterPage({
       catch (error: any) { message.error(error?.response?.data?.detail || "费用删除失败"); }
     }});
   };
+  const markCaseFeeNoPayment = (row: CaseRow) => {
+    if (!["草稿", "已退回"].includes(row.status)) return message.warning("仅草稿或已退回费用可以标记不缴费");
+    Modal.confirm({
+      title: `标记不缴费：${row.serial_no}`,
+      content: "标记后该费用不会再进入付款审批，是否继续？",
+      okText: "确认标记",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.post(`/finance/fees/${row.id}/mark-no-payment`, { comment: "案件费用标记不缴费" });
+          message.success("费用已标记为不缴费");
+          await load();
+          if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "标记不缴费失败");
+        }
+      },
+    });
+  };
   const editCaseFee = (row: CaseRow) => {
     if (row.status !== "草稿") return message.warning("仅草稿费用可以修改");
-    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, expense_scope: row.data.expense_scope || "律所", expense_subtype: row.data.expense_subtype || "官费", fee_type: row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", description: row.description || "" });
+    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: row.data.expense_scope || "律所", expense_subtype: row.data.expense_subtype || "官费", fee_type: row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
     setEditingFeeRow(row);
+  };
+  const openPaymentRequest = (row: CaseRow) => {
+    if (!counselDetailCapabilities.can_create_finance) return message.warning("当前账号没有申请付款权限");
+    if (!["草稿", "已退回", "已审批", "部分付款"].includes(row.status)) {
+      return message.warning(`当前费用状态“${row.status}”不能申请付款`);
+    }
+    const paid = Number(row.data.paid_amount || 0);
+    const requested = Number(row.data.payment_requested_amount || 0);
+    const remaining = Math.max(Number(row.data.amount || 0) - paid - requested, 0);
+    paymentRequestForm.resetFields();
+    paymentRequestForm.setFieldsValue({ amount: remaining || Number(row.data.amount || 0), payment_account: row.data.payment_account || "" });
+    setPaymentRequestFee(row);
+  };
+  const submitPaymentRequest = async () => {
+    if (!paymentRequestFee) return;
+    try {
+      const values = await paymentRequestForm.validateFields();
+      await api.post(`/finance/fees/${paymentRequestFee.id}/submit`, {
+        amount: Number(values.amount),
+        payment_account: String(values.payment_account || "").trim(),
+        comment: `案件 ${paymentRequestFee.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款`,
+      });
+      message.success("付款申请已提交审批");
+      setPaymentRequestFee(null);
+      paymentRequestForm.resetFields();
+      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "付款申请提交失败");
+    }
   };
   const previewInternalPayment = async (row: CaseRow) => {
     if (row.status !== "已审批") return message.warning("仅已审批内部费用可以申请付款");
@@ -2246,7 +2371,7 @@ export default function CaseCenterPage({
       await previewInternalPayment(row);
       return;
     }
-    if (["待审批", "已审批", "部分付款", "已付款"].includes(row.status)) {
+    if (["待审批", "已付款"].includes(row.status)) {
       const labels: Record<string, string> = {
         待审批: "付款申请已经提交，正在等待审批",
         已审批: "付款申请已经审批，可由财务登记付款",
@@ -2258,17 +2383,7 @@ export default function CaseCenterPage({
       onNavigate?.("finance-payment-mine");
       return;
     }
-    if (!["草稿", "已退回"].includes(row.status)) {
-      message.warning(`当前费用状态“${row.status}”不能申请付款`);
-      return;
-    }
-    try {
-      await api.post(`/finance/fees/${row.id}/submit`, { comment: `案件 ${row.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款` });
-      message.success("付款申请已提交审批");
-      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "付款申请提交失败");
-    }
+    openPaymentRequest(row);
   };
   const submitInternalPayment = async () => {
     if (!paymentPackagePreview || paymentPackageLoading) return;
@@ -2700,6 +2815,9 @@ export default function CaseCenterPage({
   const originalCases = ordinaryCases;
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeys.includes(row.id));
   const selectedCaseCapability = getCaseCapability(selectedCase);
+  const canDeleteSelectedCompanyCase = initialView === "case-company"
+    && ["admin", "manager"].includes(profile.role || "")
+    && (profile.role === "admin" || selectedCaseCapability.can_delete_case);
   const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeys.includes(row.id));
   const legacyCaseListOperationState = getLegacyCaseListOperationState({
     role: profile.role || "",
@@ -2835,7 +2953,7 @@ export default function CaseCenterPage({
     {title:"阶段信息",key:"phase-detail",width:190,render:(_:unknown,row:CaseRow)=><><p>当前阶段:{row.status}</p><p>执行进度:{row.data.execution_progress||""}</p></>},
     {title:"任务信息",key:"task",width:255,render:(_:unknown,row:CaseRow)=><><p>名称:<Button type="link" className="case-cell-link" onClick={()=>openCaseTasks(row)}>{row.data.task_name||""}</Button></p><p>内容:{row.data.task_content||""}</p></>},
     {title:"主体信息",key:"entity",width:190,render:(_:unknown,row:CaseRow)=><><p>主体:{row.customer?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:row.customer})}>{row.data.subject_name||row.customer}</Button>:row.data.subject_name||""}</p><p>披露状态:{row.data.subject_status||""}</p></>},
-    {title:"归档信息",key:"archive",width:190,render:(_:unknown,row:CaseRow)=><><p>归档状态:{row.data.archive_status||row.status}</p><p>归档日期:{row.data.archived_at||""} <Button type="link" className="case-cell-link" onClick={()=>openCaseTasks(row)}>查看</Button></p></>},
+    {title:"归档信息",key:"archive",width:190,render:(_:unknown,row:CaseRow)=><><p>归档状态:{row.data.archive_status||row.status}</p><p>归档日期:{row.data.archived_at||""} <Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>查看</Button></p></>},
   ];
   const originalCaseColumns=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseColumns:groupedOriginalCaseColumns;
   const counselCaseColumns = [
@@ -3003,16 +3121,21 @@ export default function CaseCenterPage({
   const openCaseFeeBySubtype=(scope:"律所"|"内部",subtype:string)=>{
     if(!viewingCounselCase)return;
     openCaseFee(viewingCounselCase,scope);
-    const feeType=subtype==="内部费用"?"内部费用":subtype==="代理费"?"代理费":subtype==="官费"?"官方费用":"其他费用";
-    feeForm.setFieldsValue({expense_subtype:subtype,fee_type:feeType,title:`${viewingCounselCase.title}${subtype}`});
+    const feeType=subtype==="内部费用"?"内部费用":subtype==="代理费"?"代理费":["官费","诉讼费","保全费","鉴定费","公证费","公告费","执行费"].includes(subtype)?"官方费用":"其他费用";
+    feeForm.setFieldValue(["items", 0, "expense_subtype"], subtype);
+    feeForm.setFieldValue(["items", 0, "fee_type"], feeType);
+    feeForm.setFieldValue(["items", 0, "title"], `${viewingCounselCase.title}${subtype}`);
   };
   const requireSingleFee=(keys:Key[],row:CaseRow|undefined,action:string)=>{
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
     return true;
   };
   const handleFirmFeeOperation=(key:string)=>{
-    if(!requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":"申请开票"))return;
+    if(!requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":"标记不缴费"))return;
     if(key==="payment")return void submitCaseFeePayment(selectedFirmFee!);
+    if(key==="edit")return editCaseFee(selectedFirmFee!);
+    if(key==="delete")return deleteCaseFee(selectedFirmFee!);
+    if(key==="no-payment")return markCaseFeeNoPayment(selectedFirmFee!);
     rememberBusinessRecordDetailTarget({
       id:selectedFirmFee!.id,
       module:"finance",
@@ -3290,6 +3413,7 @@ export default function CaseCenterPage({
                   ...(!counselListMode && selectedCaseCapability.can_update_progress ? [{ key: "progress", label: "登记进展" }] : []),
                   ...(!counselListMode && selectedCaseCapability.can_manage_hearing ? [{ key: "hearing", label: "开庭排期" }] : []),
                   ...(selectedCaseCapability.can_archive ? [{ key: "archive", label: "案件归档" }] : []),
+                  ...(canDeleteSelectedCompanyCase ? [{ key: "delete", label: "删除案件", danger: true }] : []),
                 ] : [{ key: "select", label: "请先选择案件", disabled: true }],
                 onClick: ({ key }) => {
                   if (!selectedCase) return message.warning("请先选择案件");
@@ -3303,6 +3427,7 @@ export default function CaseCenterPage({
                   if (key === "progress") openProgress(selectedCase);
                   if (key === "hearing") openHearing(selectedCase);
                   if (key === "archive") void openArchive(selectedCase);
+                  if (key === "delete") void deleteCompanyCase(selectedCase);
                 },
               }}
             ><Button>更多操作 ▾</Button></Dropdown>
@@ -3664,18 +3789,30 @@ export default function CaseCenterPage({
         onCancel={() => { setFeeCase(null); setEditingFeeRow(null); feeForm.resetFields(); }}
       >
         <Form form={feeForm} layout="vertical">
-          <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
-          <div className="form-grid">
-            <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldsValue({ expense_subtype: value === "内部" ? "内部费用" : "官费", fee_type: value === "内部" ? "内部费用" : "官方费用" })} /></Form.Item>
-            <Form.Item label="费用类别" name="expense_subtype" rules={[{ required: true }]}><Select options={(feeExpenseScope === "内部" ? ["内部费用"] : ["官费", "第三方费用", "代理费", "其他费用"]).map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue("fee_type", ({ "官费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
-            <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
-            <Form.Item name="fee_type" hidden><Input /></Form.Item>
-            <Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item>
-            <Form.Item label="收款单位" name="payee"><Input /></Form.Item>
-            <Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item>
-            <Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item>
-          </div>
-          <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
+          {editingFeeRow ? <>
+            <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
+            <div className="form-grid">
+              <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={contracts.filter((contract) => contract.customer === editingFeeRow.customer).map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))} /></Form.Item>
+              <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldsValue({ expense_subtype: value === "内部" ? "内部费用" : "官费", fee_type: value === "内部" ? "内部费用" : "官方费用" })} /></Form.Item>
+              <Form.Item label="费用类别" name="expense_subtype" rules={[{ required: true }]}><Select options={(feeExpenseScope === "内部" ? ["内部费用"] : ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"]).map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue("fee_type", ({ "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
+              <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
+            </div>
+              <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
+              {feeExpenseSubtype === "代理费" && <Form.List name="commission_details">{(fields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{fields.map((field) => <div className="case-fee-commission-row" key={field.key}><Form.Item {...field} name={[field.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...field} name={[field.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...field} name={[field.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...field} name={[field.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} /></div>)}</section>}</Form.List>}
+          </> : <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => <>
+            {fields.map((field, index) => <Card key={field.key} size="small" title={`费用 ${index + 1}`} extra={fields.length > 1 ? <Button type="text" danger icon={<MinusCircleOutlined />} aria-label={`删除费用 ${index + 1}`} onClick={() => remove(field.name)} /> : null} style={{ marginBottom: 12 }}>
+              <Form.Item label="费用名称" name={[field.name, "title"]} rules={[{ required: true, message: "请输入费用名称" }]}><Input /></Form.Item>
+              <div className="form-grid">
+                <Form.Item label="合同号" name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={contracts.filter((contract) => contract.customer === feeCase?.customer).map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))} /></Form.Item>
+                <Form.Item label="费用归属" name={[field.name, "expense_scope"]} rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items", field.name, "expense_subtype"], value === "内部" ? "内部费用" : "官费"); feeForm.setFieldValue(["items", field.name, "fee_type"], value === "内部" ? "内部费用" : "官方费用"); }} /></Form.Item>
+                <Form.Item label="费用类别" name={[field.name, "expense_subtype"]} rules={[{ required: true }]}><Select options={["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用", "内部费用"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue(["items", field.name, "fee_type"], ({ "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
+                <Form.Item label="金额" name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item label="经办人员" name={[field.name, "handler"]} rules={[{ required: true, message: "请输入经办人员" }]}><Input /></Form.Item><Form.Item label="收款单位" name={[field.name, "payee"]}><Input /></Form.Item><Form.Item label="缴费法院/机构" name={[field.name, "court"]}><Input /></Form.Item><Form.Item label="缴费通知文号" name={[field.name, "document_no"]}><Input /></Form.Item><Form.Item label="截止日期" name={[field.name, "deadline"]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+              </div>
+              <Form.Item label="说明" name={[field.name, "description"]}><Input.TextArea rows={2} /></Form.Item>
+              {feeItems[field.name]?.expense_subtype === "代理费" && <Form.List name={[field.name, "commission_details"]}>{(commissionFields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{commissionFields.map((commissionField) => <div className="case-fee-commission-row" key={commissionField.key}><Form.Item {...commissionField} name={[commissionField.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...commissionField} name={[commissionField.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...commissionField} name={[commissionField.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...commissionField} name={[commissionField.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(commissionField.name)} /></div>)}</section>}</Form.List>}
+            </Card>)}
+            <Button block icon={<PlusOutlined />} onClick={() => add({ expense_scope: "律所", expense_subtype: "官费", fee_type: "官方费用", commission_details: [], handler: profile.username || feeCase?.owner, description: `来源案件 ${feeCase?.serial_no || ""}` })}>新增费用</Button>
+          </>}</Form.List>}
         </Form>
       </Modal>
       <Modal
@@ -3693,6 +3830,23 @@ export default function CaseCenterPage({
         <p>费用编号：{paymentPackagePreview?.source?.request_no || "—"}</p>
         <p>金额：{paymentPackagePreview?.total_amount ?? paymentPackagePreview?.source?.amount ?? "—"}</p>
         <p>付款包号：{paymentPackagePreview?.package_no || "—"}</p>
+      </Modal>
+      <Modal
+        open={Boolean(paymentRequestFee)}
+        title={`申请付款：${paymentRequestFee?.serial_no || ""}`}
+        okText="申请付款"
+        cancelText="取消"
+        onOk={submitPaymentRequest}
+        onCancel={() => { setPaymentRequestFee(null); paymentRequestForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Alert type="info" showIcon title="填写本次申请付款金额和付款账号" style={{ marginBottom: 12 }} />
+        <Form form={paymentRequestForm} layout="vertical">
+          <Form.Item label="费用编号"><Input value={paymentRequestFee?.serial_no || ""} disabled /></Form.Item>
+          <Form.Item label="费用金额"><Input value={paymentRequestFee?.data.amount ?? ""} disabled /></Form.Item>
+          <Form.Item label="申请付款金额" name="amount" rules={[{ required: true, message: "请输入申请付款金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
+          <Form.Item label="付款账号" name="payment_account" rules={[{ required: true, message: "请输入付款账号" }]}><Input placeholder="请输入付款账号" /></Form.Item>
+        </Form>
       </Modal>
       <Modal open={Boolean(caseTaskCreateCase)} title={`发布案件任务：${caseTaskCreateCase?.serial_no || ""}`} okText="发布任务" cancelText="取消" onOk={createCaseTask} onCancel={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); }} destroyOnHidden>
         <Alert type="info" showIcon title="任务创建后会自动关联当前案件并即时回填到“案件任务”页签。" style={{ marginBottom: 16 }} />
@@ -3742,11 +3896,17 @@ export default function CaseCenterPage({
         extra={viewingCounselCase&&<Space wrap>
           {isCaseDetailView && <Button data-testid="case-detail-back" onClick={returnToCaseList}>返回案件列表</Button>}
           <Button type="primary" icon={<RobotOutlined />} onClick={() => openCaseAgent(viewingCounselCase)}>案件智能体</Button>
-          {shouldUseCompanyScheduleDetailOperationMenu(initialView,caseListReturnContext?.route)?<Dropdown trigger={["click"]} dropdownRender={()=><Card size="small"><div style={{display:"grid",gap:8}}>{companyScheduleDetailActionButtons}</div></Card>}><Button>操作</Button></Dropdown>:caseDetailActionButtons}
+          <Dropdown
+            trigger={["click"]}
+            data-testid="case-detail-operation-menu"
+            dropdownRender={()=><Card size="small"><div style={{display:"grid",gap:8}}>{shouldUseCompanyScheduleDetailOperationMenu(initialView,caseListReturnContext?.route)?companyScheduleDetailActionButtons:caseDetailActionButtons}</div></Card>}
+          >
+            <Button>操作</Button>
+          </Dropdown>
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
-          <Card size="small" title="基本信息" className="case-counsel-detail-card">
+          <Card size="small" title="案件信息" className="case-counsel-detail-card">
             <div className="form-grid">
               <p><strong>案件编号：</strong>{viewingCounselCase.serial_no}</p>
               <p><strong>案件类型：</strong>{viewingCounselCase.data.case_type||"—"}</p>
@@ -3759,7 +3919,7 @@ export default function CaseCenterPage({
               <p><strong>律师助理：</strong>{casePersonDisplayName(viewingCounselCase.data.assistant,viewingCounselCase.data.assistant_display_name)}</p>
               {String(viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no || "").trim() && <p><strong>关联线索：</strong><Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCounselCase.data.clue_record_id || viewingCounselCase.data.investigation_clue_id) || undefined, serial_no: viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no })}>{viewingCounselCase.data.investigation_clue_nos?.join("、") || viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no}</Button></p>}
               {String(viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no || "").trim() && <p><strong>原案件号：</strong><Button type="link" className="case-cell-link" onClick={() => openRelatedOriginalCase({ id: Number(viewingCounselCase.data.original_case_record_id || viewingCounselCase.data.origin_case_record_id || viewingCounselCase.data.source_case_record_id) || undefined, serial_no: viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no })}>{viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no}</Button></p>}
-              {viewingCounselCase.data.case_type === "法律顾问" ? <><p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p><p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p></> : <><p><strong>原告/申请人：</strong>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</p><p><strong>被告/被申请人：</strong>{viewingCounselCase.data.opponent||"—"}</p><p><strong>法院/机构：</strong>{viewingCounselCase.data.court||viewingCounselCase.data.first_court_name||"—"}</p><p><strong>案由/罪名：</strong>{viewingCounselCase.data.cause_or_charge||"—"}</p><p><strong>调查员：</strong>{casePersonDisplayName(viewingCounselCase.data.investigator,viewingCounselCase.data.investigator_display_name)}</p>{viewingCounselCase.data.case_type === "行政案件及国家赔偿" && <p><strong>权利类型：</strong>{viewingCounselCase.data.right_type||"—"}</p>}</>}
+              {viewingCounselCase.data.case_type === "法律顾问" ? <><p><strong>顾问类型：</strong>{viewingCounselCase.data.counsel_type||"—"}</p><p><strong>顾问期限：</strong>{viewingCounselCase.data.counsel_start||"—"} 至 {viewingCounselCase.data.counsel_end||"—"}</p></> : <><p><strong>原告/申请人：</strong>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</p><p><strong>被告/被申请人：</strong>{viewingCounselCase.data.opponent || (Array.isArray(viewingCounselCase.data.defendants) ? viewingCounselCase.data.defendants.join("、") : viewingCounselCase.data.defendants) || "—"}</p><p><strong>法院/机构：</strong>{viewingCounselCase.data.court||viewingCounselCase.data.first_court_name||"—"}</p><p><strong>案由/罪名：</strong>{viewingCounselCase.data.cause_or_charge||"—"}</p><p><strong>调查员：</strong>{casePersonDisplayName(viewingCounselCase.data.investigator,viewingCounselCase.data.investigator_display_name)}</p>{viewingCounselCase.data.case_type === "行政案件及国家赔偿" && <p><strong>权利类型：</strong>{viewingCounselCase.data.right_type||"—"}</p>}</>}
             </div>
           </Card>
           {viewingCounselCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
@@ -3779,6 +3939,21 @@ export default function CaseCenterPage({
               <p><strong>生效日期</strong><span>{viewingCounselCase.data.effective_date||"—"}</span></p>
             </div>
           </section>}
+          <section className="case-archive-summary" aria-label="归档信息">
+            <div className="case-court-summary-title">归档信息</div>
+            <div className="case-court-summary-grid">
+              <p><strong>归档状态</strong><span>{viewingCounselCase.data.archive_status || viewingCounselCase.status || "—"}</span></p>
+              <p><strong>归档号</strong><span>{viewingCounselCase.data.archive_no || "—"}</span></p>
+              <p><strong>提交人</strong><span>{casePersonDisplayName(viewingCounselCase.data.archive_submitter || viewingCounselCase.owner, viewingCounselCase.data.archive_submitter_display_name || viewingCounselCase.owner_display_name)}</span></p>
+              <p><strong>提交时间</strong><span>{viewingCounselCase.data.archive_submitted_at || "—"}</span></p>
+              <p><strong>提交备注</strong><span>{viewingCounselCase.data.archive_submit_comment || "—"}</span></p>
+              <p><strong>审核状态</strong><span>{viewingCounselCase.data.archive_status || "—"}</span></p>
+              <p><strong>审核人</strong><span>{casePersonDisplayName(viewingCounselCase.data.archive_reviewer, viewingCounselCase.data.archive_reviewer_display_name)}</span></p>
+              <p><strong>审核时间</strong><span>{viewingCounselCase.data.archive_reviewed_at || viewingCounselCase.data.archived_at || "—"}</span></p>
+              <p><strong>审核备注</strong><span>{viewingCounselCase.data.archive_review_comment || viewingCounselCase.data.archive_reject_reason || "—"}</span></p>
+              <p><strong>归档日期</strong><span>{viewingCounselCase.data.archived_at || "—"}</span></p>
+            </div>
+          </section>
           <div className="case-detail-body-grid">
             <div className="case-detail-tab-area">
           <Tabs
@@ -3800,7 +3975,7 @@ export default function CaseCenterPage({
                 </aside>
                 <div className="case-document-list">
                 <input ref={counselDetailUploadRef} hidden type="file" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
-                <Table rowKey="id" size="small" pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} columns={[
+                <Table rowKey="id" size="small" pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys}} locale={{emptyText:<Space direction="vertical" size={10}><span>没有查到文档。</span>{counselDetailCapabilities.can_upload_attachment&&<Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}</Space>}} columns={[
                   {title:"序号",key:"sequence",width:70,render:(_:unknown,_row:AttachmentRow,index:number)=>index+1},
                   {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
                   {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
@@ -3821,17 +3996,19 @@ export default function CaseCenterPage({
                   {title:"合同编号",width:150,render:(_:unknown,row:CaseRow)=>row.data.contract_no||viewingCounselCase.data.contract_no||"—"},
                   {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
                   {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>row.data.amount??0},
+                  {title:"申请付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??0},
+                  {title:"付款账号",width:180,render:(_:unknown,row:CaseRow)=>row.data.payment_account||"—"},
                   {title:"退费",width:90,align:"right",render:(_:unknown,row:CaseRow)=>row.data.refund_amount??row.data.refund_requested_amount??0},
                   {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
-                  {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.data.created_at||"").slice(0,10)||"—"},
+                  {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
                   {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
                   {title:"回款金额",width:110,align:"right",render:(_:unknown,row:CaseRow)=>row.data.received_amount??row.data.cashed_amount??"/"},
                   {title:"开票日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.invoice_date||"").slice(0,10)||"—"},
                   {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
                 ]}/>
                 <Space className="case-legacy-bottom-actions">
-                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"官费"},{key:"第三方费用",label:"第三方费用"},{key:"代理费",label:"代理费"},{key:"其他费用",label:"其他费用"}],onClick:({key})=>openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"}],onClick:({key})=>handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
+                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"官费"},{key:"诉讼费",label:"诉讼费"},{key:"保全费",label:"保全费"},{key:"鉴定费",label:"鉴定费"},{key:"公证费",label:"公证费"},{key:"公告费",label:"公告费"},{key:"执行费",label:"执行费"},{key:"第三方费用",label:"第三方费用"},{key:"代理费",label:"代理费"},{key:"其他费用",label:"其他费用"}],onClick:({key})=>openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
                 </Space>
               </div>},
               {key:"platform-fees",label:"平台费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={platformFeeRows} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
@@ -3843,7 +4020,7 @@ export default function CaseCenterPage({
                   {title:"已申请付款金额",width:150,align:"right",render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??row.data.applied_amount??0},
                   {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.paid_amount??0},
                   {title:"状态",dataIndex:"status",width:100},
-                  {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.data.created_at||"").slice(0,10)||"—"},
+                  {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
                   {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.paid_at||row.data.payment_date||"").slice(0,10)||"—"},
                   {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
                   {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>row.description||row.data.remark||"—"},
@@ -4322,6 +4499,26 @@ export default function CaseCenterPage({
           <Form.Item label="归档意见" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(courtRefundFee)}
+        title={`法院退费：${courtRefundFee?.serial_no || ""}`}
+        okText="确定"
+        cancelText="取消"
+        onOk={createCourtRefund}
+        onCancel={() => { setCourtRefundFee(null); courtRefundForm.resetFields(); }}
+      >
+        <Alert type="info" showIcon title={`原案：${viewingCounselCase?.serial_no || ""}；原官费：${courtRefundFee?.serial_no || ""}；原金额：${courtRefundFee?.data.amount ?? 0}`} style={{ marginBottom: 16 }} />
+        <Form form={courtRefundForm} layout="vertical">
+          <Form.Item label="退费金额" name="amount" rules={[{ required: true, message: "请输入退费金额" }]}>
+            <InputNumber min={0.01} max={Math.max(Number(courtRefundFee?.data.amount || 0) - Number(courtRefundFee?.data.refund_amount || courtRefundFee?.data.refund_requested_amount || 0), 0)} precision={2} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="退款账户名" name="refund_account_name" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item label="退款银行" name="refund_bank" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item label="退款账号" name="refund_account" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item label="预计到账日" name="expected_date"><DatePicker style={{ width: "100%" }} /></Form.Item>
+          <Form.Item label="备注" name="remark"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
       <Modal

@@ -13,6 +13,7 @@ export const buildInvoiceApplicationPayload = ({
   cases = [],
   contracts = [],
   caseFees = [],
+  requireSource = false,
 }) => {
   const caseNo = text(values.case_no);
   const caseRecord = caseNo
@@ -34,6 +35,9 @@ export const buildInvoiceApplicationPayload = ({
   if (contractId != null && !contractRecord) {
     return { ok: false, error: "关联合同不存在或无权访问" };
   }
+  if (requireSource && contractId == null) {
+    return { ok: false, error: "新建发票申请必须关联合同" };
+  }
 
   const requestedFeeIds = Array.isArray(values.case_fee_ids)
     ? values.case_fee_ids
@@ -44,6 +48,9 @@ export const buildInvoiceApplicationPayload = ({
   if (feeIds.some((id) => !Number.isInteger(id) || id <= 0)) {
     return { ok: false, error: "关联费用编号无效" };
   }
+  if (requireSource && feeIds.length === 0) {
+    return { ok: false, error: "新建发票申请至少关联一笔案件费用" };
+  }
   const linkedFees = feeIds.map((id) => findById(caseFees, id));
   if (
     linkedFees.some(
@@ -51,6 +58,21 @@ export const buildInvoiceApplicationPayload = ({
     )
   ) {
     return { ok: false, error: "关联费用不存在、无权访问或不属于当前案件" };
+  }
+  if (requireSource && contractRecord) {
+    const contractNo = text(contractRecord.serial_no);
+    const inconsistent = linkedFees.some((row) => {
+      const data = row?.data || {};
+      const feeContractId = data.contract_id ?? data.contract_record_id;
+      const feeContractNo = text(data.contract_no);
+      return (
+        (feeContractId != null && Number(feeContractId) !== contractId) ||
+        (feeContractNo && feeContractNo !== contractNo)
+      );
+    });
+    if (inconsistent) {
+      return { ok: false, error: "所选案件费用必须属于当前合同" };
+    }
   }
 
   const amount = Number(values.amount);

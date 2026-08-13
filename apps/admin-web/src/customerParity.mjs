@@ -50,10 +50,18 @@ export const CUSTOMER_PATCH_SERVER_FIELDS = new Set([
   "notes",
   "shared_with",
   "shared_at",
+  "is_shared",
   "claimed_at",
   "released_at",
   "recycled_at",
   "restored_at",
+  "level_change",
+  "key_change",
+  "status_before_recycle",
+  "recycled_by",
+  "restored_by",
+  "released_by",
+  "claimed_by",
   "contract_count",
   "civil_case_count",
   "contact_count",
@@ -63,6 +71,13 @@ export const CUSTOMER_PATCH_SERVER_FIELDS = new Set([
 
 export const filterCustomerPatchData = (data = {}) =>
   Object.fromEntries(Object.entries(data).filter(([key]) => !CUSTOMER_PATCH_SERVER_FIELDS.has(key)))
+
+// Customer list and detail pages historically read different source fields.
+// Keep them in lockstep whenever the editable customer source changes.
+export const synchronizeCustomerSource = (data = {}, customerSource = "") => {
+  const source = String(customerSource ?? "").trim()
+  return { ...data, customer_source: source, source_person: source }
+}
 
 export const normalizeSharedObjectValues = (values = []) => {
   if (!Array.isArray(values)) return []

@@ -51,6 +51,7 @@ export const buildCaseCreatePayload = (
   client_position: context.mode === "counsel" ? "" : text(draft.client_position),
   cause_or_charge: context.mode === "counsel" ? "" : text(draft.cause_or_charge),
   right_type: context.mode === "counsel" ? "" : text(draft.right_type),
+  opponent: text(draft.opponent) || list(draft.defendants).join("、"),
   source_person: text(draft.source_person),
   counsel_type: context.mode === "counsel" ? text(draft.counsel_type) : "",
   counsel_start: context.mode === "counsel" ? dateText(context.counselStart ?? (Array.isArray(draft.counsel_range) ? draft.counsel_range[0] : "")) : null,

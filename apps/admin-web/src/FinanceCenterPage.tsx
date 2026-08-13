@@ -681,6 +681,7 @@ export default function FinanceCenterPage({
   });
   const [contractPayments, setContractPayments] = useState<Fee[]>([]);
   const [contracts, setContracts] = useState<Fee[]>([]);
+  const [invoiceCandidateFees, setInvoiceCandidateFees] = useState<Fee[]>([]);
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
   const [refundMeta, setRefundMeta] = useState({
@@ -1105,11 +1106,13 @@ export default function FinanceCenterPage({
     void (async () => {
       try {
         const { data } = await api.get(`/records/${target.id}`);
-        if (data.module === "finance" && target.action === "create_invoice") {
-          const contractResponse = await api.get("/records", {
-            params: { module: "contract", page_size: 100 },
-          });
+          if (data.module === "finance" && target.action === "create_invoice") {
+          const [contractResponse, feeResponse] = await Promise.all([
+            api.get("/records", { params: { module: "contract", page_size: 100 } }),
+            api.get("/finance/case-fees/invoice-status", { params: { scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" } }),
+          ]);
           setContracts(Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : []);
+          setInvoiceCandidateFees(Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : []);
           invoiceForm.resetFields();
           invoiceForm.setFieldsValue({
             case_no: data.data?.case_no || "",
@@ -1201,8 +1204,15 @@ export default function FinanceCenterPage({
   const [claimForm] = Form.useForm();
   const [allocateForm] = Form.useForm();
   const [settlementBatchForm] = Form.useForm();
-  const selectedFeeType = Form.useWatch("fee_type", feeForm);
+  const watchedFeeType = Form.useWatch("fee_type", feeForm);
+  const [feeTypeOverride, setFeeTypeOverride] = useState("");
+  const selectedFeeType = watchedFeeType || feeTypeOverride;
+  const feeCommissionDetails = Form.useWatch("commission_details", feeForm) || [];
   const invoiceCaseNo = Form.useWatch("case_no", invoiceForm);
+  const invoiceContractId = Form.useWatch("contract_record_id", invoiceForm);
+  const invoiceFeeOptions = invoiceEditTarget
+    ? invoiceCandidateFees.length ? invoiceCandidateFees : fees
+    : invoiceCandidateFees;
   const isInternalApprovalRoute = internalApprovalRoutes.includes(initialView);
   const isInternalDetailRoute = [
     "finance-internal-detail",
@@ -2284,6 +2294,7 @@ export default function FinanceCenterPage({
   const closeFeeModal = () => {
     setFeeOpen(false);
     setFeeEditTarget(null);
+    setFeeTypeOverride("");
     feeForm.resetFields();
   };
   const openFeeEdit = (row: Fee) => {
@@ -2303,7 +2314,16 @@ export default function FinanceCenterPage({
       case_no: data.case_no || "",
       case_record_id: data.case_record_id || data.case_id || undefined,
       contract_record_id: data.contract_record_id || data.contract_id || undefined,
+      commission_details: Array.isArray(data.commission_details)
+        ? data.commission_details.map((detail: Record<string, any>) => ({
+            employee_username: detail.employee_username || detail.username || "",
+            commission_type: detail.commission_type || "员工提成",
+            amount: detail.amount ?? detail.actual_commission,
+            remark: detail.remark || "",
+          }))
+        : [],
     });
+    setFeeTypeOverride(data.fee_type || "");
     setFeeEditTarget(row);
     setFeeOpen(true);
   };
@@ -2616,10 +2636,14 @@ export default function FinanceCenterPage({
   };
   const loadInvoiceReferenceData = async () => {
     try {
-      const response = await api.get("/records", {
-        params: { module: "contract", page_size: 100 },
-      });
-      setContracts(Array.isArray(response.data?.items) ? response.data.items : []);
+      const [contractResponse, feeResponse] = await Promise.all([
+        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+        api.get("/finance/case-fees/invoice-status", {
+          params: { scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" },
+        }),
+      ]);
+      setContracts(Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : []);
+      setInvoiceCandidateFees(Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : []);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "合同关联数据加载失败");
       throw error;
@@ -2631,11 +2655,23 @@ export default function FinanceCenterPage({
       values: v,
       cases,
       contracts,
-      caseFees: fees,
+      caseFees: invoiceCandidateFees.length ? invoiceCandidateFees : fees,
+      requireSource: !invoiceEditTarget,
     });
     if (linked.ok === false) {
       message.error(linked.error);
       return;
+    }
+    if (!invoiceEditTarget) {
+      const selectedFeeIds = new Set((linked.payload.case_fee_ids || []).map(Number));
+      const duplicateInvoice = invoices.find((invoice) =>
+        !["已撤回", "已作废"].includes(invoice.status) &&
+        (invoice.data?.case_fee_ids || []).some((feeId: number) => selectedFeeIds.has(Number(feeId))),
+      );
+      if (duplicateInvoice) {
+        message.error("所选案件费用已经申请开票，不能重复申请");
+        return;
+      }
     }
     try {
       if (invoiceEditTarget) {
@@ -2651,7 +2687,8 @@ export default function FinanceCenterPage({
       setInvoiceOpen(false);
       setInvoiceEditTarget(null);
       invoiceForm.resetFields();
-      load();
+      await loadInvoiceReferenceData();
+      await load();
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail ||
@@ -7965,7 +8002,9 @@ export default function FinanceCenterPage({
         case_no: linked.serial_no,
         customer: linked.customer,
         handler: currentUser.username,
+        commission_details: [],
       });
+      setFeeTypeOverride(feeTypeByKey[key]);
       setFeeOpen(true);
       return;
     }
@@ -10426,6 +10465,7 @@ export default function FinanceCenterPage({
                           handler:
                             currentUser.displayName || "姓名待维护",
                         });
+                        setFeeTypeOverride("官方费用");
                         setFeeOpen(true);
                       }}
                     >
@@ -11520,7 +11560,10 @@ export default function FinanceCenterPage({
               name="fee_type"
               rules={[{ required: true }]}
             >
-              <Select options={feeTypes.map((v) => ({ value: v, label: v }))} />
+              <Select
+                options={feeTypes.map((v) => ({ value: v, label: v }))}
+                onChange={(value) => setFeeTypeOverride(value || "")}
+              />
             </Form.Item>
             <Form.Item
               label="金额"
@@ -11574,6 +11617,76 @@ export default function FinanceCenterPage({
           <Form.Item label="说明" name="description">
             <Input.TextArea rows={2} />
           </Form.Item>
+          {selectedFeeType === "代理费" && (
+            <Form.List name="commission_details">
+              {(fields, { add, remove }) => (
+                <section className="finance-fee-commission-details">
+                  <div className="finance-fee-commission-header">
+                    <strong>员工提成</strong>
+                    <Button
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() =>
+                        add({ commission_type: "员工提成", amount: undefined, remark: "" })
+                      }
+                    >
+                      新建员工提成
+                    </Button>
+                  </div>
+                  {fields.map((field) => (
+                    <div className="finance-fee-commission-row" key={field.key}>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "employee_username"]}
+                        label="员工"
+                        rules={[{ required: true, message: "请选择员工" }]}
+                      >
+                        <Select
+                          showSearch
+                          optionFilterProp="label"
+                          options={financePeople.map((person) => ({
+                            value: person.username,
+                            label: person.label,
+                          }))}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "commission_type"]}
+                        label="提成类型"
+                        rules={[{ required: true }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "amount"]}
+                        label="提成金额"
+                        rules={[{ required: true, message: "请输入提成金额" }]}
+                      >
+                        <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, "remark"]} label="备注">
+                        <Input />
+                      </Form.Item>
+                      <Button
+                        danger
+                        type="text"
+                        aria-label="删除员工提成"
+                        icon={<DeleteOutlined />}
+                        onClick={() => remove(field.name)}
+                      />
+                    </div>
+                  ))}
+                  {feeCommissionDetails.length > 0 && (
+                    <div className="finance-fee-commission-total">
+                      已分配员工提成：{feeCommissionDetails.reduce((sum: number, detail: Record<string, any>) => sum + Number(detail?.amount || 0), 0).toFixed(2)}
+                    </div>
+                  )}
+                </section>
+              )}
+            </Form.List>
+          )}
         </Form>
       </Modal>
       <Modal
@@ -11607,7 +11720,11 @@ export default function FinanceCenterPage({
                 }}
               />
             </Form.Item>
-            <Form.Item label="关联合同" name="contract_record_id">
+            <Form.Item
+              label="关联合同"
+              name="contract_record_id"
+              rules={[{ required: !invoiceEditTarget, message: "请选择关联合同" }]}
+            >
               <Select
                 allowClear
                 showSearch
@@ -11616,20 +11733,52 @@ export default function FinanceCenterPage({
                   value: x.id,
                   label: `${x.serial_no}｜${x.title || x.customer || ""}`,
                 }))}
+                onChange={(id) => {
+                  const contract = contracts.find((x) => Number(x.id) === Number(id));
+                  if (contract) {
+                    invoiceForm.setFieldsValue({
+                      customer: contract.customer || undefined,
+                      case_fee_ids: undefined,
+                    });
+                  }
+                }}
               />
             </Form.Item>
-            <Form.Item label="关联案件费用" name="case_fee_ids">
+            <Form.Item
+              label="关联案件费用"
+              name="case_fee_ids"
+              rules={[{ required: !invoiceEditTarget, type: "array", min: 1, message: "至少选择一笔案件费用" }]}
+            >
               <Select
                 mode="multiple"
                 allowClear
                 showSearch
                 optionFilterProp="label"
-                options={fees
-                  .filter((x) => !invoiceCaseNo || x.data?.case_no === invoiceCaseNo)
+                options={invoiceFeeOptions
+                  .filter((x) => {
+                    const selectedContractId = invoiceContractId;
+                    const contract = contracts.find((item) => Number(item.id) === Number(selectedContractId));
+                    const feeContractId = x.data?.contract_id ?? x.data?.contract_record_id;
+                    const feeContractNo = String(x.data?.contract_no || "").trim();
+                    return (!selectedContractId || feeContractId == null && !feeContractNo || Number(feeContractId) === Number(selectedContractId) || feeContractNo === String(contract?.serial_no || ""))
+                      && (!invoiceCaseNo || x.data?.case_no === invoiceCaseNo)
+                      && Number(x.data?.remaining_invoice_amount ?? x.data?.amount ?? 0) > 0;
+                  })
                   .map((x) => ({
                     value: x.id,
-                    label: `${x.serial_no}｜${x.title || x.data?.fee_type || ""}`,
+                    label: `${x.data?.contract_no || "无合同号"}｜${x.data?.case_no || "无案号"}｜${x.data?.fee_type || x.title || "费用"}｜费用 ${Number(x.data?.amount || 0).toFixed(2)}｜可申请 ${Number(x.data?.remaining_invoice_amount ?? x.data?.amount ?? 0).toFixed(2)}`,
                   }))}
+                onChange={(ids) => {
+                  const selected = invoiceFeeOptions.filter((item) => ids?.includes(item.id));
+                  if (!selected.length) return;
+                  const first = selected[0];
+                  const total = selected.reduce((sum, item) => sum + Number(item.data?.remaining_invoice_amount ?? item.data?.amount ?? 0), 0);
+                  invoiceForm.setFieldsValue({
+                    case_no: first.data?.case_no || undefined,
+                    customer: first.customer || first.data?.customer || undefined,
+                    amount: Number(total.toFixed(2)),
+                  });
+                }}
               />
             </Form.Item>
             <Form.Item

@@ -17,8 +17,13 @@ test("sidebar keeps legacy menu-permission filtering and blocked-route guard", (
   );
   assert.match(
     source,
-    /sessionUser\?\.menu_keys \|\| \["user-center"\]/,
-    "non-admin sidebar grants should come from the stored user menu keys",
+    /:\s*\["user-center",\s*\.\.\.\(sessionUser\?\.menu_keys \|\| \[\]\)\],/,
+    "non-admin sidebar grants should contain only the session permission payload",
+  );
+  assert.doesNotMatch(
+    source,
+    /sessionUser\?\.menu_keys \|\| \[\]\),\s*\.\.\.navigationMenuKeys/,
+    "non-admin sidebar must never append all navigation routes as implicit grants",
   );
   assert.match(
     source,

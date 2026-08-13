@@ -66,19 +66,19 @@ test("system user personnel-name display never falls back to username", () => {
   assert.doesNotMatch(usersBlock, /display_name\s*\|\|\s*row\.username/);
 });
 
-test("system user destructive helpers enforce admin and self boundaries", () => {
+test("system user destructive helpers protect deletion but permit password reset for the current administrator", () => {
   const helpers = pageSource.slice(
     pageSource.indexOf("const removeUser = async"),
     pageSource.indexOf("const editRole =", pageSource.indexOf("const removeUser = async")),
   );
   assert.match(helpers, /row\.role === "admin"/);
   assert.match(helpers, /系统管理员账号不可删除/);
-  assert.match(helpers, /resettingUser\.username === currentUsername/);
-  assert.match(helpers, /不能重置当前登录账号密码/);
+  assert.doesNotMatch(helpers, /resettingUser\.username === currentUsername/);
+  assert.match(helpers, /\/reset-password/);
 });
 
 test("system user action buttons retain lock and delete confirmation guards", () => {
-  assert.match(usersBlock, /disabled=\{row\.username === currentUsername\}/);
+  assert.doesNotMatch(usersBlock, /disabled=\{row\.username === currentUsername\}/);
   assert.match(usersBlock, /disabled=\{!row\.failed_login_attempts && !row\.locked_until\}/);
   assert.match(usersBlock, /row\.role !== "admin"/);
   assert.match(usersBlock, /Popconfirm/);

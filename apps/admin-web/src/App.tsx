@@ -1674,7 +1674,7 @@ export default function App() {
   const grantedMenuKeys = new Set(
     sessionUser?.role === "admin"
       ? navigationMenuKeys
-      : ["user-center", ...(sessionUser?.menu_keys || []), ...navigationMenuKeys],
+      : ["user-center", ...(sessionUser?.menu_keys || [])],
   );
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
@@ -2111,11 +2111,13 @@ export default function App() {
               closable: item.key !== "dashboard",
             }))}
           />
-          <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
-            <Suspense fallback={<div className="loading">正在加载页面...</div>}>
-              {currentPage}
-            </Suspense>
-          </PageLoadBoundary>
+          <main className="page-workbench">
+            <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
+              <Suspense fallback={<div className="loading">正在加载页面...</div>}>
+                {currentPage}
+              </Suspense>
+            </PageLoadBoundary>
+          </main>
         </Content>
       </Layout>
       <nav className="mobile-bottom-nav" aria-label="移动端主导航">
