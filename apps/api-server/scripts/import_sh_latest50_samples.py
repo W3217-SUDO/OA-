@@ -75,6 +75,12 @@ def decode_dataset(path):
     return rows
 
 
+def merge_rows(primary, additional, key):
+    merged = {clean(row.get(key)): row for row in primary if clean(row.get(key))}
+    merged.update({clean(row.get(key)): row for row in additional if clean(row.get(key))})
+    return list(merged.values())
+
+
 def legacy_values(model, row):
     values = {}
     date_columns = {column.name for column in model.__table__.columns if "DATETIME" in str(column.type).upper()}
@@ -86,6 +92,10 @@ def legacy_values(model, row):
         value = row[column.name]
         if column.name in date_columns:
             value = parse_datetime(value)
+            if value is not None and value.tzinfo is not None and not getattr(column.type, "timezone", False):
+                # Legacy SQL Server datetime columns store Shanghai wall time
+                # without an offset; PostgreSQL asyncpg requires the same shape.
+                value = value.replace(tzinfo=None)
         elif column.name in integer_columns:
             try:
                 value = int(float(value))
@@ -102,6 +112,7 @@ def legacy_values(model, row):
 
 async def upsert_legacy(db, model, key, rows):
     created = updated = 0
+    primary_keys = [column.name for column in model.__table__.primary_key.columns]
     for row in rows:
         values = legacy_values(model, row)
         marker = values.get(key)
@@ -109,11 +120,18 @@ async def upsert_legacy(db, model, key, rows):
             continue
         item = await db.scalar(select(model).where(getattr(model, key) == marker))
         if item is None:
+            if len(primary_keys) == 1:
+                primary_key = primary_keys[0]
+                primary_value = values.get(primary_key)
+                if primary_value is not None and await db.get(model, primary_value) is not None:
+                    values.pop(primary_key)
             item = model(**values)
             db.add(item)
             created += 1
         else:
             for name, value in values.items():
+                if name in primary_keys:
+                    continue
                 setattr(item, name, value)
             updated += 1
     await db.flush()
@@ -229,11 +247,20 @@ async def upsert_record(db, index, *, module, serial_no, title, customer="", own
     return item, True
 
 
-async def run(bundle_dir, dry_run):
+async def run(bundle_dir, dry_run, investigation_bundle=None):
     bundle_dir = Path(bundle_dir)
     main = decode_dataset(bundle_dir / "SH_latest50_dataset.xml.gz.b64")
     deps = decode_dataset(bundle_dir / "SH_latest50_dependencies.xml.gz.b64")
-    inv = decode_dataset(bundle_dir / "SH_latest50_investigation_dependencies.xml.gz.b64")
+    inv = decode_dataset(
+        investigation_bundle
+        or bundle_dir / "SH_latest50_investigation_dependencies.xml.gz.b64"
+    )
+    deps["FCM_Contract"] = merge_rows(
+        deps.get("FCM_Contract", []), inv.get("FCM_Contract", []), "ContractNo"
+    )
+    deps["CRM_Customer"] = merge_rows(
+        deps.get("CRM_Customer", []), inv.get("CRM_Customer", []), "CustomerNo"
+    )
     expected = {"cases": len(main.get("Legal_Case", [])), "customers": len(deps.get("CRM_Customer", [])), "contracts": len(deps.get("FCM_Contract", [])), "investigations": len(inv.get("Legal_Investigation", [])), "tasks": len(inv.get("Legal_Investigation_Task", [])), "clues": len(main.get("Legal_Investigation_Clue", []))}
     if expected["cases"] != 50:
         raise RuntimeError(f"Expected 50 legacy cases, found {expected['cases']}")
@@ -335,5 +362,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("bundle_dir")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--investigation-bundle",
+        help="Optional full 8091 investigation/task dependency package",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.bundle_dir, args.dry_run))
+    asyncio.run(run(args.bundle_dir, args.dry_run, args.investigation_bundle))

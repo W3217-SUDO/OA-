@@ -14,6 +14,11 @@ IMPORTER = ROOT / "scripts" / "import_sh_latest50_samples.py"
 
 
 class Latest50CaseRelationsImportContractTest(unittest.TestCase):
+    def test_full_investigation_bundle_can_replace_sample_dependencies(self):
+        source = IMPORTER.read_text(encoding="utf-8")
+        self.assertIn('parser.add_argument(\n        "--investigation-bundle"', source)
+        self.assertIn("investigation_bundle\n        or bundle_dir", source)
+
     def test_import_is_idempotent_and_preserves_relation_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "latest50.db"
@@ -91,5 +96,4 @@ asyncio.run(main())
 
 if __name__ == "__main__":
     unittest.main()
-
 
