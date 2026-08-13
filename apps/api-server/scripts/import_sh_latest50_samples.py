@@ -106,6 +106,7 @@ def legacy_values(model, row):
 
 async def upsert_legacy(db, model, key, rows):
     created = updated = 0
+    primary_keys = [column.name for column in model.__table__.primary_key.columns]
     for row in rows:
         values = legacy_values(model, row)
         marker = values.get(key)
@@ -113,11 +114,18 @@ async def upsert_legacy(db, model, key, rows):
             continue
         item = await db.scalar(select(model).where(getattr(model, key) == marker))
         if item is None:
+            if len(primary_keys) == 1:
+                primary_key = primary_keys[0]
+                primary_value = values.get(primary_key)
+                if primary_value is not None and await db.get(model, primary_value) is not None:
+                    values.pop(primary_key)
             item = model(**values)
             db.add(item)
             created += 1
         else:
             for name, value in values.items():
+                if name in primary_keys:
+                    continue
                 setattr(item, name, value)
             updated += 1
     await db.flush()

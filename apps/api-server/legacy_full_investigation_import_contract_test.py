@@ -23,6 +23,12 @@ class LegacyFullInvestigationImportContractTest(unittest.TestCase):
         self.assertIsNone(values["CreateTime"].tzinfo)
         self.assertEqual(values["CreateTime"].hour, 16)
 
+    def test_existing_soft_key_rows_keep_their_primary_key(self):
+        source = IMPORTER.read_text(encoding="utf-8")
+        self.assertIn("primary_keys = [column.name for column in model.__table__.primary_key.columns]", source)
+        self.assertIn("if name in primary_keys:\n                    continue", source)
+        self.assertIn("if primary_value is not None and await db.get(model, primary_value) is not None:", source)
+
     def test_exporter_omits_sensitive_staff_fields(self):
         source = (ROOT / "scripts" / "export_legacy_investigation_tree.ps1").read_text(encoding="utf-8")
         self.assertNotIn("SELECT s.*", source)
