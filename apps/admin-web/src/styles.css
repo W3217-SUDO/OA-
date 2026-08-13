@@ -50,8 +50,11 @@ body {
 }
 .global-search {
   width: 320px;
-  min-width: 220px;
+  min-width: 320px;
+  flex: 0 0 320px;
   margin-left: 12px;
+  position: relative;
+  z-index: 2;
 }
 .global-search .ant-input-affix-wrapper {
   border: 0;
@@ -59,6 +62,7 @@ body {
   background: rgba(255, 255, 255, 0.95);
 }
 .top-actions {
+  flex: 0 0 auto;
   margin-left: auto;
   margin-right: 8px;
 }
@@ -202,15 +206,17 @@ body {
   border-top: 2px solid #00a65a;
 }
 .topbar-workspace-tabs {
-  min-width: 240px;
-  max-width: 620px;
+  min-width: 0;
+  max-width: none;
   height: 50px;
-  flex: 1 1 480px;
+  flex: 1 1 0;
   margin: 0;
   overflow: hidden;
   color: #fff;
 }
 .topbar-workspace-tabs > .ant-tabs-nav {
+  width: 100%;
+  min-width: 0;
   height: 50px;
   margin: 0;
 }
@@ -220,6 +226,13 @@ body {
 .topbar-workspace-tabs .ant-tabs-nav-wrap,
 .topbar-workspace-tabs .ant-tabs-nav-list {
   height: 50px;
+}
+.topbar-workspace-tabs .ant-tabs-nav-wrap {
+  min-width: 0;
+  overflow: hidden;
+}
+.topbar-workspace-tabs .ant-tabs-nav-operations {
+  flex: 0 0 auto;
 }
 .topbar-workspace-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
   min-width: 104px;
@@ -259,13 +272,11 @@ body {
 @media (max-width: 1500px) and (min-width: 721px) {
   .global-search {
     width: 260px;
-    min-width: 180px;
-  }
-  .case-quick-search {
-    width: 210px !important;
+    min-width: 260px;
+    flex-basis: 260px;
   }
   .topbar-workspace-tabs {
-    min-width: 210px;
+    min-width: 140px;
   }
   .topbar-workspace-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
     min-width: 92px;
@@ -273,15 +284,13 @@ body {
   }
 }
 @media (max-width: 1200px) and (min-width: 721px) {
-  .case-quick-search {
-    display: none !important;
-  }
   .global-search {
-    width: 200px;
-    min-width: 150px;
+    width: 190px;
+    min-width: 190px;
+    flex-basis: 190px;
   }
   .topbar-workspace-tabs {
-    min-width: 150px;
+    min-width: 110px;
   }
 }
 .metrics {
@@ -601,7 +610,6 @@ body {
     width: 40px;
     height: 40px;
   }
-  .case-quick-search,
   .top-actions {
     display: none !important;
   }
