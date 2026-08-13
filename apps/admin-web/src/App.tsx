@@ -1836,6 +1836,31 @@ export default function App() {
             setCollapsed((v) => !v);
           }}
         />
+        <Tabs
+          className="workspace-tabs topbar-workspace-tabs"
+          type="editable-card"
+          hideAdd
+          size="small"
+          activeKey={active}
+          onChange={navigate}
+          onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
+          items={openPages.map((item) => ({
+            key: item.key,
+            label: (
+              <span
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (item.key === "dashboard") return;
+                  closeOpenPage(item.key);
+                }}
+              >
+                {item.label}
+              </span>
+            ),
+            closable: item.key !== "dashboard",
+          }))}
+        />
         <div className="mobile-top-title" aria-live="polite">
           {currentPageLabel}
         </div>
@@ -1870,6 +1895,14 @@ export default function App() {
               aria-label="返回控制台"
               icon={<HomeOutlined />}
               onClick={() => navigate("dashboard")}
+            />
+          </Tooltip>
+          <Tooltip title="刷新当前页">
+            <Button
+              type="text"
+              aria-label="刷新当前页"
+              icon={<ReloadOutlined />}
+              onClick={() => setWorkspaceReloadKey((value) => value + 1)}
             />
           </Tooltip>
           <Dropdown
@@ -1974,7 +2007,7 @@ export default function App() {
       </Header>
       <Layout className="app-body">
         <Sider
-          width={280}
+          width={200}
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsNarrowViewport(broken);
@@ -2074,43 +2107,6 @@ export default function App() {
               <span>首页 / {currentPageLabel}</span>
             </div>
           </div>
-          <Tabs
-            className="workspace-tabs"
-            type="editable-card"
-            hideAdd
-            size="small"
-            activeKey={active}
-            onChange={navigate}
-            onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
-            tabBarExtraContent={{
-              right: (
-                <Tooltip title="刷新当前页">
-                  <Button
-                    type="text"
-                    aria-label="刷新当前页"
-                    icon={<ReloadOutlined />}
-                    onClick={() => setWorkspaceReloadKey((value) => value + 1)}
-                  />
-                </Tooltip>
-              ),
-            }}
-            items={openPages.map((item) => ({
-              key: item.key,
-              label: (
-                <span
-                  onDoubleClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (item.key === "dashboard") return;
-                    closeOpenPage(item.key);
-                  }}
-                >
-                  {item.label}
-                </span>
-              ),
-              closable: item.key !== "dashboard",
-            }))}
-          />
           <main className="page-workbench">
             <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
               <Suspense fallback={<div className="loading">正在加载页面...</div>}>
