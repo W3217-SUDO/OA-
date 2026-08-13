@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.main as main_module
-from app.case_agent import CaseAgentRuntime, _checkpoint_url, _extract_proposed_action
+from app.case_agent import RESPONSE_STYLE_RULES, CaseAgentRuntime, _checkpoint_url, _extract_proposed_action
 from app.agent_skills import AgentSkill
 from app.database import Base
 from app.main import (
@@ -33,6 +33,11 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.runtime.stop()
+
+    def test_response_style_is_conclusion_first_and_actionable(self):
+        self.assertIn("重点结论", RESPONSE_STYLE_RULES)
+        self.assertIn("谁处理、做什么、何时完成", RESPONSE_STYLE_RULES)
+        self.assertIn("不要输出 Markdown 标记字符", RESPONSE_STYLE_RULES)
 
     def test_model_action_block_is_removed_from_chat_and_normalized(self):
         content, action = _extract_proposed_action(

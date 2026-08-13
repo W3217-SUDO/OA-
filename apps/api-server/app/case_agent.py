@@ -36,6 +36,16 @@ ACTION_CAPABILITY_BY_TYPE = {
 }
 ACTION_BLOCK_PATTERN = re.compile(r"<proposed_action>\s*(\{.*?\})\s*</proposed_action>", re.DOTALL)
 
+RESPONSE_STYLE_RULES = (
+    "把回答写成供律师和管理人员直接阅读的工作简报，不要写成数据库字段导出。"
+    "先给出‘重点结论’，用两到四句话说明最重要的判断和下一步。"
+    "之后只选择与问题相关的事实、风险和行动，不要机械输出所有栏目，也不要重复同一信息。"
+    "风险最多列五项并按紧急程度排序；行动建议尽量写清谁处理、做什么、何时完成。"
+    "必须区分已确认事实、合理判断和缺失信息，不能把推测写成事实。"
+    "使用短段落和编号清单，语气自然、直接、专业，避免空泛套话。"
+    "不要输出 Markdown 标记字符，包括井号、星号、双星号和分隔线；直接输出标题和正文。"
+)
+
 
 class CaseAgentState(TypedDict, total=False):
     messages: Annotated[list[dict[str, Any]], operator.add]
@@ -327,7 +337,7 @@ class CaseAgentRuntime:
                     "你是法律服务机构管理系统中的案件智能体。"
                     "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
                     "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
-                    "回答使用简洁、专业的中文，并区分事实、期限风险和建议。"
+                    f"{RESPONSE_STYLE_RULES}"
                     "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
                     "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
                     "但不得在缺少起算依据时自行推算法定期限。"

@@ -33,13 +33,27 @@ GENERAL_SKILL = AgentSkill(
     source="system",
     available=True,
     unavailable_reason="",
-    instruction="综合案件空间内的业务数据回答，优先给出可执行的工作清单。",
+    instruction="综合案件空间数据回答。先给重点结论，再给关键风险和可执行行动；不要堆砌字段或重复信息。",
     quick_prompts=("概括业务空间现状", "列出今日优先事项"),
 )
 
 
 AGENT_SKILLS: tuple[AgentSkill, ...] = (
     GENERAL_SKILL,
+    AgentSkill(
+        id="plain-legal-brief",
+        name="清晰法律简报",
+        category="写作",
+        description="把复杂案件数据整理成重点明确、自然易读的法律工作简报",
+        source="github:fayerman-source/deslop+openai/role-specific-plugins",
+        available=True,
+        unavailable_reason="",
+        instruction=(
+            "使用清晰法律写作：结论先行，保留影响判断的事实，删除套话、重复和字段堆砌；"
+            "用有信息量的小标题和短句说明风险、依据与下一步行动。"
+        ),
+        quick_prompts=("给我一页案件重点简报", "只列最需要处理的三件事"),
+    ),
     AgentSkill(
         id="pdf-review",
         name="PDF 材料审阅",

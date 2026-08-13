@@ -5,6 +5,7 @@ import test from "node:test";
 const appSource = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("./src/AgentCenterPage.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("./src/agent-center.css", import.meta.url), "utf8");
+const messageContentSource = readFileSync(new URL("./src/AgentMessageContent.tsx", import.meta.url), "utf8");
 const skillSource = readFileSync(new URL("./src/agentSkillRouting.ts", import.meta.url), "utf8");
 
 test("global agent center is a first-level routed workspace", () => {
@@ -19,6 +20,15 @@ test("chat composer stays inside the visible application workspace", () => {
   assert.match(styleSource, /\.agent-center-page\{[^}]*overflow:hidden/);
   assert.match(styleSource, /\.agent-global-composer\{[^}]*grid-template-columns/);
   assert.doesNotMatch(styleSource, /@media\(max-width:850px\)\{\.agent-center-page\{height:auto/);
+});
+
+test("assistant answers render as readable briefs without exposed markdown markers", () => {
+  assert.match(pageSource, /<AgentMessageContent content=\{item\.content\}/);
+  assert.match(messageContentSource, /HEADING_PATTERN/);
+  assert.match(messageContentSource, /stripMarkdown/);
+  assert.match(messageContentSource, /agent-message-heading-\$\{block\.tone\}/);
+  assert.match(styleSource, /\.agent-message-heading-summary/);
+  assert.match(styleSource, /\.agent-message-heading-risk/);
 });
 
 test("agent center uses a compact, scrollable phone workspace", () => {
