@@ -27,6 +27,7 @@ class LegacyParentRepairContractTest(unittest.TestCase):
             self.assertIn(relation, self.source)
         self.assertIn('"unresolved_by_source"', self.source)
         self.assertIn('"wrong_module_counts"', self.source)
+        self.assertIn('"recoverable_projection_counts"', self.source)
         self.assertIn('"unresolved_samples"', self.source)
 
 

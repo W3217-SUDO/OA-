@@ -20,7 +20,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
 from app.main import _sync_legacy_projection
-from app.models import BusinessRecord
+from app.models import (
+    BusinessRecord,
+    LegacyContract,
+    LegacyCustomer,
+    LegacyInvestigation,
+    LegacyInvestigationTask,
+)
 from scripts.backfill_legacy_projections import record_identity
 
 
@@ -59,6 +65,12 @@ async def run(apply: bool) -> dict:
         by_module = defaultdict(list)
         for record in records:
             by_module[record.module].append(record)
+        projection_parent_nos = {
+            "customer": set((await db.scalars(select(LegacyCustomer.CustomerNo))).all()),
+            "contract": set((await db.scalars(select(LegacyContract.ContractNo))).all()),
+            "investigation": set((await db.scalars(select(LegacyInvestigation.InvestigationNo))).all()),
+            "task": set((await db.scalars(select(LegacyInvestigationTask.TaskNo))).all()),
+        }
 
         customer_specs: dict[str, list[dict]] = defaultdict(list)
         contract_specs: dict[str, list[dict]] = defaultdict(list)
@@ -199,6 +211,7 @@ async def run(apply: bool) -> dict:
                         "parent": value,
                         "source": text(data.get("migration_source")) or "current",
                         "existing_module": existing.module if existing else "",
+                        "legacy_projection_exists": value in projection_parent_nos[parent_module],
                     })
             unresolved[f"{module}->{parent_module}"] = missing
 
@@ -214,6 +227,10 @@ async def run(apply: bool) -> dict:
             },
             "wrong_module_counts": {
                 key: dict(sorted(Counter(row["existing_module"] for row in value if row["existing_module"]).items()))
+                for key, value in unresolved.items()
+            },
+            "recoverable_projection_counts": {
+                key: sum(1 for row in value if row["legacy_projection_exists"])
                 for key, value in unresolved.items()
             },
             "unresolved_samples": {key: value[:10] for key, value in unresolved.items() if value},
