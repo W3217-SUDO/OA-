@@ -36,7 +36,8 @@ from .case_workflow_rules import build_case_workflow_guide
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .dingtalk import DingTalkError, dingtalk_client
-from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
+from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
+from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyInvestigation, LegacyInvestigationTask, LegacyInvestigationClue, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
 from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
@@ -627,6 +628,11 @@ async def lifespan(_: FastAPI):
             raise RuntimeError("生产环境 INITIAL_ADMIN_PASSWORD 不安全，必须使用至少 12 位强随机一次性密码")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(create_full_legacy_schema)
+        await connection.run_sync(align_legacy_column_types)
+        await connection.run_sync(align_legacy_constraints)
+        await connection.run_sync(ensure_legacy_indexes)
+        await connection.run_sync(align_legacy_indexes)
         await connection.run_sync(_upgrade_schema)
     async with SessionLocal() as db:
         existing = await db.scalar(select(User).where(User.username == settings.initial_admin_username))
@@ -2706,8 +2712,8 @@ class CustomerKeyChangeReviewInput(BaseModel):
 
 
 class CustomerPortalActionInput(BaseModel):
-    comment: str = Field(default="", max_length=1000)
     account: str = Field(default="", max_length=128)
+    comment: str = Field(default="", max_length=1000)
 
 
 class CustomerPortalLoginInput(BaseModel):
@@ -2981,10 +2987,7 @@ WORKFLOW_TRANSITIONS: dict[str, dict[str, list[str]]] = {
     "seal": {"草稿": ["待审批", "已撤回"], "待审批": ["待用印", "已拒绝", "已撤回"], "待用印": ["已用印", "已撤回"], "已用印": ["已归档"]},
     "finance": {"草稿": ["待审批"], "待审批": ["已审批", "已退回"], "已审批": ["已付款"], "已付款": ["已对账"]},
     "document": {"待登记": ["待签收"], "待签收": ["已签收"], "已签收": ["已归档"]},
-    # Former staff can be reinstated when an offboarding or suspension was
-    # corrected.  The dedicated transition endpoint synchronizes the linked
-    # login account with this employment status.
-    "hr": {"试用": ["在职", "离职"], "在职": ["离职", "停用"], "离职": ["在职"], "停用": ["在职"]},
+    "hr": {"试用": ["在职", "离职"], "在职": ["离职", "停用"]},
     "warehouse": {"在库": ["借出", "报废"], "借出": ["归还中"], "归还中": ["在库"]},
     "report": {"生成中": ["已生成"], "已生成": ["已发布"]},
     "system": {"启用": ["停用"], "停用": ["启用"]},
@@ -4173,8 +4176,6 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         BusinessRecord.module == "task",
         func.lower(func.coalesce(BusinessRecord.data["initiator"].as_string(), "")) == user.username.lower(),
     )
-    # A contract approver needs to see the contract in the pending-approval list,
-    # even when their normal data scope does not include the contract owner.
     pending_contract_approval = and_(
         BusinessRecord.module == "contract",
         BusinessRecord.status == "审批中",
@@ -6842,7 +6843,7 @@ async def list_records(
             BusinessRecord.data["publisher"].as_string().is_(None),
             BusinessRecord.data["publisher"].as_string() == "",
         )
-        if investigation_view == "published" and identity.get("role") != "admin":
+        if investigation_view == "published":
             conditions.append(or_(
                 publisher_expr == identity["username"].lower(),
                 and_(legacy_publisher_missing, BusinessRecord.owner == identity["username"]),
@@ -6876,29 +6877,18 @@ async def list_records(
                     BusinessRecord.module == "customer",
                     BusinessRecord.status.not_in({"已回收", "公海"}),
                 ))).all()
-                department_customer_ids = []
-                department_customer_nos = []
-                department_customer_names = []
+                customer_links = []
                 for customer_record in customers:
                     managers = (customer_record.data or {}).get("customer_managers")
                     if not isinstance(managers, list) or not managers:
                         managers = [customer_record.owner]
-                    if set(str(value).strip() for value in managers if str(value).strip()) & department_tokens:
-                        department_customer_ids.append(customer_record.id)
-                        if str(customer_record.serial_no or "").strip():
-                            department_customer_nos.append(customer_record.serial_no)
-                        if str(customer_record.title or "").strip():
-                            department_customer_names.append(customer_record.title)
-                customer_links = []
-                if department_customer_ids:
-                    customer_links.append(BusinessRecord.data["customer_id"].as_integer().in_(department_customer_ids))
-                if department_customer_nos:
-                    customer_links.append(BusinessRecord.data["customer_no"].as_string().in_(department_customer_nos))
-                if department_customer_names:
-                    customer_links.append(BusinessRecord.customer.in_(department_customer_names))
-                # Department contract ownership follows the linked customer's
-                # active managers, including migrated contracts with only a
-                # customer name/number projection.
+                    if not (set(str(value).strip() for value in managers if str(value).strip()) & department_tokens):
+                        continue
+                    customer_links.append(BusinessRecord.data["customer_id"].as_integer() == customer_record.id)
+                    if str(customer_record.serial_no or "").strip():
+                        customer_links.append(BusinessRecord.data["customer_no"].as_string() == customer_record.serial_no)
+                    if str(customer_record.title or "").strip():
+                        customer_links.append(BusinessRecord.customer == customer_record.title)
                 conditions.append(or_(*customer_links) if customer_links else false())
         if relation_customer is not None:
             relation_no = str(relation_customer.serial_no or "").strip()
@@ -6953,103 +6943,6 @@ def _normalize_customer_yes_no(value: object, field_name: str) -> str:
 
 def _normalize_customer_name(value: object) -> str:
     return unicodedata.normalize("NFKC", str(value or "").strip()).casefold()
-
-
-async def _sync_legacy_customer(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyCustomer:
-    """Keep CRM_Customer and CRM_Customer_Contacts synchronized with customer APIs."""
-    data = record.data or {}
-    legacy = await db.scalar(select(LegacyCustomer).where(LegacyCustomer.CustomerNo == record.serial_no[:20]))
-    if not legacy:
-        legacy = LegacyCustomer(
-            CustomerNo=record.serial_no[:20],
-            CustomerGuid=_customer_guid(record),
-            CustomerName=record.title[:400],
-            CreateUser=identity["username"][:20],
-            CreateTime=record.created_at or datetime.now(),
-        )
-        db.add(legacy)
-    legacy.CustomerNo = record.serial_no[:20]
-    legacy.CustomerGuid = _customer_guid(record)
-    legacy.CustomerName = record.title[:400]
-    legacy.ContactAddress = str(data.get("registered_address") or "")[:500] or None
-    legacy.ContactPhone = str(data.get("phone") or "")[:50] or None
-    legacy.Fax = str(data.get("fax") or "")[:50] or None
-    legacy.Zip = str(data.get("postal_code") or "")[:50] or None
-    legacy.Province = str(data.get("province") or "")[:20] or None
-    legacy.City = str(data.get("registration_region") or "")[:20] or None
-    legacy.Industry = str(data.get("industry") or "")[:100] or None
-    legacy.ProductionValue = str(data.get("output_value") or "")[:100] or None
-    legacy.CustomerTypeName = str(data.get("customer_type") or "")[:100] or None
-    legacy.CooperatioSituation = str(data.get("cooperation_status") or "")[:100] or None
-    legacy.CustomerSourceType = str(data.get("customer_source") or "")[:100] or None
-    legacy.WebSite = str(data.get("website") or "")[:200] or None
-    legacy.BusinessOwner = record.owner[:20]
-    legacy.IsAssisted = "Y" if data.get("is_assisted") == "是" else "N"
-    legacy.CompanyTypeName = str(data.get("organization_nature") or "")[:100] or None
-    legacy.GBTypeName = str(data.get("gb_classification") or "")[:100] or None
-    legacy.RegisteredCapital = str(data.get("registered_capital") or "")[:100] or None
-    legacy.RegistrationDate = _legacy_contract_datetime(data.get("registration_year"))
-    legacy.RegistrationCity = str(data.get("registration_region") or "")[:100] or None
-    legacy.RegistrationZip = str(data.get("registration_postal_code") or "")[:100] or None
-    legacy.RegistrationAddress = str(data.get("registered_address") or "")[:500] or None
-    legacy.OrganizationCode = str(data.get("organization_code") or "")[:100] or None
-    legacy.LicenseNo = str(data.get("credit_code") or "")[:100] or None
-    legacy.AccountBankName = str(data.get("bank_name") or "")[:100] or None
-    legacy.BankAccount = str(data.get("bank_account") or "")[:100] or None
-    legacy.InputDate = _legacy_contract_datetime(data.get("file_date")) or record.created_at or datetime.now()
-    legacy.Holder = record.owner[:20]
-    legacy.CustomerOwner = record.owner[:20]
-    legacy.IsShared = "Y" if data.get("is_shared") == "是" else "N"
-    legacy.IsActived = "N" if record.status == "已回收" else "Y"
-    legacy.CustomerStatus = record.status[:100]
-    legacy.LastContactTime = _legacy_contract_datetime(data.get("last_contact_at"))
-    legacy.LastUpdateTime = datetime.now()
-    legacy.IsFeeReducing = "Y" if data.get("fee_reduction") == "是" else "N"
-    legacy.CustomerLevelName = str(data.get("level") or "")[:100] or None
-    legacy.LegalAgentName = str(data.get("legal_representative") or "")[:200] or None
-    legacy.LegalAgentIdNo = str(data.get("legal_agent_id_no") or "")[:200] or None
-    legacy.LegalAgentTitle = str(data.get("legal_agent_title") or "")[:200] or None
-    legacy.CustomerShortName = str(data.get("short_name") or "")[:100] or None
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = datetime.now()
-    await db.flush()
-    await _sync_legacy_customer_contacts(record, legacy, identity, db)
-    return legacy
-
-
-async def _sync_legacy_customer_contacts(record: BusinessRecord, legacy: LegacyCustomer, identity: dict, db: AsyncSession) -> None:
-    contacts = [_customer_contact_dict(item) for item in list((record.data or {}).get("contacts") or [])]
-    active_guids: set[str] = set()
-    for contact in contacts:
-        contact_id = str(contact.get("id") or uuid4().hex)
-        contact_guid = str(uuid5(NAMESPACE_URL, f"customer-contact:{record.id}:{contact_id}"))
-        active_guids.add(contact_guid)
-        row = await db.scalar(select(LegacyCustomerContact).where(LegacyCustomerContact.ContactsGuid == contact_guid))
-        if not row:
-            row = LegacyCustomerContact(ContactsGuid=contact_guid, CreateUser=identity["username"][:20], CreateTime=datetime.now())
-            db.add(row)
-        row.CustomerId = legacy.CustomerId
-        row.CustomerNo = record.serial_no[:20]
-        row.ContactsTitle = str(contact.get("position") or "")[:200] or None
-        row.Contacts = str(contact.get("name") or "")[:200] or None
-        row.ProjectRole = str(contact.get("project_role") or "")[:100] or None
-        row.Email = str(contact.get("email") or "")[:200] or None
-        row.OfficePhone = str(contact.get("office_phone") or "")[:50] or None
-        row.Mobilephone = str(contact.get("phone") or "")[:50] or None
-        row.IM = str(contact.get("im_account") or "")[:100] or None
-        row.IsContacted = "Y" if contact.get("is_contacted", True) else "N"
-        row.IsPeopleBASE = "Y" if contact.get("is_people_base", True) else "N"
-        row.IsReceivedEmail = "Y" if contact.get("is_received_email", True) else "N"
-        row.IsDefault = "Y" if contact.get("is_primary", False) else "N"
-        row.IsActived = "Y" if contact.get("is_valid", True) else "N"
-        row.ChangeUser = identity["username"][:20]
-        row.ChangeTime = datetime.now()
-    existing = (await db.scalars(select(LegacyCustomerContact).where(LegacyCustomerContact.CustomerNo == record.serial_no[:20]))).all()
-    for row in existing:
-        if row.ContactsGuid not in active_guids:
-            row.IsActived = "N"
-            row.ChangeUser = identity["username"][:20]
-            row.ChangeTime = datetime.now()
 
 
 async def _customer_linked_business_counts(customer: BusinessRecord, db: AsyncSession) -> dict[str, int]:
@@ -7184,8 +7077,8 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     )
     _mark_customer_modified(record, identity)
     db.add(record); await db.flush()
-    await _sync_legacy_customer(record, identity, db)
     db.add(WorkflowEvent(record_id=record.id, action="创建客户", to_status=record.status, operator=identity["username"], comment="通过新建客户专用入口创建"))
+    await _sync_legacy_projection(record, identity, db)
     await db.commit(); await db.refresh(record)
     return await _record_dict_for_identity(record, identity, db)
 
@@ -7506,7 +7399,6 @@ async def update_customer_contact_status(customer_id: int, contact_id: str, body
     if body.is_primary:
         contacts[index] = {**updated, "is_primary": True}
     customer.data = {**data, "contacts": contacts}
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "设置联系人状态", identity, f"联系人：{contact_id}"))
     await db.commit()
     return contacts[index]
@@ -7529,7 +7421,6 @@ async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: d
     customer.data = {**current, **accepted}
     if body.description is not None:
         customer.description = body.description.strip()
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "更新客户资料", identity, f"更新字段：{'、'.join(accepted) or '无可写字段'}"))
     await db.commit()
     await db.refresh(customer)
@@ -7554,7 +7445,6 @@ async def claim_customer(customer_id: int, body: CustomerActionInput, identity: 
             "claimed_at": datetime.now().isoformat(timespec="seconds"),
             "claimed_by": identity["username"],
         }
-        await _sync_legacy_customer(customer, identity, db)
         db.add(_customer_event(customer, "领取客户", identity, body.comment or "从公海领取客户", old)); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
@@ -7575,7 +7465,6 @@ async def release_customer(customer_id: int, body: CustomerActionInput, identity
             "released_at": datetime.now().isoformat(timespec="seconds"),
             "released_by": identity["username"],
         }
-        await _sync_legacy_customer(customer, identity, db)
         db.add(_customer_event(customer, "释放公海", identity, body.comment or "客户释放到公海", old)); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
@@ -7611,7 +7500,6 @@ async def share_customer(customer_id: int, body: CustomerShareInput, identity: d
             raise HTTPException(status_code=422, detail=f"客户负责人或管理人无需重复共享：{'、'.join(redundant)}")
         existing = set((customer.data or {}).get("shared_with", [])); existing.update(recipients)
         customer.data = {**(customer.data or {}), "shared_with": sorted(existing), "is_shared": "是", "shared_at": datetime.now().isoformat(timespec="seconds")}
-        await _sync_legacy_customer(customer, identity, db)
         db.add(_customer_event(customer, "共享客户", identity, body.comment or f"共享给：{'、'.join(recipients)}")); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
@@ -7642,7 +7530,7 @@ async def recycle_customer(customer_id: int, body: CustomerActionInput, identity
             "recycled_at": datetime.now().isoformat(timespec="seconds"),
             "recycled_by": identity["username"],
         }
-        customer.status = "已回收"; await _sync_legacy_customer(customer, identity, db); db.add(_customer_event(customer, "移入回收站", identity, body.comment or "客户移入回收站", old)); await db.commit(); await db.refresh(customer)
+        customer.status = "已回收"; db.add(_customer_event(customer, "移入回收站", identity, body.comment or "客户移入回收站", old)); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
         return _legacy_customer_business_failure_response(exc)
@@ -7657,7 +7545,7 @@ async def restore_customer(customer_id: int, body: CustomerActionInput, identity
         old = customer.status; previous = str((customer.data or {}).get("status_before_recycle", "跟进中"))
         if previous not in {"正常", "跟进中", "公海", *CUSTOMER_CREATE_STATUSES}: previous = "潜在"
         customer.status = previous; customer.data = {**(customer.data or {}), "restored_at": datetime.now().isoformat(timespec="seconds"), "restored_by": identity["username"]}
-        await _sync_legacy_customer(customer, identity, db); db.add(_customer_event(customer, "恢复客户", identity, body.comment or f"恢复为{previous}", old)); await db.commit(); await db.refresh(customer)
+        db.add(_customer_event(customer, "恢复客户", identity, body.comment or f"恢复为{previous}", old)); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
         return _legacy_customer_business_failure_response(exc)
@@ -7686,7 +7574,6 @@ async def add_customer_contact(customer_id: int, body: CustomerContactInput, ide
         "remark": body.remark.strip(),
     }
     contacts.append(contact); customer.data = {**data, "contacts": contacts}
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "新增联系人", identity, f"联系人：{contact['name']}")); await db.commit()
     return contact
 
@@ -7741,7 +7628,6 @@ async def update_customer_contact(customer_id: int, contact_id: str, body: Custo
     })
     changed = [label for key, label in changed_labels.items() if previous.get(key) != updated.get(key)]
     customer.data = {**data, "contacts": contacts}
-    await _sync_legacy_customer(customer, identity, db)
     if changed:
         db.add(_customer_event(customer, "修改联系人", identity, f"联系人：{previous.get('name', '')} → {updated['name']}；修改字段：{'、'.join(changed)}"))
     await db.commit()
@@ -7756,7 +7642,7 @@ async def delete_customer_contact(customer_id: int, contact_id: str, identity: d
     if linked_case_count:
         raise HTTPException(status_code=409, detail=f"该联系人已关联 {linked_case_count} 个知识产权案件，请先解除案件联系人关联")
     attachment = await db.get(FileAttachment, int(contact["photo_attachment_id"])) if contact and contact.get("photo_attachment_id") else None
-    customer.data = {**data, "contacts": remaining}; await _sync_legacy_customer(customer, identity, db); db.add(_customer_event(customer, "删除联系人", identity, f"删除客户联系人：{contact.get('name', '')}"));
+    customer.data = {**data, "contacts": remaining}; db.add(_customer_event(customer, "删除联系人", identity, f"删除客户联系人：{contact.get('name', '')}"));
     if attachment: await db.delete(attachment)
     await db.commit()
     if attachment:
@@ -7788,7 +7674,6 @@ async def upload_customer_contact_photo(customer_id: int, contact_id: str, file:
     db.add(attachment); await db.flush()
     contacts[index] = {**previous, "photo_attachment_id": attachment.id, "photo_original_name": filename}
     customer.data = {**(customer.data or {}), "contacts": contacts}
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "上传联系人照片", identity, f"联系人：{previous.get('name', '')}；{'替换' if old_attachment else '上传'}照片：{filename}"))
     if old_attachment: await db.delete(old_attachment)
     await db.commit(); await db.refresh(attachment)
@@ -7829,7 +7714,6 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
         })
         customer.owner = managers[0]
         customer.data = {**data, "customer_managers": managers, "assignment_history": history}
-        await _sync_legacy_customer(customer, identity, db)
         db.add(_customer_event(customer, "更新客户管理人", identity, body.comment or f"客户管理人：{'、'.join(managers)}"))
         await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
@@ -7847,7 +7731,6 @@ async def add_customer_note(customer_id: int, body: CustomerNoteInput, identity:
     notes.insert(0, note)
     customer.data = {**data, "notes": notes}
     _sync_customer_contact_metrics(customer)
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "新增客户跟进", identity, f"{note['type']}：{note['content'][:120]}"))
     await db.commit(); await db.refresh(customer)
     return note
@@ -7875,7 +7758,6 @@ async def update_customer_note(customer_id: int, note_id: str, body: CustomerNot
     notes[index] = note
     customer.data = {**data, "notes": notes}
     _sync_customer_contact_metrics(customer)
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "编辑客户跟进", identity, f"{note['type']}：{note['content'][:120]}"))
     await db.commit(); await db.refresh(customer)
     return note
@@ -7890,7 +7772,6 @@ async def delete_customer_note(customer_id: int, note_id: str, identity: dict = 
         raise HTTPException(status_code=404, detail="跟进记录不存在")
     customer.data = {**data, "notes": remaining}
     _sync_customer_contact_metrics(customer)
-    await _sync_legacy_customer(customer, identity, db)
     db.add(_customer_event(customer, "删除客户跟进", identity, "删除一条客户跟进记录"))
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -8036,7 +7917,9 @@ async def open_customer_portal(customer_id: int, body: CustomerPortalActionInput
     if len(contacts) > 1 and not requested_account:
         raise HTTPException(status_code=422, detail="该客户绑定了多个联系人账号，请选择本次开通的客户服务账号")
     account = requested_account or contacts[0]
-    account_user = await db.scalar(select(User).where(func.lower(User.username) == account.lower(), User.is_active.is_(True)))
+    account_user = await db.scalar(select(User).where(
+        func.lower(User.username) == account.lower(), User.is_active.is_(True),
+    ))
     if not account_user:
         raise HTTPException(status_code=422, detail="已绑定的客户联系人账号不存在或已停用，请在客户编辑中重新选择")
     old_portal = data.get("portal_access") or {}
@@ -8307,137 +8190,6 @@ async def _next_contract_serial_no(db: AsyncSession) -> str:
 _contract_serial_lock = asyncio.Lock()
 
 
-LEGACY_CONTRACT_STATUS_BY_NEW = {
-    "草稿": 0,
-    "审批中": 10,
-    "已通过": 20,
-    "已拒绝": 30,
-    "已回收": 40,
-    "已归档": 60,
-    "履行中": 70,
-    "已完成": 80,
-}
-
-
-def _legacy_contract_datetime(value: object) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime.combine(value, datetime.min.time())
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-
-
-def _legacy_contract_int(value: object) -> int | None:
-    try:
-        return int(value) if value not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _legacy_contract_float(value: object) -> float:
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-async def _sync_legacy_contract(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyContract:
-    """Persist FCM_Contract fields and legacy text links from a new contract record."""
-    data = record.data or {}
-    legacy = await db.scalar(select(LegacyContract).where(LegacyContract.ContractNo == record.serial_no[:20]))
-    if not legacy:
-        legacy_values = {
-            "ContractNo": record.serial_no[:20],
-            "ContractGuid": str(data.get("contract_guid") or uuid4()),
-            "CreateUser": identity["username"][:20],
-            "CreateTime": record.created_at or datetime.now(),
-            "IsActived": "Y",
-        }
-        # The imported SQLite schema uses BIGINT for this legacy primary key.
-        # SQLite only auto-generates keys for an exact INTEGER PRIMARY KEY,
-        # whereas production databases retain their native identity column.
-        connection = await db.connection()
-        if connection.dialect.name == "sqlite":
-            legacy_values["ContractId"] = int(
-                await db.scalar(select(func.coalesce(func.max(LegacyContract.ContractId), 0))) or 0
-            ) + 1
-        legacy = LegacyContract(**legacy_values)
-        db.add(legacy)
-    legacy.ContractNo = record.serial_no[:20]
-    legacy.ContractGuid = str(data.get("contract_guid") or legacy.ContractGuid or uuid4())[:36]
-    legacy.RefContractNo = str(data.get("ref_contract_no") or data.get("external_contract_no") or "")[:50] or None
-    legacy.ContractName = record.title[:200]
-    legacy.CustomerId = _legacy_contract_int(data.get("customer_id"))
-    legacy.CustomerNo = str(data.get("customer_no") or "")[:20] or None
-    legacy.BusinessOwner = record.owner[:20]
-    legacy.ContractType = _legacy_contract_int(data.get("contract_type_id") or data.get("contract_type"))
-    legacy.ChargingType = _legacy_contract_int(data.get("charging_type_id") or data.get("charging_type"))
-    legacy.ContractMoney = _legacy_contract_float(data.get("amount") or data.get("contract_money"))
-    legacy.TaxRate = _legacy_contract_float(data.get("tax_rate"))
-    legacy.ContractStatus = LEGACY_CONTRACT_STATUS_BY_NEW.get(record.status, 0)
-    legacy.ContractBeginDate = _legacy_contract_datetime(data.get("contract_begin_date") or data.get("signed_at") or data.get("start_date"))
-    legacy.ContractEndDate = _legacy_contract_datetime(data.get("contract_end_date") or data.get("end_date"))
-    legacy.AuditRoundId = _legacy_contract_int(data.get("approval_count"))
-    legacy.AuditDate = _legacy_contract_datetime(data.get("approved_at") or data.get("submitted_at"))
-    legacy.Remark = str(data.get("remark") or record.description or "")[:1000]
-    legacy.IsChanged = "Y" if data.get("is_changed") else "N"
-    legacy.IsActived = "N" if record.status in {"已删除", "已回收"} else "Y"
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = datetime.now()
-    await db.flush()
-    await _sync_legacy_contract_files(record, legacy, identity, db)
-    return legacy
-
-
-async def _sync_legacy_contract_files(record: BusinessRecord, legacy: LegacyContract, identity: dict, db: AsyncSession) -> None:
-    attachments = (await db.scalars(select(FileAttachment).where(
-        FileAttachment.record_id == record.id,
-        FileAttachment.category == "合同附件",
-    ))).all()
-    for attachment in attachments:
-        file_guid = str(uuid5(NAMESPACE_URL, f"contract-attachment:{attachment.id}"))
-        legacy_file = await db.scalar(select(LegacyContractFile).where(LegacyContractFile.FileGuid == file_guid))
-        if not legacy_file:
-            legacy_file = LegacyContractFile(
-                FileGuid=file_guid,
-                ContractGuid=legacy.ContractGuid,
-                CreateUser=identity["username"][:20],
-                CreateTime=datetime.now(),
-                IsActived="Y",
-            )
-            db.add(legacy_file)
-        legacy_file.ContractGuid = legacy.ContractGuid
-        legacy_file.FileName = attachment.original_name[:400]
-        legacy_file.FilePath = attachment.path[:500]
-        legacy_file.FileSize = attachment.size
-        legacy_file.UploadUser = attachment.uploader[:20]
-        legacy_file.UploadTime = attachment.created_at or datetime.now()
-        legacy_file.ChangeUser = identity["username"][:20]
-        legacy_file.ChangeTime = datetime.now()
-
-
-async def _sync_legacy_contract_audit(record: BusinessRecord, identity: dict, db: AsyncSession, status_code: int, comment: str = "") -> None:
-    legacy = await _sync_legacy_contract(record, identity, db)
-    round_id = int((record.data or {}).get("legacy_contract_audit_round") or 0) + 1
-    record.data = {**(record.data or {}), "legacy_contract_audit_round": round_id}
-    db.add(LegacyContractAudit(
-        ContractId=legacy.ContractId,
-        ContractNo=record.serial_no[:20],
-        AuditRoundId=round_id,
-        Auditor=identity["username"][:20],
-        AuditDate=datetime.now(),
-        AuditStatus=status_code,
-        AuditContent=comment[:200],
-        CreateUser=identity["username"][:20],
-        CreateTime=datetime.now(),
-    ))
-
-
 @app.post(f"{settings.api_prefix}/contracts", status_code=status.HTTP_201_CREATED)
 async def create_contract_draft(body: ContractDraftInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     data = _normalize_external_contract_numbers(dict(body.data or {}))
@@ -8467,8 +8219,8 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
         serial_no = await _next_contract_serial_no(db)
         item = BusinessRecord(module="contract", serial_no=serial_no, title=body.title.strip(), customer=customer.title, status="草稿", owner=owner, department=department, description=body.description.strip(), data=data)
         db.add(item); await db.flush()
-        await _sync_legacy_contract(item, identity, db)
         db.add(WorkflowEvent(record_id=item.id, action="创建合同草稿", to_status="草稿", operator=identity["username"], comment="通过合同专用入口创建"))
+        await _sync_legacy_projection(item, identity, db)
         await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
 
@@ -8598,7 +8350,6 @@ async def update_contract_draft(contract_id: int, body: ContractDraftInput, iden
         if identity.get("role") == "user": owner = identity["username"]
     item.serial_no = body.serial_no.strip(); item.title = body.title.strip(); item.customer = customer.title
     item.owner = owner; item.department = department; item.description = body.description.strip(); item.data = data
-    await _sync_legacy_contract(item, identity, db)
     db.add(WorkflowEvent(record_id=item.id, action="修改合同草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment="通过合同专用入口修改"))
     await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
@@ -8768,11 +8519,21 @@ async def submit_contract(contract_id: int, body: ContractSubmitInput, identity:
             "current_approver": approvers[0],
             "sync_seal": body.sync_seal,
         }
-        await _sync_legacy_contract_audit(contract, identity, db, 10, body.comment)
         db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批人：{approvers[0]}")); await db.commit(); await db.refresh(contract)
         return await _record_dict_for_identity(contract, identity, db)
     except HTTPException as exc:
         return _legacy_contract_business_failure_response(exc)
+
+
+async def _sync_legacy_contract_audit(
+    contract: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+    _legacy_status: int,
+    _comment: str,
+) -> None:
+    """Keep the approval call site stable while using the complete projection."""
+    await _sync_legacy_projection(contract, identity, db)
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/approve")
@@ -8949,7 +8710,6 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
         WorkflowEvent(record_id=investigation.id, action="从合同创建调查任务", to_status=investigation.status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}"),
         WorkflowEvent(record_id=contract.id, action="新建调查任务", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成调查任务 {serial}"),
     ])
-    await _sync_legacy_investigation(investigation, identity, db)
     await db.commit(); await db.refresh(investigation)
     return _record_dict(investigation)
 
@@ -8967,7 +8727,6 @@ async def archive_contract(contract_id: int, identity: dict = Depends(current_id
         raise HTTPException(status_code=409, detail="合同仍有未通过的审批节点，不能归档")
     previous = contract.status
     contract.status = "已归档"
-    await _sync_legacy_contract(contract, identity, db)
     contract.data = {**(contract.data or {}), "archived_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=contract.id, action="合同归档", from_status=previous, to_status="已归档", operator=identity["username"], comment="合同列表批量操作归档"))
     await db.commit(); await db.refresh(contract)
@@ -9639,10 +9398,6 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
     db.add(record)
     await db.flush()
     db.add(WorkflowEvent(record_id=record.id, action="创建调查中心记录", to_status=record.status, operator=identity["username"], comment=f"类型：{body.module}"))
-    if record.module == "investigation":
-        await _sync_legacy_investigation(record, identity, db)
-    elif record.module == "clue":
-        await _sync_legacy_investigation_clue(record, identity, db)
     await db.commit()
     await db.refresh(record)
     return _record_dict(record)
@@ -9689,12 +9444,6 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
             "resubmitted_by": identity["username"],
         }
     db.add(WorkflowEvent(record_id=record.id, action="修改并重新提交线索审批" if reflow_clue else "修改调查中心资料", from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过调查中心专用入口修改基础资料"))
-    if record.module == "investigation":
-        await _sync_legacy_investigation(record, identity, db)
-    elif record.module == "clue":
-        await _sync_legacy_investigation_clue(record, identity, db)
-    elif record.module == "task" and (record.data or {}).get("investigation_record_id"):
-        await _sync_legacy_investigation_task(record, identity, db)
     await db.commit()
     await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
@@ -9935,7 +9684,6 @@ async def submit_investigation_clue(clue_id: int, body: TaskActionInput, identit
     if missing: raise HTTPException(status_code=422, detail="线索缺少：" + "、".join(missing))
     previous = clue.status; clue.status = "待审批"; clue.data = {**data, "submitted_at": datetime.now().isoformat(timespec="seconds"), "submitted_by": identity["username"], "review_comment": ""}
     db.add(WorkflowEvent(record_id=clue.id, action="提交线索审批", from_status=previous, to_status=clue.status, operator=identity["username"], comment=body.comment))
-    await _sync_legacy_investigation_clue(clue, identity, db)
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
@@ -9960,7 +9708,6 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
                  "supplement_evidence": body.supplement_evidence.strip(),
                  "merge_into_case_no": merge_into_case_no, "merge_into_case_id": merge_case.id if merge_case else None}
     db.add(WorkflowEvent(record_id=clue.id, action="线索内部审批通过，待客户审核" if next_status == "待客户审核" else "线索审批通过" if body.approved else "线索审批驳回", from_status="待审批", to_status=clue.status, operator=identity["username"], comment=body.comment))
-    await _sync_legacy_investigation_clue(clue, identity, db)
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
@@ -9977,7 +9724,6 @@ async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput
     clue.status = "待取证" if body.approved else "已驳回"
     clue.data = {**(clue.data or {}), "customer_reviewer": identity["username"], "customer_reviewed_at": datetime.now().isoformat(timespec="seconds"), "customer_review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment}
     db.add(WorkflowEvent(record_id=clue.id, action="客户审核通过" if body.approved else "客户审核驳回", from_status="待客户审核", to_status=clue.status, operator=identity["username"], comment=body.comment))
-    await _sync_legacy_investigation_clue(clue, identity, db)
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
@@ -10005,7 +9751,7 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
         "collected_by": identity["username"], "collection_registered_at": datetime.now().isoformat(timespec="seconds"),
     }
     db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {body.notary_institution.strip()}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
-    await _sync_legacy_investigation_clue(clue, identity, db)
+    await _sync_legacy_projection(clue, identity, db)
     await _sync_legacy_investigation_clue_evidence(clue, identity, db, evidence_file_ids)
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
@@ -10370,7 +10116,6 @@ async def close_investigation(record_id: int, body: TaskActionInput, identity: d
     db.add(attachment); await db.flush()
     investigation.data = {**(investigation.data or {}), "closed_at": datetime.now().isoformat(timespec="seconds"), "closed_by": identity["username"], "close_comment": body.comment.strip(), "report_attachment_id": attachment.id}
     db.add(WorkflowEvent(record_id=investigation.id, action="关闭调查任务并生成报告", from_status=previous, to_status="已完成", operator=identity["username"], comment=body.comment))
-    await _sync_legacy_investigation(investigation, identity, db)
     await db.commit(); await db.refresh(investigation); await db.refresh(attachment)
     return {"record": _record_dict(investigation), "report": _attachment_dict(attachment, investigation)}
 
@@ -10468,8 +10213,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     db.add(task); await db.flush()
     db.add(WorkflowEvent(record_id=source.id, action="创建调查任务", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"{serial_no}：{body.title}"))
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="创建调查任务", to_status="待接收", operator=identity["username"], comment=f"来源 {source.serial_no}" + (f"；父任务 {parent.serial_no}" if parent else "")), db, content="任务已分派")
-    await _sync_legacy_investigation(source, identity, db)
-    await _sync_legacy_investigation_task(task, identity, db)
+    await _sync_legacy_projection(source, identity, db)
+    await _sync_legacy_projection(task, identity, db)
     await db.commit(); await db.refresh(task); return await _task_display_dict(task, db)
 
 async def _resolve_clue_source_contract(clue: BusinessRecord, identity: dict, db: AsyncSession) -> tuple[BusinessRecord | None, str]:
@@ -13087,13 +12832,6 @@ async def list_customers(
     response_items = []
     for item in page_items:
         row = _record_dict(item, allowed_fields)
-        # The customer list uses the same person display contract as detail
-        # views, including the backend-resolved source display name.
-        if item.module == "customer":
-            source = str((row.get("data") or {}).get("customer_source") or (row.get("data") or {}).get("source_person") or "").strip()
-            if source:
-                source_user = await db.scalar(select(User).where(func.lower(User.username) == source.lower()))
-                (row.get("data") or {})["customer_source_display_name"] = _contract_person_display_name(source, {source.lower(): source_user.display_name} if source_user else {})
         row["data"] = {
             **(row.get("data") or {}),
             **relationship_counts[item.id],
@@ -17255,373 +16993,6 @@ async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
     return f"{prefix}{sequence:05d}"
 
 
-def _legacy_case_text(value: object, limit: int) -> str | None:
-    value = str(value or "").strip()
-    return value[:limit] or None
-
-
-def _legacy_case_datetime(value: object) -> datetime | None:
-    return _legacy_contract_datetime(value)
-
-
-def _legacy_case_amount(value: object) -> float | None:
-    if value in (None, ""):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _legacy_case_list(value: object, limit: int = 2000) -> str | None:
-    if isinstance(value, list):
-        return _legacy_case_text("、".join(str(item).strip() for item in value if str(item).strip()), limit)
-    return _legacy_case_text(value, limit)
-
-
-async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyCase:
-    """Project a current case into the legacy Legal_Case shape and soft links."""
-    data = record.data or {}
-    legacy = await db.scalar(select(LegacyCase).where(LegacyCase.CaseNo == record.serial_no[:20]))
-    now = datetime.now()
-    if not legacy:
-        # Some legacy databases define CaseId as a non-identity bigint.  Keep
-        # the existing negative BusinessRecord fallback stable for new rows.
-        legacy = LegacyCase(CaseId=-record.id, CaseNo=record.serial_no[:20], CreateUser=identity["username"][:20], CreateTime=record.created_at or now)
-        db.add(legacy)
-    stage_aliases = {
-        "FirstIntance": ("first_instance", "first_intance"),
-        "SecondIntance": ("second_instance", "second_intance"),
-        "LastIntance": ("last_instance", "last_intance"),
-        "ExecutionIntance": ("execution_instance", "execution_intance"),
-    }
-    for stage, aliases in stage_aliases.items():
-        prefix = aliases[0]
-        setattr(legacy, f"{stage}Court", _legacy_case_text(data.get(f"{prefix}_court") or (data.get("court") if stage == "FirstIntance" else ""), 20))
-        setattr(legacy, f"{stage}Judge", _legacy_case_text(data.get(f"{prefix}_judge") or (data.get("judge") if stage == "FirstIntance" else ""), 200))
-        setattr(legacy, f"{stage}Clerk", _legacy_case_text(data.get(f"{prefix}_clerk") or (data.get("clerk") if stage == "FirstIntance" else ""), 200))
-        setattr(legacy, f"{stage}CaseNo", _legacy_case_text(data.get(f"{prefix}_case_no") or (data.get("court_case_no") if stage == "FirstIntance" else ""), 50))
-        setattr(legacy, f"{stage}RegisterDate", _legacy_case_datetime(data.get(f"{prefix}_register_date") or (data.get("filing_date") if stage == "FirstIntance" else "")))
-        setattr(legacy, f"{stage}LawfulDay", _legacy_case_datetime(data.get(f"{prefix}_lawful_day")))
-        setattr(legacy, f"{stage}JudgmentDate", _legacy_case_datetime(data.get(f"{prefix}_judgment_date") or (data.get("judgment_date") if stage == "FirstIntance" else "")))
-        setattr(legacy, f"{stage}CourtRoom", _legacy_case_text(data.get(f"{prefix}_courtroom") or (data.get("courtroom") if stage == "FirstIntance" else ""), 200))
-    legacy.CaseNo = record.serial_no[:20]
-    legacy.CaseName = record.title[:500]
-    legacy.CustomerNo = _legacy_case_text(data.get("customer_no"), 20)
-    legacy.CaseTypeId = _legacy_contract_int(data.get("case_type_id"))
-    legacy.CaseRightTypeId = _legacy_contract_int(data.get("right_type_id"))
-    legacy.CauseName = _legacy_case_text(data.get("cause_or_charge"), 400)
-    legacy.CasePhaseId = _legacy_contract_int(data.get("case_phase_id"))
-    legacy.CaseOriginPeople = _legacy_case_text(data.get("source_person") or data.get("business_owner"), 200)
-    legacy.CaseRegisterDate = _legacy_case_datetime(data.get("case_register_date") or record.created_at)
-    legacy.CaseLawyer = _legacy_case_list(data.get("handling_lawyer_usernames") or data.get("handling_lawyers"), 200)
-    legacy.CaseLawyerName = _legacy_case_list(data.get("handling_lawyers"), 400)
-    legacy.CaseAssistant = _legacy_case_text(data.get("assistant_username") or data.get("assistant"), 200)
-    legacy.CaseAssistantName = _legacy_case_text(data.get("assistant"), 400)
-    for column, key in (("AppellantNames", "plaintiffs"), ("AppellantAgent", "plaintiff_agents"), ("AppelleeNames", "defendants"), ("AppelleeAgent", "defendant_agents"), ("TheThirdNames", "third_parties"), ("TheThirdAgent", "third_party_agents")):
-        setattr(legacy, column, _legacy_case_list(data.get(key)))
-    legacy.BusinessOwner = _legacy_case_text(data.get("business_owner") or data.get("source_person") or record.owner, 50)
-    legacy.ContractNo = _legacy_case_text(data.get("contract_no"), 30)
-    legacy.InvestigationClueNos = _legacy_case_list(data.get("investigation_clue_nos") or data.get("investigation_clue"))
-    legacy.Deadline = _legacy_case_datetime(data.get("deadline"))
-    legacy.SettlementAmount = _legacy_case_amount(data.get("settlement_amount"))
-    legacy.LitigationAmount = _legacy_case_amount(data.get("litigation_amount"))
-    legacy.Investigator = _legacy_case_text(data.get("investigator_username") or data.get("investigator"), 200)
-    legacy.InvestigatorName = _legacy_case_text(data.get("investigator"), 200)
-    legacy.NotarialNos = _legacy_case_list(data.get("notary_nos"), 800)
-    legacy.DepositAddress = _legacy_case_text(data.get("deposit_address"), 1000)
-    legacy.ConsultantBeginDate = _legacy_case_datetime(data.get("counsel_start"))
-    legacy.ConsultantEndDate = _legacy_case_datetime(data.get("counsel_end"))
-    legacy.ArchiveStatus = 20 if record.status == "已归档" else 10 if record.status == "待归档审核" else 0
-    legacy.FileNo = _legacy_case_text(data.get("archive_no"), 20)
-    legacy.ArchivedFileNo = _legacy_case_text(data.get("archive_no"), 100)
-    legacy.ClosingTime = _legacy_case_datetime(data.get("case_closed_at"))
-    legacy.ToAuditTime = _legacy_case_datetime(data.get("archive_submitted_at"))
-    legacy.ToAuditApplicant = _legacy_case_text(data.get("archive_submitter"), 20)
-    legacy.Auditor = _legacy_case_text(data.get("archive_reviewer"), 20)
-    legacy.AuditedTime = _legacy_case_datetime(data.get("archived_at") or data.get("archive_reviewed_at"))
-    legacy.AuditedRemark = _legacy_case_text(data.get("archive_review_comment") or data.get("archive_reject_reason"), 2000)
-    legacy.ExecutionStatus = _legacy_contract_int(data.get("execution_status_code"))
-    legacy.ExecutionAcceptanceTime = _legacy_case_datetime(data.get("execution_acceptance_time"))
-    legacy.OriginalCaseNo = _legacy_case_text(data.get("original_case_no"), 20)
-    legacy.IsActived = "N" if record.status in {"已删除", "已合并"} else "Y"
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = now
-    await _sync_legacy_case_relations(record, identity, db, legacy)
-    return legacy
-
-
-async def _sync_legacy_case_relations(record: BusinessRecord, identity: dict, db: AsyncSession, legacy: LegacyCase | None = None) -> None:
-    """Project files, responsible staff and workflow history into old case tables."""
-    legacy = legacy or await _sync_legacy_case(record, identity, db)
-    now = datetime.now()
-    case_id = legacy.CaseId or -record.id
-    case_no = record.serial_no[:20]
-    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id))).all())
-    for attachment in attachments:
-        item = await db.scalar(select(LegacyCaseFile).where(LegacyCaseFile.FileId == -attachment.id))
-        if not item:
-            item = LegacyCaseFile(FileId=-attachment.id, CaseId=case_id, CaseNo=case_no, CreateUser=identity["username"][:20], CreateTime=attachment.created_at or now)
-            db.add(item)
-        item.CaseId = case_id
-        item.CaseNo = case_no
-        item.FileName = _legacy_case_text(attachment.original_name, 200)
-        item.FileTypeId = _legacy_contract_int(attachment.file_type_code)
-        item.CaseFileTypeId = _legacy_contract_int(attachment.file_type_code)
-        item.FullPath = _legacy_case_text(attachment.path, 500)
-        item.FileSize = attachment.size
-        item.UploadingUser = _legacy_case_text(attachment.uploader, 20)
-        item.UploadingTime = attachment.created_at or now
-        item.Actived = "Y"
-        item.IsTransmitted = "Y" if attachment.is_transmitted else "N"
-        item.SortingIndex = attachment.id
-        item.FileGuid = str(uuid5(NAMESPACE_URL, f"case-file:{attachment.id}"))
-        item.ChangeUser = identity["username"][:20]
-        item.ChangeTime = now
-
-    data = record.data or {}
-    people: list[str] = [record.owner]
-    # Legacy StaffName stores the account reference. Prefer the explicit
-    # username fields and use display names only when no account is supplied.
-    lawyer_refs = data.get("handling_lawyer_usernames") or data.get("handling_lawyers") or []
-    people.extend(lawyer_refs if isinstance(lawyer_refs, list) else [lawyer_refs])
-    people.append(data.get("assistant_username") or data.get("assistant"))
-    people.append(data.get("investigator_username") or data.get("investigator"))
-    wanted = {str(value or "").strip() for value in people if str(value or "").strip()}
-    existing = list((await db.scalars(select(LegacyCaseParticipant).where(LegacyCaseParticipant.CaseNo == case_no))).all())
-    for participant in existing:
-        if participant.StaffName not in wanted:
-            await db.delete(participant)
-    for index, staff_name in enumerate(sorted(wanted), start=1):
-        participant = await db.get(LegacyCaseParticipant, {"CaseNo": case_no, "StaffName": staff_name[:20]})
-        if not participant:
-            participant = LegacyCaseParticipant(CaseNo=case_no, StaffName=staff_name[:20], CreateUser=identity["username"][:20], CreateTime=now)
-            db.add(participant)
-        participant.SortingIndex = index
-        participant.ChangeUser = identity["username"][:20]
-        participant.ChangeTime = now
-
-    events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id).order_by(WorkflowEvent.id))).all())
-    for event in events:
-        log_id = -event.id
-        log = await db.get(LegacyCaseLog, log_id)
-        if not log:
-            log = LegacyCaseLog(LogId=log_id, CaseId=case_id, CaseNo=case_no, CreateUser=event.operator[:20], CreateTime=event.created_at or now)
-            db.add(log)
-        log.CaseId = case_id
-        log.CaseNo = case_no
-        log.Content = _legacy_case_text(f"{event.action}：{event.comment}".rstrip("："), 8000)
-        log.LogType = 10
-        log.IsActived = "Y"
-        log.ChangeUser = identity["username"][:20]
-        log.ChangeTime = now
-
-
-LEGACY_INVESTIGATION_STATUS = {"待分配": 0, "进行中": 10, "已完成": 20, "已取消": 30}
-LEGACY_INVESTIGATION_TASK_STATUS = {"待接收": 0, "未开始": 0, "处理中": 10, "待确认": 15, "已完成": 20, "已验收": 20, "已拒绝": 30, "已撤回": 40, "已停止": 40, "已取消": 40}
-LEGACY_INVESTIGATION_CLUE_STATUS = {"草稿": 0, "待审批": 10, "待客户审核": 15, "待取证": 20, "已取证": 30, "待公证": 35, "已转案件": 40, "已驳回": 50}
-
-
-def _legacy_yes_no(value: object) -> str:
-    return "Y" if bool(value) else "N"
-
-
-def _legacy_region(data: dict, key: str) -> str | None:
-    value = data.get(key)
-    if isinstance(value, list):
-        value = "、".join(str(item).strip() for item in value if str(item).strip())
-    return _legacy_case_text(value, 2000)
-
-
-async def _sync_legacy_investigation(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyInvestigation:
-    data = record.data or {}
-    legacy = await db.scalar(select(LegacyInvestigation).where(LegacyInvestigation.InvestigationNo == record.serial_no[:20]))
-    now = datetime.now()
-    if not legacy:
-        legacy = LegacyInvestigation(InvestigationNo=record.serial_no[:20], InvestigationGuid=str(uuid5(NAMESPACE_URL, f"investigation:{record.id}")), CreateUser=identity["username"][:20], CreateTime=record.created_at or now)
-        db.add(legacy)
-    legacy.InvestigationTitle = record.title[:200]
-    legacy.Remark = _legacy_case_text(record.description, 8000)
-    legacy.Indicter = _legacy_case_text(data.get("source_owner") or data.get("publisher"), 200)
-    legacy.IndicterName = _legacy_case_text(data.get("source_owner") or data.get("publisher"), 2000)
-    legacy.CaseTypeId = _legacy_contract_int(data.get("case_type_id"))
-    legacy.AuthorizationBeginTime = _legacy_case_datetime(data.get("authorized_from"))
-    legacy.AuthorizationEndTime = _legacy_case_datetime(data.get("authorized_to"))
-    scope = str(data.get("authorization_scope") or "").strip()
-    legacy.InvestigationScope = "1" if scope in {"全国", "全国范围"} else "0"
-    legacy.Province = _legacy_region(data, "province") or _legacy_region(data, "region")
-    legacy.City = _legacy_region(data, "city")
-    legacy.BusinessOwner = record.owner[:20]
-    legacy.Auditor = _legacy_case_text(data.get("auditor"), 20)
-    legacy.Status = LEGACY_INVESTIGATION_STATUS.get(record.status, 0)
-    legacy.IsActived = "N" if record.status in {"已删除", "已取消"} else "Y"
-    legacy.NeedToAuditOnCustomer = _legacy_yes_no(data.get("customer_review"))
-    legacy.ContractNo = _legacy_case_text(data.get("contract_no"), 20)
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = now
-    return legacy
-
-
-async def _sync_legacy_investigation_task(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyInvestigationTask:
-    data = record.data or {}
-    legacy = await db.scalar(select(LegacyInvestigationTask).where(LegacyInvestigationTask.TaskNo == record.serial_no[:20]))
-    now = datetime.now()
-    if not legacy:
-        legacy = LegacyInvestigationTask(TaskNo=record.serial_no[:20], TaskGuid=str(uuid5(NAMESPACE_URL, f"investigation-task:{record.id}")), CreateUser=identity["username"][:20], CreateTime=record.created_at or now)
-        db.add(legacy)
-    legacy.TaskName = record.title[:200]
-    legacy.TaskType = "子任务" if data.get("parent_task_id") else "主任务"
-    legacy.InvestigationNo = _legacy_case_text(data.get("investigation_no"), 20)
-    legacy.Investigator = record.owner[:200]
-    legacy.Assistant = _legacy_case_text(data.get("assistant"), 200)
-    legacy.BeginTime = _legacy_case_datetime(data.get("start_date") or data.get("authorized_from"))
-    legacy.EndTime = _legacy_case_datetime(data.get("end_date") or data.get("deadline") or data.get("authorized_to"))
-    legacy.InvestigationScope = "全国" if str(data.get("authorization_scope") or "") in {"全国", "全国范围"} else "区域"
-    legacy.Province = _legacy_region(data, "province") or _legacy_region(data, "region")
-    legacy.City = _legacy_region(data, "city")
-    legacy.District = _legacy_case_text(data.get("district"), 200)
-    legacy.TaskStatus = LEGACY_INVESTIGATION_TASK_STATUS.get(record.status, 0)
-    legacy.IsActived = "N" if record.status in {"已删除", "已取消"} else "Y"
-    legacy.Remark = _legacy_case_text(record.description, 2000)
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = now
-    return legacy
-
-
-async def _sync_legacy_investigation_clue(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyInvestigationClue:
-    data = record.data or {}
-    legacy = await db.scalar(select(LegacyInvestigationClue).where(LegacyInvestigationClue.ClueNo == record.serial_no[:20]))
-    now = datetime.now()
-    if not legacy:
-        legacy = LegacyInvestigationClue(ClueNo=record.serial_no[:20], ClueGuid=str(uuid5(NAMESPACE_URL, f"investigation-clue:{record.id}")), CreateUser=identity["username"][:20], CreateTime=record.created_at or now)
-        db.add(legacy)
-    legacy.InvestigationTaskNo = _legacy_case_text(data.get("source_task_no"), 20)
-    legacy.InvestigationNo = _legacy_case_text(data.get("investigation_no"), 20)
-    legacy.BusinessType = _legacy_case_text(data.get("business_type"), 10)
-    legacy.ChannelType = _legacy_case_text(data.get("channel_type"), 10)
-    legacy.PlatformName = _legacy_case_text(data.get("platform"), 200)
-    legacy.StoreName = _legacy_case_text(data.get("store_name") or record.title, 200)
-    legacy.StoreUrl = _legacy_case_text(data.get("store_url") or data.get("source_url"), 2000)
-    legacy.LocationAddress = _legacy_case_text(data.get("location_address") or data.get("address"), 1000)
-    legacy.Address = _legacy_case_text(data.get("address") or data.get("location_address"), 1000)
-    for key, column in (("province", "Province"), ("city", "City"), ("district", "District")):
-        value = _legacy_case_text(data.get(key), 20)
-        setattr(legacy, column, value)
-        setattr(legacy, f"{column}Zh", _legacy_case_text(data.get(f"{key}_zh") or data.get(key), 100))
-    legacy.HasProduct = _legacy_yes_no(data.get("product"))
-    legacy.InvestigationDate = _legacy_case_datetime(data.get("investigation_date") or data.get("collected_at"))
-    legacy.HasTort = _legacy_yes_no(data.get("has_tort") or data.get("tort"))
-    legacy.Indictee = _legacy_case_text(data.get("opponent") or data.get("indictee"), 1000)
-    legacy.Status = LEGACY_INVESTIGATION_CLUE_STATUS.get(record.status, 0)
-    legacy.IsActived = "N" if record.status == "已删除" else "Y"
-    legacy.Remark = _legacy_case_text(record.description, 2000)
-    legacy.ToAuditTime = _legacy_case_datetime(data.get("submitted_at") or data.get("resubmitted_at"))
-    legacy.Auditor = _legacy_case_text(data.get("reviewer"), 20)
-    legacy.AuditTime = _legacy_case_datetime(data.get("reviewed_at"))
-    legacy.AuditRemark = _legacy_case_text(data.get("review_comment") or data.get("rejection_reason"), 2000)
-    legacy.AuditNeedMergeCase = _legacy_yes_no(data.get("audit_need_merge_case") or data.get("merge_into_case_no"))
-    legacy.AuditNeedMergeCaseNo = _legacy_case_text(data.get("merge_into_case_no"), 20)
-    legacy.Investigators = _legacy_case_text(record.owner, 200)
-    legacy.InvestigatorNames = _legacy_case_text(record.owner, 200)
-    legacy.CaseNo = _legacy_case_text(data.get("converted_case_no") or data.get("case_no"), 20)
-    legacy.CustomerAuditor = _legacy_case_text(data.get("customer_reviewer"), 20)
-    legacy.CustomerAuditTime = _legacy_case_datetime(data.get("customer_reviewed_at"))
-    legacy.CustomerAuditRemark = _legacy_case_text(data.get("customer_review_comment"), 2000)
-    legacy.StoreId = _legacy_case_text(data.get("store_id"), 100)
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = now
-    return legacy
-
-
-def _legacy_evidence_status(value: object) -> int:
-    return {
-        "未入库": 10,
-        "已入库": 20,
-        "已重新入库": 20,
-        "已出库": 30,
-        "已销毁": 40,
-    }.get(str(value or "").strip(), 0)
-
-
-async def _sync_legacy_investigation_clue_evidence(
-    clue: BusinessRecord,
-    identity: dict,
-    db: AsyncSession,
-    attachment_ids: list[int] | None = None,
-) -> LegacyInvestigationClueEvidence:
-    """Project one registered collection into the old clue/evidence GUID chain."""
-    clue_projection = await _sync_legacy_investigation_clue(clue, identity, db)
-    data = clue.data or {}
-    evidence_guid = str(uuid5(NAMESPACE_URL, f"investigation-clue-evidence:{clue.id}"))
-    legacy = await db.scalar(
-        select(LegacyInvestigationClueEvidence).where(
-            LegacyInvestigationClueEvidence.EvidenceGuid == evidence_guid,
-        ),
-    )
-    now = datetime.now()
-    if not legacy:
-        legacy = LegacyInvestigationClueEvidence(
-            # Imported legacy rows retain their positive SQL Server IDs. New
-            # compatibility rows use a stable separate range without changing
-            # the GUID-based old-system relationship.
-            EvidenceId=-clue.id,
-            EvidenceGuid=evidence_guid,
-            EvidenceNo=_legacy_case_text(f"EV-{clue.serial_no}", 200),
-            ClueGuid=clue_projection.ClueGuid,
-            CreateUser=identity["username"][:20],
-            CreateTime=now,
-        )
-        db.add(legacy)
-    legacy.EvidenceType = "NT"
-    legacy.ClueGuid = clue_projection.ClueGuid
-    legacy.EvidenceDate = _legacy_case_datetime(data.get("collected_at"))
-    legacy.EvidenceAddress = _legacy_case_text(data.get("address") or data.get("location_address"), 1000)
-    legacy.NotaryOrganization = _legacy_case_text(data.get("notary_institution"), 200)
-    legacy.NotarialNo = _legacy_case_text(data.get("notarization_no") or data.get("certificate_no"), 200)
-    legacy.NotarialObtainDate = _legacy_case_datetime(data.get("collected_at"))
-    legacy.Remark = _legacy_case_text(clue.description, 2000)
-    legacy.IsActived = "Y"
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = now
-    legacy.DepositAddress = _legacy_case_text(data.get("storage_location"), 1000)
-    legacy.InvoiceNo = _legacy_case_text(data.get("invoice_no"), 100)
-    legacy.EvidenceStatus = _legacy_evidence_status(data.get("evidence_status"))
-    legacy.StorageLocationName = _legacy_case_text(data.get("storage_location"), 20)
-    legacy.StorageLocationNo = _legacy_case_text(data.get("storage_location_no"), 20)
-    legacy.WarehouseNo = _legacy_case_text(data.get("warehouse_no"), 20)
-
-    selected_ids = set(attachment_ids if attachment_ids is not None else data.get("collection_file_ids", []))
-    attachments = list(
-        (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == clue.id))).all(),
-    )
-    for attachment in attachments:
-        target_model = LegacyInvestigationClueEvidenceFile if attachment.id in selected_ids else LegacyInvestigationClueFile
-        filters = [target_model.FileId == attachment.id]
-        target = await db.scalar(select(target_model).where(*filters))
-        other_model = LegacyInvestigationClueFile if target_model is LegacyInvestigationClueEvidenceFile else LegacyInvestigationClueEvidenceFile
-        # A file belongs to exactly one side of the legacy collection chain.
-        # Re-registering a clue with a different selection must move it rather
-        # than leave stale duplicate rows in both old attachment tables.
-        await db.execute(delete(other_model).where(other_model.FileId == attachment.id))
-        if not target:
-            target = target_model(FileId=attachment.id, CreateUser=identity["username"][:20], CreateTime=attachment.created_at or now)
-            db.add(target)
-        target.ClueGuid = clue_projection.ClueGuid
-        if target_model is LegacyInvestigationClueEvidenceFile:
-            target.EvidenceGuid = evidence_guid
-        target.FileName = _legacy_case_text(attachment.original_name, 200)
-        target.MediaType = _legacy_case_text(attachment.content_type, 20)
-        target.FileTypeId = _legacy_contract_int(attachment.file_type_code)
-        target.FullPath = _legacy_case_text(attachment.path, 500)
-        target.FileSize = attachment.size
-        target.UploadingUser = _legacy_case_text(attachment.uploader, 20)
-        target.UploadingTime = attachment.created_at or now
-        target.IsActived = "Y"
-        target.ChangeUser = identity["username"][:20]
-        target.ChangeTime = now
-    return legacy
-
-
 @app.post(f"{settings.api_prefix}/cases", status_code=status.HTTP_201_CREATED)
 async def create_case(body: CaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """从有效合同建立案件；客户、部门和合同编号均以合同资料为准。"""
@@ -17748,8 +17119,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         record_id=record.id, action="从合同新建案件", to_status=record.status,
         operator=identity["username"], comment=f"关联合同：{contract.serial_no}｜{contract.title}",
     ))
-    # Case list/detail reads use the new OA BusinessRecord projection. Legacy
-    # synchronization remains an independent compatibility workflow.
+    await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
     return _record_dict(record)
@@ -17847,8 +17217,6 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
         record_id=source.id, action="案件被复制", from_status=source.status, to_status=source.status,
         operator=identity["username"], comment=f"新案件：{copied.serial_no}",
     ))
-    await _sync_legacy_case(copied, identity, db)
-    await _sync_legacy_case(source, identity, db)
     await db.commit(); await db.refresh(copied)
     return _record_dict(copied, await _allowed_field_keys(identity, db))
 
@@ -17931,8 +17299,6 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
             comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
         ),
     ])
-    await _sync_legacy_case(target, identity, db)
-    await _sync_legacy_case(source, identity, db)
     await db.commit(); await db.refresh(target); await db.refresh(source)
     return {
         "target": await _record_dict_for_identity(target, identity, db),
@@ -17962,7 +17328,6 @@ async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, ident
         operator=identity["username"],
         comment=f"公证书号：{previous_notary or '空'} → {body.notary_nos.strip()}；存放位置：{previous_address or '空'} → {body.deposit_address.strip() or '空'}。{body.comment.strip()}",
     ))
-    await _sync_legacy_case(case_record, identity, db)
     await db.commit(); await db.refresh(case_record)
     return await _record_dict_for_identity(case_record, identity, db)
 
@@ -17987,7 +17352,6 @@ async def update_case_settlement_amount(case_id: int, body: CaseSettlementAmount
         operator=identity["username"],
         comment=f"诉讼标的：{previous_litigation} → {_round_fee_amount(body.litigation_amount)}；判决金额：{previous_settlement} → {_round_fee_amount(body.settlement_amount)}。{body.comment.strip()}",
     ))
-    await _sync_legacy_case(case_record, identity, db)
     await db.commit(); await db.refresh(case_record)
     return await _record_dict_for_identity(case_record, identity, db)
 
@@ -18033,8 +17397,6 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
         "defendant_agents": defendant_agents,
         "third_parties": third_parties,
         "third_party_agents": third_party_agents,
-        # Legacy detail/list projections read these single-value fields.
-        # Keep them synchronized with the multi-party creation form.
         "plaintiff": "、".join(plaintiffs),
         "opponent": "、".join(defendants),
         "case_creation_step": "litigants" if is_creation_wizard else creation_step,
@@ -18047,7 +17409,7 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
         operator=identity["username"],
         comment=body.comment,
     ))
-    await _sync_legacy_case(case_record, identity, db)
+    await _sync_legacy_projection(case_record, identity, db)
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -18134,7 +17496,6 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
         operator=identity["username"],
         comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else ""),
     ))
-    await _sync_legacy_case(case_record, identity, db)
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -18216,7 +17577,6 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],
         comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else ""),
     ))
-    await _sync_legacy_case(case_record, identity, db)
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -18263,7 +17623,6 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         "clue_record_id": clue_ids[0] if clue_ids else None, "clue_no": clue_nos[0] if clue_nos else "",
     }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
     db.add(WorkflowEvent(record_id=case_record.id, action="修改仲裁案件基本信息", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else "")))
-    await _sync_legacy_case(case_record, identity, db)
     await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
 
@@ -18279,7 +17638,6 @@ async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: As
 async def _save_criminal_detail(record: BusinessRecord, payload: dict, action: str, comment: str, identity: dict, db: AsyncSession):
     record.data = {**(record.data or {}), **payload}
     db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=comment.strip()))
-    await _sync_legacy_case(record, identity, db)
     await db.commit(); await db.refresh(record); return _record_dict(record)
 
 
@@ -21024,121 +20382,6 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
     return case_no, contract_no, customer, use_type
 
 
-LEGACY_OFFICIAL_STATUS_BY_NEW = {
-    "草稿": 0,
-    "待审批": 10,
-    "待用印": 20,
-    "已拒绝": 30,
-    "已撤回": 40,
-    "已用印": 60,
-}
-
-
-async def _sync_legacy_official_document(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyOfficialDocument:
-    """Persist the legacy AWS_OfficialDocument projection beside new workflows."""
-    data = record.data or {}
-    contract_no = str(data.get("contract_no") or "").strip() or None
-    case_no = str(data.get("case_no") or "").strip() or None
-    customer_no = None
-    source_no = contract_no or case_no
-    if source_no:
-        source = await db.scalar(select(BusinessRecord).where(
-            BusinessRecord.serial_no == source_no,
-            BusinessRecord.module.in_(["contract", "case"]),
-        ))
-        if source:
-            customer_no = str((source.data or {}).get("customer_no") or "").strip() or None
-    if not customer_no and record.customer:
-        customer_record = await db.scalar(select(BusinessRecord).where(
-            BusinessRecord.module == "customer",
-            or_(BusinessRecord.title == record.customer, BusinessRecord.customer == record.customer),
-        ))
-        if customer_record:
-            customer_no = str((customer_record.data or {}).get("customer_no") or customer_record.serial_no or "").strip() or None
-    legacy = await db.scalar(select(LegacyOfficialDocument).where(LegacyOfficialDocument.OfficialDocumentNo == record.serial_no))
-    if not legacy:
-        legacy = LegacyOfficialDocument(
-            OfficialDocumentNo=record.serial_no[:20],
-            OfficialDocumentGuid=str(uuid4()),
-            CreateUser=identity["username"][:20],
-            CreateTime=datetime.now(),
-            IsActived="Y",
-        )
-        db.add(legacy)
-    legacy.CaseNo = case_no
-    legacy.ContractNo = contract_no
-    legacy.CustomerNo = customer_no
-    legacy.OfficialDocumentName = record.title[:200]
-    legacy.BusinessOwner = record.owner[:20]
-    legacy.OfficialDocumentType = {"合同用印": 10, "案件用印": 20, "行政用印": 30}.get(str(data.get("use_type") or ""), 20)
-    legacy.IsElectronicSeal = "Y" if data.get("is_electronic_seal") else "N"
-    legacy.IsOfflinePrint = "Y" if data.get("is_offline_print") else "N"
-    legacy.PrintQuantity = int(data.get("print_quantity") or data.get("copies") or 1)
-    legacy.PrintStatus = 1 if record.status == "已用印" else 0
-    legacy.OfficialDocumentStatus = LEGACY_OFFICIAL_STATUS_BY_NEW.get(record.status, 0)
-    legacy.ApplicationDate = record.created_at or datetime.now()
-    legacy.Remark = str(data.get("remark") or record.description or "")[:1000]
-    legacy.Auditor = str(data.get("approver") or "")[:20] or None
-    legacy.AuditRemark = str(data.get("approval_comment") or "")[:2000]
-    legacy.ChangeUser = identity["username"][:20]
-    legacy.ChangeTime = datetime.now()
-    await db.flush()
-    await _sync_legacy_official_files(record, legacy, identity, db)
-    return legacy
-
-
-async def _sync_legacy_official_files(
-    record: BusinessRecord,
-    legacy: LegacyOfficialDocument,
-    identity: dict,
-    db: AsyncSession,
-) -> None:
-    """Project every seal attachment to AWS_OfficialDocument_File exactly once."""
-    attachments = (await db.scalars(select(FileAttachment).where(
-        FileAttachment.record_id == record.id,
-        FileAttachment.category == "用印文件",
-    ))).all()
-    for attachment in attachments:
-        file_guid = str(uuid5(NAMESPACE_URL, f"seal-attachment:{attachment.id}"))
-        legacy_file = await db.scalar(select(LegacyOfficialDocumentFile).where(
-            LegacyOfficialDocumentFile.FileGuid == file_guid,
-        ))
-        if not legacy_file:
-            legacy_file = LegacyOfficialDocumentFile(
-                FileGuid=file_guid,
-                OfficialDocumentGuid=legacy.OfficialDocumentGuid,
-                CreateUser=identity["username"][:20],
-                CreateTime=datetime.now(),
-                IsActived="Y",
-            )
-            db.add(legacy_file)
-        legacy_file.OfficialDocumentGuid = legacy.OfficialDocumentGuid
-        legacy_file.FileName = attachment.original_name[:400]
-        legacy_file.FilePath = attachment.path[:500]
-        legacy_file.FileSize = attachment.size
-        legacy_file.Uploader = attachment.uploader[:20]
-        legacy_file.UploadTime = attachment.created_at or datetime.now()
-        legacy_file.ChangeUser = identity["username"][:20]
-        legacy_file.ChangeTime = datetime.now()
-
-
-async def _sync_legacy_official_audit(record: BusinessRecord, identity: dict, db: AsyncSession, status_code: int, comment: str = "") -> None:
-    legacy = await _sync_legacy_official_document(record, identity, db)
-    round_id = int((record.data or {}).get("legacy_audit_round") or 0) + 1
-    record.data = {**(record.data or {}), "legacy_audit_round": round_id}
-    db.add(LegacyOfficialDocumentAudit(
-        OfficialDocumentId=legacy.OfficialDocumentId,
-        OfficialDocumentNo=record.serial_no[:20],
-        AuditRoundId=round_id,
-        Auditor=identity["username"][:20],
-        AuditDate=datetime.now(),
-        AuditStatus=status_code,
-        AuditContent=comment[:200],
-        CreateUser=identity["username"][:20],
-        CreateTime=datetime.now(),
-    ))
-
-
 @app.get(f"{settings.api_prefix}/seals/applications")
 async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", serial_no: str = "", applicant: str = "", date_from: date | None = None, date_to: date | None = None, case_no: str = "", contract_no: str = "", customer: str = "", use_type: str = "", file_name: str = "", page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if view not in {"my", "audit", "all"}: raise HTTPException(status_code=422, detail="无效的用印视图")
@@ -21280,7 +20523,6 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     try:
         db.add(item); await db.flush()
         copied_targets = await _copy_seal_source_attachments(item, source_attachment_ids, identity, db)
-        await _sync_legacy_official_document(item, identity, db)
         db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
         await db.commit(); await db.refresh(item)
     except Exception:
@@ -21306,7 +20548,6 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     item.title = body.title.strip(); item.customer = customer; item.description = body.description.strip()
     existing_names = str((item.data or {}).get("document_names") or "")
     item.data = {"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
-    await _sync_legacy_official_document(item, identity, db)
     db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await db.commit(); await db.refresh(item)
     return await _seal_record_dict(item, db)
@@ -21403,7 +20644,6 @@ async def upload_seal_application_files(
             ))
         await db.flush()
         await _sync_seal_document_names(record, db)
-        await _sync_legacy_official_document(record, identity, db)
         db.add(WorkflowEvent(record_id=record.id, action="上传用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{len(prepared)} 个文件"))
         await db.commit()
     except Exception:
@@ -21423,7 +20663,6 @@ async def submit_seal_application(record_id: int, body: TaskActionInput, identit
     if not attachment_count:
         raise HTTPException(status_code=409, detail="请先上传至少一个用印文件后再提交审批")
     old = item.status; item.status = "待审批"
-    await _sync_legacy_official_audit(item, identity, db, 10, body.comment)
     db.add(WorkflowEvent(record_id=item.id, action="提交用印审批", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
@@ -21437,7 +20676,6 @@ async def withdraw_seal_application(record_id: int, body: TaskActionInput, ident
         raise HTTPException(status_code=409, detail="只有待审批或已审待用印的申请可以撤回")
     previous = item.status
     item.status = "已撤回"
-    await _sync_legacy_official_audit(item, identity, db, 40, body.comment)
     db.add(WorkflowEvent(record_id=item.id, action="撤回用印申请", from_status=previous, to_status="已撤回", operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
@@ -21461,7 +20699,6 @@ async def batch_withdraw_seal_applications(body: SealBatchApplicationInput, iden
         for item in ordered:
             previous = item.status
             item.status = "已撤回"
-            await _sync_legacy_official_audit(item, identity, db, 40, body.comment.strip())
             db.add(WorkflowEvent(record_id=item.id, action="批量撤回用印申请", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment.strip()))
         await db.commit()
     except Exception:
@@ -21487,7 +20724,6 @@ async def approve_seal_application(record_id: int, body: SealApprovalInput, iden
         "approved_at": datetime.now().isoformat(timespec="seconds"),
         "approval_comment": body.comment.strip(),
     }
-    await _sync_legacy_official_audit(item, identity, db, 20 if body.approved else 30, body.comment)
     db.add(WorkflowEvent(record_id=item.id, action="用印审批通过" if body.approved else "用印审批拒绝", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
@@ -21509,7 +20745,6 @@ async def stamp_seal_application(record_id: int, body: SealStampInput, identity:
         if not stamp_path.is_file() or UPLOAD_ROOT.resolve() not in stamp_path.resolve().parents:
             raise HTTPException(status_code=404, detail="所选盖章附件文件不存在")
     old = item.status; item.status = "已用印"; data = dict(item.data or {})
-    await _sync_legacy_official_audit(item, identity, db, 60, body.comment)
     data.update({"actual_copies": body.actual_copies, "stamp_operator": body.operator or identity["username"], "stamped_at": datetime.now().isoformat(), "archive_no": body.archive_no}); item.data = data
     if body.stamp_attachment_id:
         data["stamp_attachment_id"] = body.stamp_attachment_id
@@ -21583,7 +20818,6 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
             if stamp_attachment_id is not None:
                 data["stamp_attachment_id"] = stamp_attachment_id
             item.data = data
-            await _sync_legacy_official_audit(item, identity, db, 60, body.comment)
             asset.usage_count += body.actual_copies
             asset.last_used_at = datetime.now()
             db.add(WorkflowEvent(record_id=item.id, action="批量完成实际用印", from_status=previous, to_status=item.status, operator=identity["username"], comment=f"实际 {body.actual_copies} 份；归档号：{body.archive_no}。{body.comment}"))
@@ -21604,7 +20838,6 @@ async def archive_seal_application(record_id: int, body: TaskActionInput, identi
     if item.status != "已用印": raise HTTPException(status_code=409, detail="只有已用印申请可以归档")
     if not (item.data or {}).get("archive_no"): raise HTTPException(status_code=409, detail="请先在用印登记中填写归档号")
     item.status = "已归档"
-    await _sync_legacy_official_document(item, identity, db)
     db.add(WorkflowEvent(record_id=item.id, action="用印材料归档", from_status="已用印", to_status="已归档", operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
@@ -22536,11 +21769,7 @@ async def transition_employee(employee_id: int, body: HrTransitionInput, identit
     if body.effective_date < date(2000, 1, 1): raise HTTPException(status_code=422, detail="办理日期无效")
     previous = item.status; data = dict(item.data or {})
     if body.to_status == "在职":
-        if previous in {"离职", "停用"}:
-            data.update({"reinstated_at": str(body.effective_date), "reinstated_by": identity["username"], "reinstatement_reason": reason})
-            action = "办理复职"
-        else:
-            data.update({"regularized_at": str(body.effective_date), "regularized_by": identity["username"]}); action = "试用转正"
+        data.update({"regularized_at": str(body.effective_date), "regularized_by": identity["username"]}); action = "试用转正"
     elif body.to_status == "离职":
         data.update({"offboard_date": str(body.effective_date), "offboard_reason": reason, "handover_to": body.handover_to.strip(), "offboard_by": identity["username"]}); action = "办理离职"
     else:
@@ -25297,6 +24526,7 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
     db.add(record)
     await db.flush()
     db.add(WorkflowEvent(record_id=record.id, action="创建", to_status=record.status, operator=identity["username"], comment="创建业务记录"))
+    await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
     return _record_dict(record)
@@ -25398,6 +24628,7 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
         db.add(WorkflowEvent(record_id=record.id, action="编辑变更", from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过编辑表单变更状态"))
     else:
         db.add(WorkflowEvent(record_id=record.id, action="编辑", from_status=record.status, to_status=record.status, operator=identity["username"], comment="修改业务资料"))
+    await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
     return await _record_dict_for_identity(record, identity, db)
@@ -25423,6 +24654,7 @@ async def transition_record(record_id: int, body: TransitionInput, identity: dic
     elif body.to_status in {"已完成", "已归档", "已用印", "已付款", "已对账", "已发布"}:
         action = "办结"
     db.add(WorkflowEvent(record_id=record.id, action=action, from_status=previous, to_status=body.to_status, operator=identity["username"], comment=body.comment))
+    await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
     return _record_dict(record)
@@ -25823,3 +25055,659 @@ async def agent_chat(body: DifyRequest, identity: dict = Depends(current_identit
     if response.is_error:
         raise HTTPException(status_code=502, detail="Dify 调用失败")
     return response.json()
+
+LEGACY_CONTRACT_STATUS_BY_NEW = {
+    "草稿": 0,
+    "审批中": 10,
+    "已通过": 20,
+    "已拒绝": 30,
+    "已回收": 40,
+    "已归档": 60,
+    "履行中": 70,
+    "已完成": 80,
+}
+
+LEGACY_INVESTIGATION_STATUS = {"待分配": 0, "进行中": 10, "已完成": 20, "已取消": 30}
+LEGACY_INVESTIGATION_TASK_STATUS = {
+    "待接收": 0, "未开始": 0, "处理中": 10, "待确认": 15,
+    "已完成": 20, "已验收": 20, "已拒绝": 30, "已撤回": 40,
+    "已停止": 40, "已取消": 40,
+}
+LEGACY_INVESTIGATION_CLUE_STATUS = {
+    "草稿": 0, "待审批": 10, "待客户审核": 15, "待取证": 20,
+    "已取证": 30, "待公证": 35, "已转案件": 40, "已驳回": 50,
+}
+
+# Legacy compatibility projections.
+async def _legacy_projection_pk(record: BusinessRecord, column: str, db: AsyncSession) -> dict[str, int]:
+    """SQLite cannot auto-generate BIGINT primary keys; preserve imported IDs."""
+    connection = await db.connection()
+    return {column: -record.id} if connection.dialect.name == "sqlite" else {}
+
+
+def _legacy_snapshot_value(data: dict, *keys: str) -> object | None:
+    """Read an exact legacy value retained by an imported business record."""
+    snapshot = data.get("legacy_record")
+    if not isinstance(snapshot, dict):
+        return None
+    for key in keys:
+        value = snapshot.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+async def _sync_legacy_customer(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyCustomer:
+    """Keep CRM_Customer and CRM_Customer_Contacts synchronized with customer APIs."""
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyCustomer).where(LegacyCustomer.CustomerNo == record.serial_no[:20]))
+    if not legacy:
+        legacy = LegacyCustomer(
+            **await _legacy_projection_pk(record, "CustomerId", db),
+            CustomerNo=record.serial_no[:20],
+            CustomerGuid=_customer_guid(record),
+            CustomerName=record.title[:400],
+            CreateUser=identity["username"][:20],
+            CreateTime=_legacy_contract_datetime(record.created_at) or datetime.now(),
+        )
+        db.add(legacy)
+    legacy.CustomerNo = record.serial_no[:20]
+    legacy.CustomerGuid = _customer_guid(record)
+    legacy.CustomerName = record.title[:400]
+    legacy.ContactAddress = str(data.get("registered_address") or "")[:500] or None
+    legacy.ContactPhone = str(data.get("phone") or "")[:50] or None
+    legacy.Fax = str(data.get("fax") or "")[:50] or None
+    legacy.Zip = str(data.get("postal_code") or "")[:50] or None
+    legacy.Province = str(data.get("province") or "")[:20] or None
+    legacy.City = str(data.get("registration_region") or "")[:20] or None
+    legacy.Industry = str(data.get("industry") or "")[:100] or None
+    legacy.ProductionValue = str(data.get("output_value") or "")[:100] or None
+    legacy.CustomerTypeName = str(data.get("customer_type") or "")[:100] or None
+    legacy.CooperatioSituation = str(data.get("cooperation_status") or "")[:100] or None
+    legacy.CustomerSourceType = str(data.get("customer_source") or "")[:100] or None
+    legacy.WebSite = str(data.get("website") or "")[:200] or None
+    legacy.BusinessOwner = record.owner[:20]
+    legacy.IsAssisted = "Y" if data.get("is_assisted") == "是" else "N"
+    legacy.CompanyTypeName = str(data.get("organization_nature") or "")[:100] or None
+    legacy.GBTypeName = str(data.get("gb_classification") or "")[:100] or None
+    legacy.RegisteredCapital = str(data.get("registered_capital") or "")[:100] or None
+    legacy.RegistrationDate = _legacy_contract_datetime(data.get("registration_year"))
+    legacy.RegistrationCity = str(data.get("registration_region") or "")[:100] or None
+    legacy.RegistrationZip = str(data.get("registration_postal_code") or "")[:100] or None
+    legacy.RegistrationAddress = str(data.get("registered_address") or "")[:500] or None
+    legacy.OrganizationCode = str(data.get("organization_code") or "")[:100] or None
+    legacy.LicenseNo = str(data.get("credit_code") or "")[:100] or None
+    legacy.AccountBankName = str(data.get("bank_name") or "")[:100] or None
+    legacy.BankAccount = str(data.get("bank_account") or "")[:100] or None
+    legacy.InputDate = _legacy_contract_datetime(data.get("file_date")) or _legacy_contract_datetime(record.created_at) or datetime.now()
+    legacy.Holder = record.owner[:20]
+    legacy.CustomerOwner = record.owner[:20]
+    legacy.IsShared = "Y" if data.get("is_shared") == "是" else "N"
+    legacy.IsActived = "N" if record.status == "已回收" else "Y"
+    legacy.CustomerStatus = record.status[:100]
+    legacy.LastContactTime = _legacy_contract_datetime(data.get("last_contact_at"))
+    legacy.LastUpdateTime = datetime.now()
+    legacy.IsFeeReducing = "Y" if data.get("fee_reduction") == "是" else "N"
+    legacy.CustomerLevelName = str(data.get("level") or "")[:100] or None
+    legacy.LegalAgentName = str(data.get("legal_representative") or "")[:200] or None
+    legacy.LegalAgentIdNo = str(data.get("legal_agent_id_no") or "")[:200] or None
+    legacy.LegalAgentTitle = str(data.get("legal_agent_title") or "")[:200] or None
+    legacy.CustomerShortName = str(data.get("short_name") or "")[:100] or None
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = datetime.now()
+    await db.flush()
+    await _sync_legacy_customer_contacts(record, legacy, identity, db)
+    return legacy
+
+async def _sync_legacy_customer_contacts(record: BusinessRecord, legacy: LegacyCustomer, identity: dict, db: AsyncSession) -> None:
+    contacts = [_customer_contact_dict(item) for item in list((record.data or {}).get("contacts") or [])]
+    active_guids: set[str] = set()
+    for contact in contacts:
+        contact_id = str(contact.get("id") or uuid4().hex)
+        contact_guid = str(uuid5(NAMESPACE_URL, f"customer-contact:{record.id}:{contact_id}"))
+        active_guids.add(contact_guid)
+        row = await db.scalar(select(LegacyCustomerContact).where(LegacyCustomerContact.ContactsGuid == contact_guid))
+        if not row:
+            row = LegacyCustomerContact(**({"ContactsId": -(record.id * 10000 + len(active_guids))} if (await db.connection()).dialect.name == "sqlite" else {}), ContactsGuid=contact_guid, CreateUser=identity["username"][:20], CreateTime=datetime.now())
+            db.add(row)
+        row.CustomerId = legacy.CustomerId
+        row.CustomerNo = record.serial_no[:20]
+        row.ContactsTitle = str(contact.get("position") or "")[:200] or None
+        row.Contacts = str(contact.get("name") or "")[:200] or None
+        row.ProjectRole = str(contact.get("project_role") or "")[:100] or None
+        row.Email = str(contact.get("email") or "")[:200] or None
+        row.OfficePhone = str(contact.get("office_phone") or "")[:50] or None
+        row.Mobilephone = str(contact.get("phone") or "")[:50] or None
+        row.IM = str(contact.get("im_account") or "")[:100] or None
+        row.IsContacted = "Y" if contact.get("is_contacted", True) else "N"
+        row.IsPeopleBASE = "Y" if contact.get("is_people_base", True) else "N"
+        row.IsReceivedEmail = "Y" if contact.get("is_received_email", True) else "N"
+        row.IsDefault = "Y" if contact.get("is_primary", False) else "N"
+        row.IsActived = "Y" if contact.get("is_valid", True) else "N"
+        row.ChangeUser = identity["username"][:20]
+        row.ChangeTime = datetime.now()
+    existing = (await db.scalars(select(LegacyCustomerContact).where(LegacyCustomerContact.CustomerNo == record.serial_no[:20]))).all()
+    for row in existing:
+        if row.ContactsGuid not in active_guids:
+            row.IsActived = "N"
+            row.ChangeUser = identity["username"][:20]
+            row.ChangeTime = datetime.now()
+
+def _legacy_contract_datetime(value: object) -> datetime | None:
+    """Convert new-system timestamps to legacy SQL Server DATETIME semantics."""
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+    except ValueError:
+        return None
+
+def _legacy_contract_int(value: object) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+def _legacy_contract_float(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+async def _sync_legacy_contract(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyContract:
+    """Persist FCM_Contract fields and legacy text links from a new contract record."""
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyContract).where(LegacyContract.ContractNo == record.serial_no[:20]))
+    if not legacy:
+        legacy_values = {
+            **await _legacy_projection_pk(record, "ContractId", db),
+            "ContractNo": record.serial_no[:20],
+            "ContractGuid": str(data.get("contract_guid") or uuid4()),
+            "CreateUser": identity["username"][:20],
+            "CreateTime": _legacy_contract_datetime(record.created_at) or datetime.now(),
+            "IsActived": "Y",
+        }
+        # The imported SQLite schema uses BIGINT for this legacy primary key.
+        # SQLite only auto-generates keys for an exact INTEGER PRIMARY KEY,
+        # whereas production databases retain their native identity column.
+        connection = await db.connection()
+        if connection.dialect.name == "sqlite":
+            legacy_values["ContractId"] = int(
+                await db.scalar(select(func.coalesce(func.max(LegacyContract.ContractId), 0))) or 0
+            ) + 1
+        legacy = LegacyContract(**legacy_values)
+        db.add(legacy)
+    legacy.ContractNo = record.serial_no[:20]
+    legacy.ContractGuid = str(data.get("contract_guid") or legacy.ContractGuid or uuid4())[:36]
+    legacy.RefContractNo = str(data.get("ref_contract_no") or data.get("external_contract_no") or "")[:50] or None
+    legacy.ContractName = record.title[:200]
+    customer_no = _legacy_case_text(
+        data.get("customer_no") or _legacy_snapshot_value(data, "CustomerNo", "customer_no"),
+        20,
+    )
+    customer_projection = await db.scalar(
+        select(LegacyCustomer).where(LegacyCustomer.CustomerNo == customer_no)
+    ) if customer_no else None
+    legacy.CustomerId = (
+        customer_projection.CustomerId
+        if customer_projection
+        else _legacy_contract_int(
+            data.get("legacy_customer_id")
+            or _legacy_snapshot_value(data, "CustomerId", "legacy_customer_id")
+            or data.get("customer_id")
+        )
+    )
+    legacy.CustomerNo = customer_no
+    legacy.BusinessOwner = record.owner[:20]
+    legacy.ContractType = _legacy_contract_int(data.get("contract_type_id") or data.get("contract_type"))
+    legacy.ChargingType = _legacy_contract_int(data.get("charging_type_id") or data.get("charging_type"))
+    legacy.ContractMoney = _legacy_contract_float(data.get("amount") or data.get("contract_money"))
+    legacy.TaxRate = _legacy_contract_float(data.get("tax_rate"))
+    legacy.ContractStatus = LEGACY_CONTRACT_STATUS_BY_NEW.get(record.status, 0)
+    legacy.ContractBeginDate = _legacy_contract_datetime(data.get("contract_begin_date") or data.get("signed_at") or data.get("start_date"))
+    legacy.ContractEndDate = _legacy_contract_datetime(data.get("contract_end_date") or data.get("end_date"))
+    legacy.AuditRoundId = _legacy_contract_int(data.get("approval_count"))
+    legacy.AuditDate = _legacy_contract_datetime(data.get("approved_at") or data.get("submitted_at"))
+    legacy.Remark = str(data.get("remark") or record.description or "")[:1000]
+    legacy.IsChanged = "Y" if data.get("is_changed") else "N"
+    legacy.IsActived = "N" if record.status in {"已删除", "已回收"} else "Y"
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = datetime.now()
+    await db.flush()
+    await _sync_legacy_contract_files(record, legacy, identity, db)
+    return legacy
+
+async def _sync_legacy_contract_files(record: BusinessRecord, legacy: LegacyContract, identity: dict, db: AsyncSession) -> None:
+    attachments = (await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id == record.id,
+        FileAttachment.category == "合同附件",
+    ))).all()
+    for attachment in attachments:
+        file_guid = str(uuid5(NAMESPACE_URL, f"contract-attachment:{attachment.id}"))
+        legacy_file = await db.scalar(select(LegacyContractFile).where(LegacyContractFile.FileGuid == file_guid))
+        if not legacy_file:
+            legacy_file = LegacyContractFile(
+                FileGuid=file_guid,
+                ContractGuid=legacy.ContractGuid,
+                CreateUser=identity["username"][:20],
+                CreateTime=datetime.now(),
+                IsActived="Y",
+            )
+            db.add(legacy_file)
+        legacy_file.ContractGuid = legacy.ContractGuid
+        legacy_file.FileName = attachment.original_name[:400]
+        legacy_file.FilePath = attachment.path[:500]
+        legacy_file.FileSize = attachment.size
+        legacy_file.UploadUser = attachment.uploader[:20]
+        legacy_file.UploadTime = _legacy_contract_datetime(attachment.created_at) or datetime.now()
+        legacy_file.ChangeUser = identity["username"][:20]
+        legacy_file.ChangeTime = datetime.now()
+
+async def _sync_legacy_contract_audit(record: BusinessRecord, identity: dict, db: AsyncSession, status_code: int, comment: str = "") -> None:
+    legacy = await _sync_legacy_contract(record, identity, db)
+    round_id = int((record.data or {}).get("legacy_contract_audit_round") or 0) + 1
+    record.data = {**(record.data or {}), "legacy_contract_audit_round": round_id}
+    db.add(LegacyContractAudit(
+        ContractId=legacy.ContractId,
+        ContractNo=record.serial_no[:20],
+        AuditRoundId=round_id,
+        Auditor=identity["username"][:20],
+        AuditDate=datetime.now(),
+        AuditStatus=status_code,
+        AuditContent=comment[:200],
+        CreateUser=identity["username"][:20],
+        CreateTime=datetime.now(),
+    ))
+
+def _legacy_case_text(value: object, limit: int) -> str | None:
+    value = str(value or "").strip()
+    return value[:limit] or None
+
+def _legacy_case_datetime(value: object) -> datetime | None:
+    return _legacy_contract_datetime(value)
+
+def _legacy_case_amount(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def _legacy_case_list(value: object, limit: int = 2000) -> str | None:
+    if isinstance(value, list):
+        return _legacy_case_text("、".join(str(item).strip() for item in value if str(item).strip()), limit)
+    return _legacy_case_text(value, limit)
+
+async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyCase:
+    """Project a current case into the legacy Legal_Case shape and soft links."""
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyCase).where(LegacyCase.CaseNo == record.serial_no[:20]))
+    now = datetime.now()
+    if not legacy:
+        legacy = LegacyCase(**await _legacy_projection_pk(record, "CaseId", db), CaseNo=record.serial_no[:20], CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        db.add(legacy)
+    stage_aliases = {
+        "FirstIntance": ("first_instance", "first_intance"),
+        "SecondIntance": ("second_instance", "second_intance"),
+        "LastIntance": ("last_instance", "last_intance"),
+        "ExecutionIntance": ("execution_instance", "execution_intance"),
+    }
+    for stage, aliases in stage_aliases.items():
+        prefix = aliases[0]
+        setattr(legacy, f"{stage}Court", _legacy_case_text(data.get(f"{prefix}_court") or (data.get("court") if stage == "FirstIntance" else ""), 20))
+        setattr(legacy, f"{stage}Judge", _legacy_case_text(data.get(f"{prefix}_judge") or (data.get("judge") if stage == "FirstIntance" else ""), 200))
+        setattr(legacy, f"{stage}Clerk", _legacy_case_text(data.get(f"{prefix}_clerk") or (data.get("clerk") if stage == "FirstIntance" else ""), 200))
+        setattr(legacy, f"{stage}CaseNo", _legacy_case_text(data.get(f"{prefix}_case_no") or (data.get("court_case_no") if stage == "FirstIntance" else ""), 50))
+        setattr(legacy, f"{stage}RegisterDate", _legacy_case_datetime(data.get(f"{prefix}_register_date") or (data.get("filing_date") if stage == "FirstIntance" else "")))
+        setattr(legacy, f"{stage}LawfulDay", _legacy_case_datetime(data.get(f"{prefix}_lawful_day")))
+        setattr(legacy, f"{stage}JudgmentDate", _legacy_case_datetime(data.get(f"{prefix}_judgment_date") or (data.get("judgment_date") if stage == "FirstIntance" else "")))
+        setattr(legacy, f"{stage}CourtRoom", _legacy_case_text(data.get(f"{prefix}_courtroom") or (data.get("courtroom") if stage == "FirstIntance" else ""), 200))
+    legacy.CaseNo = record.serial_no[:20]
+    legacy.CaseName = record.title[:500]
+    legacy.CustomerNo = _legacy_case_text(
+        data.get("customer_no") or _legacy_snapshot_value(data, "CustomerNo", "customer_no"),
+        20,
+    )
+    legacy.CaseTypeId = _legacy_contract_int(data.get("case_type_id"))
+    legacy.CaseRightTypeId = _legacy_contract_int(data.get("right_type_id"))
+    legacy.CauseName = _legacy_case_text(data.get("cause_or_charge"), 400)
+    legacy.CasePhaseId = _legacy_contract_int(data.get("case_phase_id"))
+    legacy.CaseOriginPeople = _legacy_case_text(data.get("source_person") or data.get("business_owner"), 200)
+    legacy.CaseRegisterDate = _legacy_case_datetime(data.get("case_register_date") or record.created_at)
+    legacy.CaseLawyer = _legacy_case_list(data.get("handling_lawyer_usernames") or data.get("handling_lawyers"), 200)
+    legacy.CaseLawyerName = _legacy_case_list(data.get("handling_lawyers"), 400)
+    legacy.CaseAssistant = _legacy_case_text(data.get("assistant_username") or data.get("assistant"), 200)
+    legacy.CaseAssistantName = _legacy_case_text(data.get("assistant"), 400)
+    for column, key in (("AppellantNames", "plaintiffs"), ("AppellantAgent", "plaintiff_agents"), ("AppelleeNames", "defendants"), ("AppelleeAgent", "defendant_agents"), ("TheThirdNames", "third_parties"), ("TheThirdAgent", "third_party_agents")):
+        setattr(legacy, column, _legacy_case_list(data.get(key)))
+    legacy.BusinessOwner = _legacy_case_text(data.get("business_owner") or data.get("source_person") or record.owner, 50)
+    legacy.ContractNo = _legacy_case_text(
+        data.get("contract_no") or _legacy_snapshot_value(data, "ContractNo", "contract_no"),
+        30,
+    )
+    legacy.InvestigationClueNos = _legacy_case_list(data.get("investigation_clue_nos") or data.get("investigation_clue"))
+    legacy.Deadline = _legacy_case_datetime(data.get("deadline"))
+    legacy.SettlementAmount = _legacy_case_amount(data.get("settlement_amount"))
+    legacy.LitigationAmount = _legacy_case_amount(data.get("litigation_amount"))
+    legacy.Investigator = _legacy_case_text(data.get("investigator_username") or data.get("investigator"), 200)
+    legacy.InvestigatorName = _legacy_case_text(data.get("investigator"), 200)
+    legacy.NotarialNos = _legacy_case_list(data.get("notary_nos"), 800)
+    legacy.DepositAddress = _legacy_case_text(data.get("deposit_address"), 1000)
+    legacy.ConsultantBeginDate = _legacy_case_datetime(data.get("counsel_start"))
+    legacy.ConsultantEndDate = _legacy_case_datetime(data.get("counsel_end"))
+    legacy.ArchiveStatus = 20 if record.status == "已归档" else 10 if record.status == "待归档审核" else 0
+    legacy.FileNo = _legacy_case_text(data.get("archive_no"), 20)
+    legacy.ArchivedFileNo = _legacy_case_text(data.get("archive_no"), 100)
+    legacy.ClosingTime = _legacy_case_datetime(data.get("case_closed_at"))
+    legacy.ToAuditTime = _legacy_case_datetime(data.get("archive_submitted_at"))
+    legacy.ToAuditApplicant = _legacy_case_text(data.get("archive_submitter"), 20)
+    legacy.Auditor = _legacy_case_text(data.get("archive_reviewer"), 20)
+    legacy.AuditedTime = _legacy_case_datetime(data.get("archived_at") or data.get("archive_reviewed_at"))
+    legacy.AuditedRemark = _legacy_case_text(data.get("archive_review_comment") or data.get("archive_reject_reason"), 2000)
+    legacy.ExecutionStatus = _legacy_contract_int(data.get("execution_status_code"))
+    legacy.ExecutionAcceptanceTime = _legacy_case_datetime(data.get("execution_acceptance_time"))
+    legacy.OriginalCaseNo = _legacy_case_text(data.get("original_case_no"), 20)
+    legacy.IsActived = "N" if record.status in {"已删除", "已合并"} else "Y"
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = now
+    await _sync_legacy_case_relations(record, identity, db, legacy)
+    return legacy
+
+async def _sync_legacy_case_relations(record: BusinessRecord, identity: dict, db: AsyncSession, legacy: LegacyCase | None = None) -> None:
+    """Project files, responsible staff and workflow history into old case tables."""
+    legacy = legacy or await _sync_legacy_case(record, identity, db)
+    now = datetime.now()
+    case_id = legacy.CaseId or -record.id
+    case_no = record.serial_no[:20]
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id))).all())
+    for attachment in attachments:
+        item = await db.scalar(select(LegacyCaseFile).where(LegacyCaseFile.FileId == -attachment.id))
+        if not item:
+            item = LegacyCaseFile(FileId=-attachment.id, CaseId=case_id, CaseNo=case_no, CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(attachment.created_at) or now)
+            db.add(item)
+        item.CaseId = case_id
+        item.CaseNo = case_no
+        item.FileName = _legacy_case_text(attachment.original_name, 200)
+        item.FileTypeId = _legacy_contract_int(attachment.file_type_code)
+        item.CaseFileTypeId = _legacy_contract_int(attachment.file_type_code)
+        item.FullPath = _legacy_case_text(attachment.path, 500)
+        item.FileSize = attachment.size
+        item.UploadingUser = _legacy_case_text(attachment.uploader, 20)
+        item.UploadingTime = _legacy_contract_datetime(attachment.created_at) or now
+        item.Actived = "Y"
+        item.IsTransmitted = "Y" if attachment.is_transmitted else "N"
+        item.SortingIndex = attachment.id
+        item.FileGuid = str(uuid5(NAMESPACE_URL, f"case-file:{attachment.id}"))
+        item.ChangeUser = identity["username"][:20]
+        item.ChangeTime = now
+
+    data = record.data or {}
+    people: list[str] = [record.owner]
+    # Legacy StaffName stores the account reference. Prefer the explicit
+    # username fields and use display names only when no account is supplied.
+    lawyer_refs = data.get("handling_lawyer_usernames") or data.get("handling_lawyers") or []
+    people.extend(lawyer_refs if isinstance(lawyer_refs, list) else [lawyer_refs])
+    people.append(data.get("assistant_username") or data.get("assistant"))
+    people.append(data.get("investigator_username") or data.get("investigator"))
+    wanted = {str(value or "").strip() for value in people if str(value or "").strip()}
+    existing = list((await db.scalars(select(LegacyCaseParticipant).where(LegacyCaseParticipant.CaseNo == case_no))).all())
+    for participant in existing:
+        if participant.StaffName not in wanted:
+            await db.delete(participant)
+    for index, staff_name in enumerate(sorted(wanted), start=1):
+        participant = await db.get(LegacyCaseParticipant, {"CaseNo": case_no, "StaffName": staff_name[:20]})
+        if not participant:
+            participant = LegacyCaseParticipant(CaseNo=case_no, StaffName=staff_name[:20], CreateUser=identity["username"][:20], CreateTime=now)
+            db.add(participant)
+        participant.SortingIndex = index
+        participant.ChangeUser = identity["username"][:20]
+        participant.ChangeTime = now
+
+    events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id).order_by(WorkflowEvent.id))).all())
+    for event in events:
+        log_id = -event.id
+        log = await db.get(LegacyCaseLog, log_id)
+        if not log:
+            log = LegacyCaseLog(LogId=log_id, CaseId=case_id, CaseNo=case_no, CreateUser=event.operator[:20], CreateTime=_legacy_contract_datetime(event.created_at) or now)
+            db.add(log)
+        log.CaseId = case_id
+        log.CaseNo = case_no
+        log.Content = _legacy_case_text(f"{event.action}：{event.comment}".rstrip("："), 8000)
+        log.LogType = 10
+        log.IsActived = "Y"
+        log.ChangeUser = identity["username"][:20]
+        log.ChangeTime = now
+
+def _legacy_yes_no(value: object) -> str:
+    return "Y" if bool(value) else "N"
+
+def _legacy_region(data: dict, key: str) -> str | None:
+    value = data.get(key)
+    if isinstance(value, list):
+        value = "、".join(str(item).strip() for item in value if str(item).strip())
+    return _legacy_case_text(value, 2000)
+
+async def _sync_legacy_investigation(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyInvestigation:
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyInvestigation).where(LegacyInvestigation.InvestigationNo == record.serial_no[:20]))
+    now = datetime.now()
+    if not legacy:
+        legacy = LegacyInvestigation(**await _legacy_projection_pk(record, "InvestigationId", db), InvestigationNo=record.serial_no[:20], InvestigationGuid=str(uuid5(NAMESPACE_URL, f"investigation:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        db.add(legacy)
+    legacy.InvestigationTitle = record.title[:200]
+    legacy.Remark = _legacy_case_text(record.description, 8000)
+    legacy.Indicter = _legacy_case_text(data.get("source_owner") or data.get("publisher"), 200)
+    legacy.IndicterName = _legacy_case_text(data.get("source_owner") or data.get("publisher"), 2000)
+    legacy.CaseTypeId = _legacy_contract_int(data.get("case_type_id"))
+    legacy.AuthorizationBeginTime = _legacy_case_datetime(data.get("authorized_from"))
+    legacy.AuthorizationEndTime = _legacy_case_datetime(data.get("authorized_to"))
+    scope = str(data.get("authorization_scope") or "").strip()
+    legacy.InvestigationScope = "1" if scope in {"全国", "全国范围"} else "0"
+    legacy.Province = _legacy_region(data, "province") or _legacy_region(data, "region")
+    legacy.City = _legacy_region(data, "city")
+    legacy.BusinessOwner = record.owner[:20]
+    legacy.Auditor = _legacy_case_text(data.get("auditor"), 20)
+    legacy.Status = LEGACY_INVESTIGATION_STATUS.get(record.status, 0)
+    legacy.IsActived = "N" if record.status in {"已删除", "已取消"} else "Y"
+    legacy.NeedToAuditOnCustomer = _legacy_yes_no(data.get("customer_review"))
+    legacy.ContractNo = _legacy_case_text(
+        data.get("contract_no") or _legacy_snapshot_value(data, "ContractNo", "contract_no"),
+        20,
+    )
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = now
+    return legacy
+
+async def _sync_legacy_investigation_task(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyInvestigationTask:
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyInvestigationTask).where(LegacyInvestigationTask.TaskNo == record.serial_no[:20]))
+    now = datetime.now()
+    if not legacy:
+        legacy = LegacyInvestigationTask(**await _legacy_projection_pk(record, "TaskId", db), TaskNo=record.serial_no[:20], TaskGuid=str(uuid5(NAMESPACE_URL, f"investigation-task:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        db.add(legacy)
+    legacy.TaskName = record.title[:200]
+    legacy.TaskType = "子任务" if data.get("parent_task_id") else "主任务"
+    legacy.InvestigationNo = _legacy_case_text(
+        data.get("investigation_no")
+        or _legacy_snapshot_value(data, "InvestigationNo", "investigation_no"),
+        20,
+    )
+    legacy.Investigator = record.owner[:200]
+    legacy.Assistant = _legacy_case_text(data.get("assistant"), 200)
+    legacy.BeginTime = _legacy_case_datetime(data.get("start_date") or data.get("authorized_from"))
+    legacy.EndTime = _legacy_case_datetime(data.get("end_date") or data.get("deadline") or data.get("authorized_to"))
+    legacy.InvestigationScope = "全国" if str(data.get("authorization_scope") or "") in {"全国", "全国范围"} else "区域"
+    legacy.Province = _legacy_region(data, "province") or _legacy_region(data, "region")
+    legacy.City = _legacy_region(data, "city")
+    legacy.District = _legacy_case_text(data.get("district"), 200)
+    legacy.TaskStatus = LEGACY_INVESTIGATION_TASK_STATUS.get(record.status, 0)
+    legacy.IsActived = "N" if record.status in {"已删除", "已取消"} else "Y"
+    legacy.Remark = _legacy_case_text(record.description, 2000)
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = now
+    return legacy
+
+async def _sync_legacy_investigation_clue(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyInvestigationClue:
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyInvestigationClue).where(LegacyInvestigationClue.ClueNo == record.serial_no[:20]))
+    now = datetime.now()
+    if not legacy:
+        legacy = LegacyInvestigationClue(**await _legacy_projection_pk(record, "ClueId", db), ClueNo=record.serial_no[:20], ClueGuid=str(uuid5(NAMESPACE_URL, f"investigation-clue:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        db.add(legacy)
+    task_no = (
+        data.get("investigation_task_no")
+        or _legacy_snapshot_value(data, "InvestigationTaskNo", "investigation_task_no")
+    )
+    if not task_no:
+        source_task_id = _legacy_contract_int(data.get("source_task_id"))
+        source_task = await db.get(BusinessRecord, source_task_id) if source_task_id else None
+        if source_task and source_task.module == "task":
+            task_no = source_task.serial_no
+    legacy.InvestigationTaskNo = _legacy_case_text(task_no, 20)
+    legacy.InvestigationNo = _legacy_case_text(
+        data.get("investigation_no")
+        or _legacy_snapshot_value(data, "InvestigationNo", "investigation_no"),
+        20,
+    )
+    legacy.BusinessType = _legacy_case_text(data.get("business_type"), 10)
+    legacy.ChannelType = _legacy_case_text(data.get("channel_type"), 10)
+    legacy.PlatformName = _legacy_case_text(data.get("platform"), 200)
+    legacy.StoreName = _legacy_case_text(data.get("store_name") or record.title, 200)
+    legacy.StoreUrl = _legacy_case_text(data.get("store_url") or data.get("source_url"), 2000)
+    legacy.LocationAddress = _legacy_case_text(data.get("location_address") or data.get("address"), 1000)
+    legacy.Address = _legacy_case_text(data.get("address") or data.get("location_address"), 1000)
+    for key, column in (("province", "Province"), ("city", "City"), ("district", "District")):
+        value = _legacy_case_text(data.get(key), 20)
+        setattr(legacy, column, value)
+        setattr(legacy, f"{column}Zh", _legacy_case_text(data.get(f"{key}_zh") or data.get(key), 100))
+    legacy.HasProduct = _legacy_yes_no(data.get("product"))
+    legacy.InvestigationDate = _legacy_case_datetime(data.get("investigation_date") or data.get("collected_at"))
+    legacy.HasTort = _legacy_yes_no(data.get("has_tort") or data.get("tort"))
+    legacy.Indictee = _legacy_case_text(data.get("opponent") or data.get("indictee"), 1000)
+    legacy.Status = LEGACY_INVESTIGATION_CLUE_STATUS.get(record.status, 0)
+    legacy.IsActived = "N" if record.status == "已删除" else "Y"
+    legacy.Remark = _legacy_case_text(record.description, 2000)
+    legacy.ToAuditTime = _legacy_case_datetime(data.get("submitted_at") or data.get("resubmitted_at"))
+    legacy.Auditor = _legacy_case_text(data.get("reviewer"), 20)
+    legacy.AuditTime = _legacy_case_datetime(data.get("reviewed_at"))
+    legacy.AuditRemark = _legacy_case_text(data.get("review_comment") or data.get("rejection_reason"), 2000)
+    legacy.AuditNeedMergeCase = _legacy_yes_no(data.get("audit_need_merge_case") or data.get("merge_into_case_no"))
+    legacy.AuditNeedMergeCaseNo = _legacy_case_text(data.get("merge_into_case_no"), 20)
+    legacy.Investigators = _legacy_case_text(record.owner, 200)
+    legacy.InvestigatorNames = _legacy_case_text(record.owner, 200)
+    legacy.CaseNo = _legacy_case_text(data.get("converted_case_no") or data.get("case_no"), 20)
+    legacy.CustomerAuditor = _legacy_case_text(data.get("customer_reviewer"), 20)
+    legacy.CustomerAuditTime = _legacy_case_datetime(data.get("customer_reviewed_at"))
+    legacy.CustomerAuditRemark = _legacy_case_text(data.get("customer_review_comment"), 2000)
+    legacy.StoreId = _legacy_case_text(data.get("store_id"), 100)
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = now
+    return legacy
+
+def _legacy_evidence_status(value: object) -> int:
+    return {
+        "未入库": 10,
+        "已入库": 20,
+        "已重新入库": 20,
+        "已出库": 30,
+        "已销毁": 40,
+    }.get(str(value or "").strip(), 0)
+
+async def _sync_legacy_investigation_clue_evidence(
+    clue: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+    attachment_ids: list[int] | None = None,
+) -> LegacyInvestigationClueEvidence:
+    """Project one registered collection into the old clue/evidence GUID chain."""
+    clue_projection = await _sync_legacy_investigation_clue(clue, identity, db)
+    data = clue.data or {}
+    evidence_guid = str(uuid5(NAMESPACE_URL, f"investigation-clue-evidence:{clue.id}"))
+    legacy = await db.scalar(
+        select(LegacyInvestigationClueEvidence).where(
+            LegacyInvestigationClueEvidence.EvidenceGuid == evidence_guid,
+        ),
+    )
+    now = datetime.now()
+    if not legacy:
+        legacy = LegacyInvestigationClueEvidence(
+            # Imported legacy rows retain their positive SQL Server IDs. New
+            # compatibility rows use a stable separate range without changing
+            # the GUID-based old-system relationship.
+            EvidenceId=-clue.id,
+            EvidenceGuid=evidence_guid,
+            EvidenceNo=_legacy_case_text(f"EV-{clue.serial_no}", 200),
+            ClueGuid=clue_projection.ClueGuid,
+            CreateUser=identity["username"][:20],
+            CreateTime=now,
+        )
+        db.add(legacy)
+    legacy.EvidenceType = "NT"
+    legacy.ClueGuid = clue_projection.ClueGuid
+    legacy.EvidenceDate = _legacy_case_datetime(data.get("collected_at"))
+    legacy.EvidenceAddress = _legacy_case_text(data.get("address") or data.get("location_address"), 1000)
+    legacy.NotaryOrganization = _legacy_case_text(data.get("notary_institution"), 200)
+    legacy.NotarialNo = _legacy_case_text(data.get("notarization_no") or data.get("certificate_no"), 200)
+    legacy.NotarialObtainDate = _legacy_case_datetime(data.get("collected_at"))
+    legacy.Remark = _legacy_case_text(clue.description, 2000)
+    legacy.IsActived = "Y"
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = now
+    legacy.DepositAddress = _legacy_case_text(data.get("storage_location"), 1000)
+    legacy.InvoiceNo = _legacy_case_text(data.get("invoice_no"), 100)
+    legacy.EvidenceStatus = _legacy_evidence_status(data.get("evidence_status"))
+    legacy.StorageLocationName = _legacy_case_text(data.get("storage_location"), 20)
+    legacy.StorageLocationNo = _legacy_case_text(data.get("storage_location_no"), 20)
+    legacy.WarehouseNo = _legacy_case_text(data.get("warehouse_no"), 20)
+
+    selected_ids = set(attachment_ids if attachment_ids is not None else data.get("collection_file_ids", []))
+    attachments = list(
+        (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == clue.id))).all(),
+    )
+    for attachment in attachments:
+        target_model = LegacyInvestigationClueEvidenceFile if attachment.id in selected_ids else LegacyInvestigationClueFile
+        filters = [target_model.FileId == attachment.id]
+        target = await db.scalar(select(target_model).where(*filters))
+        other_model = LegacyInvestigationClueFile if target_model is LegacyInvestigationClueEvidenceFile else LegacyInvestigationClueEvidenceFile
+        # A file belongs to exactly one side of the legacy collection chain.
+        # Re-registering a clue with a different selection must move it rather
+        # than leave stale duplicate rows in both old attachment tables.
+        await db.execute(delete(other_model).where(other_model.FileId == attachment.id))
+        if not target:
+            target = target_model(FileId=attachment.id, CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(attachment.created_at) or now)
+            db.add(target)
+        target.ClueGuid = clue_projection.ClueGuid
+        if target_model is LegacyInvestigationClueEvidenceFile:
+            target.EvidenceGuid = evidence_guid
+        target.FileName = _legacy_case_text(attachment.original_name, 200)
+        target.MediaType = _legacy_case_text(attachment.content_type, 20)
+        target.FileTypeId = _legacy_contract_int(attachment.file_type_code)
+        target.FullPath = _legacy_case_text(attachment.path, 500)
+        target.FileSize = attachment.size
+        target.UploadingUser = _legacy_case_text(attachment.uploader, 20)
+        target.UploadingTime = _legacy_contract_datetime(attachment.created_at) or now
+        target.IsActived = "Y"
+        target.ChangeUser = identity["username"][:20]
+        target.ChangeTime = now
+    return legacy
+
+async def _sync_legacy_projection(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Synchronize old-system projections in the caller's transaction."""
+    if record.module == "customer":
+        await _sync_legacy_customer(record, identity, db)
+    elif record.module == "contract":
+        await _sync_legacy_contract(record, identity, db)
+    elif record.module == "case":
+        await _sync_legacy_case(record, identity, db)
+    elif record.module == "investigation":
+        await _sync_legacy_investigation(record, identity, db)
+    elif record.module == "task" and (record.data or {}).get("investigation_record_id"):
+        await _sync_legacy_investigation_task(record, identity, db)
+    elif record.module == "clue":
+        await _sync_legacy_investigation_clue(record, identity, db)

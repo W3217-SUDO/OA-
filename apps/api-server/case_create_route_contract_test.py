@@ -8,9 +8,20 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import delete, select
 
-from app.database import SessionLocal
+from app.database import Base, SessionLocal, engine
 from app.main import CaseCreateInput, CaseLitigantsInput, create_case, list_case_eligible_contracts, update_case_litigants
-from app.models import BusinessRecord, LegacyCase, LegacyCaseParticipant, RolePermission, User, WorkflowEvent
+from app.models import (
+    BusinessRecord,
+    Department,
+    FileAttachment,
+    LegacyCase,
+    LegacyCaseFile,
+    LegacyCaseLog,
+    LegacyCaseParticipant,
+    RolePermission,
+    User,
+    WorkflowEvent,
+)
 from app.security import hash_password
 
 DB = pathlib.Path(__file__).with_name("legal_platform.db")
@@ -30,21 +41,51 @@ class CaseCreateRouteContractTest(unittest.TestCase):
 
     async def _run(self):
         prefix = f"CODEX-CASE-C-NEXT-ROUTE-{uuid.uuid4().hex[:8]}"
+        department_code = f"{prefix}-department"
+        department_name = f"{prefix}-department"
+        # This route contract owns only these records. Do not rely on a
+        # pre-existing local SQLite schema, which may predate the complete
+        # legacy model set merged in 1.0.161.
+        tables = [
+            User.__table__,
+            Department.__table__,
+            RolePermission.__table__,
+            BusinessRecord.__table__,
+            WorkflowEvent.__table__,
+            FileAttachment.__table__,
+            LegacyCase.__table__,
+            LegacyCaseFile.__table__,
+            LegacyCaseLog.__table__,
+            LegacyCaseParticipant.__table__,
+        ]
+        async with engine.begin() as connection:
+            await connection.run_sync(
+                lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables)
+            )
         lawyer_username = f"codex-case-c-next-route-{uuid.uuid4().hex[:8]}-lawyer"
         denied_username = f"codex-case-c-next-route-{uuid.uuid4().hex[:8]}-denied"
         denied_role = f"codex_case_{uuid.uuid4().hex[:12]}"
         case_ids: list[int] = []
         contract_id: int | None = None
+        created_admin = False
         async with SessionLocal() as db:
+            db.add(Department(code=department_code, name=department_name, is_active=True))
+            if not await db.scalar(select(User.id).where(User.username == "admin")):
+                db.add(User(
+                    username="admin", display_name="Codex Test Admin", department="\u4e0a\u6d77\u5206\u6240",
+                    role="admin", profile={}, password_hash=hash_password("Codex-Route-Admin-123!"),
+                    is_active=True, must_change_password=False,
+                ))
+                created_admin = True
             lawyer = User(
                 username=lawyer_username, display_name="\u7f16\u7801\u6d4b\u8bd5\u5f8b\u5e08",
-                department="\u4e0a\u6d77\u5206\u6240", role="user", profile={"position": "\u5f8b\u5e08"},
+                department=department_name, role="user", profile={"position": "\u5f8b\u5e08"},
                 password_hash=hash_password("Codex-Route-Lawyer-123!"), is_active=True,
                 must_change_password=False,
             )
             denied_user = User(
                 username=denied_username, display_name=denied_username,
-                department="\u4e0a\u6d77\u5206\u6240", role=denied_role, profile={},
+                department=department_name, role=denied_role, profile={},
                 password_hash=hash_password("Codex-Route-Denied-123!"), is_active=True,
                 must_change_password=False,
             )
@@ -57,7 +98,7 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             contract = BusinessRecord(
                 module="contract", serial_no=f"{prefix}-CONTRACT", title=f"{prefix} contract",
                 customer=f"{prefix} customer", status=APPROVED, owner=lawyer_username,
-                department="\u4e0a\u6d77\u5206\u6240", description="", data={"type": "general", "amount": "1.00", "source_person": lawyer_username, "shared_with": []},
+                department=department_name, description="", data={"type": "general", "amount": "1.00", "source_person": lawyer_username, "shared_with": []},
             )
             db.add(contract)
             await db.flush()
@@ -110,6 +151,7 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             finally:
                 if "legacy_case_no" in locals():
                     await db.execute(delete(LegacyCaseParticipant).where(LegacyCaseParticipant.CaseNo == legacy_case_no))
+                    await db.execute(delete(LegacyCaseLog).where(LegacyCaseLog.CaseNo == legacy_case_no))
                     await db.execute(delete(LegacyCase).where(LegacyCase.CaseNo == legacy_case_no))
                 await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_(case_ids)))
                 await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(case_ids)))
@@ -118,6 +160,9 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                     await db.execute(delete(BusinessRecord).where(BusinessRecord.id == contract_id))
                 await db.execute(delete(RolePermission).where(RolePermission.role == denied_role))
                 await db.execute(delete(User).where(User.username.in_([lawyer_username, denied_username])))
+                if created_admin:
+                    await db.execute(delete(User).where(User.username == "admin"))
+                await db.execute(delete(Department).where(Department.code == department_code))
                 await db.commit()
         conn = sqlite3.connect(DB)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM business_records WHERE serial_no LIKE ?", (prefix + "%",)).fetchone()[0], 0)

@@ -1,8 +1,8 @@
-"""Import the 8091 local legacy sample bundle into the local FastAPI database.
+"""Import the 8091 legacy sample bundle into a FastAPI database.
 
 The legacy SQL Server is never opened or changed by this tool.  It reads the
-three exported DataSet packages and writes an idempotent projection into the
-current local SQLite database used by the 5173 application.
+three exported DataSet packages and writes an idempotent projection. The same
+tool is used for local SQLite verification and the PostgreSQL release database.
 """
 
 import argparse
@@ -103,11 +103,11 @@ def legacy_values(model, row):
 async def upsert_legacy(db, model, key, rows):
     created = updated = 0
     for row in rows:
-        marker = clean(row.get(key))
-        if not marker:
+        values = legacy_values(model, row)
+        marker = values.get(key)
+        if marker in (None, ""):
             continue
         item = await db.scalar(select(model).where(getattr(model, key) == marker))
-        values = legacy_values(model, row)
         if item is None:
             item = model(**values)
             db.add(item)
@@ -200,13 +200,21 @@ async def upsert_record(db, index, *, module, serial_no, title, customer="", own
         # Imported records are projections of a fixed 8091 sample bundle.  A
         # rerun must refresh missing projection keys from an earlier importer.
         item_data = dict(item.data or {})
-        item_data.update(data or {})
-        item.title = title or item.title
-        item.customer = customer or item.customer
-        item.owner = owner or item.owner
-        item.department = department or item.department
-        item.status = status or item.status
-        item.description = description or item.description
+        importer_owned = item_data.get("migration_source") == SOURCE
+        incoming_data = dict(data or {})
+        if not importer_owned:
+            incoming_data.pop("migration_source", None)
+        item_data.update(incoming_data)
+        # Existing production records may have progressed since the sample was
+        # exported. Refresh relation keys without rolling user-facing fields or
+        # workflow status back to the historical snapshot.
+        if importer_owned:
+            item.title = title or item.title
+            item.customer = customer or item.customer
+            item.owner = owner or item.owner
+            item.department = department or item.department
+            item.status = status or item.status
+            item.description = description or item.description
         item.data = item_data
         item.updated_at = updated_at or item.updated_at
         return item, False
