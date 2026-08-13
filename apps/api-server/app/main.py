@@ -24719,12 +24719,19 @@ LEGACY_INVESTIGATION_CLUE_STATUS = {
 }
 
 # Legacy compatibility projections.
+async def _legacy_projection_pk(record: BusinessRecord, column: str, db: AsyncSession) -> dict[str, int]:
+    """SQLite cannot auto-generate BIGINT primary keys; preserve imported IDs."""
+    connection = await db.connection()
+    return {column: -record.id} if connection.dialect.name == "sqlite" else {}
+
+
 async def _sync_legacy_customer(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyCustomer:
     """Keep CRM_Customer and CRM_Customer_Contacts synchronized with customer APIs."""
     data = record.data or {}
     legacy = await db.scalar(select(LegacyCustomer).where(LegacyCustomer.CustomerNo == record.serial_no[:20]))
     if not legacy:
         legacy = LegacyCustomer(
+            **await _legacy_projection_pk(record, "CustomerId", db),
             CustomerNo=record.serial_no[:20],
             CustomerGuid=_customer_guid(record),
             CustomerName=record.title[:400],
@@ -24789,7 +24796,7 @@ async def _sync_legacy_customer_contacts(record: BusinessRecord, legacy: LegacyC
         active_guids.add(contact_guid)
         row = await db.scalar(select(LegacyCustomerContact).where(LegacyCustomerContact.ContactsGuid == contact_guid))
         if not row:
-            row = LegacyCustomerContact(ContactsGuid=contact_guid, CreateUser=identity["username"][:20], CreateTime=datetime.now())
+            row = LegacyCustomerContact(**({"ContactsId": -(record.id * 10000 + len(active_guids))} if (await db.connection()).dialect.name == "sqlite" else {}), ContactsGuid=contact_guid, CreateUser=identity["username"][:20], CreateTime=datetime.now())
             db.add(row)
         row.CustomerId = legacy.CustomerId
         row.CustomerNo = record.serial_no[:20]
@@ -24846,6 +24853,7 @@ async def _sync_legacy_contract(record: BusinessRecord, identity: dict, db: Asyn
     legacy = await db.scalar(select(LegacyContract).where(LegacyContract.ContractNo == record.serial_no[:20]))
     if not legacy:
         legacy_values = {
+            **await _legacy_projection_pk(record, "ContractId", db),
             "ContractNo": record.serial_no[:20],
             "ContractGuid": str(data.get("contract_guid") or uuid4()),
             "CreateUser": identity["username"][:20],
@@ -24955,7 +24963,7 @@ async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSes
     legacy = await db.scalar(select(LegacyCase).where(LegacyCase.CaseNo == record.serial_no[:20]))
     now = datetime.now()
     if not legacy:
-        legacy = LegacyCase(CaseNo=record.serial_no[:20], CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        legacy = LegacyCase(**await _legacy_projection_pk(record, "CaseId", db), CaseNo=record.serial_no[:20], CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
         db.add(legacy)
     stage_aliases = {
         "FirstIntance": ("first_instance", "first_intance"),
@@ -25097,7 +25105,7 @@ async def _sync_legacy_investigation(record: BusinessRecord, identity: dict, db:
     legacy = await db.scalar(select(LegacyInvestigation).where(LegacyInvestigation.InvestigationNo == record.serial_no[:20]))
     now = datetime.now()
     if not legacy:
-        legacy = LegacyInvestigation(InvestigationNo=record.serial_no[:20], InvestigationGuid=str(uuid5(NAMESPACE_URL, f"investigation:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        legacy = LegacyInvestigation(**await _legacy_projection_pk(record, "InvestigationId", db), InvestigationNo=record.serial_no[:20], InvestigationGuid=str(uuid5(NAMESPACE_URL, f"investigation:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
         db.add(legacy)
     legacy.InvestigationTitle = record.title[:200]
     legacy.Remark = _legacy_case_text(record.description, 8000)
@@ -25125,7 +25133,7 @@ async def _sync_legacy_investigation_task(record: BusinessRecord, identity: dict
     legacy = await db.scalar(select(LegacyInvestigationTask).where(LegacyInvestigationTask.TaskNo == record.serial_no[:20]))
     now = datetime.now()
     if not legacy:
-        legacy = LegacyInvestigationTask(TaskNo=record.serial_no[:20], TaskGuid=str(uuid5(NAMESPACE_URL, f"investigation-task:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        legacy = LegacyInvestigationTask(**await _legacy_projection_pk(record, "TaskId", db), TaskNo=record.serial_no[:20], TaskGuid=str(uuid5(NAMESPACE_URL, f"investigation-task:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
         db.add(legacy)
     legacy.TaskName = record.title[:200]
     legacy.TaskType = "子任务" if data.get("parent_task_id") else "主任务"
@@ -25150,7 +25158,7 @@ async def _sync_legacy_investigation_clue(record: BusinessRecord, identity: dict
     legacy = await db.scalar(select(LegacyInvestigationClue).where(LegacyInvestigationClue.ClueNo == record.serial_no[:20]))
     now = datetime.now()
     if not legacy:
-        legacy = LegacyInvestigationClue(ClueNo=record.serial_no[:20], ClueGuid=str(uuid5(NAMESPACE_URL, f"investigation-clue:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
+        legacy = LegacyInvestigationClue(**await _legacy_projection_pk(record, "ClueId", db), ClueNo=record.serial_no[:20], ClueGuid=str(uuid5(NAMESPACE_URL, f"investigation-clue:{record.id}")), CreateUser=identity["username"][:20], CreateTime=_legacy_contract_datetime(record.created_at) or now)
         db.add(legacy)
     legacy.InvestigationTaskNo = _legacy_case_text(data.get("source_task_no"), 20)
     legacy.InvestigationNo = _legacy_case_text(data.get("investigation_no"), 20)

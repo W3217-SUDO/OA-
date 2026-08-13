@@ -23,6 +23,12 @@ class LegacyProjectionSyncContractTest(unittest.TestCase):
         self.assertIn("return value.replace(tzinfo=None) if value.tzinfo else value", self.main)
         self.assertIn("return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed", self.main)
 
+    def test_sqlite_uses_stable_negative_projection_ids_for_bigint_keys(self):
+        self.assertIn('async def _legacy_projection_pk(', self.main)
+        self.assertIn('return {column: -record.id} if connection.dialect.name == "sqlite" else {}', self.main)
+        self.assertIn('**await _legacy_projection_pk(record, "ClueId", db)', self.main)
+        self.assertIn('**await _legacy_projection_pk(record, "CaseId", db)', self.main)
+
     def test_status_mappings_cover_contract_and_investigation_lifecycles(self):
         for marker in (
             "LEGACY_CONTRACT_STATUS_BY_NEW = {",
