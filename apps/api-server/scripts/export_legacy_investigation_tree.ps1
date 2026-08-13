@@ -1,12 +1,21 @@
 param(
     [string]$Server = "localhost",
     [string]$Database = "PRD_CRM_GD_20200211",
+    [string]$ConfigPath = "C:\oa-work\legacy-gdcrm-101-local-20260812\source\GD.CRM.WEB\Web.config",
     [Parameter(Mandatory = $true)]
     [string]$OutputPath
 )
 
 $ErrorActionPreference = "Stop"
-$connectionString = "Server=$Server;Database=$Database;Integrated Security=true;TrustServerCertificate=true;ApplicationIntent=ReadOnly"
+if (Test-Path -LiteralPath $ConfigPath) {
+    [xml]$config = Get-Content -LiteralPath $ConfigPath
+    $connectionString = ($config.configuration.connectionStrings.add | Where-Object {
+        $_.name -eq $Database
+    }).connectionString
+}
+else {
+    $connectionString = "Server=$Server;Database=$Database;Integrated Security=true;TrustServerCertificate=true;ApplicationIntent=ReadOnly"
+}
 $connection = [Data.SqlClient.SqlConnection]::new($connectionString)
 $connection.Open()
 try {
@@ -19,6 +28,27 @@ SELECT * FROM dbo.Legal_Investigation ORDER BY InvestigationId;
         Legal_Investigation_Task = @"
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 SELECT * FROM dbo.Legal_Investigation_Task ORDER BY TaskId;
+"@
+        FCM_Contract = @"
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+SELECT c.*
+FROM dbo.FCM_Contract c
+WHERE EXISTS (
+    SELECT 1 FROM dbo.Legal_Investigation i WHERE i.ContractNo = c.ContractNo
+)
+ORDER BY c.ContractId;
+"@
+        CRM_Customer = @"
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+SELECT c.*
+FROM dbo.CRM_Customer c
+WHERE EXISTS (
+    SELECT 1
+    FROM dbo.FCM_Contract f
+    JOIN dbo.Legal_Investigation i ON i.ContractNo = f.ContractNo
+    WHERE f.CustomerNo = c.CustomerNo
+)
+ORDER BY c.CustomerId;
 "@
         HR_Staff = @"
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
@@ -69,6 +99,8 @@ ORDER BY s.StaffName;
         Output = $resolvedOutput
         Investigations = $dataSet.Tables["Legal_Investigation"].Rows.Count
         Tasks = $dataSet.Tables["Legal_Investigation_Task"].Rows.Count
+        Contracts = $dataSet.Tables["FCM_Contract"].Rows.Count
+        Customers = $dataSet.Tables["CRM_Customer"].Rows.Count
         Staff = $dataSet.Tables["HR_Staff"].Rows.Count
     } | ConvertTo-Json -Compress
 }

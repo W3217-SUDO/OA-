@@ -36,6 +36,13 @@ class LegacyFullInvestigationImportContractTest(unittest.TestCase):
             self.assertNotIn(f"s.{field}", source)
         for field in ("StaffNo", "StaffName", "StaffChName", "DepartmentId", "IsActived"):
             self.assertIn(f"s.{field}", source)
+        self.assertIn("FROM dbo.FCM_Contract c", source)
+        self.assertIn("FROM dbo.CRM_Customer c", source)
+
+    def test_full_tree_dependencies_extend_case_sample_dependencies(self):
+        source = IMPORTER.read_text(encoding="utf-8")
+        self.assertIn('deps["FCM_Contract"] = merge_rows(', source)
+        self.assertIn('deps["CRM_Customer"] = merge_rows(', source)
 
     def test_full_tree_import_is_complete_and_idempotent(self):
         bundle = os.environ.get("LEGACY_SAMPLE_BUNDLE")

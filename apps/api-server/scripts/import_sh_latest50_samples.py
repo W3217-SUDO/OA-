@@ -75,6 +75,12 @@ def decode_dataset(path):
     return rows
 
 
+def merge_rows(primary, additional, key):
+    merged = {clean(row.get(key)): row for row in primary if clean(row.get(key))}
+    merged.update({clean(row.get(key)): row for row in additional if clean(row.get(key))})
+    return list(merged.values())
+
+
 def legacy_values(model, row):
     values = {}
     date_columns = {column.name for column in model.__table__.columns if "DATETIME" in str(column.type).upper()}
@@ -248,6 +254,12 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
     inv = decode_dataset(
         investigation_bundle
         or bundle_dir / "SH_latest50_investigation_dependencies.xml.gz.b64"
+    )
+    deps["FCM_Contract"] = merge_rows(
+        deps.get("FCM_Contract", []), inv.get("FCM_Contract", []), "ContractNo"
+    )
+    deps["CRM_Customer"] = merge_rows(
+        deps.get("CRM_Customer", []), inv.get("CRM_Customer", []), "CustomerNo"
     )
     expected = {"cases": len(main.get("Legal_Case", [])), "customers": len(deps.get("CRM_Customer", [])), "contracts": len(deps.get("FCM_Contract", [])), "investigations": len(inv.get("Legal_Investigation", [])), "tasks": len(inv.get("Legal_Investigation_Task", [])), "clues": len(main.get("Legal_Investigation_Clue", []))}
     if expected["cases"] != 50:
