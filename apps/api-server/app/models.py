@@ -773,7 +773,7 @@ class LegacyOfficialDocument(Base):
 
     __tablename__ = "AWS_OfficialDocument"
 
-    OfficialDocumentId: Mapped[int] = mapped_column(primary_key=True)
+    OfficialDocumentId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     OfficialDocumentNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     OfficialDocumentGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     CaseNo: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
@@ -814,7 +814,7 @@ class LegacyOfficialDocument(Base):
 class LegacyOfficialDocumentAudit(Base):
     __tablename__ = "AWS_OfficialDocument_Audit"
 
-    AuditId: Mapped[int] = mapped_column(primary_key=True)
+    AuditId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     OfficialDocumentId: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     OfficialDocumentNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     AuditFlowId: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -833,7 +833,7 @@ class LegacyOfficialDocumentAudit(Base):
 class LegacyOfficialDocumentFile(Base):
     __tablename__ = "AWS_OfficialDocument_File"
 
-    FileId: Mapped[int] = mapped_column(primary_key=True)
+    FileId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     FileGuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     OfficialDocumentGuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     FileName: Mapped[str | None] = mapped_column(String(400), nullable=True)
@@ -855,7 +855,7 @@ class LegacyContract(Base):
 
     # SQLite only auto-increments an exact INTEGER primary key. SQL Server
     # promotes this projection to bigint when it is migrated there.
-    ContractId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ContractId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ContractNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     ContractGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     RefContractNo: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -867,8 +867,8 @@ class LegacyContract(Base):
     BusinessOwner: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     ContractType: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ChargingType: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    ContractMoney: Mapped[float | None] = mapped_column(Float, nullable=True)
-    TaxRate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ContractMoney: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
+    TaxRate: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
     ContractStatus: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     ContractBeginDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ContractEndDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -928,7 +928,7 @@ class LegacyCustomer(Base):
 
     __tablename__ = "CRM_Customer"
 
-    CustomerId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    CustomerId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     CustomerGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     CompanyId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     DepartmentId: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -966,7 +966,7 @@ class LegacyCustomer(Base):
     IsShared: Mapped[str | None] = mapped_column(String(1), nullable=True)
     IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
     CustomerStatus: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    PrePaidAmount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    PrePaidAmount: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
     LastContactTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     LastUpdateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     IsFeeReducing: Mapped[str | None] = mapped_column(String(1), nullable=True)
@@ -986,7 +986,7 @@ class LegacyCustomer(Base):
 class LegacyCustomerContact(Base):
     __tablename__ = "CRM_Customer_Contacts"
 
-    ContactsId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ContactsId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ContactsGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     CustomerId: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     CustomerNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
@@ -1027,7 +1027,7 @@ class LegacyCase(Base):
         "Legal_Case", Base.metadata,
         # SQLite requires an exact INTEGER PRIMARY KEY for generated IDs; the
         # SQL Server migration keeps the legacy bigint semantic.
-        Column("CaseId", Integer, primary_key=True),
+        Column("CaseId", BigInteger, primary_key=True),
         Column("CaseNo", String(20), index=True), Column("CaseName", String(500)),
         Column("CompanyId", Integer), Column("DepartmentId", Integer),
         Column("CustomerNo", String(20), index=True), Column("CustomerTypeId", Integer),
@@ -1064,7 +1064,7 @@ class LegacyCase(Base):
 class LegacyInvestigation(Base):
     __tablename__ = "Legal_Investigation"
 
-    InvestigationId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    InvestigationId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     InvestigationNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     InvestigationGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     InvestigationTitle: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -1092,7 +1092,7 @@ class LegacyInvestigation(Base):
 class LegacyInvestigationTask(Base):
     __tablename__ = "Legal_Investigation_Task"
 
-    TaskId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    TaskId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     TaskNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     TaskGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     TaskName: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -1118,7 +1118,7 @@ class LegacyInvestigationTask(Base):
 class LegacyInvestigationClue(Base):
     __tablename__ = "Legal_Investigation_Clue"
 
-    ClueId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ClueId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ClueNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     ClueGuid: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     InvestigationTaskNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
