@@ -17,6 +17,7 @@ from app.models import (
     JobRole,
     LegacyContract,
     LegacyContractFile,
+    LegacyCustomer,
     RolePermission,
     SecurityPolicy,
     SystemMenu,
@@ -56,6 +57,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
                 FileAttachment.__table__,
                 LegacyContract.__table__,
                 LegacyContractFile.__table__,
+                LegacyCustomer.__table__,
                 WorkflowEvent.__table__,
             ]))
         async with self.sessions() as db:

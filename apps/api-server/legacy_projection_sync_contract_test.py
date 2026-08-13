@@ -53,6 +53,17 @@ class LegacyProjectionSyncContractTest(unittest.TestCase):
         collection_end = self.main.find("\n@app.", collection_start + 1)
         self.assertIn("await _sync_legacy_investigation_clue_evidence(", self.main[collection_start:collection_end])
 
+    def test_imported_legacy_soft_links_survive_projection_refresh(self):
+        self.assertIn("def _legacy_snapshot_value(data: dict, *keys: str)", self.main)
+        for legacy_key in ("CustomerNo", "ContractNo", "InvestigationNo", "InvestigationTaskNo"):
+            self.assertIn(f'_legacy_snapshot_value(data, "{legacy_key}"', self.main)
+        self.assertIn('data.get("investigation_task_no")', self.main)
+        self.assertIn('if source_task and source_task.module == "task":', self.main)
+        self.assertNotIn(
+            'legacy.InvestigationTaskNo = _legacy_case_text(data.get("source_task_no"), 20)',
+            self.main,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
