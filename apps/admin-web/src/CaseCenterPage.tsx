@@ -577,6 +577,7 @@ export default function CaseCenterPage({
   const [agentDocuments, setAgentDocuments] = useState<CaseAgentDocument[]>([]);
   const [agentDocumentIds, setAgentDocumentIds] = useState<number[]>([]);
   const [agentDrawerWidth, setAgentDrawerWidth] = useState(() => Math.min(720, Math.max(520, window.innerWidth * 0.46)));
+  const [agentHistoryExpanded, setAgentHistoryExpanded] = useState(false);
   const agentMessagesEndRef = useRef<HTMLDivElement>(null);
   const agentScreenshotInputRef = useRef<HTMLInputElement>(null);
   const agentScreenshotPreviewUrlsRef = useRef(new Map<number, string>());
@@ -1526,6 +1527,7 @@ export default function CaseCenterPage({
     setAgentScreenshots([]);
     setAgentDocuments([]);
     setAgentDocumentIds([]);
+    setAgentHistoryExpanded(false);
     void loadCaseAgent(row, true);
   };
   const sendCaseAgentMessage = async (preset?: string) => {
@@ -4253,7 +4255,8 @@ export default function CaseCenterPage({
               <strong>可以开始分析这个案件</strong>
               <span>智能体仅使用你有权查看的案件空间数据。</span>
             </div>}
-            {agentState?.messages?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
+            {!agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 && <Button className="case-agent-history-toggle" type="link" size="small" onClick={() => setAgentHistoryExpanded(true)}>查看更早记录</Button>}
+            {(agentHistoryExpanded ? agentState?.messages : agentState?.messages?.slice(-8))?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
               <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
               <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
             </div>)}

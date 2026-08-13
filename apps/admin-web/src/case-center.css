@@ -87,6 +87,7 @@
 .case-agent-action strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .case-agent-action span{color:#7a8189;font-size:12px}
 .case-agent-messages{min-height:220px;flex:1;overflow:auto;padding:16px 14px}
+.case-agent-history-toggle{display:block;margin:0 auto 12px}
 .case-agent-empty{display:flex;min-height:210px;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#737b84;text-align:center}
 .case-agent-empty>.anticon{font-size:34px;color:#00a870}
 .case-agent-empty strong{color:#222;font-size:15px}

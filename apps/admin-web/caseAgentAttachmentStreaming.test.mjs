@@ -15,6 +15,8 @@ test("case agent streams the response and keeps the latest message visible", () 
   assert.match(page, /response\.body\.getReader\(\)/);
   assert.match(page, /event\.type === "delta"/);
   assert.match(page, /scrollIntoView\(\{ behavior: "auto", block: "end" \}\)/);
+  assert.match(page, /messages\?\.slice\(-8\)/);
+  assert.match(page, /查看更早记录/);
 });
 
 test("case agent drawer has a left-edge resize handle", () => {
