@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -763,3 +763,130 @@ class SealAssetAudit(Base):
     operator: Mapped[str] = mapped_column(String(64), index=True)
     comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class LegacyInvestigationClueEvidence(Base):
+    __tablename__ = "Legal_Investigation_Clue_Evidence"
+
+    EvidenceId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    EvidenceNo: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    EvidenceGuid: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    EvidenceType: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ClueGuid: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    EvidenceDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    EvidenceAddress: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    NotaryOrganization: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    NotarialNo: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    NotarialObtainDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    Remark: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    DepositAddress: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    InvoiceNo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    EvidenceStatus: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    StorageLocationName: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    StorageLocationNo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    WarehouseNo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    PaymentStatus: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    Amount: Mapped[float | None] = mapped_column(Numeric(18, 0), nullable=True)
+
+
+class LegacyInvestigationClueEvidenceFile(Base):
+    __tablename__ = "Legal_Investigation_Clue_Evidence_File"
+
+    FileId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    EvidenceGuid: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    ClueGuid: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    FileName: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    MediaType: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    FileTypeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    FullPath: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    UploadingUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    UploadingTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+
+class LegacyInvestigationClueFile(Base):
+    __tablename__ = "Legal_Investigation_Clue_File"
+
+    FileId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ClueGuid: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    FileName: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    MediaType: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    FileTypeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    FullPath: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    UploadingUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    UploadingTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+
+class LegacyCaseFile(Base):
+    __tablename__ = "Legal_Case_File"
+
+    FileId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    CaseId: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    CaseNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    CompanyId: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    FileName: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    FileTypeId: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    FullPath: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    UploadingUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    UploadingTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    Actived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    HasHedgingFile: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    HedgingFileId: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    HedgingFileTypeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    SortingIndex: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    TrackingNo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    PatentOfficeFileSeqNo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    PatentOfficeFileId: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    IsTransmitted: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CaseFileTypeId: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    FileGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
+
+class LegacyCaseParticipant(Base):
+    __tablename__ = "Legal_Case_Participant"
+
+    CaseNo: Mapped[str] = mapped_column(String(20), primary_key=True)
+    CompanyId: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    StaffName: Mapped[str] = mapped_column(String(20), primary_key=True)
+    CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    SortingIndex: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class LegacyCaseLog(Base):
+    __tablename__ = "Legal_Case_Log"
+
+    LogId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    CaseId: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    CaseNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    Content: Mapped[str | None] = mapped_column(String(8000), nullable=True)
+    LogType: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+
+
