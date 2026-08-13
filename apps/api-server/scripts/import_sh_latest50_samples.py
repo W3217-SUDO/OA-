@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import Base, SessionLocal, engine
 from app.models import (
     BusinessRecord,
+    ContractObject,
     FileAttachment,
     LegacyCase,
     LegacyCaseFile,
@@ -250,6 +251,14 @@ async def upsert_record(db, index, *, module, serial_no, title, customer="", own
     return item, True
 
 
+def require_parent(index, serial_no, module, child_label):
+    serial = clean(serial_no)
+    parent = index.get(serial)
+    if not serial or parent is None or parent.module != module:
+        raise RuntimeError(f"{child_label} missing {module} parent: {serial or '<empty>'}")
+    return parent
+
+
 async def run(bundle_dir, dry_run, investigation_bundle=None):
     bundle_dir = Path(bundle_dir)
     main = decode_dataset(bundle_dir / "SH_latest50_dataset.xml.gz.b64")
@@ -309,8 +318,9 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
             serial = clean(row.get("ContractNo"))
             if not serial:
                 continue
-            customer_no = clean(row.get("CustomerNo")); customer = customers.get(customer_no)
+            customer_no = clean(row.get("CustomerNo")); customer = require_parent(index, customer_no, "customer", f"contract {serial}")
             item, made = await upsert_record(db, index, module="contract", serial_no=serial, title=clean(row.get("ContractName"), 255), customer=customer.title if customer else customer_no, owner=owner_for(users, row.get("BusinessOwner") or row.get("CreateUser")), status="历史数据", description="8091旧系统样本合同", data={"migration_source": SOURCE, "legacy_contract_id": row.get("ContractId"), "legacy_record": row, "customer_id": customer.id if customer else None, "customer_no": customer_no, "contract_no": serial}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            item.data = {**(item.data or {}), "customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no, "customer_title": customer.title}
             contracts[serial] = item
             result["records"].setdefault("contracts", 0); result["records"]["contracts"] += int(made)
         investigations = {}
@@ -318,9 +328,11 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
             serial = clean(row.get("InvestigationNo"))
             if not serial:
                 continue
-            contract_no = clean(row.get("ContractNo")); contract = contracts.get(contract_no)
+            contract_no = clean(row.get("ContractNo")); contract = require_parent(index, contract_no, "contract", f"investigation {serial}")
             scope = clean(row.get("InvestigationScope"))
             item, made = await upsert_record(db, index, module="investigation", serial_no=serial, title=clean(row.get("InvestigationTitle") or row.get("IndicterName"), 255), customer=contract.customer if contract else clean(row.get("IndicterName"), 255), owner=owner_for(users, row.get("BusinessOwner")), status="历史数据", description=clean(row.get("Remark")), data={"migration_source": SOURCE, "legacy_investigation_id": row.get("InvestigationId"), "legacy_record": row, "contract_id": contract.id if contract else None, "contract_no": contract_no, "case_type_id": row.get("CaseTypeId"), "case_type": "商标" if str(row.get("CaseTypeId") or "").startswith("110") else "", "authorization_scope": "全国" if scope in {"Y", "1", "T"} else "区域", "province": clean(row.get("Province")), "city": clean(row.get("City")), "authorized_from": row.get("AuthorizationBeginTime"), "authorized_to": row.get("AuthorizationEndTime"), "customer_review": scope in {"Y", "1", "T"} and clean(row.get("NeedToAuditOnCustomer")) in {"Y", "1", "T"}, "source_owner": clean(row.get("BusinessOwner") or row.get("CreateUser")), "publisher": clean(row.get("CreateUser")), "auditor": clean(row.get("Auditor"))}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            contract_data = contract.data or {}
+            item.data = {**(item.data or {}), "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "customer_id": contract_data.get("customer_id"), "customer_record_id": contract_data.get("customer_record_id"), "customer_no": contract_data.get("customer_no")}
             investigations[serial] = item
             result["records"].setdefault("investigations", 0); result["records"]["investigations"] += int(made)
         tasks = {}
@@ -328,23 +340,36 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
             serial = clean(row.get("TaskNo"))
             if not serial:
                 continue
-            parent_no = clean(row.get("InvestigationNo")); parent = investigations.get(parent_no)
+            parent_no = clean(row.get("InvestigationNo")); parent = require_parent(index, parent_no, "investigation", f"task {serial}")
             item, made = await upsert_record(db, index, module="task", serial_no=serial, title=clean(row.get("TaskName"), 255), customer=parent.customer if parent else "", owner=owner_for(users, row.get("Investigator") or row.get("CreateUser")), status="历史数据", description=clean(row.get("Remark")), data={"migration_source": SOURCE, "legacy_task_id": row.get("TaskId"), "legacy_record": row, "investigation_record_id": parent.id if parent else None, "investigation_no": parent_no, "authorization_scope": "全国" if clean(row.get("InvestigationScope")) in {"Y", "1", "T"} else "区域", "province": clean(row.get("Province")), "city": clean(row.get("City")), "district": clean(row.get("District")), "authorized_from": row.get("BeginTime"), "authorized_to": row.get("EndTime"), "start_date": row.get("BeginTime"), "deadline": row.get("EndTime"), "source_owner": clean(row.get("CreateUser")), "publisher": clean(row.get("CreateUser"))}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            parent_data = parent.data or {}
+            item.data = {**(item.data or {}), "investigation_id": parent.id, "investigation_record_id": parent.id, "investigation_no": parent.serial_no, **{key: parent_data[key] for key in ("customer_id", "customer_record_id", "customer_no", "contract_id", "contract_record_id", "contract_no") if parent_data.get(key) not in (None, "")}}
             tasks[serial] = item
             result["records"].setdefault("tasks", 0); result["records"]["tasks"] += int(made)
         for row in main.get("Legal_Case", []):
             serial = clean(row.get("CaseNo"))
             if not serial:
                 continue
-            customer_no = clean(row.get("CustomerNo")); contract_no = clean(row.get("ContractNo")); customer = customers.get(customer_no); contract = contracts.get(contract_no)
+            customer_no = clean(row.get("CustomerNo")); contract_no = clean(row.get("ContractNo")); customer = require_parent(index, customer_no, "customer", f"case {serial}"); contract = require_parent(index, contract_no, "contract", f"case {serial}")
             item, made = await upsert_record(db, index, module="case", serial_no=serial, title=clean(row.get("CaseName"), 255), customer=customer.title if customer else customer_no, owner=owner_for(users, row.get("BusinessOwner") or row.get("CreateUser")), department="历史案件", status="历史数据", description="8091旧系统样本案件", data={"migration_source": SOURCE, "legacy_case_id": row.get("CaseId"), "legacy_record": row, "customer_id": customer.id if customer else None, "customer_no": customer_no, "contract_id": contract.id if contract else None, "contract_no": contract_no, "case_type_id": row.get("CaseTypeId"), "case_type": CASE_TYPES.get(int(row.get("CaseTypeId") or 0), "案件"), "cause_or_charge": clean(row.get("CauseName")), "business_owner": clean(row.get("BusinessOwner")), "plaintiff": clean(row.get("AppellantNames")), "defendant": clean(row.get("AppelleeNames")), "court": clean(row.get("FirstIntanceCourt")), "court_case_no": clean(row.get("FirstIntanceCaseNo")), "investigation_clue_nos": clean(row.get("InvestigationClueNos")), "settlement_amount": row.get("SettlementAmount"), "litigation_amount": row.get("LitigationAmount"), "original_case_no": clean(row.get("OriginalCaseNo"))}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            item.data = {**(item.data or {}), "customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no, "customer_title": customer.title, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_title": contract.title}
+            contract_object = await db.scalar(select(ContractObject).where(ContractObject.contract_record_id == contract.id, ContractObject.case_record_id == item.id))
+            if contract_object is None:
+                db.add(ContractObject(contract_record_id=contract.id, case_record_id=item.id, fee_type="", amount=0, remark="旧系统案件自动关联", created_by="legacy-import", updated_by="legacy-import"))
             result["records"].setdefault("cases", 0); result["records"]["cases"] += int(made)
         for row in main.get("Legal_Investigation_Clue", []):
             serial = clean(row.get("ClueNo"))
             if not serial:
                 continue
             task_no = clean(row.get("InvestigationTaskNo")); investigation_no = clean(row.get("InvestigationNo")); source = tasks.get(task_no) or investigations.get(investigation_no)
+            if source is None: raise RuntimeError(f"clue {serial} missing task/investigation parent: {task_no or investigation_no or '<empty>'}")
             item, made = await upsert_record(db, index, module="clue", serial_no=serial, title=clean(row.get("StoreName") or row.get("Indictee"), 255), customer=source.customer if source else "", owner=owner_for(users, row.get("CreateUser")), status="历史数据", description=clean(row.get("Remark")), data={"migration_source": SOURCE, "legacy_clue_id": row.get("ClueId"), "legacy_record": row, "source_task_id": source.id if source else None, "source_task_no": task_no, "investigation_record_id": investigations.get(investigation_no).id if investigations.get(investigation_no) else None, "investigation_no": investigation_no, "case_no": clean(row.get("CaseNo")), "platform": clean(row.get("PlatformName")), "store_name": clean(row.get("StoreName")), "store_url": clean(row.get("StoreUrl")), "province": clean(row.get("ProvinceZh") or row.get("Province")), "city": clean(row.get("CityZh") or row.get("City")), "district": clean(row.get("DistrictZh") or row.get("District")), "address": clean(row.get("Address") or row.get("LocationAddress")), "investigation_date": row.get("InvestigationDate")}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            source_data = source.data or {}
+            case_no = clean(row.get("CaseNo")); case_parent = index.get(case_no) if case_no else None
+            item.data = {**(item.data or {}), "source_task_id": source.id, "source_task_record_id": source.id, "source_task_no": source.serial_no, **{key: source_data[key] for key in ("customer_id", "customer_record_id", "customer_no", "contract_id", "contract_record_id", "contract_no", "investigation_id", "investigation_record_id", "investigation_no") if source_data.get(key) not in (None, "")}}
+            if case_no:
+                if case_parent is None or case_parent.module != "case": raise RuntimeError(f"clue {serial} missing case parent: {case_no}")
+                item.data = {**item.data, "case_id": case_parent.id, "case_record_id": case_parent.id, "case_no": case_parent.serial_no, "case_title": case_parent.title}
             result["records"].setdefault("clues", 0); result["records"]["clues"] += int(made)
         cases = {clean(row.get("CaseNo")): index.get(clean(row.get("CaseNo"))) for row in main.get("Legal_Case", [])}
         for row in main.get("Legal_Case_File", []):

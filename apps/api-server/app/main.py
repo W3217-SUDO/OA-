@@ -6727,6 +6727,71 @@ def _csv_date(value: str, label: str, *, required: bool = True) -> str:
     except ValueError as exc: raise ValueError(f"{label}必须为 YYYY-MM-DD") from exc
 
 
+def _unique_import_record(records: list[BusinessRecord], value: str, label: str) -> BusinessRecord | None:
+    token = value.strip()
+    if not token:
+        return None
+    exact_serial = [item for item in records if item.serial_no == token]
+    exact_title = [item for item in records if item.title == token]
+    matches = exact_serial or exact_title
+    if not matches:
+        raise ValueError(f"{label}不存在或无权访问：{token}")
+    if len(matches) != 1:
+        raise ValueError(f"{label}存在多个同名记录，请使用唯一业务编号：{token}")
+    return matches[0]
+
+
+def _import_relation_data(
+    *,
+    customer: BusinessRecord | None = None,
+    contract: BusinessRecord | None = None,
+    case: BusinessRecord | None = None,
+    investigation: BusinessRecord | None = None,
+    task: BusinessRecord | None = None,
+    clue: BusinessRecord | None = None,
+    evidence: BusinessRecord | None = None,
+) -> dict:
+    result: dict = {}
+    items = (
+        ("customer", customer), ("contract", contract), ("case", case),
+        ("investigation", investigation), ("task", task), ("clue", clue), ("evidence", evidence),
+    )
+    for name, item in items:
+        if item:
+            result[f"{name}_id"] = item.id
+            result[f"{name}_record_id"] = item.id
+            result[f"{name}_no"] = item.serial_no
+            result[f"{name}_title"] = item.title
+    # A directly selected child also carries its already-resolved parent chain.
+    # This keeps downstream imports navigable even when the CSV only provides a
+    # case, clue, task, or evidence number.
+    for _, item in items:
+        if not item:
+            continue
+        source = item.data or {}
+        for name in ("customer", "contract", "case", "investigation", "task", "clue", "evidence"):
+            for suffix in ("id", "record_id", "no", "title"):
+                key = f"{name}_{suffix}"
+                value = source.get(key)
+                if value not in (None, ""):
+                    result.setdefault(key, value)
+    return result
+
+
+def _validate_import_relation_consistency(relations: dict[str, BusinessRecord]) -> None:
+    for child_name, child in relations.items():
+        source = child.data or {}
+        for parent_name, parent in relations.items():
+            if child_name == parent_name:
+                continue
+            expected = source.get(f"{parent_name}_record_id") or source.get(f"{parent_name}_id")
+            expected_no = str(source.get(f"{parent_name}_no") or "").strip()
+            if expected and int(expected) != parent.id:
+                raise ValueError(f"关联关系冲突：{child.serial_no} 不属于 {parent.serial_no}")
+            if expected_no and expected_no != parent.serial_no:
+                raise ValueError(f"关联关系冲突：{child.serial_no} 不属于 {parent.serial_no}")
+
+
 @app.post(f"{settings.api_prefix}/records/import")
 async def import_business_records(module: str = Query(min_length=1, max_length=32), file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     await _require_record_module_menu(module, identity, db, action="批量导入")
@@ -6742,8 +6807,8 @@ async def import_business_records(module: str = Query(min_length=1, max_length=3
     if not reader.fieldnames: raise HTTPException(status_code=422, detail="CSV 缺少表头")
     existing = set((await db.scalars(select(BusinessRecord.serial_no))).all()); seen: set[str] = set(); errors: list[dict] = []; created_items: list[dict] = []
     scope = await _record_scope_conditions(identity, db)
-    contracts = {item.serial_no: item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "contract", *scope))).all()}
-    case_numbers = set((await db.scalars(select(BusinessRecord.serial_no).where(BusinessRecord.module == "case", *scope))).all())
+    scoped_records = list((await db.scalars(select(BusinessRecord).where(*scope))).all())
+    records_by_module = {name: [item for item in scoped_records if item.module == name] for name in ("customer", "contract", "case", "investigation", "task", "clue", "evidence")}
     seal_assets = {item.code: item for item in (await db.scalars(select(SealAsset).where(SealAsset.status == "可用"))).all()}
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     for row_no, row in enumerate(reader, 2):
@@ -6764,6 +6829,9 @@ async def import_business_records(module: str = Query(min_length=1, max_length=3
             if module == "contract":
                 amount = float(_csv_value(row, "合同金额", "amount")); signed_at = _csv_date(_csv_value(row, "签订日期", "signed_at"), "签订日期")
                 if amount < 0 or not customer: raise ValueError("客户不能为空，合同金额不能为负数")
+                customer_record = _unique_import_record(records_by_module["customer"], customer, "关联客户")
+                customer = customer_record.title
+                data.update(_import_relation_data(customer=customer_record))
                 data.update({"type": _csv_value(row, "合同类型", "type", default="专项服务"), "amount": f"{amount:.2f}", "signed_at": signed_at, "external_contract_no": _csv_value(row, "外部合同号", "external_contract_no")})
             elif module == "case":
                 contract_no = _csv_value(row, "关联合同号", "contract_no"); contract = contracts.get(contract_no)
@@ -6785,17 +6853,24 @@ async def import_business_records(module: str = Query(min_length=1, max_length=3
                             collaborators.append(collaborator)
                 except HTTPException as exc:
                     raise ValueError(str(exc.detail)) from exc
-                status_value = "待接收"; data.update({"deadline": deadline, "priority": priority, "source": _csv_value(row, "来源", "source", default="日常任务"), "case_no": _csv_value(row, "关联案号", "case_no"), "initiator": identity["username"], "collaborators": collaborators})
+                case_record = _unique_import_record(records_by_module["case"], _csv_value(row, "关联案号", "case_no"), "关联案件")
+                if case_record:
+                    customer = case_record.customer
+                status_value = "待接收"; data.update(_import_relation_data(case=case_record)); data.update({"deadline": deadline, "priority": priority, "source": _csv_value(row, "来源", "source", default="日常任务"), "initiator": identity["username"], "collaborators": collaborators})
             elif module == "document":
                 direction = _csv_value(row, "收发类型", "direction"); case_no = _csv_value(row, "关联案号", "case_no")
                 if direction not in {"收文", "发文"}: raise ValueError("收发类型必须为收文或发文")
-                if case_no and case_no not in case_numbers: raise ValueError("关联案件不存在或无权访问")
-                status_value = "待登记"; data.update({"direction": direction, "document_date": _csv_date(_csv_value(row, "文件日期", "document_date"), "文件日期"), "case_no": case_no, "sender": _csv_value(row, "来文/送达单位", "sender")})
+                case_record = _unique_import_record(records_by_module["case"], case_no, "关联案件")
+                if case_record:
+                    customer = case_record.customer
+                status_value = "待登记"; data.update(_import_relation_data(case=case_record)); data.update({"direction": direction, "document_date": _csv_date(_csv_value(row, "文件日期", "document_date"), "文件日期"), "sender": _csv_value(row, "来文/送达单位", "sender")})
             elif module == "finance":
                 amount = float(_csv_value(row, "金额", "amount")); case_no = _csv_value(row, "关联案号", "case_no")
                 if amount <= 0: raise ValueError("费用金额必须大于 0")
-                if case_no and case_no not in case_numbers: raise ValueError("关联案件不存在或无权访问")
-                data.update({"fee_type": _csv_value(row, "费用类型", "fee_type", default="官方费用"), "amount": f"{amount:.2f}", "case_no": case_no, "handler": _csv_value(row, "经办人", "handler", default=owner)})
+                case_record = _unique_import_record(records_by_module["case"], case_no, "关联案件")
+                if case_record:
+                    customer = case_record.customer
+                data.update(_import_relation_data(case=case_record)); data.update({"fee_type": _csv_value(row, "费用类型", "fee_type", default="官方费用"), "amount": f"{amount:.2f}", "handler": _csv_value(row, "经办人", "handler", default=owner)})
             elif module == "hr":
                 position = _csv_value(row, "岗位", "position"); joined_at = _csv_date(_csv_value(row, "入职日期", "joined_at"), "入职日期")
                 if not position: raise ValueError("岗位不能为空")
@@ -6810,6 +6885,24 @@ async def import_business_records(module: str = Query(min_length=1, max_length=3
                 if not asset: raise ValueError("印章编号不存在或印章不可用")
                 if copies < 1: raise ValueError("用印份数必须大于 0")
                 data.update({"seal_asset_id": asset.id, "seal_name": asset.name, "seal_type": asset.seal_type, "copies": copies, "purpose": _csv_value(row, "用途", "purpose"), "use_date": _csv_date(_csv_value(row, "计划日期", "use_date"), "计划日期"), "delivery_method": _csv_value(row, "办理方式", "delivery_method", default="现场用印"), "document_names": _csv_value(row, "文件名称", "document_names")})
+            relation_inputs = {
+                "customer": _csv_value(row, "客户编号", "customer_no", default=customer if module not in {"warehouse", "hr"} else ""),
+                "contract": _csv_value(row, "关联合同号", "contract_no"),
+                "case": _csv_value(row, "关联案号", "case_no"),
+                "investigation": _csv_value(row, "调查编号", "investigation_no"),
+                "task": _csv_value(row, "调查任务编号", "task_no"),
+                "clue": _csv_value(row, "线索编号", "clue_no"),
+                "evidence": _csv_value(row, "取证编号", "evidence_no"),
+            }
+            resolved_relations = {
+                name: _unique_import_record(records_by_module[name], value, f"关联{name}")
+                for name, value in relation_inputs.items()
+                if value
+            }
+            _validate_import_relation_consistency(resolved_relations)
+            data.update(_import_relation_data(**resolved_relations))
+            if customer_record := resolved_relations.get("customer"):
+                customer = customer_record.title
             item = BusinessRecord(module=module, serial_no=serial, title=title, customer=customer, status=status_value, owner=owner, department=department, description=description, data=data)
             db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="批量导入", to_status=item.status, operator=identity["username"], comment=f"CSV 第 {row_no} 行"))
             seen.add(serial); created_items.append({"id": item.id, "serial_no": serial, "title": title})
