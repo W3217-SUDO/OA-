@@ -15,7 +15,7 @@ class LegacyProjectionSyncContractTest(unittest.TestCase):
             "ContractMoney: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)",
             "TaxRate: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)",
             "PrePaidAmount: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)",
-            'Column("CaseId", BigInteger, primary_key=True)',
+            '__table__ = legacy_table_from_manifest(Base.metadata, "Legal_Case")',
         ):
             self.assertIn(declaration, self.models)
 

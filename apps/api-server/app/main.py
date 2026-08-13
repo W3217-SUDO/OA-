@@ -36,6 +36,7 @@ from .case_workflow_rules import build_case_workflow_guide
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .dingtalk import DingTalkError, dingtalk_client
+from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
 from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyInvestigation, LegacyInvestigationTask, LegacyInvestigationClue, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
 from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
@@ -627,6 +628,11 @@ async def lifespan(_: FastAPI):
             raise RuntimeError("生产环境 INITIAL_ADMIN_PASSWORD 不安全，必须使用至少 12 位强随机一次性密码")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(create_full_legacy_schema)
+        await connection.run_sync(align_legacy_column_types)
+        await connection.run_sync(align_legacy_constraints)
+        await connection.run_sync(ensure_legacy_indexes)
+        await connection.run_sync(align_legacy_indexes)
         await connection.run_sync(_upgrade_schema)
     async with SessionLocal() as db:
         existing = await db.scalar(select(User).where(User.username == settings.initial_admin_username))

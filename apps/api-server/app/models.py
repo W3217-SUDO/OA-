@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Table, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CHAR, Column, Date, DateTime, Float, ForeignKey, Identity, Integer, JSON, Numeric, String, Table, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -784,8 +784,8 @@ class LegacyOfficialDocument(Base):
     DepartmentId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     BusinessOwner: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     OfficialDocumentType: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    IsElectronicSeal: Mapped[str | None] = mapped_column(String(1), nullable=True)
-    IsOfflinePrint: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsElectronicSeal: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
+    IsOfflinePrint: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     PrintQuantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     PrintTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     Printer: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -800,7 +800,7 @@ class LegacyOfficialDocument(Base):
     AuditFlowNodeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     AuditRoundId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     Remark: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -841,7 +841,7 @@ class LegacyOfficialDocumentFile(Base):
     FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     Uploader: Mapped[str | None] = mapped_column(String(20), nullable=True)
     UploadTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -877,8 +877,8 @@ class LegacyContract(Base):
     AuditFlowNodeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     AuditRoundId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     Remark: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    IsChanged: Mapped[str | None] = mapped_column(String(1), nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsChanged: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -889,7 +889,7 @@ class LegacyContract(Base):
 class LegacyContractAudit(Base):
     __tablename__ = "FCM_Contract_Audit"
 
-    AuditId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    AuditId: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ContractId: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     ContractNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     AuditFlowId: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -908,15 +908,15 @@ class LegacyContractAudit(Base):
 class LegacyContractFile(Base):
     __tablename__ = "FCM_Contract_File"
 
-    FileId: Mapped[int] = mapped_column(Integer, primary_key=True)
-    FileGuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    FileId: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
+    FileGuid: Mapped[str] = mapped_column(String(36), primary_key=True)
     ContractGuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     FileName: Mapped[str | None] = mapped_column(String(400), nullable=True)
     FilePath: Mapped[str | None] = mapped_column(String(500), nullable=True)
     FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     UploadUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     UploadTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -948,7 +948,7 @@ class LegacyCustomer(Base):
     ApplicationSituation: Mapped[str | None] = mapped_column(String(100), nullable=True)
     WebSite: Mapped[str | None] = mapped_column(String(200), nullable=True)
     BusinessOwner: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
-    IsAssisted: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsAssisted: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     CompanyTypeName: Mapped[str | None] = mapped_column(String(100), nullable=True)
     GBTypeName: Mapped[str | None] = mapped_column(String(100), nullable=True)
     RegisteredCapital: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -963,19 +963,19 @@ class LegacyCustomer(Base):
     InputDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     Holder: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CustomerOwner: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    IsShared: Mapped[str | None] = mapped_column(String(1), nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsShared: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CustomerStatus: Mapped[str | None] = mapped_column(String(100), nullable=True)
     PrePaidAmount: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
     LastContactTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     LastUpdateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsFeeReducing: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsFeeReducing: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     CustomerLevelName: Mapped[str | None] = mapped_column(String(100), nullable=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsOpened: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsOpened: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     CustomerType: Mapped[int | None] = mapped_column(Integer, nullable=True)
     LegalAgentName: Mapped[str | None] = mapped_column(String(200), nullable=True)
     LegalAgentIdNo: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -1005,12 +1005,12 @@ class LegacyCustomerContact(Base):
     ContactAddress: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ContactZip: Mapped[str | None] = mapped_column(String(30), nullable=True)
     ContactFax: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    IsContacted: Mapped[str | None] = mapped_column(String(1), nullable=True)
-    IsPeopleBASE: Mapped[str | None] = mapped_column(String(1), nullable=True)
-    IsReceivedEmail: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsContacted: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
+    IsPeopleBASE: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
+    IsReceivedEmail: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     PhotoFileName: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    IsDefault: Mapped[str | None] = mapped_column(String(1), nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsDefault: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1019,46 +1019,11 @@ class LegacyCustomerContact(Base):
     OrgPassword: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
-# Legal_Case is intentionally a complete compatibility table.  The new case
-# API remains the write surface, while this projection preserves the legacy
-# field names and text-number relationships used by reporting integrations.
+from .legacy_schema import legacy_table_from_manifest
+
+
 class LegacyCase(Base):
-    __table__ = Table(
-        "Legal_Case", Base.metadata,
-        # SQLite requires an exact INTEGER PRIMARY KEY for generated IDs; the
-        # SQL Server migration keeps the legacy bigint semantic.
-        Column("CaseId", BigInteger, primary_key=True),
-        Column("CaseNo", String(20), index=True), Column("CaseName", String(500)),
-        Column("CompanyId", Integer), Column("DepartmentId", Integer),
-        Column("CustomerNo", String(20), index=True), Column("CustomerTypeId", Integer),
-        Column("CaseTypeId", Integer), Column("CaseRightTypeId", Integer), Column("CauseName", String(400)),
-        Column("CasePhaseId", Integer), Column("CaseOriginPeople", String(200)), Column("CaseRegisterDate", DateTime),
-        Column("CaseLawyer", String(200)), Column("CaseLawyerName", String(400)),
-        Column("CaseAssistant", String(200)), Column("CaseAssistantName", String(400)),
-        Column("AppellantNos", String(2000)), Column("AppellantNames", String(2000)), Column("AppellantAgent", String(2000)),
-        Column("AppelleeNos", String(2000)), Column("AppelleeNames", String(2000)), Column("AppelleeAgent", String(2000)),
-        Column("TheThirdNos", String(2000)), Column("TheThirdNames", String(2000)), Column("TheThirdAgent", String(2000)),
-        *[Column(f"{stage}{field}", kind) for stage in ("FirstIntance", "SecondIntance", "LastIntance", "ExecutionIntance") for field, kind in (
-            ("Court", String(20)), ("Judge", String(200)), ("Clerk", String(200)), ("CaseNo", String(50)),
-            ("RegisterDate", DateTime), ("LawfulDay", DateTime), ("JudgmentDate", DateTime), ("CourtRoom", String(200)),
-        )],
-        Column("BusinessOwner", String(50)), Column("ContractNo", String(30), index=True), Column("InvestigationClueNos", String(2000)),
-        Column("Deadline", DateTime), Column("SettlementAmount", Numeric(18, 2)), Column("IsActived", String(1), index=True),
-        Column("CreateUser", String(20)), Column("CreateTime", DateTime), Column("ChangeUser", String(20)), Column("ChangeTime", DateTime),
-        Column("Investigator", String(200)), Column("InvestigatorName", String(200)), Column("NotarialNos", String(800)), Column("DepositAddress", String(1000)),
-        *[Column(f"{stage}ProcuratorateUnit{field}", String(200)) for stage in ("FirstIntance", "SecondIntance", "LastIntance") for field in ("Name", "CaseNo", "Address", "Operator", "Phone")],
-        Column("PublicSecurityUnitName", String(200)), Column("PublicSecurityUnitCaseNo", String(200)), Column("PublicSecurityUnitAddress", String(200)), Column("PublicSecurityUnitOperator", String(200)), Column("PublicSecurityUnitPhone", String(200)),
-        Column("ConsultantTypeId", Integer), Column("ConsultantBeginDate", DateTime), Column("ConsultantEndDate", DateTime),
-        Column("CustomerAddInCaseNo", String(200)), Column("CustomerAddInOperator", String(500)), Column("CustomerAddInOperatorName", String(500)), Column("CustomerAddInRemark", String(2000)),
-        Column("CourtLawyer", String(200)), Column("CourtLawyerName", String(200)), Column("LitigationAmount", Numeric(18, 2)),
-        Column("CaseDivisionalDate", DateTime), Column("ArchiveStatus", Integer), Column("ToAuditTime", DateTime), Column("ToAuditRemark", String(2000)),
-        Column("ToAuditApplicant", String(20)), Column("Auditor", String(20)), Column("AuditedTime", DateTime), Column("AuditedRemark", String(2000)),
-        Column("ArchiveTypeId", Integer), Column("FileNo", String(20)), Column("InternalAuditor", String(20)), Column("InternalAuditedTime", DateTime),
-        Column("InternalAuditedRemark", String(200)), Column("ArchivedFileNo", String(100)), Column("FilingTime", DateTime), Column("ClosingTime", DateTime),
-        Column("ExecutionAcceptanceTime", DateTime), Column("ExecutionStatus", Integer),
-        *[Column(f"ExecutionStatus{code}{edge}Time", DateTime) for code in range(10, 111, 10) for edge in ("Start", "End")],
-        Column("OriginalCaseNo", String(20)),
-    )
+    __table__ = legacy_table_from_manifest(Base.metadata, "Legal_Case")
 
 
 class LegacyInvestigation(Base):
@@ -1068,24 +1033,24 @@ class LegacyInvestigation(Base):
     InvestigationNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     InvestigationGuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     InvestigationTitle: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    Remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    Remark: Mapped[str | None] = mapped_column(String(8000), nullable=True)
     Indicter: Mapped[str | None] = mapped_column(String(200), nullable=True)
     IndicterName: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     CaseTypeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
     AuthorizationBeginTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     AuthorizationEndTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    InvestigationScope: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    InvestigationScope: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     City: Mapped[str | None] = mapped_column(Text, nullable=True)
     Province: Mapped[str | None] = mapped_column(Text, nullable=True)
     BusinessOwner: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     Auditor: Mapped[str | None] = mapped_column(String(20), nullable=True)
     Status: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    NeedToAuditOnCustomer: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    NeedToAuditOnCustomer: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     ContractNo: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
 
@@ -1107,7 +1072,7 @@ class LegacyInvestigationTask(Base):
     City: Mapped[str | None] = mapped_column(Text, nullable=True)
     District: Mapped[str | None] = mapped_column(String(200), nullable=True)
     TaskStatus: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     Remark: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1136,12 +1101,12 @@ class LegacyInvestigationClue(Base):
     CityZh: Mapped[str | None] = mapped_column(String(100), nullable=True)
     District: Mapped[str | None] = mapped_column(String(20), nullable=True)
     DistrictZh: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    HasProduct: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    HasProduct: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     InvestigationDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    HasTort: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    HasTort: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     Indictee: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     Status: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     Remark: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     ToAuditTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     Auditor: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -1153,7 +1118,7 @@ class LegacyInvestigationClue(Base):
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    AuditNeedMergeCase: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    AuditNeedMergeCase: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     AuditNeedMergeCaseNo: Mapped[str | None] = mapped_column(String(20), nullable=True)
     Investigators: Mapped[str | None] = mapped_column(String(200), nullable=True)
     InvestigatorNames: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -1178,7 +1143,7 @@ class LegacyInvestigationClueEvidence(Base):
     NotarialNo: Mapped[str | None] = mapped_column(String(200), nullable=True)
     NotarialObtainDate: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     Remark: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1206,7 +1171,7 @@ class LegacyInvestigationClueEvidenceFile(Base):
     FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     UploadingUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     UploadingTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1225,7 +1190,7 @@ class LegacyInvestigationClueFile(Base):
     FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     UploadingUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     UploadingTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1245,7 +1210,7 @@ class LegacyCaseFile(Base):
     FileSize: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     UploadingUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     UploadingTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    Actived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
+    Actived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
     HasHedgingFile: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     HedgingFileId: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     HedgingFileTypeId: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -1253,7 +1218,7 @@ class LegacyCaseFile(Base):
     TrackingNo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     PatentOfficeFileSeqNo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     PatentOfficeFileId: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    IsTransmitted: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    IsTransmitted: Mapped[str | None] = mapped_column(CHAR(1), nullable=True)
     CreateUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1287,6 +1252,4 @@ class LegacyCaseLog(Base):
     CreateTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ChangeUser: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ChangeTime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    IsActived: Mapped[str | None] = mapped_column(String(1), nullable=True, index=True)
-
-
+    IsActived: Mapped[str | None] = mapped_column(CHAR(1), nullable=True, index=True)
