@@ -931,7 +931,11 @@ async def request_validation_error_handler(_, exc: RequestValidationError):
     logger.warning("Request validation failed: %s", "；".join(details))
     return JSONResponse(status_code=422, content={"detail": "；".join(details)})
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost", "http://127.0.0.1"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-UPLOAD_ROOT = Path(__file__).resolve().parent.parent / "uploads"
+UPLOAD_ROOT = (
+    Path(settings.upload_root).expanduser().resolve()
+    if settings.upload_root.strip()
+    else Path(__file__).resolve().parent.parent / "uploads"
+)
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 

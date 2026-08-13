@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # process working directory. This keeps the local web/API pair on one
     # data source regardless of how uvicorn is launched.
     database_url: str = f"sqlite+aiosqlite:///{_LOCAL_DATABASE_PATH}"
+    # Production releases share one attachment root so versioned worktrees do
+    # not invalidate paths written by earlier releases.
+    upload_root: str = ""
     redis_url: str = "redis://redis:6379/0"
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"
