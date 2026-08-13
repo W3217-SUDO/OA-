@@ -229,11 +229,14 @@ async def upsert_record(db, index, *, module, serial_no, title, customer="", own
     return item, True
 
 
-async def run(bundle_dir, dry_run):
+async def run(bundle_dir, dry_run, investigation_bundle=None):
     bundle_dir = Path(bundle_dir)
     main = decode_dataset(bundle_dir / "SH_latest50_dataset.xml.gz.b64")
     deps = decode_dataset(bundle_dir / "SH_latest50_dependencies.xml.gz.b64")
-    inv = decode_dataset(bundle_dir / "SH_latest50_investigation_dependencies.xml.gz.b64")
+    inv = decode_dataset(
+        investigation_bundle
+        or bundle_dir / "SH_latest50_investigation_dependencies.xml.gz.b64"
+    )
     expected = {"cases": len(main.get("Legal_Case", [])), "customers": len(deps.get("CRM_Customer", [])), "contracts": len(deps.get("FCM_Contract", [])), "investigations": len(inv.get("Legal_Investigation", [])), "tasks": len(inv.get("Legal_Investigation_Task", [])), "clues": len(main.get("Legal_Investigation_Clue", []))}
     if expected["cases"] != 50:
         raise RuntimeError(f"Expected 50 legacy cases, found {expected['cases']}")
@@ -335,5 +338,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("bundle_dir")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--investigation-bundle",
+        help="Optional full 8091 investigation/task dependency package",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.bundle_dir, args.dry_run))
+    asyncio.run(run(args.bundle_dir, args.dry_run, args.investigation_bundle))
