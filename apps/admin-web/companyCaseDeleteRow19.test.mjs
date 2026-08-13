@@ -6,9 +6,9 @@ const source = fs.readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.u
 const backend = fs.readFileSync(new URL("../api-server/app/main.py", import.meta.url), "utf8");
 
 test("公司案件提供受权限控制的删除入口", () => {
-  assert.match(source, /const canDeleteSelectedCompanyCase = initialView === "case-company"/);
+  assert.match(source, /const canDeleteSelectedCompanyCase = isCompanyCaseListRoute\(initialView\)/);
   assert.match(source, /\["admin", "manager"\]\.includes\(profile\.role \|\| ""\)/);
-  assert.match(source, /profile\.role === "admin" \|\| selectedCaseCapability\.can_delete_case/);
+  assert.match(source, /&& selectedCaseCapability\.can_delete_case/);
   assert.match(source, /api\.delete\(`\/cases\/\$\{row\.id\}`\)/);
   assert.match(source, /案件任务、附件、费用、排期和操作记录也会一并删除/);
 });

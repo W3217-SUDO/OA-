@@ -286,7 +286,17 @@ export const getCompanyScheduleCourtLevels = () => [
   ["retrial", "再审"],
 ] as const;
 type CompanyScheduleCourtLevel = ReturnType<typeof getCompanyScheduleCourtLevels>[number][0];
-export const shouldShowCaseListActions = (rowCount: number) => rowCount > 0;
+export const isMyCaseListRoute = (initialView: string) =>
+  initialView === "case-mine" || initialView.startsWith("case-mine-");
+
+export const isCompanyCaseListRoute = (initialView: string) =>
+  initialView === "case-company" || initialView.startsWith("case-company-");
+
+// Keep the list toolbar visible for every ordinary case type, including an empty
+// search result. The JSX only renders this toolbar in the ordinary list mode, so
+// company schedules and other special views retain their dedicated controls.
+export const shouldShowCaseListActions = (initialView: string) =>
+  isMyCaseListRoute(initialView) || isCompanyCaseListRoute(initialView);
 const caseDocumentTypes = [
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
   ["law-firm-letter", "律师事务所函"], ["identity-certificate", "主体身份证明"], ["settlement-list", "结算提成表"],
@@ -1249,7 +1259,7 @@ export default function CaseCenterPage({
     }
   };
   const deleteCompanyCase = async (row: CaseRow) => {
-    if (initialView !== "case-company" || !getCaseCapability(row).can_delete_case) {
+    if (!isCompanyCaseListRoute(initialView) || !getCaseCapability(row).can_delete_case) {
       return message.warning("当前账号没有删除该案件的权限");
     }
     Modal.confirm({
@@ -2815,9 +2825,9 @@ export default function CaseCenterPage({
   const originalCases = ordinaryCases;
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeys.includes(row.id));
   const selectedCaseCapability = getCaseCapability(selectedCase);
-  const canDeleteSelectedCompanyCase = initialView === "case-company"
+  const canDeleteSelectedCompanyCase = isCompanyCaseListRoute(initialView)
     && ["admin", "manager"].includes(profile.role || "")
-    && (profile.role === "admin" || selectedCaseCapability.can_delete_case);
+    && selectedCaseCapability.can_delete_case;
   const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeys.includes(row.id));
   const legacyCaseListOperationState = getLegacyCaseListOperationState({
     role: profile.role || "",
@@ -3382,16 +3392,44 @@ export default function CaseCenterPage({
           </Form>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
           <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={counselListMode?counselCaseColumns:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:"calc(100dvh - 465px)"}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
-          {shouldShowCaseListActions(counselListMode?counselCases.length:originalCases.length)&&<div className="case-bottom-actions"><Space size={5} wrap>
-            {counselListMode?<><Button onClick={()=>void exportCounselCases(true)}>导出选中（CSV）</Button><Button onClick={()=>void exportCounselCases(false)}>导出全部（CSV）</Button></>:<><Button onClick={()=>exportSelectedCasesExcel(true)}>导出选中（Excel）</Button><Button onClick={()=>exportSelectedCasesExcel(false)}>导出当前查询（Excel）</Button><Button onClick={exportCaseQrWord}>导出选中二维码（Word）</Button><Button onClick={exportCases}>导出全部（CSV）</Button></>}
-            {selectedCaseCapability.can_upload_attachment && <Select
+          {shouldShowCaseListActions(initialView)&&<div className={`case-bottom-actions case-mine-list-actions${isCompanyCaseListRoute(initialView) ? " case-company-list-actions" : ""}`}><Space size={5} wrap>
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                items: counselListMode ? [
+                  { key: "selected-csv", label: "导出选中（CSV）", disabled: !selectedCaseKeys.length },
+                  { key: "all-csv", label: "导出当前查询（CSV）", disabled: !counselCases.length },
+                ] : [
+                  { key: "selected-excel", label: "导出选中（Excel）", disabled: !selectedCaseKeys.length },
+                  { key: "current-excel", label: "导出当前查询（Excel）", disabled: !originalCases.length },
+                  { key: "selected-qr", label: "导出选中二维码（Word）", disabled: !selectedCaseKeys.length },
+                  { key: "selected-manifest", label: "导出选中归档清单（Excel）", disabled: !selectedCaseKeys.length },
+                  { key: "all-csv", label: "导出当前查询（CSV）", disabled: !originalCases.length },
+                ],
+                onClick: ({ key }) => {
+                  if (key === "selected-csv") void exportCounselCases(true);
+                  if (key === "selected-excel") exportSelectedCasesExcel(true);
+                  if (key === "current-excel") exportSelectedCasesExcel(false);
+                  if (key === "selected-qr") exportCaseQrWord();
+                  if (key === "selected-manifest") exportArchiveManifest();
+                  if (key === "all-csv") counselListMode ? void exportCounselCases(false) : exportCases();
+                },
+              }}
+            ><Button aria-label="导出案件">导出</Button></Dropdown>
+            <Select
               aria-label="上传材料分类"
               value={caseUploadCategory}
               onChange={setCaseUploadCategory}
+              disabled={selectedCaseKeys.length !== 1 || !selectedCaseCapability.can_upload_attachment}
               style={{ width: 150 }}
               options={caseFileTypeOptions}
-            />}
-            {selectedCaseCapability.can_upload_attachment && <Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button>}
+            />
+            <Button
+              icon={<UploadOutlined />}
+              disabled={selectedCaseKeys.length !== 1 || !selectedCaseCapability.can_upload_attachment}
+              title={selectedCaseKeys.length !== 1 ? "请先选择一条案件" : "当前案件没有上传附件权限"}
+              onClick={()=>caseUploadRef.current?.click()}
+            >上传案件文件</Button>
             {["admin","manager"].includes(profile.role||"")&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,true)}}>立案审批通过</Button>}
             {["admin","manager"].includes(profile.role||"")&&<Button danger onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,false)}}>立案审批驳回</Button>}
             {counselListMode&&<>
@@ -3430,7 +3468,7 @@ export default function CaseCenterPage({
                   if (key === "delete") void deleteCompanyCase(selectedCase);
                 },
               }}
-            ><Button>更多操作 ▾</Button></Dropdown>
+            ><Button aria-label="更多案件操作">更多操作 ▾</Button></Dropdown>
           </Space></div>}
         </Card>
       </div>}

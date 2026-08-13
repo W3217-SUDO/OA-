@@ -1409,7 +1409,7 @@ INVESTIGATION_CREATE_STATUS_BY_MODULE = {
 }
 INVESTIGATION_EDIT_DATA_FIELDS = {
     "region", "address", "right_type", "deadline", "priority", "platform",
-    "product", "source", "infringement_method", "store_url", "shop_id", "producer",
+    "product", "source", "infringement_method", "sales_channel", "store_url", "shop_name", "shop_id", "has_product", "producer",
     "indictee", "investigation_assistant", "investigated_at", "customer_manager",
     "start_date", "end_date", "authorized_from", "authorized_to", "authorization_scope",
     "province", "city", "district",
@@ -6837,19 +6837,53 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
-    if module == "investigation" and investigation_view:
+    if module in {"investigation", "task"} and investigation_view:
         publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
         legacy_publisher_missing = or_(
             BusinessRecord.data["publisher"].as_string().is_(None),
             BusinessRecord.data["publisher"].as_string() == "",
         )
-        if investigation_view == "published":
+        if module == "investigation" and investigation_view == "published":
             conditions.append(or_(
                 publisher_expr == identity["username"].lower(),
                 and_(legacy_publisher_missing, BusinessRecord.owner == identity["username"]),
             ))
+        elif module == "task":
+            investigation_subtask = or_(
+                BusinessRecord.data["investigation_record_id"].as_integer() > 0,
+                func.coalesce(BusinessRecord.data["investigation_no"].as_string(), "") != "",
+                BusinessRecord.data["investigation_module"].as_string() == "investigation",
+            )
+            conditions.append(investigation_subtask)
+            if investigation_view == "published" and identity.get("role") != "admin":
+                publisher_expr = func.lower(func.coalesce(
+                    BusinessRecord.data["initiator"].as_string(),
+                    BusinessRecord.data["publisher"].as_string(),
+                    BusinessRecord.data["assigned_by"].as_string(),
+                    "",
+                ))
+                legacy_publisher_missing = and_(
+                    or_(BusinessRecord.data["initiator"].as_string().is_(None), BusinessRecord.data["initiator"].as_string() == ""),
+                    or_(BusinessRecord.data["publisher"].as_string().is_(None), BusinessRecord.data["publisher"].as_string() == ""),
+                    or_(BusinessRecord.data["assigned_by"].as_string().is_(None), BusinessRecord.data["assigned_by"].as_string() == ""),
+                )
+                conditions.append(or_(
+                    publisher_expr == identity["username"].lower(),
+                    and_(legacy_publisher_missing, func.lower(BusinessRecord.owner) == identity["username"].lower()),
+                ))
+            elif investigation_view == "assigned" and identity.get("role") != "admin":
+                # "My investigation tasks" must be private to the assignee.
+                # The normal data scope may include a supervisor's department,
+                # tasks they initiated, or records shared for collaboration,
+                # none of which makes another investigator's child task a
+                # personal task.
+                conditions.append(func.lower(BusinessRecord.owner) == identity["username"].lower())
         elif investigation_view == "assigned" and identity.get("role") != "admin":
-            conditions.append(BusinessRecord.owner == identity["username"])
+            # "My investigation tasks" must be private to the assignee.  The
+            # normal data scope may include a supervisor's department, tasks
+            # they initiated, or records shared for collaboration, none of
+            # which makes another investigator's child task a personal task.
+            conditions.append(func.lower(BusinessRecord.owner) == identity["username"].lower())
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
         # them server-side so mine/dept/company/audit/recycle stay isolated.
@@ -8078,6 +8112,31 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
         "调查取证": {"线索提交", "扫描上传"},
     }
     return permission_name in permissions or permission_name in set().union(*(implied_permissions.get(item, set()) for item in permissions))
+
+
+async def _user_can_write_investigation_clue(user: User, db: AsyncSession) -> bool:
+    """Resolve clue writes from the account's effective menu or business action grants.
+
+    The investigation workbench already hides the clue entry unless the account
+    receives the relevant menu.  Requiring a separately configured job title
+    after the account has reached that entry makes the same authorization model
+    disagree with itself.  Keep the check narrow to the clue menu family, while
+    retaining the legacy explicit business-action grant for configured roles.
+    """
+    if user.role == "admin":
+        return True
+    permission = await _user_permission_payload(user, db)
+    menu_keys = set(permission.get("menu_keys") or [])
+    has_clue_menu = bool(menu_keys.intersection({
+        "investigation-task-sub-mine", "clue-my-draft",
+    }))
+    has_submit_action = await _user_has_job_permission(user, "线索提交", db)
+    return has_clue_menu or has_submit_action
+
+
+async def _require_investigation_clue_write_permission(user: User, db: AsyncSession) -> None:
+    if not await _user_can_write_investigation_clue(user, db):
+        raise HTTPException(status_code=403, detail="当前账号没有创建或提交调查线索权限")
 
 
 async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
@@ -9373,8 +9432,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
             "source_owner": investigation_data.get("source_owner") or (contract.data or {}).get("source_person") or contract.owner,
         }
     if body.module == "clue":
-        if identity.get("role") != "admin" and not await _user_has_job_permission(user, "线索提交", db):
-            raise HTTPException(status_code=403, detail="当前岗位没有创建调查线索权限")
+        await _require_investigation_clue_write_permission(user, db)
         source_task_id = int((payload.get("data") or {}).get("source_task_id") or 0)
         if not source_task_id:
             raise HTTPException(status_code=422, detail="创建线索必须关联已接收的调查任务")
@@ -9422,6 +9480,11 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
         raise HTTPException(status_code=409, detail="当前线索状态不允许修改")
     requested_status = changes.get("status")
     reflow_clue = record.module == "clue" and requested_status == "待审批" and record.status != "待审批"
+    if reflow_clue:
+        editor = await db.scalar(select(User).where(User.username == identity["username"]))
+        if not editor:
+            raise HTTPException(status_code=401, detail="当前用户不存在")
+        await _require_investigation_clue_write_permission(editor, db)
     if requested_status and requested_status != record.status and not reflow_clue:
         raise HTTPException(status_code=409, detail="调查中心状态必须通过专用审批或办理入口变更")
     if changes.get("owner") and changes["owner"] != record.owner:
@@ -9679,6 +9742,10 @@ async def list_notary_files(identity: dict = Depends(current_identity), db: Asyn
 @app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/submit")
 async def submit_investigation_clue(clue_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     clue = await _ensure_record_module(clue_id, "clue", identity, db); await _require_record_owner_or_manager(clue, identity, db)
+    submitter = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not submitter:
+        raise HTTPException(status_code=401, detail="当前用户不存在")
+    await _require_investigation_clue_write_permission(submitter, db)
     if clue.status not in {"草稿", "已驳回"}: raise HTTPException(status_code=409, detail="只有草稿或已驳回线索可以提交审批")
     data = clue.data or {}; missing = [name for name, value in {"客户": clue.customer, "调查平台": data.get("platform"), "侵权产品": data.get("product")}.items() if not value]
     if missing: raise HTTPException(status_code=422, detail="线索缺少：" + "、".join(missing))
@@ -10182,19 +10249,28 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="调查结束时间必须不早于开始时间")
     parent_or_source = parent_data or source_data
-    province = body.province.strip() or str(parent_or_source.get("province") or "").strip()
-    city = body.city.strip() or str(parent_or_source.get("city") or "").strip()
-    district = body.district.strip() or str(parent_or_source.get("district") or "").strip()
-    region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
-    if not region:
-        region = " ".join(part for part in (province, city, district) if part)
+    requested_province = body.province.strip()
+    requested_city = body.city.strip()
+    requested_district = body.district.strip()
+    requested_scope = body.authorization_scope.strip()
+    province = requested_province or str(parent_or_source.get("province") or "").strip()
+    city = requested_city or str(parent_or_source.get("city") or "").strip()
+    district = requested_district or str(parent_or_source.get("district") or "").strip()
+    if requested_scope:
+        region = requested_scope
+    elif any((requested_province, requested_city, requested_district)):
+        region = " ".join(part for part in (requested_province, requested_city, requested_district) if part)
+    else:
+        region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
+        if not region:
+            region = " ".join(part for part in (province, city, district) if part)
     task_data = {
         "deadline": str(end_date or body.deadline), "priority": body.priority, "source": "调查任务",
         "initiator": identity["username"], "collaborators": [], "case_no": "",
         "contract_id": contract.id, "contract_record_id": contract.id,
         "contract_no": contract.serial_no,
         "contract_name": contract.title,
-        "authorization_scope": body.authorization_scope.strip() or str(parent_or_source.get("authorization_scope") or ""),
+        "authorization_scope": requested_scope or str(parent_or_source.get("authorization_scope") or ""),
         "attachment_ids": attachment_ids,
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
         "investigation_module": source.module,
@@ -10344,7 +10420,8 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if clue_data.get("converted_case_id") or clue.status == "已转案件": errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索已经转为案件"}); continue
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
         contract, contract_error = await _resolve_clue_source_contract(clue, identity, db)
-        if contract and contract.status in {"草稿", "审批中", "已拒绝", "已撤回", "已作废"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同尚未审批通过"}); continue
+        if contract and (contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES):
+            errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同状态不支持生成案件"}); continue
         contract_data = (contract.data or {}) if contract else {}
         case_customer = contract.customer if contract else clue.customer
         case_department = contract.department if contract else clue.department
@@ -16993,6 +17070,55 @@ async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
     return f"{prefix}{sequence:05d}"
 
 
+def _case_copy_suffix(index: int) -> str:
+    """Return the Excel-style suffix for a one-based copy sequence."""
+    if index < 1:
+        raise ValueError("Copy suffix index must be positive")
+    letters: list[str] = []
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters.append(chr(ord("A") + remainder))
+    return "".join(reversed(letters))
+
+
+async def _case_copy_root(source: BusinessRecord, db: AsyncSession) -> BusinessRecord:
+    """Follow a legacy copy chain so every copy stays under its first case number."""
+    current = source
+    seen_ids: set[int] = set()
+    while current.id not in seen_ids:
+        seen_ids.add(current.id)
+        data = current.data or {}
+        declared_root = str(data.get("copy_root_case_no") or "").strip()
+        if declared_root:
+            root_id = int(data.get("copy_root_case_record_id") or 0)
+            if root_id:
+                root = await db.get(BusinessRecord, root_id)
+                if root and root.module == "case" and root.serial_no == declared_root:
+                    return root
+            return current if current.serial_no == declared_root else BusinessRecord(module="case", serial_no=declared_root)
+        parent_id = int(data.get("copied_from_case_id") or data.get("original_case_record_id") or 0)
+        if not parent_id:
+            return current
+        parent = await db.get(BusinessRecord, parent_id)
+        if not parent or parent.module != "case":
+            return current
+        current = parent
+    return source
+
+
+async def _next_case_copy_serial(root_serial: str, db: AsyncSession) -> str:
+    """Allocate the first available A..Z, AA.. suffix for a copied case."""
+    escaped_root = root_serial.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    existing = set((await db.scalars(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "case",
+        BusinessRecord.serial_no.like(f"{escaped_root}%", escape="\\"),
+    ))).all())
+    index = 1
+    while f"{root_serial}{_case_copy_suffix(index)}" in existing:
+        index += 1
+    return f"{root_serial}{_case_copy_suffix(index)}"
+
+
 @app.post(f"{settings.api_prefix}/cases", status_code=status.HTTP_201_CREATED)
 async def create_case(body: CaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """从有效合同建立案件；客户、部门和合同编号均以合同资料为准。"""
@@ -17182,11 +17308,23 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
     contract = await _ensure_record_visible(contract_id, identity, db)
     if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
         raise HTTPException(status_code=409, detail="关联合同当前不满足复制新建案件条件")
-    serial_no = await _next_case_serial(case_type, db)
+    root = await _case_copy_root(source, db)
+    root_serial_no = root.serial_no
     owner = source.owner if identity.get("role") == "admin" else identity["username"]
     owner_user = await db.scalar(select(User).where(User.username == owner, User.is_active.is_(True)))
     if not owner_user:
         owner = identity["username"]
+    source_id = source.id
+    source_serial_no = source.serial_no
+    source_title = source.title
+    source_status = source.status
+    source_description = source.description
+    contract_customer = contract.customer
+    contract_department = contract.department
+    contract_serial_no = contract.serial_no
+    contract_title = contract.title
+    contract_data = dict(contract.data or {})
+    root_record_id = root.id or source_id
     copied_data = dict(source_data)
     for key in {
         "fixed_tasks_generated", "fixed_task_ids", "case_reminder_ids", "task_ids", "schedule_ids",
@@ -17195,26 +17333,39 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
     }:
         copied_data.pop(key, None)
     copied_data.update({
-        "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no,
-        "contract_title": contract.title, "external_contract_no": (contract.data or {}).get("external_contract_no", ""),
-        "external_contract_numbers": (contract.data or {}).get("external_contract_numbers", []),
-        "original_case_no": source.serial_no, "original_case_record_id": source.id,
-        "copied_from_case_id": source.id, "copied_at": datetime.now().isoformat(timespec="seconds"),
+        "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract_serial_no,
+        "contract_title": contract_title, "external_contract_no": contract_data.get("external_contract_no", ""),
+        "external_contract_numbers": contract_data.get("external_contract_numbers", []),
+        "original_case_no": source_serial_no, "original_case_record_id": source_id,
+        "copied_from_case_id": source_id, "copy_root_case_no": root_serial_no,
+        "copy_root_case_record_id": root_record_id,
+        "copied_at": datetime.now().isoformat(timespec="seconds"),
         "copied_by": identity["username"], "case_creation_step": "basic",
         "case_creation_approval_status": "未提交", "business_stage": "立案",
     })
-    copied = BusinessRecord(
-        module="case", serial_no=serial_no, title=f"{source.title}（副本）", customer=contract.customer,
-        status="新案待分配", owner=owner, department=contract.department, description=source.description,
-        data=copied_data,
-    )
-    db.add(copied); await db.flush()
+    copied: BusinessRecord | None = None
+    for _ in range(128):
+        serial_no = await _next_case_copy_serial(root_serial_no, db)
+        copied = BusinessRecord(
+            module="case", serial_no=serial_no, title=f"{source_title}（副本）", customer=contract_customer,
+            status="新案待分配", owner=owner, department=contract_department, description=source_description,
+            data=copied_data,
+        )
+        db.add(copied)
+        try:
+            await db.flush()
+            break
+        except IntegrityError:
+            await db.rollback()
+            copied = None
+    if not copied:
+        raise HTTPException(status_code=409, detail="复制案件编号生成冲突，请稍后重试")
     db.add(WorkflowEvent(
         record_id=copied.id, action="复制案件", to_status=copied.status, operator=identity["username"],
-        comment=f"来源案件：{source.serial_no}；未复制任务、附件、费用、提醒、排期和历史记录。",
+        comment=f"来源案件：{source_serial_no}；未复制任务、附件、费用、提醒、排期和历史记录。",
     ))
     db.add(WorkflowEvent(
-        record_id=source.id, action="案件被复制", from_status=source.status, to_status=source.status,
+        record_id=source_id, action="案件被复制", from_status=source_status, to_status=source_status,
         operator=identity["username"], comment=f"新案件：{copied.serial_no}",
     ))
     await db.commit(); await db.refresh(copied)
@@ -17514,7 +17665,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     case_type = str(case_data.get("case_type") or "")
     if case_type not in NORMAL_CASE_BASIC_TYPES:
         raise HTTPException(status_code=409, detail="该接口仅用于民事、刑事、行政及国家赔偿案件")
-    _require_case_creation_completed(case_record)
+    _require_case_creation_completed(case_record, require_approval=False)
     if case_record.status in {"待归档审核", "已归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改基本信息")
     title = body.title.strip()
@@ -17590,7 +17741,7 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     case_data = case_record.data or {}
     if str(case_data.get("case_type") or "") != "仲裁":
         raise HTTPException(status_code=409, detail="该接口仅用于仲裁案件")
-    _require_case_creation_completed(case_record)
+    _require_case_creation_completed(case_record, require_approval=False)
     if case_record.status in {"待归档审核", "已归档"}:
         raise HTTPException(status_code=409, detail="归档中的仲裁案件不能修改基本信息")
     title, phase, cause_or_charge = body.title.strip(), body.case_phase.strip(), body.cause_or_charge.strip()
@@ -17807,13 +17958,13 @@ async def review_case_creation(case_id: int, body: CaseCreationReviewInput, iden
     return _record_dict(case_record)
 
 
-def _require_case_creation_completed(case_record: BusinessRecord) -> None:
-    """Prevent a newly created case from entering downstream workflows before all three steps are saved."""
+def _require_case_creation_completed(case_record: BusinessRecord, *, require_approval: bool = True) -> None:
+    """Require completed creation data and, when needed, a passed creation approval."""
     creation_step = str((case_record.data or {}).get("case_creation_step") or "")
     if creation_step and creation_step != "completed":
         raise HTTPException(status_code=409, detail="请先完成案件新建三步信息")
     approval_status = str((case_record.data or {}).get("case_creation_approval_status") or "")
-    if approval_status and approval_status not in {"已通过", "自动通过"}:
+    if require_approval and approval_status and approval_status not in {"已通过", "自动通过"}:
         raise HTTPException(status_code=409, detail="案件创建尚未通过案件主管审批")
 
 
@@ -17836,6 +17987,18 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
     if case_record.status == "已合并":
         raise HTTPException(status_code=409, detail="已合并案件不能维护进展或开庭排期")
+
+
+async def _require_case_phase_change_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Keep phase maintenance independent from creation approval while preserving write guards."""
+    role = await _case_team_role(case_record, identity, db)
+    if role not in {"manager", "handling_lawyer"}:
+        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以修改案件阶段")
+    _require_case_creation_completed(case_record, require_approval=False)
+    if case_record.status in {"待归档审核", "已归档"}:
+        raise HTTPException(status_code=409, detail="案件已进入归档流程，不能修改案件阶段")
+    if case_record.status == "已合并":
+        raise HTTPException(status_code=409, detail="已合并案件不能修改案件阶段")
 
 
 def _normalize_case_numbers(values: str | list[str]) -> list[str]:
@@ -18874,7 +19037,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
     for case_record in all_cases:
         if case_record.status == "已合并":
             raise HTTPException(status_code=409, detail="已合并案件不能修改案件阶段")
-        await _require_case_progress_write_access(case_record, identity, db)
+        await _require_case_phase_change_access(case_record, identity, db)
         case_data = case_record.data or {}
         if int(case_data.get("case_phase_id") or 0) == phase["id"] or case_record.status == phase["canonical_name"]:
             raise HTTPException(status_code=409, detail="当前案件已处于所选阶段")

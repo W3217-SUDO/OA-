@@ -41,6 +41,7 @@ import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
+import { INVESTIGATION_REGION_GROUPS } from "./investigationRegionOptions.mjs";
 import "./investigation-center.css";
 
 type Row = {
@@ -118,6 +119,69 @@ type InvestigationBootstrapData = {
   notaryOfficeOptions: { value: string }[];
   casePeopleOptions: PersonOption[];
 };
+
+type InvestigationRegionGroup = {
+  province: string;
+  cities: string[];
+};
+
+const CLUE_INFRINGEMENT_METHOD_OPTIONS = [
+  "电商平台",
+  "实体店铺",
+  "工厂",
+  "网页链接",
+  "其他",
+];
+const CLUE_SALES_CHANNEL_OPTIONS = [
+  "淘宝",
+  "天猫",
+  "京东",
+  "拼多多",
+  "抖音",
+  "快手",
+  "小红书",
+  "微信",
+  "官网",
+  "线下门店",
+  "其他",
+];
+
+const investigationTaskScopeGroups = (data: Record<string, any>) => {
+  const scope = String(data.authorization_scope || "").trim();
+  const scopeTokens = scope
+    .split(/[\s,，、;；|/]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const groups = INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[];
+  if (["全国", "全国范围"].includes(scope) || scopeTokens.includes("全国")) return groups;
+
+  const scopeIncludes = (value: string) =>
+    scopeTokens.includes(value) || scope.includes(value);
+
+  const scopedGroups = groups
+    .map(({ province, cities }) => {
+      const provinceSelected = scopeIncludes(province);
+      const selectedCities = provinceSelected
+        ? cities
+        : cities.filter((city) => scopeIncludes(city));
+      return { province, cities: selectedCities };
+    })
+    .filter((group) => group.cities.length > 0);
+  if (scopedGroups.length) return scopedGroups;
+
+  const inheritedProvince = String(data.province || "").trim();
+  const inheritedCity = String(data.city || "").trim();
+  const inheritedGroup = groups.find((group) => group.province === inheritedProvince);
+  if (inheritedGroup) {
+    return [{
+      province: inheritedGroup.province,
+      cities: inheritedCity && inheritedGroup.cities.includes(inheritedCity)
+        ? [inheritedCity]
+        : inheritedGroup.cities,
+    }];
+  }
+  return groups;
+};
 let investigationBootstrapPromise: Promise<InvestigationBootstrapData> | null = null;
 const loadInvestigationBootstrap = () => {
   if (!investigationBootstrapPromise) {
@@ -147,11 +211,16 @@ const loadInvestigationBootstrap = () => {
 };
 type SubtaskLifecycleAction = "accept" | "complete";
 const investigationListView = (route: string) => {
-  if (route === "investigation-task-unassigned") return "assigned";
+  if (
+    route === "investigation-task-unassigned" ||
+    route === "investigation-task-sub-mine"
+  )
+    return "assigned";
   if (
     route === "investigation-task-published" ||
     route === "investigation-task-mine" ||
-    route === "investigation-task-overdue"
+    route === "investigation-task-overdue" ||
+    route === "investigation-task-sub-published"
   )
     return "published";
   return "";
@@ -296,6 +365,7 @@ export default function InvestigationCenterPage({
   const [evidenceForm] = Form.useForm();
   const [certificateForm] = Form.useForm();
   const [taskForm] = Form.useForm();
+  const taskProvince = Form.useWatch("province", taskForm);
   const [subtaskActionForm] = Form.useForm();
   const [materialForm] = Form.useForm();
   const [batchForm] = Form.useForm();
@@ -333,6 +403,37 @@ export default function InvestigationCenterPage({
       (item) => item.username === raw || item.value === raw || item.label === raw,
     );
     return matched?.username || matched?.value || raw;
+  };
+  const resetTaskForm = (target: Row) => {
+    const allowedGroups = investigationTaskScopeGroups(target.data || {});
+    const inheritedProvince = String(target.data.province || "").trim();
+    const province = allowedGroups.some((group) => group.province === inheritedProvince)
+      ? inheritedProvince
+      : allowedGroups[0]?.province || "";
+    const provinceGroup = allowedGroups.find((group) => group.province === province);
+    const inheritedCity = String(target.data.city || "").trim();
+    const city = provinceGroup?.cities.includes(inheritedCity)
+      ? inheritedCity
+      : provinceGroup?.cities[0] || "";
+    taskForm.resetFields();
+    taskForm.setFieldsValue({
+      title: `${target.title || target.serial_no} - 调查子任务`,
+      priority: "普通",
+      start_date: target.data.authorized_from
+        ? dayjs(String(target.data.authorized_from))
+        : undefined,
+      end_date: target.data.authorized_to
+        ? dayjs(String(target.data.authorized_to))
+        : undefined,
+      deadline: target.data.authorized_to
+        ? dayjs(String(target.data.authorized_to))
+        : undefined,
+      authorization_scope: String(target.data.authorization_scope || "").trim(),
+      province,
+      city,
+      contract_record_id:
+        target.data.contract_id || target.data.contract_record_id || undefined,
+    });
   };
   const load = async (key = tab) => {
     setLoading(true);
@@ -609,7 +710,6 @@ export default function InvestigationCenterPage({
         department: profile.department || "上海分所",
         description: values.description || "",
         data: {
-          platform: values.platform || "",
           product: values.product || "",
           source: values.source || "",
           source_task_id: createContextTask?.id || null,
@@ -624,8 +724,13 @@ export default function InvestigationCenterPage({
           address: values.address || "",
           right_type: values.right_type || "",
           infringement_method: values.infringement_method || "",
+          sales_channel: values.sales_channel || "",
+          // Keep platform populated for existing exports and downstream evidence flows.
+          platform: values.sales_channel || "",
           store_url: values.store_url || "",
+          shop_name: values.shop_name || "",
           shop_id: values.shop_id || "",
+          has_product: Boolean(values.has_product),
           investigated_at: values.investigated_at
             ? formatRequiredDate(values.investigated_at, "调查日期")
             : "",
@@ -1275,18 +1380,7 @@ export default function InvestigationCenterPage({
       setTaskTarget(row);
       setTasks(existingTasks);
       setCreatingSubtask(createSubtask);
-      taskForm.resetFields();
-      taskForm.setFieldsValue({
-        priority: "普通",
-        start_date: row.data.authorized_from ? dayjs(String(row.data.authorized_from)) : undefined,
-        end_date: row.data.authorized_to ? dayjs(String(row.data.authorized_to)) : undefined,
-        deadline: row.data.authorized_to ? dayjs(String(row.data.authorized_to)) : undefined,
-        province: row.data.province || "",
-        city: row.data.city || "",
-        district: row.data.district || "",
-        contract_record_id:
-          row.data.contract_id || row.data.contract_record_id || undefined,
-      });
+      resetTaskForm(row);
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
@@ -1298,31 +1392,29 @@ export default function InvestigationCenterPage({
       message.error(error?.response?.data?.detail || "调查任务加载失败");
     }
   };
-  const createTask = async () => {
+  const createTask = async (nextAction: "complete" | "continue") => {
     if (!taskTarget) return;
     try {
       const v = await taskForm.validateFields();
       await api.post(`/investigations/${taskTarget.id}/tasks`, {
         ...v,
+        authorization_scope:
+          [v.province, v.city].filter(Boolean).join("、") ||
+          v.authorization_scope ||
+          "",
         deadline: formatRequiredDate(v.deadline, "截止日期"),
         start_date: v.start_date ? formatRequiredDate(v.start_date, "开始日期") : undefined,
         end_date: v.end_date ? formatRequiredDate(v.end_date, "结束日期") : undefined,
       });
-      message.success("子任务已创建");
+      message.success(nextAction === "continue" ? "子任务已创建，可继续分配" : "子任务已创建");
       const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
       setTasks(data.items);
-      taskForm.resetFields();
-      taskForm.setFieldsValue({
-        priority: "普通",
-        start_date: taskTarget.data.authorized_from ? dayjs(String(taskTarget.data.authorized_from)) : undefined,
-        end_date: taskTarget.data.authorized_to ? dayjs(String(taskTarget.data.authorized_to)) : undefined,
-        deadline: taskTarget.data.authorized_to ? dayjs(String(taskTarget.data.authorized_to)) : undefined,
-        province: taskTarget.data.province || "",
-        city: taskTarget.data.city || "",
-        district: taskTarget.data.district || "",
-        contract_record_id:
-          taskTarget.data.contract_id || taskTarget.data.contract_record_id || undefined,
-      });
+      if (nextAction === "complete") {
+        setTaskTarget(null);
+        setCreatingSubtask(false);
+        return;
+      }
+      resetTaskForm(taskTarget);
     } catch (error: any) {
       if (error?.errorFields) {
         const name = String(error.errorFields[0]?.name?.[0] || "");
@@ -1330,6 +1422,8 @@ export default function InvestigationCenterPage({
           title: "任务名称",
           owner: "负责人",
           deadline: "截止日期",
+          province: "调查省份",
+          city: "调查城市",
         };
         taskForm.scrollToField(error.errorFields[0].name);
         message.warning(`请填写${labels[name] || "必填信息"}后再创建任务`);
@@ -1377,10 +1471,20 @@ export default function InvestigationCenterPage({
       region: row.data.region || "",
       address: row.data.address || "",
       right_type: row.data.right_type || "",
-      platform: row.data.platform || "",
+      sales_channel: row.data.sales_channel || row.data.platform || "",
       product: row.data.product || "",
       source: row.data.source || "",
       infringement_method: row.data.infringement_method || "",
+      store_url: row.data.store_url || "",
+      shop_name: row.data.shop_name || "",
+      shop_id: row.data.shop_id || "",
+      has_product: Boolean(row.data.has_product),
+      investigated_at: row.data.investigated_at
+        ? dayjs(String(row.data.investigated_at))
+        : undefined,
+      producer: row.data.producer || "",
+      indictee: row.data.indictee || "",
+      investigation_assistant: row.data.investigation_assistant || "",
       deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined,
       priority: row.data.priority || "普通",
     });
@@ -1401,10 +1505,21 @@ export default function InvestigationCenterPage({
           region: v.region || "",
           address: v.address || "",
           right_type: v.right_type || "",
-          platform: v.platform || "",
+          platform: v.sales_channel || "",
+          sales_channel: v.sales_channel || "",
           product: v.product || "",
           source: v.source || "",
           infringement_method: v.infringement_method || "",
+          store_url: v.store_url || "",
+          shop_name: v.shop_name || "",
+          shop_id: v.shop_id || "",
+          has_product: Boolean(v.has_product),
+          investigated_at: v.investigated_at
+            ? formatRequiredDate(v.investigated_at, "调查日期")
+            : "",
+          producer: v.producer || "",
+          indictee: v.indictee || "",
+          investigation_assistant: v.investigation_assistant || "",
           deadline:
             v.deadline?.format("YYYY-MM-DD") || editTarget.data.deadline,
           priority: v.priority || editTarget.data.priority,
@@ -1807,7 +1922,11 @@ export default function InvestigationCenterPage({
           render: (_: unknown, r: Row) =>
             r.data.infringement_method || r.data.platform || "—",
         },
-        { title: "店铺名称", dataIndex: "title", width: 180 },
+        {
+          title: "店铺名称",
+          width: 180,
+          render: (_: unknown, r: Row) => r.data.shop_name || r.title || "—",
+        },
         {
           title: "店铺Id",
           width: 120,
@@ -2377,9 +2496,12 @@ export default function InvestigationCenterPage({
           platform: "",
           product: "",
           infringement_method: "",
+          sales_channel: "",
           source: "",
           store_url: "",
+          shop_name: "",
           shop_id: "",
+          has_product: false,
           producer: "",
           indictee: "",
           investigation_assistant: "",
@@ -2902,6 +3024,13 @@ export default function InvestigationCenterPage({
                 label: "侵权方式",
                 children:
                   investigationDetail.data.infringement_method ||
+                  "—",
+              },
+              {
+                key: "sales-channel",
+                label: "销售渠道",
+                children:
+                  investigationDetail.data.sales_channel ||
                   investigationDetail.data.platform ||
                   "—",
               },
@@ -2926,9 +3055,19 @@ export default function InvestigationCenterPage({
                 ),
               },
               {
+                key: "shop-name",
+                label: "店铺名称",
+                children: investigationDetail.data.shop_name || investigationDetail.title || "—",
+              },
+              {
                 key: "shop-id",
                 label: "店铺Id",
                 children: investigationDetail.data.shop_id || "—",
+              },
+              {
+                key: "has-product",
+                label: "有无产品",
+                children: investigationDetail.data.has_product ? "有" : "无",
               },
               {
                 key: "address",
@@ -3040,6 +3179,16 @@ export default function InvestigationCenterPage({
         },
       ]
     : [];
+  const taskScopeGroups = taskTarget
+    ? investigationTaskScopeGroups(taskTarget.data || {})
+    : [];
+  const taskSelectedProvince = String(taskProvince || "");
+  const taskCityOptions =
+    taskScopeGroups.find((group) => group.province === taskSelectedProvince)
+      ?.cities || [];
+  const taskAuthorizationScope = String(
+    taskTarget?.data.authorization_scope || "未配置",
+  ).trim();
   return (
     <>
       <Modal
@@ -3235,14 +3384,31 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="客户" name="customer">
-              <Input />
+              <Input disabled />
+            </Form.Item>
+            <Form.Item label="侵权方式" name="infringement_method">
+              <Select
+                allowClear
+                options={CLUE_INFRINGEMENT_METHOD_OPTIONS.map((value) => ({
+                  value,
+                  label: value,
+                }))}
+              />
             </Form.Item>
             <Form.Item
-              label="调查平台"
-              name="platform"
-              rules={[{ required: true }]}
+              label="销售渠道"
+              name="sales_channel"
+              rules={[{ required: true, message: "请选择销售渠道" }]}
             >
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={CLUE_SALES_CHANNEL_OPTIONS.map((value) => ({
+                  value,
+                  label: value,
+                }))}
+              />
             </Form.Item>
             <Form.Item
               label="侵权产品"
@@ -3251,26 +3417,22 @@ export default function InvestigationCenterPage({
             >
               <Input />
             </Form.Item>
-            <Form.Item label="侵权方式" name="infringement_method">
-              <Select
-                allowClear
-                options={[
-                  "电商平台",
-                  "实体店铺",
-                  "工厂",
-                  "其他",
-                  "网页链接",
-                ].map((value) => ({ value, label: value }))}
-              />
-            </Form.Item>
-            <Form.Item label="来源" name="source">
-              <Input />
-            </Form.Item>
             <Form.Item label="店铺链接" name="store_url">
               <Input placeholder="请输入店铺链接" />
             </Form.Item>
+            <Form.Item label="店铺名称" name="shop_name">
+              <Input placeholder="请输入店铺名称" />
+            </Form.Item>
             <Form.Item label="店铺Id" name="shop_id">
               <Input placeholder="淘宝店铺Id为掌柜名称，拼多多店铺Id为一串数字" />
+            </Form.Item>
+            <Form.Item label="有无产品" name="has_product">
+              <Radio.Group
+                options={[
+                  { value: true, label: "有" },
+                  { value: false, label: "无" },
+                ]}
+              />
             </Form.Item>
             <Form.Item label="调查地址" name="address">
               <Input placeholder="请输入调查地址" />
@@ -3311,6 +3473,9 @@ export default function InvestigationCenterPage({
             <Form.Item label="调查区域" name="region">
               <Input />
             </Form.Item>
+            <Form.Item label="来源" name="source">
+              <Input />
+            </Form.Item>
             <Form.Item label="附件">
               <input
                 multiple
@@ -3326,7 +3491,7 @@ export default function InvestigationCenterPage({
                   : "可上传调查线索相关材料"}
               </Typography.Text>
             </Form.Item>
-            <Form.Item className="span-2" label="说明" name="description">
+            <Form.Item className="span-2" label="备注" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
           </div>
@@ -4092,6 +4257,9 @@ export default function InvestigationCenterPage({
           style={{ marginTop: 16 }}
         >
           <Form form={taskForm} layout="vertical">
+            <Form.Item name="authorization_scope" hidden>
+              <Input />
+            </Form.Item>
             <Form.Item
               label="任务名称"
               name="title"
@@ -4161,17 +4329,51 @@ export default function InvestigationCenterPage({
                 />
               </Form.Item>
             </div>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={`授权区域：${taskAuthorizationScope || "未配置"}`}
+              description={`授权时间：${taskTarget?.data.authorized_from || "未配置"} 至 ${taskTarget?.data.authorized_to || "未配置"}`}
+            />
             <div className="form-grid">
-              <Form.Item label="省份" name="province"><Input /></Form.Item>
-              <Form.Item label="城市" name="city"><Input /></Form.Item>
-              <Form.Item label="区县" name="district"><Input /></Form.Item>
+              <Form.Item
+                label="调查省份"
+                name="province"
+                rules={[{ required: true, message: "请选择授权范围内的调查省份" }]}
+              >
+                <Select
+                  placeholder="请选择授权范围内的省份"
+                  options={taskScopeGroups.map((group) => ({
+                    value: group.province,
+                    label: group.province,
+                  }))}
+                  onChange={() => taskForm.setFieldValue("city", undefined)}
+                />
+              </Form.Item>
+              <Form.Item
+                label="调查城市"
+                name="city"
+                rules={[{ required: true, message: "请选择授权范围内的调查城市" }]}
+              >
+                <Select
+                  placeholder="请选择授权范围内的城市"
+                  disabled={!taskSelectedProvince}
+                  options={taskCityOptions.map((city) => ({ value: city, label: city }))}
+                />
+              </Form.Item>
             </div>
-            <Form.Item label="任务说明" name="description">
+            <Form.Item label="备注" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
-            <Button type="primary" onClick={createTask}>
-              创建子任务
-            </Button>
+            <Space>
+              <Button type="primary" onClick={() => void createTask("complete")}>
+                完成
+              </Button>
+              <Button onClick={() => void createTask("continue")}>
+                继续分配
+              </Button>
+            </Space>
           </Form>
         </Card>
       </Drawer>
@@ -4234,26 +4436,65 @@ export default function InvestigationCenterPage({
                 <Form.Item label="侵权方式" name="infringement_method">
                   <Select
                     allowClear
-                    options={[
-                      "电商平台",
-                      "实体店铺",
-                      "工厂",
-                      "其他",
-                      "网页链接",
-                    ].map((value) => ({ value, label: value }))}
+                    options={CLUE_INFRINGEMENT_METHOD_OPTIONS.map((value) => ({
+                      value,
+                      label: value,
+                    }))}
                   />
                 </Form.Item>
-                <Form.Item label="调查平台" name="platform">
-                  <Input />
+                <Form.Item label="销售渠道" name="sales_channel">
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    options={CLUE_SALES_CHANNEL_OPTIONS.map((value) => ({
+                      value,
+                      label: value,
+                    }))}
+                  />
                 </Form.Item>
                 <Form.Item label="侵权产品" name="product">
                   <Input />
+                </Form.Item>
+                <Form.Item label="店铺链接" name="store_url">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="店铺名称" name="shop_name">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="店铺Id" name="shop_id">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="有无产品" name="has_product">
+                  <Radio.Group
+                    options={[
+                      { value: true, label: "有" },
+                      { value: false, label: "无" },
+                    ]}
+                  />
                 </Form.Item>
                 <Form.Item label="来源" name="source">
                   <Input />
                 </Form.Item>
                 <Form.Item label="调查地址" name="address">
                   <Input />
+                </Form.Item>
+                <Form.Item label="调查日期" name="investigated_at">
+                  <DatePicker style={{ width: "100%" }} />
+                </Form.Item>
+                <Form.Item label="生产商" name="producer">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="主体信息" name="indictee">
+                  <Input />
+                </Form.Item>
+                <Form.Item label="调查辅助" name="investigation_assistant">
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    options={systemPersonOptions}
+                  />
                 </Form.Item>
               </>
             )}
