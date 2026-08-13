@@ -92,6 +92,8 @@ type SystemUser = {
   is_active: boolean;
   must_change_password?: boolean;
   contract_approval_enabled?: boolean;
+  dingtalk_user_id?: string;
+  dingtalk_bound?: boolean;
   profile?: Record<string, any>;
   email: string;
   mobile: string;
@@ -123,7 +125,7 @@ const categoryByRoute: Record<string, string> = {
   "system-parameters-fee-type": "fee_type",
   "system-parameters-case-phase": "case_phase",
   "system-parameters-court": "court",
-  "system-parameters-notary-office": "notary_office",
+  "system-parameters-notary": "notary_office",
   "system-parameters-cause": "cause",
   "system-parameters-payment": "payment_type",
   "system-parameters-customer-type": "customer_type",
@@ -216,15 +218,9 @@ export function cleanCompanyDigitsInputEvent(event: {
   return sanitized;
 }
 
-const PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】";
-const hasChineseName = (value: unknown) => /[\u4e00-\u9fff]/.test(String(value || ""));
-const personDisplayName = (row?: { person_display_name?: string; display_name?: string; display_name_missing?: boolean }) => {
-  if (!row) return PERSON_NAME_PLACEHOLDER;
-  if (row.display_name_missing) return row.person_display_name || PERSON_NAME_PLACEHOLDER;
-  if (hasChineseName(row.person_display_name)) return String(row.person_display_name);
-  if (hasChineseName(row.display_name)) return String(row.display_name);
-  return PERSON_NAME_PLACEHOLDER;
-};
+const PERSON_NAME_PLACEHOLDER = "姓名待维护";
+const personDisplayName = (row?: { display_name?: string }) =>
+  String(row?.display_name || "").trim() || PERSON_NAME_PLACEHOLDER;
 
 export default function SystemCenterPage({
   initialView = "system-parameters",
@@ -307,7 +303,7 @@ export default function SystemCenterPage({
         setInvestigationSupervisorOptions(
           (data.investigation_supervisor_options || []).map((item: DirectoryOption) => ({
             value: item.username,
-            label: item.display_name || item.username,
+            label: String(item.display_name || "").trim() || PERSON_NAME_PLACEHOLDER,
           })),
         );
       }
@@ -337,7 +333,10 @@ export default function SystemCenterPage({
       const { data } = await api.get("/users/directory");
       setInvestigationSupervisorOptions(
         (data.items || [])
-          .map((item: DirectoryOption) => ({ value: item.username, label: item.display_name || item.username })),
+          .map((item: DirectoryOption) => ({
+            value: item.username,
+            label: String(item.display_name || "").trim() || PERSON_NAME_PLACEHOLDER,
+          })),
       );
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "调查主管候选加载失败");
@@ -740,9 +739,9 @@ export default function SystemCenterPage({
   };
   const renderPersonDisplayName = (_value: string, row: SystemUser) => {
     const name = personDisplayName(row);
-    if (!row.display_name_missing) return name;
+    if (name !== PERSON_NAME_PLACEHOLDER) return name;
     return (
-      <Tooltip title="请在修改入口补充中文姓名">
+      <Tooltip title="请在修改入口补充姓名">
         <Tag color="orange">{name}</Tag>
       </Tooltip>
     );
@@ -1509,6 +1508,12 @@ export default function SystemCenterPage({
               { title: "手机号码", dataIndex: "mobile", width: 130 },
               { title: "固定电话", dataIndex: "office_phone", width: 130 },
               {
+                title: "钉钉",
+                dataIndex: "dingtalk_bound",
+                width: 90,
+                render: (value) => <Tag color={value ? "blue" : "default"}>{value ? "已绑定" : "未绑定"}</Tag>,
+              },
+              {
                 title: "系统角色",
                 dataIndex: "role",
                 width: 105,
@@ -1654,6 +1659,9 @@ export default function SystemCenterPage({
                   placeholder="请选择部门"
                   options={userDepartmentOptions}
                 />
+              </Form.Item>
+              <Form.Item label="钉钉 UserId" name={["profile", "dingtalk_user_id"]} tooltip="在钉钉开发者后台的通讯录中查看；每个 UserId 只能绑定一个系统员工。">
+                <Input allowClear placeholder="留空表示未绑定" />
               </Form.Item>
               <Form.Item
                 label={

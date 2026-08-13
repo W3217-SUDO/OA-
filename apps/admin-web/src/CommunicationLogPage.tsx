@@ -8,10 +8,11 @@ import {formatRequiredDate} from './formSafety'
 import {rememberCustomerDetailTarget} from './customerDetailNavigation'
 import './communication-log.css'
 
-type Communication={id:number;customer_record_id:number;customer_name:string;contact:string;phone:string;content:string;occurred_at:string;operator:string;updated_at:string}
+type Communication={id:number;customer_record_id:number;customer_name:string;contact:string;phone:string;content:string;occurred_at:string;operator:string;operator_display_name?:string;updated_at:string}
 type Customer={id:number;serial_no:string;title:string;data:Record<string,unknown>}
 type Attachment={id:number;original_name:string;size:number;download_url:string}
 type HistoryGroup={month:string;items:Communication[]}
+const personDisplayName=(value?:unknown)=>String(value||'').trim()||'姓名待维护'
 
 const groupCommunicationHistory=(items:Communication[]):HistoryGroup[]=>{
   const groups=new Map<string,Communication[]>()
@@ -124,7 +125,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
     catch(error:any){message.error(error?.response?.data?.detail||'附件下载失败')}
   }
   const columns:TableColumnsType<Communication>=[
-    {title:'用户',dataIndex:'operator',width:110},
+    {title:'用户',dataIndex:'operator_display_name',width:110,render:personDisplayName},
     {title:'记录时间',dataIndex:'occurred_at',width:165,render:(value:string)=>new Date(value).toLocaleString('zh-CN',{hour12:false})},
     {title:'客户ID',dataIndex:'customer_record_id',width:160,ellipsis:true,align:'center',render:(value:number,row)=><Button className="communication-customer-id" type="link" title={String(customers.find(item=>item.id===value)?.serial_no||value)} onClick={()=>openCustomer(value,row.customer_name)}><span>{customers.find(item=>item.id===value)?.serial_no||value}</span></Button>},
     {title:'客户名称',dataIndex:'customer_name',width:260,ellipsis:true,render:(value:string,row)=><Button className="communication-customer-name" type="link" title={value} onClick={()=>openCustomer(row.customer_record_id,value)}><span>{value}</span></Button>},
@@ -176,7 +177,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
         <Descriptions.Item label="联系人">{viewing.contact||'—'}</Descriptions.Item>
         <Descriptions.Item label="联系电话">{viewing.phone||'—'}</Descriptions.Item>
         <Descriptions.Item label="记录时间">{new Date(viewing.occurred_at).toLocaleString('zh-CN',{hour12:false})}</Descriptions.Item>
-        <Descriptions.Item label="记录用户">{viewing.operator||'—'}</Descriptions.Item>
+        <Descriptions.Item label="记录用户">{personDisplayName(viewing.operator_display_name)}</Descriptions.Item>
         <Descriptions.Item label="沟通内容" span={2}><span style={{whiteSpace:'pre-wrap'}}>{viewing.content||'—'}</span></Descriptions.Item>
       </Descriptions>}
       {viewAttachments.length>0&&<section className="communication-attachments view-attachments"><div className="communication-attachments-title"><span><PaperClipOutlined/> 附件</span></div><List size="small" dataSource={viewAttachments} renderItem={attachment=><List.Item actions={[<Button key="download" type="link" onClick={()=>void downloadAttachment(attachment)}>下载</Button>]}>{attachment.original_name}（{Math.max(1,Math.ceil(attachment.size/1024))} KB）</List.Item>}/></section>}

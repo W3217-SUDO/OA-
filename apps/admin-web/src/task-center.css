@@ -411,6 +411,191 @@
   overflow-x: auto;
 }
 
+.task-mobile-list {
+  display: none;
+}
+
+.task-mobile-filter-toggle {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .content:has(.task-original-panel) {
+    padding: 0 8px 12px;
+  }
+  .task-original-panel > .ant-card-head {
+    min-height: 42px;
+    padding: 0 12px;
+  }
+  .task-original-panel > .ant-card-head .ant-card-head-title {
+    padding-block: 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .task-original-panel > .ant-card-body {
+    padding: 0 10px 12px;
+  }
+  .task-original-standard .task-status-tabs {
+    height: 44px;
+    min-height: 44px;
+    margin-inline: -10px;
+    padding-inline: 6px;
+  }
+  .task-original-standard .task-status-tabs button {
+    height: 40px;
+    min-width: auto;
+    padding-inline: 14px;
+    font-size: 13px;
+  }
+  .task-original-standard .task-query {
+    display: none;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    gap: 0;
+    width: 100%;
+    padding: 12px 0 8px;
+  }
+  .task-original-standard .task-query.mobile-open {
+    display: grid;
+  }
+  .task-mobile-filter-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-bottom: 1px solid #e3e8eb;
+    background: #fff;
+    color: #27353d;
+    font: inherit;
+  }
+  .task-mobile-filter-toggle span:last-child {
+    color: #00a65a;
+    font-size: 13px;
+  }
+  .task-original-standard .task-query .ant-form-item {
+    display: block;
+    margin-bottom: 10px;
+  }
+  .task-original-standard .task-query .ant-form-item-row {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: center;
+  }
+  .task-original-standard .task-query .ant-form-item-label {
+    flex-basis: auto;
+    padding: 0 10px 0 0;
+    text-align: left;
+  }
+  .task-original-standard .task-query .ant-form-item-label > label {
+    height: auto;
+    font-size: 13px;
+  }
+  .task-original-standard .task-query .ant-input,
+  .task-original-standard .task-query .ant-picker,
+  .task-original-standard .task-query .ant-select-selector,
+  .task-original-standard .task-query .ant-btn {
+    min-height: 40px !important;
+    height: 40px !important;
+    font-size: 14px;
+  }
+  .task-original-standard .task-query-submit {
+    grid-column: auto;
+    height: auto;
+    padding: 2px 0 4px 82px;
+  }
+  .task-original-standard .task-query-submit .ant-btn {
+    min-width: 78px;
+  }
+  .task-original-table {
+    display: none;
+  }
+  .task-mobile-list {
+    display: grid;
+    gap: 10px;
+    padding: 4px 0 10px;
+  }
+  .task-mobile-card {
+    overflow: hidden;
+    border: 1px solid #e1e6e9;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(20, 39, 50, 0.06);
+  }
+  .task-mobile-card.selected {
+    border-color: #00a65a;
+    box-shadow: 0 0 0 1px #00a65a;
+  }
+  .task-mobile-card-head {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 46px;
+    padding: 4px 10px;
+    border-bottom: 1px solid #edf0f2;
+  }
+  .task-mobile-card-head .ant-btn-link {
+    min-width: 0;
+    height: auto;
+    padding: 4px;
+    overflow: hidden;
+    font-weight: 600;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-mobile-select {
+    display: grid;
+    width: 30px;
+    height: 40px;
+    place-items: center;
+  }
+  .task-mobile-select input {
+    width: 18px;
+    height: 18px;
+    accent-color: #00a65a;
+  }
+  .task-mobile-card-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    padding: 10px 12px 12px;
+    gap: 9px 14px;
+    border: 0;
+    background: transparent;
+    color: #25323a;
+    font: inherit;
+    text-align: left;
+  }
+  .task-mobile-card-body span {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-mobile-card-body b {
+    display: block;
+    margin-bottom: 2px;
+    color: #87939b;
+    font-size: 11px;
+    font-weight: 400;
+  }
+  .task-mobile-empty {
+    padding: 38px 12px;
+    color: #8a959d;
+    text-align: center;
+  }
+  .task-original-standard .task-bottom-actions {
+    margin: 0 -10px -12px;
+    padding: 8px 10px;
+    border-top: 1px solid #e5e9ec;
+    background: rgba(255, 255, 255, 0.96);
+  }
+}
+
 /* 案件任务详情：流程、基础信息和沟通记录保持原系统紧凑面板风格。 */
 .task-detail-flow {
   display: grid;
@@ -488,8 +673,51 @@
   .task-original-standard .task-query {
     grid-template-columns: 1fr;
   }
-  .task-original-standard .task-detail-meta {
+  .task-detail-meta {
     grid-template-columns: 1fr;
+  }
+  .task-detail-flow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: auto;
+    overflow: hidden;
+  }
+  .task-detail-flow > span,
+  .task-detail-stage {
+    min-width: 0;
+    height: 42px;
+    padding: 4px;
+    font-size: 11px;
+    line-height: 15px;
+    text-align: center;
+    white-space: normal;
+  }
+  .task-detail-meta > span {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+  .task-detail-meta > span > b { white-space: nowrap; }
+  .task-detail-actions .ant-btn { min-width: 96px; }
+  .task-history { max-height: none; }
+  .task-history .ant-list-item { display: block; padding: 10px; }
+  .task-history .ant-list-item-meta-title .ant-space {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .task-history .ant-list-item-action { margin: 8px 0 0; text-align: right; }
+  .task-detail-section-title + .ant-table-wrapper .ant-table-thead > tr > :nth-child(2),
+  .task-detail-section-title + .ant-table-wrapper .ant-table-tbody > tr > :nth-child(2),
+  .task-detail-section-title + .ant-table-wrapper .ant-table-thead > tr > :nth-child(3),
+  .task-detail-section-title + .ant-table-wrapper .ant-table-tbody > tr > :nth-child(3) {
+    display: none;
+  }
+  .task-detail-section-title + .ant-table-wrapper .ant-table-thead > tr > :last-child,
+  .task-detail-section-title + .ant-table-wrapper .ant-table-tbody > tr > :last-child {
+    width: 112px !important;
+    min-width: 112px !important;
   }
 }
 .task-detail-meta > span > b {

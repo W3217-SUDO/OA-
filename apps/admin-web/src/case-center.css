@@ -68,3 +68,98 @@
   .case-detail-body-grid{grid-template-columns:180px minmax(0,1fr)}
   .case-counsel-detail-card .form-grid{grid-template-columns:repeat(2,minmax(180px,1fr))}
 }
+.case-agent-drawer .ant-drawer-header{padding:12px 16px;border-bottom:1px solid #dce2e8}
+.case-agent-drawer .ant-drawer-body{padding:0;background:#f4f6f8}
+.case-agent-panel{display:flex;flex-direction:column;height:100%;min-height:0}
+.case-agent-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
+.case-agent-skill-select{display:grid;grid-template-columns:auto minmax(170px,230px) minmax(0,1fr);align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #dce2e8}.case-agent-skill-select>span{font-weight:600}.case-agent-skill-select>small{overflow:hidden;color:#737b84;text-overflow:ellipsis;white-space:nowrap}
+.case-agent-message-attachments{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.case-agent-message-attachments figure{width:132px;margin:0}.case-agent-message-attachments .ant-image,.case-agent-message-attachments img{display:block;width:132px!important;height:88px!important}.case-agent-message-attachments img{object-fit:cover;border:1px solid #cfd8df;border-radius:4px;background:#fff}.case-agent-message-attachments figcaption{margin-top:3px;overflow:hidden;color:#5f6872;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.case-agent-actions{padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
+.case-agent-section-title{margin-bottom:8px;font-weight:600}
+.case-agent-actions .ant-alert{margin-bottom:8px}
+.case-agent-action{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #edf0f2}
+.case-agent-action>div{display:flex;min-width:0;flex-direction:column}
+.case-agent-action strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-agent-action span{color:#7a8189;font-size:12px}
+.case-agent-messages{min-height:220px;flex:1;overflow:auto;padding:16px 14px}
+.case-agent-empty{display:flex;min-height:210px;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#737b84;text-align:center}
+.case-agent-empty>.anticon{font-size:34px;color:#00a870}
+.case-agent-empty strong{color:#222;font-size:15px}
+.case-agent-message{display:flex;margin-bottom:14px;flex-direction:column}
+.case-agent-message-user{align-items:flex-end}
+.case-agent-message-assistant{align-items:flex-start}
+.case-agent-message-meta{margin-bottom:4px;color:#737b84;font-size:11px}
+.case-agent-bubble{max-width:88%;padding:9px 11px;border:1px solid #dce2e8;border-radius:6px;background:#fff;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.case-agent-message-user .case-agent-bubble{border-color:#bce8d7;background:#eaf8f2}
+.case-agent-thinking{padding:8px 0;color:#737b84}
+.case-agent-suggestions{display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto;white-space:nowrap}
+.case-agent-composer{display:grid;grid-template-columns:36px minmax(0,1fr) 40px;align-items:end;gap:8px;padding:12px 14px;background:#fff;border-top:1px solid #dce2e8}
+.case-agent-composer>.ant-btn{width:40px;height:40px;padding:0}.case-agent-composer>.case-agent-composer-upload{width:36px}.case-agent-composer-attachments{display:flex;grid-column:1/-1;gap:8px;overflow-x:auto}.case-agent-composer-attachments>div{display:grid;flex:0 0 180px;grid-template-columns:52px minmax(0,1fr) 28px;align-items:center;gap:7px;padding:5px;border:1px solid #cfe3da;border-radius:6px;background:#f3fbf7}.case-agent-composer-attachments .ant-image,.case-agent-composer-attachments img{width:52px!important;height:44px!important}.case-agent-composer-attachments img{object-fit:cover;border-radius:4px}.case-agent-composer-attachments span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.case-agent-composer-attachments .ant-btn{width:28px;height:28px;padding:0}
+.case-agent-composer textarea{letter-spacing:0}
+@media(max-width:700px){
+  .case-agent-drawer{width:100%!important}
+  .case-agent-status{align-items:flex-start}
+  .case-agent-bubble{max-width:96%}
+}
+
+/* Keep the document tabs above the complete workspace, matching the legacy case view. */
+.case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
+.case-detail-tab-area{padding:0 8px 14px}
+.case-documents-layout{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:360px;border-top:1px solid #edf0f3}
+.case-detail-doc-tree{padding:8px 10px;border-right:1px solid #dce2e8;background:#fff}
+.case-document-list{min-width:0;padding:8px 0 0 10px}
+.case-doc-folder,.case-doc-child{display:flex;align-items:center;gap:6px;height:22px;padding:0 4px;color:#111;line-height:22px}
+.case-doc-child{padding-left:25px}
+.case-doc-folder::before,.case-doc-folder::after,.case-doc-child::before{content:none}
+.case-doc-caret{flex:0 0 12px;width:12px;color:#7b838b;font-size:11px;text-align:center}
+.case-doc-child .case-doc-caret{display:none}
+.case-doc-icon{flex:0 0 16px;color:#e8b834;font-size:16px}
+.case-doc-folder-open .case-doc-icon{color:#e2aa20}
+.case-doc-folder>span:last-child,.case-doc-child>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media(max-width:1280px){
+  .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
+  .case-detail-side-panel{grid-column:auto;display:block;border-top:0;border-left:1px solid #dce2e8}
+}
+@media(max-width:900px){
+  .case-detail-body-grid{grid-template-columns:1fr}
+  .case-documents-layout{grid-template-columns:180px minmax(0,1fr)}
+  .case-detail-side-panel{grid-column:1;display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #dce2e8;border-left:0}
+}
+
+/* Legacy case-detail proportions: wide tree, compact file grid, fixed activity rail. */
+.case-court-summary{border-top:4px solid #eef2f6;background:#fff}
+.case-court-summary-title{height:27px;padding:5px 10px;border-bottom:1px solid #dce2e8;font-weight:600;line-height:16px}
+.case-court-summary-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border-left:1px solid #dce2e8}
+.case-court-summary-grid p{display:grid;grid-template-columns:minmax(66px,auto) minmax(0,1fr);min-height:24px;margin:0;border-right:1px solid #dce2e8;border-bottom:1px solid #dce2e8}
+.case-court-summary-grid strong,.case-court-summary-grid span{padding:4px 6px;overflow:hidden;line-height:15px;text-overflow:ellipsis;white-space:nowrap}
+.case-court-summary-grid strong{border-right:1px solid #dce2e8;background:#fafbfc;text-align:right;font-weight:400}
+.case-detail-body-grid{grid-template-columns:minmax(0,1fr) 250px;min-height:calc(100vh - 315px);border-top:0}
+.case-detail-tab-area{padding:0}
+.case-documents-layout{grid-template-columns:280px minmax(0,1fr);min-height:420px}
+.case-detail-doc-tree{padding:8px 14px}
+.case-document-list{padding:8px 10px 0}
+.case-document-toolbar{margin-top:8px}
+
+@media(max-width:1280px){
+  .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
+  .case-documents-layout{grid-template-columns:250px minmax(0,1fr)}
+  .case-court-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:900px){
+  .case-court-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .case-documents-layout{grid-template-columns:210px minmax(0,1fr)}
+}
+
+.case-legacy-tab-panel{min-height:330px;padding:8px 0 0}
+.case-legacy-tab-panel .ant-table-thead>tr>th{height:32px;padding:5px 9px!important;text-align:center}
+.case-legacy-tab-panel .ant-table-tbody>tr>td{height:32px;padding:4px 9px!important}
+.case-legacy-tab-panel .ant-pagination{margin:8px 8px 0}
+.case-legacy-bottom-actions{margin:0 0 8px 8px}
+.case-legacy-bottom-actions .ant-btn{height:32px}
+/* 8.12-row2-scroll-layout */
+.page-workbench:has(.case-original-layout) { overflow: hidden; }
+.page-workbench > .case-original-layout { height: 100%; min-height: 0; }
+.case-original-layout > .case-original-panel { display: flex; min-height: 0; flex-direction: column; }
+.case-original-layout > .case-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.case-original-layout .case-original-table { min-height: 0; }

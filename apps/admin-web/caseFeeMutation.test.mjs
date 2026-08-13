@@ -15,7 +15,9 @@ test('案件费用草稿提供独立修改与删除确认入口', () => {
   assert.match(source, /key:\"internal-fees\"[\s\S]*?title:\"操作\"/);
   assert.match(source, /api\.post\("\/finance\/payment-packages\/preview"/);
   assert.match(source, /api\.post\("\/finance\/payment-packages"/);
-  assert.match(source, /key:\"pay\",label:\"申请付款\"/);
+  assert.match(source, /handleInternalFeeAction\(\"payment\"\)/);
+  assert.match(source, /submitCaseFeePayment\(selectedFirmFee!\)/);
+  assert.match(source, /api\.post\(`\/finance\/fees\/\$\{row\.id\}\/submit`/);
   assert.match(source, /仅已审批内部费用可以申请付款/);
   assert.match(source, /Modal\.confirm\(\{ title: `删除费用/);
   assert.match(source, /仅草稿费用可以修改/);

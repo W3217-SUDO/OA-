@@ -170,7 +170,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(invalid_manager.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-    async def test_person_name_display_metadata_never_falls_back_to_username(self):
+    async def test_maintained_english_person_name_remains_visible(self):
         admin_headers = await self._admin_headers()
 
         users = await self.client.get(f"{API}/system/users?keyword=codex_missing_name", headers=admin_headers)
@@ -178,16 +178,16 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         user_row = users.json()["items"][0]
         self.assertEqual(user_row["username"], "codex_missing_name")
         self.assertEqual(user_row["display_name"], "codex_missing_name")
-        self.assertEqual(user_row["person_display_name"], "【待补充中文姓名】")
-        self.assertTrue(user_row["display_name_missing"])
+        self.assertEqual(user_row["person_display_name"], "codex_missing_name")
+        self.assertFalse(user_row["display_name_missing"])
 
         employees = await self.client.get(f"{API}/hr/employees?username=codex_missing_name", headers=admin_headers)
         self.assertEqual(employees.status_code, status.HTTP_200_OK, employees.text)
         employee_row = employees.json()["items"][0]
         self.assertEqual(employee_row["data"]["username"], "codex_missing_name")
-        self.assertEqual(employee_row["title"], "【待补充中文姓名】")
-        self.assertEqual(employee_row["person_display_name"], "【待补充中文姓名】")
-        self.assertTrue(employee_row["display_name_missing"])
+        self.assertEqual(employee_row["title"], "codex_missing_name")
+        self.assertEqual(employee_row["person_display_name"], "codex_missing_name")
+        self.assertFalse(employee_row["display_name_missing"])
 
     async def test_hr_employee_uses_linked_account_name_when_archive_title_is_empty(self):
         admin_headers = await self._admin_headers()
@@ -224,7 +224,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["title"], "")
         self.assertFalse(row["display_name_missing"])
 
-    async def test_organization_person_display_fields_never_fall_back_to_username(self):
+    async def test_organization_person_display_fields_use_maintained_english_names(self):
         admin_headers = await self._admin_headers()
         async with self.sessions() as db:
             db.add(Department(
@@ -240,13 +240,13 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(departments.status_code, status.HTTP_200_OK, departments.text)
         department_row = departments.json()["items"][0]
         self.assertEqual(department_row["manager"], "codex_missing_name")
-        self.assertEqual(department_row["manager_display_name"], "【待补充中文姓名】")
-        self.assertTrue(department_row["manager_display_name_missing"])
-        self.assertEqual(department_row["created_by_display_name"], "【待补充中文姓名】")
-        self.assertTrue(department_row["created_by_display_name_missing"])
+        self.assertEqual(department_row["manager_display_name"], "codex_missing_name")
+        self.assertFalse(department_row["manager_display_name_missing"])
+        self.assertEqual(department_row["created_by_display_name"], "codex_missing_name")
+        self.assertFalse(department_row["created_by_display_name_missing"])
         self.assertEqual(department_row["updated_by"], "leader")
-        self.assertEqual(department_row["updated_by_display_name"], "【待补充中文姓名】")
-        self.assertTrue(department_row["updated_by_display_name_missing"])
+        self.assertEqual(department_row["updated_by_display_name"], "Leader")
+        self.assertFalse(department_row["updated_by_display_name_missing"])
 
     async def test_user_permission_overrides_contract(self):
         admin_headers = await self._admin_headers()
@@ -575,6 +575,59 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(updated_role.status_code, status.HTTP_200_OK, updated_role.text)
         self.assertEqual(updated_role.json()["field_keys"], ["finance.amount"])
+
+    async def test_job_role_menu_permissions_can_be_saved_and_reach_login_session(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            role = JobRole(
+                code="CODEX-ASSISTANT",
+                name="律师助理测试",
+                permissions=["合同审批"],
+                is_active=True,
+                created_by="admin",
+                updated_by="admin",
+            )
+            user = User(
+                username="assistant_menu_user",
+                display_name="助理测试",
+                department=DEPT,
+                role="user",
+                password_hash=hash_password("AssistantPass2026!"),
+                is_active=True,
+                must_change_password=False,
+                profile={"position": "律师助理测试"},
+            )
+            db.add_all([role, user])
+            await db.commit()
+            role_id = role.id
+
+        updated = await self.client.patch(
+            f"{API}/hr/job-roles/{role_id}/permissions",
+            headers=admin_headers,
+            json={
+                "permissions": [
+                    "contract-audit",
+                    "contract-audit-pending",
+                    "seal",
+                    "seal-my",
+                    "seal-audit",
+                    "seal-audit-pending",
+                    "合同审批",
+                    "用印审批",
+                ],
+            },
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
+
+        login = await self._login("assistant_menu_user", "AssistantPass2026!")
+        self.assertEqual(login.status_code, status.HTTP_200_OK, login.text)
+        me = await self.client.get(
+            f"{API}/auth/me",
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        )
+        self.assertEqual(me.status_code, status.HTTP_200_OK, me.text)
+        self.assertIn("contract-audit-pending", me.json()["menu_keys"])
+        self.assertIn("seal-audit-pending", me.json()["menu_keys"])
 
 
 if __name__ == "__main__":

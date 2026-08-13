@@ -684,6 +684,10 @@ class Notification(Base):
     recipient_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     sender_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dingtalk_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    dingtalk_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    dingtalk_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dingtalk_error: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

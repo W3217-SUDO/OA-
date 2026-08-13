@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
@@ -20,7 +22,21 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, encoded: str) -> bool:
-    return password_hash.verify(password, encoded)
+    if encoded.startswith("legacy-md5$"):
+        legacy_digest = encoded.removeprefix("legacy-md5$").strip().lower()
+        if len(legacy_digest) != 32 or any(char not in "0123456789abcdef" for char in legacy_digest):
+            return False
+        current_digest = hashlib.md5(password.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(current_digest, legacy_digest)
+    try:
+        return password_hash.verify(password, encoded)
+    except Exception:
+        return False
+
+
+def password_needs_rehash(encoded: str) -> bool:
+    """Return whether a successfully verified transitional hash must be upgraded."""
+    return encoded.startswith("legacy-md5$")
 
 
 def user_role_ids(user: User) -> list[str]:

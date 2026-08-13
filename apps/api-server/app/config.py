@@ -22,8 +22,24 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin123"
     dify_base_url: str = ""
     dify_api_key: str = ""
+    langgraph_enabled: bool = False
+    langgraph_checkpoint_url: str = ""
+    langgraph_api_base_url: str = ""
+    langgraph_api_key: str = ""
+    langgraph_model_provider: str = ""
+    langgraph_model: str = ""
+    langgraph_max_concurrency: int = 4
     sms_webhook_url: str = ""
     sms_webhook_token: str = ""
+    dingtalk_corp_id: str = ""
+    dingtalk_agent_id: str = ""
+    dingtalk_app_key: str = ""
+    dingtalk_app_secret: str = ""
+    dingtalk_app_url: str = ""
+    dingtalk_notifications_enabled: bool = True
+    # Comma-separated OA display names allowed to bind and use DingTalk SSO.
+    # Empty keeps the integration unrestricted for local development.
+    dingtalk_allowed_display_names: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

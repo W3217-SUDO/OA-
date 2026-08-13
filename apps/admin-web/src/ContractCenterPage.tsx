@@ -99,6 +99,7 @@ import {
   validateContractDraftValues,
 } from "./contractWorkflowPolicy.mjs";
 import { formatRequiredDate } from "./formSafety";
+import { INVESTIGATION_REGION_GROUPS } from "./investigationRegionOptions.mjs";
 import RecordImportButton from "./RecordImportButton";
 import "./contract-center.css";
 type Contract = {
@@ -338,6 +339,9 @@ export default function ContractCenterPage({
   const [customers, setCustomers] = useState<CustomerRef[]>([]);
   const [linkedCustomerContext, setLinkedCustomerContext] = useState<LinkedCustomerContext | null>(null);
   const [contractFile, setContractFile] = useState<File | null>(null);
+  const [investigationRegionPickerOpen, setInvestigationRegionPickerOpen] = useState(false);
+  const [selectedInvestigationRegions, setSelectedInvestigationRegions] = useState<string[]>([]);
+  const [expandedInvestigationProvinces, setExpandedInvestigationProvinces] = useState<string[]>([]);
   const [changeFile, setChangeFile] = useState<File | null>(null);
   const [savingContract, setSavingContract] = useState(false);
   const [submittingWizard, setSubmittingWizard] = useState(false);
@@ -1349,10 +1353,6 @@ export default function ContractCenterPage({
   const saveChange = async () => {
     if (!changing) return;
     const v = await changeForm.validateFields();
-    if (!changeFile) {
-      message.warning("请上传合同变更附件");
-      return;
-    }
     try {
       const response = await api.post(`/contracts/${changing.id}/changes`, {
         ...v,
@@ -1360,14 +1360,16 @@ export default function ContractCenterPage({
       });
       const feedback = normalizeContractActionResponse(response, "合同变更失败");
       if (!feedback.ok) throw new Error(feedback.message);
-      const attachment = new FormData();
-      attachment.append("file", changeFile);
-      attachment.append("record_id", String(changing.id));
-      attachment.append("category", "合同变更附件");
-      attachment.append("remark", "合同变更时上传");
-      const attachmentResponse = await api.post("/attachments", attachment);
-      const attachmentFeedback = normalizeContractActionResponse(attachmentResponse, "合同变更附件上传失败");
-      if (!attachmentFeedback.ok) throw new Error(attachmentFeedback.message);
+      if (changeFile) {
+        const attachment = new FormData();
+        attachment.append("file", changeFile);
+        attachment.append("record_id", String(changing.id));
+        attachment.append("category", "合同变更附件");
+        attachment.append("remark", "合同变更时上传");
+        const attachmentResponse = await api.post("/attachments", attachment);
+        const attachmentFeedback = normalizeContractActionResponse(attachmentResponse, "合同变更附件上传失败");
+        if (!attachmentFeedback.ok) throw new Error(attachmentFeedback.message);
+      }
       message.success("合同变更已提交审批");
       setChanging(null);
       setChangeFile(null);
@@ -1444,7 +1446,7 @@ export default function ContractCenterPage({
           if (viewing?.id === contract.id) closeViewing();
           setEventTarget((current) => current?.id === contract.id ? null : current);
           message.success("合同草稿已撤销，附件和事项记录已一并清理");
-          await load();
+          void load();
         } catch (error: any) {
           message.error(extractContractErrorMessage(error, "合同草稿撤销失败"));
           throw error;
@@ -1512,6 +1514,7 @@ export default function ContractCenterPage({
   };
   const openInvestigation = async (r: Contract) => {
     investigationForm.resetFields();
+    setSelectedInvestigationRegions([]);
     try {
       const { data: supervisor } = await api.get("/investigations/assignment-supervisor");
       investigationForm.setFieldsValue({
@@ -1522,7 +1525,7 @@ export default function ContractCenterPage({
         right_type: "商标",
         customer_review: false,
         region: "全国",
-        authorization_scope: "",
+        authorization_scope: "全国",
         description: `来源合同 ${r.serial_no}`,
       });
       setInvestigating(r);
@@ -1543,7 +1546,7 @@ export default function ContractCenterPage({
         const attachment = new FormData();
         attachment.append("file", contractFile);
         attachment.append("record_id", String(data.id));
-        attachment.append("category", "调查任务资料");
+        attachment.append("category", "调查资料");
         await api.post("/attachments", attachment);
         setContractFile(null);
       }
@@ -2124,7 +2127,7 @@ export default function ContractCenterPage({
             },
           }}
           tableLayout="fixed"
-          scroll={{ x: isAuditView ? 1450 : 1480 }}
+          scroll={{ x: isAuditView ? 1450 : 1480, y: "calc(100dvh - 390px)" }}
           pagination={{current:listPagination.current,pageSize:listPagination.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:<Button size="small">GO</Button>},showTotal:()=>`共有${rows.length}条`,onChange:updateListPagination}}
           summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />
@@ -2232,6 +2235,9 @@ export default function ContractCenterPage({
               ) : (
                 <Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">
+                    <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
+                      <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置合同审批资格" />
+                    </Form.Item>
                     <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择印章" }]}><Select placeholder="请选择印章类型" notFoundContent="暂无可用印章，请管理员到用印中心维护" options={sealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}（${asset.code}）` }))} /></Form.Item>
                     <Form.Item label="用印份数" name="copies" rules={[{ required: true }]}><InputNumber min={1} max={999} style={{ width: "100%" }} /></Form.Item>
                     <Form.Item label="计划用印日期" name="use_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
@@ -2358,9 +2364,28 @@ export default function ContractCenterPage({
             </Form.Item>
           </div>
           <Form.Item label="授权范围" name="region" rules={[{ required: true, message: "请选择授权范围" }]}>
-            <Select options={["全国", "区域"].map(value=>({value,label:value}))} />
+            <Select
+              options={["全国", "区域"].map(value=>({value,label:value}))}
+              onChange={(value) => {
+                setSelectedInvestigationRegions([]);
+                investigationForm.setFieldValue("authorization_scope", value === "全国" ? "全国" : "");
+              }}
+            />
           </Form.Item>
-          {investigationRegion === "区域" && <Form.Item label="授权区域" name="authorization_scope" rules={[{ required: true, message: "请输入授权区域" }]}><Input placeholder="省、市或具体授权区域" /></Form.Item>}
+          {investigationRegion === "区域" && (
+            <Form.Item
+              label="授权区域"
+              name="authorization_scope"
+              rules={[{ required: true, message: "请选择授权区域" }]}
+            >
+              <Input
+                readOnly
+                placeholder="请选择省、市或具体授权区域"
+                onClick={() => setInvestigationRegionPickerOpen(true)}
+                suffix={<Button type="link" size="small" onClick={() => setInvestigationRegionPickerOpen(true)}>选择城市</Button>}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="customer_review" valuePropName="checked">
             <Checkbox>调查线索需要客户审核</Checkbox>
           </Form.Item>
@@ -2369,6 +2394,48 @@ export default function ContractCenterPage({
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={investigationRegionPickerOpen}
+        title="选择城市"
+        footer={<Space><Button onClick={() => setInvestigationRegionPickerOpen(false)}>取消</Button><Button type="primary" onClick={() => {
+          if (!selectedInvestigationRegions.length) {
+            message.warning("请至少选择一个省市");
+            return;
+          }
+          investigationForm.setFieldValue("authorization_scope", selectedInvestigationRegions.join("、"));
+          setInvestigationRegionPickerOpen(false);
+        }}>确定</Button></Space>}
+        onCancel={() => setInvestigationRegionPickerOpen(false)}
+      >
+        <Space style={{ marginBottom: 12 }}>
+          <Button type="link" onClick={() => setSelectedInvestigationRegions([...new Set(INVESTIGATION_REGION_GROUPS.flatMap(({ province, cities }) => [province, ...cities]))])}>全选</Button>
+          <Button type="link" onClick={() => setSelectedInvestigationRegions([])}>清空</Button>
+        </Space>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          {INVESTIGATION_REGION_GROUPS.map(({ province, cities }) => {
+            const expanded = expandedInvestigationProvinces.includes(province);
+            const isSelected = selectedInvestigationRegions.includes(province);
+            return <div key={province} style={{ gridColumn: expanded && cities.length ? "span 4" : undefined }}>
+              <Space size={4}>
+                <Checkbox
+                  aria-label={`选择${province}`}
+                  checked={isSelected}
+                  onChange={(event) => setSelectedInvestigationRegions(current => event.target.checked ? [...new Set([...current, province])] : current.filter(value => value !== province))}
+                />
+                {cities.length ? <Button type="link" size="small" onClick={() => setExpandedInvestigationProvinces(current => expanded ? current.filter(value => value !== province) : [...current, province])}>{province}</Button> : <span>{province}</span>}
+              </Space>
+              {expanded && cities.length > 0 && <div style={{ margin: "8px 0 4px 24px", padding: 8, background: "#fafafa", border: "1px solid #f0f0f0" }}>
+                <Checkbox.Group
+                  value={selectedInvestigationRegions.filter(value => cities.includes(value))}
+                  onChange={(values) => setSelectedInvestigationRegions(current => [...current.filter(value => !cities.includes(value)), ...(values as string[])])}
+                  options={cities.map(city => ({ label: city, value: city }))}
+                  style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}
+                />
+              </div>}
+            </div>;
+          })}
+        </div>
       </Modal>
       <Modal
         width={isContractDetailView ? "100%" : 860}
@@ -2790,6 +2857,9 @@ export default function ContractCenterPage({
             ) : (
               <Form form={sealForm} layout="vertical" className="contract-seal-form">
                 <div className="form-grid">
+                  <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
+                    <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置合同审批资格" />
+                  </Form.Item>
                   <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择印章" }]}>
                     <Select placeholder="请选择印章类型" notFoundContent="暂无可用印章，请管理员到用印中心维护" options={sealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}（${asset.code}）` }))} />
                   </Form.Item>
@@ -2977,7 +3047,7 @@ export default function ContractCenterPage({
             <Form.Item className="span-2" label="备注" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
-            <Form.Item className="span-2" label="合同附件" required>
+            <Form.Item className="span-2" label="合同附件" extra="可选；未选择时保留原有附件">
               <input type="file" accept={CONTRACT_ATTACHMENT_ACCEPT} onChange={(event) => setChangeFile(event.target.files?.[0] || null)} />
               {changeFile && <span className="contract-upload-name">{changeFile.name}</span>}
             </Form.Item>

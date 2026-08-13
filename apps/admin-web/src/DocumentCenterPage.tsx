@@ -60,6 +60,7 @@ type RecordRow = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
   description?: string;
   data: Record<string, any>;
 };
@@ -73,6 +74,7 @@ type Attachment = {
   content_type: string;
   size: number;
   uploader: string;
+  uploader_display_name?: string;
   remark: string;
   created_at: string;
 };
@@ -92,6 +94,7 @@ type HistoryEvent = {
   from_status: string;
   to_status: string;
   operator: string;
+  operator_display_name?: string;
   comment: string;
   created_at: string;
 };
@@ -108,6 +111,8 @@ const fileSize = (n: number) =>
   n >= 1048576
     ? `${(n / 1048576).toFixed(2)} MB`
     : `${Math.max(1, Math.round(n / 1024))} KB`;
+const personDisplayName = (value: unknown) =>
+  String(value || "").trim() || "姓名待维护";
 
 type ReceiptRow = RecordRow & {
   data: Record<string, any> & {
@@ -121,11 +126,18 @@ type ReceiptRow = RecordRow & {
     import_status?: string;
     business_process_status?: string;
     uploader?: string;
+    uploader_display_name?: string;
     hearing_lawyer?: string;
+    hearing_lawyer_display_name?: string;
     assistant?: string;
+    assistant_display_name?: string;
     brand_manager?: string;
+    brand_manager_display_name?: string;
     case_manager?: string;
+    case_manager_display_name?: string;
     handling_lawyer?: string;
+    handling_lawyer_display_name?: string;
+    signer_display_name?: string;
   };
 };
 
@@ -715,7 +727,7 @@ export default function DocumentCenterPage({
     setViewing(row);
     setActionStatus(toStatus);
     actionForm.resetFields();
-    actionForm.setFieldsValue({ action_date: dayjs(), handler: profile.display_name || profile.username || "管理者" });
+    actionForm.setFieldsValue({ action_date: dayjs(), handler: personDisplayName(profile.display_name) });
   };
   const submitAction = async () => {
     if (!viewing) return;
@@ -807,7 +819,7 @@ export default function DocumentCenterPage({
       width: 160,
       render: (_: unknown, r: RecordRow) => r.data.sender || "—",
     },
-    { title: "负责人", dataIndex: "owner", width: 90 },
+    { title: "负责人", dataIndex: "owner_display_name", width: 90, render: personDisplayName },
     {
       title: "状态",
       dataIndex: "status",
@@ -884,7 +896,7 @@ export default function DocumentCenterPage({
         r.record_id ? <Button type="link" onClick={() => openAttachmentRecord(r)}>{v || r.record_no || "查看关联业务"}</Button> : "—",
     },
     { title: "大小", dataIndex: "size", width: 90, render: fileSize },
-    { title: "上传人", dataIndex: "uploader", width: 90 },
+    { title: "上传人", dataIndex: "uploader_display_name", width: 90, render: personDisplayName },
     {
       title: "上传时间",
       dataIndex: "created_at",
@@ -1186,7 +1198,7 @@ export default function DocumentCenterPage({
       title: "上传人",
       key: "uploader",
       width: 90,
-      render: (_: unknown, r: ReceiptRow) => r.data.uploader || r.owner,
+      render: (_: unknown, r: ReceiptRow) => personDisplayName(r.data.uploader_display_name || r.owner_display_name),
     },
     {
       title: "状态",
@@ -1274,19 +1286,19 @@ export default function DocumentCenterPage({
       title: "开庭律师",
       key: "hearing_lawyer",
       width: 90,
-      render: (_: unknown, r: ReceiptRow) => r.data.hearing_lawyer || "—",
+      render: (_: unknown, r: ReceiptRow) => personDisplayName(r.data.hearing_lawyer_display_name),
     },
     {
       title: "律师助理",
       key: "assistant",
       width: 90,
-      render: (_: unknown, r: ReceiptRow) => r.data.assistant || "—",
+      render: (_: unknown, r: ReceiptRow) => personDisplayName(r.data.assistant_display_name),
     },
     {
       title: "品牌管理人",
       key: "brand_manager",
       width: 100,
-      render: (_: unknown, r: ReceiptRow) => r.data.brand_manager || "—",
+      render: (_: unknown, r: ReceiptRow) => personDisplayName(r.data.brand_manager_display_name),
     },
   ];
   const isReceiptView = [
@@ -1758,9 +1770,9 @@ export default function DocumentCenterPage({
                   { title: "用印类型", key: "official_document_type", width: 90, render: (_, row: any) => row.source_type === "case" ? "案件" : row.source_type === "contract" ? "合同" : "—" },
                   { title: "文件数", key: "file_count", width: 80, render: (_: unknown, row: RecordRow) => <Button type="link" className="case-cell-link" onClick={() => openOfficialOutgoingDetail(row)}>{(row as any).attachments?.length || 0}</Button> },
                   { title: "状态", dataIndex: "status", width: 110, render: (value: string) => <Tag color={value === "已通过" ? "green" : value === "已拒绝" ? "red" : value === "待审批" ? "orange" : "default"}>{value}</Tag> },
-                  { title: "申请人", dataIndex: "owner", width: 120 },
+                  { title: "申请人", dataIndex: "owner_display_name", width: 120, render: personDisplayName },
                   { title: "申请时间", dataIndex: "created_at", width: 175, sorter: (a: any, b: any) => String(a.created_at || "").localeCompare(String(b.created_at || "")), render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
-                  { title: "审核人", dataIndex: "auditor", width: 120, render: (value: string) => value || "—" },
+                  { title: "审核人", dataIndex: "auditor_display_name", width: 120, render: personDisplayName },
                   { title: "审核时间", dataIndex: "audit_time", width: 175, sorter: (a: any, b: any) => String(a.audit_time || "").localeCompare(String(b.audit_time || "")), render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
                   { title: "审核意见", dataIndex: "audit_remark", width: 220, ellipsis: true, render: (value: string) => value || "—" },
                   { title: "操作", fixed: "right", width: 290, render: (_, row: RecordRow) => <Space size={2}><Button type="link" size="small" onClick={() => openOfficialOutgoingDetail(row)}>详情</Button>{["草稿", "已拒绝", "已撤回"].includes(row.status) && <Button type="link" size="small" onClick={() => openOfficialOutgoingEditor(row)}>编辑</Button>}{["草稿", "已拒绝", "已撤回"].includes(row.status) && <Button type="link" size="small" onClick={() => submitOfficialOutgoing(row)}>提交</Button>}{row.status === "待审批" && <><Button type="link" size="small" onClick={() => { outgoingReviewForm.setFieldsValue({ comment: "" }); setOutgoingReview({ row, approved: true }); }}>通过</Button><Button danger type="link" size="small" onClick={() => { outgoingReviewForm.setFieldsValue({ comment: "" }); setOutgoingReview({ row, approved: false }); }}>拒绝</Button></>}{["待审批", "已拒绝"].includes(row.status) && <Popconfirm title="确认撤回正式发文？" onConfirm={() => rollbackOfficialOutgoing(row)}><Button type="link" size="small">撤回</Button></Popconfirm>}</Space> },
@@ -1829,13 +1841,13 @@ export default function DocumentCenterPage({
         <Card size="small" title={"\u6b63\u5f0f\u53d1\u6587\u9644\u4ef6"} style={{ marginTop: 16 }} extra={["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) ? <Upload key="upload" showUploadList={false} beforeUpload={(item) => { void uploadOfficialOutgoingFile(outgoingDetail, item as unknown as File); return false; }}><Button icon={<UploadOutlined />}>{"\u4e0a\u4f20\u9644\u4ef6"}</Button></Upload> : null}>
           <Table size="small" rowKey="id" pagination={false} dataSource={outgoingDetail.attachments || []} columns={[
             { title: "\u6587\u4ef6\u540d\u79f0", dataIndex: "original_name", ellipsis: true }, { title: "\u7c7b\u522b", dataIndex: "category", width: 150 }, { title: "\u5927\u5c0f", dataIndex: "size", width: 100, render: (value: number) => fileSize(value) },
-            { title: "\u4e0a\u4f20\u4eba", dataIndex: "uploader", width: 90 }, { title: "\u4e0a\u4f20\u65f6\u95f4", dataIndex: "created_at", width: 150, render: (value: string) => value ? new Date(value).toLocaleString() : "\u2014" }, { title: "\u64cd\u4f5c", width: 180, render: (_, item: Attachment) => <Space size={2}><Button type="link" size="small" onClick={() => void previewAttachment(item)}>{"\u67e5\u770b"}</Button><Button type="link" size="small" onClick={() => window.open(`/api/v1/attachments/${item.id}/download`, "_blank")}>{"\u4e0b\u8f7d"}</Button>{["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && item.category === "正式发文附件" && <Popconfirm title="确认删除该正式发文附件？" onConfirm={() => deleteOfficialOutgoingFile(outgoingDetail, item)}><Button danger type="link" size="small">删除</Button></Popconfirm>}</Space> },
+            { title: "\u4e0a\u4f20\u4eba", dataIndex: "uploader_display_name", width: 90, render: personDisplayName }, { title: "\u4e0a\u4f20\u65f6\u95f4", dataIndex: "created_at", width: 150, render: (value: string) => value ? new Date(value).toLocaleString() : "\u2014" }, { title: "\u64cd\u4f5c", width: 180, render: (_, item: Attachment) => <Space size={2}><Button type="link" size="small" onClick={() => void previewAttachment(item)}>{"\u67e5\u770b"}</Button><Button type="link" size="small" onClick={() => window.open(`/api/v1/attachments/${item.id}/download`, "_blank")}>{"\u4e0b\u8f7d"}</Button>{["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && item.category === "正式发文附件" && <Popconfirm title="确认删除该正式发文附件？" onConfirm={() => deleteOfficialOutgoingFile(outgoingDetail, item)}><Button danger type="link" size="small">删除</Button></Popconfirm>}</Space> },
           ]} />
         </Card>
         {outgoingDetail.status === "\u5df2\u901a\u8fc7" && <Card size="small" title={"\u76d6\u7ae0\u6587\u4ef6"} style={{ marginTop: 16 }}><Upload showUploadList={false} beforeUpload={(item) => { void uploadOfficialOutgoingFile(outgoingDetail, item as unknown as File, true); return false; }}><Button type="primary" icon={<UploadOutlined />}>{"\u4e0a\u4f20\u76d6\u7ae0\u6587\u4ef6\u5e76\u6807\u8bb0\u5df2\u76d6\u7ae0"}</Button></Upload></Card>}
         {["\u8349\u7a3f", "\u5df2\u62d2\u7edd", "\u5df2\u64a4\u56de"].includes(outgoingDetail.status) && <Button style={{ marginTop: 16 }} type="primary" onClick={() => submitOfficialOutgoing(outgoingDetail)}>{"\u63d0\u4ea4\u5ba1\u6279"}</Button>}
         <Card size="small" title="审批与办理记录" style={{ marginTop: 16 }}>
-          <Timeline items={outgoingHistory.map((item) => ({ color: item.to_status === "已通过" || item.to_status === "已盖章" ? "green" : item.to_status === "已拒绝" ? "red" : "blue", children: <div><b>{item.action}</b>{item.from_status && <span>　{item.from_status} → {item.to_status}</span>}<div style={{ color: "#999", fontSize: 12 }}>{item.operator} · {new Date(item.created_at).toLocaleString("zh-CN")}</div>{item.comment && <div>{item.comment}</div>}</div> }))} />
+          <Timeline items={outgoingHistory.map((item) => ({ color: item.to_status === "已通过" || item.to_status === "已盖章" ? "green" : item.to_status === "已拒绝" ? "red" : "blue", children: <div><b>{item.action}</b>{item.from_status && <span>　{item.from_status} → {item.to_status}</span>}<div style={{ color: "#999", fontSize: 12 }}>{personDisplayName(item.operator_display_name)} · {new Date(item.created_at).toLocaleString("zh-CN")}</div>{item.comment && <div>{item.comment}</div>}</div> }))} />
         </Card>
         </>}
       </Drawer>
@@ -2164,7 +2176,7 @@ export default function DocumentCenterPage({
                 {viewing.data.sender || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="负责人">
-                {viewing.owner}
+                {personDisplayName(viewing.owner_display_name)}
               </Descriptions.Item>
               <Descriptions.Item label="登记日期">
                 {viewing.data.registered_at || "—"}
@@ -2173,7 +2185,7 @@ export default function DocumentCenterPage({
                 {viewing.data.signed_at || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="签收/确认人">
-                {viewing.data.signer || "—"}
+                {personDisplayName(viewing.data.signer_display_name)}
               </Descriptions.Item>
               <Descriptions.Item label="归档编号">
                 {viewing.data.archive_no || "—"}
@@ -2220,7 +2232,7 @@ export default function DocumentCenterPage({
                     ellipsis: true,
                   },
                   { title: "分类", dataIndex: "category", width: 100 },
-                  { title: "上传人", dataIndex: "uploader", width: 80 },
+                  { title: "上传人", dataIndex: "uploader_display_name", width: 80, render: personDisplayName },
                   {
                     title: "操作",
                     width: 100,
@@ -2251,7 +2263,7 @@ export default function DocumentCenterPage({
                         </span>
                       )}
                       <div style={{ color: "#999", fontSize: 12 }}>
-                        {x.operator} ·{" "}
+                        {personDisplayName(x.operator_display_name)} ·{" "}
                         {new Date(x.created_at).toLocaleString("zh-CN")}
                       </div>
                       {x.comment && <div>{x.comment}</div>}
@@ -2276,7 +2288,7 @@ export default function DocumentCenterPage({
           <Descriptions.Item label="关联编号">{attachmentDetail.record_no || "公共文件"}</Descriptions.Item>
           <Descriptions.Item label="关联业务">{attachmentDetail.record_id ? <Button type="link" onClick={() => void openAttachmentRecord(attachmentDetail)}>{attachmentDetail.record_title || attachmentDetail.record_no || "查看关联业务"}</Button> : "公共文件"}</Descriptions.Item>
           <Descriptions.Item label="大小">{fileSize(attachmentDetail.size)}</Descriptions.Item>
-          <Descriptions.Item label="上传人">{attachmentDetail.uploader || "—"}</Descriptions.Item>
+          <Descriptions.Item label="上传人">{personDisplayName(attachmentDetail.uploader_display_name)}</Descriptions.Item>
           <Descriptions.Item label="上传时间">{attachmentDetail.created_at ? new Date(attachmentDetail.created_at).toLocaleString() : "—"}</Descriptions.Item>
           <Descriptions.Item label="备注">{attachmentDetail.remark || "—"}</Descriptions.Item>
         </Descriptions>}

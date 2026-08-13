@@ -56,12 +56,13 @@ test("system user modal keeps required fields and cancel semantics", () => {
 });
 
 test("system user personnel-name display never falls back to username", () => {
-  assert.match(pageSource, /PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"/);
+  assert.match(pageSource, /PERSON_NAME_PLACEHOLDER = "姓名待维护"/);
   assert.match(pageSource, /const personDisplayName = /);
+  assert.match(pageSource, /String\(row\?\.display_name \|\| ""\)\.trim\(\) \|\| PERSON_NAME_PLACEHOLDER/);
   assert.match(usersBlock, /renderPersonDisplayName\(_value, row\)/);
-  assert.match(pageSource, /display_name_missing/);
-  assert.match(pageSource, /请在修改入口补充中文姓名/);
   assert.match(usersBlock, /title=\{`重置密码：\$\{personDisplayName\(resettingUser \|\| undefined\)\}`\}/);
+  assert.doesNotMatch(pageSource, /hasChineseName/);
+  assert.doesNotMatch(pageSource, /label: item\.display_name \|\| item\.username/);
   assert.doesNotMatch(usersBlock, /display_name\s*\|\|\s*row\.username/);
 });
 

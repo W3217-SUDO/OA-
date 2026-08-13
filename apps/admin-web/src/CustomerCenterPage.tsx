@@ -1906,7 +1906,7 @@ export default function CustomerCenterPage({
             selectedRowKeys,
             onChange: setSelectedRowKeys,
           }}
-          scroll={{ x: 2100 }}
+          scroll={{ x: 2100, y: "calc(100dvh - 305px)" }}
           pagination={isOriginalCustomerList ? false : {
             pageSize: 15,
             showSizeChanger: true,

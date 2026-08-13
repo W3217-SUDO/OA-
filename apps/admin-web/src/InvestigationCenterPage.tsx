@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -15,9 +16,11 @@ import {
   Radio,
   Select,
   Space,
+  Steps,
   Table,
   Tabs,
   Tag,
+  Typography,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -59,6 +62,7 @@ type Attachment = {
   original_name: string;
   size: number;
   uploader: string;
+  uploader_display_name?: string;
   created_at: string;
 };
 type Contract = {
@@ -68,16 +72,28 @@ type Contract = {
   customer: string;
   status: string;
 };
+type ResolvedClueContract = {
+  clue_id: number;
+  clue_no?: string;
+  clue_title?: string;
+  customer?: string;
+  contract?: Contract | null;
+  error?: string;
+};
 type TaskRow = {
   id: number;
   serial_no: string;
   title: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
+  owner_display_name_missing?: boolean;
   deadline: string;
   priority: string;
   parent_task_id?: number;
   parent_task_no?: string;
+  investigation_no?: string;
+  data?: Record<string, unknown>;
 };
 type Profile = {
   username: string;
@@ -85,13 +101,61 @@ type Profile = {
   role: string;
   department?: string;
 };
+type PersonOption = {
+  value: string;
+  label: string;
+  username?: string;
+};
 type InvestigationActions = {
   review_clue: boolean;
   review_customer_clue: boolean;
   review_notary: boolean;
   register_notary_certificate: boolean;
 };
+type InvestigationBootstrapData = {
+  profile: Profile;
+  assignmentSupervisor: string;
+  notaryOfficeOptions: { value: string }[];
+  casePeopleOptions: PersonOption[];
+};
+let investigationBootstrapPromise: Promise<InvestigationBootstrapData> | null = null;
+const loadInvestigationBootstrap = () => {
+  if (!investigationBootstrapPromise) {
+    investigationBootstrapPromise = Promise.all([
+      api.get("/auth/me").then(({ data }) => data as Profile),
+      api.get("/investigations/assignment-supervisor")
+        .then(({ data }) => String(data.username || ""))
+        .catch(() => ""),
+      api.get("/system/parameters/options", { params: { category: "notary_office" } })
+        .then(({ data }) =>
+          (data.items || [])
+            .map((item: { name?: string }) => ({ value: String(item.name || "").trim() }))
+            .filter((item: { value: string }) => item.value),
+        )
+        .catch(() => [] as { value: string }[]),
+      api.get("/people/options")
+        .then(({ data }) => data.items || [])
+        .catch(() => [] as PersonOption[]),
+    ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions]) => ({
+      profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions,
+    })).catch((error) => {
+      investigationBootstrapPromise = null;
+      throw error;
+    });
+  }
+  return investigationBootstrapPromise;
+};
 type SubtaskLifecycleAction = "accept" | "complete";
+const investigationListView = (route: string) => {
+  if (route === "investigation-task-unassigned") return "assigned";
+  if (
+    route === "investigation-task-published" ||
+    route === "investigation-task-mine" ||
+    route === "investigation-task-overdue"
+  )
+    return "published";
+  return "";
+};
 const moduleMeta = {
   investigation: {
     title: "调查任务",
@@ -164,6 +228,10 @@ export default function InvestigationCenterPage({
     role: "",
   });
   const [assignmentSupervisor, setAssignmentSupervisor] = useState("");
+  const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<
+    { value: string }[]
+  >([]);
+  const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
   const [investigationActions, setInvestigationActions] = useState<
     Record<string, InvestigationActions>
   >({});
@@ -173,6 +241,8 @@ export default function InvestigationCenterPage({
   const [createOpen, setCreateOpen] = useState(false);
   const [investigationCreateOpen, setInvestigationCreateOpen] = useState(false);
   const [clueCreateOpen, setClueCreateOpen] = useState(false);
+  const [clueFiles, setClueFiles] = useState<File[]>([]);
+  const [collectionFiles, setCollectionFiles] = useState<File[]>([]);
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [clueReviewing, setClueReviewing] = useState<Row | null>(null);
   const [collectionTarget, setCollectionTarget] = useState<Row | null>(null);
@@ -191,7 +261,11 @@ export default function InvestigationCenterPage({
   >([]);
   const [selectedClues, setSelectedClues] = useState<number[]>([]);
   const [batchOpen, setBatchOpen] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [resolvedClueContracts, setResolvedClueContracts] = useState<
+    ResolvedClueContract[]
+  >([]);
+  const [contractOptions, setContractOptions] = useState<Contract[]>([]);
+  const [batchStep, setBatchStep] = useState(0);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [materialTarget, setMaterialTarget] = useState<Row | null>(null);
   const [materials, setMaterials] = useState<Attachment[]>([]);
@@ -228,6 +302,38 @@ export default function InvestigationCenterPage({
   const [editForm] = Form.useForm();
   const [assignForm] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const personDisplayName = (value: unknown) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "—";
+    const matched = casePeopleOptions.find(
+      (item) =>
+        item.username === raw ||
+        item.value === raw ||
+        item.label === raw,
+    );
+    return matched?.label || "姓名待维护";
+  };
+  const projectedPersonDisplayName = (displayName: unknown, username: unknown) => {
+    const projected = String(displayName || "").trim();
+    if (projected && projected !== String(username || "").trim()) return projected;
+    const matched = casePeopleOptions.find(
+      (item) =>
+        item.username === String(username || "").trim() ||
+        item.value === String(username || "").trim(),
+    );
+    return matched?.label || personDisplayName(username);
+  };
+  const systemPersonOptions = casePeopleOptions.map((item) => ({
+    value: item.username || item.value,
+    label: item.label,
+  }));
+  const systemPersonValue = (value: unknown) => {
+    const raw = String(value || "").trim();
+    const matched = casePeopleOptions.find(
+      (item) => item.username === raw || item.value === raw || item.label === raw,
+    );
+    return matched?.username || matched?.value || raw;
+  };
   const load = async (key = tab) => {
     setLoading(true);
     try {
@@ -239,7 +345,18 @@ export default function InvestigationCenterPage({
       const { data } =
         initialTab === "notary-query-files"
           ? await api.get("/investigations/notaries/files")
-          : await api.get("/records", { params: { module, page_size: 100 } });
+          : await api.get("/records", {
+              params: {
+                module,
+                page_size: 100,
+                scope:
+                  initialTab.startsWith("investigation-task-") &&
+                  !initialTab.startsWith("investigation-task-sub-")
+                    ? "mine"
+                    : "all",
+                investigation_view: investigationListView(initialTab),
+              },
+            });
       const loadedRows = data.items as Row[];
       setRows(loadedRows);
       setInvestigationActions({});
@@ -300,19 +417,17 @@ export default function InvestigationCenterPage({
       setCreateModule(initial);
       setListQuery({});
       setSelectedClues([]);
-      try {
-        const { data } = await api.get("/auth/me");
-        setProfile(data);
-      } catch {
-        message.error("当前登录身份加载失败，已按普通用户范围显示");
-      }
-      try {
-        const { data } = await api.get("/investigations/assignment-supervisor");
-        setAssignmentSupervisor(String(data.username || ""));
-      } catch {
-        setAssignmentSupervisor("");
-      }
-      await load(initial);
+      await Promise.all([
+        load(initial),
+        loadInvestigationBootstrap().then((bootstrapData) => {
+          setProfile(bootstrapData.profile);
+          setAssignmentSupervisor(bootstrapData.assignmentSupervisor);
+          setNotaryOfficeOptions(bootstrapData.notaryOfficeOptions);
+          setCasePeopleOptions(bootstrapData.casePeopleOptions);
+        }).catch(() =>
+          message.error("调查辅助数据加载失败，业务列表仍可正常使用"),
+        ),
+      ]);
     };
     void bootstrap();
   }, [initialTab]);
@@ -345,10 +460,6 @@ export default function InvestigationCenterPage({
         names.includes(String(row.data.publisher || row.owner || "")),
       );
     }
-    if (initialTab === "investigation-task-mine") {
-      const names = [profile.username, profile.display_name].filter(Boolean);
-      result = result.filter((row) => names.includes(row.owner));
-    }
     if (initialTab.startsWith("investigation-task-sub-"))
       result = result.filter((row) =>
         Boolean(
@@ -359,7 +470,8 @@ export default function InvestigationCenterPage({
       );
     if (
       initialTab === "investigation-task-sub-published" &&
-      profile.role !== "admin"
+      profile.role !== "admin" &&
+      Boolean(profile.username)
     ) {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
@@ -368,7 +480,8 @@ export default function InvestigationCenterPage({
     }
     if (
       initialTab === "investigation-task-sub-mine" &&
-      profile.role !== "admin"
+      profile.role !== "admin" &&
+      Boolean(profile.username)
     ) {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) => names.includes(row.owner));
@@ -471,7 +584,7 @@ export default function InvestigationCenterPage({
     });
     return result;
   }, [rows, initialTab, profile, listQuery]);
-  const create = async () => {
+  const create = async (submitAfterCreate = false) => {
     const values = await createForm.validateFields();
     const targetModule = createModule;
     const meta = moduleMeta[targetModule];
@@ -486,9 +599,9 @@ export default function InvestigationCenterPage({
               ? "待分配"
               : values.status;
     try {
-      await api.post("/investigations/records", {
+      const { data: created } = await api.post("/investigations/records", {
         module: targetModule,
-        serial_no: values.serial_no,
+        serial_no: targetModule === "clue" ? "" : values.serial_no,
         title: values.title,
         customer: values.customer || "",
         status: initialStatus,
@@ -533,14 +646,30 @@ export default function InvestigationCenterPage({
               : Boolean(values.customer_review),
         },
       });
+      if (targetModule === "clue" && clueFiles.length) {
+        for (const file of clueFiles) {
+          const form = new FormData();
+          form.append("file", file);
+          form.append("record_id", String(created.id));
+          form.append("category", "调查线索附件");
+          form.append("remark", "新建线索附件");
+          await api.post("/attachments", form);
+        }
+      }
+      if (targetModule === "clue" && submitAfterCreate) {
+        await api.post(`/investigations/clues/${created.id}/submit`, {
+          comment: "提交线索审批",
+        });
+      }
       message.success(`${meta.title}已创建`);
       setCreateOpen(false);
       setInvestigationCreateOpen(false);
       setClueCreateOpen(false);
       setCreateContextTask(null);
       setCreateModule(tab);
+      setClueFiles([]);
       createForm.resetFields();
-      load();
+      load(targetModule === "clue" ? "clue" : tab);
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail || error?.message || "创建失败",
@@ -583,17 +712,30 @@ export default function InvestigationCenterPage({
   };
   const registerCollection = async () => {
     if (!collectionTarget) return;
+    const uploadedIds: number[] = [];
     try {
       const v = await collectionForm.validateFields();
+      for (const file of collectionFiles) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("record_id", String(collectionTarget.id));
+        form.append("category", "取证文件");
+        form.append("remark", "线索取证登记附件");
+        const { data } = await api.post("/attachments", form);
+        uploadedIds.push(data.id);
+      }
       await api.post(`/investigations/clues/${collectionTarget.id}/collect`, {
         ...v,
+        evidence_file_ids: uploadedIds,
         collected_at: formatRequiredDate(v.collected_at, "取证日期"),
       });
       message.success("取证信息已登记，线索进入已取证");
       setCollectionTarget(null);
       collectionForm.resetFields();
+      setCollectionFiles([]);
       load("clue");
     } catch (error: any) {
+      await Promise.all(uploadedIds.map((id) => api.delete(`/attachments/${id}`)));
       if (error?.errorFields) return;
       message.error(
         error?.response?.data?.detail || error?.message || "取证登记失败",
@@ -746,8 +888,8 @@ export default function InvestigationCenterPage({
             发票号:
               initialTab === "notary-import-invoices" ? data.reference_no : "",
             线索编号: "",
-            调查员: data.attachment?.uploader,
-            处理人: data.attachment?.uploader,
+            调查员: projectedPersonDisplayName(data.attachment?.uploader_display_name, data.attachment?.uploader),
+            处理人: projectedPersonDisplayName(data.attachment?.uploader_display_name, data.attachment?.uploader),
             导入时间: data.attachment?.created_at,
           },
         ]);
@@ -762,7 +904,7 @@ export default function InvestigationCenterPage({
             id: row.id,
             来源线索编号: row.data.clue_no,
             公证标题: row.title,
-            负责人: row.owner,
+            负责人: projectedPersonDisplayName(row.owner_display_name, row.owner),
             审核截止日: row.data.review_due_date,
             公证书编号: row.data.certificate_no,
             签发日期: row.data.certificate_issued_date,
@@ -794,22 +936,43 @@ export default function InvestigationCenterPage({
       return;
     }
     try {
-      const { data } = await api.get("/records", {
-        params: { module: "contract", page_size: 100 },
+      const { data } = await api.post("/investigations/clues/case-contracts", {
+        clue_ids: selectedClues,
       });
-      setContracts(
-        data.items.filter(
-          (x: Contract) =>
-            !["草稿", "审批中", "已拒绝", "已撤回", "已作废"].includes(
-              x.status,
-            ),
-        ),
-      );
+      const unresolved = (data.items || []).find(
+        (item: ResolvedClueContract) => !item.contract,
+      ) as ResolvedClueContract | undefined;
+      if (unresolved && selectedClues.length === 1) {
+        const { data: contractData } = await api.get("/records", {
+          params: { module: "contract", page_size: 100 },
+        });
+        setContractOptions(
+          contractData.items.filter(
+            (contract: Contract) =>
+              ["审批中", "已通过", "履行中", "已完成"].includes(
+                contract.status,
+              ) && contract.customer === unresolved.customer,
+          ),
+        );
+      } else {
+        setContractOptions([]);
+      }
+      setResolvedClueContracts(data.items || []);
       batchForm.resetFields();
-      batchForm.setFieldsValue({ case_type: "民事案件" });
+      const selectedRows = rows.filter((row) => selectedClues.includes(row.id));
+      const firstClue = selectedRows[0];
+      batchForm.setFieldsValue({
+        case_type: "民事案件",
+        client_position: firstClue?.data.client_position || "原告",
+        cause_or_charge: firstClue?.data.cause_or_charge || firstClue?.data.cause || "",
+        case_phase: "等待公证书",
+        handling_lawyer: profile.display_name || profile.username || "",
+        assistant: "",
+      });
+      setBatchStep(0);
       setBatchOpen(true);
-    } catch {
-      message.error("可用合同加载失败");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "来源任务关联合同解析失败");
     }
   };
   const batchCases = async () => {
@@ -829,9 +992,35 @@ export default function InvestigationCenterPage({
       else message.success(`已生成 ${data.created} 个待分配案件`);
       setBatchOpen(false);
       setSelectedClues([]);
+      setResolvedClueContracts([]);
+      setBatchStep(0);
       load("clue");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "批量转案失败");
+    }
+  };
+  const bindMissingSourceContract = async () => {
+    if (selectedClues.length !== 1) {
+      message.warning("请一次只选择一条缺少合同绑定的历史线索");
+      return;
+    }
+    try {
+      const values = await batchForm.validateFields(["source_contract_record_id"]);
+      await api.post(
+        `/investigations/clues/${selectedClues[0]}/bind-source-contract`,
+        { contract_record_id: values.source_contract_record_id },
+      );
+      const { data } = await api.post("/investigations/clues/case-contracts", {
+        clue_ids: selectedClues,
+      });
+      setResolvedClueContracts(data.items || []);
+      setContractOptions([]);
+      batchForm.setFieldValue("source_contract_record_id", undefined);
+      message.success("已绑定到来源调查任务，后续将自动带入合同");
+      load("clue");
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.response?.data?.detail || "来源任务合同绑定失败");
     }
   };
   const openMaterials = async (row: Row) => {
@@ -1078,23 +1267,33 @@ export default function InvestigationCenterPage({
   };
   const openTasks = async (row: Row, createSubtask = false) => {
     try {
-      const { data } = await api.get(`/investigations/${row.id}/tasks`);
+      const [{ data }, { data: contractData }] = await Promise.all([
+        api.get(`/investigations/${row.id}/tasks`),
+        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+      ]);
       const existingTasks = data.items as TaskRow[];
-      const hasParent = existingTasks.length > 0;
       setTaskTarget(row);
       setTasks(existingTasks);
-      setCreatingSubtask(createSubtask && hasParent);
+      setCreatingSubtask(createSubtask);
       taskForm.resetFields();
       taskForm.setFieldsValue({
-        owner: row.owner,
         priority: "普通",
-        parent_task_id:
-          createSubtask && hasParent ? existingTasks[0].id : undefined,
+        start_date: row.data.authorized_from ? dayjs(String(row.data.authorized_from)) : undefined,
+        end_date: row.data.authorized_to ? dayjs(String(row.data.authorized_to)) : undefined,
+        deadline: row.data.authorized_to ? dayjs(String(row.data.authorized_to)) : undefined,
+        province: row.data.province || "",
+        city: row.data.city || "",
+        district: row.data.district || "",
+        contract_record_id:
+          row.data.contract_id || row.data.contract_record_id || undefined,
       });
-      if (createSubtask && !hasParent)
-        message.info(
-          "当前调查尚无任务，先创建首个调查任务；后续“新增子任务”将自动关联该任务",
-        );
+      setContractOptions(
+        contractData.items.filter(
+          (contract: Contract) =>
+            ["审批中", "已通过", "履行中", "已完成"].includes(contract.status) &&
+            contract.customer === row.customer,
+        ),
+      );
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "调查任务加载失败");
     }
@@ -1106,12 +1305,24 @@ export default function InvestigationCenterPage({
       await api.post(`/investigations/${taskTarget.id}/tasks`, {
         ...v,
         deadline: formatRequiredDate(v.deadline, "截止日期"),
+        start_date: v.start_date ? formatRequiredDate(v.start_date, "开始日期") : undefined,
+        end_date: v.end_date ? formatRequiredDate(v.end_date, "结束日期") : undefined,
       });
-      message.success(v.parent_task_id ? "子任务已创建" : "调查任务已创建");
+      message.success("子任务已创建");
       const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
       setTasks(data.items);
       taskForm.resetFields();
-      taskForm.setFieldsValue({ owner: taskTarget.owner, priority: "普通" });
+      taskForm.setFieldsValue({
+        priority: "普通",
+        start_date: taskTarget.data.authorized_from ? dayjs(String(taskTarget.data.authorized_from)) : undefined,
+        end_date: taskTarget.data.authorized_to ? dayjs(String(taskTarget.data.authorized_to)) : undefined,
+        deadline: taskTarget.data.authorized_to ? dayjs(String(taskTarget.data.authorized_to)) : undefined,
+        province: taskTarget.data.province || "",
+        city: taskTarget.data.city || "",
+        district: taskTarget.data.district || "",
+        contract_record_id:
+          taskTarget.data.contract_id || taskTarget.data.contract_record_id || undefined,
+      });
     } catch (error: any) {
       if (error?.errorFields) {
         const name = String(error.errorFields[0]?.name?.[0] || "");
@@ -1119,7 +1330,6 @@ export default function InvestigationCenterPage({
           title: "任务名称",
           owner: "负责人",
           deadline: "截止日期",
-          parent_task_id: "父任务",
         };
         taskForm.scrollToField(error.errorFields[0].name);
         message.warning(`请填写${labels[name] || "必填信息"}后再创建任务`);
@@ -1332,11 +1542,14 @@ export default function InvestigationCenterPage({
             r.data.notary_institution,
             r.data.clue_no,
             r.data.case_no,
-            r.owner,
+            projectedPersonDisplayName(r.owner_display_name, r.owner),
             r.data.document_type,
             r.data.shop_name,
             r.customer,
-            r.data.handler,
+            projectedPersonDisplayName(
+              r.data.handler_display_name,
+              r.data.handler,
+            ),
             r.data.certificate_no,
             r.data.imported_at,
           ][index];
@@ -1392,6 +1605,14 @@ export default function InvestigationCenterPage({
           ),
         },
         {
+          title: "父调查编号",
+          width: 170,
+          render: (_: unknown, r: Row) => {
+            const no = String(r.data.parent_task_no || r.data.investigation_no || "");
+            return no ? <Button type="link" onClick={() => void openLinkedInvestigation(no, r.data.parent_task_no ? "task" : "investigation")}>{no}</Button> : "—";
+          },
+        },
+        {
           title: "权利人",
           dataIndex: "customer",
           width: 180,
@@ -1412,7 +1633,7 @@ export default function InvestigationCenterPage({
           width: 100,
           render: (_: unknown, r: Row) => r.data.right_type || "—",
         },
-          { title: "调查员", width: 100, render: (_: unknown, r: Row) => r.owner_display_name || r.owner || "—" },
+          { title: "调查员", width: 100, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
         {
           title: "调查区域",
           width: 160,
@@ -1422,17 +1643,19 @@ export default function InvestigationCenterPage({
         {
           title: "开始时间",
           width: 110,
-          render: (_: unknown, r: Row) => r.data.started_at || "—",
+          render: (_: unknown, r: Row) =>
+            r.data.started_at || r.data.authorized_from || "—",
         },
         {
           title: "结束时间",
           width: 110,
-          render: (_: unknown, r: Row) => r.data.ended_at || "—",
+          render: (_: unknown, r: Row) =>
+            r.data.ended_at || r.data.authorized_to || r.data.deadline || "—",
         },
         {
           title: "案源人",
           width: 100,
-          render: (_: unknown, r: Row) => r.data.source_owner_display_name || r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || personDisplayName(r.data.source_owner),
         },
         {
           title: "状态",
@@ -1531,13 +1754,13 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 100,
-          render: (_: unknown, r: Row) => r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || personDisplayName(r.data.source_owner),
         },
         {
           title: "任务分配人",
           width: 110,
           render: (_: unknown, r: Row) =>
-            r.data.assigner_display_name || r.data.assigned_by_display_name || r.data.assigner || r.data.assigned_by || "—",
+            r.data.assigner_display_name || r.data.assigned_by_display_name || personDisplayName(r.data.assigner || r.data.assigned_by),
         },
       ];
     if (initialTab.startsWith("clue-"))
@@ -1551,23 +1774,6 @@ export default function InvestigationCenterPage({
               {value}
             </Button>
           ),
-        },
-        {
-          title: "来源调查任务",
-          width: 170,
-          render: (_: unknown, r: Row) =>
-            r.data.source_task_no ? (
-              <Button
-                type="link"
-                onClick={() =>
-                  openLinkedInvestigation(String(r.data.source_task_no), "task")
-                }
-              >
-                {String(r.data.source_task_no)}
-              </Button>
-            ) : (
-              "—"
-            ),
         },
         {
           title: "案件编号",
@@ -1584,7 +1790,7 @@ export default function InvestigationCenterPage({
               "—"
             ),
         },
-        { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || r.owner || "—" },
+        { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
         {
           title: "调查时间",
           width: 110,
@@ -1636,7 +1842,7 @@ export default function InvestigationCenterPage({
         {
           title: "案源人",
           width: 95,
-          render: (_: unknown, r: Row) => r.data.source_owner_display_name || r.data.source_owner || "—",
+          render: (_: unknown, r: Row) => r.data.source_owner_display_name || personDisplayName(r.data.source_owner),
         },
         {
           title: "客户管理人",
@@ -1706,7 +1912,13 @@ export default function InvestigationCenterPage({
         width: 100,
         render: (v: string) => <Tag color={statusColors[v] || "blue"}>{v}</Tag>,
       },
-      { title: "负责人", dataIndex: "owner", width: 90 },
+      {
+        title: "负责人",
+        dataIndex: "owner",
+        width: 90,
+        render: (_: unknown, row: Row) =>
+          projectedPersonDisplayName(row.owner_display_name, row.owner),
+      },
     ];
     const materialButton = (r: Row) => (
       <Button
@@ -1831,6 +2043,7 @@ export default function InvestigationCenterPage({
                   type="link"
                   onClick={() => {
                     collectionForm.resetFields();
+                    setCollectionFiles([]);
                     setCollectionTarget(r);
                   }}
                 >
@@ -2153,12 +2366,12 @@ export default function InvestigationCenterPage({
         setCreateContextTask(row);
         setCreateModule("clue");
         createForm.setFieldsValue({
-          serial_no: serial("XS"),
+          serial_no: "自动生成",
           status: "草稿",
           owner: row.owner,
           customer: row.customer,
           right_type: row.data.right_type || "商标",
-          source_owner: row.data.source_owner || "",
+          source_owner: systemPersonValue(row.data.source_owner),
           region: row.data.region || "",
           address: row.data.address || "",
           platform: "",
@@ -2536,36 +2749,54 @@ export default function InvestigationCenterPage({
         {
           key: "owner",
           label: "调查员",
-          children: investigationDetail.owner || "—",
+          children: projectedPersonDisplayName(
+            investigationDetail.owner_display_name,
+            investigationDetail.owner,
+          ),
         },
         {
           key: "region",
           label: "调查区域",
-          children: investigationDetail.data.region || "—",
+          children: investigationDetail.data.region || [investigationDetail.data.province, investigationDetail.data.city, investigationDetail.data.district].filter(Boolean).join(" ") || "—",
         },
         {
-          key: "authorized-from",
-          label: "授权开始",
-          children: investigationDetail.data.authorized_from || "—",
+          key: "started-at",
+          label: "开始时间",
+          children: investigationDetail.data.started_at || investigationDetail.data.start_date || investigationDetail.data.authorized_from || "—",
         },
         {
-          key: "authorized-to",
-          label: "授权结束",
-          children: investigationDetail.data.authorized_to || "—",
+          key: "ended-at",
+          label: "结束时间",
+          children: investigationDetail.data.ended_at || investigationDetail.data.end_date || investigationDetail.data.deadline || investigationDetail.data.authorized_to || "—",
         },
         {
           key: "source-owner",
           label: "案源人",
-          children: investigationDetail.data.source_owner || "—",
+          children: projectedPersonDisplayName(
+            investigationDetail.data.source_owner_display_name,
+            investigationDetail.data.source_owner,
+          ),
         },
         {
           key: "assigner",
           label: "任务分配人",
           children:
-            investigationDetail.data.assigner ||
-            investigationDetail.data.assigned_by ||
-            "—",
+            projectedPersonDisplayName(
+              investigationDetail.data.assigner_display_name ||
+                investigationDetail.data.assigned_by_display_name,
+              investigationDetail.data.assigner ||
+                investigationDetail.data.assigned_by,
+            ),
         },
+        ...((investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)
+          ? [{
+              key: "parent-investigation",
+              label: "父调查编号",
+              children: <Button className="business-relation-link" type="link" onClick={() => void openLinkedInvestigation(String(investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no), investigationDetail.data.parent_task_no ? "task" : "investigation")}>
+                {String(investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)}
+              </Button>,
+            }]
+          : []),
         ...(investigationDetail.data.source_task_no
           ? [
               {
@@ -2740,9 +2971,11 @@ export default function InvestigationCenterPage({
                 key: "assistant",
                 label: "调查辅助",
                 children:
-                  investigationDetail.data.investigation_assistant ||
-                  investigationDetail.data.assistant ||
-                  "—",
+                  projectedPersonDisplayName(
+                    investigationDetail.data.investigation_assistant_display_name,
+                    investigationDetail.data.investigation_assistant ||
+                      investigationDetail.data.assistant,
+                  ),
               },
               {
                 key: "collected-at",
@@ -2852,7 +3085,7 @@ export default function InvestigationCenterPage({
         title="新建调查任务"
         okText="保存调查任务"
         cancelText="取消"
-        onOk={create}
+        onOk={() => void create()}
         onCancel={() => {
           setInvestigationCreateOpen(false);
           setCreateContextTask(null);
@@ -2874,7 +3107,11 @@ export default function InvestigationCenterPage({
               name="owner"
               rules={[{ required: true, message: "请填写负责人" }]}
             >
-              <Input />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item
               className="span-2"
@@ -2890,7 +3127,12 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="案源人" name="source_owner">
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item
               label="调查区域"
@@ -2951,13 +3193,20 @@ export default function InvestigationCenterPage({
       <Modal
         open={clueCreateOpen}
         title="新建调查线索"
-        okText="保存"
         cancelText="取消"
-        onOk={create}
+        footer={
+          <Space>
+            <Button onClick={() => void create(false)}>暂存线索</Button>
+            <Button type="primary" onClick={() => void create(true)}>
+              提交审批
+            </Button>
+          </Space>
+        }
         onCancel={() => {
           setClueCreateOpen(false);
           setCreateContextTask(null);
           setCreateModule(tab);
+          setClueFiles([]);
           createForm.resetFields();
         }}
       >
@@ -2966,12 +3215,16 @@ export default function InvestigationCenterPage({
             <Form.Item
               label="线索编号"
               name="serial_no"
-              rules={[{ required: true }]}
             >
-              <Input />
+              <Input disabled />
             </Form.Item>
-            <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-              <Input />
+            <Form.Item label="调查员" name="owner" rules={[{ required: true }]}>
+              <Select
+                disabled
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item
               className="span-2"
@@ -3032,7 +3285,13 @@ export default function InvestigationCenterPage({
               <Input placeholder="主体信息" />
             </Form.Item>
             <Form.Item label="调查辅助员" name="investigation_assistant">
-              <Input placeholder="调查辅助员" />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="请选择系统人员"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item label="权利类型" name="right_type">
               <Select
@@ -3042,10 +3301,30 @@ export default function InvestigationCenterPage({
               />
             </Form.Item>
             <Form.Item label="案源人" name="source_owner">
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item label="调查区域" name="region">
               <Input />
+            </Form.Item>
+            <Form.Item label="附件">
+              <input
+                multiple
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.zip,.rar"
+                onChange={(event) =>
+                  setClueFiles(Array.from(event.target.files || []))
+                }
+              />
+              <Typography.Text type="secondary">
+                {clueFiles.length
+                  ? `已选择 ${clueFiles.length} 个文件`
+                  : "可上传调查线索相关材料"}
+              </Typography.Text>
             </Form.Item>
             <Form.Item className="span-2" label="说明" name="description">
               <Input.TextArea rows={3} />
@@ -3188,7 +3467,7 @@ export default function InvestigationCenterPage({
                     }
                   : undefined
               }
-              scroll={{ x: tableScrollX }}
+              scroll={{ x: tableScrollX, y: "calc(100dvh - 395px)" }}
               pagination={{ pageSize: 20, showTotal: (n) => `共 ${n} 条` }}
               locale={{ emptyText: "没有查询到符合条件的记录" }}
             />
@@ -3213,7 +3492,7 @@ export default function InvestigationCenterPage({
         title={`新增${meta.title}`}
         okText="保存"
         cancelText="取消"
-        onOk={create}
+        onOk={() => void create()}
         onCancel={() => setCreateOpen(false)}
       >
         <Form form={createForm} layout="vertical">
@@ -3242,7 +3521,12 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <Form.Item label="负责人" name="owner">
-              <Input />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             {tab === "clue" && (
               <>
@@ -3283,7 +3567,13 @@ export default function InvestigationCenterPage({
           {clueReviewing?.status === "待客户审核" && (
             <div className="form-grid audit-reference">
               <Form.Item label="上一级审核员">
-                <Input value={clueReviewing.data.reviewer || "—"} readOnly />
+                <Input
+                  value={projectedPersonDisplayName(
+                    clueReviewing.data.reviewer_display_name,
+                    clueReviewing.data.reviewer,
+                  )}
+                  readOnly
+                />
               </Form.Item>
               <Form.Item label="上一级审核意见">
                 <Input.TextArea
@@ -3328,9 +3618,40 @@ export default function InvestigationCenterPage({
         okText="确认已取证"
         cancelText="取消"
         onOk={registerCollection}
-        onCancel={() => setCollectionTarget(null)}
+        onCancel={() => {
+          setCollectionTarget(null);
+          setCollectionFiles([]);
+        }}
       >
         <Form form={collectionForm} layout="vertical">
+          <Form.Item
+            label="取证机构"
+            name="notary_institution"
+            rules={[{ required: true, min: 2 }]}
+          >
+            <AutoComplete
+            options={Array.from(
+              new Set([
+                ...notaryOfficeOptions.map((item) => item.value),
+                ...rows
+                  .map((row) => String(row.data.notary_institution || "").trim())
+                  .filter(Boolean),
+              ]),
+            ).map((value) => ({ value }))}
+              filterOption={(input, option) =>
+                String(option?.value || "").includes(input)
+              }
+              placeholder="输入关键词选择或填写取证机构"
+            />
+          </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="公证书号" name="notarization_no">
+              <Input />
+            </Form.Item>
+            <Form.Item label="发票号码" name="invoice_no">
+              <Input />
+            </Form.Item>
+          </div>
           <Form.Item
             label="取证日期"
             name="collected_at"
@@ -3338,12 +3659,23 @@ export default function InvestigationCenterPage({
           >
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item
-            label="公证机构"
-            name="notary_institution"
-            rules={[{ required: true, min: 2 }]}
-          >
-            <Input placeholder="例如：上海市东方公证处" />
+          <div className="form-grid">
+            <Form.Item label="证物存放处" name="storage_location">
+              <Input placeholder="例如：档案室 A-01" />
+            </Form.Item>
+            <Form.Item label="证物状态" name="evidence_status" initialValue="未入库">
+              <Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} />
+            </Form.Item>
+          </div>
+          <Form.Item label="证据文件">
+            <input
+              type="file"
+              multiple
+              onChange={(event) =>
+                setCollectionFiles(Array.from(event.target.files || []))
+              }
+            />
+            {collectionFiles.length > 0 && <div>已选择 {collectionFiles.length} 个文件</div>}
           </Form.Item>
           <Form.Item label="取证说明" name="comment">
             <Input.TextArea rows={3} />
@@ -3364,7 +3696,11 @@ export default function InvestigationCenterPage({
           </Form.Item>
           <div className="form-grid">
             <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-              <Input />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={systemPersonOptions}
+              />
             </Form.Item>
             <Form.Item label="材料来源" name="source">
               <Input />
@@ -3491,43 +3827,89 @@ export default function InvestigationCenterPage({
       </Modal>
       <Modal
         open={batchOpen}
-        title={`已取证线索批量转案件（已选 ${selectedClues.length} 条）`}
-        okText="生成等待公证书案件"
+        title={`已取证线索生成案件（已选 ${selectedClues.length} 条）`}
+        okText={batchStep === 0 ? "下一步" : "生成案件"}
         cancelText="取消"
-        onOk={batchCases}
-        onCancel={() => setBatchOpen(false)}
+        onOk={() => {
+          if (batchStep === 0) setBatchStep(1);
+          else void batchCases();
+        }}
+        onCancel={() => {
+          setBatchOpen(false);
+          setBatchStep(0);
+          setResolvedClueContracts([]);
+        }}
       >
+        <Steps current={batchStep} size="small" items={[{ title: "基本信息" }, { title: "生成结果" }]} style={{ marginBottom: 20 }} />
         <Alert
           type="info"
           showIcon
-          title="只有已取证线索可转案；每条线索生成一个等待公证书案件，客户必须与所选合同一致。"
+          title="合同由线索来源调查任务自动绑定；每条已取证线索生成一个新案待分配案件。"
           style={{ marginBottom: 15 }}
         />
         <Form form={batchForm} layout="vertical">
-          <Form.Item
-            label="关联合同"
-            name="contract_record_id"
-            rules={[{ required: true }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={contracts.map((x) => ({
-                value: x.id,
-                label: `${x.serial_no}｜${x.customer}｜${x.title}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label="案件类型" name="case_type">
-            <Select
-              options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
-                (v) => ({ value: v, label: v }),
-              )}
-            />
-          </Form.Item>
-          <Form.Item label="拟管辖法院" name="court">
-            <Input />
-          </Form.Item>
+          {batchStep === 0 && <>
+            <Descriptions size="small" bordered column={1} items={resolvedClueContracts.map((item) => ({ key: item.clue_id, label: `${item.clue_no || "线索"}｜${item.customer || ""}`, children: item.contract ? `${item.contract.serial_no}｜${item.contract.title}` : item.error || "未解析到合同" }))} />
+            {resolvedClueContracts.some((item) => !item.contract) && (
+              selectedClues.length === 1 && contractOptions.length > 0 ? (
+                <>
+                  <Form.Item
+                    label="补充来源任务合同（可选）"
+                    name="source_contract_record_id"
+                    style={{ marginTop: 16 }}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="仅列出该客户可用合同"
+                      options={contractOptions.map((contract) => ({
+                        value: contract.id,
+                        label: `${contract.serial_no}｜${contract.title}`,
+                      }))}
+                    />
+                  </Form.Item>
+                  <Button onClick={() => void bindMissingSourceContract()}>
+                    绑定并自动带入
+                  </Button>
+                </>
+              ) : (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="来源调查任务未自动关联合同"
+                  description="本次可继续生成案件；案件将保留客户和线索关联，合同关联可在后续补全。"
+                  style={{ marginTop: 16 }}
+                />
+              )
+            )}
+            <Alert type="info" showIcon title="案件名称默认由客户名称、案由和线索店铺/事项名称组成；调查员默认从线索带入。" style={{ marginTop: 16 }} />
+            <Form.Item label="客户诉讼地位" name="client_position" rules={[{ required: true }]} style={{ marginTop: 16 }}>
+              <Select options={["原告", "被告", "第三人", "申请人", "被申请人"].map((v) => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="案由" name="cause_or_charge" rules={[{ required: true, message: "请填写案由" }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item label="案件阶段" name="case_phase" rules={[{ required: true }]}>
+              <Select options={["等待公证书", "新案待分配", "文书准备"].map((v) => ({ value: v, label: v }))} />
+            </Form.Item>
+            <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请选择经办律师" }]}>
+              <Select showSearch optionFilterProp="label" options={casePeopleOptions} placeholder="请选择系统人员" />
+            </Form.Item>
+            <Form.Item label="律师助理" name="assistant">
+              <Select allowClear showSearch optionFilterProp="label" options={casePeopleOptions} placeholder="请选择系统人员" />
+            </Form.Item>
+            <Form.Item label="案件类型" name="case_type">
+              <Select
+                options={["民事案件", "刑事案件", "行政案件", "仲裁案件"].map(
+                  (v) => ({ value: v, label: v }),
+                )}
+              />
+            </Form.Item>
+            <Form.Item label="拟管辖法院" name="court">
+              <Input />
+            </Form.Item>
+          </>}
+          {batchStep === 1 && <Descriptions size="small" bordered column={1} items={[{ key: "status", label: "生成后案件阶段", children: batchForm.getFieldValue("case_phase") || "等待公证书" }, { key: "result", label: "关联规则", children: "客户、合同、线索及来源任务信息将自动带入案件" }]} />}
         </Form>
       </Modal>
       <Modal
@@ -3563,7 +3945,16 @@ export default function InvestigationCenterPage({
               width: 90,
               render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
             },
-            { title: "上传人", dataIndex: "uploader", width: 85 },
+            {
+              title: "上传人",
+              dataIndex: "uploader",
+              width: 85,
+              render: (_: unknown, row: Attachment) =>
+                projectedPersonDisplayName(
+                  row.uploader_display_name,
+                  row.uploader,
+                ),
+            },
             {
               title: "操作",
               key: "action",
@@ -3652,13 +4043,35 @@ export default function InvestigationCenterPage({
               ellipsis: { showTitle: true },
             },
             {
-              title: "父任务",
+              title: "父调查任务",
               dataIndex: "parent_task_no",
               width: 150,
-              render: (v: string) => v || "—",
+              render: (v: string, row: TaskRow) =>
+                v || row.investigation_no || taskTarget?.serial_no || "—",
             },
-            { title: "负责人", dataIndex: "owner", width: 90 },
-            { title: "截止日", dataIndex: "deadline", width: 110 },
+            {
+              title: "负责人",
+              dataIndex: "owner",
+              width: 90,
+              render: (_value: unknown, row: TaskRow) =>
+                row.owner_display_name || personDisplayName(row.owner),
+            },
+            {
+              title: "调查区域",
+              width: 160,
+              render: (_value: unknown, row: TaskRow) =>
+                row.data?.region || [row.data?.province, row.data?.city, row.data?.district].filter(Boolean).join(" ") || "—",
+            },
+            {
+              title: "开始时间",
+              width: 110,
+              render: (_value: unknown, row: TaskRow) => row.data?.start_date || row.data?.authorized_from || "—",
+            },
+            {
+              title: "结束时间",
+              width: 110,
+              render: (_value: unknown, row: TaskRow) => row.data?.end_date || row.deadline || row.data?.authorized_to || "—",
+            },
             {
               title: "状态",
               dataIndex: "status",
@@ -3687,12 +4100,50 @@ export default function InvestigationCenterPage({
               <Input />
             </Form.Item>
             <div className="form-grid">
+              {!taskTarget?.data.contract_id &&
+                !taskTarget?.data.contract_record_id && (
+                  <Form.Item
+                    label="关联合同"
+                    name="contract_record_id"
+                    rules={[{ required: true, message: "请绑定与调查客户一致的合同" }]}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="选择后将固定绑定到调查任务"
+                      options={contractOptions.map((contract) => ({
+                        value: contract.id,
+                        label: `${contract.serial_no}｜${contract.title}`,
+                      }))}
+                    />
+                  </Form.Item>
+                )}
               <Form.Item
                 label="负责人"
                 name="owner"
                 rules={[{ required: true }]}
               >
-                <Input />
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="请选择系统人员"
+                  options={casePeopleOptions.map((item) => ({
+                    value: item.username || item.value,
+                    label: item.label || item.value,
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
+                label="开始日期"
+                name="start_date"
+              >
+                <DatePicker style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item
+                label="结束日期"
+                name="end_date"
+              >
+                <DatePicker style={{ width: "100%" }} />
               </Form.Item>
               <Form.Item
                 label="截止日期"
@@ -3709,29 +4160,17 @@ export default function InvestigationCenterPage({
                   }))}
                 />
               </Form.Item>
-              <Form.Item
-                label={creatingSubtask ? "父任务" : "父任务（留空为主任务）"}
-                name="parent_task_id"
-                rules={
-                  creatingSubtask
-                    ? [{ required: true, message: "请选择父任务" }]
-                    : []
-                }
-              >
-                <Select
-                  allowClear={!creatingSubtask}
-                  options={tasks.map((x) => ({
-                    value: x.id,
-                    label: `${x.serial_no}｜${x.title}`,
-                  }))}
-                />
-              </Form.Item>
+            </div>
+            <div className="form-grid">
+              <Form.Item label="省份" name="province"><Input /></Form.Item>
+              <Form.Item label="城市" name="city"><Input /></Form.Item>
+              <Form.Item label="区县" name="district"><Input /></Form.Item>
             </div>
             <Form.Item label="任务说明" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
             <Button type="primary" onClick={createTask}>
-              {creatingSubtask ? "创建子任务" : "创建调查任务"}
+              创建子任务
             </Button>
           </Form>
         </Card>
@@ -3777,7 +4216,7 @@ export default function InvestigationCenterPage({
               name="owner"
               rules={[{ required: true }]}
             >
-              <Input disabled />
+              <Select disabled options={systemPersonOptions} />
             </Form.Item>
             <Form.Item label="调查区域" name="region">
               <Input />
@@ -3849,11 +4288,15 @@ export default function InvestigationCenterPage({
       >
         <Form form={assignForm} layout="vertical">
           <Form.Item
-            label="调查员账号"
+            label="调查员"
             name="investigator"
             rules={[{ required: true, min: 1 }]}
           >
-            <Input />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={systemPersonOptions}
+            />
           </Form.Item>
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
@@ -3940,7 +4383,14 @@ export default function InvestigationCenterPage({
                     label: "法院",
                     children: linkedCase.data.court || "—",
                   },
-                  { key: "owner", label: "负责人", children: linkedCase.owner },
+                  {
+                    key: "owner",
+                    label: "负责人",
+                    children: projectedPersonDisplayName(
+                      linkedCase.owner_display_name,
+                      linkedCase.owner,
+                    ),
+                  },
                   {
                     key: "description",
                     label: "说明",

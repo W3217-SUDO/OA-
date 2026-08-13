@@ -10,10 +10,11 @@ import {rememberInvestigationDetailTarget} from './investigationDetailNavigation
 type Template={id:number;name:string;category:string;is_active:boolean}
 type RecordOption={id:number;serial_no:string;title:string;module:string}
 type JobCapabilities={can_download:boolean;can_edit:boolean;can_retry:boolean;can_confirm:boolean;can_writeback:boolean;can_delete:boolean}
-type Job={id:number;job_no:string;template_id:number;template_name:string;record_id:number|null;record_no:string;record_title:string;title:string;instruction:string;content:string;status:string;content_version:number;confirmed_by:string;confirmed_at:string|null;error:string;creator:string;created_at:string;updated_at:string;capabilities:JobCapabilities;provider_configured?:boolean;generation_mode?:'dify'|'outline';operation_result?:'outline_created'|'document_generated'|'generation_failed'|'generation_pending'}
+type Job={id:number;job_no:string;template_id:number;template_name:string;record_id:number|null;record_no:string;record_title:string;title:string;instruction:string;content:string;status:string;content_version:number;confirmed_by:string;confirmed_by_display_name?:string;confirmed_at:string|null;error:string;creator:string;creator_display_name?:string;created_at:string;updated_at:string;capabilities:JobCapabilities;provider_configured?:boolean;generation_mode?:'dify'|'outline';operation_result?:'outline_created'|'document_generated'|'generation_failed'|'generation_pending'}
 
 const colors:Record<string,string>={'已生成':'green','已编辑':'blue','已人工确认':'cyan','生成中':'orange','待配置':'default','生成失败':'red'}
 const recordModuleLabels:Record<string,string>={case:'案件',contract:'合同',customer:'客户',clue:'调查线索',notary:'公证信息',evidence:'证物'}
+const personDisplayName=(value?:unknown)=>String(value||'').trim()||'姓名待维护'
 
 export default function AgentDocumentPage({onNavigate}:{onNavigate?:(route:string)=>void}){
  const [jobs,setJobs]=useState<Job[]>([]),[templates,setTemplates]=useState<Template[]>([]),[records,setRecords]=useState<RecordOption[]>([]),[configured,setConfigured]=useState(false),[loading,setLoading]=useState(false),[open,setOpen]=useState(false),[editing,setEditing]=useState<Job|null>(null),[content,setContent]=useState('')
@@ -45,8 +46,8 @@ export default function AgentDocumentPage({onNavigate}:{onNavigate?:(route:strin
   {title:'模板',dataIndex:'template_name',width:150},
   {title:'关联业务',key:'record',width:220,render:(_:unknown,r:Job)=>r.record_no?<Button type="link" onClick={()=>void openRecord(r)}>{`${r.record_no}｜${r.record_title}`}</Button>:'未关联'},
   {title:'状态',dataIndex:'status',width:150,render:(v:string)=><Tag color={colors[v]}>{v==='待配置'?'待配置（可编辑提纲）':v}</Tag>},
-  {title:'确认人',dataIndex:'confirmed_by',width:90,render:(v:string)=>v||'—'},
-  {title:'创建人',dataIndex:'creator',width:90},
+  {title:'确认人',dataIndex:'confirmed_by_display_name',width:90,render:personDisplayName},
+  {title:'创建人',dataIndex:'creator_display_name',width:90,render:personDisplayName},
   {title:'创建时间',dataIndex:'created_at',width:165,render:(v:string)=>new Date(v).toLocaleString('zh-CN')},
   {title:'操作',key:'action',width:500,fixed:'right' as const,render:(_:unknown,r:Job)=><Space wrap>{can(r,'can_edit')&&<Button type="link" icon={<EditOutlined/>} onClick={()=>{setEditing(r);setContent(r.content)}}>编辑</Button>}{can(r,'can_download')&&<Button type="link" icon={<DownloadOutlined/>} onClick={()=>void download(r)}>DOCX</Button>}{can(r,'can_retry')&&['待配置','生成失败','已生成','已编辑','已人工确认'].includes(r.status)&&<Tooltip title={!configured&&r.status==='待配置'?'请先配置 Dify 后再生成正式文书':''}><Button type="link" icon={<CloudSyncOutlined/>} disabled={!configured&&r.status==='待配置'} onClick={()=>void retry(r)}>{!configured&&r.status==='待配置'?'待配置后生成':'重新生成'}</Button></Tooltip>}{can(r,'can_confirm')&&['已生成','已编辑'].includes(r.status)&&<Popconfirm title="请确认已逐项人工核对内容；确认后才能回写。" onConfirm={()=>void confirm(r)}><Button type="link" icon={<CheckCircleOutlined/>}>人工确认</Button></Popconfirm>}{r.record_id&&can(r,'can_writeback')&&<Button type="link" icon={<UploadOutlined/>} onClick={()=>void writeback(r)}>回写</Button>}{can(r,'can_delete')&&<Popconfirm title="确认删除这个未确认、未回写的智能文档任务？" onConfirm={()=>void remove(r)}><Button danger type="link" icon={<DeleteOutlined/>}>删除</Button></Popconfirm>}</Space>}
  ]

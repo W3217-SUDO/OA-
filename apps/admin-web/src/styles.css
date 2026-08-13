@@ -38,7 +38,7 @@ body {
   color: #fff;
 }
 .logo {
-  width: 230px;
+  width: 280px;
   height: 50px;
   display: grid;
   place-items: center;
@@ -63,6 +63,12 @@ body {
 .top-actions .anticon {
   color: #fff;
   font-size: 16px;
+}
+.mobile-top-title,
+.mobile-top-actions,
+.mobile-bottom-nav,
+.mobile-sidebar-mask {
+  display: none;
 }
 .sidebar {
   height: 100%;
@@ -119,9 +125,21 @@ body {
 }
 .content {
   height: 100%;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   padding: 0 15px 30px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.content > .page-head,
+.content > .workspace-tabs { flex: 0 0 auto; }
+.page-workbench {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -450,22 +468,192 @@ body {
   }
 }
 @media (max-width: 720px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    overflow: hidden;
+  }
+  .app-shell {
+    background: #f4f6f8;
+  }
+  .topbar {
+    position: relative;
+    z-index: 1200;
+    height: 56px;
+    flex: 0 0 56px;
+    padding: 0 8px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.14);
+  }
+  .app-body {
+    height: calc(100vh - 120px);
+    height: calc(100dvh - 120px - env(safe-area-inset-bottom));
+  }
   .metrics,
   .receivable-stats,
   .case-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
   .global-search {
     display: none;
   }
   .logo {
-    width: 120px;
+    width: 88px !important;
+    min-width: 88px;
+    flex: 0 0 88px;
+    height: 56px;
+    padding: 0 6px;
+    background: transparent;
+    font-size: 18px;
+    justify-content: start;
   }
-  .top-actions > span {
-    display: none;
+  .logo.logo-collapsed {
+    width: auto;
+  }
+  .sidebar-toggle {
+    order: -1;
+    width: 40px;
+    height: 40px;
+  }
+  .case-quick-search,
+  .top-actions {
+    display: none !important;
+  }
+  .mobile-top-title {
+    display: block;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-top-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0;
+  }
+  .mobile-top-actions .ant-btn {
+    width: 38px;
+    height: 40px;
+    padding: 0;
+  }
+  .sidebar.ant-layout-sider {
+    position: fixed !important;
+    top: 56px;
+    bottom: 64px;
+    left: 0;
+    z-index: 1150;
+    height: auto;
+    max-width: min(86vw, 320px) !important;
+    box-shadow: 10px 0 28px rgba(0, 0, 0, 0.26);
+  }
+  .sidebar.ant-layout-sider-collapsed {
+    box-shadow: none;
+  }
+  .ant-menu-submenu-popup {
+    display: none !important;
+  }
+  .mobile-sidebar-mask {
+    position: fixed;
+    inset: 56px 0 64px;
+    z-index: 1100;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: rgba(11, 24, 30, 0.48);
+  }
+  .mobile-bottom-nav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1200;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 5px 4px env(safe-area-inset-bottom);
+    border-top: 1px solid #e4e7eb;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 -4px 16px rgba(20, 39, 50, 0.08);
+  }
+  .mobile-bottom-nav button {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: #71808a;
+    font: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11px;
+    line-height: 1;
+    touch-action: manipulation;
+  }
+  .mobile-bottom-nav button > .anticon,
+  .mobile-bottom-nav button .ant-badge > .anticon {
+    font-size: 21px;
+  }
+  .mobile-bottom-nav button.active {
+    color: #009b55;
+    font-weight: 600;
   }
   .content {
-    padding: 0 8px;
+    width: 100%;
+    padding: 0 12px 16px;
+    background: #f4f6f8;
+    scrollbar-gutter: auto;
+  }
+  .content.dashboard-content {
+    padding: 0 12px 16px;
+  }
+  .page-head {
+    display: none;
+  }
+  .dashboard-hot,
+  .workspace-tabs {
+    display: none;
+  }
+  .panel,
+  .dashboard-card,
+  .business-panel,
+  .ant-card {
+    border-radius: 8px;
+  }
+  .ant-card .ant-card-head {
+    padding-inline: 14px;
+  }
+  .ant-card .ant-card-body {
+    padding: 14px;
+  }
+  .ant-table-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ant-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px);
+    margin: 12px auto;
+  }
+  .ant-drawer-content-wrapper {
+    width: min(100vw, 420px) !important;
+  }
+  .ant-form-item {
+    margin-bottom: 16px;
+  }
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select-selector,
+  .ant-picker,
+  .ant-btn {
+    min-height: 40px;
   }
   .login-card {
     width: calc(100vw - 32px);
@@ -481,5 +669,130 @@ body {
   }
   .form-grid .span-2 {
     grid-column: span 1;
+  }
+  :is(
+    .customer-query,
+    .case-advanced-query,
+    .case-archive-query,
+    .case-special-query,
+    .investigation-query,
+    .finance-original-query-grid,
+    .finance-original-fee-query,
+    .receipt-filter-grid,
+    .platform-finance-query-grid,
+    .report-filter,
+    .seal-query,
+    .system-query,
+    .warehouse-query
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  :is(
+    .case-archive-query-actions,
+    .case-special-query-actions,
+    .finance-original-query-actions,
+    .receipt-query-actions,
+    .seal-query-actions
+  ) {
+    grid-column: auto !important;
+    padding-left: 0 !important;
+  }
+  .ant-table-wrapper {
+    border-radius: 6px;
+    background: #fff;
+    touch-action: pan-x pan-y;
+  }
+  .ant-table-content,
+  .ant-table-body {
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    min-height: 44px;
+    padding-block: 9px !important;
+  }
+  .ant-pagination .ant-pagination-options,
+  .ant-pagination .ant-pagination-total-text {
+    display: none;
+  }
+  .ant-tabs-nav-list {
+    min-width: max-content;
+  }
+  .ant-tabs-nav-wrap {
+    overflow-x: auto !important;
+    touch-action: pan-x;
+  }
+  .ant-modal-content,
+  .ant-drawer-content {
+    max-height: calc(100dvh - 24px);
+    overflow: hidden;
+  }
+  .ant-modal-body,
+  .ant-drawer-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  body:has(.ant-modal-wrap) .mobile-bottom-nav {
+    display: none;
+  }
+  .ant-modal-root .ant-modal-wrap,
+  .ant-modal-root .ant-modal-mask {
+    z-index: 1300;
+  }
+  .ant-modal .ant-modal-header { margin-bottom: 12px; }
+  .ant-modal .ant-modal-body { padding-inline: 0; }
+  .ant-modal {
+    top: 8px;
+    padding-bottom: 8px;
+  }
+  .ant-modal .ant-modal-content {
+    padding: 16px 14px;
+  }
+  .ant-modal .ant-modal-body {
+    max-height: calc(100dvh - 150px);
+    overflow-x: hidden;
+  }
+  .ant-modal .ant-form-horizontal .ant-form-item-row {
+    display: block;
+  }
+  .ant-modal .ant-form-item-label {
+    padding: 0 0 5px;
+    text-align: left;
+  }
+  .ant-modal .ant-form-item-control {
+    width: 100%;
+    max-width: none;
+  }
+  .ant-modal .ant-descriptions-view,
+  .ant-modal .ant-table-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .ant-modal .ant-descriptions-item-content,
+  .ant-modal .ant-list-item-meta-title,
+  .ant-modal .ant-list-item-meta-description {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .ant-modal .ant-list-item-meta {
+    min-width: 0;
+  }
+  .ant-modal .ant-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .ant-modal .ant-modal-footer .ant-btn {
+    margin-inline-start: 0;
+  }
+  .ant-drawer .form-grid,
+  .ant-drawer .employee-form-grid,
+  .ant-drawer .organization-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }

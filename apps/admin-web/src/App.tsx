@@ -29,6 +29,7 @@ import {
 import {
   BankOutlined,
   DashboardOutlined,
+  DownloadOutlined,
   DownOutlined,
   FileTextOutlined,
   FullscreenExitOutlined,
@@ -40,11 +41,16 @@ import {
   MenuOutlined,
   MenuUnfoldOutlined,
   ReloadOutlined,
+  RobotOutlined,
   SearchOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import "dingtalk-jsapi/entry/union";
+import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
+import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -137,6 +143,7 @@ const CustomerCenterPage = lazyWithVersionRecovery("customer", () => import("./C
 const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./ContractCenterPage"));
 const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
 const AgentDocumentPage = lazyWithVersionRecovery("agent-document", () => import("./AgentDocumentPage"));
+const AgentCenterPage = lazyWithVersionRecovery("agent-center", () => import("./AgentCenterPage"));
 const SealCenterPage = lazyWithVersionRecovery("seal", () => import("./SealCenterPage"));
 const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCenterPage"));
 const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
@@ -180,6 +187,11 @@ const menuItems: NavItem[] = [
     icon: <DashboardOutlined />,
     label: "控制台",
     badge: "hot",
+  },
+  {
+    key: "agent-center",
+    icon: <RobotOutlined />,
+    label: "智能体中心",
   },
   {
     key: "seal",
@@ -300,17 +312,67 @@ const menuItems: NavItem[] = [
       {
         key: "investigation-task-published",
         label: "我发布的调查任务",
+        icon: <UnorderedListOutlined />,
         children: [
           { key: "investigation-task-mine", label: "我的调查任务" },
           { key: "investigation-task-overdue", label: "过期调查任务" },
-          { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
-          { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
-          { key: "investigation-task-sub-mine", label: "我的调查任务（子任务）" },
         ],
       },
-      { key: "clue", label: "线索管理" },
-      { key: "notary", label: "公证管理" },
-      { key: "evidence", label: "证据管理" },
+      { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
+      { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
+      { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
+      {
+        key: "clue",
+        label: "我的调查线索",
+        icon: <UnorderedListOutlined />,
+        children: [
+          { key: "clue-my-draft", label: "待提交线索" },
+          { key: "clue-my-pending", label: "待审核线索" },
+          { key: "clue-my-customer", label: "待客户审核" },
+          { key: "clue-my-collect", label: "待取证线索" },
+          { key: "clue-my-collected", label: "已取证线索" },
+          { key: "clue-my-refused", label: "已拒绝线索" },
+          { key: "clue-my-no-fee", label: "未申请费用线索" },
+          { key: "clue-my-fee", label: "已申请费用线索" },
+        ],
+      },
+      {
+        key: "clue-audit",
+        label: "调查线索审核",
+        icon: <UnorderedListOutlined />,
+        children: [
+          { key: "clue-audit-pending", label: "待审批线索" },
+          { key: "clue-audit-customer", label: "待客户审核" },
+          { key: "clue-audit-refused", label: "已拒绝线索" },
+          { key: "clue-audit-collect", label: "待取证线索" },
+          { key: "clue-audit-collected", label: "已取证线索" },
+        ],
+      },
+      {
+        key: "clue-company",
+        label: "公司调查线索",
+        icon: <UnorderedListOutlined />,
+        children: [
+          { key: "clue-company-draft", label: "待提交线索" },
+          { key: "clue-company-pending", label: "待审核线索" },
+          { key: "clue-company-collect", label: "待取证线索" },
+          { key: "clue-company-collected", label: "已取证线索" },
+          { key: "clue-company-refused", label: "已拒绝线索" },
+          { key: "clue-company-no-fee", label: "未申请费用线索" },
+          { key: "clue-company-fee", label: "已申请费用线索" },
+        ],
+      },
+      {
+        key: "notary",
+        label: "公证信息导入",
+        icon: <UnorderedListOutlined />,
+        children: [
+          { key: "notary-import-info", label: "公证信息导入" },
+          { key: "notary-import-storage", label: "取证信息文件导入" },
+          { key: "notary-import-files", label: "公证书文件导入" },
+          { key: "notary-import-invoices", label: "发票文件导入" },
+        ],
+      },
     ],
   },
   {
@@ -452,6 +514,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   const icon = (name: string) =>
     name === "dashboard" ? (
       <DashboardOutlined />
+    ) : name === "robot" ? (
+      <RobotOutlined />
     ) : name === "team" ? (
       <TeamOutlined />
     ) : name === "search" ? (
@@ -495,9 +559,64 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   const taskChildren = [
     { key: "investigation-task-mine", label: "我的调查任务" },
     { key: "investigation-task-overdue", label: "过期调查任务" },
-    { key: "investigation-task-unassigned", label: "待我分配的调查任务" },
-    { key: "investigation-task-sub-published", label: "我发布的调查子任务" },
-    { key: "investigation-task-sub-mine", label: "我的调查任务（子任务）" },
+  ];
+  const investigationChildren: NavItem[] = [
+    { key: "investigation-task-published", label: "我发布的调查任务", icon: <UnorderedListOutlined />, children: taskChildren },
+    { key: "investigation-task-unassigned", label: "待我分配的调查任务", icon: <UnorderedListOutlined /> },
+    { key: "investigation-task-sub-published", label: "我发布的调查子任务", icon: <UnorderedListOutlined /> },
+    { key: "investigation-task-sub-mine", label: "我的调查任务", icon: <UnorderedListOutlined /> },
+    {
+      key: "clue",
+      label: "我的调查线索",
+      icon: <UnorderedListOutlined />,
+      children: [
+        { key: "clue-my-draft", label: "待提交线索" },
+        { key: "clue-my-pending", label: "待审核线索" },
+        { key: "clue-my-customer", label: "待客户审核" },
+        { key: "clue-my-collect", label: "待取证线索" },
+        { key: "clue-my-collected", label: "已取证线索" },
+        { key: "clue-my-refused", label: "已拒绝线索" },
+        { key: "clue-my-no-fee", label: "未申请费用线索" },
+        { key: "clue-my-fee", label: "已申请费用线索" },
+      ],
+    },
+    {
+      key: "clue-audit",
+      label: "调查线索审核",
+      icon: <UnorderedListOutlined />,
+      children: [
+        { key: "clue-audit-pending", label: "待审批线索" },
+        { key: "clue-audit-customer", label: "待客户审核" },
+        { key: "clue-audit-refused", label: "已拒绝线索" },
+        { key: "clue-audit-collect", label: "待取证线索" },
+        { key: "clue-audit-collected", label: "已取证线索" },
+      ],
+    },
+    {
+      key: "clue-company",
+      label: "公司调查线索",
+      icon: <UnorderedListOutlined />,
+      children: [
+        { key: "clue-company-draft", label: "待提交线索" },
+        { key: "clue-company-pending", label: "待审核线索" },
+        { key: "clue-company-collect", label: "待取证线索" },
+        { key: "clue-company-collected", label: "已取证线索" },
+        { key: "clue-company-refused", label: "已拒绝线索" },
+        { key: "clue-company-no-fee", label: "未申请费用线索" },
+        { key: "clue-company-fee", label: "已申请费用线索" },
+      ],
+    },
+    {
+      key: "notary",
+      label: "公证信息导入",
+      icon: <UnorderedListOutlined />,
+      children: [
+        { key: "notary-import-info", label: "公证信息导入" },
+        { key: "notary-import-storage", label: "取证信息文件导入" },
+        { key: "notary-import-files", label: "公证书文件导入" },
+        { key: "notary-import-invoices", label: "发票文件导入" },
+      ],
+    },
   ];
   const hasPublishedTaskRoute = ordered.some(
     (item) => item.key === "investigation-task-published",
@@ -505,21 +624,9 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   if (!hasPublishedTaskRoute) return built;
   return built.map((item) => {
     if (item.key !== "investigation") return item;
-    const published = (item.children || []).find(
-      (child) => child.key === "investigation-task-published",
-    );
-    if (!published) return item;
-    const existingChildren = new Set(
-      (item.children || []).flatMap((child) => [child.key, ...(child.children || []).map((nested) => nested.key)]),
-    );
-    const nested = taskChildren.filter((child) => existingChildren.has(child.key));
     return {
       ...item,
-      children: (item.children || []).map((child) =>
-        child.key === "investigation-task-published"
-          ? { ...child, children: nested.length ? nested : taskChildren }
-          : child,
-      ),
+      children: investigationChildren,
     };
   });
 }
@@ -550,13 +657,15 @@ type RenderableMenuItem = Omit<NavItem, "label" | "children"> & { label: ReactNo
 function menuItemsWithDoubleClickReload(
   items: NavItem[],
   onReload: (item: NavItem) => void,
+  depth = 0,
 ): RenderableMenuItem[] {
   return items.map((item) => {
     const children = item.children
-      ? menuItemsWithDoubleClickReload(item.children, onReload)
+      ? menuItemsWithDoubleClickReload(item.children, onReload, depth + 1)
       : undefined;
     return {
       ...item,
+      icon: item.icon || (depth > 0 ? <UnorderedListOutlined /> : undefined),
       ...(children ? { children } : {}),
       label: children ? item.label : (
         <span
@@ -688,7 +797,7 @@ const supportTools = [
 ];
 
 type DashboardData = {
-  metrics: { label: string; value: string; tone: string }[];
+  metrics: { key: string; label: string; value: string; tone: string; route: string }[];
   todos: (string | number)[][];
   hearings: Record<string, string>[];
   latest_cases: Record<string, string>[];
@@ -818,13 +927,61 @@ function readStoredUser(): SessionUser | null {
 
 function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const [loading, setLoading] = useState(false);
+  const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
+  const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
+  useEffect(() => {
+    const rememberInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener("beforeinstallprompt", rememberInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", rememberInstallPrompt);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const loginFromDingTalk = async () => {
+      try {
+        const { data: config } = await api.get("/auth/dingtalk/config");
+        if (!active || !config.enabled) return;
+        setDingtalkEnabled(true);
+        if (getDingTalkEnvironment().platform === "notInDingTalk") return;
+        setLoading(true);
+        const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
+        const { data } = await api.post("/auth/dingtalk/login", { auth_code: result.code });
+        localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        if (active) onSuccess(data.user);
+      } catch (error: any) {
+        if (active && error?.response?.status === 403 && error?.config?.data) {
+          try { setDingtalkAuthCode(JSON.parse(error.config.data).auth_code || ""); } catch { setDingtalkAuthCode(""); }
+          message.info("首次使用钉钉登录，请输入一次现有 OA 账号和密码完成绑定");
+        } else if (active && getDingTalkEnvironment().platform !== "notInDingTalk") {
+          message.error(error?.response?.data?.detail || "钉钉免登失败，请联系管理员检查账号绑定");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loginFromDingTalk();
+    return () => { active = false; };
+  }, [onSuccess]);
   const submit = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {
       const form = new URLSearchParams(values);
-      const { data } = await api.post("/auth/login", form);
+      let data: any;
+      if (dingtalkAuthCode) {
+        // DingTalk auth codes are single-use. The initial SSO probe consumes its
+        // code before an unbound user reaches this form, so binding needs a new one.
+        const { data: config } = await api.get("/auth/dingtalk/config");
+        const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
+        ({ data } = await api.post("/auth/dingtalk/bind", { ...values, auth_code: result.code }));
+      } else {
+        ({ data } = await api.post("/auth/login", form));
+      }
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
       if (data.must_change_password) {
@@ -835,7 +992,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
         onSuccess(data.user);
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "账号或密码错误");
+        message.error(error?.response?.data?.detail || "账号或密码错误");
     } finally {
       setLoading(false);
     }
@@ -856,6 +1013,19 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
       setLoading(false);
     }
   };
+  const installExternalApp = async () => {
+    const prompt = installPrompt as (Event & {
+      prompt?: () => Promise<void>;
+      userChoice?: Promise<{ outcome: string }>;
+    }) | null;
+    if (!prompt?.prompt) {
+      message.info("请打开浏览器菜单，选择“添加到主屏幕”或“安装应用”");
+      return;
+    }
+    await prompt.prompt();
+    await prompt.userChoice;
+    setInstallPrompt(null);
+  };
   return (
     <div className="login-page">
       <div className="login-brand">
@@ -865,6 +1035,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
       <Card className="login-card">
         <h2>系统登录</h2>
         <p>欢迎进入思法汇成协作平台</p>
+        {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
         <Form
           onFinish={submit}
           layout="vertical"
@@ -882,8 +1053,22 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
             htmlType="submit"
             loading={loading}
           >
-            登 录
+            {dingtalkAuthCode ? "绑定钉钉并登录" : "登 录"}
           </Button>
+          {dingtalkEnabled && getDingTalkEnvironment().platform === "notInDingTalk" && (
+            <Button block size="large" style={{ marginTop: 12 }} onClick={() => message.info("请从钉钉工作台打开本系统，即可自动登录")}>钉钉免登</Button>
+          )}
+          {getDingTalkEnvironment().platform === "notInDingTalk" && (
+            <Button
+              block
+              size="large"
+              icon={<DownloadOutlined />}
+              style={{ marginTop: 12 }}
+              onClick={() => void installExternalApp()}
+            >
+              安装到手机桌面
+            </Button>
+          )}
         </Form>
       </Card>
       <Modal open={Boolean(pendingUser)} title="首次登录修改密码" closable={false} maskClosable={false} keyboard={false} okText="修改密码并进入系统" cancelButtonProps={{style:{display:"none"}}} confirmLoading={loading} onOk={forcePasswordChange}>
@@ -1025,21 +1210,23 @@ function CivilDistribution({
 function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
   useEffect(() => {
-    api
-      .get("/dashboard")
-      .then((r) => setData(r.data))
-      .catch(() => message.error("看板加载失败"));
+    let active = true;
+    const loadDashboard = () => {
+      api
+        .get("/dashboard")
+        .then((r) => active && setData(r.data))
+        .catch(() => active && message.error("看板加载失败"));
+    };
+    const refreshOnFocus = () => loadDashboard();
+    loadDashboard();
+    const timer = window.setInterval(loadDashboard, 30_000);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
   }, []);
-  const metricRoutes = [
-    "finance-fee-query",
-    "finance-fee-query",
-    "evidence",
-    "case-company",
-    "case-company",
-    "case-execution",
-    "case-company",
-    "finance-fee-query",
-  ];
   const todoRoutes: Record<string, string> = {
     待处理任务: "task-my",
     待审批官方费用: "finance-payment-audit",
@@ -1132,11 +1319,11 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
           {data.metrics.map((m, i) => (
             <div
               className={`metric target-${i}`}
-              key={m.label}
+              key={m.key}
               role="button"
               tabIndex={0}
-              onClick={() => onNavigate(metricRoutes[i])}
-              onKeyDown={(event) => keyboardNavigate(event, metricRoutes[i])}
+              onClick={() => onNavigate(m.route)}
+              onKeyDown={(event) => keyboardNavigate(event, m.route)}
             >
               <div className="metric-icon">
                 {["◷", "✉", "♟", "⚖", "⚑", "▤", "☕", "¥"][i]}
@@ -1179,6 +1366,28 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
               ))}
             </tbody>
           </table>
+          <div className="mobile-todo-list">
+            {data.todos.flatMap((row, rowIndex) =>
+              [
+                { label: row[0], primary: row[1], secondary: row[2] },
+                { label: row[3], primary: row[4], secondary: row[5] },
+              ].map((item, itemIndex) => {
+                const route = todoRoutes[String(item.label)] || "dashboard";
+                return (
+                  <button
+                    type="button"
+                    className="mobile-todo-item"
+                    key={`${rowIndex}-${itemIndex}`}
+                    onClick={() => onNavigate(route)}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.primary}</strong>
+                    <small>{item.secondary}</small>
+                  </button>
+                );
+              }),
+            )}
+          </div>
         </Card>
         <Card title="◩ 案件趋势" className="dashboard-card target-trend-card">
           <CaseTrendChart items={data.case_trend} />
@@ -1510,6 +1719,8 @@ export default function App() {
   const requestedPage =
     route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />
+    ) : route === "agent-center" ? (
+      <AgentCenterPage />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "customer-conflict" ? (
@@ -1536,7 +1747,7 @@ export default function App() {
           setContractDetailTarget(null);
         }}
       />
-    ) : active.startsWith("investigation-task-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
+    ) : active.startsWith("investigation-task-") || route.startsWith("clue-") || route.startsWith("notary-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
       <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
     ) : route === "ipr-office-files" ? (
       <IprOfficialFilePage />
@@ -1612,6 +1823,7 @@ export default function App() {
           {collapsed ? "S" : "Sunhold"}
         </div>
         <Button
+          className="sidebar-toggle"
           type="text"
           aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
           title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
@@ -1624,6 +1836,9 @@ export default function App() {
             setCollapsed((v) => !v);
           }}
         />
+        <div className="mobile-top-title" aria-live="polite">
+          {currentPageLabel}
+        </div>
         <div className="global-search">
           <GlobalSearch
             onNavigate={navigate}
@@ -1745,10 +1960,21 @@ export default function App() {
             </Button>
           </Dropdown>
         </Space>
+        <Space className="mobile-top-actions">
+          <NotificationCenter onNavigate={navigate} />
+          <Badge count={taskUnreadCount} size="small" overflowCount={99}>
+            <Button
+              type="text"
+              aria-label="任务消息"
+              icon={<MessageOutlined />}
+              onClick={() => navigate("task-reminders")}
+            />
+          </Badge>
+        </Space>
       </Header>
       <Layout className="app-body">
         <Sider
-          width={230}
+          width={280}
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsNarrowViewport(broken);
@@ -1785,6 +2011,7 @@ export default function App() {
           )}
           <Menu
             mode="inline"
+            inlineIndent={16}
             theme="dark"
             items={sidebarReloadableItems}
             selectedKeys={[active]}
@@ -1800,9 +2027,11 @@ export default function App() {
               if (!item || item.disabled) return;
               if (item.link_url) {
                 openLegacyMenuItem(item);
+                if (isNarrowViewport) setMobileSidebarOpen(false);
                 return;
               }
               navigate(key);
+              if (isNarrowViewport) setMobileSidebarOpen(false);
             }}
           />
           {(isNarrowViewport ? mobileSidebarOpen : !collapsed) && (
@@ -1822,6 +2051,14 @@ export default function App() {
             </div>
           )}
         </Sider>
+        {isNarrowViewport && mobileSidebarOpen && (
+          <button
+            type="button"
+            className="mobile-sidebar-mask"
+            aria-label="关闭功能菜单"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
         <Content
           className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") ? "case-detail-content" : ""}`}
           onClick={() => {
@@ -1874,13 +2111,61 @@ export default function App() {
               closable: item.key !== "dashboard",
             }))}
           />
-          <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
-            <Suspense fallback={<div className="loading">正在加载页面...</div>}>
-              {currentPage}
-            </Suspense>
-          </PageLoadBoundary>
+          <main className="page-workbench">
+            <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
+              <Suspense fallback={<div className="loading">正在加载页面...</div>}>
+                {currentPage}
+              </Suspense>
+            </PageLoadBoundary>
+          </main>
         </Content>
       </Layout>
+      <nav className="mobile-bottom-nav" aria-label="移动端主导航">
+        <button
+          type="button"
+          className={active === "dashboard" ? "active" : ""}
+          aria-current={active === "dashboard" ? "page" : undefined}
+          onClick={() => navigate("dashboard")}
+        >
+          <HomeOutlined />
+          <span>首页</span>
+        </button>
+        <button
+          type="button"
+          className={active === "agent-center" ? "active" : ""}
+          aria-current={active === "agent-center" ? "page" : undefined}
+          onClick={() => navigate("agent-center")}
+        >
+          <RobotOutlined />
+          <span>智能体</span>
+        </button>
+        <button
+          type="button"
+          className={active.startsWith("task-") ? "active" : ""}
+          onClick={() => navigate("task-my")}
+        >
+          <Badge count={taskUnreadCount} size="small" overflowCount={99}>
+            <UnorderedListOutlined />
+          </Badge>
+          <span>待办</span>
+        </button>
+        <button
+          type="button"
+          className={active === "task-reminders" ? "active" : ""}
+          onClick={() => navigate("task-reminders")}
+        >
+          <MessageOutlined />
+          <span>消息</span>
+        </button>
+        <button
+          type="button"
+          className={active === accountProfileRoute ? "active" : ""}
+          onClick={() => navigate(accountProfileRoute)}
+        >
+          <UserOutlined />
+          <span>我的</span>
+        </button>
+      </nav>
     </Layout>
   );
 }

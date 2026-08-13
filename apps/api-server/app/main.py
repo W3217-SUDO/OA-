@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from contextlib import asynccontextmanager, suppress
 import csv
 import hashlib
@@ -29,13 +30,29 @@ from sqlalchemy import String, and_, delete, false, func, inspect, or_, select, 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .case_agent import CaseAgentRuntime
+from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, public_skill_catalog
+from .case_workflow_rules import build_case_workflow_guide
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
+from .dingtalk import DingTalkError, dingtalk_client
 from .models import AgentDocument, BusinessRecord, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, IprCaseAssistedFee, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseReminder, IprCaseReminderSuppression, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
-from .security import create_token, current_identity, hash_password, user_role_ids, verify_password
+from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
+from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 
 logger = logging.getLogger(__name__)
+
+case_agent_runtime = CaseAgentRuntime(
+    enabled=settings.langgraph_enabled,
+    database_url=settings.database_url,
+    checkpoint_url=settings.langgraph_checkpoint_url,
+    api_base_url=settings.langgraph_api_base_url,
+    api_key=settings.langgraph_api_key,
+    model_provider=settings.langgraph_model_provider,
+    model=settings.langgraph_model,
+    max_concurrency=settings.langgraph_max_concurrency,
+)
 
 PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"
 PERSON_NAME_NON_PERSON_MARKERS = (
@@ -46,11 +63,7 @@ PERSON_NAME_NON_PERSON_MARKERS = (
 
 def _is_complete_person_display_name(display_name: object, username: object = "") -> bool:
     value = str(display_name or "").strip()
-    account = str(username or "").strip()
-    return bool(
-        value
-        and (not account or value.casefold() != account.casefold())
-    )
+    return bool(value)
 
 
 def _person_display_name(display_name: object, username: object = "") -> tuple[str, bool]:
@@ -64,8 +77,8 @@ async def _user_display_map(usernames: set[str], db: AsyncSession) -> dict[str, 
     normalized = {str(username or "").strip().lower() for username in usernames if str(username or "").strip()}
     if not normalized:
         return {}
-    users = (await db.scalars(select(User).where(User.username.in_(normalized)))).all()
-    return {user.username: user for user in users}
+    users = (await db.scalars(select(User).where(func.lower(User.username).in_(normalized)))).all()
+    return {user.username.lower(): user for user in users}
 
 
 def _person_reference_display(username: object, users_by_username: dict[str, User]) -> tuple[str, bool]:
@@ -75,8 +88,9 @@ def _person_reference_display(username: object, users_by_username: dict[str, Use
     if key == "system":
         return "系统", False
     user = users_by_username.get(key.lower())
-    source = user.display_name if user else key
-    return _person_display_name(source, key)
+    if not user:
+        return PERSON_NAME_PLACEHOLDER, True
+    return _person_display_name(user.display_name, key)
 
 
 CASE_CREATE_PERMISSION_BY_TYPE = {
@@ -120,6 +134,7 @@ COURT_JUDICIAL_KEYS = {
 }
 DEFAULT_SYSTEM_MENUS = [
     ("dashboard", "", "控制台", "dashboard", 0),
+    ("agent-center", "", "智能体中心", "robot", 5),
     ("seal", "", "用印中心", "file-text", 10), ("seal-my", "seal", "我的用印申请", "", 11), ("seal-audit", "seal", "用印审核", "", 12), ("seal-admin", "seal", "行政用印", "", 13),
     ("task", "", "事务中心", "file-text", 20), ("task-my", "task", "我的任务", "", 21), ("task-dept", "task", "部门任务", "", 22), ("task-company", "task", "公司任务", "", 23),
     ("customer", "", "客户管理", "team", 30), ("customer-new", "customer", "新建客户", "", 31), ("customer-mine", "customer", "我的客户", "", 32), ("customer-recycle", "customer", "个人回收站", "", 33), ("customer-dept", "customer", "部门客户", "", 34), ("customer-dept-recycle", "customer", "部门回收站", "", 35), ("customer-company", "customer", "公司客户", "", 36), ("customer-public", "customer", "公海客户", "", 37), ("customer-shared", "customer", "我的共享客户", "", 38), ("customer-recent-contact", "customer", "最近联系的客户", "", 39), ("customer-recent-update", "customer", "最近更新的客户", "", 40), ("customer-company-recycle", "customer", "公司回收站", "", 41), ("customer-conflict", "customer", "客户利益检索", "", 42),
@@ -231,9 +246,9 @@ LEGACY_TASK_MENU_KEYS = {"task-reminders"}
 FIELD_KEYS = ["customer.billing", "customer.bank", "customer.legal", "contract.amount", "finance.amount", "hr.identity"]
 DEFAULT_ROLE_PERMISSIONS = {
     "admin": {"display_name": "系统管理员", "data_scope": "全所数据", "menu_keys": MENU_KEYS, "field_keys": FIELD_KEYS},
-    "manager": {"display_name": "部门负责人", "data_scope": "本部门数据", "menu_keys": ["task", "seal", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center", "hr", "warehouse", "reports"], "field_keys": FIELD_KEYS},
-    "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
-    "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
+    "manager": {"display_name": "部门负责人", "data_scope": "本部门数据", "menu_keys": ["agent-center", "task", "seal", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center", "hr", "warehouse", "reports"], "field_keys": FIELD_KEYS},
+    "auditor": {"display_name": "审批人员", "data_scope": "授权审批数据", "menu_keys": ["agent-center", "task", "seal", "contract", "case", "investigation", "finance", "platform-finance", "user-center", "reports"], "field_keys": ["contract.amount", "finance.amount"]},
+    "user": {"display_name": "普通用户", "data_scope": "本人及共享数据", "menu_keys": ["agent-center", "seal-my", "task", "customer", "customer-conflict", "contract", "case", *CASE_CREATE_PERMISSION_KEYS, "investigation", "documents", "finance", "user-center"], "field_keys": ["customer.legal", "contract.amount"]},
 }
 SYSTEM_USER_ROLE_CODES = frozenset(DEFAULT_ROLE_PERMISSIONS)
 ROLE_DATA_SCOPES = frozenset({
@@ -474,6 +489,19 @@ def _upgrade_schema(connection) -> None:
                 role = str(role_row["role"]).replace("'", "''")
                 connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('case_create_leaf_capabilities_v1')"))
+    agent_center_menu_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'agent_center_menu_v1'"
+    )).first()
+    if not agent_center_menu_migrated:
+        role_rows = connection.execute(text("SELECT role, menu_keys FROM role_permissions")).mappings().all()
+        for role_row in role_rows:
+            raw_keys = role_row["menu_keys"]
+            keys = list(raw_keys if isinstance(raw_keys, list) else json.loads(raw_keys or "[]"))
+            if "case" in keys and "agent-center" not in keys:
+                encoded_keys = json.dumps([*keys, "agent-center"], ensure_ascii=False).replace("'", "''")
+                role = str(role_row["role"]).replace("'", "''")
+                connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('agent_center_menu_v1')"))
     leaf_menu_permissions_migrated = connection.execute(text(
         "SELECT key FROM schema_migrations WHERE key = 'role_menu_leaf_permissions_v1'"
     )).first()
@@ -489,15 +517,68 @@ def _upgrade_schema(connection) -> None:
             role = str(role_row["role"]).replace("'", "''")
             connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = '{role}'"))
         connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('role_menu_leaf_permissions_v1')"))
+    ordinary_user_seal_menu_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'ordinary_user_seal_my_menu_v1'"
+    )).first()
+    if not ordinary_user_seal_menu_migrated:
+        role_row = connection.execute(text("SELECT menu_keys FROM role_permissions WHERE role = 'user'")).mappings().first()
+        if role_row:
+            raw_keys = role_row["menu_keys"]
+            keys = list(raw_keys if isinstance(raw_keys, list) else json.loads(raw_keys or "[]"))
+            seal_my_keys = _stored_menu_permission_keys(["seal-my"])
+            migrated_keys = [*keys, *(key for key in seal_my_keys if key not in keys)]
+            encoded_keys = json.dumps(migrated_keys, ensure_ascii=False).replace("'", "''")
+            connection.execute(text(f"UPDATE role_permissions SET menu_keys = '{encoded_keys}' WHERE role = 'user'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('ordinary_user_seal_my_menu_v1')"))
+    assistant_seal_scope_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'assistant_seal_my_scope_v1'"
+    )).first()
+    if not assistant_seal_scope_migrated:
+        role_row = connection.execute(text("SELECT permissions FROM job_roles WHERE code = 'ASSISTANT'")).mappings().first()
+        if role_row:
+            raw_permissions = role_row["permissions"]
+            permissions = list(raw_permissions if isinstance(raw_permissions, list) else json.loads(raw_permissions or "[]"))
+            retained = [
+                value for value in permissions
+                if not str(value).startswith("seal") and str(value) != "用印审批"
+            ]
+            seal_my_keys = _stored_menu_permission_keys(["seal-my"])
+            migrated_permissions = [*retained, *(key for key in seal_my_keys if key not in retained)]
+            encoded_permissions = json.dumps(migrated_permissions, ensure_ascii=False).replace("'", "''")
+            connection.execute(text(f"UPDATE job_roles SET permissions = '{encoded_permissions}' WHERE code = 'ASSISTANT'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('assistant_seal_my_scope_v1')"))
+    assistant_configured_seal_permissions_restored = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'assistant_configured_seal_permissions_restore_v1'"
+    )).first()
+    if not assistant_configured_seal_permissions_restored:
+        role_row = connection.execute(text("SELECT permissions FROM job_roles WHERE code = 'ASSISTANT'")).mappings().first()
+        if role_row:
+            raw_permissions = role_row["permissions"]
+            permissions = list(raw_permissions if isinstance(raw_permissions, list) else json.loads(raw_permissions or "[]"))
+            configured_seal_permissions = [
+                "seal", "seal-my", "seal-audit", "seal-admin",
+                "seal-my-pending", "seal-my-stamping", "seal-my-used", "seal-my-refused", "seal-my-withdrawn",
+                "seal-audit-pending", "seal-audit-stamping", "seal-audit-refused",
+                "seal-admin-pending", "seal-admin-used", "seal-admin-query", "用印审批",
+            ]
+            restored_permissions = [*permissions, *(value for value in configured_seal_permissions if value not in permissions)]
+            encoded_permissions = json.dumps(restored_permissions, ensure_ascii=False).replace("'", "''")
+            connection.execute(text(f"UPDATE job_roles SET permissions = '{encoded_permissions}' WHERE code = 'ASSISTANT'"))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('assistant_configured_seal_permissions_restore_v1')"))
     # Remove the short-lived internal marker used by an earlier development
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
+    timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
     notification_columns = {item["name"] for item in inspect(connection).get_columns("notifications")}
     for column, definition in {
         "sender": "VARCHAR(64) NOT NULL DEFAULT 'system'",
         "notification_type": "VARCHAR(32) NOT NULL DEFAULT '系统通知'",
         "recipient_deleted": "BOOLEAN NOT NULL DEFAULT 0",
         "sender_deleted": "BOOLEAN NOT NULL DEFAULT 0",
+        "dingtalk_status": "VARCHAR(16) NOT NULL DEFAULT 'skipped'",
+        "dingtalk_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "dingtalk_sent_at": timestamp_type,
+        "dingtalk_error": "VARCHAR(500) NOT NULL DEFAULT ''",
     }.items():
         if column not in notification_columns: connection.execute(text(f"ALTER TABLE notifications ADD COLUMN {column} {definition}"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_sender ON notifications (sender)"))
@@ -516,7 +597,6 @@ def _upgrade_schema(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_bank_source ON incoming_payments (bank_source)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_notification_type ON notifications (notification_type)"))
     agent_document_columns = {item["name"] for item in inspect(connection).get_columns("agent_documents")}
-    timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
     for column, definition in {
         "content_version": "INTEGER NOT NULL DEFAULT 1",
         "confirmed_by": "VARCHAR(64) NOT NULL DEFAULT ''",
@@ -818,13 +898,19 @@ async def lifespan(_: FastAPI):
             if not await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)):
                 db.add(ContractApprovalStep(contract_record_id=contract.id, step_order=1, approver="admin", status="待审批", comment="历史合同补充默认审批节点"))
         await db.commit()
+    await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
+    dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
     try:
         yield
     finally:
         rule_task.cancel()
+        dingtalk_task.cancel()
         with suppress(asyncio.CancelledError):
             await rule_task
+        with suppress(asyncio.CancelledError):
+            await dingtalk_task
+        await case_agent_runtime.stop()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
@@ -846,6 +932,42 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 class DifyRequest(BaseModel):
     query: str
     conversation_id: str | None = None
+
+
+class CaseAgentProposedAction(BaseModel):
+    type: str = Field(default="case.update", pattern=r"^(case\.update|case\.data\.update|case\.task\.create|case\.reminder\.create|customer\.update|contract\.update)$")
+    summary: str = Field(min_length=2, max_length=500)
+    payload: dict = Field(default_factory=dict)
+
+
+class CaseAgentMessageInput(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    skill_id: str = Field(default="general-office", min_length=1, max_length=100)
+    proposed_action: CaseAgentProposedAction | None = None
+    attachment_ids: list[int] = Field(default_factory=list, max_length=4)
+
+
+class UserAgentSkillInput(BaseModel):
+    name: str = Field(min_length=2, max_length=64)
+    category: str = Field(default="自定义", min_length=1, max_length=32)
+    description: str = Field(min_length=2, max_length=500)
+    instruction: str = Field(min_length=10, max_length=6000)
+    quick_prompts: list[str] = Field(default_factory=list, max_length=5)
+    enabled: bool = True
+
+
+class UserAgentSkillUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=64)
+    category: str | None = Field(default=None, min_length=1, max_length=32)
+    description: str | None = Field(default=None, min_length=2, max_length=500)
+    instruction: str | None = Field(default=None, min_length=10, max_length=6000)
+    quick_prompts: list[str] | None = Field(default=None, max_length=5)
+    enabled: bool | None = None
+
+
+class CaseAgentDecisionInput(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+    comment: str = Field(default="", max_length=1000)
 
 
 class AgentDocumentInput(BaseModel):
@@ -1143,6 +1265,11 @@ class ClueReviewInput(BaseModel):
 class ClueCollectionInput(BaseModel):
     collected_at: date
     notary_institution: str = Field(min_length=2, max_length=255)
+    notarization_no: str = Field(default="", max_length=128)
+    invoice_no: str = Field(default="", max_length=128)
+    storage_location: str = Field(default="", max_length=255)
+    evidence_status: str = Field(default="未入库", max_length=32)
+    evidence_file_ids: list[int] = Field(default_factory=list, max_length=100)
     comment: str = ""
 
 
@@ -1203,8 +1330,14 @@ class InvestigationTaskInput(BaseModel):
     title: str
     owner: str
     deadline: date
+    start_date: date | None = None
+    end_date: date | None = None
+    province: str = Field(default="", max_length=100)
+    city: str = Field(default="", max_length=100)
+    district: str = Field(default="", max_length=100)
     priority: str = "普通"
     parent_task_id: int | None = None
+    contract_record_id: int | None = Field(default=None, gt=0)
     description: str = ""
     contract_no: str = Field(default="", max_length=64)
     contract_name: str = Field(default="", max_length=255)
@@ -1212,11 +1345,37 @@ class InvestigationTaskInput(BaseModel):
     attachment_ids: list[int] = Field(default_factory=list, max_length=100)
 
 
+def _investigation_task_date(value: object) -> date | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        return None
+
+
 class BatchClueCaseInput(BaseModel):
     clue_ids: list[int] = Field(min_length=1, max_length=100)
-    contract_record_id: int
+    # Contracts are resolved from the source investigation task.  Keeping this
+    # optional preserves compatibility with callers that sent the old field,
+    # while preventing the UI from binding an unrelated contract by hand.
+    contract_record_id: int | None = None
     case_type: str = "民事案件"
     court: str = ""
+    client_position: str = Field(default="原告", max_length=64)
+    cause_or_charge: str = Field(default="", max_length=255)
+    case_phase: str = Field(default="等待公证书", max_length=64)
+    handling_lawyer: str = Field(default="", max_length=128)
+    assistant: str = Field(default="", max_length=128)
+
+
+class ClueCaseContractResolveInput(BaseModel):
+    clue_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class ClueSourceContractBindingInput(BaseModel):
+    contract_record_id: int = Field(gt=0)
 
 
 class InvestigationAssignmentInput(BaseModel):
@@ -1246,6 +1405,8 @@ INVESTIGATION_EDIT_DATA_FIELDS = {
     "region", "address", "right_type", "deadline", "priority", "platform",
     "product", "source", "infringement_method", "store_url", "shop_id", "producer",
     "indictee", "investigation_assistant", "investigated_at", "customer_manager",
+    "start_date", "end_date", "authorized_from", "authorized_to", "authorization_scope",
+    "province", "city", "district",
 }
 
 
@@ -2232,7 +2393,7 @@ class ReconciliationInput(BaseModel):
 
 
 class SystemUserInput(BaseModel):
-    username: str = Field(min_length=3, max_length=64)
+    username: str = Field(min_length=2, max_length=64)
     display_name: str = Field(min_length=1, max_length=64)
     department: str = Field(default="上海分所", min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
@@ -2255,7 +2416,7 @@ class CacheBatchClearInput(BaseModel):
 
 
 class SystemUserUpdate(BaseModel):
-    username: str | None = Field(default=None, min_length=3, max_length=64)
+    username: str | None = Field(default=None, min_length=2, max_length=64)
     display_name: str | None = Field(default=None, min_length=1, max_length=64)
     department: str | None = Field(default=None, min_length=1, max_length=64)
     role: str | None = None
@@ -2283,7 +2444,7 @@ class SystemUserPasswordResetInput(BaseModel):
 
 
 class HrEmployeeUpdateInput(BaseModel):
-    username: str = Field(min_length=3, max_length=64)
+    username: str = Field(min_length=2, max_length=64)
     display_name: str = Field(min_length=1, max_length=64)
     department: str = Field(min_length=1, max_length=64)
     role: str
@@ -2330,6 +2491,19 @@ class CurrentUserUpdate(BaseModel):
     menu_auto_collapse: str | None = Field(default=None, pattern="^(yes|no)$")
     current_password: str | None = Field(default=None, min_length=1, max_length=128)
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class DingTalkLoginInput(BaseModel):
+    auth_code: str = Field(min_length=1, max_length=512)
+
+
+class DingTalkBindInput(DingTalkLoginInput):
+    username: str = Field(min_length=2, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class DingTalkBindingInput(BaseModel):
+    user_id: str = Field(default="", max_length=128)
 
 
 class UserMessageInput(BaseModel):
@@ -2629,6 +2803,7 @@ class CaseUnarchiveReviewInput(BaseModel):
 
 
 class ContractSealApplicationInput(BaseModel):
+    approver: str = Field(min_length=1, max_length=100)
     seal_asset_id: int
     copies: int = Field(ge=1, le=999)
     purpose: str = Field(min_length=1, max_length=500)
@@ -2898,8 +3073,7 @@ CONTRACT_NON_PERSON_NAME_MARKERS = PERSON_NAME_NON_PERSON_MARKERS
 def _valid_contract_person_name(value: object, username: object = "") -> str:
     name = unicodedata.normalize("NFKC", str(value or "")).strip()
     compact_name = re.sub(r"\s+", "", name)
-    account = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(username or "")).strip())
-    if not compact_name or (account and compact_name.casefold() == account.casefold()):
+    if not compact_name:
         return ""
     return name
 
@@ -2924,21 +3098,116 @@ def _contract_person_values(value: object) -> list[str]:
     return [item.strip() for item in re.split(r"[、,，;；]", str(value or "")) if item.strip()]
 
 
-async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields: set[str] | None, db: AsyncSession) -> dict:
+RECORD_PERSON_FIELDS_BY_MODULE: dict[str, tuple[str, ...]] = {
+    "case": (
+        "source_person", "customer_manager", "hearing_lawyer", "assistant", "assistant_username",
+        "handler", "case_manager", "case_officer", "initiator", "submitted_by", "created_by", "updated_by",
+    ),
+    "seal": (
+        "applicant", "requester", "submitted_by", "approver", "stamped_by", "archived_by", "created_by", "updated_by",
+    ),
+    "finance": (
+        "applicant", "requester", "submitted_by", "approver", "payer", "claimant", "operator", "created_by", "updated_by",
+    ),
+    "hr": (
+        "username", "created_by", "updated_by", "resigned_by", "login_status_updated_by", "contract_approval_updated_by",
+    ),
+    "warehouse": (
+        "borrower", "borrowed_by", "return_requested_by", "returned_by", "checked_in_by", "checked_out_by",
+        "recipient", "rechecked_in_by", "destroyed_by", "scrapped_by", "created_by", "updated_by",
+    ),
+    "document": (
+        "handler", "register_operator", "signer", "archived_by", "submitted_by", "created_by", "updated_by",
+    ),
+}
+
+RECORD_PERSON_LIST_FIELDS_BY_MODULE: dict[str, tuple[str, ...]] = {
+    "case": ("handling_usernames", "handling_lawyers", "collaborators"),
+    "seal": ("approvers",),
+    "finance": ("approvers",),
+    "document": ("recipients",),
+}
+
+
+def _record_person_usernames(record: BusinessRecord) -> set[str]:
+    data = record.data or {}
+    usernames = {str(record.owner or "").strip()}
+    for key in RECORD_PERSON_FIELDS_BY_MODULE.get(record.module, ()):
+        value = str(data.get(key) or "").strip()
+        if value:
+            usernames.add(value)
+    for key in RECORD_PERSON_LIST_FIELDS_BY_MODULE.get(record.module, ()):
+        usernames.update(_contract_person_values(data.get(key)))
+    return {value for value in usernames if value}
+
+
+def _apply_record_person_displays(
+    result: dict,
+    record: BusinessRecord,
+    users_by_username: dict[str, User],
+) -> dict:
+    if record.module not in RECORD_PERSON_FIELDS_BY_MODULE:
+        return result
+    result["owner_display_name"], result["owner_display_name_missing"] = _person_reference_display(record.owner, users_by_username)
+    data = result.get("data") or {}
+    for key in RECORD_PERSON_FIELDS_BY_MODULE[record.module]:
+        if key not in data:
+            continue
+        display_name, missing = _person_reference_display(data.get(key), users_by_username)
+        data[f"{key}_display_name"] = display_name
+        data[f"{key}_display_name_missing"] = missing
+    for key in RECORD_PERSON_LIST_FIELDS_BY_MODULE.get(record.module, ()):
+        if key not in data:
+            continue
+        values = _contract_person_values(data.get(key))
+        labels = [_person_reference_display(value, users_by_username)[0] for value in values]
+        data[f"{key}_display_names"] = labels
+        data[f"{key}_display_name"] = "、".join(labels)
+    result["data"] = data
+    return result
+
+
+async def _contract_customer_record_dict(
+    record: BusinessRecord,
+    allowed_fields: set[str] | None,
+    db: AsyncSession,
+    *,
+    investigations_by_id: dict[int, BusinessRecord] | None = None,
+    names_by_username: dict[str, str] | None = None,
+    users_by_username: dict[str, User] | None = None,
+) -> dict:
     result = _record_dict(record, allowed_fields)
     if record.module not in {"contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
     data = result["data"]
+    if record.module == "task" and data.get("investigation_record_id"):
+        try:
+            investigation_id = int(data.get("investigation_record_id") or 0)
+        except (TypeError, ValueError):
+            investigation_id = 0
+        investigation = (
+            investigations_by_id.get(investigation_id)
+            if investigations_by_id is not None
+            else await db.get(BusinessRecord, investigation_id) if investigation_id else None
+        )
+        if investigation and investigation.module == "investigation":
+            investigation_data = investigation.data or {}
+            for key in ("right_type", "region", "authorized_from", "authorized_to", "source_owner", "assigner", "assigned_by"):
+                if not data.get(key) and investigation_data.get(key):
+                    data[key] = investigation_data[key]
+            data.setdefault("investigation_no", investigation.serial_no)
     usernames = [record.owner]
-    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer", "investigator", "source_owner", "assigner", "assigned_by"):
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by"):
         usernames.extend(_contract_person_values(data.get(key)))
     usernames.extend(_contract_person_values(data.get("customer_managers")))
     usernames.extend(_contract_person_values(data.get("contact_accounts") or data.get("contact")))
-    normalized_usernames = list(dict.fromkeys(value.lower() for value in usernames if value))
-    users = list((await db.scalars(select(User).where(User.username.in_(normalized_usernames)))).all()) if normalized_usernames else []
-    names_by_username = {user.username.lower(): user.display_name for user in users}
+    usernames.extend(_record_person_usernames(record))
+    if names_by_username is None:
+        normalized_usernames = list(dict.fromkeys(value.lower() for value in usernames if value))
+        users = list((await db.scalars(select(User).where(func.lower(User.username).in_(normalized_usernames)))).all()) if normalized_usernames else []
+        names_by_username = {user.username.lower(): user.display_name for user in users}
     result["owner_display_name"] = _contract_person_display_name(record.owner, names_by_username)
-    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "investigator", "source_owner", "assigner", "assigned_by"):
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by"):
         if key in data:
             data[f"{key}_display_name"] = _contract_person_display_name(data.get(key), names_by_username)
     managers = _contract_person_values(data.get("customer_managers") or data.get("customer_manager"))
@@ -2968,10 +3237,63 @@ async def _contract_customer_record_dict(record: BusinessRecord, allowed_fields:
         reviewer_label = str(data.get("customer_reviewer_display_name") or data.get("reviewer_display_name") or "")
         if record.module == "clue" and manager_label and reviewer_label:
             data["customer_manager"] = f"{manager_label}（审核人：{reviewer_label}）"
+    if record.module in RECORD_PERSON_FIELDS_BY_MODULE:
+        if users_by_username is None:
+            users_by_username = await _user_display_map(_record_person_usernames(record), db)
+        _apply_record_person_displays(result, record, users_by_username)
     return result
 
 
-def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord) -> dict:
+async def _contract_customer_record_dicts(
+    records: list[BusinessRecord], allowed_fields: set[str] | None, db: AsyncSession,
+) -> list[dict]:
+    investigation_ids: set[int] = set()
+    for record in records:
+        if record.module != "task":
+            continue
+        try:
+            investigation_id = int((record.data or {}).get("investigation_record_id") or 0)
+        except (TypeError, ValueError):
+            investigation_id = 0
+        if investigation_id:
+            investigation_ids.add(investigation_id)
+    investigations = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "investigation", BusinessRecord.id.in_(investigation_ids),
+    ))).all()) if investigation_ids else []
+    investigations_by_id = {item.id: item for item in investigations}
+
+    usernames: set[str] = set()
+    person_keys = (
+        "source_person", "customer_source", "submitted_by", "current_approver", "customer_manager",
+        "reviewer", "customer_reviewer", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by",
+    )
+    for record in records:
+        usernames.add(str(record.owner or "").lower())
+        data = record.data or {}
+        investigation = investigations_by_id.get(int(data.get("investigation_record_id") or 0)) if record.module == "task" and str(data.get("investigation_record_id") or "").isdigit() else None
+        inherited_data = investigation.data or {} if investigation else {}
+        for key in person_keys:
+            usernames.update(value.lower() for value in _contract_person_values(data.get(key) or inherited_data.get(key)))
+        usernames.update(value.lower() for value in _contract_person_values(data.get("customer_managers")))
+        usernames.update(value.lower() for value in _contract_person_values(data.get("contact_accounts") or data.get("contact")))
+        usernames.update(value.lower() for value in _record_person_usernames(record))
+    usernames.discard("")
+    users = list((await db.scalars(select(User).where(func.lower(User.username).in_(usernames)))).all()) if usernames else []
+    names_by_username = {user.username.lower(): user.display_name for user in users}
+    users_by_username = {user.username.lower(): user for user in users}
+    results = [
+        await _contract_customer_record_dict(
+            record, allowed_fields, db,
+            investigations_by_id=investigations_by_id,
+            names_by_username=names_by_username,
+            users_by_username=users_by_username,
+        )
+        for record in records
+    ]
+    return results
+
+
+def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
     remaining = max(plan.amount - plan.received_amount, 0)
     effective_status = plan.status
     if remaining > 0 and plan.due_date < date.today() and plan.status != "已收款":
@@ -2982,7 +3304,8 @@ def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord) -> dict:
         "customer": contract.customer, "phase": plan.phase, "due_date": plan.due_date,
         "amount": plan.amount, "received_amount": plan.received_amount,
         "remaining_amount": remaining, "status": effective_status,
-        "payer": plan.payer, "owner": contract.owner, "remark": plan.remark,
+        "payer": plan.payer, "owner": contract.owner,
+        "owner_display_name": _person_reference_display(contract.owner, users_by_username or {})[0], "remark": plan.remark,
         "updated_at": plan.updated_at,
     }
 
@@ -3053,6 +3376,88 @@ def _task_dict(record: BusinessRecord) -> dict:
     }
 
 
+def _task_display_with_users(record: BusinessRecord, users_by_username: dict[str, User]) -> dict:
+    result = _task_dict(record)
+    data = result.get("data") or {}
+    result["owner_display_name"], result["owner_display_name_missing"] = _person_reference_display(record.owner, users_by_username)
+    for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer"):
+        if key in data:
+            display_name, display_missing = _person_reference_display(data.get(key), users_by_username)
+            result[f"{key}_display_name"] = display_name
+            result[f"{key}_display_name_missing"] = display_missing
+    if data.get("customer_manager") is not None:
+        manager_values = _contract_person_values(data.get("customer_manager"))
+        manager_names = [_person_reference_display(value, users_by_username)[0] for value in manager_values]
+        if manager_names:
+            result["customer_manager_display_name"] = "、".join(manager_names)
+    collaborator_values = _contract_person_values(data.get("collaborators"))
+    result["collaborator_display_names"] = [
+        _person_reference_display(value, users_by_username)[0] for value in collaborator_values
+    ]
+    result["collaborators_display_names"] = result["collaborator_display_names"]
+    return result
+
+
+async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -> list[dict]:
+    usernames: set[str] = set()
+    for record in records:
+        usernames.add(record.owner)
+        data = record.data or {}
+        for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer", "customer_manager", "collaborators"):
+            usernames.update(_contract_person_values(data.get(key)))
+    users_by_username = await _user_display_map(usernames, db)
+    return [_task_display_with_users(record, users_by_username) for record in records]
+
+
+async def _task_display_dict(record: BusinessRecord, db: AsyncSession) -> dict:
+    return (await _task_display_dicts([record], db))[0]
+
+
+
+async def _resolve_investigation_task_root(source: BusinessRecord, identity: dict, db: AsyncSession) -> BusinessRecord:
+    if source.module == "investigation":
+        return source
+    candidate_ids: list[int] = []
+    source_data = source.data or {}
+    for key in ("investigation_record_id", "investigation_id"):
+        try:
+            candidate_id = int(source_data.get(key) or 0)
+        except (TypeError, ValueError):
+            candidate_id = 0
+        if candidate_id > 0:
+            candidate_ids.append(candidate_id)
+    try:
+        task_id = int(source_data.get("source_task_id") or 0)
+    except (TypeError, ValueError):
+        task_id = 0
+    visited: set[int] = set()
+    while task_id and task_id not in visited:
+        visited.add(task_id)
+        task = await db.get(BusinessRecord, task_id)
+        if not task or task.module not in {"task", "investigation"}:
+            break
+        if task.module == "investigation":
+            candidate_ids.insert(0, task.id)
+            break
+        task_data = task.data or {}
+        for key in ("investigation_record_id", "investigation_id"):
+            try:
+                candidate_id = int(task_data.get(key) or 0)
+            except (TypeError, ValueError):
+                candidate_id = 0
+            if candidate_id > 0:
+                candidate_ids.append(candidate_id)
+        try:
+            task_id = int(task_data.get("parent_task_id") or 0)
+        except (TypeError, ValueError):
+            task_id = 0
+    scope = await _record_scope_conditions(identity, db)
+    for candidate_id in candidate_ids:
+        root = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == candidate_id, BusinessRecord.module == "investigation", *scope))
+        if root:
+            return root
+    return source
+
 async def _add_task_message_notifications(
     task: BusinessRecord,
     event: WorkflowEvent,
@@ -3098,14 +3503,19 @@ async def _delete_task_notifications(task_id: int, db: AsyncSession) -> None:
     ))
 
 
-def _attachment_dict(item: FileAttachment, record: BusinessRecord | None = None) -> dict:
+def _attachment_dict(
+    item: FileAttachment,
+    record: BusinessRecord | None = None,
+    uploader_names: dict[str, str] | None = None,
+) -> dict:
+    uploader_display_name = (uploader_names or {}).get(str(item.uploader or "").lower(), "") or CONTRACT_PERSON_NAME_PLACEHOLDER
     return {
         "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
         "customer_guid": _customer_guid(record) if record and record.module == "customer" else "",
         "record_no": record.serial_no if record else "",
         "record_title": record.title if record else "", "category": item.category, "file_type_code": item.file_type_code,
         "original_name": item.original_name, "content_type": item.content_type,
-        "size": item.size, "uploader": item.uploader, "remark": item.remark,
+        "size": item.size, "uploader": item.uploader, "uploader_display_name": uploader_display_name, "remark": item.remark,
         "document_date": item.document_date, "is_license": bool(item.is_license), "requires_transmission": item.requires_transmission, "is_transmitted": item.is_transmitted,
         "transmitted_at": item.transmitted_at, "transmitted_by": item.transmitted_by,
         "is_locked": bool(item.is_locked), "locked_at": item.locked_at, "locked_by": item.locked_by,
@@ -3164,26 +3574,28 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     return checks
 
 
-def _finance_transaction_dict(item: FinanceTransaction, record: BusinessRecord | None = None, attachments: list[FileAttachment] | None = None, *, show_amount: bool = True) -> dict:
+def _finance_transaction_dict(item: FinanceTransaction, record: BusinessRecord | None = None, attachments: list[FileAttachment] | None = None, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:
     vouchers = attachments or []
     return {
         "id": item.id, "finance_record_id": item.finance_record_id,
         "finance_no": record.serial_no if record else "", "finance_title": record.title if record else "",
         "transaction_type": item.transaction_type, "amount": item.amount if show_amount else None, "transaction_date": item.transaction_date,
         "voucher_no": item.voucher_no, "counterparty": item.counterparty, "operator": item.operator,
+        "operator_display_name": _person_reference_display(item.operator, users_by_username or {})[0],
         "remark": item.remark, "created_at": item.created_at,
         "voucher_count": len(vouchers), "voucher_categories": sorted({x.category for x in vouchers}),
         "vouchers": [_attachment_dict(x, record) for x in vouchers],
     }
 
 
-def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True) -> dict:
+def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:
     amount = float(item.amount); allocated = float(item.allocated_amount or 0)
-    return {"id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "contract_record_id": item.contract_record_id, "contract_no": item.contract_no, "case_no": item.case_no, "bank_source": item.bank_source, "claimant": item.claimant, "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at}
+    users = users_by_username or {}
+    return {"id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "contract_record_id": item.contract_record_id, "contract_no": item.contract_no, "case_no": item.case_no, "bank_source": item.bank_source, "claimant": item.claimant, "claimant_display_name": _person_reference_display(item.claimant, users)[0], "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users)[0], "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
-def _reconciliation_dict(item: ReconciliationBatch, *, show_amount: bool = True) -> dict:
-    return {"id": item.id, "period_type": item.period_type, "date_from": item.date_from, "date_to": item.date_to, "transaction_count": item.transaction_count, "total_amount": item.total_amount if show_amount else None, "discrepancy_amount": item.discrepancy_amount if show_amount else None, "status": item.status, "operator": item.operator, "remark": item.remark, "created_at": item.created_at}
+def _reconciliation_dict(item: ReconciliationBatch, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:
+    return {"id": item.id, "period_type": item.period_type, "date_from": item.date_from, "date_to": item.date_to, "transaction_count": item.transaction_count, "total_amount": item.total_amount if show_amount else None, "discrepancy_amount": item.discrepancy_amount if show_amount else None, "status": item.status, "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users_by_username or {})[0], "remark": item.remark, "created_at": item.created_at}
 
 
 def _seed_business_records() -> list[BusinessRecord]:
@@ -3515,6 +3927,13 @@ def _user_permission_overrides(user: User) -> dict:
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     """Expose the contract workbench to explicitly configured contract auditors."""
     permission = await _permission_payload_for_roles(_system_user_role_ids(user), db)
+    profile = user.profile or {}
+    job_role_name = str(profile.get("position") or profile.get("staff_role") or "").strip()
+    if job_role_name:
+        job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
+        if job_role:
+            job_menu_keys = [key for key in (job_role.permissions or []) if key in SYSTEM_MENU_ROUTE_KEYS]
+            permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *job_menu_keys])
     overrides = _user_permission_overrides(user)
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
@@ -3549,6 +3968,20 @@ async def _record_dict_for_identity(record: BusinessRecord, identity: dict, db: 
 def _is_smoke_test_username(username: object) -> bool:
     """Only hide explicitly generated smoke accounts; recorded English names stay valid."""
     return str(username or "").strip().casefold().startswith("smoke_")
+
+
+async def _active_employee_usernames(db: AsyncSession) -> set[str]:
+    """Return active login identities backed by an active HR employee record."""
+    employees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all()
+    return {
+        username
+        for item in employees
+        for username in [str((item.data or {}).get("username") or item.owner or "").strip().lower()]
+        if username and not _is_smoke_test_username(username)
+    }
 
 
 async def _resolve_active_customer_managers(values: list[object], db: AsyncSession) -> list[str]:
@@ -3717,11 +4150,19 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     # case records and stable username projections; it does not widen financial,
     # archive or team-management authority.
     case_team = and_(BusinessRecord.module == "case", BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token))
+    published_investigation = and_(
+        BusinessRecord.module == "investigation",
+        func.lower(BusinessRecord.data["publisher"].as_string()) == user.username.lower(),
+    )
+    initiated_task = and_(
+        BusinessRecord.module == "task",
+        func.lower(func.coalesce(BusinessRecord.data["initiator"].as_string(), "")) == user.username.lower(),
+    )
     if scope == "本部门数据":
-        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team)]
+        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation, initiated_task)]
     if scope == "授权审批数据":
-        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, and_(BusinessRecord.module.in_(["contract", "finance", "invoice", "refund", "seal", "clue", "notary"]), BusinessRecord.status.in_(["待审批", "审批中", "待审核"])))]
-    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team)]
+        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation, initiated_task, and_(BusinessRecord.module.in_(["contract", "finance", "invoice", "refund", "seal", "clue", "notary"]), BusinessRecord.status.in_(["待审批", "审批中", "待审核"])))]
+    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, published_investigation, initiated_task)]
 
 
 async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
@@ -3830,6 +4271,28 @@ def _security_policy_dict(policy: SecurityPolicy) -> dict:
     return {"min_password_length": policy.min_password_length, "max_failed_attempts": policy.max_failed_attempts, "lock_minutes": policy.lock_minutes, "token_minutes": policy.token_minutes, "updated_by": policy.updated_by, "updated_at": policy.updated_at}
 
 
+async def _login_response(user: User, db: AsyncSession, *, require_password_change: bool | None = None) -> dict:
+    policy = await _security_policy(db)
+    permission = await _user_permission_payload(user, db)
+    role_ids = _system_user_role_ids(user)
+    must_change = user.must_change_password if require_password_change is None else require_password_change
+    return {
+        "access_token": create_token(user.username, role_ids[0], policy.token_minutes),
+        "token_type": "bearer",
+        "expires_in": policy.token_minutes * 60,
+        "must_change_password": must_change,
+        "user": {
+            "username": user.username,
+            "display_name": user.display_name,
+            "department": user.department,
+            "role": role_ids[0],
+            "role_ids": role_ids,
+            "must_change_password": must_change,
+            **permission,
+        },
+    }
+
+
 @app.post(f"{settings.api_prefix}/auth/login")
 async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.username == form.username))
@@ -3850,11 +4313,83 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
         await db.commit()
         if user.locked_until: raise HTTPException(status_code=423, detail=f"登录失败次数过多，账号已锁定 {policy.lock_minutes} 分钟")
         raise HTTPException(status_code=401, detail=f"账号或密码错误，还可尝试 {policy.max_failed_attempts - user.failed_login_attempts} 次")
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(form.password)
+        user.password_changed_at = now
     user.failed_login_attempts = 0; user.locked_until = None; user.last_login_at = now
     await db.commit()
-    permission = await _user_permission_payload(user, db)
-    role_ids = _system_user_role_ids(user)
-    return {"access_token": create_token(user.username, role_ids[0], policy.token_minutes), "token_type": "bearer", "expires_in": policy.token_minutes * 60, "must_change_password": user.must_change_password, "user": {"username": user.username, "display_name": user.display_name, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "must_change_password": user.must_change_password, **permission}}
+    return await _login_response(user, db)
+
+
+@app.get(f"{settings.api_prefix}/auth/dingtalk/config")
+async def dingtalk_login_config():
+    return {
+        "enabled": dingtalk_client.configured,
+        "corp_id": settings.dingtalk_corp_id if dingtalk_client.configured else "",
+        "agent_id": settings.dingtalk_agent_id if dingtalk_client.configured else "",
+    }
+
+
+def _dingtalk_allowed_display_names() -> set[str]:
+    raw = str(settings.dingtalk_allowed_display_names or "")
+    for separator in ("，", ";", "；", "\n"):
+        raw = raw.replace(separator, ",")
+    return {name.strip() for name in raw.split(",") if name.strip()}
+
+
+def _require_dingtalk_access(user: User) -> None:
+    allowed_names = _dingtalk_allowed_display_names()
+    if allowed_names and str(user.display_name or "").strip() not in allowed_names:
+        raise HTTPException(status_code=403, detail="当前员工未开通钉钉登录，请联系管理员")
+
+
+@app.post(f"{settings.api_prefix}/auth/dingtalk/login")
+async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(get_db)):
+    if not dingtalk_client.configured:
+        raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
+    try:
+        ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
+    except (DingTalkError, httpx.HTTPError) as exc:
+        logger.warning("DingTalk login failed: %s", exc)
+        raise HTTPException(status_code=502, detail="钉钉身份校验失败，请稍后重试") from exc
+    users = (await db.scalars(select(User).where(User.is_active.is_(True)))).all()
+    matched = [user for user in users if str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user["user_id"]]
+    if not matched and ding_user.get("mobile"):
+        matched = [user for user in users if str((user.profile or {}).get("mobile") or "").strip() == ding_user["mobile"]]
+        if len(matched) == 1:
+            matched[0].profile = {**(matched[0].profile or {}), "dingtalk_user_id": ding_user["user_id"]}
+    ding_name = str(ding_user.get("name") or "").strip()
+    if not matched and ding_name in _dingtalk_allowed_display_names():
+        matched = [user for user in users if str(user.display_name or "").strip() == ding_name]
+        if len(matched) == 1:
+            matched[0].profile = {**(matched[0].profile or {}), "dingtalk_user_id": ding_user["user_id"]}
+    if len(matched) != 1:
+        raise HTTPException(status_code=403, detail="钉钉账号尚未绑定系统员工，请联系管理员在员工账号中绑定")
+    user = matched[0]
+    _require_dingtalk_access(user)
+    user.last_login_at = datetime.now()
+    await db.commit()
+    return await _login_response(user, db, require_password_change=False)
+
+
+@app.post(f"{settings.api_prefix}/auth/dingtalk/bind")
+async def bind_dingtalk_login(body: DingTalkBindInput, db: AsyncSession = Depends(get_db)):
+    if not dingtalk_client.configured:
+        raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
+    try:
+        ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
+    except (DingTalkError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail="钉钉身份校验失败，请从工作台重新打开系统") from exc
+    user = await db.scalar(select(User).where(User.username == body.username.strip().lower(), User.is_active.is_(True)))
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="OA 账号或密码错误")
+    _require_dingtalk_access(user)
+    profile = {**(user.profile or {}), "dingtalk_user_id": ding_user["user_id"]}
+    await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
+    user.profile = profile
+    user.last_login_at = datetime.now()
+    await db.commit()
+    return await _login_response(user, db)
 
 
 @app.get(f"{settings.api_prefix}/auth/me")
@@ -3908,7 +4443,7 @@ def _system_user_dict(user: User) -> dict:
     role_ids = _system_user_role_ids(user)
     person_name, person_name_missing = _person_display_name(user.display_name, user.username)
     manager_name, manager_name_missing = _person_display_name(profile.get("manager_name", ""), "")
-    return {"id": user.id, "username": user.username, "display_name": user.display_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "manager_id": profile.get("manager_id"), "manager_name": profile.get("manager_name", ""), "manager_person_display_name": manager_name if profile.get("manager_id") else "", "manager_name_missing": manager_name_missing if profile.get("manager_id") else False, "access_level": profile.get("access_level", ""), "lead_rate": profile.get("lead_rate", ""), "copy_rate": profile.get("copy_rate", ""), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
+    return {"id": user.id, "username": user.username, "display_name": user.display_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "department": user.department, "role": role_ids[0], "role_ids": role_ids, "is_active": user.is_active, "must_change_password": user.must_change_password, "profile": profile, "contract_approval_enabled": bool(profile.get("contract_approval_enabled")), "dingtalk_user_id": profile.get("dingtalk_user_id", ""), "dingtalk_bound": bool(profile.get("dingtalk_user_id")), "email": profile.get("email", ""), "office_phone": profile.get("office_phone", ""), "mobile": profile.get("mobile", ""), "menu_auto_collapse": profile.get("menu_auto_collapse", "no"), "manager_id": profile.get("manager_id"), "manager_name": profile.get("manager_name", ""), "manager_person_display_name": manager_name if profile.get("manager_id") else "", "manager_name_missing": manager_name_missing if profile.get("manager_id") else False, "access_level": profile.get("access_level", ""), "lead_rate": profile.get("lead_rate", ""), "copy_rate": profile.get("copy_rate", ""), "failed_login_attempts": user.failed_login_attempts or 0, "locked_until": user.locked_until, "last_login_at": user.last_login_at, "password_changed_at": user.password_changed_at, "created_at": user.created_at}
 
 
 @app.get(f"{settings.api_prefix}/system/users")
@@ -3922,6 +4457,52 @@ async def list_system_users(keyword: str = "", identity: dict = Depends(current_
     return {"items": [_system_user_dict(user) for user in users], "total": len(users)}
 
 
+@app.patch(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk")
+async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="系统用户不存在")
+    ding_user_id = body.user_id.strip()
+    if ding_user_id:
+        _require_dingtalk_access(user)
+        users = (await db.scalars(select(User).where(User.id != user_id))).all()
+        if any(str((item.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for item in users):
+            raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
+    profile = dict(user.profile or {})
+    if ding_user_id:
+        profile["dingtalk_user_id"] = ding_user_id
+    else:
+        profile.pop("dingtalk_user_id", None)
+    user.profile = profile
+    await db.commit(); await db.refresh(user)
+    return _system_user_dict(user)
+
+
+@app.get(f"{settings.api_prefix}/people/options")
+async def list_active_people_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Expose only active personnel names for authenticated internal selectors."""
+    users = list((await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all())
+    items = []
+    for user in users:
+        name = str(user.display_name or "").strip()
+        if name:
+            items.append({"value": name, "label": name, "username": user.username})
+    return {"items": items}
+
+
+async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None, display_name: str = "") -> None:
+    ding_user_id = str(profile.get("dingtalk_user_id") or "").strip()
+    if not ding_user_id:
+        return
+    allowed_names = _dingtalk_allowed_display_names()
+    if allowed_names and str(display_name or "").strip() not in allowed_names:
+        raise HTTPException(status_code=403, detail="当前员工未开通钉钉登录，请联系管理员")
+    users = (await db.scalars(select(User))).all()
+    if any(user.id != exclude_user_id and str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for user in users):
+        raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
+
+
 @app.post(f"{settings.api_prefix}/system/users", status_code=status.HTTP_201_CREATED)
 async def create_system_user(body: SystemUserInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
@@ -3932,6 +4513,7 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
     policy = await _security_policy(db)
     if len(body.password) < policy.min_password_length: raise HTTPException(status_code=422, detail=f"密码至少需要 {policy.min_password_length} 位")
     profile = {**body.profile, "access_level": body.access_level.strip(), "lead_rate": body.lead_rate.strip(), "copy_rate": body.copy_rate.strip(), **(await _system_user_manager_profile(body.manager_id, db))}
+    await _ensure_unique_dingtalk_user_id(profile, db, display_name=body.display_name)
     user = User(
         username=username,
         display_name=body.display_name.strip(),
@@ -3972,7 +4554,7 @@ def _replace_username_value(value: object, old_username: str, new_username: str)
 async def _rename_system_username(user: User, requested_username: str, identity: dict, db: AsyncSession) -> str:
     new_username = requested_username.strip().lower()
     old_username = user.username
-    if not re.fullmatch(r"[a-z0-9._-]+", new_username):
+    if not re.fullmatch(r"[a-z0-9._-]{2,64}", new_username):
         raise HTTPException(status_code=422, detail="登录账号只能包含小写字母、数字、点、下划线或短横线")
     if new_username == old_username:
         return old_username
@@ -4083,6 +4665,7 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
             profile[key] = (value or "").strip()
     if body.profile is not None:
         profile = {**profile, **body.profile}
+    await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
     user.profile = profile
     await db.commit(); await db.refresh(user)
     return _system_user_dict(user)
@@ -4235,6 +4818,18 @@ async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, g
         term = f"%{keyword.strip()}%"
         statement = statement.where(or_(SystemParameter.code.ilike(term), SystemParameter.name.ilike(term)))
     items = (await db.scalars(statement.order_by(SystemParameter.sort_order, SystemParameter.id).limit(limit))).all()
+    return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
+
+
+@app.get(f"{settings.api_prefix}/system/parameters/options")
+async def list_system_parameter_options(category: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Expose active, form-safe parameter choices to authenticated users."""
+    if category != "notary_office":
+        raise HTTPException(status_code=422, detail="当前参数分类不提供业务选项")
+    items = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == category,
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
 
 
@@ -5003,18 +5598,49 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
     def count(rows, statuses, owner_only=False, predicate=None):
         return sum(item.status in statuses and (not owner_only or item.owner == username) and (predicate is None or predicate(item.data or {})) for item in rows)
     def fee_match(word): return lambda data: word in str(data.get("fee_type") or data.get("expense_scope") or "")
-    official = lambda data: any(word in str(data.get("fee_type") or data.get("expense_scope") or "") for word in ("官方", "律所"))
+    official = lambda data: any(word in str(data.get("fee_type") or data.get("expense_scope") or "") for word in ("官方", "官费", "律所"))
     unpaid_official = [item for item in finances if official(item.data or {}) and item.status not in {"已付款", "已完成", "已驳回", "已拒绝"}]
-    unpaid_amount = sum(max(float((item.data or {}).get("amount") or 0) - float((item.data or {}).get("paid_amount") or 0), 0) for item in unpaid_official)
+    def amount(value: object) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    unpaid_amount = sum(max(amount((item.data or {}).get("amount")) - amount((item.data or {}).get("paid_amount")), 0) for item in unpaid_official)
+    pending_refunds = [
+        item for item in finances
+        if item.status not in {"已完成", "已付款", "已驳回", "已拒绝", "已作废"}
+        and (
+            item.module == "refund"
+            or amount((item.data or {}).get("refund_requested_amount")) > amount((item.data or {}).get("refunded_amount"))
+            or "退费" in str((item.data or {}).get("fee_type") or "")
+        )
+    ]
+    def case_signal(item: BusinessRecord, *words: str) -> bool:
+        data = item.data or {}
+        values = [
+            item.status, data.get("case_phase"), data.get("execution_status"),
+            data.get("required_action"), data.get("review_action"), data.get("supplement_type"),
+        ]
+        return any(word in str(value or "") for word in words for value in values)
+    supplement_evidence = [item for item in cases if case_signal(item, "补充证据")]
+    supplement_opinion = [item for item in cases if case_signal(item, "补充意见")]
+    pending_appeal = [item for item in cases if case_signal(item, "待上诉")]
+    pending_execution = [item for item in cases if case_signal(item, "一审待执行", "二审待执行", "待执行")]
+    urgent_cases = [
+        item for item in cases
+        if bool((item.data or {}).get("urgent"))
+        or str((item.data or {}).get("priority") or "") in {"紧急", "特急"}
+        or "紧急" in item.status
+    ]
     metrics = [
-        {"label": "待缴官费", "value": f"{len(unpaid_official)}件", "tone": "amber"},
-        {"label": "待退费", "value": f"{sum(item.status not in {'已完成','已驳回','已拒绝'} for item in by_module['refund'])}件", "tone": "cyan"},
-        {"label": "补充证据", "value": f"{sum('补充证据' in item.status for item in cases)}件", "tone": "green"},
-        {"label": "补充意见", "value": f"{sum('补充意见' in item.status for item in cases)}件", "tone": "blue"},
-        {"label": "待上诉", "value": f"{sum('待上诉' in item.status for item in cases)}件", "tone": "red"},
-        {"label": "待执行", "value": f"{sum('待执行' in item.status for item in cases)}件", "tone": "purple"},
-        {"label": "紧急案件", "value": f"{sum(bool((item.data or {}).get('urgent')) or '紧急' in item.status for item in cases)}件", "tone": "orange"},
-        {"label": "未到官费金额", "value": f"{unpaid_amount:.2f}元", "tone": "navy"},
+        {"key": "official-fee-unpaid", "label": "待缴官费", "value": f"{len(unpaid_official)}件", "tone": "amber", "route": "finance-fee-query"},
+        {"key": "refund-pending", "label": "待退费", "value": f"{len(pending_refunds)}件", "tone": "cyan", "route": "finance-refund"},
+        {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company"},
+        {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company"},
+        {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-company"},
+        {"key": "execution-pending", "label": "待执行", "value": f"{len(pending_execution)}件", "tone": "purple", "route": "case-company-execution"},
+        {"key": "urgent-cases", "label": "紧急案件", "value": f"{len(urgent_cases)}件", "tone": "orange", "route": "case-company"},
+        {"key": "official-fee-unreceived", "label": "未到官费金额", "value": f"{unpaid_amount:.2f}元", "tone": "navy", "route": "finance-fee-query"},
     ]
     todo_specs = [
         ("待处理任务", tasks, {"待接收", "待处理", "处理中"}, None, "待审批官方费用", finances, pending_statuses, official),
@@ -5066,8 +5692,60 @@ async def global_search(q: str = Query(min_length=2, max_length=100), identity: 
     return {"query": keyword, "items": items, "total": len(items)}
 
 
-def _notification_dict(item: Notification) -> dict:
-    return {"id": item.id, "source_type": item.source_type, "source_id": item.source_id, "sender": item.sender, "recipient": item.recipient, "notification_type": item.notification_type, "title": item.title, "content": item.content, "level": item.level, "is_read": item.is_read, "read_at": item.read_at, "created_at": item.created_at}
+def _notification_dict(item: Notification, users_by_username: dict[str, User] | None = None) -> dict:
+    users = users_by_username or {}
+    return {
+        "id": item.id, "source_type": item.source_type, "source_id": item.source_id,
+        "sender": item.sender, "sender_display_name": _person_reference_display(item.sender, users)[0],
+        "recipient": item.recipient, "recipient_display_name": _person_reference_display(item.recipient, users)[0],
+        "notification_type": item.notification_type, "title": item.title, "content": item.content,
+        "level": item.level, "is_read": item.is_read, "read_at": item.read_at,
+        "dingtalk_status": item.dingtalk_status, "dingtalk_sent_at": item.dingtalk_sent_at, "created_at": item.created_at,
+    }
+
+
+async def _dispatch_dingtalk_notifications() -> None:
+    if not settings.dingtalk_notifications_enabled or not dingtalk_client.configured:
+        return
+    async with SessionLocal() as db:
+        notices = (await db.scalars(
+            select(Notification).where(
+                Notification.is_read.is_(False),
+                Notification.recipient_deleted.is_(False),
+                Notification.dingtalk_status.in_(("pending", "failed")),
+                Notification.dingtalk_attempts < 5,
+            ).order_by(Notification.id).limit(50)
+        )).all()
+        if not notices:
+            return
+        usernames = {notice.recipient for notice in notices}
+        users = (await db.scalars(select(User).where(User.username.in_(usernames), User.is_active.is_(True)))).all()
+        users_by_username = {user.username: user for user in users}
+        for notice in notices:
+            user = users_by_username.get(notice.recipient)
+            ding_user_id = str(((user.profile if user else {}) or {}).get("dingtalk_user_id") or "").strip()
+            if not ding_user_id:
+                continue
+            try:
+                await dingtalk_client.send_work_notification(ding_user_id, notice.title, notice.content)
+                notice.dingtalk_status = "sent"
+                notice.dingtalk_sent_at = datetime.now()
+                notice.dingtalk_error = ""
+            except (DingTalkError, httpx.HTTPError, ValueError) as exc:
+                notice.dingtalk_status = "failed"
+                notice.dingtalk_attempts = int(notice.dingtalk_attempts or 0) + 1
+                notice.dingtalk_error = str(exc)[:500]
+                logger.warning("DingTalk notification %s failed: %s", notice.id, exc)
+        await db.commit()
+
+
+async def _dingtalk_notification_loop() -> None:
+    while True:
+        try:
+            await _dispatch_dingtalk_notifications()
+        except Exception:
+            logger.exception("DingTalk notification loop failed")
+        await asyncio.sleep(10)
 
 
 async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
@@ -5167,7 +5845,8 @@ async def list_notifications(
     total = int(await db.scalar(select(func.count()).select_from(Notification).where(*conditions)) or 0)
     items = (await db.scalars(select(Notification).where(*conditions).order_by(Notification.created_at.desc(), Notification.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     unread = int(await db.scalar(select(func.count()).select_from(Notification).where(Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False), Notification.is_read.is_(False))) or 0)
-    return {"items": [_notification_dict(x) for x in items], "unread": unread, "total": total, "page": page, "page_size": page_size}
+    users_by_username = await _user_display_map({value for item in items for value in (item.sender, item.recipient)}, db)
+    return {"items": [_notification_dict(x, users_by_username) for x in items], "unread": unread, "total": total, "page": page, "page_size": page_size}
 
 
 @app.get(f"{settings.api_prefix}/users/directory")
@@ -5176,35 +5855,28 @@ async def user_directory(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    items = (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
-    eligible_customer_usernames: set[str] = set()
+    eligible_customer_usernames = await _active_employee_usernames(db)
+    items = (await db.scalars(select(User).where(
+        User.is_active.is_(True), User.username.in_(eligible_customer_usernames),
+    ).order_by(User.display_name, User.username))).all() if eligible_customer_usernames else []
     employee_display_names: dict[str, str] = {}
-    if purpose == "customer_manager":
-        active_employees = (await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "hr",
-            BusinessRecord.status.not_in({"离职", "停用"}),
-        ))).all()
-        for employee in active_employees:
-            username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
-            display_name = str(employee.title or "").strip()
-            if username and display_name:
-                employee_display_names[username] = display_name
-        eligible_customer_usernames = {
-            str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
-            for employee in active_employees
-        }
+    active_employees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all()
+    for employee in active_employees:
+        username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
+        display_name = str(employee.title or "").strip()
+        if username and display_name:
+            employee_display_names.setdefault(username, display_name)
     job_roles = (await db.scalars(select(JobRole).where(JobRole.is_active.is_(True)))).all()
     roles_by_name = {item.name: item for item in job_roles}
     payload = []
     for item in items:
-        if purpose == "customer_manager" and _is_smoke_test_username(item.username):
-            continue
         position = str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "")
         job_role = roles_by_name.get(position)
         job_permissions = list(job_role.permissions or []) if job_role else []
-        display_name = item.display_name
-        if purpose == "customer_manager":
-            display_name = employee_display_names.get(item.username.lower()) or item.display_name
+        display_name = employee_display_names.get(item.username.lower()) or item.display_name
         payload.append({
             "username": item.username,
             "display_name": display_name,
@@ -5315,7 +5987,8 @@ async def send_user_message(body: UserMessageInput, identity: dict = Depends(cur
         db.add(item); items.append(item)
     await db.commit()
     for item in items: await db.refresh(item)
-    return {"items": [_notification_dict(item) for item in items], "sent": len(items)}
+    users_by_username = await _user_display_map({value for item in items for value in (item.sender, item.recipient)}, db)
+    return {"items": [_notification_dict(item, users_by_username) for item in items], "sent": len(items)}
 
 
 @app.post(f"{settings.api_prefix}/notifications/{{notification_id}}/read")
@@ -5323,7 +5996,8 @@ async def read_notification(notification_id: int, identity: dict = Depends(curre
     item = await db.get(Notification, notification_id)
     if not item or item.recipient != identity["username"] or item.recipient_deleted: raise HTTPException(status_code=404, detail="消息不存在")
     item.is_read = True; item.read_at = datetime.now(); await db.commit(); await db.refresh(item)
-    return _notification_dict(item)
+    users_by_username = await _user_display_map({item.sender, item.recipient}, db)
+    return _notification_dict(item, users_by_username)
 
 
 @app.post(f"{settings.api_prefix}/notifications/read-all")
@@ -5346,8 +6020,8 @@ async def delete_notification(notification_id: int, identity: dict = Depends(cur
     await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _communication_dict(item: CommunicationLog) -> dict:
-    return {"id": item.id, "customer_record_id": item.customer_record_id, "customer_name": item.customer_name, "contact": item.contact, "phone": item.phone, "content": item.content, "occurred_at": item.occurred_at, "operator": item.operator, "created_at": item.created_at, "updated_at": item.updated_at}
+def _communication_dict(item: CommunicationLog, users_by_username: dict[str, User] | None = None) -> dict:
+    return {"id": item.id, "customer_record_id": item.customer_record_id, "customer_name": item.customer_name, "contact": item.contact, "phone": item.phone, "content": item.content, "occurred_at": item.occurred_at, "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users_by_username or {})[0], "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 def _parse_customer_contact_at(value: object) -> datetime | None:
@@ -5425,7 +6099,8 @@ async def list_communications(keyword: str = "", date_from: date | None = None, 
     if date_to: conditions.append(CommunicationLog.occurred_at <= datetime.combine(date_to, datetime.max.time()))
     total = int(await db.scalar(select(func.count()).select_from(CommunicationLog).where(*conditions)) or 0)
     items = (await db.scalars(select(CommunicationLog).where(*conditions).order_by(CommunicationLog.occurred_at.desc(), CommunicationLog.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
-    return {"items": [_communication_dict(item) for item in items], "total": total, "page": page, "page_size": page_size}
+    users_by_username = await _user_display_map({item.operator for item in items}, db)
+    return {"items": [_communication_dict(item, users_by_username) for item in items], "total": total, "page": page, "page_size": page_size}
 
 
 async def _communication_attachment_context(communication_id: int, identity: dict, db: AsyncSession) -> tuple[CommunicationLog, BusinessRecord]:
@@ -5507,7 +6182,8 @@ async def create_communication(body: CommunicationLogInput, identity: dict = Dep
     _sync_customer_contact_metrics(customer)
     item = CommunicationLog(customer_record_id=customer.id, customer_name=customer.title, contact=contact, phone=phone, content=content, occurred_at=body.occurred_at, operator=identity["username"], note_id=note_id)
     db.add(item); db.add(_customer_event(customer, "新增沟通日志", identity, f"{contact or '客户联系人'}：{content[:120]}"))
-    await db.commit(); await db.refresh(item); return _communication_dict(item)
+    await db.commit(); await db.refresh(item)
+    return _communication_dict(item, await _user_display_map({item.operator}, db))
 
 
 @app.patch(f"{settings.api_prefix}/communications/{{communication_id}}")
@@ -5527,7 +6203,8 @@ async def update_communication(communication_id: int, body: CommunicationLogUpda
     customer.data = {**data, "notes": notes}
     _sync_customer_contact_metrics(customer)
     db.add(_customer_event(customer, "修改沟通日志", identity, item.content[:120]))
-    await db.commit(); await db.refresh(item); return _communication_dict(item)
+    await db.commit(); await db.refresh(item)
+    return _communication_dict(item, await _user_display_map({item.operator}, db))
 
 
 @app.delete(f"{settings.api_prefix}/communications/{{communication_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -5682,8 +6359,9 @@ async def list_audit_events(module: str = "", keyword: str = "", page: int = Que
     base = select(WorkflowEvent, BusinessRecord).join(BusinessRecord, BusinessRecord.id == WorkflowEvent.record_id).where(*conditions)
     total = int(await db.scalar(select(func.count()).select_from(WorkflowEvent).join(BusinessRecord, BusinessRecord.id == WorkflowEvent.record_id).where(*conditions)) or 0)
     result = (await db.execute(base.order_by(WorkflowEvent.created_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
+    users_by_username = await _user_display_map({event.operator for event, _record in result}, db)
     return {
-        "items": [{"id": event.id, "record_id": record.id, "module": record.module, "serial_no": record.serial_no, "title": record.title, "action": event.action, "from_status": event.from_status, "to_status": event.to_status, "operator": event.operator, "comment": event.comment, "created_at": event.created_at} for event, record in result],
+        "items": [{"id": event.id, "record_id": record.id, "module": record.module, "serial_no": record.serial_no, "title": record.title, "action": event.action, "from_status": event.from_status, "to_status": event.to_status, "operator": event.operator, "operator_display_name": _person_reference_display(event.operator, users_by_username)[0], "comment": event.comment, "created_at": event.created_at} for event, record in result],
         "total": total, "page": page, "page_size": page_size,
         "pages": (total + page_size - 1) // page_size if total else 0,
     }
@@ -6117,6 +6795,7 @@ async def list_records(
     module: str = Query(min_length=1, max_length=32),
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
+    investigation_view: str = Query("", pattern="^(|published|assigned)$"),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -6133,6 +6812,19 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
+    if module == "investigation" and investigation_view:
+        publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
+        legacy_publisher_missing = or_(
+            BusinessRecord.data["publisher"].as_string().is_(None),
+            BusinessRecord.data["publisher"].as_string() == "",
+        )
+        if investigation_view == "published":
+            conditions.append(or_(
+                publisher_expr == identity["username"].lower(),
+                and_(legacy_publisher_missing, BusinessRecord.owner == identity["username"]),
+            ))
+        elif investigation_view == "assigned" and identity.get("role") != "admin":
+            conditions.append(BusinessRecord.owner == identity["username"])
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
         # them server-side so mine/dept/company/audit/recycle stay isolated.
@@ -6161,10 +6853,10 @@ async def list_records(
         if exclude_archived:
             conditions.append(BusinessRecord.status.notin_(["已归档", "Archived", "archived"]))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
-    result = await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))
+    result = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all())
     allowed_fields = await _allowed_field_keys(identity, db)
     return {
-        "items": [await _contract_customer_record_dict(item, allowed_fields, db) for item in result],
+        "items": await _contract_customer_record_dicts(result, allowed_fields, db),
         "total": total or 0,
         "page": page,
         "page_size": page_size,
@@ -7756,6 +8448,11 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
     if body.submit:
         raise HTTPException(status_code=409, detail="请先保存合同用印草稿，在用印中心上传真实用印文件后再提交审批")
+    approver = await db.scalar(select(User).where(User.username == body.approver.strip(), User.is_active.is_(True)))
+    if not approver:
+        raise HTTPException(status_code=422, detail="用印审批人不存在或已停用")
+    if not await _is_contract_approver(approver, db):
+        raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
     existing_id = int((contract.data or {}).get("seal_application_id") or 0)
     if existing_id:
         existing = await db.get(BusinessRecord, existing_id)
@@ -7789,6 +8486,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
             "use_date": str(body.use_date),
             "delivery_method": body.delivery_method,
             "document_names": body.document_names,
+            "approver": approver.username,
         },
     )
     db.add(seal)
@@ -8202,14 +8900,34 @@ async def contract_payment_candidates(contract_id: int, identity: dict = Depends
 async def list_contract_payment_applications(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     items = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "contract_payment",
-        BusinessRecord.data["contract_id"].as_integer() == contract.id,
+        or_(
+            and_(
+                BusinessRecord.module == "contract_payment",
+                BusinessRecord.data["contract_id"].as_integer() == contract.id,
+            ),
+            and_(
+                BusinessRecord.module == "finance",
+                BusinessRecord.data["legacy_kind"].as_string() == "ap_payment",
+                BusinessRecord.data["contract_id"].as_integer() == contract.id,
+            ),
+        ),
         *(await _record_scope_conditions(identity, db)),
     ).order_by(BusinessRecord.id.desc()))).all()
     result = []
     for item in items:
         lines = (await db.scalars(select(ContractPaymentLine).where(ContractPaymentLine.payment_record_id == item.id).order_by(ContractPaymentLine.id))).all()
-        result.append({**await _record_dict_for_identity(item, identity, db), "lines": [{"id": line.id, "contract_object_id": line.contract_object_id, "case_record_id": line.case_record_id, "fee_type": line.fee_type, "requested_amount": line.requested_amount} for line in lines]})
+        line_payload = [{"id": line.id, "contract_object_id": line.contract_object_id, "case_record_id": line.case_record_id, "fee_type": line.fee_type, "requested_amount": line.requested_amount} for line in lines]
+        if not line_payload and (item.data or {}).get("legacy_kind") == "ap_payment":
+            line_payload = [
+                {
+                    "legacy_case_fee_id": line.get("legacy_case_fee_id"),
+                    "case_no": line.get("case_no", ""),
+                    "fee_type": line.get("fee_type", ""),
+                    "requested_amount": float(line.get("settlement_amount", 0) or 0),
+                }
+                for line in (item.data or {}).get("lines", [])
+            ]
+        result.append({**await _record_dict_for_identity(item, identity, db), "lines": line_payload})
     return {"items": result, "total": len(result)}
 
 
@@ -8427,7 +9145,8 @@ async def list_receivables(
     plans = (await db.scalars(select(ReceivablePlan).order_by(ReceivablePlan.due_date))).all()
     contract_ids = {plan.contract_record_id for plan in plans}
     contracts = {record.id: record for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(contract_ids), *(await _record_scope_conditions(identity, db))))).all()} if contract_ids else {}
-    items = [_receivable_dict(plan, contracts[plan.contract_record_id]) for plan in plans if plan.contract_record_id in contracts]
+    users_by_username = await _user_display_map({record.owner for record in contracts.values()}, db)
+    items = [_receivable_dict(plan, contracts[plan.contract_record_id], users_by_username) for plan in plans if plan.contract_record_id in contracts]
     if keyword:
         needle = keyword.casefold()
         items = [item for item in items if needle in " ".join([item["contract_no"], item["contract_title"], item["customer"], item["phase"], item["payer"]]).casefold()]
@@ -8465,23 +9184,64 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         raise HTTPException(status_code=422, detail="调查中心记录类型无效")
     if body.module in {"notary", "evidence"}:
         raise HTTPException(status_code=422, detail="公证和证据必须从线索专用办理入口创建")
-    if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no)):
-        raise HTTPException(status_code=409, detail="业务编号已存在")
     payload = body.model_dump()
+    if body.module == "clue":
+        # Legacy clue numbers use XS plus the local creation timestamp. The
+        # server owns the value so it cannot be edited or duplicated by users.
+        serial_time = datetime.now()
+        while True:
+            generated_serial = f"XS{serial_time:%Y%m%d%H%M%S}"
+            if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == generated_serial)):
+                break
+            serial_time += timedelta(seconds=1)
+        payload["serial_no"] = generated_serial
+    if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == payload["serial_no"])):
+        raise HTTPException(status_code=409, detail="业务编号已存在")
     payload["status"] = INVESTIGATION_CREATE_STATUS_BY_MODULE[body.module]
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
         raise HTTPException(status_code=401, detail="当前用户不存在")
     if body.module == "investigation" and identity.get("role") != "admin" and not await _user_has_job_permission(user, "调查任务发布", db):
         raise HTTPException(status_code=403, detail="当前岗位没有发布调查任务权限")
+    if body.module == "investigation":
+        investigation_data = dict(payload.get("data") or {})
+        try:
+            contract_id = int(investigation_data.get("contract_record_id") or investigation_data.get("contract_id") or 0)
+        except (TypeError, ValueError):
+            contract_id = 0
+        if not contract_id:
+            raise HTTPException(status_code=422, detail="父调查任务必须从合同创建并绑定有效合同")
+        contract = await _ensure_record_visible(contract_id, identity, db)
+        if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
+            raise HTTPException(status_code=409, detail="只能从审批中、已通过、履行中或已完成的合同创建调查任务")
+        supervisor = await _configured_investigation_supervisor(db)
+        requested_owner = str(payload.get("owner") or "").strip()
+        if requested_owner and requested_owner != supervisor.username:
+            raise HTTPException(status_code=422, detail="父调查任务必须分配给系统配置的调查主管")
+        if payload.get("customer") and str(payload["customer"]).strip() != contract.customer.strip():
+            raise HTTPException(status_code=422, detail="调查任务客户必须与关联合同客户一致")
+        payload["owner"] = supervisor.username
+        payload["customer"] = contract.customer
+        payload["department"] = supervisor.department
+        payload["data"] = {
+            **investigation_data,
+            "contract_id": contract.id,
+            "contract_record_id": contract.id,
+            "contract_no": contract.serial_no,
+            "publisher": identity["username"],
+            "assigner": identity["username"],
+            "source_owner": investigation_data.get("source_owner") or (contract.data or {}).get("source_person") or contract.owner,
+        }
     if body.module == "clue":
         if identity.get("role") != "admin" and not await _user_has_job_permission(user, "线索提交", db):
             raise HTTPException(status_code=403, detail="当前岗位没有创建调查线索权限")
         source_task_id = int((payload.get("data") or {}).get("source_task_id") or 0)
         if not source_task_id:
             raise HTTPException(status_code=422, detail="创建线索必须关联已接收的调查任务")
-        source_task = await _ensure_record_module(source_task_id, "task", identity, db)
-        if not (source_task.data or {}).get("investigation_record_id"):
+        source_task = await _ensure_record_visible(source_task_id, identity, db)
+        if source_task.module not in {"task", "investigation"}:
+            raise HTTPException(status_code=404, detail="调查线索来源任务不存在")
+        if source_task.module == "task" and not (source_task.data or {}).get("investigation_record_id"):
             raise HTTPException(status_code=422, detail="线索来源必须是调查中心任务")
         if identity.get("role") != "admin" and source_task.owner != identity["username"]:
             raise HTTPException(status_code=403, detail="只能在本人负责的调查任务下创建线索")
@@ -8489,8 +9249,8 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         payload["customer"] = source_task.customer
         payload["department"] = source_task.department
         source_data = source_task.data or {}
-        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id"), "investigation_no": source_data.get("investigation_no"), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or []))}
-    if identity.get("role") != "admin":
+        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id") or (source_task.id if source_task.module == "investigation" else None), "investigation_no": source_data.get("investigation_no") or (source_task.serial_no if source_task.module == "investigation" else ""), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or []))}
+    if identity.get("role") != "admin" and body.module != "investigation":
         payload["department"] = user.department
         if identity.get("role") == "user":
             payload["owner"] = user.username
@@ -8832,8 +9592,25 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
     clue = await _ensure_record_module(clue_id, "clue", identity, db); await _require_record_owner_or_manager(clue, identity, db)
     if clue.status != "待取证": raise HTTPException(status_code=409, detail="只有审批通过的待取证线索可以登记取证")
     if body.collected_at > date.today(): raise HTTPException(status_code=422, detail="取证日期不能晚于今天")
-    clue.status = "已取证"; clue.data = {**(clue.data or {}), "collected_at": str(body.collected_at), "notary_institution": body.notary_institution.strip(), "collected_by": identity["username"], "collection_registered_at": datetime.now().isoformat(timespec="seconds")}
-    db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；公证机构 {body.notary_institution}。{body.comment}"))
+    evidence_file_ids = list(dict.fromkeys(body.evidence_file_ids))
+    if evidence_file_ids:
+        files = {item.id: item for item in (await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(evidence_file_ids)))).all()}
+        for file_id in evidence_file_ids:
+            item = files.get(file_id)
+            if not item or item.record_id != clue.id:
+                raise HTTPException(status_code=422, detail=f"取证文件 {file_id} 不属于当前线索")
+    evidence_status = body.evidence_status.strip() or "未入库"
+    if evidence_status not in {"未入库", "已入库", "已出库", "已重新入库", "已销毁"}:
+        raise HTTPException(status_code=422, detail="证物状态无效")
+    clue.status = "已取证"; clue.data = {
+        **(clue.data or {}), "collected_at": str(body.collected_at),
+        "notary_institution": body.notary_institution.strip(),
+        "notarization_no": body.notarization_no.strip(), "certificate_no": body.notarization_no.strip(),
+        "invoice_no": body.invoice_no.strip(), "storage_location": body.storage_location.strip(),
+        "evidence_status": evidence_status, "collection_file_ids": evidence_file_ids,
+        "collected_by": identity["username"], "collection_registered_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {body.notary_institution.strip()}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
@@ -9149,10 +9926,28 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
 @app.get(f"{settings.api_prefix}/investigations/{{record_id}}/tasks")
 async def list_investigation_tasks(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     source = await _ensure_record_visible(record_id, identity, db)
-    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES: raise HTTPException(status_code=404, detail="调查业务记录不存在")
-    tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task", BusinessRecord.data["investigation_record_id"].as_integer() == source.id, *(await _record_scope_conditions(identity, db))).order_by(BusinessRecord.created_at, BusinessRecord.id))).all()
-    return {"record": _record_dict(source), "items": [_task_dict(item) for item in tasks], "total": len(tasks)}
-
+    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
+        raise HTTPException(status_code=404, detail="调查业务记录不存在")
+    root = await _resolve_investigation_task_root(source, identity, db)
+    root_data = root.data or {}
+    can_view_all_children = (
+        identity.get("role") == "admin"
+        or root.owner == identity["username"]
+        or str(root_data.get("publisher") or "").lower() == identity["username"].lower()
+    )
+    task_scope = [] if can_view_all_children else await _record_scope_conditions(identity, db)
+    tasks = (
+        await db.scalars(
+            select(BusinessRecord)
+            .where(
+                BusinessRecord.module == "task",
+                BusinessRecord.data["investigation_record_id"].as_integer() == root.id,
+                *task_scope,
+            )
+            .order_by(BusinessRecord.created_at, BusinessRecord.id)
+        )
+    ).all()
+    return {"record": _record_dict(root), "items": [await _task_display_dict(item, db) for item in tasks], "total": len(tasks)}
 
 @app.post(f"{settings.api_prefix}/investigations/{{record_id}}/close")
 async def close_investigation(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -9186,15 +9981,25 @@ async def close_investigation(record_id: int, body: TaskActionInput, identity: d
 @app.post(f"{settings.api_prefix}/investigations/{{record_id}}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_investigation_task(record_id: int, body: InvestigationTaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     source = await _ensure_record_visible(record_id, identity, db)
-    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES: raise HTTPException(status_code=404, detail="调查业务记录不存在")
+    if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
+        raise HTTPException(status_code=404, detail="调查业务记录不存在")
     await _require_record_owner_or_manager(source, identity, db)
     _validate_task_deadline(body.deadline)
+    source = await _resolve_investigation_task_root(source, identity, db)
     parent = None
     if body.parent_task_id:
         parent = await _ensure_record_module(body.parent_task_id, "task", identity, db)
-        if int((parent.data or {}).get("investigation_record_id") or 0) != source.id: raise HTTPException(status_code=409, detail="父任务不属于当前调查事项")
-    user = await db.scalar(select(User).where(User.username == identity["username"])); owner = body.owner.strip()
-    if identity.get("role") == "user": owner = identity["username"]
+        if int((parent.data or {}).get("investigation_record_id") or 0) != source.id:
+            raise HTTPException(status_code=409, detail="父任务不属于当前调查事项")
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    owner = body.owner.strip()
+    can_delegate = identity.get("role") in {"admin", "manager"}
+    if identity.get("role") == "user":
+        assignment_config = await db.scalar(select(SystemConfig).where(SystemConfig.key == "investigation_assignment"))
+        configured_username = str((assignment_config.value or {}).get("supervisor_username") or "").strip() if assignment_config else ""
+        can_delegate = configured_username.lower() == identity["username"].lower()
+    if identity.get("role") == "user" and not can_delegate:
+        owner = identity["username"]
     owner = await _active_task_username(owner, db, field_name="负责人")
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
     if attachment_ids:
@@ -9204,16 +10009,60 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
             if not attachment or attachment.record_id != source.id:
                 raise HTTPException(status_code=422, detail="所选附件不属于当前调查事项")
     source_data = source.data or {}
+    parent_data = parent.data or {} if parent else {}
+    source_contract_id = source_data.get("contract_id") or source_data.get("contract_record_id") or parent_data.get("contract_id") or parent_data.get("contract_record_id")
+    if not source_contract_id:
+        source_contract_no = str(source_data.get("contract_no") or parent_data.get("contract_no") or "").strip()
+        if source_contract_no:
+            source_contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "contract", BusinessRecord.serial_no == source_contract_no, BusinessRecord.customer == source.customer))
+            source_contract_id = source_contract.id if source_contract else None
+    requested_contract_id = body.contract_record_id
+    if source_contract_id and requested_contract_id and int(source_contract_id) != requested_contract_id:
+        raise HTTPException(status_code=409, detail="调查事项已绑定合同，不能在创建子任务时更换合同")
+    if not source_contract_id and not requested_contract_id:
+        raise HTTPException(status_code=422, detail="创建调查任务前必须绑定同客户合同")
+    if source_contract_id:
+        contract = await db.get(BusinessRecord, int(source_contract_id))
+        if not contract:
+            raise HTTPException(status_code=404, detail="已绑定合同不存在")
+    else:
+        contract = await _ensure_record_visible(int(requested_contract_id), identity, db)
+    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
+        raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
+    if source.customer.strip() != contract.customer.strip():
+        raise HTTPException(status_code=422, detail="所选合同客户必须与调查事项客户一致")
+    if not source_contract_id:
+        source.data = {**source_data, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
+        db.add(source)
+        db.add(WorkflowEvent(record_id=source.id, action="绑定调查事项合同", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}"))
+    start_date = body.start_date or _investigation_task_date(parent_data.get("start_date") or parent_data.get("authorized_from")) or _investigation_task_date(source_data.get("authorized_from"))
+    end_date = body.end_date or body.deadline or _investigation_task_date(parent_data.get("end_date") or parent_data.get("deadline") or parent_data.get("authorized_to")) or _investigation_task_date(source_data.get("authorized_to"))
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="调查结束时间必须不早于开始时间")
+    parent_or_source = parent_data or source_data
+    province = body.province.strip() or str(parent_or_source.get("province") or "").strip()
+    city = body.city.strip() or str(parent_or_source.get("city") or "").strip()
+    district = body.district.strip() or str(parent_or_source.get("district") or "").strip()
+    region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
+    if not region:
+        region = " ".join(part for part in (province, city, district) if part)
     task_data = {
-        "deadline": str(body.deadline), "priority": body.priority, "source": "调查任务",
+        "deadline": str(end_date or body.deadline), "priority": body.priority, "source": "调查任务",
         "initiator": identity["username"], "collaborators": [], "case_no": "",
-        "contract_no": body.contract_no.strip() or str(source_data.get("contract_no") or ""),
-        "contract_name": body.contract_name.strip() or str(source_data.get("contract_name") or ""),
-        "authorization_scope": body.authorization_scope.strip() or str(source_data.get("authorization_scope") or ""),
+        "contract_id": contract.id, "contract_record_id": contract.id,
+        "contract_no": contract.serial_no,
+        "contract_name": contract.title,
+        "authorization_scope": body.authorization_scope.strip() or str(parent_or_source.get("authorization_scope") or ""),
         "attachment_ids": attachment_ids,
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
         "investigation_module": source.module,
         "customer_review": bool(source_data.get("customer_review")),
+        "right_type": str(source_data.get("right_type") or ""),
+        "region": region, "province": province, "city": city, "district": district,
+        "start_date": str(start_date or ""), "end_date": str(end_date or ""),
+        "authorized_from": str(start_date or ""), "authorized_to": str(end_date or ""),
+        "source_owner": str(source_data.get("source_owner") or ""),
+        "assigner": str(source_data.get("assigner") or source_data.get("assigned_by") or identity["username"]),
         "parent_task_id": parent.id if parent else None,
         "parent_task_no": parent.serial_no if parent else "",
     }
@@ -9221,30 +10070,150 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data=task_data)
     db.add(task); await db.flush()
     db.add(WorkflowEvent(record_id=source.id, action="创建调查任务", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"{serial_no}：{body.title}"))
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="创建调查任务", to_status="待接收", operator=identity["username"], comment=f"来源 {source.serial_no}" + (f"；父任务 {parent.serial_no}" if parent else "")), db, content="任务已分派.")
-    await db.commit(); await db.refresh(task); return _task_dict(task)
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="创建调查任务", to_status="待接收", operator=identity["username"], comment=f"来源 {source.serial_no}" + (f"；父任务 {parent.serial_no}" if parent else "")), db, content="任务已分派")
+    await db.commit(); await db.refresh(task); return await _task_display_dict(task, db)
+
+async def _resolve_clue_source_contract(clue: BusinessRecord, identity: dict, db: AsyncSession) -> tuple[BusinessRecord | None, str]:
+    """Resolve a clue's contract from its source task chain, never from a UI pick."""
+    candidate_ids: set[int] = set()
+    candidate_nos: set[str] = set()
+    candidate_titles: set[str] = set()
+    task_id = 0
+    source_data = clue.data or {}
+    visited: set[int] = set()
+    for key in ("contract_record_id", "contract_id"):
+        try:
+            if source_data.get(key): candidate_ids.add(int(source_data[key]))
+        except (TypeError, ValueError):
+            pass
+    for key in ("contract_no", "source_contract_no"):
+        if str(source_data.get(key) or "").strip(): candidate_nos.add(str(source_data[key]).strip())
+    for key in ("contract_name", "contract_title"):
+        if str(source_data.get(key) or "").strip(): candidate_titles.add(str(source_data[key]).strip())
+    try:
+        task_id = int(source_data.get("source_task_id") or 0)
+    except (TypeError, ValueError):
+        task_id = 0
+    while task_id and task_id not in visited and len(visited) < 12:
+        visited.add(task_id)
+        task = await db.get(BusinessRecord, task_id)
+        if not task or task.module not in {"task", "investigation"}: break
+        task_data = task.data or {}
+        for key in ("contract_record_id", "contract_id"):
+            try:
+                if task_data.get(key): candidate_ids.add(int(task_data[key]))
+            except (TypeError, ValueError):
+                pass
+        for key in ("contract_no", "source_contract_no"):
+            if str(task_data.get(key) or "").strip(): candidate_nos.add(str(task_data[key]).strip())
+        for key in ("contract_name", "contract_title"):
+            if str(task_data.get(key) or "").strip(): candidate_titles.add(str(task_data[key]).strip())
+        try:
+            task_id = int(task_data.get("parent_task_id") or 0)
+        except (TypeError, ValueError):
+            task_id = 0
+    conditions = [BusinessRecord.module == "contract", *(await _record_scope_conditions(identity, db))]
+    candidates = list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
+    matches = [item for item in candidates if item.id in candidate_ids or item.serial_no in candidate_nos or item.title in candidate_titles]
+    matches = [item for item in matches if item.customer.strip() == clue.customer.strip()]
+    unique = {item.id: item for item in matches}
+    if len(unique) == 1: return next(iter(unique.values())), ""
+    if not unique: return None, "线索来源调查任务未解析到同客户合同"
+    return None, "线索来源任务匹配到多个合同，无法自动绑定"
+
+
+@app.post(f"{settings.api_prefix}/investigations/clues/case-contracts")
+async def resolve_clue_case_contracts(body: ClueCaseContractResolveInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    clues = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", BusinessRecord.id.in_(set(body.clue_ids)), *(await _record_scope_conditions(identity, db))))).all()}
+    items = []
+    for clue_id in dict.fromkeys(body.clue_ids):
+        clue = clues.get(clue_id)
+        if not clue:
+            items.append({"clue_id": clue_id, "error": "线索不存在"}); continue
+        contract, error = await _resolve_clue_source_contract(clue, identity, db)
+        items.append({"clue_id": clue.id, "clue_no": clue.serial_no, "clue_title": clue.title, "customer": clue.customer, "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer, "status": contract.status} if contract else None, "error": error})
+    return {"items": items}
+
+
+@app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/bind-source-contract")
+async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """One-time repair for legacy tasks created without a contract binding.
+
+    The selected contract binds to the *source task*, then every still-open clue
+    from that task inherits the same customer and stable contract identifiers.
+    It is deliberately not a contract picker on the case-generation command.
+    """
+    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    await _require_record_owner_or_manager(clue, identity, db)
+    if clue.status == "已转案件" or (clue.data or {}).get("converted_case_id"):
+        raise HTTPException(status_code=409, detail="已转案件的线索不能补绑来源任务合同")
+    try:
+        source_task_id = int((clue.data or {}).get("source_task_id") or 0)
+    except (TypeError, ValueError):
+        source_task_id = 0
+    if not source_task_id:
+        raise HTTPException(status_code=422, detail="线索缺少来源调查任务，无法补绑合同")
+    source_task = await _ensure_record_visible(source_task_id, identity, db)
+    if source_task.module not in {"task", "investigation"}:
+        raise HTTPException(status_code=422, detail="线索来源不是可绑定合同的调查任务")
+    existing_contract, _ = await _resolve_clue_source_contract(clue, identity, db)
+    if existing_contract:
+        raise HTTPException(status_code=409, detail=f"来源调查任务已绑定合同 {existing_contract.serial_no}")
+    contract = await _ensure_record_visible(body.contract_record_id, identity, db)
+    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
+        raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
+    contract_data = {"contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
+    source_task.customer = contract.customer
+    source_task.data = {**(source_task.data or {}), **contract_data}
+    db.add(source_task)
+    related_clues = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", BusinessRecord.data["source_task_id"].as_integer() == source_task.id))).all())
+    for related in related_clues:
+        if related.status == "已转案件" or (related.data or {}).get("converted_case_id"):
+            continue
+        related.customer = contract.customer
+        related.data = {**(related.data or {}), **contract_data}
+        db.add(related)
+    try:
+        investigation_id = int((source_task.data or {}).get("investigation_record_id") or 0)
+    except (TypeError, ValueError):
+        investigation_id = 0
+    if investigation_id:
+        investigation = await db.get(BusinessRecord, investigation_id)
+        if investigation and investigation.module == "investigation":
+            investigation.customer = contract.customer
+            investigation.data = {**(investigation.data or {}), **contract_data}
+            db.add(investigation)
+    db.add(WorkflowEvent(record_id=source_task.id, action="补绑来源任务合同", from_status=source_task.status, to_status=source_task.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}；同步 {len(related_clues)} 条未转案线索"))
+    await db.commit()
+    await db.refresh(clue)
+    return {"clue": _record_dict(clue), "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer}}
 
 
 @app.post(f"{settings.api_prefix}/investigations/clues/batch-cases", status_code=status.HTTP_201_CREATED)
 async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    contract = await _ensure_record_visible(body.contract_record_id, identity, db)
-    if contract.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
-    if contract.status in {"草稿", "审批中", "已拒绝", "已撤回", "已作废"}: raise HTTPException(status_code=409, detail="合同审批通过后才能批量转案件")
     clues = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", BusinessRecord.id.in_(set(body.clue_ids)), *(await _record_scope_conditions(identity, db))))).all()}
-    contract_data = contract.data or {}; created_ids: list[int] = []; errors: list[dict] = []
+    created_ids: list[int] = []; errors: list[dict] = []
     for clue_id in dict.fromkeys(body.clue_ids):
         clue = clues.get(clue_id)
         if not clue: errors.append({"clue_id": clue_id, "error": "线索不存在"}); continue
         clue_data = dict(clue.data or {})
         if clue_data.get("converted_case_id") or clue.status == "已转案件": errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索已经转为案件"}); continue
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
-        if clue.customer.strip() != contract.customer.strip(): errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索客户与合同客户不一致"}); continue
+        contract, contract_error = await _resolve_clue_source_contract(clue, identity, db)
+        if contract and contract.status in {"草稿", "审批中", "已拒绝", "已撤回", "已作废"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同尚未审批通过"}); continue
+        contract_data = (contract.data or {}) if contract else {}
+        case_customer = contract.customer if contract else clue.customer
+        case_department = contract.department if contract else clue.department
+        contract_reference = contract.serial_no if contract else "未关联合同"
         serial_no = await _next_case_serial(body.case_type, db)
-        case_record = BusinessRecord(module="case", serial_no=serial_no, title=clue.title, customer=contract.customer, status="等待公证书", owner=clue.owner, department=contract.department, description=f"由已取证线索 {clue.serial_no} 批量转案", data={"contract_id": contract.id, "contract_no": contract.serial_no, "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title, "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
+        handling_lawyers = list(dict.fromkeys(filter(None, [body.handling_lawyer.strip(), *(clue_data.get("handling_lawyers") or [])])))
+        cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
+        case_title = "".join(filter(None, [case_customer, cause_or_charge, clue.title]))
+        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "handling_lawyers": handling_lawyers, "assistant": body.assistant.strip(), "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
         db.add(case_record); await db.flush(); previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
         notary = await db.get(BusinessRecord, int(clue_data.get("notary_record_id") or 0)) if clue_data.get("notary_record_id") else None
         if notary: notary.data = {**(notary.data or {}), "case_id": case_record.id, "case_no": serial_no}
-        db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索批量转案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"关联合同 {contract.serial_no}，生成等待公证书案件 {serial_no}"), WorkflowEvent(record_id=case_record.id, action="线索批量转案", to_status="等待公证书", operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 合同 {contract.serial_no}")])
+        db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"来源任务合同 {contract_reference}，生成案件 {serial_no}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status=case_record.status, operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 来源任务合同 {contract_reference}")])
         await _ensure_case_fixed_tasks(case_record, db, operator="system")
         created_ids.append(case_record.id)
     await db.commit()
@@ -9612,7 +10581,8 @@ async def list_tasks(
             tasks = [task for task in tasks if task.owner == username]
         elif relation == "collaborating" and not is_admin_global_view:
             tasks = [task for task in tasks if username in (task.data or {}).get("collaborators", [])]
-    items = [_task_dict(item) for item in tasks]
+    items = await _task_display_dicts(tasks, db)
+    all_task_items = list(items)
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
@@ -9658,7 +10628,7 @@ async def list_tasks(
         items = [item for item in items if item["status"] in selected_statuses]
     if status_filter:
         items = [item for item in items if item["status"] == status_filter]
-    all_items = [_task_dict(item) for item in tasks]
+    all_items = all_task_items
     if reminder_only:
         all_items = [item for item in all_items if item["reminder_due"]]
     total = len(items)
@@ -9735,15 +10705,12 @@ async def list_unread_task_messages(
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
 
-    sender_usernames = {notice.sender for notice in notices if notice.sender and notice.sender != "system"}
-    sender_names = {
-        user.username: (user.display_name or user.username)
-        for user in (await db.scalars(select(User).where(User.username.in_(sender_usernames)))).all()
-    } if sender_usernames else {}
+    sender_users = await _user_display_map({notice.sender for notice in notices}, db)
+    task_rows = {row["id"]: row for row in await _task_display_dicts(tasks, db)}
     items: list[dict] = []
     visible_notice_count = 0
     for task in tasks:
-        row = _task_dict(task)
+        row = task_rows[task.id]
         if not (
             contains(row.get("priority"), priority)
             and contains(row.get("serial_no"), serial_no)
@@ -9771,10 +10738,12 @@ async def list_unread_task_messages(
         if latest.source_key.startswith("task-history-") and "｜" in latest_content:
             latest_content = latest_content.split("｜", 1)[1]
         visible_notice_count += len(task_notices)
+        sender_display_name = _person_reference_display(latest.sender, sender_users)[0]
         items.append({
             **row,
             "latest_unread_message": latest_content,
-            "latest_unread_sender": "System" if latest.sender == "system" else sender_names.get(latest.sender, latest.sender or "System"),
+            "latest_unread_sender": sender_display_name,
+            "latest_unread_sender_display_name": sender_display_name,
             "latest_unread_at": latest.created_at,
             "latest_unread_notification_id": latest.id,
             "unread_count": len(task_notices),
@@ -10293,6 +11262,7 @@ async def task_history(task_id: int, identity: dict = Depends(current_identity),
     task = await _task_or_404(task_id, db)
     if not _is_task_participant(task, identity): raise HTTPException(status_code=403, detail="只有任务参与人可以查看沟通记录")
     events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == task.id).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all()
+    users_by_username = await _user_display_map({item.operator for item in events}, db)
     unread_keys = set((await db.scalars(select(Notification.source_key).where(
         Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False),
         Notification.is_read.is_(False), Notification.source_type == "task", Notification.source_id == task.id,
@@ -10300,6 +11270,7 @@ async def task_history(task_id: int, identity: dict = Depends(current_identity),
     ))).all())
     return {"items": [{
         "id": item.id, "action": item.action, "operator": item.operator, "comment": item.comment,
+        "operator_display_name": _person_reference_display(item.operator, users_by_username)[0],
         "from_status": item.from_status, "to_status": item.to_status, "created_at": item.created_at,
         "unread": f"task-history-{task.id}-{item.id}-{identity['username']}" in unread_keys,
     } for item in events]}
@@ -12020,6 +12991,9 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
             raise HTTPException(status_code=422, detail="诉讼费退款只能关联官方费用")
         if str((fee_record.data or {}).get("case_no") or "") != case_record.serial_no:
             raise HTTPException(status_code=409, detail="退款费用与案件不一致")
+        original_amount = _round_fee_amount(abs(float((fee_record.data or {}).get("amount") or 0)))
+        if _round_fee_amount(body.amount) > original_amount:
+            raise HTTPException(status_code=422, detail="退款金额不能超过原费用金额")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     serial = f"TF{datetime.now():%Y%m%d%H%M%S%f}"; data = body.model_dump(mode="json"); data["amount"] = _round_fee_amount(body.amount); data["case_id"] = case_record.id
@@ -12630,11 +13604,12 @@ async def finance_ar_summary(identity: dict = Depends(current_identity), db: Asy
     for attachment in attachments:
         first_attachment.setdefault(int(attachment.record_id or 0), attachment)
     rows = []
+    users_by_username = await _user_display_map({contract.owner for contract in contracts.values()}, db)
     for plan in plans:
         contract = contracts.get(plan.contract_record_id)
         if not contract:
             continue
-        row = _receivable_dict(plan, contract)
+        row = _receivable_dict(plan, contract, users_by_username)
         attachment = first_attachment.get(contract.id)
         row["contract_file"] = _attachment_dict(attachment, contract) if attachment else None
         row["ledger_url"] = f"{settings.api_prefix}/finance/contract-ledger/{contract.id}"
@@ -12653,7 +13628,8 @@ async def finance_ar_summary(identity: dict = Depends(current_identity), db: Asy
 async def finance_contract_ledger(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     plans = (await db.scalars(select(ReceivablePlan).where(ReceivablePlan.contract_record_id == contract.id).order_by(ReceivablePlan.due_date.asc(), ReceivablePlan.id.asc()))).all()
-    ar_rows = [_receivable_dict(plan, contract) for plan in plans]
+    contract_users = await _user_display_map({contract.owner}, db)
+    ar_rows = [_receivable_dict(plan, contract, contract_users) for plan in plans]
     finance_records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         *(await _record_scope_conditions(identity, db)),
@@ -14464,17 +15440,19 @@ async def create_internal_payment_package(body: FinancePaymentPackageCreateInput
     db.add(WorkflowEvent(record_id=package.id, action="创建付款包", from_status="", to_status="待核销", operator=identity["username"], comment=body.comment.strip() or "同一收款人提成打包付款"))
     for fee in fees:
         previous = fee.status
-        fee.status = "已付款"
+        fee_amount = _round_fee_amount(float((fee.data or {}).get("actual_commission") if (fee.data or {}).get("actual_commission") is not None else (fee.data or {}).get("amount") or 0))
+        fee.status = "待核销"
         fee.data = {
             **(fee.data or {}),
-            "payment_status": "已付款",
-            "payment_date": payment_date,
+            "payment_status": "待核销",
+            "payment_requested_amount": fee_amount,
+            "paid_amount": 0,
             "payment_package_id": package.id,
             "payment_package_no": package.serial_no,
-            "paid_at": paid_at,
-            "paid_by": identity["username"],
+            "payment_applied_at": paid_at,
+            "payment_applied_by": identity["username"],
         }
-        db.add(WorkflowEvent(record_id=fee.id, action="打包付款", from_status=previous, to_status="已付款", operator=identity["username"], comment=f"付款包 {package.serial_no}；{body.comment.strip()}"))
+        db.add(WorkflowEvent(record_id=fee.id, action="申请打包付款", from_status=previous, to_status="待核销", operator=identity["username"], comment=f"付款包 {package.serial_no}；{body.comment.strip()}"))
     await db.commit()
     await db.refresh(package)
     return await _record_dict_for_identity(package, identity, db)
@@ -14519,15 +15497,23 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
         data = fee.data or {}
         if int(data.get("payment_package_id") or 0) != package.id:
             raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 的付款包关联不一致")
+        previous = fee.status
+        fee_amount = _round_fee_amount(float(data.get("actual_commission") if data.get("actual_commission") is not None else data.get("amount") or 0))
+        fee.status = "已付款"
         fee.data = {
             **data,
+            "payment_status": "已付款",
+            "payment_date": str(body.paid_date),
+            "paid_amount": fee_amount,
+            "paid_at": written_off_at,
+            "paid_by": identity["username"],
             "writeoff_status": "已核销",
             "writeoff_voucher_no": body.invoice_no.strip(),
             "payment_method": body.payment_method,
             "written_off_at": written_off_at,
             "written_off_by": identity["username"],
         }
-        db.add(WorkflowEvent(record_id=fee.id, action="付款包核销", from_status=fee.status, to_status=fee.status, operator=identity["username"], comment=f"付款包 {package.serial_no}；单据号 {body.invoice_no.strip()}；{body.remark.strip()}"))
+        db.add(WorkflowEvent(record_id=fee.id, action="付款包核销", from_status=previous, to_status="已付款", operator=identity["username"], comment=f"付款包 {package.serial_no}；单据号 {body.invoice_no.strip()}；{body.remark.strip()}"))
     db.add(WorkflowEvent(record_id=package.id, action="付款核销", from_status="待核销", to_status="已付款", operator=identity["username"], comment=f"{body.payment_method}；单据号 {body.invoice_no.strip()}；{body.remark.strip()}"))
     await db.commit()
     await db.refresh(package)
@@ -14550,7 +15536,8 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
     ))).all() if fee_ids else []
     payment_keys = {
         "payment_status", "payment_date", "payment_package_id",
-        "payment_package_no", "paid_at", "paid_by", "writeoff_status",
+        "payment_package_no", "payment_requested_amount", "paid_amount",
+        "payment_applied_at", "payment_applied_by", "paid_at", "paid_by", "writeoff_status",
         "writeoff_voucher_no", "payment_method", "written_off_at",
         "written_off_by",
     }
@@ -14835,8 +15822,9 @@ async def list_finance_transactions(
     for voucher in voucher_rows:
         vouchers.setdefault(int(voucher.finance_transaction_id or 0), []).append(voucher)
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
+    users_by_username = await _user_display_map({item.operator for item in items}, db)
     return {
-        "items": [_finance_transaction_dict(item, records.get(item.finance_record_id), vouchers.get(item.id, []), show_amount=show_amount) for item in items],
+        "items": [_finance_transaction_dict(item, records.get(item.finance_record_id), vouchers.get(item.id, []), show_amount=show_amount, users_by_username=users_by_username) for item in items],
         "total": int(total),
         "page": page,
         "page_size": page_size if page_size is not None else len(items),
@@ -14864,7 +15852,8 @@ async def create_finance_transaction(body: FinanceTransactionInput, identity: di
             paid_total = float(paid or 0) + body.amount
             record.status = "已付款" if paid_total + 0.001 >= float((record.data or {}).get("amount", 0)) else "部分付款"
         db.add(WorkflowEvent(record_id=record.id, action=f"登记{body.transaction_type}", from_status=previous, to_status=record.status, operator=identity["username"], comment=f"{body.amount:.2f} 元；{body.remark}"))
-    await db.commit(); await db.refresh(item); return _finance_transaction_dict(item, record)
+    await db.commit(); await db.refresh(item)
+    return _finance_transaction_dict(item, record, users_by_username=await _user_display_map({item.operator}, db))
 
 
 @app.delete(f"{settings.api_prefix}/finance/transactions/{{transaction_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -15060,7 +16049,52 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
     events = list((await db.scalars(select(WorkflowEvent).where(
         WorkflowEvent.record_id == case_id, WorkflowEvent.action == "新增案件日志",
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
-    return {"items": [{"id": item.id, "content": item.comment, "operator": item.operator, "created_at": item.created_at} for item in events], "total": len(events)}
+    users_by_username = await _user_display_map({item.operator for item in events}, db)
+    return {"items": [{
+        "id": item.id, "content": item.comment, "operator": item.operator,
+        "operator_display_name": _person_reference_display(item.operator, users_by_username)[0],
+        "created_at": item.created_at,
+    } for item in events], "total": len(events)}
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/relations")
+async def list_case_relations(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return all records linked to one case without global-list pagination loss."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_data = case_record.data or {}
+    raw_clue_nos = case_data.get("investigation_clue_nos") or case_data.get("clue_nos") or []
+    if isinstance(raw_clue_nos, str):
+        clue_nos = [value.strip() for value in re.split(r"[,，;；、|]+", raw_clue_nos) if value.strip()]
+    else:
+        clue_nos = [str(value or "").strip() for value in raw_clue_nos if str(value or "").strip()]
+    link_condition = or_(
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+    )
+    fees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance", link_condition,
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    clue_conditions = [link_condition]
+    if clue_nos:
+        clue_conditions.append(BusinessRecord.serial_no.in_(list(dict.fromkeys(clue_nos))))
+    clues = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "clue", or_(*clue_conditions),
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    users_by_username = await _user_display_map({item.owner for item in [*fees, *clues]}, db)
+
+    def related_dict(item: BusinessRecord) -> dict:
+        result = _record_dict(item)
+        result["owner_display_name"] = _person_reference_display(item.owner, users_by_username)[0]
+        return result
+
+    return {
+        "case_id": case_record.id,
+        "case_no": case_record.serial_no,
+        "fees": [related_dict(item) for item in fees],
+        "clues": [related_dict(item) for item in clues],
+        "fee_total": len(fees),
+        "clue_total": len(clues),
+    }
 
 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/logs", status_code=status.HTTP_201_CREATED)
@@ -15526,13 +16560,27 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     employee_usernames = {
         str((item.data or {}).get("username") or item.owner or "").strip().lower()
         for item in employee_records
-        if item.status not in {"离职", "停用"}
+        if item.status not in {"离职", "停用"} and not _is_smoke_test_username((item.data or {}).get("username") or item.owner)
     }
     active_users = (await db.scalars(select(User).where(User.is_active.is_(True), User.username.in_(employee_usernames)).order_by(User.display_name, User.username))).all() if employee_usernames else []
-    people_options = [
-        {"value": item.username, "label": f"{item.display_name}（{item.department}）", "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip()}
-        for item in active_users
-    ]
+    employee_display_names = {
+        str((item.data or {}).get("username") or item.owner or "").strip().lower(): str(item.title or "").strip()
+        for item in employee_records
+        if item.status not in {"离职", "停用"}
+    }
+    people_options = []
+    seen_usernames: set[str] = set()
+    for item in active_users:
+        username = item.username.strip().lower()
+        if username in seen_usernames:
+            continue
+        seen_usernames.add(username)
+        display_name = employee_display_names.get(username) or item.display_name
+        people_options.append({
+            "value": item.username,
+            "label": f"{display_name}（{item.department}）",
+            "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip(),
+        })
     lawyer_options = [item for item in people_options if "律师" in item["position"] and "助理" not in item["position"]]
     return {
         "case_types": [
@@ -16509,10 +17557,728 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     }
 
 
+@app.get(f"{settings.api_prefix}/cases/action-capabilities")
+async def case_list_action_capabilities(
+    record_ids: str = Query(default="", max_length=1200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Return case capabilities for one visible list page in a single request."""
+    try:
+        requested_ids = list(dict.fromkeys(int(value) for value in record_ids.split(",") if value.strip()))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="案件编号格式无效")
+    if not requested_ids:
+        return {"items": {}}
+    if len(requested_ids) > 100:
+        raise HTTPException(status_code=422, detail="一次最多查询 100 条案件的操作权限")
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(requested_ids),
+        BusinessRecord.module == "case",
+        *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    return {
+        "items": {
+            str(record.id): await _case_detail_action_capabilities(record, identity, db)
+            for record in records
+        },
+    }
+
+
 @app.get(f"{settings.api_prefix}/cases/{{case_id}}/action-capabilities")
 async def case_detail_action_capabilities(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     return {"case_id": case_record.id, **(await _case_detail_action_capabilities(case_record, identity, db))}
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/context")
+async def get_case_space_context(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Aggregate one authorized case into the stable context contract used by agents."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_data = case_record.data or {}
+    allowed_fields = await _allowed_field_keys(identity, db)
+    scope_conditions = await _record_scope_conditions(identity, db)
+
+    contract_ids = {
+        int(value)
+        for value in (case_data.get("contract_id"), case_data.get("contract_record_id"))
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    contract_objects = list((await db.scalars(select(ContractObject).where(
+        ContractObject.case_record_id == case_record.id,
+    ).order_by(ContractObject.id))).all())
+    contract_ids.update(item.contract_record_id for item in contract_objects)
+    contract_no = str(case_data.get("contract_no") or "").strip()
+    contract_match = BusinessRecord.id.in_(contract_ids)
+    if contract_no:
+        contract_match = or_(contract_match, BusinessRecord.serial_no == contract_no)
+    contracts = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract", contract_match, *scope_conditions,
+    ).order_by(BusinessRecord.id))).all()) if contract_ids or contract_no else []
+    contract_ids = {item.id for item in contracts}
+
+    payment_record_ids = set((await db.scalars(select(ContractPaymentLine.payment_record_id).where(
+        ContractPaymentLine.case_record_id == case_record.id,
+    ))).all())
+    linked_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_(["finance", "invoice", "task", "contract_payment"]),
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+            BusinessRecord.id.in_(payment_record_ids),
+        ),
+        *scope_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    finance_records = [item for item in linked_records if item.module == "finance"]
+    invoice_records = [item for item in linked_records if item.module == "invoice"]
+    tasks = [item for item in linked_records if item.module == "task"]
+    payment_records = [item for item in linked_records if item.module == "contract_payment"]
+
+    reminders = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_reminder",
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+    ).order_by(BusinessRecord.data["deadline"].as_string(), BusinessRecord.id))).all())
+    hearings = list((await db.scalars(select(HearingSchedule).where(
+        HearingSchedule.case_record_id == case_record.id,
+    ).order_by(HearingSchedule.hearing_date, HearingSchedule.hearing_time, HearingSchedule.id))).all())
+
+    customer_id = int(case_data.get("customer_id") or case_data.get("customer_record_id") or 0)
+    customer_conditions = [BusinessRecord.module == "customer", *scope_conditions]
+    customer_conditions.append(BusinessRecord.id == customer_id if customer_id else BusinessRecord.title == case_record.customer)
+    customer = await db.scalar(select(BusinessRecord).where(*customer_conditions).order_by(BusinessRecord.id))
+
+    clue_ids = {
+        int(value)
+        for value in (
+            case_data.get("clue_record_id"), case_data.get("investigation_clue_id"),
+        )
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    clue_nos = {
+        str(value or "").strip()
+        for value in [
+            case_data.get("clue_no"), case_data.get("investigation_clue"),
+            case_data.get("source_clue_no"), *(case_data.get("investigation_clue_nos") or []),
+        ]
+        if str(value or "").strip()
+    }
+    clue_matches = [
+        BusinessRecord.data["converted_case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+    ]
+    if clue_ids:
+        clue_matches.append(BusinessRecord.id.in_(clue_ids))
+    if clue_nos:
+        clue_matches.append(BusinessRecord.serial_no.in_(clue_nos))
+    clues = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "clue", or_(*clue_matches), *scope_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+
+    source_task_ids = {
+        int((item.data or {}).get("source_task_id") or 0)
+        for item in clues
+        if str((item.data or {}).get("source_task_id") or "").isdigit()
+        and int((item.data or {}).get("source_task_id") or 0) > 0
+    }
+    source_tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(source_task_ids),
+        BusinessRecord.module.in_(["investigation", "task"]),
+        *scope_conditions,
+    ))).all()) if source_task_ids else []
+    investigation_ids = {
+        int(value)
+        for value in [
+            case_data.get("investigation_record_id"),
+            *[(item.data or {}).get("investigation_record_id") for item in clues],
+            *[item.id if item.module == "investigation" else (item.data or {}).get("investigation_record_id") for item in source_tasks],
+        ]
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    investigation_nos = {
+        str(value or "").strip()
+        for value in [
+            case_data.get("investigation_no"),
+            *[(item.data or {}).get("investigation_no") for item in clues],
+            *[item.serial_no if item.module == "investigation" else (item.data or {}).get("investigation_no") for item in source_tasks],
+        ]
+        if str(value or "").strip()
+    }
+    investigation_matches = [
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+    ]
+    if investigation_ids:
+        investigation_matches.append(BusinessRecord.id.in_(investigation_ids))
+    if investigation_nos:
+        investigation_matches.append(BusinessRecord.serial_no.in_(investigation_nos))
+    investigations = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "investigation", or_(*investigation_matches), *scope_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+
+    receivables = list((await db.scalars(select(ReceivablePlan).where(
+        ReceivablePlan.contract_record_id.in_(contract_ids),
+    ).order_by(ReceivablePlan.due_date, ReceivablePlan.id))).all()) if contract_ids else []
+    incoming = list((await db.scalars(select(IncomingPayment).where(or_(
+        IncomingPayment.case_no == case_record.serial_no,
+        IncomingPayment.contract_record_id.in_(contract_ids) if contract_ids else false(),
+    )).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
+
+    source_records = [case_record, *contracts, *clues, *investigations, *finance_records, *invoice_records, *tasks, *payment_records]
+    source_by_id = {item.id: item for item in source_records}
+    source_ids = set(source_by_id)
+    attachments = list((await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id.in_(source_ids),
+    ).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all()) if source_ids else []
+    attachments = await _filter_visible_attachments(attachments, identity, db)
+
+    users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    users_by_username = {item.username.casefold(): item for item in users}
+    users_by_name = {str(item.display_name or "").strip().casefold(): item for item in users if str(item.display_name or "").strip()}
+
+    def person(role: str, value: object) -> dict | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        user = users_by_username.get(raw.casefold()) or users_by_name.get(raw.casefold())
+        return {"role": role, "username": user.username if user else "", "name": user.display_name if user else raw}
+
+    people_values = [
+        person("案件负责人", case_record.owner),
+        *[person("经办律师", item) for item in list(case_data.get("handling_lawyers") or [])],
+        person("律师助理", case_data.get("assistant") or case_data.get("assistant_username")),
+        person("开庭律师", case_data.get("hearing_lawyer")),
+        person("客户管理人", case_data.get("customer_manager")),
+        person("案源人", case_data.get("business_owner") or case_data.get("source_person")),
+        person("调查员", case_data.get("investigator")),
+    ]
+    people = []
+    seen_people = set()
+    for item in filter(None, people_values):
+        key = (item["role"], item["username"] or item["name"])
+        if key not in seen_people:
+            seen_people.add(key)
+            people.append(item)
+
+    show_finance_amount = "finance.amount" in allowed_fields
+    contract_payload = []
+    for contract in contracts:
+        objects = [item for item in contract_objects if item.contract_record_id == contract.id]
+        plans = [item for item in receivables if item.contract_record_id == contract.id]
+        contract_payload.append({
+            **_record_dict(contract, allowed_fields),
+            "objects": [{"id": item.id, "case_record_id": item.case_record_id, "fee_type": item.fee_type, "amount": item.amount if "contract.amount" in allowed_fields else None, "remark": item.remark} for item in objects],
+            "receivables": [{**_receivable_dict(item, contract), **({} if show_finance_amount else {"amount": None, "received_amount": None, "remaining_amount": None})} for item in plans],
+        })
+
+    document_payload = []
+    for item in attachments:
+        source = source_by_id.get(item.record_id)
+        document_payload.append({**_attachment_dict(item, source), "source_module": source.module if source else "", "source_status": source.status if source else ""})
+
+    deadline_items = [
+        {"type": "案件提醒", "id": item.id, "title": item.title, "reminder_date": (item.data or {}).get("reminder_date", ""), "deadline": (item.data or {}).get("deadline", ""), "status": item.status}
+        for item in reminders
+    ] + [
+        {"type": "开庭排期", "id": item.id, "title": item.hearing_type, "deadline": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "courtroom": item.courtroom, "status": item.status}
+        for item in hearings
+    ] + [
+        {"type": "案件任务", "id": item.id, "title": item.title, "deadline": str((item.data or {}).get("deadline") or ""), "status": item.status, "owner": item.owner}
+        for item in tasks if (item.data or {}).get("deadline")
+    ]
+
+    capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    capabilities["can_update_customer"] = False
+    if customer:
+        try:
+            await _require_record_owner_or_manager(customer, identity, db)
+            capabilities["can_update_customer"] = True
+        except HTTPException:
+            pass
+    capabilities["can_update_contract"] = False
+    for contract in contracts:
+        try:
+            await _require_record_owner_or_manager(contract, identity, db)
+            if contract.status in {"草稿", "已拒绝"}:
+                capabilities["can_update_contract"] = True
+                break
+        except HTTPException:
+            continue
+
+    context = {
+        "schema_version": "1.1",
+        "space": {"id": f"case:{case_record.id}", "kind": "business_graph", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
+        "case": await _record_dict_for_identity(case_record, identity, db),
+        "customer": await _record_dict_for_identity(customer, identity, db) if customer else None,
+        "people": people,
+        "contracts": contract_payload,
+        "finances": {
+            "fees": [_record_dict(item, allowed_fields) for item in finance_records],
+            "invoices": [_record_dict(item, allowed_fields) for item in invoice_records],
+            "contract_payments": [_record_dict(item, allowed_fields) for item in payment_records],
+            "incoming_payments": [_incoming_payment_dict(item, show_amount=show_finance_amount) for item in incoming],
+        },
+        "deadlines": deadline_items,
+        "documents": document_payload,
+        "tasks": [await _task_display_dict(item, db) for item in tasks],
+        "relationships": {
+            "clues": [await _record_dict_for_identity(item, identity, db) for item in clues],
+            "investigations": [await _record_dict_for_identity(item, identity, db) for item in investigations],
+            "edges": [
+                *([{"from": f"case:{case_record.id}", "to": f"customer:{customer.id}", "type": "belongs_to_customer"}] if customer else []),
+                *[{"from": f"case:{case_record.id}", "to": f"contract:{item.id}", "type": "covered_by_contract"} for item in contracts],
+                *[{"from": f"clue:{item.id}", "to": f"case:{case_record.id}", "type": "converted_to_case"} for item in clues],
+                *[{"from": f"investigation:{item.id}", "to": f"case:{case_record.id}", "type": "supports_case"} for item in investigations],
+                *[{"from": f"finance:{item.id}", "to": f"case:{case_record.id}", "type": "financial_record"} for item in finance_records],
+                *[{"from": f"invoice:{item.id}", "to": f"case:{case_record.id}", "type": "invoice_record"} for item in invoice_records],
+            ],
+        },
+        "capabilities": capabilities,
+        "agent": {
+            **case_agent_runtime.status(),
+            "shared_space_id": f"case:{case_record.id}",
+            "private_thread_id": case_agent_runtime.thread_id(case_record.id, identity["username"]),
+        },
+    }
+    context["standard_workflow"] = build_case_workflow_guide(context)
+    return context
+
+
+async def _user_agent_skill_store(username: str, db: AsyncSession) -> tuple[SystemConfig | None, list[dict]]:
+    key = user_skill_config_key(username)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == key))
+    value = item.value if item else {}
+    if item and str(value.get("owner_username") or "").strip().casefold() != username.strip().casefold():
+        raise HTTPException(status_code=403, detail="个人技能库归属校验失败")
+    skills = value.get("skills") or []
+    return item, [dict(skill) for skill in skills if isinstance(skill, dict)]
+
+
+async def _save_user_agent_skills(username: str, skills: list[dict], identity: dict, db: AsyncSession) -> None:
+    key = user_skill_config_key(username)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == key))
+    value = {"owner_username": username, "skills": skills}
+    if item:
+        item.value = value
+        item.updated_by = username
+    else:
+        db.add(SystemConfig(
+            key=key,
+            label="个人智能体技能库",
+            group="智能体",
+            value=value,
+            description="当前账号创建或上传的声明式智能体技能",
+            updated_by=username,
+        ))
+    await _system_audit(db, identity, "更新个人智能体技能", f"个人技能库:{username}", {"skill_count": len(skills)})
+    await db.commit()
+
+
+async def _agent_skill_catalog_for_identity(identity: dict, db: AsyncSession) -> list[dict]:
+    _, custom_records = await _user_agent_skill_store(identity["username"], db)
+    return [*public_skill_catalog(), *[custom_skill_public(item) for item in custom_records]]
+
+
+async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSession):
+    normalized = str(skill_id or GENERAL_SKILL.id).strip()
+    if normalized in SKILLS_BY_ID:
+        skill = SKILLS_BY_ID[normalized]
+        if not skill.available:
+            raise HTTPException(status_code=409, detail=skill.unavailable_reason or "该技能暂不可用")
+        return skill
+    _, custom_records = await _user_agent_skill_store(identity["username"], db)
+    record = next((item for item in custom_records if item.get("id") == normalized), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="技能不存在或不属于当前账号")
+    skill = custom_skill_agent(record)
+    if not skill.available:
+        raise HTTPException(status_code=409, detail="该技能已停用")
+    return skill
+
+
+@app.get(f"{settings.api_prefix}/agent/skills")
+async def list_user_agent_skills(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return {"items": await _agent_skill_catalog_for_identity(identity, db)}
+
+
+@app.post(f"{settings.api_prefix}/agent/skills")
+async def create_user_agent_skill(body: UserAgentSkillInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    if len(skills) >= CUSTOM_SKILL_LIMIT:
+        raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
+    try:
+        record = normalize_custom_skill(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"技能字段格式不正确：{exc}") from exc
+    skills.append(record)
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(record)
+
+
+@app.post(f"{settings.api_prefix}/agent/skills/upload")
+async def upload_user_agent_skill(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    if len(skills) >= CUSTOM_SKILL_LIMIT:
+        raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
+    content = await file.read(CUSTOM_SKILL_FILE_LIMIT + 1)
+    try:
+        record = parse_uploaded_skill(file.filename or "", content)
+    except ValueError as exc:
+        errors = {
+            "file_too_large": "技能文件不能超过 2MB",
+            "file_type": "仅支持 JSON、Markdown、Word（.docx）技能文件",
+            "encoding": "技能文件必须使用 UTF-8 编码",
+            "json": "JSON 技能文件格式不正确",
+            "word": "Word 技能文件损坏或无法识别",
+        }
+        raise HTTPException(status_code=422, detail=errors.get(str(exc), f"技能字段格式不正确：{exc}")) from exc
+    skills.append(record)
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(record)
+
+
+@app.patch(f"{settings.api_prefix}/agent/skills/{{skill_id}}")
+async def update_user_agent_skill(skill_id: str, body: UserAgentSkillUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    index = next((index for index, item in enumerate(skills) if item.get("id") == skill_id), -1)
+    if index < 0:
+        raise HTTPException(status_code=404, detail="自定义技能不存在")
+    merged = {**skills[index], **body.model_dump(exclude_unset=True)}
+    try:
+        skills[index] = normalize_custom_skill(merged, skill_id=skill_id, source=str(skills[index].get("source") or "user-custom"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"技能字段格式不正确：{exc}") from exc
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(skills[index])
+
+
+@app.delete(f"{settings.api_prefix}/agent/skills/{{skill_id}}")
+async def delete_user_agent_skill(skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    retained = [item for item in skills if item.get("id") != skill_id]
+    if len(retained) == len(skills):
+        raise HTTPException(status_code=404, detail="自定义技能不存在")
+    await _save_user_agent_skills(identity["username"], retained, identity, db)
+    return {"deleted": True, "skill_id": skill_id}
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/workflow-guide")
+async def get_case_workflow_guide(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    context = await get_case_space_context(case_id, identity, db)
+    return context["standard_workflow"]
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/status")
+async def case_agent_status(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _ensure_record_module(case_id, "case", identity, db)
+    runtime_status = case_agent_runtime.status()
+    return {
+        "case_id": case_id,
+        "shared_space_id": f"case:{case_id}",
+        "thread_id": case_agent_runtime.thread_id(case_id, identity["username"]),
+        **runtime_status,
+        "skills": await _agent_skill_catalog_for_identity(identity, db),
+    }
+
+
+@app.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/state")
+async def case_agent_state(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _ensure_record_module(case_id, "case", identity, db)
+    if not case_agent_runtime.status()["ready"]:
+        raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
+    try:
+        return await case_agent_runtime.get_state(case_id, identity["username"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="案件智能体状态读取失败") from exc
+
+
+@app.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/messages")
+async def send_case_agent_message(
+    case_id: int,
+    body: CaseAgentMessageInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    context = await get_case_space_context(case_id, identity, db)
+    if not case_agent_runtime.status()["ready"]:
+        raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
+    proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
+    selected_skill = await _agent_skill_for_identity(body.skill_id, identity, db)
+    if proposed_action and not context["capabilities"].get("can_write"):
+        raise HTTPException(status_code=403, detail="当前账号无权为该案件发起写操作")
+    images: list[dict[str, object]] = []
+    attachment_ids = list(dict.fromkeys(body.attachment_ids))
+    if attachment_ids:
+        attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
+        if len(attachments) != len(attachment_ids) or any(item.record_id != case_id for item in attachments):
+            raise HTTPException(status_code=404, detail="截图附件不存在或不属于当前案件")
+        by_id = {item.id: item for item in attachments}
+        total_size = 0
+        mime_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+        for attachment_id in attachment_ids:
+            item = by_id[attachment_id]
+            suffix = Path(item.original_name or item.path).suffix.lower()
+            mime_type = mime_types.get(suffix)
+            if not mime_type:
+                raise HTTPException(status_code=422, detail="截图证据仅支持 PNG、JPG、JPEG 或 WebP")
+            path = Path(item.path)
+            if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+                raise HTTPException(status_code=404, detail="截图附件文件不存在")
+            content = path.read_bytes()
+            total_size += len(content)
+            if len(content) > 6 * 1024 * 1024 or total_size > 12 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="单张截图不能超过 6MB，单次分析总计不能超过 12MB")
+            images.append({
+                "id": item.id,
+                "name": item.original_name,
+                "mime_type": mime_type,
+                "data_url": f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}",
+            })
+    try:
+        return await case_agent_runtime.invoke(
+            case_id=case_id,
+            operator=identity["username"],
+            message=body.message,
+            case_snapshot=context,
+            proposed_action=proposed_action,
+            images=images,
+            skill_override=selected_skill,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="案件智能体调用失败") from exc
+
+
+AGENT_CASE_UPDATE_FIELDS = {"title", "customer", "status", "description"}
+AGENT_CASE_DATA_FIELDS = {
+    "court", "first_instance_court", "first_instance_case_no", "second_instance_court",
+    "second_instance_case_no", "cause_or_charge", "case_stage", "filing_date",
+    "acceptance_date", "judgment_date", "effective_date", "archive_no",
+    "paper_archive_location", "client_position",
+}
+AGENT_ACTION_CAPABILITY = {
+    "case.update": "can_edit_basic",
+    "case.data.update": "can_edit_basic",
+    "case.task.create": "can_create_case_task",
+    "case.reminder.create": "can_create_reminder",
+    "customer.update": "can_update_customer",
+    "contract.update": "can_update_contract",
+}
+
+
+def _require_case_agent_action_access(action_type: str, capabilities: dict) -> None:
+    capability = AGENT_ACTION_CAPABILITY.get(action_type)
+    if not capability:
+        raise HTTPException(status_code=422, detail="该智能体操作类型不在系统白名单中")
+    if not capabilities.get(capability):
+        raise HTTPException(status_code=403, detail="智能体不能超出当前账号原有业务权限执行该操作")
+
+
+def _case_agent_changes(payload: dict) -> dict:
+    changes = payload.get("changes") if isinstance(payload.get("changes"), dict) else payload
+    if not isinstance(changes, dict) or not changes:
+        raise HTTPException(status_code=422, detail="智能体操作没有可执行的字段变更")
+    return changes
+
+
+def _case_agent_date(value: object, field_name: str) -> date:
+    try:
+        return date.fromisoformat(str(value or "").strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name}必须使用 YYYY-MM-DD 日期格式") from exc
+
+
+def _case_agent_required_text(value: object, field_name: str, max_length: int = 1000) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=422, detail=f"{field_name}不能为空")
+    if len(normalized) > max_length:
+        raise HTTPException(status_code=422, detail=f"{field_name}内容过长")
+    return normalized
+
+
+async def _execute_case_agent_action(
+    case_record: BusinessRecord,
+    action: dict,
+    identity: dict,
+    db: AsyncSession,
+    context: dict | None = None,
+) -> dict:
+    action_type = str(action.get("type") or "")
+    payload = action.get("payload") or {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="智能体操作参数格式错误")
+
+    if action_type == "customer.update":
+        target_id = int(payload.get("target_id") or 0)
+        linked_customer = (context or {}).get("customer") or {}
+        if not target_id or int(linked_customer.get("id") or 0) != target_id:
+            raise HTTPException(status_code=404, detail="目标客户不属于当前案件空间")
+        changes = _case_agent_changes(payload)
+        changes.pop("target_id", None)
+        invalid = sorted(set(changes) - ({"description"} | CUSTOMER_CREATE_DATA_FIELDS))
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改客户字段：{', '.join(invalid)}")
+        description = changes.pop("description", None)
+        updated = await patch_customer(
+            target_id,
+            CustomerPatchInput(description=description, data=changes),
+            identity,
+            db,
+        )
+        return {"record_id": target_id, "operation": action_type, "updated_fields": {**changes, **({"description": description} if description is not None else {})}, "record": updated}
+
+    if action_type == "contract.update":
+        target_id = int(payload.get("target_id") or 0)
+        linked_contract = next((item for item in (context or {}).get("contracts") or [] if int(item.get("id") or 0) == target_id), None)
+        if not target_id or not linked_contract:
+            raise HTTPException(status_code=404, detail="目标合同不属于当前案件空间")
+        changes = _case_agent_changes(payload)
+        changes.pop("target_id", None)
+        invalid = sorted(set(changes) - {"title", "description", "data"})
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改合同字段：{', '.join(invalid)}")
+        data_changes = changes.get("data") or {}
+        if not isinstance(data_changes, dict):
+            raise HTTPException(status_code=422, detail="合同资料变更必须为字段对象")
+        protected = {"contract_guid", "customer_id", "customer_no", "customer_manager", "approval_steps", "current_approver", "investigation_ids"}
+        if protected.intersection(data_changes):
+            raise HTTPException(status_code=422, detail="智能体不能修改合同关系或审批控制字段")
+        current = await _ensure_record_module(target_id, "contract", identity, db)
+        updated = await update_contract_draft(
+            target_id,
+            ContractDraftInput(
+                serial_no=current.serial_no,
+                title=str(changes.get("title", current.title)),
+                customer=current.customer,
+                owner=current.owner,
+                department=current.department,
+                description=str(changes.get("description", current.description or "")),
+                data={**(current.data or {}), **data_changes},
+            ),
+            identity,
+            db,
+        )
+        return {"record_id": target_id, "operation": action_type, "updated_fields": changes, "record": updated}
+
+    if action_type == "case.update":
+        changes = _case_agent_changes(payload)
+        invalid = sorted(set(changes) - AGENT_CASE_UPDATE_FIELDS)
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改字段：{', '.join(invalid)}")
+        before_status = case_record.status
+        applied = {}
+        limits = {"title": 255, "customer": 255, "status": 32, "description": 5000}
+        for field, value in changes.items():
+            normalized = str(value or "").strip()
+            if field in {"title", "status"} and not normalized:
+                raise HTTPException(status_code=422, detail=f"{field}不能为空")
+            if len(normalized) > limits[field]:
+                raise HTTPException(status_code=422, detail=f"{field}内容过长")
+            setattr(case_record, field, normalized)
+            applied[field] = normalized
+        db.add(WorkflowEvent(
+            record_id=case_record.id,
+            action="智能体审批后更新案件",
+            from_status=before_status,
+            to_status=case_record.status,
+            operator=identity["username"],
+            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(applied)}",
+        ))
+        await db.commit()
+        await db.refresh(case_record)
+        return {"record_id": case_record.id, "operation": action_type, "updated_fields": applied}
+
+    if action_type == "case.data.update":
+        changes = _case_agent_changes(payload)
+        invalid = sorted(set(changes) - AGENT_CASE_DATA_FIELDS)
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"智能体无权修改案件扩展字段：{', '.join(invalid)}")
+        normalized_changes = {}
+        for field, value in changes.items():
+            if isinstance(value, (dict, list)):
+                raise HTTPException(status_code=422, detail=f"{field}不接受复合数据")
+            normalized = value if isinstance(value, (bool, int, float)) else str(value or "").strip()
+            if isinstance(normalized, str) and len(normalized) > 1000:
+                raise HTTPException(status_code=422, detail=f"{field}内容过长")
+            normalized_changes[field] = normalized
+        case_record.data = {**(case_record.data or {}), **normalized_changes}
+        db.add(WorkflowEvent(
+            record_id=case_record.id,
+            action="智能体审批后更新案件信息",
+            from_status=case_record.status,
+            to_status=case_record.status,
+            operator=identity["username"],
+            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(normalized_changes)}",
+        ))
+        await db.commit()
+        await db.refresh(case_record)
+        return {"record_id": case_record.id, "operation": action_type, "updated_fields": normalized_changes}
+
+    if action_type == "case.task.create":
+        collaborators = payload.get("collaborators") or []
+        if not isinstance(collaborators, list):
+            raise HTTPException(status_code=422, detail="协作人必须为人员列表")
+        task = await create_task(TaskInput(
+            title=_case_agent_required_text(payload.get("title"), "任务名称", 255),
+            owner=_case_agent_required_text(payload.get("owner"), "任务负责人", 128),
+            deadline=_case_agent_date(payload.get("deadline"), "任务截止日期"),
+            priority=str(payload.get("priority") or "普通").strip(),
+            source="案件任务",
+            collaborators=[str(item).strip() for item in collaborators if str(item).strip()],
+            case_no=case_record.serial_no,
+            description=str(payload.get("description") or "").strip(),
+        ), identity, db)
+        return {"record_id": task.get("id"), "operation": action_type, "serial_no": task.get("serial_no")}
+
+    if action_type == "case.reminder.create":
+        reminder = await create_case_reminder(case_record.id, CaseReminderInput(
+            content=_case_agent_required_text(payload.get("content"), "提醒内容"),
+            reminder_date=_case_agent_date(payload.get("reminder_date"), "提醒日期"),
+            deadline=_case_agent_date(payload.get("deadline"), "截止日期"),
+        ), identity, db)
+        return {"record_id": reminder.get("id"), "operation": action_type, "serial_no": reminder.get("serial_no")}
+
+    raise HTTPException(status_code=422, detail="该智能体操作类型不在系统白名单中")
+
+
+@app.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/actions/{{action_id}}/decision")
+async def decide_case_agent_action(
+    case_id: int,
+    action_id: str,
+    body: CaseAgentDecisionInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    context = await get_case_space_context(case_id, identity, db)
+    capabilities = context.get("capabilities") or {}
+    try:
+        state = await case_agent_runtime.get_state(case_id, identity["username"])
+        action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
+        if not action:
+            raise KeyError(action_id)
+        if action.get("status") != "pending":
+            raise ValueError("action_already_decided")
+        _require_case_agent_action_access(str(action.get("type") or ""), capabilities)
+        execution_result = None
+        if body.decision == "approved":
+            execution_result = await _execute_case_agent_action(case_record, action, identity, db, context)
+        return await case_agent_runtime.decide_action(
+            case_id=case_id,
+            action_id=action_id,
+            decision=body.decision,
+            operator=identity["username"],
+            comment=body.comment,
+            execution_result=execution_result,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="待审批操作不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="该操作已经完成审批") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="案件智能体尚未就绪") from exc
 
 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")
@@ -16592,7 +18358,7 @@ async def list_case_tasks(
     pages = (total + page_size - 1) // page_size if total else 0
     return {
         "case": _record_dict(case_record),
-        "items": [_task_dict(item) for item in rows],
+        "items": [await _task_display_dict(item, db) for item in rows],
         "total": total, "page": page, "page_size": page_size, "pages": pages,
     }
 
@@ -17196,6 +18962,8 @@ async def _official_outgoing_dict(item: OfficialOutgoingDocument, record: Busine
         WorkflowEvent.record_id == record.id,
         WorkflowEvent.action.in_(("正式发文审批通过", "正式发文审批拒绝")),
     ).order_by(WorkflowEvent.id.desc()))
+    display_users = await _user_display_map({*[attachment.uploader for attachment in attachments], latest_audit.operator if latest_audit else ""}, db)
+    uploader_names = {username: _person_display_name(user.display_name, user.username)[0] for username, user in display_users.items()}
     return {
         **await _record_dict_for_identity(record, identity, db),
         "official_no": item.official_no,
@@ -17205,7 +18973,7 @@ async def _official_outgoing_dict(item: OfficialOutgoingDocument, record: Busine
         "source_serial_no": source.serial_no if source else "",
         "source_file_ids": item.source_file_ids or [],
         "stamp_attachment_id": item.stamp_attachment_id,
-        "attachments": [_attachment_dict(attachment, record) for attachment in attachments],
+        "attachments": [_attachment_dict(attachment, record, uploader_names) for attachment in attachments],
         "seal_asset_id": (record.data or {}).get("seal_asset_id"),
         "seal_type": (record.data or {}).get("seal_type", ""),
         "seal_name": (record.data or {}).get("seal_name", ""),
@@ -17214,6 +18982,7 @@ async def _official_outgoing_dict(item: OfficialOutgoingDocument, record: Busine
         "print_quantity": int((record.data or {}).get("print_quantity") or 1),
         "content": (record.data or {}).get("content", ""),
         "auditor": latest_audit.operator if latest_audit else "",
+        "auditor_display_name": _person_reference_display(latest_audit.operator if latest_audit else "", display_users)[0],
         "audit_time": latest_audit.created_at.isoformat() if latest_audit else "",
         "audit_remark": latest_audit.comment if latest_audit else "",
     }
@@ -17570,8 +19339,11 @@ async def list_attachments(
     items = items[(page - 1) * page_size:(page - 1) * page_size + page_size]
     record_ids = {item.record_id for item in items if item.record_id}
     records = {record.id: record for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(record_ids)))).all()} if record_ids else {}
+    uploader_usernames = {item.uploader for item in items if item.uploader}
+    uploader_users = await _user_display_map(uploader_usernames, db)
+    uploader_names = {username: _person_display_name(user.display_name, user.username)[0] for username, user in uploader_users.items()}
     return {
-        "items": [_attachment_dict(item, records.get(item.record_id)) for item in items],
+        "items": [_attachment_dict(item, records.get(item.record_id), uploader_names) for item in items],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -17590,7 +19362,9 @@ async def get_attachment(attachment_id: int, identity: dict = Depends(current_id
         record = await _ensure_attachment_record_visible(item.record_id, identity, db)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
-    return _attachment_dict(item, record)
+    uploader_users = await _user_display_map({item.uploader}, db)
+    uploader_names = {username: _person_display_name(user.display_name, user.username)[0] for username, user in uploader_users.items()}
+    return _attachment_dict(item, record, uploader_names)
 
 
 async def _sync_seal_document_names(record: BusinessRecord, db: AsyncSession) -> None:
@@ -17780,8 +19554,6 @@ async def upload_attachment(
         expected_category = FINANCE_DEFAULT_VOUCHER_CATEGORY[transaction.transaction_type]
         if category == "普通附件":
             category = expected_category
-        if category not in FINANCE_VOUCHER_CATEGORIES:
-            raise HTTPException(status_code=422, detail="财务流水附件类型无效")
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
         if customer_metadata_provided:
@@ -17795,6 +19567,8 @@ async def upload_attachment(
                 raise HTTPException(status_code=422, detail="客户记录 customer_guid 不能为空")
             if normalized_customer_guid != _customer_guid(record):
                 raise HTTPException(status_code=409, detail="附件 customer_guid 与客户记录不一致")
+        if record.module == "hr":
+            category = "员工档案"
         await _require_hr_attachment_write_access(record, category, identity, db)
         if record.module == "ipr_case":
             raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
@@ -17802,17 +19576,11 @@ async def upload_attachment(
             await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
             await _require_case_detail_write_access(record, identity, db)
-            permitted_case_file_types = set((await db.scalars(select(SystemParameter.name).where(
-                SystemParameter.category == "case_file_type", SystemParameter.is_active.is_(True),
-            ))).all())
-            permitted_case_file_types.update({"案件票据文件", "案件发票文件", "普通附件"})
-            if category not in permitted_case_file_types:
-                raise HTTPException(status_code=422, detail="案件文件类型不存在或已停用")
         if record.module == "task":
             if not _is_task_participant(record, identity):
                 raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")
             if category not in {"任务反馈附件", "任务资料附件"}:
-                raise HTTPException(status_code=422, detail="任务附件类型无效")
+                category = "任务资料附件"
         if record.module == "customer":
             await _require_record_owner_or_manager(record, identity, db)
         if record.module == "seal":
@@ -17820,24 +19588,22 @@ async def upload_attachment(
             if record.status not in {"草稿", "待用印"}:
                 raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
             if category != "用印文件":
-                raise HTTPException(status_code=422, detail="用印申请附件类型必须为用印文件")
+                category = "用印文件"
         if record.module == "official_outgoing":
             await _require_record_owner_or_manager(record, identity, db)
             if record.status not in {"草稿", "已拒绝", "已撤回"}:
                 raise HTTPException(status_code=409, detail="仅草稿、已拒绝或已撤回正式发文可以上传或替换发文文件")
             if category != "正式发文附件":
-                raise HTTPException(status_code=422, detail="正式发文附件类型必须为正式发文附件")
+                category = "正式发文附件"
         if record.module in INVESTIGATION_MATERIAL_CATEGORIES:
             await _require_record_owner_or_manager(record, identity, db)
             if category == "公证书扫描件":
                 operator = await db.scalar(select(User).where(User.username == identity["username"]))
                 if not operator or not await _user_has_job_permission(operator, "扫描上传", db):
                     raise HTTPException(status_code=403, detail="当前账号没有公证书扫描上传岗位权限")
-        if record.module in INVESTIGATION_MATERIAL_CATEGORIES and category != "普通附件" and category not in INVESTIGATION_MATERIAL_CATEGORIES[record.module]:
-            raise HTTPException(status_code=422, detail="材料类型与当前调查业务不匹配")
     suffix = Path(file.filename or "").suffix.lower()
     # 旧普通案件文件库不按扩展名拒收：案件资料常含法院专用格式、加密包和
-    # 其他业务文件。文件仍受大小、案件权限、分类和受控下载约束；知识产权
+    # 其他业务文件。文件仍受大小、案件权限和受控下载约束；知识产权
     # 案件继续走自己的专用格式校验接口。
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
     if (not record or record.module != "case") and suffix not in allowed:
@@ -18167,7 +19933,7 @@ async def create_receivable(body: ReceivableInput, identity: dict = Depends(curr
     db.add(WorkflowEvent(record_id=contract.id, action="新增应收计划", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{body.phase}：{body.amount:.2f}元"))
     await db.commit()
     await db.refresh(plan)
-    return _receivable_dict(plan, contract)
+    return _receivable_dict(plan, contract, await _user_display_map({contract.owner}, db))
 
 
 @app.post(f"{settings.api_prefix}/receivables/{{plan_id}}/receive")
@@ -18185,7 +19951,7 @@ async def receive_payment(plan_id: int, body: ReceivePaymentInput, identity: dic
     db.add(WorkflowEvent(record_id=contract.id, action="登记回款", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{plan.phase}回款 {body.amount:.2f} 元。{body.comment}"))
     await db.commit()
     await db.refresh(plan)
-    return _receivable_dict(plan, contract)
+    return _receivable_dict(plan, contract, await _user_display_map({contract.owner}, db))
 
 
 @app.delete(f"{settings.api_prefix}/receivables/{{plan_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -18582,6 +20348,9 @@ async def approve_seal_application(record_id: int, body: SealApprovalInput, iden
     item = await _get_seal_application(record_id, identity, db)
     if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有用印审批权限")
     if item.status != "待审批": raise HTTPException(status_code=409, detail="申请不在待审批状态")
+    selected_approver = str((item.data or {}).get("approver") or "").strip()
+    if selected_approver and identity.get("role") != "admin" and selected_approver != identity.get("username"):
+        raise HTTPException(status_code=403, detail="当前账号不是该用印申请指定的审批人")
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="驳回时必须填写审批意见")
     old = item.status; item.status = "待用印" if body.approved else "已拒绝"
@@ -18944,7 +20713,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
             raise HTTPException(status_code=422, detail="员工账号必须填写登录用户名")
         if username == "admin":
             raise HTTPException(status_code=409, detail="不能通过员工档案创建或覆盖管理员账号")
-        if not re.fullmatch(r"[a-z0-9._-]+", username):
+        if not re.fullmatch(r"[a-z0-9._-]{2,64}", username):
             raise HTTPException(status_code=422, detail="登录账号只能包含小写字母、数字、点、下划线或短横线")
         existing_employee = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "hr", or_(BusinessRecord.owner == username, BusinessRecord.data["username"].as_string() == username)))
         if existing_employee:
@@ -19397,8 +21166,12 @@ async def get_job_role_permissions(role_id: int, identity: dict = Depends(curren
     if not role:
         raise HTTPException(status_code=404, detail="岗位角色不存在")
     menus = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
+    menu_keys = {menu.key for menu in menus} | set(SYSTEM_MENU_ROUTE_KEYS)
     role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
-    actions = sorted({action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS))
+    actions = sorted(
+        ({action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS))
+        - menu_keys
+    )
     permissions = list(dict.fromkeys(value.strip() for value in (role.permissions or []) if value.strip()))
     return {
         "role_id": role.id, "role_code": role.code, "permissions": permissions,
@@ -19424,10 +21197,15 @@ async def update_job_role_permissions(
             raise HTTPException(status_code=422, detail="系统管理员角色权限不可修改")
     else:
         role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
-        allowed = {action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()} | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
+        configured_menu_keys = set((await db.scalars(select(SystemMenu.key))).all()) | set(SYSTEM_MENU_ROUTE_KEYS)
+        allowed_actions = (
+            {action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()}
+            | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
+        ) - configured_menu_keys
+        allowed = configured_menu_keys | allowed_actions
         invalid = sorted(set(permissions) - allowed)
         if invalid:
-            raise HTTPException(status_code=422, detail=f"无效业务动作权限：{', '.join(invalid)}")
+            raise HTTPException(status_code=422, detail=f"无效菜单或业务动作权限：{', '.join(invalid)}")
     role.permissions = permissions
     role.field_keys = field_keys
     role.updated_by = identity["username"]
@@ -19498,11 +21276,13 @@ async def delete_job_role(role_id: int, identity: dict = Depends(current_identit
 HR_SUBRECORD_KINDS = {"leave", "matter", "commission"}
 
 
-def _hr_subrecord_dict(item: HrSubrecord) -> dict:
+def _hr_subrecord_dict(item: HrSubrecord, users_by_username: dict[str, User] | None = None) -> dict:
+    users = users_by_username or {}
     return {
         "id": item.id, "employee_id": item.employee_id, "kind": item.kind,
         "data": item.data or {}, "created_by": item.created_by,
-        "updated_by": item.updated_by, "created_at": item.created_at,
+        "created_by_display_name": _person_reference_display(item.created_by, users)[0],
+        "updated_by": item.updated_by, "updated_by_display_name": _person_reference_display(item.updated_by, users)[0], "created_at": item.created_at,
         "updated_at": item.updated_at,
     }
 
@@ -19559,7 +21339,8 @@ async def list_hr_subrecords(employee_id: int, kind: str = "", identity: dict = 
         if kind not in HR_SUBRECORD_KINDS: raise HTTPException(status_code=422, detail="不支持的员工附属记录类型")
         conditions.append(HrSubrecord.kind == kind)
     items = (await db.scalars(select(HrSubrecord).where(*conditions).order_by(HrSubrecord.created_at.desc(), HrSubrecord.id.desc()))).all()
-    return {"items": [_hr_subrecord_dict(item) for item in items], "total": len(items)}
+    users_by_username = await _user_display_map({value for item in items for value in (item.created_by, item.updated_by)}, db)
+    return {"items": [_hr_subrecord_dict(item, users_by_username) for item in items], "total": len(items)}
 
 
 @app.get(f"{settings.api_prefix}/hr/{{employee_id}}/performance-for-case/{{case_id}}")
@@ -20517,8 +22298,8 @@ async def remove_ipr_cases_from_annual_fee_monitoring(body: IprCaseAnnualFeeMoni
     return await _set_ipr_annual_fee_monitoring(body, False, identity, db)
 
 
-def _ipr_case_log_dict(item: IprCaseLog) -> dict:
-    return {"id": item.id, "content": item.content, "created_by": item.created_by, "created_at": item.created_at}
+def _ipr_case_log_dict(item: IprCaseLog, users_by_username: dict[str, User] | None = None) -> dict:
+    return {"id": item.id, "content": item.content, "created_by": item.created_by, "created_by_display_name": _person_reference_display(item.created_by, users_by_username or {})[0], "created_at": item.created_at}
 
 
 @app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs")
@@ -20527,9 +22308,10 @@ async def list_ipr_case_logs(case_id: int, identity: dict = Depends(current_iden
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     business_logs = list((await db.scalars(select(IprCaseLog).where(IprCaseLog.case_record_id == record.id).order_by(IprCaseLog.created_at.desc(), IprCaseLog.id.desc()))).all())
     operations = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
+    users_by_username = await _user_display_map({*[item.created_by for item in business_logs], *[item.operator for item in operations]}, db)
     return {
-        "business_logs": [_ipr_case_log_dict(item) for item in business_logs],
-        "operation_logs": [{"id": item.id, "action": item.action, "operator": item.operator, "comment": item.comment, "from_status": item.from_status, "to_status": item.to_status, "created_at": item.created_at} for item in operations],
+        "business_logs": [_ipr_case_log_dict(item, users_by_username) for item in business_logs],
+        "operation_logs": [{"id": item.id, "action": item.action, "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users_by_username)[0], "comment": item.comment, "from_status": item.from_status, "to_status": item.to_status, "created_at": item.created_at} for item in operations],
     }
 
 
@@ -20909,11 +22691,11 @@ IPR_REMINDER_EVENT_TYPES: tuple[tuple[int, str], ...] = (
 IPR_REMINDER_EVENT_TYPE_BY_ID = dict(IPR_REMINDER_EVENT_TYPES)
 
 
-def _ipr_case_reminder_dict(row: IprCaseReminder) -> dict:
+def _ipr_case_reminder_dict(row: IprCaseReminder, users_by_username: dict[str, User] | None = None) -> dict:
     return {
         "id": row.id, "case_record_id": row.case_record_id, "event_type_id": row.event_type_id,
         "event_type": row.event_type, "reminder_date": row.reminder_date, "deadline": row.deadline,
-        "content": row.content, "creator": row.creator, "created_at": row.created_at, "updated_at": row.updated_at,
+        "content": row.content, "creator": row.creator, "creator_display_name": _person_reference_display(row.creator, users_by_username or {})[0], "created_at": row.created_at, "updated_at": row.updated_at,
     }
 
 
@@ -20941,8 +22723,9 @@ async def list_ipr_case_reminders(
         .order_by(IprCaseReminder.reminder_date, IprCaseReminder.id)
         .offset((page - 1) * page_size).limit(page_size)
     )).all())
+    users_by_username = await _user_display_map({row.creator for row in rows}, db)
     return {
-        "items": [_ipr_case_reminder_dict(row) for row in rows],
+        "items": [_ipr_case_reminder_dict(row, users_by_username) for row in rows],
         "total": total, "page": page, "page_size": page_size,
         "pages": (total + page_size - 1) // page_size if total else 0,
     }
@@ -22390,10 +24173,16 @@ async def get_record(record_id: int, identity: dict = Depends(current_identity),
 @app.get(f"{settings.api_prefix}/records/{{record_id}}/history")
 async def record_history(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_record_visible(record_id, identity, db)
-    events = await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record_id).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))
+    events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record_id).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
+    users_by_username = await _user_display_map({event.operator for event in events}, db)
     return {
         "transitions": WORKFLOW_TRANSITIONS.get(record.module, {}).get(record.status, []),
-        "items": [{"id": e.id, "action": e.action, "from_status": e.from_status, "to_status": e.to_status, "operator": e.operator, "comment": e.comment, "created_at": e.created_at} for e in events],
+        "items": [{
+            "id": event.id, "action": event.action, "from_status": event.from_status,
+            "to_status": event.to_status, "operator": event.operator,
+            "operator_display_name": _person_reference_display(event.operator, users_by_username)[0],
+            "comment": event.comment, "created_at": event.created_at,
+        } for event in events],
     }
 
 
@@ -22639,8 +24428,9 @@ def _agent_content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def _agent_document_dict(item: AgentDocument, template: DocumentTemplate | None = None, record: BusinessRecord | None = None, capabilities: dict | None = None) -> dict:
-    return {"id": item.id, "job_no": item.job_no, "template_id": item.template_id, "template_name": template.name if template else "", "record_id": item.record_id, "record_no": record.serial_no if record else "", "record_title": record.title if record else "", "title": item.title, "instruction": item.instruction, "content": item.content, "status": item.status, "content_version": item.content_version, "confirmed_by": item.confirmed_by, "confirmed_at": item.confirmed_at, "conversation_id": item.conversation_id, "dify_message_id": item.dify_message_id, "error": item.error, "creator": item.creator, "created_at": item.created_at, "updated_at": item.updated_at, "capabilities": capabilities or {}}
+def _agent_document_dict(item: AgentDocument, template: DocumentTemplate | None = None, record: BusinessRecord | None = None, capabilities: dict | None = None, users_by_username: dict[str, User] | None = None) -> dict:
+    users = users_by_username or {}
+    return {"id": item.id, "job_no": item.job_no, "template_id": item.template_id, "template_name": template.name if template else "", "record_id": item.record_id, "record_no": record.serial_no if record else "", "record_title": record.title if record else "", "title": item.title, "instruction": item.instruction, "content": item.content, "status": item.status, "content_version": item.content_version, "confirmed_by": item.confirmed_by, "confirmed_by_display_name": _person_reference_display(item.confirmed_by, users)[0], "confirmed_at": item.confirmed_at, "conversation_id": item.conversation_id, "dify_message_id": item.dify_message_id, "error": item.error, "creator": item.creator, "creator_display_name": _person_reference_display(item.creator, users)[0], "created_at": item.created_at, "updated_at": item.updated_at, "capabilities": capabilities or {}}
 
 
 def _agent_document_operation_result(item: AgentDocument, template: DocumentTemplate | None = None, record: BusinessRecord | None = None) -> dict:
@@ -22755,11 +24545,12 @@ async def list_agent_documents(identity: dict = Depends(current_identity), db: A
     template_ids = {item.template_id for item, _ in accessible_items}; record_ids = {item.record_id for item, _ in accessible_items if item.record_id}
     templates = {x.id: x for x in (await db.scalars(select(DocumentTemplate).where(DocumentTemplate.id.in_(template_ids)))).all()} if template_ids else {}
     records = {x.id: x for x in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(record_ids)))).all()} if record_ids else {}
+    users_by_username = await _user_display_map({value for item, _record in accessible_items for value in (item.creator, item.confirmed_by)}, db)
     result = []
     for item, visible_record in accessible_items:
         record = visible_record or records.get(item.record_id)
         capabilities = await _agent_document_capabilities(item, identity, db, record)
-        result.append(_agent_document_dict(item, templates.get(item.template_id), record, capabilities))
+        result.append(_agent_document_dict(item, templates.get(item.template_id), record, capabilities, users_by_username))
     return {"items": result, "dify_configured": bool(settings.dify_base_url and settings.dify_api_key)}
 
 
