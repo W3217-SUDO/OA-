@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { Key } from "react";
 import {
   Alert,
@@ -120,6 +120,7 @@ type CaseRow = {
   data: Record<string, any>;
 };
 type CaseAgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
+type CaseAgentDocument = { id: number; original_name: string; category?: string; source_module?: string; size?: number };
 type CaseAgentMessage = {
   id?: string;
   role: "user" | "assistant";
@@ -573,6 +574,9 @@ export default function CaseCenterPage({
   const [agentSkillId, setAgentSkillId] = useState(DEFAULT_AGENT_SKILL);
   const [agentScreenshots, setAgentScreenshots] = useState<CaseAgentAttachment[]>([]);
   const [agentScreenshotUploading, setAgentScreenshotUploading] = useState(false);
+  const [agentDocuments, setAgentDocuments] = useState<CaseAgentDocument[]>([]);
+  const [agentDocumentIds, setAgentDocumentIds] = useState<number[]>([]);
+  const [agentDrawerWidth, setAgentDrawerWidth] = useState(() => Math.min(720, Math.max(520, window.innerWidth * 0.46)));
   const agentMessagesEndRef = useRef<HTMLDivElement>(null);
   const agentScreenshotInputRef = useRef<HTMLInputElement>(null);
   const agentScreenshotPreviewUrlsRef = useRef(new Map<number, string>());
@@ -1479,15 +1483,20 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件详情加载失败");
     }
   };
-  const loadCaseAgent = async (row: CaseRow) => {
+  const loadCaseAgent = async (row: CaseRow, resetMaterials = false) => {
     setAgentLoading(true);
     try {
-      const [statusRes, stateRes] = await Promise.all([
+      const [statusRes, stateRes, contextRes] = await Promise.all([
         api.get(`/case-spaces/${row.id}/agent/status`),
         api.get(`/case-spaces/${row.id}/agent/state`),
+        api.get(`/case-spaces/${row.id}/context`),
       ]);
       setAgentStatus(statusRes.data);
       setAgentState(stateRes.data);
+      const documents = (contextRes.data?.documents || []) as CaseAgentDocument[];
+      const availableIds = documents.map((item) => Number(item.id)).filter((id) => id > 0);
+      setAgentDocuments(documents);
+      setAgentDocumentIds((current) => resetMaterials ? availableIds : current.filter((id) => availableIds.includes(id)));
       const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
       const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
       setAgentSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
@@ -1515,7 +1524,9 @@ export default function CaseCenterPage({
     setAgentOpen(true);
     setAgentInput("");
     setAgentScreenshots([]);
-    void loadCaseAgent(row);
+    setAgentDocuments([]);
+    setAgentDocumentIds([]);
+    void loadCaseAgent(row, true);
   };
   const sendCaseAgentMessage = async (preset?: string) => {
     if (!agentCase) return;
@@ -1534,17 +1545,61 @@ export default function CaseCenterPage({
     activeCaseAgentRequestRef.current = controller;
     setAgentSending(true);
     try {
-      const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/messages`, {
-        message: encodeAgentSkillMessage(agentSkillId, content),
-        attachment_ids: outgoingScreenshots.map((item) => item.id),
-      }, { signal: controller.signal });
-      setAgentState(stateWithAgentScreenshotPreviews(data));
+      const response = await fetch(`/api/v1/case-spaces/${agentCase.id}/agent/messages`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(localStorage.getItem("access_token") ? { Authorization: `Bearer ${localStorage.getItem("access_token")}` } : {}),
+        },
+        body: JSON.stringify({
+          message: encodeAgentSkillMessage(agentSkillId, content),
+          skill_id: agentSkillId,
+          attachment_ids: outgoingScreenshots.map((item) => item.id),
+          document_ids: agentDocumentIds,
+          stream: true,
+        }),
+      });
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || "案件智能体响应失败");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const streamId = `stream-${Date.now()}`;
+      let buffer = "";
+      let streamedContent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line);
+          if (event.type === "delta") {
+            streamedContent += String(event.content || "");
+            setAgentState((current) => current ? {
+              ...current,
+              messages: [
+                ...current.messages.filter((item) => item.id !== streamId),
+                { id: streamId, role: "assistant", content: streamedContent },
+              ],
+            } : current);
+          } else if (event.type === "state") {
+            setAgentState(stateWithAgentScreenshotPreviews(event.state));
+          } else if (event.type === "error") {
+            throw new Error(event.detail || "案件智能体响应失败");
+          }
+        }
+        if (done) break;
+      }
     } catch (error: any) {
       if (!controller.signal.aborted) {
-        setAgentState((current) => current ? { ...current, messages: current.messages.filter((item) => item.id !== optimisticId) } : current);
+        setAgentState((current) => current ? { ...current, messages: current.messages.filter((item) => item.id !== optimisticId && !String(item.id || "").startsWith("stream-")) } : current);
         setAgentInput(content);
         setAgentScreenshots(outgoingScreenshots);
-        message.error(error?.response?.data?.detail || "案件智能体响应失败");
+        message.error(error?.response?.data?.detail || error?.message || "案件智能体响应失败");
       }
     } finally {
       if (activeCaseAgentRequestRef.current === controller) {
@@ -1613,8 +1668,20 @@ export default function CaseCenterPage({
   };
   useEffect(() => {
     if (!agentOpen) return;
-    agentMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    requestAnimationFrame(() => agentMessagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" }));
   }, [agentOpen, agentState?.messages.length]);
+  const startAgentDrawerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = agentDrawerWidth;
+    const onMove = (moveEvent: PointerEvent) => setAgentDrawerWidth(Math.min(window.innerWidth * 0.92, Math.max(420, startWidth + startX - moveEvent.clientX)));
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
   useEffect(() => () => clearAgentScreenshotPreviews(), []);
   const duplicateCase = async (row: CaseRow) => {
     const blocked = getCaseMutationBlockReason(row.status);
@@ -4124,12 +4191,13 @@ export default function CaseCenterPage({
       </Drawer>
       <Drawer
         className="case-agent-drawer"
-        width={560}
+        width={agentDrawerWidth}
         open={agentOpen}
         title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
         onClose={() => setAgentOpen(false)}
         destroyOnHidden
       >
+        <div className="case-agent-resize-handle" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={startAgentDrawerResize} />
         <div className="case-agent-panel" data-testid="case-agent-panel">
           <div className="case-agent-status">
             <Space size={[6, 6]} wrap>
@@ -4139,6 +4207,21 @@ export default function CaseCenterPage({
               {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
             </Space>
             <Button type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
+          </div>
+          <div className="case-agent-material-select">
+            <span>本轮材料</span>
+            <Select
+              mode="multiple"
+              value={agentDocumentIds}
+              maxTagCount="responsive"
+              placeholder="不读取附件"
+              onChange={setAgentDocumentIds}
+              options={agentDocuments.map((item) => ({ value: item.id, label: `${item.category ? `${item.category} · ` : ""}${item.original_name}` }))}
+            />
+            <Space size={4}>
+              <Button type="link" size="small" onClick={() => setAgentDocumentIds(agentDocuments.map((item) => item.id))}>全选</Button>
+              <Button type="link" size="small" onClick={() => setAgentDocumentIds([])}>清空</Button>
+            </Space>
           </div>
           <div className="case-agent-skill-select">
             <span>办公技能</span>

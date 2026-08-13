@@ -956,6 +956,8 @@ class CaseAgentMessageInput(BaseModel):
     skill_id: str = Field(default="general-office", min_length=1, max_length=100)
     proposed_action: CaseAgentProposedAction | None = None
     attachment_ids: list[int] = Field(default_factory=list, max_length=4)
+    document_ids: list[int] | None = Field(default=None, max_length=12)
+    stream: bool = False
 
 
 class UserAgentSkillInput(BaseModel):
@@ -18661,13 +18663,17 @@ async def send_case_agent_message(
                 "mime_type": mime_type,
                 "data_url": f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}",
             })
-    document_ids = [int(item.get("id") or 0) for item in context.get("documents", []) if int(item.get("id") or 0) > 0]
+    allowed_document_ids = [int(item.get("id") or 0) for item in context.get("documents", []) if int(item.get("id") or 0) > 0]
+    document_ids = allowed_document_ids if body.document_ids is None else list(dict.fromkeys(body.document_ids))
+    if any(item not in allowed_document_ids for item in document_ids):
+        raise HTTPException(status_code=404, detail="所选材料不存在或不在当前账号可见的案件空间内")
     document_readings: list[dict[str, object]] = []
     if document_ids:
         visible_documents = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(document_ids)))).all())
         visible_by_id = {item.id: item for item in visible_documents}
         remaining_chars = 60_000
         visual_bytes = sum(len(str(item.get("data_url") or "")) for item in images)
+        document_visual_groups: list[tuple[FileAttachment, tuple[dict[str, str], ...]]] = []
         seen_files: set[tuple[str, int]] = set()
         for attachment_id in document_ids:
             item = visible_by_id.get(attachment_id)
@@ -18696,11 +18702,19 @@ async def send_case_agent_message(
                 "page_count": reading.page_count,
                 "content": text_content,
             })
-            for visual in reading.images:
+            if reading.images:
+                document_visual_groups.append((item, reading.images))
+        document_visual_count = 0
+        for page_index in range(4):
+            for item, visual_pages in document_visual_groups:
+                if page_index >= len(visual_pages) or document_visual_count >= 12:
+                    continue
+                visual = visual_pages[page_index]
                 data_url = visual.get("data_url", "")
-                if len(images) >= 4 or visual_bytes + len(data_url) > 12 * 1024 * 1024:
-                    break
+                if not data_url or visual_bytes + len(data_url) > 12 * 1024 * 1024:
+                    continue
                 visual_bytes += len(data_url)
+                document_visual_count += 1
                 images.append({
                     "id": f"document:{item.id}:page:{visual.get('page', '1')}",
                     "name": f"{item.original_name}（第 {visual.get('page', '1')} 页）",
@@ -18708,18 +18722,25 @@ async def send_case_agent_message(
                     "data_url": data_url,
                     "page": visual.get("page", "1"),
                 })
-            if remaining_chars <= 0:
-                break
     context["document_readings"] = document_readings
+    invoke_arguments = {
+        "case_id": case_id,
+        "operator": identity["username"],
+        "message": body.message,
+        "case_snapshot": context,
+        "proposed_action": proposed_action,
+        "images": images,
+        "skill_override": selected_skill,
+    }
+    if body.stream:
+        async def stream_events():
+            async for event in case_agent_runtime.invoke_stream(**invoke_arguments):
+                yield json.dumps(event, ensure_ascii=False, default=str) + "\n"
+
+        return StreamingResponse(stream_events(), media_type="application/x-ndjson")
     try:
         return await case_agent_runtime.invoke(
-            case_id=case_id,
-            operator=identity["username"],
-            message=body.message,
-            case_snapshot=context,
-            proposed_action=proposed_action,
-            images=images,
-            skill_override=selected_skill,
+            **invoke_arguments,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="案件智能体调用失败") from exc

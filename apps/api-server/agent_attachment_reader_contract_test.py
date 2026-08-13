@@ -44,6 +44,18 @@ class AgentAttachmentReaderContractTest(unittest.TestCase):
         self.assertIn("文件名和页码", DOCUMENT_READING_RULES)
         self.assertIn("只看到了附件清单", DOCUMENT_READING_RULES)
 
+    def test_visual_pages_are_distributed_across_attachments(self):
+        source = (Path(__file__).parent / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn("document_visual_groups", source)
+        self.assertIn("for page_index in range(4)", source)
+        self.assertIn("document_visual_count >= 12", source)
+
+    def test_selected_documents_and_streaming_are_permission_scoped(self):
+        source = (Path(__file__).parent / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn("body.document_ids is None", source)
+        self.assertIn("item not in allowed_document_ids", source)
+        self.assertIn("case_agent_runtime.invoke_stream", source)
+
 
 if __name__ == "__main__":
     unittest.main()

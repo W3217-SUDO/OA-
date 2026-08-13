@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+
+const page = await readFile(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
+const styles = await readFile(new URL("./src/case-center.css", import.meta.url), "utf8");
+
+test("case agent lets the user select authorized case materials", () => {
+  assert.match(page, /className="case-agent-material-select"/);
+  assert.match(page, /document_ids: agentDocumentIds/);
+  assert.match(page, /api\.get\(`\/case-spaces\/\$\{row\.id\}\/context`\)/);
+});
+
+test("case agent streams the response and keeps the latest message visible", () => {
+  assert.match(page, /response\.body\.getReader\(\)/);
+  assert.match(page, /event\.type === "delta"/);
+  assert.match(page, /scrollIntoView\(\{ behavior: "auto", block: "end" \}\)/);
+});
+
+test("case agent drawer has a left-edge resize handle", () => {
+  assert.match(page, /case-agent-resize-handle/);
+  assert.match(styles, /cursor:ew-resize/);
+});

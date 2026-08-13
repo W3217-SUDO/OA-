@@ -73,8 +73,10 @@
 }
 .case-agent-drawer .ant-drawer-header{padding:12px 16px;border-bottom:1px solid #dce2e8}
 .case-agent-drawer .ant-drawer-body{padding:0;background:#f4f6f8}
+.case-agent-drawer .ant-drawer-content{position:relative}.case-agent-resize-handle{position:absolute;z-index:20;top:0;bottom:0;left:-4px;width:9px;cursor:ew-resize;touch-action:none}.case-agent-resize-handle:hover::after,.case-agent-resize-handle:active::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;background:#00a870}
 .case-agent-panel{display:flex;flex-direction:column;height:100%;min-height:0}
 .case-agent-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
+.case-agent-material-select{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #dce2e8}.case-agent-material-select>span{font-weight:600}.case-agent-material-select .ant-select{min-width:0}.case-agent-material-select .ant-btn{padding-inline:4px}
 .case-agent-skill-select{display:grid;grid-template-columns:auto minmax(170px,230px) minmax(0,1fr);align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #dce2e8}.case-agent-skill-select>span{font-weight:600}.case-agent-skill-select>small{overflow:hidden;color:#737b84;text-overflow:ellipsis;white-space:nowrap}
 .case-agent-message-attachments{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.case-agent-message-attachments figure{width:132px;margin:0}.case-agent-message-attachments .ant-image,.case-agent-message-attachments img{display:block;width:132px!important;height:88px!important}.case-agent-message-attachments img{object-fit:cover;border:1px solid #cfd8df;border-radius:4px;background:#fff}.case-agent-message-attachments figcaption{margin-top:3px;overflow:hidden;color:#5f6872;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
 .case-agent-actions{padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
@@ -101,7 +103,9 @@
 .case-agent-composer textarea{letter-spacing:0}
 @media(max-width:700px){
   .case-agent-drawer{width:100%!important}
+  .case-agent-resize-handle{display:none}
   .case-agent-status{align-items:flex-start}
+  .case-agent-material-select{grid-template-columns:auto minmax(0,1fr)}.case-agent-material-select>.ant-space{grid-column:2}
   .case-agent-bubble{max-width:96%}
 }
 

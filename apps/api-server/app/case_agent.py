@@ -6,8 +6,9 @@ import json
 import operator
 import re
 from contextlib import AbstractAsyncContextManager
+from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, AsyncIterator, Callable, TypedDict
 from uuid import uuid4
 
 import httpx
@@ -52,6 +53,8 @@ DOCUMENT_READING_RULES = (
     "引用附件事实时注明文件名和页码；只有 status 为 unsupported、parse_failed 或内容确实为空时，才说明无法读取。"
     "不得在 document_readings 已有正文或视觉页时回答‘只看到了附件清单’。"
 )
+
+_MODEL_CHUNK_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar("model_chunk_callback", default=None)
 
 
 class CaseAgentState(TypedDict, total=False):
@@ -381,19 +384,45 @@ class CaseAgentRuntime:
                     prompt_messages.append({"role": role, "content": content[:8_000]})
         try:
             async with httpx.AsyncClient(timeout=90) as client:
-                response = await client.post(
-                    f"{self.api_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={
-                        "model": self.model,
-                        "messages": prompt_messages,
-                        "temperature": 0.2,
-                    },
-                )
-            if response.is_error:
-                raise RuntimeError(f"model_http_{response.status_code}")
-            payload = response.json()
-            content = str(payload["choices"][0]["message"]["content"]).strip()
+                chunk_callback = _MODEL_CHUNK_CALLBACK.get()
+                request_payload = {
+                    "model": self.model,
+                    "messages": prompt_messages,
+                    "temperature": 0.2,
+                    "stream": bool(chunk_callback),
+                }
+                if chunk_callback:
+                    parts: list[str] = []
+                    async with client.stream(
+                        "POST",
+                        f"{self.api_base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.api_key}"},
+                        json=request_payload,
+                    ) as response:
+                        if response.is_error:
+                            raise RuntimeError(f"model_http_{response.status_code}")
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            payload_text = line[5:].strip()
+                            if not payload_text or payload_text == "[DONE]":
+                                continue
+                            payload = json.loads(payload_text)
+                            delta = str(payload.get("choices", [{}])[0].get("delta", {}).get("content") or "")
+                            if delta:
+                                parts.append(delta)
+                                chunk_callback(delta)
+                    content = "".join(parts).strip()
+                else:
+                    response = await client.post(
+                        f"{self.api_base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.api_key}"},
+                        json=request_payload,
+                    )
+                    if response.is_error:
+                        raise RuntimeError(f"model_http_{response.status_code}")
+                    payload = response.json()
+                    content = str(payload["choices"][0]["message"]["content"]).strip()
             if not content:
                 raise RuntimeError("model_empty_response")
             return _extract_proposed_action(content)
@@ -521,6 +550,32 @@ class CaseAgentRuntime:
                 self.config(case_id, operator),
             )
         return self._public_state(case_id, operator, result)
+
+    async def invoke_stream(self, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        async def run() -> None:
+            token = _MODEL_CHUNK_CALLBACK.set(lambda content: queue.put_nowait({"type": "delta", "content": content}))
+            try:
+                state = await self.invoke(**kwargs)
+                await queue.put({"type": "state", "state": state})
+            except Exception as exc:
+                await queue.put({"type": "error", "detail": str(exc)})
+            finally:
+                _MODEL_CHUNK_CALLBACK.reset(token)
+                await queue.put({"type": "done"})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                if event["type"] == "done":
+                    break
+                yield event
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     async def get_state(self, case_id: int, operator: str) -> dict[str, Any]:
         if self.graph is None:
