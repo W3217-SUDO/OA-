@@ -30,6 +30,15 @@ class LegacyCaseAttachmentReconcileContractTest(unittest.TestCase):
         ):
             self.assertIn(guard, self.source)
 
+    def test_stale_placeholders_are_scoped_to_manifest_cases(self):
+        for guard in (
+            "attachment.remark in PLACEHOLDER_REMARKS",
+            "not Path(attachment.path).is_file()",
+            "case_number_by_id.get(attachment.record_id) in manifest_case_numbers",
+            ") not in manifest_file_keys",
+        ):
+            self.assertIn(guard, self.source)
+
     def test_shared_upload_root_is_version_independent(self):
         config = Path("app/config.py").read_text(encoding="utf-8")
         main = Path("app/main.py").read_text(encoding="utf-8")

@@ -252,6 +252,35 @@ async def run(
                     await db.delete(generated_projection)
                     report["projection_duplicate_deletes"] += 1
 
+            manifest_case_numbers = {str(item["case_no"]).strip() for item in items}
+            manifest_file_keys = {
+                (
+                    str(item["case_no"]).strip(),
+                    Path(str(item["file_name"])).name,
+                    int(item.get("actual_size") or item.get("file_size") or 0),
+                )
+                for item in items
+            }
+            case_number_by_id = {case.id: case.serial_no for case in cases}
+            stale_placeholders = [
+                attachment
+                for attachment in attachments
+                if attachment.remark in PLACEHOLDER_REMARKS
+                and not Path(attachment.path).is_file()
+                and case_number_by_id.get(attachment.record_id) in manifest_case_numbers
+                and (
+                    case_number_by_id.get(attachment.record_id),
+                    attachment.original_name,
+                    attachment.size,
+                ) not in manifest_file_keys
+            ]
+            for placeholder in stale_placeholders:
+                await db.execute(delete(LegacyCaseFile).where(LegacyCaseFile.FileId == -placeholder.id))
+                await db.delete(placeholder)
+                attachments.remove(placeholder)
+                report["placeholder_deletes"] += 1
+                report["projection_duplicate_deletes"] += 1
+
             report["missing_cases"] = sorted(set(report["missing_cases"]))
             if apply:
                 await db.commit()
