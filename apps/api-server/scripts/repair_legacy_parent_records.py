@@ -11,7 +11,7 @@ import argparse
 import asyncio
 import json
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from sqlalchemy import select
@@ -193,7 +193,13 @@ async def run(apply: bool) -> dict:
                     old.get({"customer_no": "CustomerNo", "contract_no": "ContractNo", "investigation_no": "InvestigationNo", "investigation_task_no": "InvestigationTaskNo"}[key]),
                 )
                 if value and value not in parent_nos:
-                    missing.append({"record": record.serial_no, "parent": value})
+                    existing = by_no.get(value)
+                    missing.append({
+                        "record": record.serial_no,
+                        "parent": value,
+                        "source": text(data.get("migration_source")) or "current",
+                        "existing_module": existing.module if existing else "",
+                    })
             unresolved[f"{module}->{parent_module}"] = missing
 
         result = {
@@ -202,6 +208,14 @@ async def run(apply: bool) -> dict:
             "created_contracts": created_contracts,
             "changed_records": len(list(unique_changed)),
             "unresolved_counts": {key: len(value) for key, value in unresolved.items()},
+            "unresolved_by_source": {
+                key: dict(sorted(Counter(row["source"] for row in value).items()))
+                for key, value in unresolved.items()
+            },
+            "wrong_module_counts": {
+                key: dict(sorted(Counter(row["existing_module"] for row in value if row["existing_module"]).items()))
+                for key, value in unresolved.items()
+            },
             "unresolved_samples": {key: value[:10] for key, value in unresolved.items() if value},
         }
         if apply:
