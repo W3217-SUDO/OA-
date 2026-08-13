@@ -46,6 +46,13 @@ RESPONSE_STYLE_RULES = (
     "不要输出 Markdown 标记字符，包括井号、星号、双星号和分隔线；直接输出标题和正文。"
 )
 
+DOCUMENT_READING_RULES = (
+    "案件空间中的 document_readings 是系统在当前用户权限范围内实际解析的附件内容。"
+    "status 为 parsed 时必须阅读 content；status 为 visual 时必须结合随本次消息提供的附件视觉页阅读。"
+    "引用附件事实时注明文件名和页码；只有 status 为 unsupported、parse_failed 或内容确实为空时，才说明无法读取。"
+    "不得在 document_readings 已有正文或视觉页时回答‘只看到了附件清单’。"
+)
+
 
 class CaseAgentState(TypedDict, total=False):
     messages: Annotated[list[dict[str, Any]], operator.add]
@@ -327,7 +334,11 @@ class CaseAgentRuntime:
         skill: AgentSkill = GENERAL_SKILL,
         request_images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
-        context = json.dumps(snapshot, ensure_ascii=False, default=str)
+        prioritized_snapshot = {
+            "document_readings": snapshot.get("document_readings") or [],
+            **{key: value for key, value in snapshot.items() if key != "document_readings"},
+        }
+        context = json.dumps(prioritized_snapshot, ensure_ascii=False, default=str)
         if len(context) > 80_000:
             context = context[:80_000] + "\n[案件空间内容过长，已截断]"
         prompt_messages: list[dict[str, Any]] = [
@@ -337,7 +348,7 @@ class CaseAgentRuntime:
                     "你是法律服务机构管理系统中的案件智能体。"
                     "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
                     "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
-                    f"{RESPONSE_STYLE_RULES}"
+                    f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}"
                     "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
                     "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
                     "但不得在缺少起算依据时自行推算法定期限。"
@@ -362,10 +373,9 @@ class CaseAgentRuntime:
             if role in {"user", "assistant"} and content:
                 if role == "user" and index == len(recent_messages) - 1 and request_images:
                     multimodal_content: list[dict[str, Any]] = [{"type": "text", "text": content[:8_000]}]
-                    multimodal_content.extend(
-                        {"type": "image_url", "image_url": {"url": image["data_url"]}}
-                        for image in request_images
-                    )
+                    for image in request_images:
+                        multimodal_content.append({"type": "text", "text": f"[附件视觉页：{image.get('name') or '未命名附件'}]"})
+                        multimodal_content.append({"type": "image_url", "image_url": {"url": image["data_url"]}})
                     prompt_messages.append({"role": role, "content": multimodal_content})
                 else:
                     prompt_messages.append({"role": role, "content": content[:8_000]})

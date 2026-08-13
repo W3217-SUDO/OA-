@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .case_agent import CaseAgentRuntime
 from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, public_skill_catalog
+from .agent_attachment_reader import read_attachment
 from .case_workflow_rules import build_case_workflow_guide
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
@@ -18660,6 +18661,56 @@ async def send_case_agent_message(
                 "mime_type": mime_type,
                 "data_url": f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}",
             })
+    document_ids = [int(item.get("id") or 0) for item in context.get("documents", []) if int(item.get("id") or 0) > 0]
+    document_readings: list[dict[str, object]] = []
+    if document_ids:
+        visible_documents = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(document_ids)))).all())
+        visible_by_id = {item.id: item for item in visible_documents}
+        remaining_chars = 60_000
+        visual_bytes = sum(len(str(item.get("data_url") or "")) for item in images)
+        seen_files: set[tuple[str, int]] = set()
+        for attachment_id in document_ids:
+            item = visible_by_id.get(attachment_id)
+            if not item or len(document_readings) >= 12:
+                continue
+            dedupe_key = (str(item.original_name or "").strip().casefold(), int(item.size or 0))
+            if dedupe_key in seen_files:
+                continue
+            seen_files.add(dedupe_key)
+            path = Path(item.path)
+            if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents or path.stat().st_size > 30 * 1024 * 1024:
+                continue
+            try:
+                reading = await asyncio.to_thread(read_attachment, path, item.original_name)
+            except Exception:
+                logger.exception("agent attachment parse failed: attachment_id=%s", item.id)
+                document_readings.append({"attachment_id": item.id, "file_name": item.original_name, "category": item.category, "status": "parse_failed"})
+                continue
+            text_content = reading.text[:remaining_chars]
+            remaining_chars -= len(text_content)
+            document_readings.append({
+                "attachment_id": item.id,
+                "file_name": item.original_name,
+                "category": item.category,
+                "status": reading.status,
+                "page_count": reading.page_count,
+                "content": text_content,
+            })
+            for visual in reading.images:
+                data_url = visual.get("data_url", "")
+                if len(images) >= 4 or visual_bytes + len(data_url) > 12 * 1024 * 1024:
+                    break
+                visual_bytes += len(data_url)
+                images.append({
+                    "id": f"document:{item.id}:page:{visual.get('page', '1')}",
+                    "name": f"{item.original_name}（第 {visual.get('page', '1')} 页）",
+                    "mime_type": visual.get("mime_type", "image/jpeg"),
+                    "data_url": data_url,
+                    "page": visual.get("page", "1"),
+                })
+            if remaining_chars <= 0:
+                break
+    context["document_readings"] = document_readings
     try:
         return await case_agent_runtime.invoke(
             case_id=case_id,
