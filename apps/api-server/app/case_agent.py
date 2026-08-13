@@ -408,7 +408,10 @@ class CaseAgentRuntime:
                             if not payload_text or payload_text == "[DONE]":
                                 continue
                             payload = json.loads(payload_text)
-                            delta = str(payload.get("choices", [{}])[0].get("delta", {}).get("content") or "")
+                            choices = payload.get("choices") or []
+                            if not choices:
+                                continue
+                            delta = str(choices[0].get("delta", {}).get("content") or "")
                             if delta:
                                 parts.append(delta)
                                 chunk_callback(delta)

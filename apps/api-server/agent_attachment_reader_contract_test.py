@@ -52,9 +52,11 @@ class AgentAttachmentReaderContractTest(unittest.TestCase):
 
     def test_selected_documents_and_streaming_are_permission_scoped(self):
         source = (Path(__file__).parent / "app" / "main.py").read_text(encoding="utf-8")
+        runtime_source = (Path(__file__).parent / "app" / "case_agent.py").read_text(encoding="utf-8")
         self.assertIn("body.document_ids is None", source)
         self.assertIn("item not in allowed_document_ids", source)
         self.assertIn("case_agent_runtime.invoke_stream", source)
+        self.assertIn('choices = payload.get("choices") or []', runtime_source)
 
 
 if __name__ == "__main__":
