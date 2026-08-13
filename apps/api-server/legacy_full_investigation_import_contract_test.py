@@ -12,6 +12,17 @@ IMPORTER = ROOT / "scripts" / "import_sh_latest50_samples.py"
 
 
 class LegacyFullInvestigationImportContractTest(unittest.TestCase):
+    def test_legacy_datetime_values_are_naive_wall_time(self):
+        from app.models import LegacyCustomer
+        from scripts.import_sh_latest50_samples import legacy_values
+
+        values = legacy_values(
+            LegacyCustomer,
+            {"CreateTime": "2019-01-02T16:41:09.317000+08:00"},
+        )
+        self.assertIsNone(values["CreateTime"].tzinfo)
+        self.assertEqual(values["CreateTime"].hour, 16)
+
     def test_exporter_omits_sensitive_staff_fields(self):
         source = (ROOT / "scripts" / "export_legacy_investigation_tree.ps1").read_text(encoding="utf-8")
         self.assertNotIn("SELECT s.*", source)

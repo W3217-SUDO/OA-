@@ -86,6 +86,10 @@ def legacy_values(model, row):
         value = row[column.name]
         if column.name in date_columns:
             value = parse_datetime(value)
+            if value is not None and value.tzinfo is not None and not getattr(column.type, "timezone", False):
+                # Legacy SQL Server datetime columns store Shanghai wall time
+                # without an offset; PostgreSQL asyncpg requires the same shape.
+                value = value.replace(tzinfo=None)
         elif column.name in integer_columns:
             try:
                 value = int(float(value))
