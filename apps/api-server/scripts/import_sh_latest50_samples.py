@@ -90,6 +90,9 @@ def legacy_values(model, row):
         if column.name not in row or row[column.name] == "":
             continue
         value = row[column.name]
+        if value is None:
+            values[column.name] = None
+            continue
         if column.name in date_columns:
             value = parse_datetime(value)
             if value is not None and value.tzinfo is not None and not getattr(column.type, "timezone", False):
