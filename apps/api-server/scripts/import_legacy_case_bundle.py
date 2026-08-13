@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal
 from app.models import (
     BusinessRecord,
+    ContractObject,
+    ContractObjectLog,
     LegacyCase,
     LegacyCaseFile,
     LegacyCaseLog,
@@ -63,12 +65,21 @@ async def run(bundle_path: Path, apply: bool) -> dict:
         customer = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == customer_no))
         contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == contract_no))
         case = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == case_no))
+        contract_object = None
+        if contract and case:
+            contract_object = await db.scalar(
+                select(ContractObject).where(
+                    ContractObject.contract_record_id == contract.id,
+                    ContractObject.case_record_id == case.id,
+                )
+            )
         report = {
             "mode": "apply" if apply else "dry-run",
             "case_no": case_no,
             "customer_exists": bool(customer),
             "contract_created": not bool(contract),
             "case_created": not bool(case),
+            "contract_object_created": not bool(contract_object),
             "legacy_files": len(bundle.get("files") or []),
             "legacy_participants": len(bundle.get("participants") or []),
             "legacy_logs": len(bundle.get("logs") or []),
@@ -175,8 +186,31 @@ async def run(bundle_path: Path, apply: bool) -> dict:
             await db.flush()
             db.add(WorkflowEvent(record_id=case.id, action="旧系统案件迁移", from_status="", to_status=case.status, operator="legacy-migration", comment=f"恢复旧系统案件 {case_no} 及其合同、附件关联"))
 
+        if not contract_object:
+            contract_object = ContractObject(
+                contract_record_id=contract.id,
+                case_record_id=case.id,
+                fee_type="历史案件",
+                amount=0,
+                remark=f"旧系统同步案件 {case_no}",
+                created_by="legacy-migration",
+                updated_by="legacy-migration",
+            )
+            db.add(contract_object)
+            await db.flush()
+            db.add(
+                ContractObjectLog(
+                    contract_object_id=contract_object.id,
+                    action="旧系统合同标的迁移",
+                    before={},
+                    after={"case_no": case_no, "fee_type": "历史案件", "amount": 0},
+                    operator="legacy-migration",
+                )
+            )
+
         report["contract_id"] = contract.id
         report["case_id"] = case.id
+        report["contract_object_id"] = contract_object.id
         await db.commit()
         return report
 
