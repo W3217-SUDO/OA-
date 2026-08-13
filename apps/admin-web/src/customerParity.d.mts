@@ -28,6 +28,10 @@ export const CUSTOMER_PATCH_SERVER_FIELDS: ReadonlySet<string>;
 export const filterCustomerPatchData: (
   data?: Record<string, unknown>,
 ) => Record<string, unknown>;
+export const synchronizeCustomerSource: (
+  data?: Record<string, unknown>,
+  customerSource?: unknown,
+) => Record<string, unknown>;
 export const normalizeSharedObjectValues: (
   values?: unknown,
 ) => string[];

@@ -50,6 +50,7 @@ import { normalizeContractPaymentApplications } from "./contractPaymentApplicati
 import { buildChinesePersonOptions, displayChinesePersonName, displayChinesePersonNames } from "./contractPeoplePresentation.mjs";
 import { createContractMutationGate } from "./contractMutationGate.mjs";
 import { buildContractAttachmentDeletePlan } from "./contractAttachmentBatch.mjs";
+import { displayContractStatus } from "./contractStatusPresentation.mjs";
 import {
   CONTRACT_OBJECT_DEFAULT_PAGE_SIZE,
   CONTRACT_OBJECT_PAGE_SIZES,
@@ -1783,7 +1784,7 @@ export default function ContractCenterPage({
       rows.reduce((sum, row) => sum + Number(row.data[key] || 0), 0),
     ]),
   ) as Record<(typeof moneyKeys)[number], number>;
-  const textCell = (value: string) => value;
+  const textCell = (value: string) => displayContractStatus(value);
   const moneyColumn = (title: string, key: (typeof moneyKeys)[number]) => ({
     title: (
       <span>
@@ -1929,7 +1930,7 @@ export default function ContractCenterPage({
                   : "default"
           }
         >
-          {s.status}
+          {displayContractStatus(s.status)}
         </Tag>
         {s.acted_at && (
           <span>{new Date(s.acted_at).toLocaleString("zh-CN")}</span>
@@ -2185,7 +2186,7 @@ export default function ContractCenterPage({
             <div className="contract-wizard-panel contract-page-stage">
               <Descriptions bordered size="small" column={2} items={wizardDraft ? [
                 { key: "no", label: "合同编号", children: wizardDraft.serial_no },
-                { key: "status", label: "当前状态", children: <Tag>{wizardDraft.status}</Tag> },
+                { key: "status", label: "当前状态", children: <Tag>{displayContractStatus(wizardDraft.status)}</Tag> },
                 { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
                 { key: "customer", label: "客户", children: wizardDraft.customer },
                 { key: "type", label: "合同类别", children: wizardDraft.data.type },
@@ -2206,7 +2207,7 @@ export default function ContractCenterPage({
             <div className="contract-wizard-panel contract-page-stage">
               <Descriptions bordered size="small" column={2} items={wizardDraft ? [
                 { key: "no", label: "合同编号", children: wizardDraft.serial_no },
-                { key: "status", label: "合同状态", children: <Tag color={colors[wizardDraft.status]}>{wizardDraft.status}</Tag> },
+                { key: "status", label: "合同状态", children: <Tag color={colors[wizardDraft.status]}>{displayContractStatus(wizardDraft.status)}</Tag> },
                 { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
               ] : []} />
               <Steps direction="vertical" size="small" className="contract-approval-flow" items={stepItems} />
@@ -2608,7 +2609,7 @@ export default function ContractCenterPage({
           column={2}
           items={viewing ? [
             {key:"serial",label:"合同号",children:viewing.serial_no},
-            {key:"status",label:"合同状态",children:viewing.status},
+            {key:"status",label:"合同状态",children:displayContractStatus(viewing.status)},
             {key:"title",label:"合同名称",children:viewing.title,span:2},
             {key:"customer",label:"客户名称",children:<Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(viewing)}>{viewing.customer || "—"}</Button>},
             {key:"case",label:"关联案号",children:viewing.data.case_no ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCase(viewing.data.case_no)}>{viewing.data.case_no}</Button> : "—"},
@@ -2794,7 +2795,7 @@ export default function ContractCenterPage({
           <div className="contract-wizard-panel">
             <Descriptions bordered size="small" column={2} items={wizardDraft ? [
               { key: "no", label: "合同编号", children: wizardDraft.serial_no },
-              { key: "status", label: "当前状态", children: <Tag>{wizardDraft.status}</Tag> },
+              { key: "status", label: "当前状态", children: <Tag>{displayContractStatus(wizardDraft.status)}</Tag> },
               { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
               { key: "customer", label: "客户", children: wizardDraft.customer },
               { key: "type", label: "合同类别", children: wizardDraft.data.type },
@@ -2821,7 +2822,7 @@ export default function ContractCenterPage({
           <div className="contract-wizard-panel">
             <Descriptions bordered size="small" column={2} items={wizardDraft ? [
               { key: "no", label: "合同编号", children: wizardDraft.serial_no },
-              { key: "status", label: "合同状态", children: <Tag color={colors[wizardDraft.status]}>{wizardDraft.status}</Tag> },
+              { key: "status", label: "合同状态", children: <Tag color={colors[wizardDraft.status]}>{displayContractStatus(wizardDraft.status)}</Tag> },
               { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
             ] : []} />
             <Steps direction="vertical" size="small" className="contract-approval-flow" items={stepItems} />

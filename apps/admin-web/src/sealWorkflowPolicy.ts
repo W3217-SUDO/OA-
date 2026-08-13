@@ -1,6 +1,21 @@
 export type SealAction = "approve" | "reject" | "stamp" | "archive";
 export type SealActionRow = { status: string };
 export type SealSelectionKey = string | number;
+export type SealAssetDefault = { id: SealSelectionKey; seal_type?: string; status?: string };
+
+export function legacySealApplicationDefaults(assets: readonly SealAssetDefault[]) {
+  const available = assets.filter((asset) => asset.status === "可用");
+  const contractSeal = available.find((asset) => asset.seal_type === "合同章");
+  return {
+    use_type: "案件用印",
+    seal_asset_id: contractSeal?.id ?? available[0]?.id,
+    copies: 1,
+    source_attachment_ids: [] as number[],
+    delivery_method: "现场用印",
+    is_electronic_seal: true,
+    is_offline_print: true,
+  };
+}
 export type SealHistoryEvent = {
   id: number;
   action?: string;

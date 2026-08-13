@@ -30,14 +30,9 @@ test('HR employee password action calls the real reset endpoint and keeps forced
   assert.ok(source.includes('重置后该员工下次登录必须修改密码'))
 })
 
-test('HR employee password action blocks current-account self reset before posting', () => {
-  assert.ok(source.includes('currentUsername'), 'HR reset flow should track current login username')
-  assert.ok(openResetBlock.includes('resettingUsername===currentUsername'), 'open reset should block current account')
-  assert.ok(openResetBlock.includes('不能重置当前登录账号密码'))
-  assert.ok(saveResetBlock.includes('resettingUsername===currentUsername'), 'save reset should re-check current account')
-  assert.ok(saveResetBlock.includes('不能重置当前登录账号密码'))
-  assert.ok(
-    saveResetBlock.indexOf('resettingUsername===currentUsername') < saveResetBlock.indexOf('/reset-password'),
-    'self-reset guard must run before posting to reset-password',
-  )
+test('HR employee password action permits an administrator to reset the current account', () => {
+  assert.ok(!openResetBlock.includes('resettingUsername===currentUsername'), 'open reset must not block the current account')
+  assert.ok(!saveResetBlock.includes('resettingUsername===currentUsername'), 'submit reset must not block the current account')
+  assert.ok(saveResetBlock.includes('/reset-password'), 'self reset still uses the dedicated security endpoint')
+  assert.ok(!source.includes('当前管理员账号不能在此处重置'), 'self reset dialog must not claim the current administrator is blocked')
 })

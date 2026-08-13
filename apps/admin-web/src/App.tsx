@@ -1674,7 +1674,7 @@ export default function App() {
   const grantedMenuKeys = new Set(
     sessionUser?.role === "admin"
       ? navigationMenuKeys
-      : ["user-center", ...(sessionUser?.menu_keys || []), ...navigationMenuKeys],
+      : ["user-center", ...(sessionUser?.menu_keys || [])],
   );
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {

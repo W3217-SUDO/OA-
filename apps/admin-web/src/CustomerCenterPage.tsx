@@ -39,6 +39,7 @@ import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "./customerRelationNavigation";
 import {
   filterCustomerPatchData,
+  synchronizeCustomerSource,
   buildCustomerActionConfirmation,
   buildCustomerActionRequest,
   buildCustomerContactListRequest,
@@ -190,6 +191,7 @@ type Customer = {
     legal_agent_id_no?: string;
     legal_agent_title?: string;
     customer_source?: string;
+    customer_source_display_name?: string;
     is_shared?: string;
     is_assisted?: string;
     province?: string;
@@ -305,6 +307,7 @@ export default function CustomerCenterPage({
     [levelCustomer, setLevelCustomer] = useState<Customer | null>(null),
     [keyChangeCustomer, setKeyChangeCustomer] = useState<Customer | null>(null),
     [portalResult, setPortalResult] = useState<{ account: string; activation_code: string } | null>(null),
+    [portalCustomer, setPortalCustomer] = useState<Customer | null>(null),
     [contacts, setContacts] = useState<Customer | null>(null),
     [viewingContact, setViewingContact] = useState<Contact | null>(null),
     [editingContact, setEditingContact] = useState<Contact | null>(null),
@@ -616,18 +619,14 @@ export default function CustomerCenterPage({
         : [];
     details.contact_accounts = contactAccounts;
     details.contact = contactAccounts[0] || "";
-    if (editing) {
-      details.level = editing.data.level || "";
-      details.credit_code = editing.data.credit_code || "";
-    }
     const managers = (v.customer_managers || []).filter((x: string) =>
       x.trim(),
     );
-    const data = {
+    const data = synchronizeCustomerSource({
       ...(editing?.data || {}),
       ...details,
       customer_managers: managers,
-    };
+    }, v.customer_source);
     const payload = {
       module: "customer",
       serial_no: v.serial_no,
@@ -660,6 +659,8 @@ export default function CustomerCenterPage({
             description: v.description || "",
             customer_managers: managers,
             ...details,
+            customer_source: data.customer_source || "",
+            source_person: data.source_person || "",
           });
       assertCustomerMutationSuccess(response?.data);
       message.success(editing ? "客户已更新" : "客户已创建");
@@ -744,56 +745,19 @@ export default function CustomerCenterPage({
     }
   };
   const submitLevelChange = async () => {
-    if (!levelCustomer) return;
-    const values = await levelForm.validateFields();
-    try {
-      const response = await api.post(`/customers/${levelCustomer.id}/level-change`, values);
-      assertCustomerMutationSuccess(response?.data);
-      message.success("客户分级调整已提交审批");
-      setLevelCustomer(null);
-      await load();
-    } catch (error: any) {
-      message.error(getCustomerMutationErrorMessageI17(error, "客户分级调整提交失败"));
-    }
-  };
-  const reviewLevelChange = async (customer: Customer, approved: boolean) => {
-    try {
-      const response = await api.post(`/customers/${customer.id}/level-change/review`, { approved, comment: approved ? "同意客户分级调整" : "客户资料需补充后重新提交" });
-      assertCustomerMutationSuccess(response?.data);
-      message.success(approved ? "客户分级调整已通过" : "客户分级调整已驳回");
-      await load();
-    } catch (error: any) {
-      message.error(getCustomerMutationErrorMessageI17(error, "客户分级审批失败"));
-    }
+    message.info("客户分级调整审批已取消，请在客户编辑中直接修改客户等级");
+    setLevelCustomer(null);
   };
   const submitKeyChange = async () => {
-    if (!keyChangeCustomer) return;
-    try {
-      const values = await keyChangeForm.validateFields();
-      const response = await api.post(`/customers/${keyChangeCustomer.id}/key-change`, values);
-      assertCustomerMutationSuccess(response?.data);
-      message.success("客户关键字段变更已提交审批");
-      setKeyChangeCustomer(null);
-      await load();
-    } catch (error: any) {
-      message.error(getCustomerMutationErrorMessageI17(error, "客户关键字段变更提交失败"));
-    }
+    message.info("客户关键字段审批已取消，请在客户编辑中直接修改");
+    setKeyChangeCustomer(null);
   };
-  const reviewKeyChange = async (customer: Customer, approved: boolean) => {
+  const openPortal = async (customer: Customer, account = "") => {
     try {
-      const response = await api.post(`/customers/${customer.id}/key-change/review`, { approved, comment: approved ? "同意客户关键字段变更" : "客户关键资料需核实" });
-      assertCustomerMutationSuccess(response?.data);
-      message.success(approved ? "客户关键字段变更已通过" : "客户关键字段变更已驳回");
-      await load();
-    } catch (error: any) {
-      message.error(getCustomerMutationErrorMessageI17(error, "客户关键字段审批失败"));
-    }
-  };
-  const openPortal = async (customer: Customer) => {
-    try {
-      const response = await api.post(`/customers/${customer.id}/portal/open`, { comment: "从客户管理开通" });
+      const response = await api.post(`/customers/${customer.id}/portal/open`, { comment: "从客户管理开通", account });
       assertCustomerMutationSuccess(response?.data);
       setPortalResult(response.data);
+      setPortalCustomer(null);
       await load();
     } catch (error: any) {
       message.error(getCustomerMutationErrorMessageI17(error, "客户服务端开通失败"));
@@ -808,6 +772,12 @@ export default function CustomerCenterPage({
     } catch (error: any) {
       message.error(getCustomerMutationErrorMessageI17(error, "客户服务端停用失败"));
     }
+  };
+  const portalAccounts = (customer: Customer) => {
+    const raw = customer.data.contact_accounts?.length
+      ? customer.data.contact_accounts
+      : Array.isArray(customer.data.contact) ? customer.data.contact : customer.data.contact ? [customer.data.contact] : [];
+    return [...new Set(raw.map((value) => String(value || "").trim()).filter(Boolean))];
   };
   const refreshDetail = async (target = contacts) => {
     if (!target) return;
@@ -1375,8 +1345,6 @@ export default function CustomerCenterPage({
           { key: "release", label: "释放到公海" },
           { key: "contract", label: "新增合同" },
           ...customerNavigationActions,
-          { key: "level", label: "申请客户分级调整" },
-          { key: "key-change", label: "申请关键字段变更" },
           { key: "share", label: "共享客户" },
           { key: "portal-open", label: "开通/重置客户服务端" },
           { key: "portal-close", label: "停用客户服务端" },
@@ -1407,17 +1375,11 @@ export default function CustomerCenterPage({
     if (key === "communication") openCustomerCommunication(target);
     if (key === "contact-management") void openDetail(target, "contacts");
     if (key === "contract") openCustomerContractCreate(target);
-    if (key === "level") { levelForm.setFieldsValue({ level: target.data.level, comment: "" }); setLevelCustomer(target); }
-    if (key === "key-change") { keyChangeForm.setFieldsValue({ title: target.title, credit_code: target.data.credit_code || "", comment: "" }); setKeyChangeCustomer(target); }
-    if (key === "level-review") {
-      if (target.data.level_change?.status !== "待审批") return message.warning("该客户没有待审批的分级调整");
-      Modal.confirm({ title: `客户分级审批：${target.title}`, content: `${target.data.level_change.from_level || "—"} → ${target.data.level_change.to_level || "—"}`, okText: "通过", cancelText: "驳回", onOk: () => reviewLevelChange(target, true), onCancel: () => reviewLevelChange(target, false) });
+    if (key === "portal-open") {
+      const accounts = portalAccounts(target);
+      if (accounts.length > 1) setPortalCustomer(target);
+      else void openPortal(target, accounts[0] || "");
     }
-    if (key === "key-change-review") {
-      if (target.data.key_change?.status !== "待审批") return message.warning("该客户没有待审批的关键字段变更");
-      Modal.confirm({ title: `客户关键字段审批：${target.title}`, content: `客户名称：${target.data.key_change.before?.title || "—"} → ${target.data.key_change.after?.title || "—"}`, okText: "通过", cancelText: "驳回", onOk: () => reviewKeyChange(target, true), onCancel: () => reviewKeyChange(target, false) });
-    }
-    if (key === "portal-open") void openPortal(target);
     if (key === "portal-close") void closePortal(target);
     if (key === "claim") void action(target, "claim");
     if (key === "share") {
@@ -1505,7 +1467,9 @@ export default function CustomerCenterPage({
       width: 120,
       align: "center" as const,
       ellipsis: true,
-      render: (_: unknown, r: Customer) => userLabel(r.data.source_person || r.owner),
+      render: (_: unknown, r: Customer) => userLabel(
+        r.data.customer_source_display_name || r.data.customer_source || r.data.source_person || r.owner,
+      ),
     },
     {
       title: "客户管理人",
@@ -1718,7 +1682,7 @@ export default function CustomerCenterPage({
             <h3>控制信息</h3>
             <div className="customer-view-fields customer-view-fields-five">
               <label><span>建档日期</span><Input disabled value={contacts.data.file_date || displayDate(contacts.created_at)} /></label>
-              <label><span>客户来源</span><Input disabled value={contacts.data.customer_source ? userLabel(contacts.data.customer_source) : userLabel(contacts.owner)} /></label>
+              <label><span>客户来源</span><Input disabled value={contacts.data.customer_source_display_name || (contacts.data.customer_source ? userLabel(contacts.data.customer_source) : userLabel(contacts.owner))} /></label>
               <label><span>是否共享</span><Select disabled value={contacts.data.is_shared || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
               <label><span>客户等级</span><Select disabled value={contacts.data.level || "立案客户"} options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></label>
               <label><span>上海市资助信息</span><Select disabled value={contacts.data.is_assisted || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
@@ -2164,103 +2128,50 @@ export default function CustomerCenterPage({
         onCancel={() => setOpen(false)}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical">
-          <div className="form-grid">
-            <div className="span-2">
-              <b>基础与联系资料</b>
+        <Form form={form} layout="horizontal" className="customer-create-form">
+          <section>
+            <h3>基本信息</h3>
+            <div className="customer-create-grid">
+              <Form.Item label="客户名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
+              <Form.Item label="客户编码" name="serial_no" rules={[{ required: true }]}><Input disabled={Boolean(editing)} placeholder="自动生成" /></Form.Item>
+              <Form.Item label="客户状态" name="status"><Select allowClear placeholder="请选择" options={["潜在", "目标", "立项", "关怀", "签约", "谈判", "价值"].map(value => ({ value, label: value }))} /></Form.Item>
+              <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions} /></Form.Item>
+              <Form.Item label="注册地址" name="registered_address" rules={customerRegistrationAddressRules}><Input /></Form.Item>
+              <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>
+              <Form.Item label="客户简称" name="short_name"><Input /></Form.Item>
+              <Form.Item label="电话" name="phone"><Input /></Form.Item>
+              <Form.Item label="传真" name="fax"><Input /></Form.Item>
             </div>
-            <Form.Item
-              label="客户编号"
-              name="serial_no"
-              rules={[{ required: true }]}
-            >
-              <Input disabled={Boolean(editing)} />
-            </Form.Item>
-            <Form.Item
-              label="客户名称"
-              name="title"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item label="客户状态" name="status">
-              <Select
-                options={["潜在", "目标", "立项", "关怀", "签约", "谈判", "价值"].map((v) => ({
-                  value: v,
-                  label: v,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item label="客户类型" name="customer_type">
-              <Select options={customerTypeOptions} />
-            </Form.Item>
-            <Form.Item label="客户等级" name="level">
-              <Select
-                disabled={Boolean(editing)}
-                options={["潜在客户", "目标客户", "签约客户", "立案客户", "高级客户", "中级客户", "低级客户"].map((v) => ({
-                  value: v,
-                  label: v,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              className="span-2"
-              label="客户管理人"
-              name="customer_managers"
-              rules={[{ required: true, message: "至少设置一名客户管理人" }]}
-            >
-              <Select mode="multiple" showSearch optionFilterProp="label" placeholder="选择客户管理人，可设置多人" options={directoryOptions} />
-            </Form.Item>
-            <Form.Item label="所属部门" name="department">
-              <Input />
-            </Form.Item>
-            <Form.Item label="客户联系人账号" name="contact">
-              <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" />
-            </Form.Item>
-            <Form.Item label="联系电话" name="phone">
-              <Input />
-            </Form.Item>
-            <Form.Item label="客户简称" name="short_name"><Input /></Form.Item>
-            <Form.Item label="传真" name="fax"><Input /></Form.Item>
-            <div className="span-2">
-              <b>工商与法务主体资料</b>
+          </section>
+          <section>
+            <h3>法人信息</h3>
+            <div className="customer-create-grid">
+              <Form.Item label="法人姓名" name="legal_representative"><Input /></Form.Item>
+              <Form.Item label="身份证号" name="legal_agent_id_no"><Input /></Form.Item>
+              <Form.Item label="职务" name="legal_agent_title"><Input /></Form.Item>
             </div>
-            <Form.Item label="统一社会信用代码" name="credit_code">
-              <Input disabled={Boolean(editing)} />
-            </Form.Item>
-            <Form.Item label="法定代表人" name="legal_representative">
-              <Input />
-            </Form.Item>
-            <Form.Item label="法人身份证号" name="legal_agent_id_no"><Input /></Form.Item>
-            <Form.Item label="法人职务" name="legal_agent_title"><Input /></Form.Item>
-            <Form.Item
-              className="span-2"
-              label="注册地址"
-              name="registered_address"
-              rules={customerRegistrationAddressRules}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>
-            <div className="span-2">
-              <b>开票与银行资料</b>
+          </section>
+          <section>
+            <h3>开票信息</h3>
+            <div className="customer-create-grid">
+              <Form.Item label="开票地址" name="invoice_address"><Input /></Form.Item>
+              <Form.Item label="统一社会信用代码" name="credit_code"><Input disabled={Boolean(editing)} placeholder="不允许有空格." /></Form.Item>
+              <Form.Item label="开户行" name="bank_name"><Input /></Form.Item>
+              <Form.Item label="帐号" name="bank_account"><Input /></Form.Item>
             </div>
-            <Form.Item label="开票地址" name="invoice_address"><Input /></Form.Item>
-            <Form.Item label="开户银行" name="bank_name">
-              <Input />
-            </Form.Item>
-            <Form.Item label="银行账号" name="bank_account">
-              <Input />
-            </Form.Item>
-            <div className="span-2"><b>控制信息</b></div>
-            <Form.Item label="客户来源" name="customer_source"><Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
-            <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
-            <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
-            <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map((value) => ({ value, label: value }))} /></Form.Item>
-            <Form.Item className="span-2" label="备注" name="description">
-              <Input.TextArea rows={2} />
-            </Form.Item>
-          </div>
+          </section>
+          <section>
+            <h3>控制信息</h3>
+            <div className="customer-create-grid customer-control-grid">
+              <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
+              <Form.Item label="客户来源" name="customer_source"><Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
+              <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
+              <Form.Item label="客户等级" name="level"><Select options={["立案客户", "高级客户", "中级客户", "低级客户"].map(value => ({ value, label: value }))} /></Form.Item>
+              <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
+              <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{ required: true, message: "至少设置一名客户管理人" }]}><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} /></Form.Item>
+              <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
+            </div>
+          </section>
         </Form>
       </Modal>
       <Modal
@@ -2299,9 +2210,23 @@ export default function CustomerCenterPage({
         footer={<Button type="primary" onClick={() => setPortalResult(null)}>我已安全保存</Button>}
         closable={false}
       >
-        <Alert type="warning" showIcon message="请将服务账号和一次性激活码一并交付客户；客户首次登录时需用二者设置密码。激活码仅本次显示，再次开通会重置旧激活码。" />
-        <p style={{ marginTop: 16 }}><strong>服务账号：</strong>{portalResult?.account}</p>
+        <Alert type="warning" showIcon message="请将服务账号和一次性激活码一并交付客户；客户首次登录时需用二者设置密码。激活码仅本次显示，再次开通会重置旧激活码。登录入口：客户服务端。" />
+        <p style={{ marginTop: 16 }}><strong>客户服务端地址：</strong>{window.location.origin}/?page=customer-portal</p>
+        <p><strong>服务账号：</strong>{portalResult?.account}</p>
         <p><strong>一次性激活码：</strong>{portalResult?.activation_code}</p>
+      </Modal>
+      <Modal
+        open={Boolean(portalCustomer)}
+        title={`选择客户服务账号：${portalCustomer?.title || ""}`}
+        footer={null}
+        onCancel={() => setPortalCustomer(null)}
+      >
+        <Alert type="info" showIcon message="客户联系人可绑定多个账号，请选择本次用于登录客户服务端的账号。" style={{ marginBottom: 16 }} />
+        <Space direction="vertical" style={{ width: "100%" }}>
+          {portalCustomer && portalAccounts(portalCustomer).map((account) => (
+            <Button key={account} block onClick={() => void openPortal(portalCustomer!, account)}>{account}</Button>
+          ))}
+        </Space>
       </Modal>
       <Modal
         open={Boolean(assigning)}

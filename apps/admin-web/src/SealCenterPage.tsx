@@ -54,6 +54,7 @@ import {
   mergeSealAssetSnapshot,
   formatSealAttachmentSize,
   getSealAttachmentExtension,
+  legacySealApplicationDefaults,
   sealAssetAuditFailureMessage,
   sealAssetAuditPagination,
   sealFilePagination,
@@ -985,11 +986,7 @@ export default function SealCenterPage({
           }
         : {
             use_date: dayjs().add(1, "day"),
-            copies: 1,
-            source_attachment_ids: [],
-            delivery_method: "现场用印",
-            is_electronic_seal: true,
-            is_offline_print: true,
+            ...legacySealApplicationDefaults(assets),
           },
     );
     setCreateOpen(true);
@@ -2810,7 +2807,6 @@ export default function SealCenterPage({
               <Form.Item
                 label="归档号"
                 name="archive_no"
-                rules={[{ required: true }]}
               >
                 <Input placeholder="例如：YY-2026-0042" />
               </Form.Item>
@@ -2906,7 +2902,6 @@ export default function SealCenterPage({
           <Form.Item
             label="归档号"
             name="archive_no"
-            rules={[{ required: true }]}
           >
             <Input placeholder="例如：YY-2026-0042" />
           </Form.Item>

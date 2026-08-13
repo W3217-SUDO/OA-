@@ -13,7 +13,10 @@ from app.main import FIELD_KEYS, app
 from app.models import (
     BusinessRecord,
     Department,
+    FileAttachment,
     JobRole,
+    LegacyContract,
+    LegacyContractFile,
     RolePermission,
     SecurityPolicy,
     SystemMenu,
@@ -50,6 +53,9 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
                 JobRole.__table__,
                 Department.__table__,
                 BusinessRecord.__table__,
+                FileAttachment.__table__,
+                LegacyContract.__table__,
+                LegacyContractFile.__table__,
                 WorkflowEvent.__table__,
             ]))
         async with self.sessions() as db:
@@ -189,6 +195,25 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(employee_row["person_display_name"], "codex_missing_name")
         self.assertFalse(employee_row["display_name_missing"])
 
+    async def test_administrator_can_reset_the_current_login_password(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            admin = await db.scalar(select(User).where(User.username == "admin"))
+            self.assertIsNotNone(admin)
+            admin_id = int(admin.id)
+
+        reset = await self.client.post(
+            f"{API}/system/users/{admin_id}/reset-password",
+            headers=admin_headers,
+            json={"new_password": "AdminReset2026!"},
+        )
+        self.assertEqual(reset.status_code, status.HTTP_200_OK, reset.text)
+        self.assertTrue(reset.json()["must_change_password"])
+
+        relogin = await self._login("admin", "AdminReset2026!")
+        self.assertEqual(relogin.status_code, status.HTTP_200_OK, relogin.text)
+        self.assertTrue(relogin.json()["must_change_password"])
+
     async def test_hr_employee_uses_linked_account_name_when_archive_title_is_empty(self):
         admin_headers = await self._admin_headers()
         async with self.sessions() as db:
@@ -309,6 +334,10 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(me.status_code, status.HTTP_200_OK, me.text)
         self.assertEqual(me.json()["field_keys"], ["contract.amount"])
         self.assertEqual(me.json()["data_scope"], SCOPE_DEPT)
+        self.assertIn("user-center", me.json()["menu_keys"])
+        self.assertIn("contract", me.json()["menu_keys"])
+        self.assertNotIn("customer", me.json()["menu_keys"])
+        self.assertNotIn("case", me.json()["menu_keys"])
 
         cleared = await self.client.patch(
             f"{API}/system/users/{user_id}/permissions",
@@ -464,6 +493,57 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(directory.status_code, status.HTTP_200_OK, directory.text)
         directory_row = next(item for item in directory.json()["items"] if item["username"] == "approval_user")
         self.assertTrue(directory_row["can_approve_contract"])
+
+    async def test_hr_employee_edit_keeps_legacy_position_but_rejects_unknown_replacement(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            db.add(Department(code="CODEX-LEGACY", name="Legacy Department", is_active=True))
+            user = User(
+                username="legacy_position_user",
+                display_name="Legacy Position User",
+                department="Legacy Department",
+                role="user",
+                password_hash=hash_password("LegacyPositionPass2026!"),
+                is_active=True,
+                must_change_password=False,
+                profile={"position": "已归档历史职务"},
+            )
+            db.add(user)
+            employee = BusinessRecord(
+                module="hr",
+                serial_no="HR-LEGACY-POSITION-01",
+                title="Legacy Position User",
+                status=STATUS_ACTIVE,
+                owner="legacy_position_user",
+                department="Legacy Department",
+                data={"username": "legacy_position_user", "position": "已归档历史职务"},
+            )
+            db.add(employee)
+            await db.flush()
+            employee_id = int(employee.id)
+            await db.commit()
+
+        payload = {
+            "username": "legacy_position_user",
+            "display_name": "Legacy Position User",
+            "department": "Legacy Department",
+            "role": "user",
+            "position": "已归档历史职务",
+            "is_active": True,
+            "email": "legacy@example.com",
+            "mobile": "13800000001",
+            "office_phone": "021-12345678",
+            "joined_at": "2026-08-12",
+            "left_at": None,
+            "data": {"position": "已归档历史职务"},
+        }
+        preserved = await self.client.patch(f"{API}/hr/employees/{employee_id}", headers=admin_headers, json=payload)
+        self.assertEqual(preserved.status_code, status.HTTP_200_OK, preserved.text)
+        self.assertEqual(preserved.json()["employee"]["data"]["mobile"], "13800000001")
+
+        payload["position"] = "不存在的新职务"
+        replaced = await self.client.patch(f"{API}/hr/employees/{employee_id}", headers=admin_headers, json=payload)
+        self.assertEqual(replaced.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY, replaced.text)
 
     async def test_hr_contract_approval_switch_endpoint_controls_contract_directory(self):
         admin_headers = await self._admin_headers()

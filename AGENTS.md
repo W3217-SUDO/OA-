@@ -66,6 +66,7 @@
 - 主会话负责按模块和顺序拆分任务、维持 4 个会话持续工作、监督进度、检查浏览器对照证据与测试结果、发现遗漏后立即退回原会话补做，并在一个模块完成后立刻向该会话续派下一个模块。
 - 每个会话必须同时检查申浩旧系统页面和本地开发页面；需要写入才能验证的动作只能使用本任务自己的 `CODEX-*` 数据。每个按钮、子页面、弹窗、跳转、字段、权限、状态、异常提示和数据闭环都要逐项对照。发现本地缺失立即修改并回到两个页面复验；本地已有的额外功能或字段保留，不因旧站没有而删除。
 - 4 个会话应从不同且边界清晰的模块并行推进，避免修改同一文件；存在共享文件冲突风险时，由主会话重新分配边界。会话完成当前任务后不得自行停工，主会话应续派下一项未完成模块。
+- 子代理模型规则：为控制 token 消耗，后续新派的子代理默认使用 `gpt-5.6-terra`；只有任务复杂度明确需要更高能力时，主会话才可例外升级模型，并在派工记录中说明原因。正在运行的代理不因该规则被强制中断。
 - 主会话不得以自己的检查代替会话交付；验收必须包含旧站页面证据、本地页面证据、真实接口或数据落库证据、失败/阻断路径、临时数据精确清理、定向测试、完整构建和 Git 提交号。
 - 任何会话遇到浏览器卡住或标签失效，必须自行重新打开旧系统与本地系统目标页面继续，不得等待用户处理；不得请求绕过安全边界或要求用户代为完成常规审批。
 - 独立会话不得在完成一个小步骤、遇到首个失败或形成阶段结论后自行停止。准备结束当前轮次前，必须先向主会话项目经理汇报：已完成的可核验证据、尚未完成的清单、测试数据清理状态、测试/构建/Git 状态、当前阻碍和建议的下一步；主会话验收后给出下一步计划或明确允许阶段停止。
@@ -75,15 +76,6 @@
 - 共享工作树的 Git 提交必须串行执行。各会话完成开发、测试和清理后，先向主会话汇报并列出仅属于本线程的精确文件清单，等待主会话发放提交时段；未获准时禁止执行 `git add` 或 `git commit`。获准后只能使用 `git add -- <明确文件>`，禁止 `git add .`、`git add -A` 或提交其他会话文件；提交后立即回报提交号与 `git status --short`。主会话确认提交结束后才可向下一个会话发放时段。
 - 四线程的完整目标、派工格式、六项汇报、通过/补证/返工/续派判定、20 分钟卡点升级、Git/浏览器/共享后端文件排队规则，以 `docs/superpowers/plans/2026-08-01-fast-full-site-parity-plan.md` 为当前执行协议。主会话每次续派前必须按该协议给出明确入口、允许修改范围和验收出口；子会话不得自行扩大范围或在汇报后空闲等待。
 - 浏览器验收不再采用全局独占排队。A/B/C/D 各自固定并维护旧系统与本地开发标签各 1 个，可同时对照；旧系统写动作仅限本任务自建 `CODEX-*` 数据。每个会话必须登记并只操作自己的两个标签 ID，不得导航、关闭或复用其他会话标签，也不得为子页面继续增加标签。
-
-## 8.4 Excel 问题处理固定规则
-
-- 本会话处理 8.4 问题时，必须以原始 Excel `C:\Users\Administrator\Desktop\OA系统\问题\8.4OA系统对接.xlsx` 为准，不得只依赖用户临时截图或口述。
-- 必须一行一行处理：每次开始一个问题前，先读取该行左侧文字说明，再查看同一行右侧对应截图；文字和截图必须一起作为需求依据。
-- 每一行必须形成独立闭环记录：Excel 行号、问题文字摘要、同行截图文件、旧系统或截图证据、新系统定位、修改文件、测试命令、构建结果、8089 部署结果、浏览器验收结果、剩余风险。
-- 没有标记为 `1` 或没有明确闭环证据的问题，默认视为未完成，继续处理；不能要求用户重复发送已在 Excel 中存在的问题。
-- 处理顺序按 Excel 行号推进。除非用户明确指定优先级，否则先完成当前行，再进入下一行。
-- 不能只看源码判断完成，必须在 8089 新系统页面或接口上完成对应验收；无法浏览器验收时必须说明原因，并保留 API/构建/产物级证据。
 
 ## 8089 部署与版本号规则
 
@@ -95,18 +87,40 @@
 - 每次部署后必须执行并汇报：定向测试、前端生产构建、后端相关测试或 `py_compile`、`git diff --check`、`systemctl restart sunhold-dev-api sunhold-dev-web`、服务 active 状态、`/health`、目标页面 HTTP 200。
 - 不能把未部署、未重启、未健康检查或未打开 8089 验证的修改说成“服务器已解决”。
 
-## 8.6 Excel Row-By-Row Delivery Rule
+## Excel and Legacy Reference Rule
 
-- The only implementation target is the new OA system in this worktree on `dev`. Do not modify archived or legacy-system source code. Legacy material may be read only when the Excel row or its screenshots require behavior evidence.
-- The authoritative backlog is the newest `问题/8.6OA系统对接.xlsx`, sheet `8月6日`. Treat every row without an explicit `1` completion mark and every row lacking a complete evidence record as unfinished.
-- Process rows strictly in Excel row order unless the user explicitly reprioritizes one. Before locating code, read the row's text and inspect every image embedded in that same row. Do not ask the user to resend material already present in the workbook.
-- A row is complete only after: new-system root cause and code change are identified; focused regression passes; relevant backend check and frontend production build pass; version is incremented consistently in `apps/admin-web/package.json` and `package-lock.json`; the committed `dev` version is deployed to the non-Docker 8089 service; and the behavior is accepted using the Codex in-app browser at `http://150.158.3.104:8089/`.
-- Record for every row: row number, text summary, all same-row screenshots, new-system evidence, changed files, test commands/results, version and commit, 8089 deployment result, in-app-browser acceptance result, and remaining risk. Never claim a row or the workbook complete based on source review, a build, or deployment alone.
-- Deploy only after the current planned batch has all its rows implemented and verified. Deployment must be versioned, use the actual `sunhold-dev-api` and `sunhold-dev-web` non-Docker systemd worktree, restart both services, and verify `/health`, HTTP 200, and the target page before reporting success.
+- Excel issue workbooks are evidence backlogs, not the project objective or the agent's sole operational state. The active conversation goal defines the current objective and scope.
+- When the active goal explicitly includes an Excel batch, process exactly one selected row at a time. Before implementation, read the row text and inspect every screenshot anchored to that same row, including any old-system comparison screenshot.
+- `http://150.158.3.104:8091/` is the legacy-system reference only. It may be inspected to establish business behavior and layout, but legacy source code must never be modified. The sole implementation target is the new OA system on the `dev` worktree and its `8089` deployment.
+- For each explicitly selected row, record: Excel row, screenshots examined, legacy reference path and observation, new-system root cause, changed files, focused tests, build result, version/commit, 8089 deployment, and Codex in-app-browser acceptance result.
+- Do not start the next selected Excel row until the current one has either passed the required browser acceptance or has been explicitly recorded as blocked with concrete evidence and a next action.
+- Never infer that a particular workbook, worksheet, or row is the current task solely from a prior handoff, ledger entry, browser tab, or local artifact. Resume Excel work only when it is within the active conversation goal or the user explicitly selects it.
 
 ## Daily Excel Acceptance Discipline
 
-- At the start of every workday, locate the newest OA issue workbook in `C:\Users\Administrator\Desktop\OA系统\问题\`, read its active worksheet, and continue from the earliest row not explicitly marked `1` and not recorded as accepted in the row-by-row acceptance ledger.
-- For every row, inspect its text and every embedded same-row screenshot before deciding whether the new system has an issue. A source-code review alone never closes a row.
+## Mandatory Screenshot-First Workflow
+
+- For every Excel issue row, inspect the row text and every image anchored to that same row before code search, implementation, or completion judgment. This includes old-system comparison images, annotations, and rework screenshots.
+- Save or otherwise retain a readable local copy of each inspected image and record which images were examined in the row ledger. If an image cannot be read, the row remains unfinished until it is rendered or inspected successfully.
+- Only after the text-and-image review may the agent reproduce the behavior in the new system, locate the root cause, modify the new-system worktree, run focused checks, and perform Codex in-app-browser acceptance. Source review or a passing test alone never replaces screenshot review or browser acceptance.
+- After fixing a row, repeat the same browser path and compare the observed result against the row text and screenshots. Record the result immediately before moving to the next row.
+
+## Current-Session Excel Execution Rule
+
+- For every current and future Excel issue, the agent must first read the issue text and inspect all screenshots embedded on that exact row. Screenshot annotations and old-system comparison screenshots are requirements, not optional context.
+- Locate and change only the new OA system source in the active `dev` worktree. The legacy system is read-only evidence and must never be used as the implementation target.
+- Work strictly one row at a time: reproduce in the new system, identify the root cause, implement, run focused regression and build checks, then use the Codex in-app browser to accept the exact reported path. Do not begin the next row before recording the browser result in the ledger.
+- A row may be marked complete only when its screenshot requirements, browser result, changed files, tests, and residual risk have all been recorded. Code inspection, a unit test, a build, or deployment alone is insufficient.
+
+## Excel State Continuity Rule
+
+- During an explicitly active Excel batch, the row-by-row acceptance ledger records evidence and next actions for that batch. It does not replace the active conversation goal, the source-code parity plan, or the implementation roadmap.
+- Before work on an explicitly selected Excel row, read its ledger entry and identify the required evidence, test-data identifier, and next unchecked action. Outside an active Excel batch, continue from the active conversation goal and the source-code parity plan.
+- Update the ledger immediately after every material outcome: screenshot review, reproduction, code change, test run, browser acceptance or rejection, test-data creation, and test-data cleanup. No agent may move to another row while its own row has an unrecorded result.
+- Parallel work is permitted only as one agent per distinct Excel row. Each agent must state its assigned row, read the ledger before acting, use a unique `CODEX-*` test-data prefix for that row, and must not edit another row's ledger entry. The project manager alone integrates outcomes, resolves shared-file conflicts, and advances the canonical next row.
+- On an interrupted, resumed, or new session, first reconcile the ledger with `git status`, active browser page, and test-data inventory. If they disagree, record the discrepancy as pending and resolve it before claiming progress.
+
+- Only when the active conversation explicitly starts an Excel issue batch, locate the selected workbook and worksheet, then continue from the row explicitly selected by the user or recorded as the next row for that batch. Do not automatically choose a workbook, batch, or row from the calendar date, handoff text, browser page, or old ledger state.
+- For each row in an explicitly active batch, inspect its text and every embedded same-row screenshot before deciding whether the new system has an issue. A source-code review alone never closes a row.
 - Use the Codex in-app browser for the final acceptance path on `http://150.158.3.104:8089/`. Reproduce the reported behavior first; if it fails, fix the new-system source, run focused regression/build/deployment checks, then repeat the same in-app-browser path before marking the row accepted.
-- Update the row-by-row acceptance ledger immediately after each browser outcome. Record either `已验收` with the exact page and observed result, or `未通过/待修复` with the reproduced behavior and next action. Do not carry an unrecorded result into the next day.
+- Update the row-by-row acceptance ledger immediately after each browser outcome. Record either `已验收` with the exact page and observed result, or `未通过/待修复` with the reproduced behavior and next action. Do not carry an unrecorded result into the next row.

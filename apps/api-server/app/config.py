@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_LOCAL_DATABASE_PATH = (Path(__file__).resolve().parent.parent / "legal_platform.db").as_posix()
 
 
 class Settings(BaseSettings):
@@ -6,7 +11,10 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     app_env: str = "development"
     # 本机无 Docker 时默认使用 SQLite；Docker Compose 会通过环境变量覆盖为 PostgreSQL。
-    database_url: str = "sqlite+aiosqlite:///./legal_platform.db"
+    # Resolve the development SQLite database from this module, not the
+    # process working directory. This keeps the local web/API pair on one
+    # data source regardless of how uvicorn is launched.
+    database_url: str = f"sqlite+aiosqlite:///{_LOCAL_DATABASE_PATH}"
     redis_url: str = "redis://redis:6379/0"
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"
