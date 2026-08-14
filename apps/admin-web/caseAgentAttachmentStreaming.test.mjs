@@ -18,6 +18,7 @@ test("case agent lets the user select authorized case materials", () => {
   assert.ok(composerIndex >= 0 && materialsIndex > composerIndex, "selected case materials should render inside the composer");
   assert.match(page, /document_ids: outgoingDocumentIds/);
   assert.match(page, /setAgentDocumentIds\(\[\]\)/);
+  assert.match(page, /aria-label="收起材料选择"[\s\S]*setAgentMaterialPickerOpen\(false\)/);
 });
 
 test("case agent streams the response and keeps the latest message visible", () => {
