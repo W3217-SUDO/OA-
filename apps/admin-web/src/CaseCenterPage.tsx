@@ -1574,13 +1574,21 @@ export default function CaseCenterPage({
     if (!content) return message.warning("请输入要询问的案件问题");
     if (agentSending) activeCaseAgentRequestRef.current?.abort();
     const outgoingScreenshots = [...agentScreenshots];
+    const outgoingDocumentIds = [...agentDocumentIds];
+    const outgoingDocuments = agentDocuments.filter((item) => outgoingDocumentIds.includes(item.id));
+    const optimisticAttachments = Array.from(new Map([
+      ...outgoingScreenshots,
+      ...outgoingDocuments.map((item) => ({ id: item.id, name: item.original_name })),
+    ].map((item) => [item.id, item])).values());
     const optimisticId = `pending-${Date.now()}`;
     setAgentState((current) => current ? {
       ...current,
-      messages: [...(current.messages || []), { id: optimisticId, role: "user", content, attachments: outgoingScreenshots }],
+      messages: [...(current.messages || []), { id: optimisticId, role: "user", content, attachments: optimisticAttachments }],
     } : current);
     setAgentInput("");
     setAgentScreenshots([]);
+    setAgentDocumentIds([]);
+    setAgentMaterialPickerOpen(false);
     const controller = new AbortController();
     activeCaseAgentRequestRef.current = controller;
     setAgentSending(true);
@@ -1596,7 +1604,7 @@ export default function CaseCenterPage({
           message: encodeAgentSkillMessage(agentSkillId, content),
           skill_id: agentSkillId,
           attachment_ids: outgoingScreenshots.map((item) => item.id),
-          document_ids: agentDocumentIds,
+          document_ids: outgoingDocumentIds,
           stream: true,
         }),
       });
@@ -1639,6 +1647,7 @@ export default function CaseCenterPage({
         setAgentState((current) => current ? { ...current, messages: current.messages.filter((item) => item.id !== optimisticId && !String(item.id || "").startsWith("stream-")) } : current);
         setAgentInput(content);
         setAgentScreenshots(outgoingScreenshots);
+        setAgentDocumentIds(outgoingDocumentIds);
         message.error(error?.response?.data?.detail || error?.message || "案件智能体响应失败");
       }
     } finally {
@@ -4295,30 +4304,25 @@ export default function CaseCenterPage({
           {!agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
             {["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"].map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
           </div>}
-          <div className={`case-agent-material-picker ${agentMaterialPickerOpen ? "case-agent-material-picker-open" : ""}`}>
-            <div className="case-agent-material-toolbar">
-              <Button type="text" className="case-agent-material-trigger" icon={agentMaterialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-expanded={agentMaterialPickerOpen} onClick={() => setAgentMaterialPickerOpen((current) => !current)}>
-                <strong>本轮材料</strong>
-                <span>{agentDocumentIds.length ? `已选 ${agentDocumentIds.length} 份` : "不读取附件"}</span>
-              </Button>
-              <Space size={2}>
-                <Button type="link" size="small" onClick={() => { if (agentDocuments.length > AGENT_DOCUMENT_LIMIT) message.info(`已选择前 ${AGENT_DOCUMENT_LIMIT} 份材料`); setAgentDocumentIds(agentDocuments.slice(0, AGENT_DOCUMENT_LIMIT).map((item) => item.id)); }}>全选</Button>
-                <Button type="link" size="small" disabled={!agentDocumentIds.length} onClick={() => setAgentDocumentIds([])}>清空</Button>
-              </Space>
-            </div>
-            {agentMaterialPickerOpen && <div className="case-agent-material-tree" aria-label="从案件文件夹选择本轮材料">
-              <Tree
-                checkable
-                selectable={false}
-                defaultExpandAll
-                checkedKeys={agentDocumentIds.map((id) => `document:${id}`)}
-                treeData={buildAgentDocumentTree(agentDocuments)}
-                onCheck={updateAgentDocumentSelection}
-              />
-              <small>仅向智能体发送本轮勾选且当前账号有权查看的材料，最多 {AGENT_DOCUMENT_LIMIT} 份。</small>
-            </div>}
-          </div>
           <div className="case-agent-composer">
+            {agentMaterialPickerOpen && <div className="case-agent-material-tree" aria-label="从案件文件夹选择本轮材料">
+              <div className="case-agent-material-tree-header">
+                <strong>从案件文件夹选择</strong>
+                <Space size={2}>
+                  <Button type="link" size="small" onClick={() => { if (agentDocuments.length > AGENT_DOCUMENT_LIMIT) message.info(`已选择前 ${AGENT_DOCUMENT_LIMIT} 份材料`); setAgentDocumentIds(agentDocuments.slice(0, AGENT_DOCUMENT_LIMIT).map((item) => item.id)); }}>全选</Button>
+                  <Button type="link" size="small" disabled={!agentDocumentIds.length} onClick={() => setAgentDocumentIds([])}>清空</Button>
+                </Space>
+              </div>
+              <Tree checkable selectable={false} defaultExpandAll checkedKeys={agentDocumentIds.map((id) => `document:${id}`)} treeData={buildAgentDocumentTree(agentDocuments)} onCheck={updateAgentDocumentSelection} />
+              <small>仅发送本轮勾选且当前账号有权查看的材料，最多 {AGENT_DOCUMENT_LIMIT} 份。</small>
+            </div>}
+            <div className="case-agent-composer-materials" aria-label="随本轮问题发送的案件材料">
+              <Button type="text" size="small" className="case-agent-composer-material-trigger" icon={agentMaterialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-expanded={agentMaterialPickerOpen} onClick={() => setAgentMaterialPickerOpen((current) => !current)}>案件材料</Button>
+              <div className="case-agent-composer-material-tags">
+                {agentDocuments.filter((item) => agentDocumentIds.includes(item.id)).map((item) => <Tag key={item.id} closable title={item.original_name} onClose={(event) => { event.preventDefault(); setAgentDocumentIds((current) => current.filter((id) => id !== item.id)); }}>{item.original_name}</Tag>)}
+                {!agentDocumentIds.length && <span>选择后随本轮问题一起发送</span>}
+              </div>
+            </div>
             {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
             <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
             <Button className="case-agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={agentScreenshotUploading} disabled={!agentStatus?.ready || agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()} />
