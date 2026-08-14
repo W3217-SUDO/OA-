@@ -76,7 +76,6 @@
 .case-agent-drawer .ant-drawer-content{position:relative}.case-agent-resize-handle{position:absolute;z-index:20;top:0;bottom:0;left:-4px;width:9px;cursor:ew-resize;touch-action:none}.case-agent-resize-handle:hover::after,.case-agent-resize-handle:active::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;background:#00a870}
 .case-agent-panel{display:flex;flex-direction:column;height:100%;min-height:0}
 .case-agent-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
-.case-agent-material-select{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #dce2e8}.case-agent-material-select>span{font-weight:600}.case-agent-material-select .ant-select{min-width:0}.case-agent-material-select .ant-btn{padding-inline:4px}
 .case-agent-skill-select{display:grid;grid-template-columns:auto minmax(170px,230px) minmax(0,1fr);align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #dce2e8}.case-agent-skill-select>span{font-weight:600}.case-agent-skill-select>small{overflow:hidden;color:#737b84;text-overflow:ellipsis;white-space:nowrap}
 .case-agent-message-attachments{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}.case-agent-message-attachments figure{width:132px;margin:0}.case-agent-message-attachments .ant-image,.case-agent-message-attachments img{display:block;width:132px!important;height:88px!important}.case-agent-message-attachments img{object-fit:cover;border:1px solid #cfd8df;border-radius:4px;background:#fff}.case-agent-message-attachments figcaption{margin-top:3px;overflow:hidden;color:#5f6872;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
 .case-agent-actions{padding:10px 14px;background:#fff;border-bottom:1px solid #dce2e8}
@@ -99,6 +98,7 @@
 .case-agent-message-user .case-agent-bubble{border-color:#bce8d7;background:#eaf8f2}
 .case-agent-thinking{padding:8px 0;color:#737b84}
 .case-agent-suggestions{display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto;white-space:nowrap}
+.case-agent-material-picker{position:relative;background:#fff;border-top:1px solid #dce2e8}.case-agent-material-toolbar{display:flex;min-height:42px;align-items:center;justify-content:space-between;gap:8px;padding:3px 10px 3px 8px}.case-agent-material-trigger.ant-btn{display:flex;min-width:0;height:34px;align-items:center;gap:7px;padding:0 6px;color:#20262d}.case-agent-material-trigger .ant-btn-icon{color:#d39d18}.case-agent-material-trigger strong{font-size:13px}.case-agent-material-trigger span:last-child{overflow:hidden;color:#737b84;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.case-agent-material-toolbar .ant-btn-link{padding-inline:5px}.case-agent-material-tree{max-height:260px;overflow:auto;padding:6px 12px 10px;border-top:1px solid #edf0f2;background:#fbfcfd}.case-agent-material-tree .ant-tree{background:transparent}.case-agent-material-tree .ant-tree-treenode{width:100%;padding-block:1px}.case-agent-material-tree .ant-tree-node-content-wrapper{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.case-agent-material-tree small{display:block;padding:7px 4px 0;color:#737b84}
 .case-agent-composer{display:grid;grid-template-columns:36px minmax(0,1fr) 40px;align-items:end;gap:8px;padding:12px 14px;background:#fff;border-top:1px solid #dce2e8}
 .case-agent-composer>.ant-btn{width:40px;height:40px;padding:0}.case-agent-composer>.case-agent-composer-upload{width:36px}.case-agent-composer-attachments{display:flex;grid-column:1/-1;gap:8px;overflow-x:auto}.case-agent-composer-attachments>div{display:grid;flex:0 0 180px;grid-template-columns:52px minmax(0,1fr) 28px;align-items:center;gap:7px;padding:5px;border:1px solid #cfe3da;border-radius:6px;background:#f3fbf7}.case-agent-composer-attachments .ant-image,.case-agent-composer-attachments img{width:52px!important;height:44px!important}.case-agent-composer-attachments img{object-fit:cover;border-radius:4px}.case-agent-composer-attachments span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.case-agent-composer-attachments .ant-btn{width:28px;height:28px;padding:0}
 .case-agent-composer textarea{letter-spacing:0}
@@ -106,7 +106,7 @@
   .case-agent-drawer{width:100%!important}
   .case-agent-resize-handle{display:none}
   .case-agent-status{align-items:flex-start}
-  .case-agent-material-select{grid-template-columns:auto minmax(0,1fr)}.case-agent-material-select>.ant-space{grid-column:2}
+  .case-agent-material-tree{max-height:210px}
   .case-agent-bubble{max-width:96%}
 }
 
