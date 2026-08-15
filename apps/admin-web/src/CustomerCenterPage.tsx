@@ -233,6 +233,7 @@ type DirectoryUser = {
   username: string;
   display_name: string;
   department: string;
+  account_type?: string;
   eligible_customer_person?: boolean;
 };
 const customerRegistrationAddressRules = [{
@@ -332,6 +333,7 @@ export default function CustomerCenterPage({
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
+  const [customerDirectory, setCustomerDirectory] = useState<DirectoryUser[]>([]);
   const directoryOptions = useMemo(() => {
     const retained = new Set([
       ...(editing?.data.customer_managers || []),
@@ -344,6 +346,20 @@ export default function CustomerCenterPage({
       { allowNonChinese: true },
     );
   }, [directory, editing]);
+  const customerContactOptions = useMemo(() => {
+    const retained = new Set([
+      ...(editing?.data.contact_accounts || []),
+      ...(Array.isArray(editing?.data.contact) ? editing.data.contact : editing?.data.contact ? [editing.data.contact] : []),
+    ].map((value) => String(value || "").trim()).filter(Boolean));
+    const candidates = [...new Map(
+      [...customerDirectory, ...directory].map((user) => [String(user.username || "").trim().toLowerCase(), user]),
+    ).values()];
+    return buildChinesePersonOptions(
+      candidates,
+      (user: DirectoryUser) => user.account_type === "客户账号" || retained.has(user.username),
+      { allowNonChinese: true },
+    );
+  }, [customerDirectory, directory, editing]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [contactPage, setContactPage] = useState(1);
@@ -460,15 +476,18 @@ export default function CustomerCenterPage({
         if (targetRow) void openDetail(targetRow);
         else message.warning("未找到关联客户或当前账号无权查看");
       }
-      const [profileResult, directoryResult, customerTypeResult] = await Promise.allSettled([
+      const [profileResult, directoryResult, customerDirectoryResult, customerTypeResult] = await Promise.allSettled([
         api.get("/auth/me"),
         api.get("/users/directory", { params: { purpose: "customer_manager" } }),
+        api.get("/users/directory", { params: { purpose: "customer_contact" } }),
         api.get("/customers/reference-options"),
       ]);
       if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
       else message.warning("当前登录身份加载失败，已保留客户列表和详情入口");
       if (directoryResult.status === "fulfilled") setDirectory(directoryResult.value.data.items || []);
       else message.warning("客户人员目录加载失败，稍后可刷新重试");
+      if (customerDirectoryResult.status === "fulfilled") setCustomerDirectory(customerDirectoryResult.value.data.items || []);
+      else message.warning("客户账号目录加载失败，稍后可刷新重试");
       if (customerTypeResult.status === "fulfilled") {
         const options = customerTypeResult.value.data.customer_types || [];
         if (options.length) {
@@ -553,6 +572,12 @@ export default function CustomerCenterPage({
   };
   const startEdit = (r: Customer) => {
     setEditing(r);
+    setContactPage(1);
+    setContactPageSize(15);
+    setContactTotal(0);
+    setContacts(r);
+    setAttachments([]);
+    setAttachmentError("");
     form.setFieldsValue({
       ...r,
       ...r.data,
@@ -568,6 +593,7 @@ export default function CustomerCenterPage({
             : [],
     });
     setOpen(true);
+    void refreshDetail(r, 1, 15);
   };
   const save = async () => {
     const v = await form.validateFields();
@@ -670,6 +696,8 @@ export default function CustomerCenterPage({
         await refreshDetail(response.data);
       } else {
         setOpen(false);
+        setContacts(null);
+        setEditing(null);
       }
       await load();
     } catch (error: any) {
@@ -779,7 +807,11 @@ export default function CustomerCenterPage({
       : Array.isArray(customer.data.contact) ? customer.data.contact : customer.data.contact ? [customer.data.contact] : [];
     return [...new Set(raw.map((value) => String(value || "").trim()).filter(Boolean))];
   };
-  const refreshDetail = async (target = contacts) => {
+  const refreshDetail = async (
+    target = contacts,
+    nextContactPage = contactPage,
+    nextContactPageSize = contactPageSize,
+  ) => {
     if (!target) return;
     setDetailLoading(true);
     let historyItems: CustomerEvent[] = [];
@@ -793,13 +825,13 @@ export default function CustomerCenterPage({
     const customerGuid = getCustomerGuid(target);
     const customerEventListPath = buildCustomerEventListPath(customerGuid);
     const customerFileListPath = buildCustomerFileListPath(customerGuid);
-    const contactListRequest = buildCustomerContactListRequest(target.id, contactPage, contactPageSize);
+    const contactListRequest = buildCustomerContactListRequest(target.id, nextContactPage, nextContactPageSize);
     const fallbackContactResponse = {
       data: {
         items: target.data.contacts || [],
         total: (target.data.contacts || []).length,
-        page: contactPage,
-        page_size: contactPageSize,
+        page: nextContactPage,
+        page_size: nextContactPageSize,
       },
     };
     try {
@@ -939,7 +971,7 @@ export default function CustomerCenterPage({
     setSharedObjects([]);
     setSharedObjectsError("");
     try {
-      await refreshDetail(r);
+      await refreshDetail(r, 1, 15);
     } catch (error: any) {
       message.error(getCustomerResponseMessage(error, "客户详情加载失败"));
     }
@@ -1640,6 +1672,50 @@ export default function CustomerCenterPage({
     setJumpPage(String(next));
     setSelectedRowKeys([]);
   };
+  const renderCustomerRelatedTabs = (showSaveButton: boolean) => (
+    <Tabs
+      className="customer-create-tabs"
+      tabBarExtraContent={showSaveButton ? <Button type="primary" onClick={save}><span>保</span><span>存</span></Button> : undefined}
+      items={[
+        {
+          key: "contacts",
+          label: "联系人",
+          children: <>
+            <Space style={{ marginBottom: 8 }}><Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space>
+            <Table className="customer-create-related-table customer-contact-table" loading={detailLoading} rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{ emptyText: <span>没有查询到联系人，可以去 <Button type="link" onClick={() => openNewEditor("contact")}>新建联系人</Button></span> }} columns={[
+              { title: "序号", render: (_: unknown, _r: Contact, index: number) => index + 1, width: 55 },
+              { title: "姓名", dataIndex: "name" }, { title: "职务", dataIndex: "position" }, { title: "项目角色", dataIndex: "project_role" }, { title: "办公电话", dataIndex: "office_phone" }, { title: "移动电话", dataIndex: "phone" }, { title: "IM", dataIndex: "im_account" }, { title: "邮箱", dataIndex: "email" }, { title: "是否接收邮件", render: (_: unknown, row: Contact) => row.email ? "是" : "否" }, { title: "是否需要联系", render: (_: unknown, row: Contact) => row.contact_status !== "停止联系" ? "是" : "否" }, { title: "是否有效", dataIndex: "is_valid", render: (value: boolean) => value !== false ? "是" : "否" },
+              { title: "照片", width: 150, render: (_: unknown, row: Contact) => contactPhotoActions(row) }, { title: "操作", render: (_: unknown, row: Contact) => canManageCurrentCustomer ? <Space size={0}><Button type="link" onClick={() => openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={() => deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space> : null },
+            ]} />
+            {(contacts?.data.contacts?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={() => openNewEditor("contact")}>新建联系人</Button>}
+          </>,
+        },
+        {
+          key: "notes",
+          label: "事项记录",
+          children: <>
+            <Table className="customer-create-related-table" loading={detailLoading} rowKey="id" size="small" pagination={false} dataSource={contacts?.data.notes || []} scroll={{ x: 720 }} locale={{ emptyText: <span>没有查询到事项记录，可以去 <Button type="link" onClick={() => openNewEditor("note")}>新建</Button></span> }} columns={[
+              { title: "序号", render: (_: unknown, _r: Note, index: number) => index + 1, width: 55 }, { title: "内容", dataIndex: "content" }, { title: "操作人", dataIndex: "operator", width: 110, render: (value: string) => userLabel(value) }, { title: "操作日期", dataIndex: "created_at", width: 170 },
+              { title: "操作", render: (_: unknown, row: Note) => <Popconfirm title="删除这条记录？" onConfirm={() => deleteNote(row.id)}><Button type="link" danger>删除</Button></Popconfirm> },
+            ]} />
+            {(contacts?.data.notes?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={() => openNewEditor("note")}>新建</Button>}
+          </>,
+        },
+        {
+          key: "documents",
+          label: "客户文档",
+          children: <>
+            {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
+            <Table className="customer-create-related-table" loading={detailLoading} rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{ emptyText: <span>没有查询到客户文件，可以去 <Button type="link" onClick={() => openNewEditor("document")}>上传客户文件</Button></span> }} columns={[
+              { title: "序号", render: (_: unknown, _r: Attachment, index: number) => index + 1, width: 55 }, { title: "上传人", dataIndex: "uploader", width: 110, render: (value: string) => userLabel(value) }, { title: "文件名称", dataIndex: "original_name" }, { title: "文档日期", width: 170, render: (_: unknown, row: Attachment) => getCustomerAttachmentDate(row) }, { title: "查看", render: (_: unknown, row: Attachment) => <Button type="link" onClick={() => void viewDocument(row)}>查看</Button> }, { title: "下载", render: (_: unknown, row: Attachment) => <Button type="link" onClick={() => void downloadDocument(row)}>下载</Button> },
+              { title: "操作", render: (_: unknown, row: Attachment) => canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={() => deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null },
+            ]} />
+            {attachments.length > 0 && <Button className="customer-create-related-link" type="link" onClick={() => openNewEditor("document")}>上传客户文件</Button>}
+          </>,
+        },
+      ]}
+    />
+  );
   return (
     <>
       {isReadOnlyCustomerList && detailPageOpen && contacts && (
@@ -2001,52 +2077,11 @@ export default function CustomerCenterPage({
                 <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
                   <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
                 </Form.Item>
-                <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
+                <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" /></Form.Item>
               </div>
             </section>
           </Form>
-          <Tabs
-            className="customer-create-tabs"
-            tabBarExtraContent={<Button type="primary" onClick={save}><span>保</span><span>存</span></Button>}
-            items={[
-              {
-                key:"contacts",
-                label:"联系人",
-                children:<>
-                  <Space style={{ marginBottom: 8 }}><Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space>
-                  <Table className="customer-create-related-table customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts?.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:<span>没有查询到联系人，可以去 <Button type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Contact,index:number)=>index+1,width:55},
-                    {title:"姓名",dataIndex:"name"},{title:"职务",dataIndex:"position"},{title:"项目角色",dataIndex:"project_role"},{title:"办公电话",dataIndex:"office_phone"},{title:"移动电话",dataIndex:"phone"},{title:"IM",dataIndex:"im_account"},{title:"邮箱",dataIndex:"email"},{title:"是否接收邮件",render:(_:unknown,row:Contact)=>row.email?"是":"否"},{title:"是否需要联系",render:(_:unknown,row:Contact)=>row.contact_status!=="停止联系"?"是":"否"},{title:"是否有效",dataIndex:"is_valid",render:(value:boolean)=>value!==false?"是":"否"},
-                    {title:"照片",width:150,render:(_:unknown,row:Contact)=>contactPhotoActions(row)},{title:"操作",render:(_:unknown,row:Contact)=>canManageCurrentCustomer?<Space size={0}><Button type="link" onClick={()=>openContactEdit(row)}>编辑</Button><Popconfirm title="删除联系人？" onConfirm={()=>deleteContact(row.id)}><Button type="link" danger>删除</Button></Popconfirm></Space>:null}
-                  ]} />
-                  {(contacts?.data.contacts?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("contact")}>新建联系人</Button>}
-                </>
-              },
-              {
-                key:"notes",
-                label:"事项记录",
-                children:<>
-                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={contacts?.data.notes || []} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到事项记录，可以去 <Button type="link" onClick={()=>openNewEditor("note")}>新建</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Note,index:number)=>index+1,width:55},{title:"内容",dataIndex:"content"},{title:"操作人",dataIndex:"operator",width:110,render:(value:string)=>userLabel(value)},{title:"操作日期",dataIndex:"created_at",width:170},
-                    {title:"操作",render:(_:unknown,row:Note)=><Popconfirm title="删除这条记录？" onConfirm={()=>deleteNote(row.id)}><Button type="link" danger>删除</Button></Popconfirm>}
-                  ]} />
-                  {(contacts?.data.notes?.length || 0) > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("note")}>新建</Button>}
-                </>
-              },
-              {
-                key:"documents",
-                label:"客户文档",
-                children:<>
-                  {attachmentError && <Alert type="warning" showIcon message={attachmentError} style={{ marginBottom: 8 }} />}
-                  <Table className="customer-create-related-table" rowKey="id" size="small" pagination={false} dataSource={attachments} scroll={{ x: 720 }} locale={{emptyText:<span>没有查询到客户文件，可以去 <Button type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button></span>}} columns={[
-                    {title:"序号",render:(_:unknown,_r:Attachment,index:number)=>index+1,width:55},{title:"上传人",dataIndex:"uploader",width:110,render:(value:string)=>userLabel(value)},{title:"文件名称",dataIndex:"original_name"},{title:"文档日期",width:170,render:(_:unknown,row:Attachment)=>getCustomerAttachmentDate(row)},{title:"查看",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void viewDocument(row)}>查看</Button>},{title:"下载",render:(_:unknown,row:Attachment)=><Button type="link" onClick={()=>void downloadDocument(row)}>下载</Button>},
-                    {title:"操作",render:(_:unknown,row:Attachment)=>canDeleteCustomerAttachment(canManageCurrentCustomer) ? <Popconfirm title="删除客户文档？" onConfirm={()=>deleteDocument(row.id)}><Button type="link" danger>删除</Button></Popconfirm> : null}
-                  ]} />
-                  {attachments.length > 0 && <Button className="customer-create-related-link" type="link" onClick={()=>openNewEditor("document")}>上传客户文件</Button>}
-                </>
-              }
-            ]}
-          />
+          {renderCustomerRelatedTabs(true)}
         </Card>
       )}
       <Modal open={Boolean(viewingContact)} title={`查看联系人：${viewingContact?.name || ""}`} footer={<Button onClick={() => setViewingContact(null)}>关闭</Button>} onCancel={() => setViewingContact(null)} destroyOnHidden>
@@ -2119,13 +2154,18 @@ export default function CustomerCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={820}
+        width="calc(100vw - 64px)"
+        className="customer-edit-modal"
         open={open && initialView !== "customer-new"}
         title={editing ? "编辑客户" : "新增客户"}
         okText="保存"
         cancelText="取消"
         onOk={save}
-        onCancel={() => setOpen(false)}
+        onCancel={() => {
+          setOpen(false);
+          setContacts(null);
+          setEditing(null);
+        }}
         destroyOnHidden
       >
         <Form form={form} layout="horizontal" className="customer-create-form">
@@ -2169,10 +2209,11 @@ export default function CustomerCenterPage({
               <Form.Item label="客户等级" name="level"><Select options={["立案客户", "高级客户", "中级客户", "低级客户"].map(value => ({ value, label: value }))} /></Form.Item>
               <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
               <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{ required: true, message: "至少设置一名客户管理人" }]}><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} /></Form.Item>
-              <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择系统员工" /></Form.Item>
+              <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" /></Form.Item>
             </div>
           </section>
         </Form>
+        {editing && renderCustomerRelatedTabs(false)}
       </Modal>
       <Modal
         open={Boolean(levelCustomer)}

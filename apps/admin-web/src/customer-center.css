@@ -130,7 +130,7 @@
   font-size: 12px;
 }
 .customer-original-pagination { gap: 0; margin-left: auto; padding-right: 8px; color: #777; font-size: 12px; white-space: nowrap; }
-.customer-original-pagination .ant-select { width: 49px; margin: 0 5px; }
+.customer-original-pagination .ant-select { width: 64px; min-width: 64px; margin: 0 5px; }
 .customer-original-pagination .ant-select-selector { height: 31px !important; border-radius: 0 !important; padding: 0 6px !important; }
 .customer-original-pagination .ant-select-selection-item { line-height: 29px !important; }
 .customer-original-pagination .ant-btn { min-width: 31px; padding: 0 8px; color: #777; }
@@ -287,6 +287,8 @@
 .customer-create-related-table .ant-empty { margin-block: 18px; }
 .customer-create-related-table .ant-empty-description .ant-btn { height: auto; padding: 0; }
 .customer-create-related-link { margin-top: 3px; padding-left: 0; }
+.customer-edit-modal .ant-modal-body { max-height: calc(100dvh - 180px); overflow-x: hidden; overflow-y: auto; }
+.customer-edit-modal .customer-create-tabs { margin-top: 8px; }
 
 .customer-contact-table .ant-table,
 .customer-contact-drawer-table .ant-table { table-layout: fixed; }

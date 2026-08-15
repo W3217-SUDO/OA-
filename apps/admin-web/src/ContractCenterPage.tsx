@@ -1099,13 +1099,14 @@ export default function ContractCenterPage({
       const { submit: enterSealCenter, ...sealValues } = values;
       const { data } = await api.post(`/contracts/${wizardDraft.id}/seal-application`, {
         ...sealValues,
+        submit: wizardDraft.status === "审批中" && Boolean(enterSealCenter),
         use_date: formatRequiredDate(values.use_date, "计划用印日期"),
       });
       const contract = await loadWizardContext(wizardDraft.id);
       if (contract.status !== "审批中") localStorage.removeItem(WIZARD_STORAGE_KEY);
       message.success(enterSealCenter
-        ? "合同用印申请草稿已创建，正在进入用印中心上传文件并提交审批"
-        : "合同用印申请草稿已创建，请到用印中心上传真实用印文件后提交审批");
+        ? (data.status === "待审批" ? "合同用印申请已提交审批，正在进入用印中心" : "合同用印申请草稿已创建，正在进入用印中心")
+        : "合同用印申请草稿已创建，请到用印中心提交审批");
       setWizardDraft(contract);
       await load();
       if (enterSealCenter) {
@@ -2475,6 +2476,7 @@ export default function ContractCenterPage({
                 ["发票高开金额", viewing.data.invoice_excess],
               ].map(([label, value]) => <div key={String(label)}><span>{label}：</span><b>{amount(Number(value || 0))}</b></div>)}
             </section>
+            <div className="contract-detail-scroll-region">
             <Tabs
               className="contract-detail-tabs"
               activeKey={detailActiveTab}
@@ -2600,6 +2602,7 @@ export default function ContractCenterPage({
                 { title: "其他费用", width: 100, render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0) },
               ]} />
             </section>
+            </div>
           </div>
         ) : (
           <>

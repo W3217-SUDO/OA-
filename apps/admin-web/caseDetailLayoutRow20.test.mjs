@@ -12,5 +12,10 @@ assert.ok(source.indexOf('aria-label="归档信息"') < source.indexOf('classNam
 for (const field of ["archive_status", "archive_no", "archive_submitter", "archive_submitted_at", "archive_reviewer", "archive_reviewed_at"]) {
   assert.match(source, new RegExp(field));
 }
+assert.doesNotMatch(source, /archive_status\s*\|\|\s*viewingCounselCase\.status/);
+assert.doesNotMatch(source, /archive_submitter\s*\|\|\s*viewingCounselCase\.owner/);
+assert.doesNotMatch(source, /archive_status\s*\|\|\s*row\.status/);
+assert.match(source, /archive_submitter\s*\?\s*casePersonDisplayName/);
+assert.match(source, /archive_reviewer\s*\?\s*casePersonDisplayName/);
 
 console.log("case detail row 20 layout contract passed");

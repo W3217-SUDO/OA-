@@ -367,6 +367,7 @@ DEFAULT_JOB_ROLES = [
     ("SYSTEM-ADMIN", "系统管理员", SYSTEM_ADMIN_JOB_PERMISSIONS),
     ("BUSINESS-SPECIALIST", "业务专员", ["客户新建", "客户编辑", "联系人管理"]),
     ("CUSTOMER-SUPERVISOR", "客户主管", ["客户审批", "客户分级调整", "客户服务端开通"]),
+    ("CUSTOMER-CONTACT", "客户联系人", ["客户服务端登录"]),
     ("CONTRACT-ADMIN", "合同管理员", ["合同创建", "合同变更", "外部合同号管理"]),
     ("INVESTIGATION-SUPERVISOR", "调查主管", ["调查任务发布", "线索审批", "取证安排"]),
     ("INVESTIGATOR-ROLE", "调查员", ["线索提交", "取证执行", "扫描上传"]),
@@ -724,8 +725,10 @@ async def lifespan(_: FastAPI):
         for index, (code, name) in enumerate(DEFAULT_DEPARTMENTS, start=1):
             if code not in existing_department_codes: db.add(Department(code=code, name=name, sort_order=index, created_by="system", updated_by="system"))
         existing_job_role_codes = set((await db.scalars(select(JobRole.code))).all())
+        existing_job_role_names = set((await db.scalars(select(JobRole.name))).all())
         for index, (code, name, permissions) in enumerate(DEFAULT_JOB_ROLES, start=1):
-            if code not in existing_job_role_codes: db.add(JobRole(code=code, name=name, permissions=permissions, sort_order=index, created_by="system", updated_by="system"))
+            if code not in existing_job_role_codes and name not in existing_job_role_names:
+                db.add(JobRole(code=code, name=name, permissions=permissions, sort_order=index, created_by="system", updated_by="system"))
         system_admin_job_role = await db.scalar(select(JobRole).where(JobRole.code == "SYSTEM-ADMIN"))
         if system_admin_job_role:
             system_admin_job_role.name = "系统管理员"
@@ -1495,6 +1498,14 @@ class ContractWholeDeleteInput(BaseModel):
 
 class CaseAttachmentRenameInput(BaseModel):
     original_name: str = Field(min_length=1, max_length=255)
+
+
+class CaseDocumentFolderInput(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class CaseDocumentFolderRenameInput(CaseDocumentFolderInput):
+    original_name: str = Field(min_length=1, max_length=64)
 
 
 class CaseProgressInput(BaseModel):
@@ -2268,9 +2279,9 @@ class LitigationRefundInput(BaseModel):
     original_payment_no: str
     amount: float = Field(gt=0)
     applicant: str
-    refund_account_name: str
-    refund_bank: str
-    refund_account: str
+    refund_account_name: str = ""
+    refund_bank: str = ""
+    refund_account: str = ""
     expected_date: date | None = None
     reason: str = "诉讼费退费"
     remark: str = ""
@@ -2994,7 +3005,7 @@ WORKFLOW_TRANSITIONS: dict[str, dict[str, list[str]]] = {
     "seal": {"草稿": ["待审批", "已撤回"], "待审批": ["待用印", "已拒绝", "已撤回"], "待用印": ["已用印", "已撤回"], "已用印": ["已归档"]},
     "finance": {"草稿": ["待审批"], "待审批": ["已审批", "已退回"], "已审批": ["已付款"], "已付款": ["已对账"]},
     "document": {"待登记": ["待签收"], "待签收": ["已签收"], "已签收": ["已归档"]},
-    "hr": {"试用": ["在职", "离职"], "在职": ["离职", "停用"]},
+    "hr": {"试用": ["在职", "离职"], "在职": ["离职", "停用"], "离职": ["在职"], "停用": ["在职"]},
     "warehouse": {"在库": ["借出", "报废"], "借出": ["归还中"], "归还中": ["在库"]},
     "report": {"生成中": ["已生成"], "已生成": ["已发布"]},
     "system": {"启用": ["停用"], "停用": ["启用"]},
@@ -3958,7 +3969,10 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
         if job_role:
             job_menu_keys = [key for key in (job_role.permissions or []) if key in SYSTEM_MENU_ROUTE_KEYS]
-            permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *job_menu_keys])
+            # The role-management tree is authoritative for an employee's
+            # business role.  Do not silently inherit the broad base "user"
+            # menu set when the configured business role has no menu grants.
+            permission["menu_keys"] = _expand_menu_permission_keys(job_menu_keys)
     overrides = _user_permission_overrides(user)
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
@@ -3996,7 +4010,7 @@ def _is_smoke_test_username(username: object) -> bool:
 
 
 async def _active_employee_usernames(db: AsyncSession) -> set[str]:
-    """Return active login identities backed by an active HR employee record."""
+    """Return active staff login identities backed by an active HR record."""
     employees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
         BusinessRecord.status.not_in({"离职", "停用"}),
@@ -4005,7 +4019,25 @@ async def _active_employee_usernames(db: AsyncSession) -> set[str]:
         username
         for item in employees
         for username in [str((item.data or {}).get("username") or item.owner or "").strip().lower()]
-        if username and not _is_smoke_test_username(username)
+        if username
+        and str((item.data or {}).get("account_type") or "员工账号").strip() == "员工账号"
+        and not _is_smoke_test_username(username)
+    }
+
+
+async def _active_customer_usernames(db: AsyncSession) -> set[str]:
+    """Return active customer-service login identities from HR customer accounts."""
+    employees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all()
+    return {
+        username
+        for item in employees
+        for username in [str((item.data or {}).get("username") or item.owner or "").strip().lower()]
+        if username
+        and str((item.data or {}).get("account_type") or "").strip() == "客户账号"
+        and not _is_smoke_test_username(username)
     }
 
 
@@ -5421,10 +5453,11 @@ async def navigation_menus(identity: dict = Depends(current_identity), db: Async
         )).all()
         if item.key in SYSTEM_MENU_ROUTE_KEYS or item.key.startswith("legacy-menu-")
     ]
-    if identity.get("role") == "admin":
+    if "admin" in _identity_role_ids(identity):
         visible_keys = {item.key for item in items}
     else:
-        permission = await _permission_payload(identity.get("role", "user"), db)
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        permission = await _user_permission_payload(user, db) if user else await _permission_payload(identity.get("role", "user"), db)
         visible_keys = {"dashboard", *permission["menu_keys"]}
         # Parent containers must remain visible for an authorized child, but
         # they are not themselves added as route grants.
@@ -5887,10 +5920,15 @@ async def user_directory(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    eligible_customer_usernames = await _active_employee_usernames(db)
+    directory_purpose = purpose.strip().lower()
+    eligible_usernames = (
+        await _active_customer_usernames(db)
+        if directory_purpose == "customer_contact"
+        else await _active_employee_usernames(db)
+    )
     items = (await db.scalars(select(User).where(
-        User.is_active.is_(True), User.username.in_(eligible_customer_usernames),
-    ).order_by(User.display_name, User.username))).all() if eligible_customer_usernames else []
+        User.is_active.is_(True), User.username.in_(eligible_usernames),
+    ).order_by(User.display_name, User.username))).all() if eligible_usernames else []
     employee_display_names: dict[str, str] = {}
     active_employees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
@@ -5906,6 +5944,7 @@ async def user_directory(
     payload = []
     for item in items:
         position = str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "")
+        account_type = str((item.profile or {}).get("account_type") or "员工账号").strip()
         job_role = roles_by_name.get(position)
         job_permissions = list(job_role.permissions or []) if job_role else []
         display_name = employee_display_names.get(item.username.lower()) or item.display_name
@@ -5917,9 +5956,10 @@ async def user_directory(
             "role": item.role,
             "position": position,
             "staff_role": str((item.profile or {}).get("staff_role") or ""),
+            "account_type": account_type,
             "job_permissions": job_permissions,
             "can_approve_contract": await _is_contract_approver(item, db),
-            "eligible_customer_person": item.username.lower() in eligible_customer_usernames if purpose == "customer_manager" else None,
+            "eligible_customer_person": item.username.lower() in eligible_usernames if directory_purpose in {"customer_manager", "customer_contact"} else None,
         })
     return {"items": payload}
 
@@ -8741,12 +8781,11 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
 async def create_contract_seal_application(contract_id: int, body: ContractSealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status == "审批中" and body.submit:
-        raise HTTPException(status_code=409, detail="合同审批中只能保存同步用印资料，审批通过后系统会自动提交")
+    sync_submission = contract.status == "审批中" and body.submit and bool((contract.data or {}).get("sync_seal"))
+    if body.submit and not sync_submission:
+        raise HTTPException(status_code=409, detail="只有合同提交同步用印时才能在此直接提交审批")
     if contract.status not in {"审批中", "已通过", "履行中", "已完成"}:
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
-    if body.submit:
-        raise HTTPException(status_code=409, detail="请先保存合同用印草稿，在用印中心上传真实用印文件后再提交审批")
     approver = await db.scalar(select(User).where(User.username == body.approver.strip(), User.is_active.is_(True)))
     if not approver:
         raise HTTPException(status_code=422, detail="用印审批人不存在或已停用")
@@ -8763,7 +8802,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     if asset.status != "可用":
         raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
-    seal_status = "草稿"
+    seal_status = "待审批" if sync_submission else "草稿"
     seal = BusinessRecord(
         module="seal",
         serial_no=serial,
@@ -8797,9 +8836,15 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         "seal_requested_at": datetime.now().isoformat(timespec="seconds"),
         "sync_seal": contract.status == "审批中",
     }
+    if sync_submission:
+        contract.data = {
+            **(contract.data or {}),
+            "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"),
+            "sync_seal_file_required": False,
+        }
     db.add_all([
-        WorkflowEvent(record_id=seal.id, action="创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),
-        WorkflowEvent(record_id=contract.id, action="配置同步用印" if contract.status == "审批中" else "发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if body.submit else "，保存为草稿")),
+        WorkflowEvent(record_id=seal.id, action="创建合同用印申请并提交审批" if sync_submission else "创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),
+        WorkflowEvent(record_id=contract.id, action="配置同步用印" if contract.status == "审批中" else "发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if sync_submission else "，保存为草稿")),
     ])
     await db.commit()
     await db.refresh(seal)
@@ -9473,7 +9518,7 @@ async def _sync_investigation_materials(record: BusinessRecord, db: AsyncSession
 
 @app.get(f"{settings.api_prefix}/investigations/clues/import-template")
 async def clue_import_template(_: dict = Depends(current_identity)):
-    content = "\ufeff线索标题,客户,调查平台,侵权产品,负责人,对方主体,来源链接,说明\r\n线上店铺销售疑似侵权产品,示例客户,淘宝,示例商品,管理者,示例店铺,https://example.com,每一行仅填写一种侵权产品"
+    content = "\ufeff线索标题,调查任务编号,父调查编号,客户编号,客户,调查平台,侵权产品,负责人,对方主体,来源链接,说明\r\n线上店铺销售疑似侵权产品,RW2026070001,RW2026070000,KH2026070001,示例客户,淘宝,示例商品,管理者,示例店铺,https://example.com,优先使用唯一业务编号自动关联"
     return Response(content=content.encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="clue-import-template.csv"'})
 
 
@@ -9626,10 +9671,15 @@ async def import_investigation_clues(file: UploadFile = File(...), identity: dic
     reader = csv.DictReader(io.StringIO(content))
     existing_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue"))).all()
     existing = {(x.title.strip().casefold(), x.customer.strip().casefold(), str((x.data or {}).get("product", "")).strip().casefold()) for x in existing_rows}
+    scope = await _record_scope_conditions(identity, db)
+    scoped_records = list((await db.scalars(select(BusinessRecord).where(*scope))).all())
+    customers = [item for item in scoped_records if item.module == "customer"]
+    investigations = [item for item in scoped_records if item.module == "investigation"]
+    tasks = [item for item in scoped_records if item.module == "task"]
     seen: set[tuple[str, str, str]] = set(); created = 0; errors: list[dict] = []
     for row_no, row in enumerate(reader, 2):
         title = (row.get("线索标题") or row.get("title") or "").strip()
-        customer = (row.get("客户") or row.get("customer") or "").strip()
+        customer_value = (row.get("客户编号") or row.get("customer_no") or row.get("客户") or row.get("customer") or "").strip()
         platform = (row.get("调查平台") or row.get("platform") or "").strip()
         product = (row.get("侵权产品") or row.get("product") or "").strip()
         owner = (row.get("负责人") or row.get("owner") or identity["username"]).strip()
@@ -9637,6 +9687,28 @@ async def import_investigation_clues(file: UploadFile = File(...), identity: dic
             errors.append({"row": row_no, "error": "线索标题、侵权产品为必填项"}); continue
         if any(separator in product for separator in ["；", ";", "、", "\n"]):
             errors.append({"row": row_no, "error": "每行只能填写一种侵权产品，请拆分为多行"}); continue
+        try:
+            task = _unique_import_record(tasks, (row.get("调查任务编号") or row.get("task_no") or "").strip(), "关联调查任务")
+            investigation = _unique_import_record(investigations, (row.get("父调查编号") or row.get("调查编号") or row.get("investigation_no") or "").strip(), "关联父调查")
+            customer_record = _unique_import_record(customers, customer_value, "关联客户")
+            relations = {name: item for name, item in (("task", task), ("investigation", investigation), ("customer", customer_record)) if item}
+            if not relations:
+                raise ValueError("必须提供调查任务编号、父调查编号或客户编号/名称以建立真实关联")
+            _validate_import_relation_consistency(relations)
+            relation_data = _import_relation_data(task=task, investigation=investigation, customer=customer_record)
+            inherited_customer_id = relation_data.get("customer_record_id") or relation_data.get("customer_id")
+            if inherited_customer_id:
+                inherited_customer = next((item for item in customers if item.id == int(inherited_customer_id)), None)
+                if inherited_customer:
+                    if customer_record and customer_record.id != inherited_customer.id:
+                        raise ValueError(f"关联关系冲突：所选任务/调查不属于客户 {customer_record.serial_no}")
+                    customer_record = inherited_customer
+                    relation_data.update(_import_relation_data(customer=inherited_customer))
+            customer = customer_record.title if customer_record else str(relation_data.get("customer_title") or "").strip()
+            if not customer:
+                raise ValueError("关联任务/调查未绑定客户，请先修复父级关系")
+        except ValueError as exc:
+            errors.append({"row": row_no, "error": str(exc)}); continue
         key = (title.casefold(), customer.casefold(), product.casefold())
         if key in existing or key in seen:
             errors.append({"row": row_no, "error": "相同客户、标题和侵权产品的线索重复"}); continue
@@ -9645,7 +9717,7 @@ async def import_investigation_clues(file: UploadFile = File(...), identity: dic
             module="clue", serial_no=serial_no, title=title, customer=customer,
             status="草稿", owner=owner or identity["username"], department="上海分所",
             description=(row.get("说明") or row.get("description") or "").strip(),
-            data={"platform": platform, "product": product, "opponent": (row.get("对方主体") or row.get("opponent") or "").strip(), "source_url": (row.get("来源链接") or row.get("source_url") or "").strip(), "imported_at": datetime.now().isoformat(timespec="seconds")},
+            data={**relation_data, "source_task_id": task.id if task else relation_data.get("task_record_id"), "source_task_no": task.serial_no if task else relation_data.get("task_no", ""), "platform": platform, "product": product, "opponent": (row.get("对方主体") or row.get("opponent") or "").strip(), "source_url": (row.get("来源链接") or row.get("source_url") or "").strip(), "imported_at": datetime.now().isoformat(timespec="seconds")},
         )
         db.add(item); await db.flush()
         db.add(WorkflowEvent(record_id=item.id, action="批量导入线索", to_status="草稿", operator=identity["username"], comment=f"CSV 第 {row_no} 行"))
@@ -9688,7 +9760,8 @@ async def import_investigation_notaries(file: UploadFile = File(...), identity: 
         try: issued_date = str(date.fromisoformat(raw_issued)) if raw_issued else ""
         except ValueError: errors.append({"row": row_no, "error": "签发日期格式应为 YYYY-MM-DD"}); continue
         clue_data = dict(clue.data or {}); serial_no = f"GZ{datetime.now():%Y%m%d%H%M%S}{row_no:04d}{uuid4().hex[:4].upper()}"
-        item = BusinessRecord(module="notary", serial_no=serial_no, title=(row.get("公证标题") or row.get("title") or f"{clue.title}—公证审核").strip(), customer=clue.customer, status="等待材料", owner=(row.get("负责人") or row.get("owner") or clue.owner).strip(), department=clue.department, description=(row.get("说明") or row.get("description") or "批量导入公证记录").strip(), data={"clue_id": clue.id, "clue_no": clue.serial_no, "platform": clue_data.get("platform", ""), "product": clue_data.get("product", ""), "case_id": clue_data.get("converted_case_id"), "case_no": clue_data.get("converted_case_no", ""), "review_due_date": str(due), "certificate_no": certificate_no, "certificate_issued_date": issued_date, "certificate_storage_location": (row.get("存放位置") or row.get("storage_location") or "").strip(), "physical_received": (row.get("实物已收") or row.get("physical_received") or "").strip().casefold() in {"是", "true", "1", "yes"}, "imported_at": datetime.now().isoformat(timespec="seconds")})
+        relation_data = _import_relation_data(clue=clue)
+        item = BusinessRecord(module="notary", serial_no=serial_no, title=(row.get("公证标题") or row.get("title") or f"{clue.title}—公证审核").strip(), customer=clue.customer, status="等待材料", owner=(row.get("负责人") or row.get("owner") or clue.owner).strip(), department=clue.department, description=(row.get("说明") or row.get("description") or "批量导入公证记录").strip(), data={**relation_data, "clue_id": clue.id, "clue_no": clue.serial_no, "platform": clue_data.get("platform", ""), "product": clue_data.get("product", ""), "case_id": clue_data.get("converted_case_id") or relation_data.get("case_record_id"), "case_no": clue_data.get("converted_case_no", "") or relation_data.get("case_no", ""), "review_due_date": str(due), "certificate_no": certificate_no, "certificate_issued_date": issued_date, "certificate_storage_location": (row.get("存放位置") or row.get("storage_location") or "").strip(), "physical_received": (row.get("实物已收") or row.get("physical_received") or "").strip().casefold() in {"是", "true", "1", "yes"}, "imported_at": datetime.now().isoformat(timespec="seconds")})
         db.add(item); await db.flush(); previous = clue.status; clue.status = "已转案件" if clue_data.get("converted_case_id") else "待公证"; clue.data = {**clue_data, "notary": "等待公证书扫描件", "notary_record_id": item.id}
         db.add_all([WorkflowEvent(record_id=clue.id, action="批量导入公证信息", from_status=previous, to_status=clue.status, operator=identity["username"], comment=f"CSV 第 {row_no} 行，生成 {serial_no}"), WorkflowEvent(record_id=item.id, action="批量导入公证", to_status="等待材料", operator=identity["username"], comment=f"来源线索 {clue.serial_no}；等待公证书扫描件")])
         seen.add(clue.id); created_ids.append(item.id)
@@ -9710,6 +9783,7 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="CSV 必须使用 UTF-8 编码") from exc
     records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "notary", *(await _record_scope_conditions(identity, db))))).all()
+    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db))))).all()
     by_clue = {str((item.data or {}).get("clue_no", "")).strip().casefold(): item for item in records if (item.data or {}).get("clue_no")}
     by_certificate = {str((item.data or {}).get("certificate_no", "")).strip().casefold(): item for item in records if (item.data or {}).get("certificate_no")}
     updated = 0; errors: list[dict] = []; seen: set[int] = set(); imported_rows: list[dict] = []
@@ -9724,11 +9798,23 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
         if item.id in seen:
             errors.append({"row": row_no, "error": "同一公证记录在文件中重复"}); continue
         data = dict(item.data or {})
+        try:
+            case_record = _unique_import_record(cases, (row.get("案号") or row.get("案件编号") or row.get("case_no") or "").strip(), "关联案件")
+            if case_record:
+                existing_case_id = data.get("case_record_id") or data.get("case_id")
+                existing_case_no = str(data.get("case_no") or "").strip()
+                if existing_case_id and int(existing_case_id) != case_record.id:
+                    raise ValueError(f"关联关系冲突：公证记录不属于案件 {case_record.serial_no}")
+                if existing_case_no and existing_case_no != case_record.serial_no:
+                    raise ValueError(f"关联关系冲突：公证记录不属于案件 {case_record.serial_no}")
+                data.update(_import_relation_data(case=case_record))
+        except ValueError as exc:
+            errors.append({"row": row_no, "error": str(exc)}); continue
         values = {
             "certificate_no": certificate_no,
             "warehouse": (row.get("仓库") or row.get("仓库位置") or row.get("warehouse") or "").strip(),
             "invoice_no": (row.get("发票号") or row.get("invoice_no") or "").strip(),
-            "case_no": (row.get("案号") or row.get("案件编号") or row.get("case_no") or "").strip(),
+            "case_no": case_record.serial_no if case_record else "",
             "investigator": (row.get("调查员") or row.get("investigator") or "").strip(),
             "investigated_at": (row.get("调查时间") or row.get("investigated_at") or "").strip(),
             "infringement_method": (row.get("侵权方式") or row.get("infringement_method") or "").strip(),
@@ -9977,6 +10063,7 @@ async def _build_evidence_record(item: EvidenceRegistrationItem, identity: dict,
         department=user.department if user else (clue.department if clue else "上海分所"),
         description=item.description,
         data={
+            **(_import_relation_data(clue=clue) if clue else {}),
             "source": item.source, "clue_id": clue.id if clue else None,
             "clue_no": clue.serial_no if clue else "",
             "notarization_no": item.notarization_no.strip(),
@@ -13429,7 +13516,7 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
 async def submit_litigation_refund(refund_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _ensure_refund_company_record(refund_id, identity, db); await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "已驳回"}: raise HTTPException(status_code=409, detail="当前退款申请不能提交")
-    data = item.data or {}; required = {"法院": data.get("court"), "原缴费票号": data.get("original_payment_no"), "申请人": data.get("applicant"), "退款账户名": data.get("refund_account_name"), "退款银行": data.get("refund_bank"), "退款账号": data.get("refund_account")}
+    data = item.data or {}; required = {"法院": data.get("court"), "原缴费票号": data.get("original_payment_no"), "申请人": data.get("applicant")}
     missing = [name for name, value in required.items() if not value]
     if missing: raise HTTPException(status_code=422, detail="退款申请缺少：" + "、".join(missing))
     previous = item.status; item.status = "待审批"; db.add(WorkflowEvent(record_id=item.id, action="提交诉讼费退款", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment))
@@ -20073,6 +20160,97 @@ async def _sync_seal_document_names(record: BusinessRecord, db: AsyncSession) ->
     record.data = {**(record.data or {}), "document_names": "、".join(files)}
 
 
+CASE_CUSTOM_DOCUMENT_FOLDERS_KEY = "custom_case_document_folders"
+CASE_DOCUMENT_FOLDER_HEADERS = {"客户文档", "合同文档", "调查文档", "案件文档", "调查文档全部", "案件文档全部"}
+
+
+def _case_custom_document_folders(record: BusinessRecord) -> list[str]:
+    values = (record.data or {}).get(CASE_CUSTOM_DOCUMENT_FOLDERS_KEY) or []
+    if not isinstance(values, list):
+        return []
+    return list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
+
+
+def _normalize_case_document_folder_name(value: str) -> str:
+    name = str(value or "").strip()
+    if not name or len(name) > 64 or any(character in name for character in "/\\") or any(ord(character) < 32 for character in name):
+        raise HTTPException(status_code=422, detail="目录名称不能为空、不能超过 64 个字符，且不能包含路径字符")
+    if name in CASE_DOCUMENT_FOLDER_HEADERS:
+        raise HTTPException(status_code=409, detail="该名称是系统目录，不能作为自定义目录")
+    return name
+
+
+async def _ensure_case_document_folder_name_available(
+    name: str, record: BusinessRecord, db: AsyncSession, *, ignored_name: str = "",
+) -> None:
+    custom_names = {value for value in _case_custom_document_folders(record) if value != ignored_name}
+    if name in custom_names:
+        raise HTTPException(status_code=409, detail="当前案件已存在同名目录")
+    system_name = await db.scalar(select(SystemParameter.id).where(
+        SystemParameter.category == "case_file_type",
+        SystemParameter.name == name,
+        SystemParameter.is_active.is_(True),
+    ))
+    if system_name:
+        raise HTTPException(status_code=409, detail="该名称已是系统案件文档目录")
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/document-folders", status_code=status.HTTP_201_CREATED)
+async def create_case_document_folder(
+    case_id: int, body: CaseDocumentFolderInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(record, identity, db)
+    name = _normalize_case_document_folder_name(body.name)
+    await _ensure_case_document_folder_name_available(name, record, db)
+    folders = [*_case_custom_document_folders(record), name]
+    record.data = {**(record.data or {}), CASE_CUSTOM_DOCUMENT_FOLDERS_KEY: folders}
+    db.add(WorkflowEvent(record_id=record.id, action="新增案件文档目录", from_status=record.status, to_status=record.status, operator=identity["username"], comment=name))
+    await db.commit()
+    return {"case_id": record.id, "folders": folders}
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/document-folders")
+async def rename_case_document_folder(case_id: int, body: CaseDocumentFolderRenameInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(record, identity, db)
+    original_name = _normalize_case_document_folder_name(body.original_name)
+    name = _normalize_case_document_folder_name(body.name)
+    folders = _case_custom_document_folders(record)
+    if original_name not in folders:
+        raise HTTPException(status_code=404, detail="自定义案件文档目录不存在")
+    if name == original_name:
+        return {"case_id": record.id, "folders": folders}
+    await _ensure_case_document_folder_name_available(name, record, db, ignored_name=original_name)
+    folders = [name if value == original_name else value for value in folders]
+    record.data = {**(record.data or {}), CASE_CUSTOM_DOCUMENT_FOLDERS_KEY: folders}
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id, FileAttachment.category == original_name))).all())
+    for attachment in attachments:
+        attachment.category = name
+    db.add(WorkflowEvent(record_id=record.id, action="重命名案件文档目录", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{original_name} → {name}"))
+    await db.commit()
+    return {"case_id": record.id, "folders": folders, "moved_files": len(attachments)}
+
+
+@app.delete(f"{settings.api_prefix}/cases/{{case_id}}/document-folders")
+async def delete_case_document_folder(case_id: int, body: CaseDocumentFolderInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(record, identity, db)
+    name = _normalize_case_document_folder_name(body.name)
+    folders = _case_custom_document_folders(record)
+    if name not in folders:
+        raise HTTPException(status_code=404, detail="自定义案件文档目录不存在")
+    has_files = await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, FileAttachment.category == name).limit(1))
+    if has_files:
+        raise HTTPException(status_code=409, detail="目录中已有文件，请先移动或删除文件后再删除目录")
+    folders = [value for value in folders if value != name]
+    record.data = {**(record.data or {}), CASE_CUSTOM_DOCUMENT_FOLDERS_KEY: folders}
+    db.add(WorkflowEvent(record_id=record.id, action="删除案件文档目录", from_status=record.status, to_status=record.status, operator=identity["username"], comment=name))
+    await db.commit()
+    return {"case_id": record.id, "folders": folders}
+
+
 @app.post(f"{settings.api_prefix}/cases/attachments/download")
 async def download_case_attachments(body: AttachmentBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
@@ -21404,9 +21582,10 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
         raise HTTPException(status_code=422, detail="所选职务不存在或已停用")
     profile = {**body.data, "account_type": account_type, "employee_no": employee_no, "company": body.company.strip(), "position": body.position.strip()}
     user: User | None = None
-    if account_type == "员工账号":
+    login_backed_account = account_type in {"员工账号", "客户账号"}
+    if login_backed_account:
         if not username:
-            raise HTTPException(status_code=422, detail="员工账号必须填写登录用户名")
+            raise HTTPException(status_code=422, detail="登录账号必须填写登录用户名")
         if username == "admin":
             raise HTTPException(status_code=409, detail="不能通过员工档案创建或覆盖管理员账号")
         if not re.fullmatch(r"[a-z0-9._-]{2,64}", username):
@@ -21421,11 +21600,11 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
             raise HTTPException(status_code=409, detail="登录账号已存在")
         policy = await _security_policy(db)
         if len(body.password) < policy.min_password_length:
-            raise HTTPException(status_code=422, detail=f"员工账号密码至少需要 {policy.min_password_length} 位")
+            raise HTTPException(status_code=422, detail=f"登录账号密码至少需要 {policy.min_password_length} 位")
         user = User(
             username=username, display_name=display_name, department=body.department.strip(),
-            # Job position controls investigation capability.  A new HR
-            # account always starts as the least-privileged system user.
+            # Job position controls business capability. Customer accounts also
+            # need a real low-privilege User so they can be bound and activated.
             role="user", role_ids=["user"], profile=profile, password_hash=hash_password(body.password),
             is_active=body.is_active, password_changed_at=None, must_change_password=True,
         )
@@ -21467,13 +21646,15 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     account_type = str(body.data.get("account_type") or (employee.data or {}).get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
+    if account_type != "员工账号" and body.role != "user":
+        raise HTTPException(status_code=422, detail="客户账号和外部合作账号只能使用普通用户权限")
     username = str((employee.data or {}).get("username") or employee.owner).strip().lower()
     display_name = await _require_unique_hr_display_name(body.display_name, db, employee_id=employee.id, linked_username=username)
     user = await db.scalar(select(User).where(User.username == username))
-    if account_type == "员工账号" and not user: raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在，不能只修改一侧资料")
+    if account_type in {"员工账号", "客户账号"} and not user: raise HTTPException(status_code=409, detail="登录账号关联的系统用户不存在，不能只修改一侧资料")
     if user and user.username == "admin":
         raise HTTPException(status_code=409, detail="管理员账号不能通过员工档案修改、停用或改名")
-    if account_type != "员工账号" and user:
+    if account_type == "外部合作账号" and user:
         raise HTTPException(status_code=409, detail="请先在人事中心员工管理中解除登录账号关联，再变更为非员工账号")
     if not user:
         previous_status = employee.status
@@ -21490,9 +21671,9 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     # Formal resignation/HR suspension still goes through the dedicated
     # transition endpoint, which also disables the linked account.
     previous_status = employee.status
-    profile = {**(user.profile or {}), **body.data, "account_type": "员工账号", "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
+    profile = {**(user.profile or {}), **body.data, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
     user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.role_ids = [body.role]; user.is_active = body.is_active; user.profile = profile
-    contract_approval_enabled = bool(profile.get("contract_approval_enabled"))
+    contract_approval_enabled = account_type == "员工账号" and bool(profile.get("contract_approval_enabled"))
     employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": body.role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
@@ -21507,7 +21688,7 @@ async def update_hr_employee_login_status(employee_id: int, body: HrEmployeeLogi
         raise HTTPException(status_code=404, detail="员工档案不存在")
     data = dict(employee.data or {})
     account_type = str(data.get("account_type") or "员工账号").strip()
-    if account_type != "员工账号":
+    if account_type not in {"员工账号", "客户账号"}:
         raise HTTPException(status_code=409, detail="该员工档案未关联系统登录账号")
     username = str(data.get("username") or employee.owner).strip().lower()
     user = await db.scalar(select(User).where(User.username == username))
@@ -21583,11 +21764,10 @@ async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, ident
     """Return every conservative deletion blocker used by both HR preflight and delete."""
     account_type = str((employee.data or {}).get("account_type") or "员工账号").strip()
     username = str((employee.data or {}).get("username") or "").strip().lower()
-    # Customer/external HR profiles deliberately have no system login.  Their
-    # owner is the administrator who created the profile, not an account that
-    # belongs to the profile, so it must not trigger admin protection or a
-    # broad business-reference search during deletion.
-    if account_type == "员工账号" and not username:
+    # External HR profiles deliberately have no system login. Their owner is
+    # the administrator who created the profile, not an account that belongs to
+    # the profile, so it must not trigger admin protection or broad references.
+    if account_type in {"员工账号", "客户账号"} and not username:
         username = str(employee.owner or "").strip().lower()
     blockers: list[dict[str, object]] = []
     user = await db.scalar(select(User).where(User.username == username)) if username else None
@@ -22101,7 +22281,10 @@ async def transition_employee(employee_id: int, body: HrTransitionInput, identit
     if body.effective_date < date(2000, 1, 1): raise HTTPException(status_code=422, detail="办理日期无效")
     previous = item.status; data = dict(item.data or {})
     if body.to_status == "在职":
-        data.update({"regularized_at": str(body.effective_date), "regularized_by": identity["username"]}); action = "试用转正"
+        if previous == "试用":
+            data.update({"regularized_at": str(body.effective_date), "regularized_by": identity["username"]}); action = "试用转正"
+        else:
+            data.update({"reactivated_at": str(body.effective_date), "reactivated_by": identity["username"]}); action = "恢复在职"
     elif body.to_status == "离职":
         data.update({"offboard_date": str(body.effective_date), "offboard_reason": reason, "handover_to": body.handover_to.strip(), "offboard_by": identity["username"]}); action = "办理离职"
     else:

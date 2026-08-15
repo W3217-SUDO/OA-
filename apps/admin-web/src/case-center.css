@@ -55,6 +55,13 @@
 .case-counsel-detail-card>.ant-card-head{min-height:27px;padding:0 8px}
 .case-counsel-detail-card>.ant-card-head .ant-card-head-title{padding:5px 0;font-size:12px}
 .case-counsel-detail-card>.ant-card-body{padding:0}
+.case-legacy-summary-scroll{width:100%;overflow-x:auto}
+.case-legacy-summary{width:100%;min-width:760px;border-collapse:collapse;table-layout:fixed;color:#111;font-size:12px}
+.case-legacy-summary col.case-legacy-label{width:82px}
+.case-legacy-summary th,.case-legacy-summary td{height:21px;padding:2px 5px;border-right:1px solid #dce2e8;border-bottom:1px solid #dce2e8;line-height:16px;vertical-align:middle;overflow-wrap:anywhere}
+.case-legacy-summary th{background:#fafbfc;text-align:right;white-space:nowrap;font-weight:400}
+.case-legacy-summary td{background:#fff}
+.case-legacy-summary .ant-btn-link{height:auto;padding:0;line-height:16px;white-space:normal;text-align:left}
 .case-counsel-detail-card .form-grid{grid-template-columns:repeat(4,minmax(150px,1fr))}
 .case-counsel-detail-card .form-grid p{padding:2px 6px;line-height:16px}
 .case-detail-body-grid{grid-template-columns:210px minmax(420px,1fr) 230px;min-height:calc(100vh - 238px)}
@@ -123,6 +130,7 @@
 .case-doc-icon{flex:0 0 16px;color:#e8b834;font-size:16px}
 .case-doc-folder-open .case-doc-icon{color:#e2aa20}
 .case-doc-folder>span:last-child,.case-doc-child>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-doc-tree-row{display:flex;align-items:center;min-width:0;height:22px}.case-doc-tree-row>.case-doc-folder,.case-doc-tree-row>.case-doc-child{flex:1 1 auto;min-width:0}.case-doc-tree-action.ant-btn{flex:0 0 20px;width:20px;min-width:20px;height:20px;padding:0;font-size:13px}.case-doc-tree-add.ant-btn{color:#52a83b}.case-doc-tree-add.ant-btn:hover{color:#3d8c29;background:#edf8e9}
 
 @media(max-width:1280px){
   .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
@@ -172,3 +180,17 @@
 .case-original-layout .case-original-table { min-height: 0; }
 .case-original-layout .case-mine-list-actions { position:relative; z-index:1; }
 .case-original-layout .case-company-list-actions { position:relative; z-index:1; }
+
+/* 8.12 row 2 rework: keep detail controls and summaries fixed; scroll records only. */
+.page-workbench:has(.case-detail-static-root){overflow:hidden}
+.page-workbench > .case-center-page:has(.case-detail-static-root){height:100%;min-height:0}
+.case-detail-static-root{position:absolute!important;inset:0!important;width:100%;height:100%!important;min-height:0;overflow:hidden}
+.case-detail-static-root .ant-drawer-content-wrapper{height:100%!important}
+.case-detail-static-root .ant-drawer-content{display:flex;height:100%;min-height:0;flex-direction:column}
+.case-detail-static-root .ant-drawer-header{flex:0 0 auto}
+.case-detail-static-root .ant-drawer-body{display:flex;min-height:0;flex:1 1 auto;overflow:hidden}
+.case-detail-static-root .case-detail-workbench{display:flex;width:100%;height:100%;min-height:0!important;flex-direction:column;overflow:hidden}
+.case-detail-static-root .case-counsel-detail-card,
+.case-detail-static-root .case-court-summary,
+.case-detail-static-root .case-archive-summary{flex:0 0 auto}
+.case-detail-static-root .case-detail-body-grid{min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}

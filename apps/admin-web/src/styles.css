@@ -150,6 +150,40 @@ body {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+
+/* Data workbenches keep filters/actions visible and scroll only the result area. */
+.page-workbench:has(> .ant-card > .ant-card-body > .ant-table-wrapper) {
+  overflow: hidden;
+}
+.page-workbench > .ant-card:has(> .ant-card-body > .ant-table-wrapper) {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.page-workbench > .ant-card:has(> .ant-card-body > .ant-table-wrapper) > .ant-card-head {
+  flex: 0 0 auto;
+}
+.page-workbench > .ant-card:has(> .ant-card-body > .ant-table-wrapper) > .ant-card-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+.page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper .ant-table-thead > tr > th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+}
 .page-head {
   height: 63px;
   display: flex;
