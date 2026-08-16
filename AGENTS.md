@@ -101,6 +101,11 @@
 - 每次部署后必须执行并汇报：定向测试、前端生产构建、后端相关测试或 `py_compile`、`git diff --check`、`systemctl restart sunhold-dev-api sunhold-dev-web`、服务 active 状态、`/health`、目标页面 HTTP 200。
 - 不能把未部署、未重启、未健康检查或未打开 8089 验证的修改说成“服务器已解决”。
 
+## Immutable Release Version Rule
+
+- Release worktrees are immutable. Before every 8089 deployment, inspect the highest existing server release version, increment it by exactly one, and create a new `/opt/sunhold-oa/worktrees/release-vX.Y.Z` directory. Never reuse, edit, delete, or overwrite an earlier `release-v*` directory; earlier releases must remain available for rollback.
+- The release directory version, `apps/admin-web/package.json`, and both top-level version entries in `apps/admin-web/package-lock.json` must match. A deployment is not complete until the running systemd `WorkingDirectory` points to that exact new release directory and browser acceptance confirms the new build.
+
 ## Excel and Legacy Reference Rule
 
 - Excel issue workbooks are evidence backlogs, not the project objective or the agent's sole operational state. The active conversation goal defines the current objective and scope.
