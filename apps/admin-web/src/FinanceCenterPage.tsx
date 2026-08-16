@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -148,6 +149,7 @@ type IncomingPayment = {
   allocated_amount: number | null;
   remaining_amount: number | null;
   contract_no: string;
+  bank_source: string;
   allocations: any[];
   operator: string;
   remark: string;
@@ -164,6 +166,23 @@ type Receivable = {
   received_amount: number;
   remaining_amount: number;
   status: string;
+};
+type AllocationCandidate = {
+  key: string;
+  receivable_plan_id: number;
+  contract_id: number;
+  contract_no: string;
+  case_id: number | null;
+  case_no: string;
+  case_title: string;
+  plaintiff: string;
+  defendant: string;
+  case_stage: string;
+  submission_date: string;
+  fee_type: string;
+  total_amount: number;
+  received_amount: number;
+  remaining_amount: number;
 };
 const feeTypes = [
   "官方费用",
@@ -1169,6 +1188,14 @@ export default function FinanceCenterPage({
   const [allocateTarget, setAllocateTarget] = useState<IncomingPayment | null>(
     null,
   );
+  const [allocationCandidates, setAllocationCandidates] = useState<AllocationCandidate[]>([]);
+  const [allocationLoading, setAllocationLoading] = useState(false);
+  const [selectedAllocationKeys, setSelectedAllocationKeys] = useState<(string | number)[]>([]);
+  const [allocationAmounts, setAllocationAmounts] = useState<Record<string, number>>({});
+  const [allocationKeyword, setAllocationKeyword] = useState("");
+  const [allocationStage, setAllocationStage] = useState("");
+  const [allocationFeeType, setAllocationFeeType] = useState("");
+  const [allocationComment, setAllocationComment] = useState("");
   const [incomingAllocationTarget, setIncomingAllocationTarget] =
     useState<IncomingPayment | null>(null);
   const [incomingDetailTarget, setIncomingDetailTarget] =
@@ -1202,7 +1229,6 @@ export default function FinanceCenterPage({
   const [recordFileForm] = Form.useForm();
   const [incomingForm] = Form.useForm();
   const [claimForm] = Form.useForm();
-  const [allocateForm] = Form.useForm();
   const [settlementBatchForm] = Form.useForm();
   const watchedFeeType = Form.useWatch("fee_type", feeForm);
   const [feeTypeOverride, setFeeTypeOverride] = useState("");
@@ -2238,45 +2264,85 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "到账认领失败");
     }
   };
+  const openIncomingAllocation = async (payment: IncomingPayment) => {
+    setAllocateTarget(payment);
+    setAllocationLoading(true);
+    setSelectedAllocationKeys([]);
+    setAllocationAmounts({});
+    setAllocationKeyword("");
+    setAllocationStage("");
+    setAllocationFeeType("");
+    setAllocationComment("");
+    try {
+      const response = await api.get(
+        `/finance/incoming-payments/${payment.id}/allocation-candidates`,
+      );
+      const rows = Array.isArray(response.data?.items) ? response.data.items : [];
+      setAllocationCandidates(rows);
+      setAllocationAmounts(
+        Object.fromEntries(
+          rows.map((row: AllocationCandidate) => [row.key, row.remaining_amount]),
+        ),
+      );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "可分配案件费用加载失败");
+      setAllocationCandidates([]);
+    } finally {
+      setAllocationLoading(false);
+    }
+  };
+  const filteredAllocationCandidates = allocationCandidates.filter((row) => {
+    const needle = allocationKeyword.trim().toLocaleLowerCase();
+    const keywordMatched = !needle || [
+      row.case_no,
+      row.case_title,
+      row.plaintiff,
+      row.defendant,
+      row.contract_no,
+    ].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
+    return keywordMatched
+      && (!allocationStage || row.case_stage === allocationStage)
+      && (!allocationFeeType || row.fee_type === allocationFeeType);
+  });
   const allocateIncoming = async () => {
     if (!allocateTarget) return;
-    const v = await allocateForm.validateFields();
-    const amount = Number(v.amount || 0);
-    const settlementAmount = v.settlement_amount == null ? null : Number(v.settlement_amount);
-    const archiveFee = Number(v.archive_fee || 0);
-    if (settlementAmount != null && settlementAmount > amount + 0.001) {
-      message.warning("结算金额不能大于本次分配金额");
+    const selected = allocationCandidates.filter((row) => selectedAllocationKeys.includes(row.key));
+    if (!selected.length) {
+      message.warning("请至少选择一笔待回款案件费用");
       return;
     }
-    if (archiveFee > 0 && (settlementAmount == null || archiveFee > settlementAmount + 0.001)) {
-      message.warning("归档费不能大于结算金额");
+    const allocations = selected.map((row) => ({
+      receivable_plan_id: row.receivable_plan_id,
+      amount: Number(allocationAmounts[row.key] || 0),
+      case_no: row.case_no || "",
+      settlement_items: [{
+        fee_type: row.fee_type || "代理费",
+        amount: Number(allocationAmounts[row.key] || 0),
+        settlement_amount: Number(allocationAmounts[row.key] || 0),
+        archive_fee: 0,
+      }],
+    }));
+    if (allocations.some((entry) => entry.amount <= 0)) {
+      message.warning("所选费用的本次回款金额必须大于 0");
+      return;
+    }
+    const total = allocations.reduce((sum, entry) => sum + entry.amount, 0);
+    if (allocateTarget.remaining_amount != null && total > allocateTarget.remaining_amount + 0.001) {
+      message.warning(`本次分配合计不能超过未分配余额 ${money(allocateTarget.remaining_amount)}`);
       return;
     }
     try {
       await api.post(
         `/finance/incoming-payments/${allocateTarget.id}/allocate`,
         {
-          allocations: [
-            {
-              receivable_plan_id: v.receivable_plan_id,
-              amount: v.amount,
-              case_no: v.case_no || "",
-              settlement_items: v.case_no && settlementAmount != null
-                ? [{
-                    fee_type: v.settlement_fee_type || "代理费",
-                    amount: v.amount,
-                    settlement_amount: settlementAmount,
-                    archive_fee: archiveFee,
-                  }]
-                : [],
-            },
-          ],
-          comment: v.comment || "",
+          allocations,
+          comment: allocationComment,
         },
       );
       message.success("回款已分配并同步更新合同应收");
       setAllocateTarget(null);
-      allocateForm.resetFields();
+      setAllocationCandidates([]);
+      setSelectedAllocationKeys([]);
       load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "回款分配失败");
@@ -3126,11 +3192,7 @@ export default function FinanceCenterPage({
         r.remaining_amount > 0 && (
           <Button
             type="link"
-            onClick={() => {
-              allocateForm.resetFields();
-              allocateForm.setFieldsValue({ amount: r.remaining_amount });
-              setAllocateTarget(r);
-            }}
+            onClick={() => openIncomingAllocation(r)}
           >
             分配
           </Button>
@@ -6219,8 +6281,8 @@ export default function FinanceCenterPage({
       客户: row.customer || row.claimed_customer,
       客户名称: row.customer || row.claimed_customer,
       客户管理人: financePersonDisplayName(
-        data.customer_manager || linkedCaseData.customer_manager,
-        data.customer_manager_display_name || linkedCaseData.customer_manager_display_name,
+        row.customer_manager || data.customer_manager || linkedCaseData.customer_manager,
+        row.customer_manager_display_name || data.customer_manager_display_name || linkedCaseData.customer_manager_display_name,
       ),
       案号: data.case_no,
       案件编号: data.case_no,
@@ -11029,7 +11091,21 @@ export default function FinanceCenterPage({
             name="payer_name"
             rules={[{ required: true, min: 2 }]}
           >
-            <Input />
+            <AutoComplete
+              allowClear
+              placeholder="输入回款单位，或从系统客户中选择"
+              options={customers.map((customer) => ({
+                value: customer.title,
+                label: customer.serial_no
+                  ? `${customer.title}｜${customer.serial_no}`
+                  : customer.title,
+              }))}
+              filterOption={(inputValue, option) =>
+                String(option?.label || "")
+                  .toLowerCase()
+                  .includes(inputValue.trim().toLowerCase())
+              }
+            />
           </Form.Item>
           <Form.Item
             label="银行流水号"
@@ -11044,37 +11120,63 @@ export default function FinanceCenterPage({
         </Form>
       </Modal>
       <Modal
+        width={760}
+        rootClassName="finance-claim-modal"
         open={Boolean(claimTarget)}
-        title={`认领到账：${claimTarget?.receipt_no || ""}`}
-        okText="确认认领"
+        title="回款领取"
+        okText="领取"
         cancelText="取消"
         onOk={claimIncoming}
-        onCancel={() => setClaimTarget(null)}
+        onCancel={() => {
+          setClaimTarget(null);
+          claimForm.resetFields();
+        }}
       >
-        <Alert
-          type="warning"
-          showIcon
-          title={`付款户名：${claimTarget?.payer_name || ""}；金额：${claimTarget?.amount == null ? "无权限" : money(claimTarget.amount)}`}
-          description="请核对付款单位和客户主体，认领错误会影响后续合同结算。"
-          style={{ marginBottom: 16 }}
-        />
-        <Form form={claimForm} layout="vertical">
+        <div className="finance-claim-tip">
+          温馨提示：请根据回款单位匹配系统客户，认领前核对流水号、金额和银行单号。
+        </div>
+        <Form form={claimForm} layout="horizontal" labelCol={{ span: 5 }} wrapperCol={{ span: 17 }}>
+          <Form.Item label="回款流水号">
+            <Input value={claimTarget?.receipt_no || ""} readOnly />
+          </Form.Item>
+          <Form.Item label="回款单位">
+            <Input value={claimTarget?.payer_name || ""} readOnly />
+          </Form.Item>
           <Form.Item
-            label="认领至客户"
+            label="客户名称"
             name="customer"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "请选择系统客户" }]}
           >
             <Select
               showSearch
               optionFilterProp="label"
+              placeholder="请选择客户"
               options={customers.map((x) => ({
                 value: x.title,
-                label: `${x.title}｜${x.owner}`,
+                label: x.title,
               }))}
             />
           </Form.Item>
-          <Form.Item label="认领说明" name="comment">
-            <Input.TextArea rows={3} />
+          <Form.Item label="回款时间">
+            <Input value={claimTarget?.received_date || ""} readOnly />
+          </Form.Item>
+          <Form.Item label="回款金额">
+            <Input value={claimTarget?.amount == null ? "无权限" : money(claimTarget.amount)} readOnly />
+          </Form.Item>
+          <Form.Item label="回款方式">
+            <Input value={claimTarget?.bank_source || "—"} readOnly />
+          </Form.Item>
+          <Form.Item label="银行单号">
+            <Input value={claimTarget?.bank_reference || ""} readOnly />
+          </Form.Item>
+          <Form.Item label="合同编号">
+            <Input value={claimTarget?.contract_no || ""} readOnly />
+          </Form.Item>
+          <Form.Item label="登记备注">
+            <Input.TextArea value={claimTarget?.remark || ""} rows={2} readOnly />
+          </Form.Item>
+          <Form.Item label="领取备注" name="comment">
+            <Input.TextArea rows={2} placeholder="可选" />
           </Form.Item>
         </Form>
       </Modal>
@@ -11168,114 +11270,112 @@ export default function FinanceCenterPage({
         )}
       </Modal>
       <Modal
-        width={720}
+        width="calc(100vw - 48px)"
+        style={{ top: 24 }}
+        rootClassName="finance-allocation-modal"
         open={Boolean(allocateTarget)}
         title={`分配回款：${allocateTarget?.receipt_no || ""}`}
         okText="确认分配"
         cancelText="取消"
         onOk={allocateIncoming}
-        onCancel={() => setAllocateTarget(null)}
+        onCancel={() => {
+          setAllocateTarget(null);
+          setAllocationCandidates([]);
+          setSelectedAllocationKeys([]);
+        }}
       >
-        <Alert
-          type="info"
-          showIcon
-          title={`认领客户：${allocateTarget?.claimed_customer || ""}；未分配余额：${allocateTarget?.remaining_amount == null ? "无权限" : money(allocateTarget.remaining_amount)}`}
-          description="本次可分配到一个合同应收计划及其案件；剩余金额可继续分配。"
-          style={{ marginBottom: 16 }}
-        />
-        <Form form={allocateForm} layout="vertical">
-          <Form.Item
-            label="合同应收计划"
-            name="receivable_plan_id"
-            rules={[{ required: true }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={receivables
-                .filter(
-                  (x) =>
-                    x.customer === allocateTarget?.claimed_customer &&
-                    x.remaining_amount > 0,
-                )
-                .map((x) => ({
-                  value: x.id,
-                  label: `${x.contract_no}｜${x.phase}｜未收 ${money(x.remaining_amount)}`,
-                }))}
-              onChange={(id) => {
-                const plan = receivables.find((x) => x.id === id);
-                if (plan && allocateTarget?.remaining_amount != null) {
-                  const allocationAmount = Math.min(
-                    plan.remaining_amount,
-                    allocateTarget.remaining_amount,
-                  );
-                  allocateForm.setFieldValue(
-                    "amount",
-                    allocationAmount,
-                  );
-                  allocateForm.setFieldValue("settlement_amount", allocationAmount);
-                }
-                allocateForm.setFieldValue("case_no", undefined);
-              }}
-            />
-          </Form.Item>
-          <Form.Item label="关联合同案件（可选）" name="case_no">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={cases
-                .filter((x) => x.customer === allocateTarget?.claimed_customer)
-                .map((x) => ({
-                  value: x.serial_no,
-                  label: `${x.serial_no}｜${x.title}`,
-                }))}
-            />
-          </Form.Item>
-          <Form.Item
-            label="本次分配金额"
-            name="amount"
-            rules={[{ required: true }]}
-          >
-            <InputNumber
-              min={0.01}
-              max={allocateTarget?.remaining_amount || undefined}
-              precision={2}
-              style={{ width: "100%" }}
-            />
-          </Form.Item>
-          <Form.Item label="分配说明" name="comment">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item label="结算费用类型" name="settlement_fee_type" initialValue="代理费">
-            <Select options={["代理费", "官方费用", "其他费用"].map((value) => ({ value, label: value }))} />
-          </Form.Item>
-          <Form.Item label="本笔结算金额" name="settlement_amount">
-            <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label="本笔归档费" name="archive_fee" initialValue={0}>
-            <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-          </Form.Item>
-        </Form>
-        {Boolean(allocateTarget?.allocations?.length) && (
-          <Table
-            style={{ marginTop: 16 }}
+        <section className="finance-allocation-section">
+          <div className="finance-allocation-heading">回款信息</div>
+          <Descriptions size="small" column={5} colon={false}>
+            <Descriptions.Item label="回款单位">{allocateTarget?.payer_name || "—"}</Descriptions.Item>
+            <Descriptions.Item label="到账日期">{allocateTarget?.received_date || "—"}</Descriptions.Item>
+            <Descriptions.Item label="银行单号">{allocateTarget?.bank_reference || "—"}</Descriptions.Item>
+            <Descriptions.Item label="到账金额">{money(Number(allocateTarget?.amount || 0))}</Descriptions.Item>
+            <Descriptions.Item label="已分配">{money(Number(allocateTarget?.allocated_amount || 0))}</Descriptions.Item>
+            <Descriptions.Item label="客户名称">{allocateTarget?.claimed_customer || "—"}</Descriptions.Item>
+            <Descriptions.Item label="未分配余额">{money(Number(allocateTarget?.remaining_amount || 0))}</Descriptions.Item>
+            <Descriptions.Item label="备注" span={3}>{allocateTarget?.remark || "—"}</Descriptions.Item>
+          </Descriptions>
+        </section>
+        <section className="finance-allocation-section">
+          <div className="finance-allocation-heading">案件费用明细</div>
+          <div className="finance-allocation-filters">
+            <label>客户名称<Input value={allocateTarget?.claimed_customer || ""} disabled /></label>
+            <label>关键字<Input value={allocationKeyword} onChange={(event) => setAllocationKeyword(event.target.value)} placeholder="案号、原告、被告、案件名称" allowClear /></label>
+            <label>案件阶段<Select allowClear value={allocationStage || undefined} onChange={(value) => setAllocationStage(value || "")} options={Array.from(new Set(allocationCandidates.map((row) => row.case_stage))).filter(Boolean).map((value) => ({ value, label: value }))} /></label>
+            <label>费用类型<Select allowClear value={allocationFeeType || undefined} onChange={(value) => setAllocationFeeType(value || "")} options={Array.from(new Set(allocationCandidates.map((row) => row.fee_type))).filter(Boolean).map((value) => ({ value, label: value }))} /></label>
+            <Button type="primary" onClick={() => undefined}>查询</Button>
+            <Button onClick={() => { setAllocationKeyword(""); setAllocationStage(""); setAllocationFeeType(""); }}>清空</Button>
+          </div>
+          <Table<AllocationCandidate>
+            className="finance-allocation-table"
+            loading={allocationLoading}
             size="small"
-            pagination={false}
-            rowKey="transaction_id"
-            dataSource={allocateTarget?.allocations || []}
+            bordered
+            rowKey="key"
+            scroll={{ x: 1370, y: 390 }}
+            pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => `共 ${total} 条` }}
+            dataSource={filteredAllocationCandidates}
+            locale={{ emptyText: "该客户名下暂无未回款案件费用" }}
+            rowSelection={{
+              selectedRowKeys: selectedAllocationKeys,
+              preserveSelectedRowKeys: true,
+              onChange: (keys) => setSelectedAllocationKeys(keys.map((key) => String(key))),
+            }}
             columns={[
-              { title: "已分配合同", dataIndex: "contract_no", render: (v: string) => v ? <Button type="link" onClick={() => openContractDetail(v)}>{v}</Button> : "—" },
-              { title: "应收阶段", dataIndex: "phase" },
+              { title: "原告", dataIndex: "plaintiff", width: 170, ellipsis: true },
+              { title: "被告", dataIndex: "defendant", width: 210, ellipsis: true },
+              { title: "案号", dataIndex: "case_no", width: 135, render: (value) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—" },
+              { title: "案件阶段", dataIndex: "case_stage", width: 105 },
+              { title: "提交日期", dataIndex: "submission_date", width: 100 },
+              { title: "费用类型", dataIndex: "fee_type", width: 125 },
+              { title: "总额", dataIndex: "total_amount", width: 90, render: money },
+              { title: "已回", dataIndex: "received_amount", width: 90, render: money },
+              { title: "待回", dataIndex: "remaining_amount", width: 90, render: money },
               {
-                title: "案件",
-                dataIndex: "case_no",
-                render: (v: string) => v ? <Button type="link" onClick={() => openCaseDetail(v)}>{v}</Button> : "—",
+                title: "本次回款",
+                key: "allocation_amount",
+                width: 125,
+                render: (_, row) => (
+                  <InputNumber
+                    aria-label={`本次回款-${row.case_no || row.contract_no}-${row.fee_type}`}
+                    min={0.01}
+                    max={row.remaining_amount}
+                    precision={2}
+                    value={allocationAmounts[row.key]}
+                    onChange={(value) => {
+                      setAllocationAmounts((current) => ({ ...current, [row.key]: Number(value || 0) }));
+                      if (value && !selectedAllocationKeys.includes(row.key)) {
+                        setSelectedAllocationKeys((current) => [...current, row.key]);
+                      }
+                    }}
+                  />
+                ),
               },
-              { title: "金额", dataIndex: "amount", render: money },
+              {
+                title: "全部回款",
+                key: "all",
+                width: 80,
+                align: "center",
+                render: (_, row) => (
+                  <Checkbox
+                    checked={selectedAllocationKeys.includes(row.key) && Number(allocationAmounts[row.key]) === Number(row.remaining_amount)}
+                    onChange={(event) => {
+                      setAllocationAmounts((current) => ({ ...current, [row.key]: row.remaining_amount }));
+                      setSelectedAllocationKeys((current) => event.target.checked
+                        ? Array.from(new Set([...current, row.key]))
+                        : current.filter((key) => key !== row.key));
+                    }}
+                  />
+                ),
+              },
             ]}
           />
-        )}
+          <div className="finance-allocation-comment">
+            <span>分配说明</span>
+            <Input value={allocationComment} onChange={(event) => setAllocationComment(event.target.value)} placeholder="可选" />
+          </div>
+        </section>
       </Modal>
       <Modal
         open={Boolean(writeoffTarget)}

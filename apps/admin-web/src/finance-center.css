@@ -30,6 +30,103 @@
   background: #fff;
 }
 
+.finance-allocation-modal .ant-modal-content {
+  padding: 14px 16px;
+  border-radius: 2px;
+}
+.finance-allocation-modal .ant-modal-body {
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+}
+.finance-allocation-section {
+  margin-bottom: 12px;
+  border: 1px solid #d9dfe5;
+}
+.finance-allocation-heading {
+  height: 35px;
+  padding: 7px 12px;
+  border-left: 4px solid #168f79;
+  border-bottom: 1px solid #d9dfe5;
+  color: #222;
+  font-size: 14px;
+  font-weight: 600;
+  background: #f4f6f8;
+}
+.finance-allocation-section .ant-descriptions {
+  padding: 12px 14px 6px;
+  background: #eef1f4;
+}
+.finance-allocation-section .ant-descriptions-item-label {
+  color: #7c8792;
+}
+.finance-allocation-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.3fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr) auto auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px 12px;
+}
+.finance-allocation-filters label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+.finance-allocation-filters .ant-select {
+  width: 100%;
+}
+.finance-allocation-table {
+  padding: 0 12px 10px;
+}
+.finance-allocation-table .ant-table-thead > tr > th {
+  padding: 7px 6px !important;
+  text-align: center;
+  white-space: nowrap;
+  background: #f1f3f5 !important;
+}
+.finance-allocation-table .ant-table-tbody > tr > td {
+  padding: 5px 6px !important;
+}
+.finance-allocation-table .ant-input-number {
+  width: 108px;
+  background: #fff8a8;
+}
+.finance-allocation-comment {
+  display: grid;
+  grid-template-columns: 64px minmax(260px, 560px);
+  gap: 8px;
+  align-items: center;
+  padding: 0 12px 12px;
+}
+.finance-claim-modal .ant-modal-content {
+  border-radius: 2px;
+}
+.finance-claim-tip {
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  border: 1px solid #d9dfe5;
+  border-left: 4px solid #168f79;
+  color: #555;
+  background: #f6f8fa;
+}
+.finance-claim-modal .ant-form-item {
+  margin-bottom: 10px;
+}
+.finance-claim-modal .ant-form-item-label > label {
+  color: #333;
+}
+.finance-claim-modal .ant-input[readonly],
+.finance-claim-modal textarea[readonly] {
+  color: #555;
+  background: #f5f5f5;
+}
+@media (max-width: 1100px) {
+  .finance-allocation-filters {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
 .content:has(.finance-original-panel) > .page-head {
   display: none;
 }

@@ -603,9 +603,18 @@ export default function InvestigationCenterPage({
           !["已完成", "已取消"].includes(row.status),
       );
     }
-    if (initialTab.includes("-my-") && profile.role !== "admin") {
+    if (initialTab.includes("-my-")) {
       const names = [profile.username, profile.display_name].filter(Boolean);
-      result = result.filter((row) => names.includes(row.owner));
+      result = result.filter((row) =>
+        names.includes(
+          String(
+            row.data.publisher ||
+              row.data.imported_by ||
+              row.owner ||
+              "",
+          ),
+        ),
+      );
     }
     if (initialTab.endsWith("-no-fee"))
       result = result.filter(

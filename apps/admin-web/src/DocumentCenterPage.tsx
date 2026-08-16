@@ -585,6 +585,7 @@ export default function DocumentCenterPage({
     uploadForm.setFieldsValue({
       record_id: target?.id,
       category: category || "普通附件",
+      document_date: dayjs(),
       remark: "",
     });
     setUploadOpen(true);
@@ -596,12 +597,18 @@ export default function DocumentCenterPage({
       return;
     }
     const form = new FormData();
+    const officialImport = tab === "official";
     form.append("file", file);
-    if (v.record_id) form.append("record_id", String(v.record_id));
+    if (officialImport) {
+      form.append("document_date", formatRequiredDate(v.document_date, "收文日期"));
+      const linkedCase = cases.find((item) => item.id === Number(v.record_id));
+      if (linkedCase) form.append("case_ids", String(linkedCase.id));
+    } else if (v.record_id) {
+      form.append("record_id", String(v.record_id));
+    }
     form.append("category", v.category);
     form.append("remark", v.remark || "");
     try {
-      const officialImport = tab === "official" && !v.record_id;
       await api.post(officialImport ? "/documents/official/upload" : "/attachments", form);
       message.success(officialImport ? "官文已上传并生成收文记录" : "文件上传成功");
       setUploadOpen(false);
@@ -1990,17 +1997,26 @@ export default function DocumentCenterPage({
         onCancel={() => setUploadOpen(false)}
       >
         <Form form={uploadForm} layout="vertical">
-          <Form.Item label="关联业务" name="record_id">
+          <Form.Item label={tab === "official" ? "关联案件" : "关联业务"} name="record_id">
             <Select
               allowClear
               showSearch
               optionFilterProp="label"
-              options={[...cases, ...documents].map((r) => ({
+              options={(tab === "official" ? cases : [...cases, ...documents]).map((r) => ({
                 value: r.id,
                 label: `${r.serial_no}｜${r.title}`,
               }))}
             />
           </Form.Item>
+          {tab === "official" && (
+            <Form.Item
+              label="文件日期"
+              name="document_date"
+              rules={[{ required: true, message: "请选择文件日期" }]}
+            >
+              <DatePicker style={{ width: "100%" }} format="YYYY-MM-DD" />
+            </Form.Item>
+          )}
           <Form.Item
             label="材料分类"
             name="category"

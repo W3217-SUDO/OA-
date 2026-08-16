@@ -130,7 +130,7 @@
   font-size: 12px;
 }
 .customer-original-pagination { gap: 0; margin-left: auto; padding-right: 8px; color: #777; font-size: 12px; white-space: nowrap; }
-.customer-original-pagination .ant-select { width: 64px; min-width: 64px; margin: 0 5px; }
+.customer-original-pagination .ant-select { width: 80px; min-width: 80px; margin: 0 5px; }
 .customer-original-pagination .ant-select-selector { height: 31px !important; border-radius: 0 !important; padding: 0 6px !important; }
 .customer-original-pagination .ant-select-selection-item { line-height: 29px !important; }
 .customer-original-pagination .ant-btn { min-width: 31px; padding: 0 8px; color: #777; }

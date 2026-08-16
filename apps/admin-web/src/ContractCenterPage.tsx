@@ -707,9 +707,7 @@ export default function ContractCenterPage({
           ? allRows.filter((x) =>
               [profile.username, profile.display_name].includes(x.owner),
             )
-          : initialView === "contract-dept"
-            ? allRows.filter((x) => x.department === profile.department)
-            : allRows;
+          : allRows;
     const text = (v: any) => String(v || "").toLowerCase();
     if (query.title)
       list = list.filter((x) => text(x.title).includes(text(query.title)));

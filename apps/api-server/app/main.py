@@ -3436,13 +3436,52 @@ def _task_display_with_users(record: BusinessRecord, users_by_username: dict[str
 
 async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -> list[dict]:
     usernames: set[str] = set()
+    case_ids: set[int] = set()
+    case_nos: set[str] = set()
     for record in records:
         usernames.add(record.owner)
         data = record.data or {}
+        raw_case_id = data.get("case_record_id") or data.get("case_id")
+        try:
+            if raw_case_id:
+                case_ids.add(int(raw_case_id))
+        except (TypeError, ValueError):
+            pass
+        case_no = str(data.get("case_no") or "").strip()
+        if case_no:
+            case_nos.add(case_no)
         for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer", "customer_manager", "collaborators"):
             usernames.update(_contract_person_values(data.get(key)))
     users_by_username = await _user_display_map(usernames, db)
-    return [_task_display_with_users(record, users_by_username) for record in records]
+    case_conditions = []
+    if case_ids:
+        case_conditions.append(BusinessRecord.id.in_(case_ids))
+    if case_nos:
+        case_conditions.append(BusinessRecord.serial_no.in_(case_nos))
+    linked_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", or_(*case_conditions),
+    ))).all()) if case_conditions else []
+    cases_by_id = {item.id: item for item in linked_cases}
+    cases_by_no = {item.serial_no: item for item in linked_cases}
+
+    results: list[dict] = []
+    for record in records:
+        result = _task_display_with_users(record, users_by_username)
+        data = record.data or {}
+        raw_case_id = data.get("case_record_id") or data.get("case_id")
+        try:
+            linked_case = cases_by_id.get(int(raw_case_id)) if raw_case_id else None
+        except (TypeError, ValueError):
+            linked_case = None
+        linked_case = linked_case or cases_by_no.get(str(data.get("case_no") or "").strip())
+        if linked_case:
+            case_data = linked_case.data or {}
+            result["case_no"] = linked_case.serial_no
+            result["plaintiff"] = "、".join(_case_party_values(case_data, CASE_PLAINTIFF_FIELDS)) or result["plaintiff"] or linked_case.customer
+            result["defendant"] = "、".join(_case_party_values(case_data, CASE_DEFENDANT_FIELDS)) or result["defendant"]
+            result["case_stage"] = str(case_data.get("case_stage") or linked_case.status or result["case_stage"])
+        results.append(result)
+    return results
 
 
 async def _task_display_dict(record: BusinessRecord, db: AsyncSession) -> dict:
@@ -5926,9 +5965,23 @@ async def user_directory(
         if directory_purpose == "customer_contact"
         else await _active_employee_usernames(db)
     )
-    items = (await db.scalars(select(User).where(
-        User.is_active.is_(True), User.username.in_(eligible_usernames),
-    ).order_by(User.display_name, User.username))).all() if eligible_usernames else []
+    if directory_purpose == "customer_manager":
+        # Keep active legacy/system accounts in the response so an existing
+        # customer source or manager can still render its display name.  The
+        # eligibility flag below continues to prevent accounts without an
+        # active employee record from being newly selected.
+        candidates = (await db.scalars(select(User).where(
+            User.is_active.is_(True),
+        ).order_by(User.display_name, User.username))).all()
+        items = [
+            item for item in candidates
+            if not _is_smoke_test_username(item.username)
+            and str((item.profile or {}).get("account_type") or "").strip() != "客户账号"
+        ]
+    else:
+        items = (await db.scalars(select(User).where(
+            User.is_active.is_(True), User.username.in_(eligible_usernames),
+        ).order_by(User.display_name, User.username))).all() if eligible_usernames else []
     employee_display_names: dict[str, str] = {}
     active_employees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
@@ -6970,7 +7023,14 @@ async def list_records(
     relation_customer = None
     if module == "contract" and customer_id:
         relation_customer = await _customer_or_404(customer_id, identity, db)
-    else:
+    elif not (
+        module == "contract"
+        and scope == "department"
+        and identity.get("role") in {"admin", "manager"}
+    ):
+        # Department contracts are classified by the linked customer's active
+        # managers below. Applying the contract row's stamped department first
+        # would discard rows whose legacy department is stale.
         conditions.extend(await _record_scope_conditions(identity, db))
     if keyword:
         like = f"%{keyword}%"
@@ -8236,6 +8296,17 @@ async def _resolve_contract_customer(customer_name: str, data: dict, identity: d
     return customer
 
 
+def _contract_customer_source_person(customer: BusinessRecord) -> str:
+    """Contracts inherit the customer's fixed source person, never their creator."""
+    customer_data = customer.data or {}
+    return str(
+        customer_data.get("source_person")
+        or customer_data.get("customer_source")
+        or customer.owner
+        or ""
+    ).strip()
+
+
 async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSession) -> bool:
     """Resolve business action permission from the employee's configured job role."""
     if user.role == "admin":
@@ -8404,7 +8475,14 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
     if duplicate_title:
         raise HTTPException(status_code=409, detail="合同名称已存在，不能新建同名合同")
     # GUID is a server-owned identity; never accept a client-supplied value.
-    data = {**data, "contract_guid": str(uuid4()), "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
+    data = {
+        **data,
+        "contract_guid": str(uuid4()),
+        "customer_id": customer.id,
+        "customer_no": customer.serial_no,
+        "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner]),
+        "source_person": _contract_customer_source_person(customer),
+    }
     if float(data.get("amount") or 0) < 0:
         raise HTTPException(status_code=422, detail="合同金额不能小于零")
     owner = body.owner.strip()
@@ -8539,7 +8617,14 @@ async def update_contract_draft(contract_id: int, body: ContractDraftInput, iden
     customer = await _resolve_contract_customer(body.customer, data, identity, db)
     customer_data = customer.data or {}
     # Updates preserve the persisted GUID even when a malicious replacement is sent.
-    data = {**data, "contract_guid": str((item.data or {}).get("contract_guid") or uuid4()), "customer_id": customer.id, "customer_no": customer.serial_no, "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner])}
+    data = {
+        **data,
+        "contract_guid": str((item.data or {}).get("contract_guid") or uuid4()),
+        "customer_id": customer.id,
+        "customer_no": customer.serial_no,
+        "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner]),
+        "source_person": _contract_customer_source_person(customer),
+    }
     if float(data.get("amount") or 0) < 0: raise HTTPException(status_code=422, detail="合同金额不能小于零")
     owner = body.owner.strip(); department = body.department.strip()
     if identity.get("role") != "admin":
@@ -9516,6 +9601,32 @@ async def _sync_investigation_materials(record: BusinessRecord, db: AsyncSession
     return categories
 
 
+async def _next_investigation_clue_serial(
+    db: AsyncSession,
+    created_at: datetime | None = None,
+    prefix: str = "M",
+) -> str:
+    """Generate the legacy nine-character clue number: M/P + YYMM + sequence."""
+    period = (created_at or datetime.now()).strftime("%y%m")
+    normalized_prefix = prefix.upper() if prefix.upper() in {"M", "P"} else "M"
+    pattern = re.compile(rf"^[MP]{period}(\d{{4}})$")
+    serials = (
+        await db.scalars(
+            select(BusinessRecord.serial_no).where(
+                BusinessRecord.module == "clue",
+                BusinessRecord.serial_no.like(f"_{period}____"),
+            )
+        )
+    ).all()
+    sequence = max(
+        (int(match.group(1)) for value in serials if (match := pattern.fullmatch(str(value or "")))),
+        default=0,
+    ) + 1
+    if sequence > 9999:
+        raise HTTPException(status_code=409, detail="本月调查线索编号已用尽")
+    return f"{normalized_prefix}{period}{sequence:04d}"
+
+
 @app.get(f"{settings.api_prefix}/investigations/clues/import-template")
 async def clue_import_template(_: dict = Depends(current_identity)):
     content = "\ufeff线索标题,调查任务编号,父调查编号,客户编号,客户,调查平台,侵权产品,负责人,对方主体,来源链接,说明\r\n线上店铺销售疑似侵权产品,RW2026070001,RW2026070000,KH2026070001,示例客户,淘宝,示例商品,管理者,示例店铺,https://example.com,优先使用唯一业务编号自动关联"
@@ -9530,15 +9641,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         raise HTTPException(status_code=422, detail="公证和证据必须从线索专用办理入口创建")
     payload = body.model_dump()
     if body.module == "clue":
-        # Legacy clue numbers use XS plus the local creation timestamp. The
-        # server owns the value so it cannot be edited or duplicated by users.
-        serial_time = datetime.now()
-        while True:
-            generated_serial = f"XS{serial_time:%Y%m%d%H%M%S}"
-            if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == generated_serial)):
-                break
-            serial_time += timedelta(seconds=1)
-        payload["serial_no"] = generated_serial
+        payload["serial_no"] = await _next_investigation_clue_serial(db)
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == payload["serial_no"])):
         raise HTTPException(status_code=409, detail="业务编号已存在")
     payload["status"] = INVESTIGATION_CREATE_STATUS_BY_MODULE[body.module]
@@ -9592,7 +9695,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         payload["customer"] = source_task.customer
         payload["department"] = source_task.department
         source_data = source_task.data or {}
-        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id") or (source_task.id if source_task.module == "investigation" else None), "investigation_no": source_data.get("investigation_no") or (source_task.serial_no if source_task.module == "investigation" else ""), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or []))}
+        payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id") or (source_task.id if source_task.module == "investigation" else None), "investigation_no": source_data.get("investigation_no") or (source_task.serial_no if source_task.module == "investigation" else ""), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or [])), "publisher": identity["username"]}
     if identity.get("role") != "admin" and body.module != "investigation":
         payload["department"] = user.department
         if identity.get("role") == "user":
@@ -9712,12 +9815,12 @@ async def import_investigation_clues(file: UploadFile = File(...), identity: dic
         key = (title.casefold(), customer.casefold(), product.casefold())
         if key in existing or key in seen:
             errors.append({"row": row_no, "error": "相同客户、标题和侵权产品的线索重复"}); continue
-        serial_no = f"XS{datetime.now():%Y%m%d%H%M%S}{row_no:04d}{uuid4().hex[:4].upper()}"
+        serial_no = await _next_investigation_clue_serial(db)
         item = BusinessRecord(
             module="clue", serial_no=serial_no, title=title, customer=customer,
             status="草稿", owner=owner or identity["username"], department="上海分所",
             description=(row.get("说明") or row.get("description") or "").strip(),
-            data={**relation_data, "source_task_id": task.id if task else relation_data.get("task_record_id"), "source_task_no": task.serial_no if task else relation_data.get("task_no", ""), "platform": platform, "product": product, "opponent": (row.get("对方主体") or row.get("opponent") or "").strip(), "source_url": (row.get("来源链接") or row.get("source_url") or "").strip(), "imported_at": datetime.now().isoformat(timespec="seconds")},
+            data={**relation_data, "source_task_id": task.id if task else relation_data.get("task_record_id"), "source_task_no": task.serial_no if task else relation_data.get("task_no", ""), "platform": platform, "product": product, "opponent": (row.get("对方主体") or row.get("opponent") or "").strip(), "source_url": (row.get("来源链接") or row.get("source_url") or "").strip(), "publisher": identity["username"], "imported_by": identity["username"], "imported_at": datetime.now().isoformat(timespec="seconds")},
         )
         db.add(item); await db.flush()
         db.add(WorkflowEvent(record_id=item.id, action="批量导入线索", to_status="草稿", operator=identity["username"], comment=f"CSV 第 {row_no} 行"))
@@ -10923,10 +11026,6 @@ async def list_tasks(
     if scope not in {"default", "mine", "department", "company"}: raise HTTPException(status_code=422, detail="无效的任务范围")
     if created_from and created_to and created_from > created_to: raise HTTPException(status_code=422, detail="发起开始日期不能晚于结束日期")
     if deadline_from and deadline_to and deadline_from > deadline_to: raise HTTPException(status_code=422, detail="截止开始日期不能晚于结束日期")
-    if scope == "company" and identity.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="only administrators may view company tasks")
-    if scope == "department" and identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="only managers may view department tasks")
     # Apply participant visibility in SQL before any Python filtering/pagination.
     # This is the stable equivalent of TaskController's PageId relation matrix:
     # initiated -> data.initiator, accepted/owned -> owner, collaborating ->
@@ -10941,7 +11040,7 @@ async def list_tasks(
             BusinessRecord.data["initiator"].as_string() == identity["username"],
             BusinessRecord.data["collaborators"].as_string().contains(username_token),
         ))
-    elif identity.get("role") == "manager" and scope == "department":
+    elif scope == "department":
         user = await db.scalar(select(User).where(User.username == identity["username"]))
         if not user:
             raise HTTPException(status_code=401, detail="current user does not exist")
@@ -10958,30 +11057,28 @@ async def list_tasks(
         username = identity["username"]
         tasks = [task for task in tasks if task.owner == username or (task.data or {}).get("initiator") == username or username in (task.data or {}).get("collaborators", [])]
     elif scope == "department":
-        if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以查看部门任务")
-        if identity.get("role") == "manager":
-            user = await db.scalar(select(User).where(User.username == identity["username"]))
-            if not user:
-                raise HTTPException(status_code=401, detail="当前用户不存在")
-            department_usernames = set((await db.scalars(select(User.username).where(
-                User.department == user.department,
-            ))).all())
-            if relation == "owned":
-                # “部门接受的任务”按当前负责人所属部门，而不是任务发起部门。
-                tasks = [task for task in tasks if task.owner in department_usernames]
-            elif relation == "collaborating":
-                # “部门协作的任务”只要任一协作人属于本部门即可。
-                tasks = [task for task in tasks if department_usernames.intersection((task.data or {}).get("collaborators", []))]
-            else:
-                # “部门发起的任务”以创建时写入的发起部门为准；不能再次缩成
-                # 当前部门负责人的个人发起记录。
-                tasks = [task for task in tasks if task.department == user.department]
-    elif scope == "company" and identity.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="只有系统管理员可以查看全所任务")
+        user = await db.scalar(select(User).where(User.username == identity["username"]))
+        if not user:
+            raise HTTPException(status_code=401, detail="current user does not exist")
+        department_usernames = set((await db.scalars(select(User.username).where(
+            User.department == user.department,
+        ))).all())
+        if relation == "owned":
+            tasks = [task for task in tasks if task.owner in department_usernames]
+        elif relation == "collaborating":
+            tasks = [task for task in tasks if department_usernames.intersection((task.data or {}).get("collaborators", []))]
+        else:
+            tasks = [task for task in tasks if task.department == user.department]
     username = identity["username"]
-    if scope != "department":
-        # 管理员无论从“我的”“部门”或“公司”入口进入，都保留全所数据范围；
-        # 不能因为选择“发起/接收/协作”再把最高权限缩回为本人参与的任务。
+    if scope == "company":
+        # Company initiated/accepted views include every company task.  The
+        # collaboration view is the company-wide subset with collaborators,
+        # independent of which employee is currently signed in.
+        if relation == "collaborating":
+            tasks = [task for task in tasks if (task.data or {}).get("collaborators", [])]
+    elif scope != "department":
+        # Administrators retain the full company set even from a personal
+        # entry; ordinary personal views remain participant-specific.
         is_admin_global_view = identity.get("role") == "admin"
         if relation == "initiated" and not is_admin_global_view:
             tasks = [task for task in tasks if (task.data or {}).get("initiator") == username]
@@ -13777,7 +13874,28 @@ async def list_incoming_payments(payment_status: str = "", keyword: str = "", id
     if keyword:
         key = keyword.casefold(); items = [item for item in items if key in f"{item.receipt_no} {item.payer_name} {item.bank_reference} {item.claimed_customer}".casefold()]
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
-    return {"items": [_incoming_payment_dict(item, show_amount=can_view_amount) for item in items], "total": len(items), "summary": {"total": len(items), "unclaimed": sum(1 for item in items if item.status == "待认领"), "unallocated": sum(1 for item in items if item.status in {"待分配", "部分分配"}), "completed": sum(1 for item in items if item.status == "已分配"), "amount": sum(item.amount for item in items) if can_view_amount else None, "remaining": sum(max(item.amount - item.allocated_amount, 0) for item in items) if can_view_amount else None}}
+    users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    users_by_username = {user.username.lower(): user for user in users}
+    claimed_names = {item.claimed_customer.strip() for item in items if item.claimed_customer.strip()}
+    customer_rows = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "customer", BusinessRecord.title.in_(claimed_names),
+    ))).all()) if claimed_names else []
+    customers_by_title = {row.title.strip(): row for row in customer_rows}
+    rows = []
+    for item in items:
+        payload = _incoming_payment_dict(item, show_amount=can_view_amount, users_by_username=users_by_username)
+        customer = customers_by_title.get(item.claimed_customer.strip())
+        if customer:
+            manager_values = _contract_person_values((customer.data or {}).get("customer_managers") or [customer.owner])
+            payload["customer_manager"] = "、".join(manager_values)
+            payload["customer_manager_display_name"] = "、".join(
+                _person_reference_display(value, users_by_username)[0] for value in manager_values
+            )
+        else:
+            payload["customer_manager"] = ""
+            payload["customer_manager_display_name"] = ""
+        rows.append(payload)
+    return {"items": rows, "total": len(items), "summary": {"total": len(items), "unclaimed": sum(1 for item in items if item.status == "待认领"), "unallocated": sum(1 for item in items if item.status in {"待分配", "部分分配"}), "completed": sum(1 for item in items if item.status == "已分配"), "amount": sum(item.amount for item in items) if can_view_amount else None, "remaining": sum(max(item.amount - item.allocated_amount, 0) for item in items) if can_view_amount else None}}
 
 
 @app.post(f"{settings.api_prefix}/finance/incoming-payments", status_code=status.HTTP_201_CREATED)
@@ -13937,15 +14055,88 @@ async def claim_incoming_payment(payment_id: int, body: IncomingPaymentClaimInpu
     await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
 
 
+@app.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocation-candidates")
+async def incoming_payment_allocation_candidates(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await db.get(IncomingPayment, payment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="银行到账记录不存在")
+    if item.status not in {"待分配", "部分分配"} or not item.claimed_customer:
+        raise HTTPException(status_code=409, detail="到账认领到客户后才能查看可分配案件费用")
+
+    contracts = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract",
+        BusinessRecord.customer == item.claimed_customer,
+        *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    contracts_by_id = {contract.id: contract for contract in contracts}
+    contract_ids = set(contracts_by_id)
+    plans = list((await db.scalars(select(ReceivablePlan).where(
+        ReceivablePlan.contract_record_id.in_(contract_ids),
+    ).order_by(ReceivablePlan.due_date.asc(), ReceivablePlan.id.asc()))).all()) if contract_ids else []
+    plans = [plan for plan in plans if _round_fee_amount(plan.amount - plan.received_amount) > 0]
+
+    cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        BusinessRecord.customer == item.claimed_customer,
+        *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    cases_by_contract: dict[int, list[BusinessRecord]] = {}
+    contract_no_to_id = {contract.serial_no: contract.id for contract in contracts}
+    for case_record in cases:
+        case_data = case_record.data or {}
+        contract_id = int(case_data.get("contract_id") or case_data.get("contract_record_id") or 0)
+        if not contract_id:
+            contract_id = contract_no_to_id.get(str(case_data.get("contract_no") or "").strip(), 0)
+        if contract_id in contracts_by_id:
+            cases_by_contract.setdefault(contract_id, []).append(case_record)
+
+    rows = []
+    for plan in plans:
+        contract = contracts_by_id[plan.contract_record_id]
+        remaining = _round_fee_amount(plan.amount - plan.received_amount)
+        linked_cases = cases_by_contract.get(contract.id) or [None]
+        for case_record in linked_cases:
+            case_data = case_record.data or {} if case_record else {}
+            submitted_at = (
+                case_data.get("case_register_date")
+                or case_data.get("submission_date")
+                or case_data.get("filing_date")
+                or (case_record.created_at.isoformat() if case_record and case_record.created_at else "")
+            )
+            rows.append({
+                "key": f"{plan.id}:{case_record.id if case_record else 0}",
+                "receivable_plan_id": plan.id,
+                "contract_id": contract.id,
+                "contract_no": contract.serial_no,
+                "case_id": case_record.id if case_record else None,
+                "case_no": case_record.serial_no if case_record else "",
+                "case_title": case_record.title if case_record else contract.title,
+                "plaintiff": str(case_data.get("plaintiff") or case_data.get("appellant_names") or contract.customer),
+                "defendant": str(case_data.get("defendant") or case_data.get("appellee_names") or case_data.get("opponent") or ""),
+                "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or (case_record.status if case_record else "合同应收")),
+                "submission_date": str(submitted_at)[:10],
+                "fee_type": plan.phase,
+                "total_amount": _round_fee_amount(plan.amount),
+                "received_amount": _round_fee_amount(plan.received_amount),
+                "remaining_amount": remaining,
+            })
+    return {
+        "items": rows,
+        "total": len(rows),
+        "customer": item.claimed_customer,
+        "remaining_amount": _round_fee_amount(item.amount - item.allocated_amount),
+    }
+
+
 @app.post(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocate")
 async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAllocateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await db.get(IncomingPayment, payment_id)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待分配", "部分分配"} or not item.claimed_customer: raise HTTPException(status_code=409, detail="到账认领到客户后才能分配")
-    if len({entry.receivable_plan_id for entry in body.allocations}) != len(body.allocations): raise HTTPException(status_code=422, detail="同一次分配中应收计划不能重复")
     total = _round_fee_amount(sum(entry.amount for entry in body.allocations)); remaining_payment = _round_fee_amount(item.amount - item.allocated_amount)
     if total > remaining_payment + 0.001: raise HTTPException(status_code=409, detail=f"分配金额超过到账未分配余额 {remaining_payment:.2f} 元")
     prepared: list[tuple[IncomingPaymentAllocationItem, ReceivablePlan, BusinessRecord, BusinessRecord | None]] = []
+    plan_totals: dict[int, float] = {}
     for entry in body.allocations:
         if entry.settlement_items:
             classified_total = _round_fee_amount(sum(item.amount for item in entry.settlement_items))
@@ -13962,11 +14153,16 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
         contract = await _ensure_record_module(plan.contract_record_id, "contract", identity, db)
         if contract.customer.strip() != item.claimed_customer.strip(): raise HTTPException(status_code=409, detail=f"应收计划 {plan.phase} 的客户与到账认领客户不一致")
         remaining_plan = _round_fee_amount(plan.amount - plan.received_amount)
-        if entry.amount > remaining_plan + 0.001: raise HTTPException(status_code=409, detail=f"{contract.serial_no}｜{plan.phase} 分配金额超过未收 {remaining_plan:.2f} 元")
+        plan_totals[plan.id] = _round_fee_amount(plan_totals.get(plan.id, 0) + entry.amount)
+        if plan_totals[plan.id] > remaining_plan + 0.001: raise HTTPException(status_code=409, detail=f"{contract.serial_no}｜{plan.phase} 分配金额合计超过未收 {remaining_plan:.2f} 元")
         case_record = None
         if entry.case_no.strip():
             case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == entry.case_no.strip(), *(await _record_scope_conditions(identity, db))))
-            if not case_record or int((case_record.data or {}).get("contract_id") or 0) != contract.id: raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 不属于所选合同")
+            case_data = case_record.data or {} if case_record else {}
+            linked_contract_id = int(case_data.get("contract_id") or case_data.get("contract_record_id") or 0)
+            linked_contract_no = str(case_data.get("contract_no") or "").strip()
+            if not case_record or not (linked_contract_id == contract.id or (not linked_contract_id and linked_contract_no == contract.serial_no)):
+                raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 不属于所选合同")
         for settlement in entry.settlement_items:
             if settlement.fee_record_id is None:
                 continue
@@ -16158,16 +16354,18 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
     allowed_statuses = {"草稿", "已退回", "已审批", "部分付款"} if is_payment_request else {"草稿", "已退回"}
     if item.status not in allowed_statuses:
         raise HTTPException(status_code=409, detail="当前状态不能申请付款" if is_payment_request else "当前状态不能提交审批")
-    data = item.data or {}; missing = []
-    if not data.get("handler"): missing.append("经办人员")
-    if not data.get("case_no"): missing.append("关联案号")
-    if data.get("fee_type") == "官方费用":
-        if not data.get("court"): missing.append("缴费法院/机构")
-        if not data.get("document_no"): missing.append("缴费通知文号")
-    if missing: raise HTTPException(status_code=422, detail="缺少费用审批要素：" + "、".join(missing))
-    if data.get("fee_type") == "官方费用":
-        readiness = await _finance_fee_readiness(item, identity, db)
-        if not readiness["ready"]: raise HTTPException(status_code=422, detail="案件付款三要素不完整：" + "；".join(readiness["missing"]))
+    data = item.data or {}
+    if not is_payment_request:
+        missing = []
+        if not data.get("handler"): missing.append("经办人员")
+        if not data.get("case_no"): missing.append("关联案号")
+        if data.get("fee_type") == "官方费用":
+            if not data.get("court"): missing.append("缴费法院/机构")
+            if not data.get("document_no"): missing.append("缴费通知文号")
+        if missing: raise HTTPException(status_code=422, detail="缺少费用审批要素：" + "、".join(missing))
+        if data.get("fee_type") == "官方费用":
+            readiness = await _finance_fee_readiness(item, identity, db)
+            if not readiness["ready"]: raise HTTPException(status_code=422, detail="案件付款三要素不完整：" + "；".join(readiness["missing"]))
     if body.amount is not None:
         account = body.payment_account.strip()
         if not account:
@@ -16573,7 +16771,7 @@ async def list_case_reminders(case_id: int, identity: dict = Depends(current_ide
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/reminders", status_code=status.HTTP_201_CREATED)
 async def create_case_reminder(case_id: int, body: CaseReminderInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_note_write_access(case_record, identity, db)
     if body.reminder_date > body.deadline:
         raise HTTPException(status_code=422, detail="提醒日期不能晚于截止日期")
     content = body.content.strip()
@@ -16601,7 +16799,7 @@ async def create_case_reminder(case_id: int, body: CaseReminderInput, identity: 
 @app.delete(f"{settings.api_prefix}/cases/{{case_id}}/reminders/{{reminder_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_case_reminder(case_id: int, reminder_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_note_write_access(case_record, identity, db)
     item = await db.get(BusinessRecord, reminder_id)
     if not item or item.module != "case_reminder" or int((item.data or {}).get("case_id") or 0) != case_id:
         raise HTTPException(status_code=404, detail="案件提醒不存在")
@@ -16661,18 +16859,33 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
             fee_id = 0
         if fee_id:
             refunds_by_fee.setdefault(fee_id, []).append(refund)
+    fee_ids = {item.id for item in fees}
+    active_invoices_by_fee: dict[int, BusinessRecord] = {}
+    if fee_ids:
+        invoices = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "invoice",
+            BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
+        ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+        for invoice in invoices:
+            for fee_id in _invoice_linked_fee_ids(invoice.data or {}):
+                if fee_id in fee_ids:
+                    active_invoices_by_fee.setdefault(fee_id, invoice)
     users_by_username = await _user_display_map({item.owner for item in [*fees, *clues]}, db)
 
     def related_dict(item: BusinessRecord) -> dict:
         result = _record_dict(item)
         result["owner_display_name"] = _person_reference_display(item.owner, users_by_username)[0]
+        result_data = dict(result.get("data") or {})
+        linked_invoice = active_invoices_by_fee.get(item.id)
+        if linked_invoice:
+            result_data["invoice_status"] = "已开票" if linked_invoice.status == "已开票" else "已申请"
+            result_data["invoice_application_no"] = linked_invoice.serial_no
         if str((item.data or {}).get("fee_type") or "") == "官方费用":
             linked = refunds_by_fee.get(item.id, [])
-            result_data = dict(result.get("data") or {})
             total_refund = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked if refund.status not in {"已驳回", "已作废"}), 2)
             result_data["refund_amount"] = total_refund
             result_data["refund_requested_amount"] = total_refund
-            result["data"] = result_data
+        result["data"] = result_data
         return result
 
     return {
@@ -16688,7 +16901,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/logs", status_code=status.HTTP_201_CREATED)
 async def create_case_log(case_id: int, body: CaseLogInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_note_write_access(case_record, identity, db)
     content = body.content.strip()
     if not content:
         raise HTTPException(status_code=422, detail="请输入日志内容")
@@ -17490,11 +17703,11 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
         if permission_key not in set(permission.get("menu_keys", [])):
             raise HTTPException(status_code=403, detail="当前角色没有该案件类型的新建权限")
     contract_id = int(source_data.get("contract_id") or source_data.get("contract_record_id") or 0)
-    if not contract_id:
-        raise HTTPException(status_code=409, detail="原案件未保留关联合同，不能复制")
-    contract = await _ensure_record_visible(contract_id, identity, db)
-    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-        raise HTTPException(status_code=409, detail="关联合同当前不满足复制新建案件条件")
+    contract: BusinessRecord | None = None
+    if contract_id:
+        contract = await _ensure_record_visible(contract_id, identity, db)
+        if contract.module != "contract":
+            raise HTTPException(status_code=409, detail="原案件关联记录不是合同，不能复制")
     root = await _case_copy_root(source, db)
     root_serial_no = root.serial_no
     owner = source.owner if identity.get("role") == "admin" else identity["username"]
@@ -17506,11 +17719,9 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
     source_title = source.title
     source_status = source.status
     source_description = source.description
-    contract_customer = contract.customer
-    contract_department = contract.department
-    contract_serial_no = contract.serial_no
-    contract_title = contract.title
-    contract_data = dict(contract.data or {})
+    contract_customer = contract.customer if contract else source.customer
+    contract_department = contract.department if contract else source.department
+    contract_data = dict(contract.data or {}) if contract else {}
     root_record_id = root.id or source_id
     copied_data = dict(source_data)
     for key in {
@@ -17519,10 +17730,13 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
         "approval_comment", "approval_by", "approval_at", "progress_logs",
     }:
         copied_data.pop(key, None)
-    copied_data.update({
-        "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract_serial_no,
-        "contract_title": contract_title, "external_contract_no": contract_data.get("external_contract_no", ""),
+    contract_snapshot = {
+        "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no,
+        "contract_title": contract.title, "external_contract_no": contract_data.get("external_contract_no", ""),
         "external_contract_numbers": contract_data.get("external_contract_numbers", []),
+    } if contract else {}
+    copied_data.update({
+        **contract_snapshot,
         "original_case_no": source_serial_no, "original_case_record_id": source_id,
         "copied_from_case_id": source_id, "copy_root_case_no": root_serial_no,
         "copy_root_case_record_id": root_record_id,
@@ -18164,6 +18378,33 @@ async def _require_case_detail_write_access(case_record: BusinessRecord, identit
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
 
 
+async def _require_case_note_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Allow reminders and logs before creation approval without opening other case writes."""
+    if await _case_team_role(case_record, identity, db) == "none":
+        raise HTTPException(status_code=403, detail="只有案件团队成员或系统管理员可以维护案件提醒和日志")
+    _require_case_creation_completed(case_record, require_approval=False)
+    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+        raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
+
+
+async def _require_case_task_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Allow responsible case members to publish tasks before creation approval."""
+    role = await _case_team_role(case_record, identity, db)
+    if role not in {"manager", "handling_lawyer"}:
+        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以发布案件任务")
+    _require_case_creation_completed(case_record, require_approval=False)
+    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+        raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能发布案件任务")
+
+
+async def _require_case_attachment_upload_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Allow case materials before creation approval without widening other writes."""
+    if await _case_team_role(case_record, identity, db) == "none":
+        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以上传案件文档")
+    if case_record.status in {"待归档审核", "已归档"}:
+        raise HTTPException(status_code=409, detail="案件已进入归档流程，不能上传案件文档")
+
+
 async def _require_case_progress_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Only a responsible/manager user or assigned handling lawyer may advance a case."""
     role = await _case_team_role(case_record, identity, db)
@@ -18247,7 +18488,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_write": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
-        "can_update_progress": False, "can_manage_hearing": False,
+        "can_update_progress": False, "can_change_phase": False, "can_manage_hearing": False,
         "can_create_case_task": False, "can_duplicate_case": role == "manager" and can_create_same_type,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
         "can_merge_case": role == "manager",
@@ -18255,6 +18496,28 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_close_case": role == "manager", "can_archive": role == "manager",
         "can_create_finance": role == "manager", "team_role": role, "reason": "",
     }
+    try:
+        await _require_case_attachment_upload_access(case_record, identity, db)
+        base["can_upload_attachment"] = True
+    except HTTPException as exc:
+        base["reason"] = str(exc.detail)
+    try:
+        await _require_case_phase_change_access(case_record, identity, db)
+        base["can_change_phase"] = True
+    except HTTPException:
+        pass
+    try:
+        await _require_case_note_write_access(case_record, identity, db)
+        base["can_create_reminder"] = True
+        base["can_delete_reminder"] = True
+        base["can_create_log"] = True
+    except HTTPException:
+        pass
+    try:
+        await _require_case_task_write_access(case_record, identity, db)
+        base["can_create_case_task"] = True
+    except HTTPException:
+        pass
     try:
         await _require_case_detail_write_access(case_record, identity, db)
     except HTTPException as exc:
@@ -20449,7 +20712,7 @@ async def upload_attachment(
         if record.module == "contract":
             await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
-            await _require_case_detail_write_access(record, identity, db)
+            await _require_case_attachment_upload_access(record, identity, db)
         if record.module == "task":
             if not _is_task_participant(record, identity):
                 raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")

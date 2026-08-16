@@ -305,8 +305,6 @@ export default function CustomerCenterPage({
     [editing, setEditing] = useState<Customer | null>(null),
     [assigning, setAssigning] = useState<Customer | null>(null),
     [sharing, setSharing] = useState<Customer | null>(null),
-    [levelCustomer, setLevelCustomer] = useState<Customer | null>(null),
-    [keyChangeCustomer, setKeyChangeCustomer] = useState<Customer | null>(null),
     [portalResult, setPortalResult] = useState<{ account: string; activation_code: string } | null>(null),
     [portalCustomer, setPortalCustomer] = useState<Customer | null>(null),
     [contacts, setContacts] = useState<Customer | null>(null),
@@ -376,8 +374,6 @@ export default function CustomerCenterPage({
     [noteForm] = Form.useForm(),
     [noteEditForm] = Form.useForm(),
     [customerEventForm] = Form.useForm(),
-    [levelForm] = Form.useForm(),
-    [keyChangeForm] = Form.useForm(),
     [documentForm] = Form.useForm();
   const documentFileRef = useRef<HTMLInputElement>(null);
   const customerLicenseAttachment = attachments.find(
@@ -771,14 +767,6 @@ export default function CustomerCenterPage({
       const legacyError = error?.response?.data?.detail || "共享失败";
       message.error(getCustomerMutationErrorMessageI17(error, legacyError));
     }
-  };
-  const submitLevelChange = async () => {
-    message.info("客户分级调整审批已取消，请在客户编辑中直接修改客户等级");
-    setLevelCustomer(null);
-  };
-  const submitKeyChange = async () => {
-    message.info("客户关键字段审批已取消，请在客户编辑中直接修改");
-    setKeyChangeCustomer(null);
   };
   const openPortal = async (customer: Customer, account = "") => {
     try {
@@ -1760,7 +1748,7 @@ export default function CustomerCenterPage({
               <label><span>建档日期</span><Input disabled value={contacts.data.file_date || displayDate(contacts.created_at)} /></label>
               <label><span>客户来源</span><Input disabled value={contacts.data.customer_source_display_name || (contacts.data.customer_source ? userLabel(contacts.data.customer_source) : userLabel(contacts.owner))} /></label>
               <label><span>是否共享</span><Select disabled value={contacts.data.is_shared || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
-              <label><span>客户等级</span><Select disabled value={contacts.data.level || "立案客户"} options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></label>
+              <label><span>客户等级</span><Select disabled value={contacts.data.level || "立案客户"} options={["签约客户","立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></label>
               <label><span>上海市资助信息</span><Select disabled value={contacts.data.is_assisted || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
               <label><span>客戶管理人</span><Input disabled value={userLabels((contacts.data as any).customer_manager_display_names || contacts.data.customer_managers || [contacts.owner])} /></label>
               <label><span>客户联系人账号</span><Input disabled value={contactAccountLabels(contacts)} /></label>
@@ -2072,7 +2060,7 @@ export default function CustomerCenterPage({
                 <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
                 <Form.Item label="客户来源" name="customer_source"><Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
                 <Form.Item label="是否共享" name="is_shared"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
-                <Form.Item label="客户等级" name="level"><Select options={["立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></Form.Item>
+                <Form.Item label="客户等级" name="level"><Select options={["签约客户","立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是","否"].map(value=>({value,label:value}))} /></Form.Item>
                 <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{required:true,message:"至少设置一名客户管理人"}]}>
                   <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
@@ -2206,7 +2194,7 @@ export default function CustomerCenterPage({
               <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
               <Form.Item label="客户来源" name="customer_source"><Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" /></Form.Item>
               <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
-              <Form.Item label="客户等级" name="level"><Select options={["立案客户", "高级客户", "中级客户", "低级客户"].map(value => ({ value, label: value }))} /></Form.Item>
+              <Form.Item label="客户等级" name="level"><Select options={["签约客户", "立案客户", "高级客户", "中级客户", "低级客户"].map(value => ({ value, label: value }))} /></Form.Item>
               <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
               <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{ required: true, message: "至少设置一名客户管理人" }]}><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} /></Form.Item>
               <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" /></Form.Item>
@@ -2214,36 +2202,6 @@ export default function CustomerCenterPage({
           </section>
         </Form>
         {editing && renderCustomerRelatedTabs(false)}
-      </Modal>
-      <Modal
-        open={Boolean(levelCustomer)}
-        title={`申请客户分级调整：${levelCustomer?.title || ""}`}
-        okText="提交审批"
-        cancelText="取消"
-        onOk={submitLevelChange}
-        onCancel={() => setLevelCustomer(null)}
-      >
-        <Form form={levelForm} layout="vertical">
-          <Alert style={{ marginBottom: 12 }} type="info" showIcon message={`当前等级：${levelCustomer?.data.level || "未设置"}`} />
-          <Form.Item label="调整为" name="level" rules={[{ required: true, message: "请选择目标等级" }]}>
-            <Select options={["潜在客户", "目标客户", "签约客户", "立案客户", "高级客户", "中级客户", "低级客户"].map((value) => ({ value, label: value }))} />
-          </Form.Item>
-          <Form.Item label="调整说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
-        </Form>
-      </Modal>
-      <Modal
-        open={Boolean(keyChangeCustomer)}
-        title={`申请客户关键字段变更：${keyChangeCustomer?.title || ""}`}
-        okText="提交审批"
-        cancelText="取消"
-        onOk={submitKeyChange}
-        onCancel={() => setKeyChangeCustomer(null)}
-      >
-        <Form form={keyChangeForm} layout="vertical">
-          <Form.Item label="客户名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item label="统一社会信用代码" name="credit_code"><Input /></Form.Item>
-          <Form.Item label="变更原因" name="comment" rules={[{ required: true, min: 2 }]}><Input.TextArea rows={3} /></Form.Item>
-        </Form>
       </Modal>
       <Modal
         open={Boolean(portalResult)}

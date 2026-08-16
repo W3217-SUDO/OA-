@@ -55,6 +55,7 @@ import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
+import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
   buildCaseOrdinarySearchPayload,
@@ -395,6 +396,7 @@ type CaseDetailCapabilities = {
   can_delete_reminder: boolean;
   can_create_log: boolean;
   can_update_progress: boolean;
+  can_change_phase: boolean;
   can_manage_hearing: boolean;
   can_create_case_task: boolean;
   can_delete_case: boolean;
@@ -411,7 +413,7 @@ type CaseDetailCapabilities = {
 const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_write: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
-  can_update_progress: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
+  can_update_progress: false, can_change_phase: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_basic: false, can_close_case: false, can_archive: false,
   can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
@@ -808,6 +810,10 @@ export default function CaseCenterPage({
   const feeExpenseSubtype = Form.useWatch("expense_subtype", feeForm);
   const feeItems = Form.useWatch("items", feeForm) || [];
   const feeEmployeeOptions = caseAssistantOptions;
+  const feeContractOptions = useMemo(
+    () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow),
+    [contracts, editingFeeRow, feeCase, viewingCounselCase],
+  );
   const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
   const loadCaseCapabilities = async (rows: CaseRow[]) => {
     const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
@@ -2595,7 +2601,7 @@ export default function CaseCenterPage({
   const openPhaseChange = async (rows: CaseRow[]) => {
     const selected = rows.filter(Boolean);
     if (!selected.length) return message.warning("请先选择案件");
-    if (selected.some((row) => !getCaseCapability(row).can_update_progress)) return message.warning("当前账号没有案件阶段维护权限");
+    if (selected.some((row) => !getCaseCapability(row).can_change_phase)) return message.warning("当前账号没有案件阶段维护权限");
     if (selected.some((row) => ["待归档审核", "已归档", "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改案件阶段");
     try {
       const { data } = await api.get("/cases/phases");
@@ -3322,6 +3328,10 @@ export default function CaseCenterPage({
     if(key==="edit")return editCaseFee(selectedFirmFee!);
     if(key==="delete")return deleteCaseFee(selectedFirmFee!);
     if(key==="no-payment")return markCaseFeeNoPayment(selectedFirmFee!);
+    if(key==="invoice"&&["已申请","已开票"].includes(String(selectedFirmFee!.data.invoice_status||""))){
+      message.warning(`该费用${selectedFirmFee!.data.invoice_status}，不能重复申请开票`);
+      return;
+    }
     rememberBusinessRecordDetailTarget({
       id:selectedFirmFee!.id,
       module:"finance",
@@ -3355,7 +3365,7 @@ export default function CaseCenterPage({
   const companyScheduleDetailOperationLabels = getCompanyScheduleDetailOperationLabels();
   const companyScheduleDetailActionButtons = viewingCounselCase ? <>
     {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>{companyScheduleDetailOperationLabels[0]}</Button>}
-    {counselDetailCapabilities.can_update_progress && <Button disabled={["待归档审核","已归档","已合并"].includes(viewingCounselCase.status)} onClick={()=>{ void openProgress; void openPhaseChange([viewingCounselCase]); }}>{companyScheduleDetailOperationLabels[1]}</Button>}
+    {counselDetailCapabilities.can_change_phase && <Button disabled={["待归档审核","已归档","已合并"].includes(viewingCounselCase.status)} onClick={()=>{ void openPhaseChange([viewingCounselCase]); }}>{companyScheduleDetailOperationLabels[1]}</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && !["待归档审核","已归档","已合并"].includes(viewingCounselCase.status) && <Button onClick={() => { notaryInfoForm.setFieldsValue({ notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "", deposit_address: viewingCounselCase.data.deposit_address || "", comment: "" }); setNotaryInfoCase(viewingCounselCase); }}>{companyScheduleDetailOperationLabels[2]}</Button>}
     {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseHearingLawyer(viewingCounselCase)}>{companyScheduleDetailOperationLabels[3]}</Button>}
     {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseLitigants(viewingCounselCase)}>{companyScheduleDetailOperationLabels[4]}</Button>}
@@ -3619,11 +3629,15 @@ export default function CaseCenterPage({
                 items: selectedCase ? [
                   ...(counselListMode && selectedCaseCapability.can_edit_basic ? [{ key: "edit", label: "修改基本信息" }] : []),
                   ...(!counselListMode && legacyCaseListOperationState.canParticipant && selectedCaseCapability.can_edit_basic ? [{ key: "participant", label: legacyCaseListOperationLabels.participant }] : []),
-                  ...(!counselListMode && legacyCaseListOperationState.canPhase && selectedCaseCapability.can_update_progress ? [{ key: "phase", label: legacyCaseListOperationLabels.phase }] : []),
+                  ...(!counselListMode && legacyCaseListOperationState.canPhase && selectedCaseCapability.can_change_phase ? [{ key: "phase", label: legacyCaseListOperationLabels.phase }] : []),
                   ...(legacyCaseListOperationState.canCourt && selectedCaseCapability.can_edit_basic ? [{ key: "court", label: legacyCaseListOperationLabels.court }] : []),
                   { key: "view", label: "案件任务" },
                   ...(selectedCaseCapability.can_create_finance ? [{ key: "fee", label: "新增案件费用" }] : []),
                   ...(selectedCaseCapability.can_assign_team ? [{ key: "assign", label: "人员分配" }] : []),
+                  { key: "documents", label: "案件文档" },
+                  { key: "letters", label: "委托书/律师函" },
+                  { key: "notary", label: "公证/调查表" },
+                  { key: "logs", label: "案件日志" },
                   ...(!counselListMode && selectedCaseCapability.can_update_progress ? [{ key: "progress", label: "登记进展" }] : []),
                   ...(!counselListMode && selectedCaseCapability.can_manage_hearing ? [{ key: "hearing", label: "开庭排期" }] : []),
                   ...(selectedCaseCapability.can_archive ? [{ key: "archive", label: "案件归档" }] : []),
@@ -3638,6 +3652,7 @@ export default function CaseCenterPage({
                   if (key === "view") openCaseTasks(selectedCase);
                   if (key === "fee") openCaseFee(selectedCase);
                   if (key === "assign") openAssign(selectedCase);
+                  if (["documents", "letters", "notary", "logs"].includes(key)) void openCounselDetail(selectedCase);
                   if (key === "progress") openProgress(selectedCase);
                   if (key === "hearing") openHearing(selectedCase);
                   if (key === "archive") void openArchive(selectedCase);
@@ -4006,7 +4021,7 @@ export default function CaseCenterPage({
           {editingFeeRow ? <>
             <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
             <div className="form-grid">
-              <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={contracts.filter((contract) => contract.customer === editingFeeRow.customer).map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))} /></Form.Item>
+              <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={feeContractOptions} /></Form.Item>
               <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldsValue({ expense_subtype: value === "内部" ? "内部费用" : "官费", fee_type: value === "内部" ? "内部费用" : "官方费用" })} /></Form.Item>
               <Form.Item label="费用类别" name="expense_subtype" rules={[{ required: true }]}><Select options={(feeExpenseScope === "内部" ? ["内部费用"] : ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"]).map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue("fee_type", ({ "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
               <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
@@ -4017,7 +4032,7 @@ export default function CaseCenterPage({
             {fields.map((field, index) => <Card key={field.key} size="small" title={`费用 ${index + 1}`} extra={fields.length > 1 ? <Button type="text" danger icon={<MinusCircleOutlined />} aria-label={`删除费用 ${index + 1}`} onClick={() => remove(field.name)} /> : null} style={{ marginBottom: 12 }}>
               <Form.Item label="费用名称" name={[field.name, "title"]} rules={[{ required: true, message: "请输入费用名称" }]}><Input /></Form.Item>
               <div className="form-grid">
-                <Form.Item label="合同号" name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={contracts.filter((contract) => contract.customer === feeCase?.customer).map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))} /></Form.Item>
+                <Form.Item label="合同号" name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={feeContractOptions} /></Form.Item>
                 <Form.Item label="费用归属" name={[field.name, "expense_scope"]} rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items", field.name, "expense_subtype"], value === "内部" ? "内部费用" : "官费"); feeForm.setFieldValue(["items", field.name, "fee_type"], value === "内部" ? "内部费用" : "官方费用"); }} /></Form.Item>
                 <Form.Item label="费用类别" name={[field.name, "expense_subtype"]} rules={[{ required: true }]}><Select options={["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用", "内部费用"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue(["items", field.name, "fee_type"], ({ "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
                 <Form.Item label="金额" name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item label="经办人员" name={[field.name, "handler"]} rules={[{ required: true, message: "请输入经办人员" }]}><Input /></Form.Item><Form.Item label="收款单位" name={[field.name, "payee"]}><Input /></Form.Item><Form.Item label="缴费法院/机构" name={[field.name, "court"]}><Input /></Form.Item><Form.Item label="缴费通知文号" name={[field.name, "document_no"]}><Input /></Form.Item><Form.Item label="截止日期" name={[field.name, "deadline"]}><DatePicker style={{ width: "100%" }} /></Form.Item>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AutoComplete,
   Button,
   Card,
   DatePicker,
@@ -575,7 +576,16 @@ export function ReceiptCreatePage() {
           <Input value={receiptNo} disabled />
         </Form.Item>
         <Form.Item label="回款单位" name="payerName" rules={[{ required: true, message: "请输入回款单位" }, { min: 2 }]}>
-          <Input />
+          <AutoComplete
+            allowClear
+            placeholder="输入回款单位，或从系统客户中选择"
+            options={customers.map((value) => ({ value, label: value }))}
+            filterOption={(inputValue, option) =>
+              String(option?.label || "")
+                .toLowerCase()
+                .includes(inputValue.trim().toLowerCase())
+            }
+          />
         </Form.Item>
         <Form.Item label="客户名称" name="customer">
           <Select
@@ -752,7 +762,16 @@ export default function PlatformFinancePage({
         操作: "",
         客户名称: item.claimed_customer || item.customer || "—",
         客户: item.customer || "—",
-        客户管理人: item.claimant || data.customer_manager || item.owner || "—",
+        客户管理人:
+          item.customer_manager_display_name ||
+          item.customer_manager ||
+          item.claimant_display_name ||
+          item.claimant ||
+          data.customer_manager_display_name ||
+          data.customer_manager ||
+          item.owner_display_name ||
+          item.owner ||
+          "—",
         回款流水号: item.serial_no || item.receipt_no || "—",
         回款单位: item.payer_name || data.payer || "—",
         销售代表: data.sales_rep || data.sales_representative || item.sales_rep || "—",
