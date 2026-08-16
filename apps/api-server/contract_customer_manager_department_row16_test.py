@@ -13,7 +13,7 @@ from app.security import current_identity
 
 API = settings.api_prefix
 PREFIX = "CODEX-812-ROW16-"
-IDENTITY = {"username": PREFIX + "user", "role": "auditor", "display_name": "行16授权用户", "department": PREFIX + "部门A"}
+IDENTITY = {"username": PREFIX + "user", "role": "manager", "display_name": "第16行部门负责人", "department": PREFIX + "部门A"}
 
 
 class ContractCustomerManagerDepartmentRow16Test(unittest.IsolatedAsyncioTestCase):
@@ -25,7 +25,7 @@ class ContractCustomerManagerDepartmentRow16Test(unittest.IsolatedAsyncioTestCas
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
         async with self.sessions() as db:
             db.add_all([
-                User(username=IDENTITY["username"], display_name=IDENTITY["display_name"], department=IDENTITY["department"], role="auditor", password_hash="x", is_active=True),
+                User(username=IDENTITY["username"], display_name=IDENTITY["display_name"], department=IDENTITY["department"], role="manager", password_hash="x", is_active=True),
                 User(username=PREFIX + "manager-a", display_name="管理人甲", department=IDENTITY["department"], role="user", password_hash="x", is_active=True),
                 User(username=PREFIX + "manager-b", display_name="管理人乙", department=PREFIX + "部门B", role="user", password_hash="x", is_active=True),
             ])

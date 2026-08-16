@@ -1,0 +1,675 @@
+{
+  "server": "localhost",
+  "database": "PRD_CRM_GD_20200211",
+  "tables": {
+    "Legal_Investigation_Clue_Evidence": {
+      "legacy_column_count": 24,
+      "projection_column_count": 24,
+      "missing_table": false,
+      "missing_columns": [],
+      "extra_projection_columns": [],
+      "legacy": {
+        "EvidenceId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": false
+        },
+        "EvidenceNo": {
+          "type": "varchar",
+          "max_length": 200,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "EvidenceGuid": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "EvidenceType": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "ClueGuid": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "EvidenceDate": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "EvidenceAddress": {
+          "type": "varchar",
+          "max_length": 1000,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "NotaryOrganization": {
+          "type": "varchar",
+          "max_length": 200,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "NotarialNo": {
+          "type": "varchar",
+          "max_length": 200,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "NotarialObtainDate": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "Remark": {
+          "type": "varchar",
+          "max_length": 2000,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "IsActived": {
+          "type": "char",
+          "max_length": 1,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "DepositAddress": {
+          "type": "varchar",
+          "max_length": 1000,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "InvoiceNo": {
+          "type": "varchar",
+          "max_length": 100,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "EvidenceStatus": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "StorageLocationName": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "StorageLocationNo": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "WarehouseNo": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "PaymentStatus": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "Amount": {
+          "type": "decimal",
+          "max_length": 9,
+          "precision": 18,
+          "scale": 0,
+          "nullable": true
+        }
+      },
+      "projection": {
+        "EvidenceId": {
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": true
+        },
+        "EvidenceNo": {
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "EvidenceGuid": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "EvidenceType": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ClueGuid": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "EvidenceDate": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "EvidenceAddress": {
+          "type": "VARCHAR(1000)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "NotaryOrganization": {
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "NotarialNo": {
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "NotarialObtainDate": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "Remark": {
+          "type": "VARCHAR(2000)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "IsActived": {
+          "type": "VARCHAR(1)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "DepositAddress": {
+          "type": "VARCHAR(1000)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "InvoiceNo": {
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "EvidenceStatus": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "StorageLocationName": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "StorageLocationNo": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "WarehouseNo": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "PaymentStatus": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "Amount": {
+          "type": "NUMERIC(18, 0)",
+          "nullable": true,
+          "primary_key": false
+        }
+      }
+    },
+    "Legal_Investigation_Clue_Evidence_File": {
+      "legacy_column_count": 15,
+      "projection_column_count": 15,
+      "missing_table": false,
+      "missing_columns": [],
+      "extra_projection_columns": [],
+      "legacy": {
+        "FileId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": false
+        },
+        "EvidenceGuid": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "ClueGuid": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileName": {
+          "type": "varchar",
+          "max_length": 200,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "MediaType": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileTypeId": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "FullPath": {
+          "type": "varchar",
+          "max_length": 500,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileSize": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "UploadingUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "UploadingTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "IsActived": {
+          "type": "char",
+          "max_length": 1,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        }
+      },
+      "projection": {
+        "FileId": {
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": true
+        },
+        "EvidenceGuid": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ClueGuid": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileName": {
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "MediaType": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileTypeId": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FullPath": {
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileSize": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "UploadingUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "UploadingTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "IsActived": {
+          "type": "VARCHAR(1)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        }
+      }
+    },
+    "Legal_Investigation_Clue_File": {
+      "legacy_column_count": 14,
+      "projection_column_count": 14,
+      "missing_table": false,
+      "missing_columns": [],
+      "extra_projection_columns": [],
+      "legacy": {
+        "FileId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": false
+        },
+        "ClueGuid": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileName": {
+          "type": "varchar",
+          "max_length": 200,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "MediaType": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileTypeId": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "FullPath": {
+          "type": "varchar",
+          "max_length": 500,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileSize": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "UploadingUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "UploadingTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "IsActived": {
+          "type": "char",
+          "max_length": 1,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        }
+      },
+      "projection": {
+        "FileId": {
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": true
+        },
+        "ClueGuid": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileName": {
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "MediaType": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileTypeId": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FullPath": {
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileSize": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "UploadingUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "UploadingTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "IsActived": {
+          "type": "VARCHAR(1)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        }
+      }
+    }
+  }
+}

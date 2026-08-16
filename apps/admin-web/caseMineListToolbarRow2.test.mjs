@@ -25,6 +25,9 @@ assert.match(source, /key: "participant"/);
 assert.match(source, /key: "fee"/);
 assert.match(source, /key: "assign"/);
 assert.match(source, /key: "archive"/);
+for (const label of ["案件文档", "委托书\/律师函", "公证\/调查表", "案件日志"]) {
+  assert.match(source, new RegExp(label), `${label} must be available from the selected-case operation menu`);
+}
 assert.match(css, /\.case-mine-list-actions \{ flex:0 0 auto/);
 
 console.log("case mine list toolbar row 2 contract passed");

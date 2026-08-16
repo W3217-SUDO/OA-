@@ -3351,6 +3351,7 @@ export default function CaseCenterPage({
     {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openAssign(viewingCounselCase)}>人员分配</Button>}
     {counselDetailCapabilities.can_edit_basic && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseLitigants(viewingCounselCase)}>修改当事人</Button>}
     {counselDetailCapabilities.can_assign_team && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCaseHearingLawyer(viewingCounselCase)}>修改开庭律师</Button>}
+    {(viewingCounselCase.data.original_case_record_id || viewingCounselCase.data.original_case_no || viewingCounselCase.data.origin_case_no || viewingCounselCase.data.source_case_no) && <Button onClick={()=>openRelatedOriginalCase({id:Number(viewingCounselCase.data.original_case_record_id)||undefined,serial_no:viewingCounselCase.data.original_case_no||viewingCounselCase.data.origin_case_no||viewingCounselCase.data.source_case_no})}>查看原案件</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "法律顾问" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openCounselEdit(viewingCounselCase)}>修改基本信息</Button>}
     {counselDetailCapabilities.can_edit_basic && isNormalEditableCase(viewingCounselCase) && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openNormalCaseEdit(viewingCounselCase)}>修改基本信息</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "仲裁" && <Button disabled={["待归档审核","已归档"].includes(viewingCounselCase.status)} onClick={()=>openArbitrationBasicEdit(viewingCounselCase)}>修改基本信息</Button>}
@@ -3414,13 +3415,13 @@ export default function CaseCenterPage({
                     />
                   </Form.Item>
                   <Form.Item label="客户" name="customer" rules={[{ required: true, message: "请选择客户" }]}>
-                    <Select showSearch optionFilterProp="label" placeholder="请选择客户" options={[...new Set(contracts.map((row) => row.customer))].map((value) => ({ value, label: value }))} />
+                    <Select disabled={Boolean(contractPrefill?.id)} showSearch optionFilterProp="label" placeholder="请选择客户" options={[...new Set(contracts.map((row) => row.customer))].map((value) => ({ value, label: value }))} />
                   </Form.Item>
                   {!isCounselCreate && <Form.Item label="客户诉讼地位" name="client_position" rules={[{ required: true }]}>
                     <Select options={clientPositionOptions.map((value) => ({ value, label: value }))} />
                   </Form.Item>}
                   <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}>
-                    <Select showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCasePersonValue(resolveCaseSourcePerson(selected)),title:selected?`${selected.title}案件`:undefined})}} />
+                    <Select disabled={initialView !== "case-new" || Boolean(contractPrefill?.id)} showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCasePersonValue(resolveCaseSourcePerson(selected)),title:selected?`${selected.title}案件`:undefined})}} />
                   </Form.Item>
                   <Form.Item label="案源人" name="source_person"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="由关联合同自动带入，可按本案实际情况修改" /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}

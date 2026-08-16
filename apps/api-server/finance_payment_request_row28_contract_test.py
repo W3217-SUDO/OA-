@@ -14,6 +14,7 @@ class FinancePaymentRequestRow28Contract(unittest.TestCase):
         self.assertIn('amount: float | None = Field(default=None, gt=0)', BACKEND)
         self.assertIn('payment_account: str = Field(default="", max_length=128)', BACKEND)
         self.assertIn('if body.amount is not None:', BACKEND)
+        self.assertIn('if not is_payment_request:', BACKEND)
         self.assertIn('payment_requested_amount', BACKEND)
         self.assertIn('"payment_account": account', BACKEND)
         self.assertIn('申请付款金额不能超过未付款金额', BACKEND)

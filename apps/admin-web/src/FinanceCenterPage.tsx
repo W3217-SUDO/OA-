@@ -4560,16 +4560,16 @@ export default function FinanceCenterPage({
             <>
           <Button
             type="link"
-            title="同意结算"
-            aria-label="同意结算"
+            title="同意支付"
+            aria-label="同意支付"
             icon={<CheckCircleOutlined />}
             disabled={archiveSettlementBusy}
             onClick={() => openArchiveSettlementReview([row], true)}
           />
           <Button
             type="link"
-            title="拒绝结算"
-            aria-label="拒绝结算"
+            title="拒绝支付"
+            aria-label="拒绝支付"
             icon={<DeleteOutlined />}
             disabled={archiveSettlementBusy}
             onClick={() => openArchiveSettlementReview([row], false)}
@@ -7570,8 +7570,8 @@ export default function FinanceCenterPage({
       );
       message.success(
         archiveSettlementReviewApproved
-          ? `同意结算 ${response.data.reviewed} 条归档费`
-          : `拒绝结算 ${response.data.reviewed} 条归档费`,
+          ? `同意支付 ${response.data.reviewed} 条归档费`
+          : `拒绝支付 ${response.data.reviewed} 条归档费`,
       );
       setArchiveSettlementReviewTargets([]);
       setArchiveSettlementReviewComment("");
@@ -7585,8 +7585,8 @@ export default function FinanceCenterPage({
       message.error(
         error?.response?.data?.detail ||
           (archiveSettlementReviewApproved
-            ? "标识已结算出错."
-            : "拒绝结算出错."),
+            ? "标识已支付出错."
+            : "拒绝支付出错."),
       );
     } finally {
       financeActionGates.archiveSettlement.leave();
@@ -10047,7 +10047,7 @@ export default function FinanceCenterPage({
                           )
                         }
                       >
-                        同意结算
+                        同意支付
                       </Button>
                       <Button
                         loading={archiveSettlementBusy}
@@ -10060,7 +10060,7 @@ export default function FinanceCenterPage({
                           )
                         }
                       >
-                        拒绝结算
+                        拒绝支付
                       </Button>
                     </>
                   )}
@@ -12574,7 +12574,7 @@ export default function FinanceCenterPage({
       <Modal
         className="finance-settlement-review-modal"
         open={archiveSettlementReviewTargets.length > 0}
-        title={archiveSettlementReviewApproved ? "同意结算" : "拒绝结算"}
+        title={archiveSettlementReviewApproved ? "同意支付" : "拒绝支付"}
         okText={archiveSettlementReviewApproved ? "同意" : "提交"}
         cancelText="取消"
         confirmLoading={archiveSettlementBusy}

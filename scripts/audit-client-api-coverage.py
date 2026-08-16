@@ -21,6 +21,10 @@ SERVER_ROUTE = re.compile(
     r"@app\.(get|post|put|patch|delete)\(f?([\"'])\{settings\.api_prefix\}([^\"']+)\2",
     re.IGNORECASE,
 )
+SERVER_API_ROUTE = re.compile(
+    r"@app\.api_route\(\s*f?([\"'])\{settings\.api_prefix\}([^\"']+)\1\s*,\s*methods=\[([^\]]+)\]",
+    re.IGNORECASE,
+)
 
 
 def paths_compatible(client_path: str, server_path: str) -> bool:
@@ -42,6 +46,10 @@ def main() -> None:
     for method, _, path in SERVER_ROUTE.findall(backend_source):
         full_path = path.replace("{{", "{").replace("}}", "}")
         server.setdefault(method.lower(), []).append(full_path)
+    for _, path, methods in SERVER_API_ROUTE.findall(backend_source):
+        full_path = path.replace("{{", "{").replace("}}", "}")
+        for method in re.findall(r"[\"']([A-Za-z]+)[\"']", methods):
+            server.setdefault(method.lower(), []).append(full_path)
 
     unmatched: list[str] = []
     total = 0

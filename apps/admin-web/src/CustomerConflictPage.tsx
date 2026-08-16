@@ -52,16 +52,22 @@ export default function CustomerConflictPage() {
   const search = async () => {
     const query = name.trim();
     activeRequest.current?.abort();
-    const controller = new AbortController();
-    activeRequest.current = controller;
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
     setResult(null);
+    if (!query) {
+      activeRequest.current = null;
+      setLoading(false);
+      message.warning("请输入企业名称。");
+      return;
+    }
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setLoading(true);
     try {
       const { data } = await api.get<ConflictSearchResult>(
         "/customers/conflicts",
-        { params: query ? { name: query } : {}, signal: controller.signal },
+        { params: { name: query }, signal: controller.signal },
       );
       if (requestSequence.current === sequence) setResult(data);
     } catch (error: any) {

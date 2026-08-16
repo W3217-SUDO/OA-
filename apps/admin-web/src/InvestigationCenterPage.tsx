@@ -603,7 +603,7 @@ export default function InvestigationCenterPage({
           !["已完成", "已取消"].includes(row.status),
       );
     }
-    if (initialTab.includes("-my-")) {
+    if (initialTab.includes("-my-") && profile.role !== "admin") {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
         names.includes(
@@ -1386,10 +1386,19 @@ export default function InvestigationCenterPage({
         api.get("/records", { params: { module: "contract", page_size: 100 } }),
       ]);
       const existingTasks = data.items as TaskRow[];
+      const parentTask =
+        existingTasks.find((task) => !task.parent_task_id) || existingTasks[0];
+      const hasParent = Boolean(parentTask);
       setTaskTarget(row);
       setTasks(existingTasks);
-      setCreatingSubtask(createSubtask);
+      setCreatingSubtask(createSubtask && hasParent);
       resetTaskForm(row);
+      taskForm.setFieldValue(
+        "parent_task_id",
+        createSubtask && hasParent ? parentTask.id : undefined,
+      );
+      if (createSubtask && !hasParent)
+        message.warning("先创建首个调查任务；后续“新增子任务”将自动关联该任务");
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
@@ -4276,6 +4285,22 @@ export default function InvestigationCenterPage({
             >
               <Input />
             </Form.Item>
+            {creatingSubtask && (
+              <Form.Item
+                label="父调查任务"
+                name="parent_task_id"
+                rules={[{ required: true, message: "请选择父任务" }]}
+              >
+                <Select
+                  options={tasks
+                    .filter((task) => !task.parent_task_id)
+                    .map((task) => ({
+                      value: task.id,
+                      label: `${task.serial_no}｜${task.title}`,
+                    }))}
+                />
+              </Form.Item>
+            )}
             <div className="form-grid">
               {!taskTarget?.data.contract_id &&
                 !taskTarget?.data.contract_record_id && (

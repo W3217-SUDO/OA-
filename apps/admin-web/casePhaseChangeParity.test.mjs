@@ -27,7 +27,9 @@ test("case page opens a guarded phase editor and submits the dedicated endpoint"
 });
 
 test("phase editing preserves permission and archive/merge guards", () => {
-  assert.match(page, /can_update_progress/);
+  assert.match(page, /can_change_phase/);
+  assert.match(page, /selectedCaseCapability\.can_change_phase/);
+  assert.match(page, /getCaseCapability\(row\)\.can_change_phase/);
   assert.match(page, /待归档审核.*已归档.*已合并/);
   assert.match(page, /请先选择案件/);
   assert.match(page, /await load\(\)/);

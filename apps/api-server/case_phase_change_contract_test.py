@@ -25,7 +25,7 @@ class CasePhaseChangeContractTest(unittest.TestCase):
         self.assertIn("_normalize_case_numbers(body.case_nos)", SOURCE)
         self.assertIn("all_cases", SOURCE)
         self.assertIn("missing", SOURCE)
-        self.assertIn("await _require_case_progress_write_access(case_record, identity, db)", SOURCE)
+        self.assertIn("await _require_case_phase_change_access(case_record, identity, db)", SOURCE)
         self.assertIn("if case_record.status == \"已合并\"", SOURCE)
         self.assertIn("当前案件已处于所选阶段", SOURCE)
         self.assertIn("await db.commit()", SOURCE)

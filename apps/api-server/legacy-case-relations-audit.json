@@ -1,0 +1,555 @@
+{
+  "server": "localhost",
+  "database": "PRD_CRM_GD_20200211",
+  "tables": {
+    "Legal_Case_File": {
+      "legacy_column_count": 25,
+      "projection_column_count": 25,
+      "missing_table": false,
+      "missing_columns": [],
+      "extra_projection_columns": [],
+      "legacy": {
+        "FileId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": false
+        },
+        "CaseId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": false
+        },
+        "CaseNo": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CompanyId": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileName": {
+          "type": "varchar",
+          "max_length": 200,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileTypeId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "FullPath": {
+          "type": "varchar",
+          "max_length": 500,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileSize": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "UploadingUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "UploadingTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "Actived": {
+          "type": "char",
+          "max_length": 1,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "HasHedgingFile": {
+          "type": "bit",
+          "max_length": 1,
+          "precision": 1,
+          "scale": 0,
+          "nullable": true
+        },
+        "HedgingFileId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "HedgingFileTypeId": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "SortingIndex": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "TrackingNo": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "PatentOfficeFileSeqNo": {
+          "type": "varchar",
+          "max_length": 50,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "PatentOfficeFileId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "IsTransmitted": {
+          "type": "char",
+          "max_length": 1,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CaseFileTypeId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "FileGuid": {
+          "type": "uniqueidentifier",
+          "max_length": 16,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        }
+      },
+      "projection": {
+        "FileId": {
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": true
+        },
+        "CaseId": {
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": false
+        },
+        "CaseNo": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CompanyId": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileName": {
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileTypeId": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FullPath": {
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileSize": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "UploadingUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "UploadingTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "Actived": {
+          "type": "VARCHAR(1)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "HasHedgingFile": {
+          "type": "BOOLEAN",
+          "nullable": true,
+          "primary_key": false
+        },
+        "HedgingFileId": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "HedgingFileTypeId": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "SortingIndex": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "TrackingNo": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "PatentOfficeFileSeqNo": {
+          "type": "VARCHAR(50)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "PatentOfficeFileId": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "IsTransmitted": {
+          "type": "VARCHAR(1)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CaseFileTypeId": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "FileGuid": {
+          "type": "VARCHAR(36)",
+          "nullable": true,
+          "primary_key": false
+        }
+      }
+    },
+    "Legal_Case_Participant": {
+      "legacy_column_count": 8,
+      "projection_column_count": 8,
+      "missing_table": false,
+      "missing_columns": [],
+      "extra_projection_columns": [],
+      "legacy": {
+        "CaseNo": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": false
+        },
+        "CompanyId": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "StaffName": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": false
+        },
+        "CreateUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "SortingIndex": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        }
+      },
+      "projection": {
+        "CaseNo": {
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": true
+        },
+        "CompanyId": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "StaffName": {
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": true
+        },
+        "CreateUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "SortingIndex": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        }
+      }
+    },
+    "Legal_Case_Log": {
+      "legacy_column_count": 10,
+      "projection_column_count": 10,
+      "missing_table": false,
+      "missing_columns": [],
+      "extra_projection_columns": [],
+      "legacy": {
+        "LogId": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": false
+        },
+        "CaseId": {
+          "type": "bigint",
+          "max_length": 8,
+          "precision": 19,
+          "scale": 0,
+          "nullable": true
+        },
+        "CaseNo": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "Content": {
+          "type": "varchar",
+          "max_length": 8000,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "LogType": {
+          "type": "int",
+          "max_length": 4,
+          "precision": 10,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "CreateTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "ChangeUser": {
+          "type": "varchar",
+          "max_length": 20,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        },
+        "ChangeTime": {
+          "type": "datetime",
+          "max_length": 8,
+          "precision": 23,
+          "scale": 3,
+          "nullable": true
+        },
+        "IsActived": {
+          "type": "char",
+          "max_length": 1,
+          "precision": 0,
+          "scale": 0,
+          "nullable": true
+        }
+      },
+      "projection": {
+        "LogId": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": true
+        },
+        "CaseId": {
+          "type": "BIGINT",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CaseNo": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "Content": {
+          "type": "VARCHAR(8000)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "LogType": {
+          "type": "INTEGER",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "CreateTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeUser": {
+          "type": "VARCHAR(20)",
+          "nullable": true,
+          "primary_key": false
+        },
+        "ChangeTime": {
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        "IsActived": {
+          "type": "VARCHAR(1)",
+          "nullable": true,
+          "primary_key": false
+        }
+      }
+    }
+  }
+}

@@ -1524,8 +1524,7 @@ class CaseProgressInput(BaseModel):
 CASE_EXECUTION_STATUSES = (
     "一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理",
     "执行中止", "执行结案", "执行终本", "执行终结",
-    # Keep the local UI-only values accepted while aligning the legacy list.
-    "未开始", "执行中", "已执行",
+    "执行中止",
 )
 
 
@@ -4853,6 +4852,8 @@ async def reset_system_user_password(user_id: int, body: SystemUserPasswordReset
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+    if user.username == identity["username"]:
+        raise HTTPException(status_code=409, detail="不能重置当前登录账号的密码，请使用个人资料中的修改密码功能")
     policy = await _security_policy(db)
     if len(body.new_password) < policy.min_password_length:
         raise HTTPException(status_code=422, detail=f"新密码至少需要 {policy.min_password_length} 位")
@@ -7453,13 +7454,15 @@ def _empty_customer_conflict_result(query: str) -> dict:
 
 @app.get(f"{settings.api_prefix}/customers/conflicts")
 async def customer_conflicts(
-    name: str | None = Query(default=None, max_length=100),
+    name: str = Query(min_length=1, max_length=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Return the latest case containing one exact, normalized enterprise party."""
     await _require_customer_conflict_permission(identity, db)
-    query = (name or "").strip()
-    needle = _normalize_conflict_entity(query) if query else ""
+    query = name.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="企业名称不能为空")
+    needle = _normalize_conflict_entity(query)
 
     # Conflict checking deliberately spans the whole firm.  Only the minimum
     # original-page disclosure is returned and no source record id is exposed.
@@ -7479,10 +7482,6 @@ async def customer_conflicts(
     data = latest_case.data or {}
     filing_date = _case_filing_date(latest_case)
     plaintiffs = _case_party_values(data, CASE_PLAINTIFF_FIELDS) or _conflict_entity_tokens(latest_case.customer)
-    # The legacy page resolves managers from the customer returned with the
-    # displayed case.  An empty search therefore must not look up a blank
-    # customer title, which could select an unrelated customer record.
-    manager_entity = latest_case.customer.strip() if not query else query
     return {
         "found": True,
         "query": query,
@@ -7493,7 +7492,7 @@ async def customer_conflicts(
         "defendants": _case_party_values(data, CASE_DEFENDANT_FIELDS),
         "third_parties": _case_party_values(data, CASE_THIRD_PARTY_FIELDS),
         "our_customer": latest_case.customer,
-        "customer_managers": await _conflict_customer_managers(manager_entity, db) if manager_entity else [],
+        "customer_managers": await _conflict_customer_managers(query, db),
     }
 
 
@@ -11024,6 +11023,8 @@ async def list_tasks(
             raise HTTPException(status_code=422, detail="无效的任务页面")
         scope, relation = mapped
     if scope not in {"default", "mine", "department", "company"}: raise HTTPException(status_code=422, detail="无效的任务范围")
+    if scope == "company" and identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="只有系统管理员可以查看公司任务")
     if created_from and created_to and created_from > created_to: raise HTTPException(status_code=422, detail="发起开始日期不能晚于结束日期")
     if deadline_from and deadline_to and deadline_from > deadline_to: raise HTTPException(status_code=422, detail="截止开始日期不能晚于结束日期")
     # Apply participant visibility in SQL before any Python filtering/pagination.

@@ -10,6 +10,7 @@ import asyncio
 import base64
 import gzip
 import json
+import re
 import secrets
 import sys
 import xml.etree.ElementTree as ET
@@ -44,6 +45,7 @@ from app.security import hash_password
 SOURCE = "8091-local-PRD_CRM_GD_20200211"
 DEFAULT_OWNER = "admin"
 CASE_TYPES = {110: "民事案件", 120: "刑事案件", 130: "行政案件", 140: "法律顾问案件", 150: "仲裁案件"}
+CASE_PHASES = {101011: "文书准备"}
 
 
 def clean(value, limit=None):
@@ -59,6 +61,27 @@ def parse_datetime(value):
         return datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def is_active(row):
+    return clean(row.get("IsActived") or "T").upper() in {"T", "1", "Y", "TRUE"}
+
+
+def legacy_file_category(row, file_types):
+    file_type_id = clean(row.get("CaseFileTypeId") or row.get("FileTypeId"))
+    file_type = file_types.get(file_type_id)
+    category = clean((file_type or {}).get("FileTypeName") or row.get("FileTypeName"))
+    return category or None
+
+
+def legacy_fee_subtype(row):
+    direct = clean(row.get("CaseFeeTypeName") or row.get("FeeTypeName"))
+    if direct:
+        return direct
+    match = re.search(r"费用类型\s*[:：]\s*([^;；]+)", clean(row.get("Remark")))
+    if match:
+        return match.group(1).strip()
+    raise RuntimeError(f"legacy case fee {row.get('CaseFeeId')} has no resolvable fee type")
 
 
 def decode_dataset(path):
@@ -351,7 +374,8 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
             if not serial:
                 continue
             customer_no = clean(row.get("CustomerNo")); contract_no = clean(row.get("ContractNo")); customer = require_parent(index, customer_no, "customer", f"case {serial}"); contract = require_parent(index, contract_no, "contract", f"case {serial}")
-            item, made = await upsert_record(db, index, module="case", serial_no=serial, title=clean(row.get("CaseName"), 255), customer=customer.title if customer else customer_no, owner=owner_for(users, row.get("BusinessOwner") or row.get("CreateUser")), department="历史案件", status="历史数据", description="8091旧系统样本案件", data={"migration_source": SOURCE, "legacy_case_id": row.get("CaseId"), "legacy_record": row, "customer_id": customer.id if customer else None, "customer_no": customer_no, "contract_id": contract.id if contract else None, "contract_no": contract_no, "case_type_id": row.get("CaseTypeId"), "case_type": CASE_TYPES.get(int(row.get("CaseTypeId") or 0), "案件"), "cause_or_charge": clean(row.get("CauseName")), "business_owner": clean(row.get("BusinessOwner")), "plaintiff": clean(row.get("AppellantNames")), "defendant": clean(row.get("AppelleeNames")), "court": clean(row.get("FirstIntanceCourt")), "court_case_no": clean(row.get("FirstIntanceCaseNo")), "investigation_clue_nos": clean(row.get("InvestigationClueNos")), "settlement_amount": row.get("SettlementAmount"), "litigation_amount": row.get("LitigationAmount"), "original_case_no": clean(row.get("OriginalCaseNo"))}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            phase_id = int(row.get("CasePhaseId") or 0)
+            item, made = await upsert_record(db, index, module="case", serial_no=serial, title=clean(row.get("CaseName"), 255), customer=customer.title if customer else customer_no, owner=owner_for(users, row.get("BusinessOwner") or row.get("CreateUser")), department="历史案件", status=CASE_PHASES.get(phase_id, "历史数据"), description="8091旧系统样本案件", data={"migration_source": SOURCE, "legacy_case_id": row.get("CaseId"), "legacy_record": row, "customer_id": customer.id if customer else None, "customer_no": customer_no, "contract_id": contract.id if contract else None, "contract_no": contract_no, "case_type_id": row.get("CaseTypeId"), "case_type": CASE_TYPES.get(int(row.get("CaseTypeId") or 0), "案件"), "case_phase_id": phase_id, "cause_or_charge": clean(row.get("CauseName")), "source_person": clean(row.get("CaseOriginPeople") or row.get("BusinessOwner")), "handling_lawyers": [clean(row.get("CaseLawyerName"))] if clean(row.get("CaseLawyerName")) else [], "assistant": clean(row.get("CaseAssistantName") or row.get("CaseAssistant")), "assistant_username": clean(row.get("CaseAssistant")), "investigator": clean(row.get("Investigator")), "investigator_display_name": clean(row.get("InvestigatorName")), "plaintiff": clean(row.get("AppellantNames")), "defendant": clean(row.get("AppelleeNames")), "opponent": clean(row.get("AppelleeNames")), "court": clean(row.get("FirstIntanceCourt")), "court_case_no": clean(row.get("FirstIntanceCaseNo")), "case_register_date": row.get("CaseRegisterDate"), "case_divisional_date": row.get("CaseDivisionalDate"), "investigation_clue_nos": clean(row.get("InvestigationClueNos")), "notarial_no": clean(row.get("NotarialNos")), "warehouse": clean(row.get("DepositAddress")), "settlement_amount": row.get("SettlementAmount"), "litigation_amount": row.get("LitigationAmount"), "original_case_no": clean(row.get("OriginalCaseNo"))}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
             item.data = {**(item.data or {}), "customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no, "customer_title": customer.title, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_title": contract.title}
             contract_object = await db.scalar(select(ContractObject).where(ContractObject.contract_record_id == contract.id, ContractObject.case_record_id == item.id))
             if contract_object is None:
@@ -372,7 +396,10 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
                 item.data = {**item.data, "case_id": case_parent.id, "case_record_id": case_parent.id, "case_no": case_parent.serial_no, "case_title": case_parent.title}
             result["records"].setdefault("clues", 0); result["records"]["clues"] += int(made)
         cases = {clean(row.get("CaseNo")): index.get(clean(row.get("CaseNo"))) for row in main.get("Legal_Case", [])}
+        file_types = {clean(row.get("FileTypeId")): row for row in main.get("Legal_Case_FileType", []) if is_active(row)}
         for row in main.get("Legal_Case_File", []):
+            if not is_active(row):
+                continue
             case = cases.get(clean(row.get("CaseNo")))
             if not case:
                 continue
@@ -380,8 +407,31 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
             stored = f"legacy-{row.get('FileId')}-{name}"[:255]
             exists = await db.scalar(select(FileAttachment).where(FileAttachment.stored_name == stored))
             if not exists:
-                db.add(FileAttachment(record_id=case.id, category="旧系统案件文件", file_type_code=clean(row.get("CaseFileTypeId")), original_name=name, stored_name=stored, content_type="application/octet-stream", size=int(float(row.get("FileSize") or 0)), path=clean(row.get("FullPath") or row.get("FilePath"), 512), uploader=owner_for(users, row.get("CreateUser") or row.get("UploadUser")), remark="8091旧系统样本文件元数据", created_at=parse_datetime(row.get("CreateTime"))))
+                category = legacy_file_category(row, file_types)
+                if not category:
+                    result["records"].setdefault("unfiled_files_skipped", 0); result["records"]["unfiled_files_skipped"] += 1
+                    continue
+                db.add(FileAttachment(record_id=case.id, category=category, file_type_code=clean(row.get("CaseFileTypeId")), original_name=name, stored_name=stored, content_type="application/octet-stream", size=int(float(row.get("FileSize") or 0)), path=clean(row.get("FullPath") or row.get("FilePath"), 512), uploader=owner_for(users, row.get("UploadingUser") or row.get("UploadUser") or row.get("CreateUser")), remark=f"8091旧系统附件ID:{row.get('FileId')}", created_at=parse_datetime(row.get("UploadingTime") or row.get("UploadTime") or row.get("CreateTime"))))
                 result["records"].setdefault("files", 0); result["records"]["files"] += 1
+        for row in main.get("FAM_AR_CaseFee", []):
+            if not is_active(row):
+                continue
+            case = require_parent(index, clean(row.get("CaseNo")), "case", f"case fee {row.get('CaseFeeId')}")
+            contract = require_parent(index, clean(row.get("ContractNo")), "contract", f"case fee {row.get('CaseFeeId')}")
+            customer = require_parent(index, clean(row.get("CustomerNo")), "customer", f"case fee {row.get('CaseFeeId')}")
+            try:
+                subtype = legacy_fee_subtype(row)
+            except RuntimeError:
+                result["records"].setdefault("unresolved_case_fees_skipped", 0); result["records"]["unresolved_case_fees_skipped"] += 1
+                continue
+            serial = f"JF{row.get('CaseFeeId')}"
+            relation_data = {
+                "case_id": case.id, "case_record_id": case.id, "case_no": case.serial_no, "case_title": case.title,
+                "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_title": contract.title,
+                "customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no, "customer_title": customer.title,
+            }
+            _, made = await upsert_record(db, index, module="finance", serial_no=serial, title=subtype, customer=customer.title, owner=owner_for(users, row.get("RequestUser") or row.get("CreateUser")), department=case.department, status="历史数据", description=clean(row.get("Remark")), data={"migration_source": SOURCE, "legacy_case_fee_id": row.get("CaseFeeId"), "legacy_case_fee_guid": row.get("CaseFeeGuid"), "legacy_record": row, **relation_data, "expense_scope": "律所", "expense_subtype": subtype, "fee_type": "官方费用", "amount": row.get("Amount") or 0, "payment_requested_amount": row.get("PaidAmount") or row.get("PrePaidAmount") or 0, "refund_amount": row.get("RefundedAmount") or row.get("RefundAmount") or 0, "received_amount": row.get("CashedAmount") or 0, "submitted_at": row.get("InformDate") or row.get("CreateTime"), "submitted_by": clean(row.get("RequestUser") or row.get("CreateUser")), "invoice_date": row.get("InvoiceDate") or "", "invoice_no": clean(row.get("InvoiceNo")), "payment_deadline": row.get("PaymentDeadline")}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            result["records"].setdefault("case_fees", 0); result["records"]["case_fees"] += int(made)
         await db.commit()
         print(json.dumps(result, ensure_ascii=False))
 

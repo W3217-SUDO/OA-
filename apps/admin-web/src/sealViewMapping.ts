@@ -6,7 +6,7 @@ const STATUS = {
 };
 export const sealViewMapping: Record<string, SealViewSpec> = {
   'seal-my': { view: 'my', statuses: [] },
-  'seal-my-pending': { view: 'my', statuses: [STATUS.pending] },
+  'seal-my-pending': { view: 'my', statuses: [STATUS.draft, STATUS.pending] },
   'seal-my-stamping': { view: 'my', statuses: [STATUS.stamping] },
   'seal-my-used': { view: 'my', statuses: [STATUS.used, STATUS.archived] },
   'seal-my-refused': { view: 'my', statuses: [STATUS.refused] },

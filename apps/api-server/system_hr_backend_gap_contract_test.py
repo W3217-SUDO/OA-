@@ -197,7 +197,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(employee_row["person_display_name"], "codex_missing_name")
         self.assertFalse(employee_row["display_name_missing"])
 
-    async def test_administrator_can_reset_the_current_login_password(self):
+    async def test_administrator_cannot_reset_the_current_login_password(self):
         admin_headers = await self._admin_headers()
         async with self.sessions() as db:
             admin = await db.scalar(select(User).where(User.username == "admin"))
@@ -209,12 +209,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
             headers=admin_headers,
             json={"new_password": "AdminReset2026!"},
         )
-        self.assertEqual(reset.status_code, status.HTTP_200_OK, reset.text)
-        self.assertTrue(reset.json()["must_change_password"])
-
-        relogin = await self._login("admin", "AdminReset2026!")
-        self.assertEqual(relogin.status_code, status.HTTP_200_OK, relogin.text)
-        self.assertTrue(relogin.json()["must_change_password"])
+        self.assertEqual(reset.status_code, status.HTTP_409_CONFLICT, reset.text)
 
     async def test_hr_employee_uses_linked_account_name_when_archive_title_is_empty(self):
         admin_headers = await self._admin_headers()
@@ -710,6 +705,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(me.status_code, status.HTTP_200_OK, me.text)
         self.assertIn("contract-audit-pending", me.json()["menu_keys"])
         self.assertIn("seal-audit-pending", me.json()["menu_keys"])
+        self.assertNotIn("customer", me.json()["menu_keys"])
 
 
 if __name__ == "__main__":

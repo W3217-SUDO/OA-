@@ -139,6 +139,40 @@ class HrEmployeeLoginDisabledContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(user.is_active)
             self.assertIs((record.data or {}).get("is_active"), False)
 
+    async def test_offboarded_employee_can_be_reactivated_with_login_account(self):
+        admin_login = await self._login("admin", "..123456")
+        self.assertEqual(admin_login.status_code, status.HTTP_200_OK)
+        headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+        listed = await self.client.get(f"{API}/hr/employees", headers=headers, params={"username": "codexactive"})
+        employee_id = listed.json()["items"][0]["id"]
+        offboarded = await self.client.post(
+            f"{API}/hr/{employee_id}/transition",
+            headers=headers,
+            json={"to_status": "离职", "effective_date": "2026-08-13", "reason": "测试离职"},
+        )
+        self.assertEqual(offboarded.status_code, status.HTTP_200_OK, offboarded.text)
+
+        reactivated = await self.client.post(
+            f"{API}/hr/{employee_id}/transition",
+            headers=headers,
+            json={"to_status": "在职", "effective_date": "2026-08-14", "reason": "恢复在职"},
+        )
+        self.assertEqual(reactivated.status_code, status.HTTP_200_OK, reactivated.text)
+        self.assertEqual(reactivated.json()["status"], "在职")
+        self.assertIs(reactivated.json()["data"]["is_active"], True)
+        self.assertEqual(reactivated.json()["data"]["reactivated_at"], "2026-08-14")
+
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == "codexactive"))
+            event = await db.scalar(
+                select(WorkflowEvent)
+                .where(WorkflowEvent.record_id == employee_id, WorkflowEvent.to_status == "在职")
+                .order_by(WorkflowEvent.id.desc())
+            )
+            self.assertTrue(user.is_active)
+            self.assertEqual(event.action, "恢复在职")
+
 
 if __name__ == "__main__":
     unittest.main()

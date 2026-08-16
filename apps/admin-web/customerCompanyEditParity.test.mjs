@@ -3,8 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 
 const page = fs.readFileSync("src/CustomerCenterPage.tsx", "utf8");
-const editStart = page.indexOf('<Modal\n        width={820}');
-const editEnd = page.indexOf('<Modal\n        open={Boolean(levelCustomer)}', editStart);
+const editStart = page.indexOf('className="customer-edit-modal"');
+const editEnd = page.indexOf('<Modal\n        open={Boolean(portalResult)}', editStart);
 const edit = page.slice(editStart, editEnd);
 
 test("company customer edit uses the complete new-customer sections and fields", () => {

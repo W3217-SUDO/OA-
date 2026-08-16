@@ -92,6 +92,11 @@ class CaseBasicPhaseApprovalIndependenceRow4Test(unittest.IsolatedAsyncioTestCas
         }
 
     async def test_pending_approval_allows_basic_and_phase_edits_but_archive_stays_locked(self) -> None:
+        capability_response = await self.client.get(f"{API}/cases/{self.pending_id}/action-capabilities")
+        self.assertEqual(capability_response.status_code, 200, capability_response.text)
+        self.assertTrue(capability_response.json()["can_change_phase"])
+        self.assertFalse(capability_response.json()["can_update_progress"])
+
         basic_response = await self.client.put(f"{API}/cases/{self.pending_id}/normal-basic", json=self._normal_payload())
         self.assertEqual(basic_response.status_code, 200, basic_response.text)
         self.assertEqual(basic_response.json()["status"], "二审")

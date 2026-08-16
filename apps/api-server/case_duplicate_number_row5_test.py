@@ -117,6 +117,35 @@ class CaseDuplicateNumberRow5Test(unittest.IsolatedAsyncioTestCase):
         copied = await self._duplicate(self.source_id)
         self.assertEqual(copied["serial_no"], f"{ROOT_NO}B")
 
+    async def test_historical_contract_does_not_block_copy(self) -> None:
+        async with self.sessions() as db:
+            source = await db.get(BusinessRecord, self.source_id)
+            contract = await db.get(BusinessRecord, int(source.data["contract_id"]))
+            contract.status = "历史数据"
+            await db.commit()
+
+        copied = await self._duplicate(self.source_id)
+        self.assertEqual(copied["serial_no"], f"{ROOT_NO}A")
+        self.assertEqual(copied["data"]["contract_no"], "ROW5-CONTRACT")
+
+    async def test_legacy_case_without_contract_can_be_copied(self) -> None:
+        legacy_no = "SHMS2600999"
+        async with self.sessions() as db:
+            legacy = BusinessRecord(
+                module="case", serial_no=legacy_no, title="Legacy case without contract",
+                customer="Legacy customer", status="历史数据", owner=ADMIN["username"],
+                department=ADMIN["department"],
+                data={"case_type": self.case_type, "case_creation_step": "completed"},
+            )
+            db.add(legacy)
+            await db.flush()
+            legacy_id = legacy.id
+            await db.commit()
+
+        copied = await self._duplicate(legacy_id)
+        self.assertEqual(copied["serial_no"], f"{legacy_no}A")
+        self.assertEqual(copied["customer"], "Legacy customer")
+
     async def test_unique_constraint_collision_retries_the_next_suffix(self) -> None:
         async with self.sessions() as db:
             source = await db.get(BusinessRecord, self.source_id)
