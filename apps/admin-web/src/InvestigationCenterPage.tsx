@@ -218,11 +218,11 @@ const investigationListView = (route: string) => {
     return "assigned";
   if (
     route === "investigation-task-published" ||
-    route === "investigation-task-mine" ||
     route === "investigation-task-overdue" ||
     route === "investigation-task-sub-published"
   )
     return "published";
+  if (route === "investigation-task-mine") return "assigned";
   return "";
 };
 const moduleMeta = {
@@ -438,7 +438,7 @@ export default function InvestigationCenterPage({
   const load = async (key = tab) => {
     setLoading(true);
     try {
-      const module = initialTab.startsWith("investigation-task-sub-")
+      const module = initialTab === "investigation-task-mine" || initialTab.startsWith("investigation-task-sub-")
         ? "task"
         : initialTab.startsWith("investigation-task-")
           ? "investigation"
