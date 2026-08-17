@@ -4174,9 +4174,7 @@ export default function CaseCenterPage({
           </section>}
           <section className="case-archive-summary" aria-label="归档信息">
             <div className="case-court-summary-title">归档信息</div>
-            <div className="case-court-summary-grid">
-              <p><strong>归档状态</strong><span>{viewingCounselCase.data.archive_status || "—"}</span></p>
-              <p><strong>归档号</strong><span>{viewingCounselCase.data.archive_no || "—"}</span></p>
+            <div className="case-court-summary-grid case-archive-summary-grid">
               <p><strong>提交人</strong><span>{viewingCounselCase.data.archive_submitter ? casePersonDisplayName(viewingCounselCase.data.archive_submitter, viewingCounselCase.data.archive_submitter_display_name) : "—"}</span></p>
               <p><strong>提交时间</strong><span>{viewingCounselCase.data.archive_submitted_at || "—"}</span></p>
               <p><strong>提交备注</strong><span>{viewingCounselCase.data.archive_submit_comment || "—"}</span></p>
@@ -4184,7 +4182,7 @@ export default function CaseCenterPage({
               <p><strong>审核人</strong><span>{viewingCounselCase.data.archive_reviewer ? casePersonDisplayName(viewingCounselCase.data.archive_reviewer, viewingCounselCase.data.archive_reviewer_display_name) : "—"}</span></p>
               <p><strong>审核时间</strong><span>{viewingCounselCase.data.archive_reviewed_at || viewingCounselCase.data.archived_at || "—"}</span></p>
               <p><strong>审核备注</strong><span>{viewingCounselCase.data.archive_review_comment || viewingCounselCase.data.archive_reject_reason || "—"}</span></p>
-              <p><strong>归档日期</strong><span>{viewingCounselCase.data.archived_at || "—"}</span></p>
+              <p><strong>归档号</strong><span>{viewingCounselCase.data.archive_no || "—"}</span></p>
             </div>
           </section>
           <div className="case-detail-body-grid">

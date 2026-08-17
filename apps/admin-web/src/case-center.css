@@ -149,6 +149,7 @@
 .case-court-summary-grid p{display:grid;grid-template-columns:minmax(66px,auto) minmax(0,1fr);min-height:24px;margin:0;border-right:1px solid #dce2e8;border-bottom:1px solid #dce2e8}
 .case-court-summary-grid strong,.case-court-summary-grid span{padding:4px 6px;overflow:hidden;line-height:15px;text-overflow:ellipsis;white-space:nowrap}
 .case-court-summary-grid strong{border-right:1px solid #dce2e8;background:#fafbfc;text-align:right;font-weight:400}
+.case-archive-summary-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr)}
 .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 250px;min-height:calc(100vh - 315px);border-top:0}
 .case-detail-tab-area{padding:0}
 .case-documents-layout{grid-template-columns:280px minmax(0,1fr);min-height:420px}
@@ -160,6 +161,7 @@
   .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}
   .case-documents-layout{grid-template-columns:250px minmax(0,1fr)}
   .case-court-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .case-archive-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:900px){
   .case-court-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}

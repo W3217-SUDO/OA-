@@ -18,4 +18,12 @@ assert.doesNotMatch(source, /archive_status\s*\|\|\s*row\.status/);
 assert.match(source, /archive_submitter\s*\?\s*casePersonDisplayName/);
 assert.match(source, /archive_reviewer\s*\?\s*casePersonDisplayName/);
 
+const archiveSection = source.slice(
+  source.indexOf('<section className="case-archive-summary"'),
+  source.indexOf('<div className="case-detail-body-grid"'),
+);
+const archiveLabels = [...archiveSection.matchAll(/<strong>([^<]+)<\/strong>/g)].map((match) => match[1]);
+assert.deepEqual(archiveLabels, ["提交人", "提交时间", "提交备注", "审核状态", "审核人", "审核时间", "审核备注", "归档号"]);
+assert.doesNotMatch(archiveSection, /<strong>归档状态<\/strong>|<strong>归档日期<\/strong>/);
+
 console.log("case detail row 20 layout contract passed");
