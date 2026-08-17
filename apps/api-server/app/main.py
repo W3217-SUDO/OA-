@@ -3998,19 +3998,31 @@ def _user_permission_overrides(user: User) -> dict:
     return {key: overrides[key] for key in ("menu_keys", "field_keys", "data_scope") if key in overrides and overrides[key] not in (None, "")}
 
 
+def _configured_user_job_role_name(user: User) -> str:
+    """Resolve the explicit personnel role before any legacy position value."""
+    profile = user.profile or {}
+    return str(
+        profile.get("permission_role")
+        or profile.get("staff_role")
+        or profile.get("position")
+        or ""
+    ).strip()
+
+
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     """Expose the contract workbench to explicitly configured contract auditors."""
-    permission = await _permission_payload_for_roles(_system_user_role_ids(user), db)
-    profile = user.profile or {}
-    job_role_name = str(profile.get("position") or profile.get("staff_role") or "").strip()
-    if job_role_name:
+    role_ids = _system_user_role_ids(user)
+    permission = await _permission_payload_for_roles(role_ids, db)
+    job_role_name = _configured_user_job_role_name(user)
+    if "admin" not in role_ids and job_role_name:
         job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
-        if job_role:
-            job_menu_keys = [key for key in (job_role.permissions or []) if key in SYSTEM_MENU_ROUTE_KEYS]
-            # The role-management tree is authoritative for an employee's
-            # business role.  Do not silently inherit the broad base "user"
-            # menu set when the configured business role has no menu grants.
-            permission["menu_keys"] = _expand_menu_permission_keys(job_menu_keys)
+        # A personnel role is authoritative. Missing, inactive and empty roles
+        # must fail closed, and a non-admin account cannot inherit the protected
+        # SYSTEM-ADMIN job role through a stale legacy position value.
+        job_role_allowed = bool(job_role and job_role.code != "SYSTEM-ADMIN")
+        job_menu_keys = [key for key in (job_role.permissions or []) if key in SYSTEM_MENU_ROUTE_KEYS] if job_role_allowed else []
+        permission["menu_keys"] = _expand_menu_permission_keys(job_menu_keys)
+        permission["field_keys"] = list(job_role.field_keys or []) if job_role_allowed else []
     overrides = _user_permission_overrides(user)
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
@@ -8310,11 +8322,12 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
     """Resolve business action permission from the employee's configured job role."""
     if user.role == "admin":
         return True
-    profile = user.profile or {}
-    job_role_name = str(profile.get("position") or profile.get("staff_role") or "").strip()
+    job_role_name = _configured_user_job_role_name(user)
     if not job_role_name:
         return False
     job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
+    if not job_role or job_role.code == "SYSTEM-ADMIN":
+        return False
     permissions = set(job_role.permissions or []) if job_role else set()
     # 旧的人事岗位“调查专员”已经使用“调查取证”描述其工作范围；
     # 调查线索提交和现场材料扫描是该范围内不可拆分的专用动作。

@@ -707,6 +707,73 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("seal-audit-pending", me.json()["menu_keys"])
         self.assertNotIn("customer", me.json()["menu_keys"])
 
+    async def test_personnel_role_permissions_fail_closed_before_stale_admin_position(self):
+        async with self.sessions() as db:
+            db.add_all([
+                JobRole(
+                    code="CODEX-NO-PERMISSION",
+                    name="测试无权限角色",
+                    permissions=[],
+                    is_active=True,
+                    created_by="admin",
+                    updated_by="admin",
+                ),
+                JobRole(
+                    code="SYSTEM-ADMIN",
+                    name="系统管理员",
+                    permissions=["customer", "contract", "case"],
+                    is_active=True,
+                    created_by="admin",
+                    updated_by="admin",
+                ),
+                User(
+                    username="staff_role_denied",
+                    display_name="人员角色无权限",
+                    department=DEPT,
+                    role="user",
+                    password_hash=hash_password("StaffRolePass2026!"),
+                    is_active=True,
+                    must_change_password=False,
+                    profile={"position": "系统管理员", "staff_role": "测试无权限角色"},
+                ),
+                User(
+                    username="missing_role_denied",
+                    display_name="人员角色不存在",
+                    department=DEPT,
+                    role="user",
+                    password_hash=hash_password("MissingRolePass2026!"),
+                    is_active=True,
+                    must_change_password=False,
+                    profile={"position": "系统管理员", "staff_role": "已删除角色"},
+                ),
+                User(
+                    username="position_admin_denied",
+                    display_name="普通账号管理员职务",
+                    department=DEPT,
+                    role="user",
+                    password_hash=hash_password("PositionPass2026!"),
+                    is_active=True,
+                    must_change_password=False,
+                    profile={"position": "系统管理员"},
+                ),
+            ])
+            await db.commit()
+
+        for username, password in [
+            ("staff_role_denied", "StaffRolePass2026!"),
+            ("missing_role_denied", "MissingRolePass2026!"),
+            ("position_admin_denied", "PositionPass2026!"),
+        ]:
+            login = await self._login(username, password)
+            self.assertEqual(login.status_code, status.HTTP_200_OK, login.text)
+            self.assertEqual(login.json()["user"]["menu_keys"], [])
+            me = await self.client.get(
+                f"{API}/auth/me",
+                headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+            )
+            self.assertEqual(me.status_code, status.HTTP_200_OK, me.text)
+            self.assertEqual(me.json()["menu_keys"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
