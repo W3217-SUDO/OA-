@@ -21928,9 +21928,25 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
     effective_role = body.role if account_type == "员工账号" else "user"
-    username = str((employee.data or {}).get("username") or employee.owner).strip().lower()
+    stored_username = str((employee.data or {}).get("username") or "").strip().lower()
+    requested_username = body.username.strip().lower()
+    username = stored_username or (str(employee.owner or "").strip().lower() if account_type == "员工账号" else "")
     display_name = await _require_unique_hr_display_name(body.display_name, db, employee_id=employee.id, linked_username=username)
-    user = await db.scalar(select(User).where(User.username == username))
+    user = await db.scalar(select(User).where(User.username == username)) if username else None
+    if account_type == "客户账号" and not stored_username:
+        if requested_username == "admin" or not re.fullmatch(r"[a-z0-9._-]{2,64}", requested_username):
+            raise HTTPException(status_code=422, detail="客户账号用户名只能包含小写字母、数字、点、下划线或短横线")
+        if await db.scalar(select(User.id).where(User.username == requested_username)):
+            raise HTTPException(status_code=409, detail="客户账号用户名已被其他系统用户占用")
+        username = requested_username
+        user = User(
+            username=username, display_name=display_name, department=body.department.strip(),
+            role="user", role_ids=["user"], profile={}, password_hash=hash_password(uuid4().hex),
+            is_active=body.is_active, password_changed_at=None, must_change_password=True,
+        )
+        db.add(user)
+        await db.flush()
+        employee.owner = username
     if account_type in {"员工账号", "客户账号"} and not user: raise HTTPException(status_code=409, detail="登录账号关联的系统用户不存在，不能只修改一侧资料")
     if user and user.username == "admin":
         raise HTTPException(status_code=409, detail="管理员账号不能通过员工档案修改、停用或改名")
