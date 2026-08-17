@@ -29,3 +29,9 @@ test("customer source edit keeps the real save synchronization path", () => {
   assert.match(page, /customer_source: data\.customer_source \|\| ""/);
   assert.match(page, /source_person: data\.source_person \|\| ""/);
 });
+
+test("company and department customer views expose customer portal actions", () => {
+  assert.match(page, /const customerPortalActions = \[/);
+  assert.match(page, /initialView === "customer-dept"[\s\S]*customerPortalActions/);
+  assert.match(page, /initialView === "customer-company"[\s\S]*customerPortalActions/);
+});

@@ -1358,6 +1358,10 @@ export default function CustomerCenterPage({
         { key: "communication", label: "新增沟通记录" },
         { key: "contact-management", label: "联系人管理" },
       ];
+      const customerPortalActions = [
+        { key: "portal-open", label: "开通/重置客户服务端" },
+        { key: "portal-close", label: "停用客户服务端" },
+      ];
       return (
     initialView === "customer-mine"
       ? [
@@ -1366,13 +1370,12 @@ export default function CustomerCenterPage({
           { key: "contract", label: "新增合同" },
           ...customerNavigationActions,
           { key: "share", label: "共享客户" },
-          { key: "portal-open", label: "开通/重置客户服务端" },
-          { key: "portal-close", label: "停用客户服务端" },
+          ...customerPortalActions,
         ]
       : initialView === "customer-dept"
-        ? [{ key: "assign", label: "分配客户" }, { key: "release", label: "释放到公海" }, ...customerNavigationActions]
+        ? [{ key: "assign", label: "分配客户" }, { key: "release", label: "释放到公海" }, ...customerNavigationActions, ...customerPortalActions]
       : initialView === "customer-company"
-        ? [{ key: "edit", label: "客户编辑" }, { key: "release", label: "释放到公海" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }, ...customerNavigationActions]
+        ? [{ key: "edit", label: "客户编辑" }, { key: "release", label: "释放到公海" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }, ...customerNavigationActions, ...customerPortalActions]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"
