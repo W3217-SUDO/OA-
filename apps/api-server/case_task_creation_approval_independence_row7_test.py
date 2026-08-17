@@ -90,6 +90,11 @@ class CaseTaskCreationApprovalIndependenceRow7Test(unittest.IsolatedAsyncioTestC
         self.assertEqual(created.json()["customer"], "Row 7 Customer")
         self.assertEqual(created.json()["case_no"], "ROW7-PENDING")
 
+        async with self.sessions() as db:
+            task = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == created.json()["serial_no"]))
+            self.assertIsNotNone(task)
+            self.assertEqual((task.data or {}).get("case_id"), self.pending_id)
+
         listed = await self.client.get(f"{API}/cases/{self.pending_id}/tasks")
         self.assertEqual(listed.status_code, 200, listed.text)
         self.assertEqual(listed.json()["items"][0]["title"], "ROW7 browser task")

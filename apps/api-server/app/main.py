@@ -11386,7 +11386,7 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
         collaborator = await _active_task_username(value, db, field_name="协作人")
         if collaborator != owner and collaborator not in collaborators:
             collaborators.append(collaborator)
-    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status="待接收", owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "priority": body.priority, "source": source, "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_record_id": case_record.id if case_record else None})
+    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status="待接收", owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "priority": body.priority, "source": source, "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None})
     db.add(task)
     await db.flush()
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="发起任务", to_status="待接收", operator=identity["username"], comment=f"负责人：{owner}；截止日期：{body.deadline}"), db, content="任务已分派.")
