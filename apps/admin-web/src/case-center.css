@@ -28,6 +28,7 @@
 .case-original-table .ant-table-row-selected>td { background:#e6f7f2!important; }
 .case-original-table p { max-width:100%; margin:0; overflow:hidden; line-height:23px; text-overflow:ellipsis; white-space:nowrap; }
 .case-cell-link.ant-btn-link { display:block; width:100%; min-width:0; height:auto; max-width:100%; padding:0; overflow:hidden; color:#0588bd; font-size:12px; text-align:left; text-overflow:ellipsis; white-space:nowrap; }
+.case-inline-cell-link.ant-btn-link,.case-task-cell-link.ant-btn-link { display:inline; width:auto; max-width:calc(100% - 42px); vertical-align:baseline; }
 .case-bottom-actions { display:flex; min-height:34px; margin-top:8px; padding-left:8px; overflow-x:auto; }
 .case-bottom-actions .ant-btn { height:28px; padding:0 12px; border-radius:0; font-size:12px; }
 .case-mine-list-actions { flex:0 0 auto; min-height:42px; margin:8px 0 0; padding:6px 8px; border-top:1px solid #dce2e8; background:#fff; }

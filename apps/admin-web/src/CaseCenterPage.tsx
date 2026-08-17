@@ -219,6 +219,14 @@ export const getCompanyArbitrationQueryFields = () => [
   ["handling_lawyer", "经办律师", "经办律师"],
   ["court", "仲裁机构", "仲裁机构"],
 ];
+export const getLegacyGroupedCaseColumnSchema = () => [
+  { key: "base", title: "基本信息", width: 205 },
+  { key: "parties", title: "当事人信息", width: 280 },
+  { key: "court", title: "法院信息", width: 300 },
+  { key: "lawyer", title: "委托律师", width: 210 },
+  { key: "phase", title: "阶段信息", width: 220 },
+  { key: "task", title: "任务信息", width: 430 },
+];
 export const getCompanyScheduleQueryFields = (): [string,string,string?,string?][] => [
   ["plaintiff", "原告/申请人/公诉机关", "text", "原告"],
   ["serial_no", "案号", "text", "案号"],
@@ -3223,20 +3231,30 @@ export default function CaseCenterPage({
   };
   const companyCriminalCaseColumns = getCompanyCriminalColumnSchema().map(({key,title,width})=>({title,key,width,sorter:key==="serial_no"||key==="hearing_at",render:(_:unknown,row:CaseRow)=>renderCompanyCriminalColumn(key,row)}));
   const companyArbitrationCaseColumns = getCompanyArbitrationColumnSchema().map(({key,title,width})=>({title,key,width,sorter:key==="serial_no"||key==="hearing_at",render:(_:unknown,row:CaseRow)=>renderCompanyCriminalColumn(key,row)}));
-  const groupedOriginalCaseColumns = [
-    {title:"基本信息",key:"base",width:185,render:(_:unknown,row:CaseRow)=><><p><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>案件编号:{row.serial_no}</Button></p><p>案件名称:{row.title}</p></>},
-    {title:"当事人信息",key:"parties",width:250,render:(_:unknown,row:CaseRow)=><><p>原告:{row.data.plaintiff||row.customer}</p><p>被告:{row.data.opponent||""}</p></>},
-    {title:"阶段信息",key:"phase",width:175,render:(_:unknown,row:CaseRow)=><><p>案件阶段:{row.status}</p><p>变更时间:{row.data.phase_changed_at||""}</p></>},
-    {title:"法院信息",key:"court",width:205,render:(_:unknown,row:CaseRow)=><><p>法院:{row.data.court||""}</p><p>法院案号:{row.data.court_case_no||""}</p></>},
-    {title:"法官信息",key:"judge",width:170,render:(_:unknown,row:CaseRow)=><><p>法官:{row.data.judge||""}</p><p>联系方式:{row.data.judge_phone||""}</p></>},
-    {title:"委托律师",key:"lawyer",width:180,render:(_:unknown,row:CaseRow)=><><p>经办:{casePersonDisplayNames(row.data.handling_lawyers)}</p><p>开庭:{casePersonDisplayName(row.data.hearing_lawyer,row.data.hearing_lawyer_display_name)}　助理:{casePersonDisplayName(row.data.assistant,row.data.assistant_display_name)}</p></>},
-    {title:"判决信息",key:"judgment",width:190,render:(_:unknown,row:CaseRow)=><><p>判决日期:{row.data.judgment_date||""}</p><p>判决结果:{row.data.judgment_result||""}</p></>},
-    {title:"调查信息",key:"investigation",width:190,render:(_:unknown,row:CaseRow)=><><p>调查员:{casePersonDisplayName(row.data.investigator,row.data.investigator_display_name)}</p><p>取证机构:{row.data.evidence_org||""}</p></>},
-    {title:"阶段信息",key:"phase-detail",width:190,render:(_:unknown,row:CaseRow)=><><p>当前阶段:{row.status}</p><p>执行进度:{row.data.execution_progress||""}</p></>},
-    {title:"任务信息",key:"task",width:255,render:(_:unknown,row:CaseRow)=><><p>名称:<Button type="link" className="case-cell-link" onClick={()=>openCaseTasks(row)}>{row.data.task_name||""}</Button></p><p>内容:{row.data.task_content||""}</p></>},
-    {title:"主体信息",key:"entity",width:190,render:(_:unknown,row:CaseRow)=><><p>主体:{row.customer?<Button type="link" className="case-cell-link" onClick={()=>openRelatedCustomer({id:Number(row.data.customer_id)||undefined,serial_no:row.data.customer_no,title:row.customer})}>{row.data.subject_name||row.customer}</Button>:row.data.subject_name||""}</p><p>披露状态:{row.data.subject_status||""}</p></>},
-    {title:"归档信息",key:"archive",width:190,render:(_:unknown,row:CaseRow)=><><p>归档状态:{row.data.archive_status||""}</p><p>归档日期:{row.data.archived_at||""} <Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>查看</Button></p></>},
-  ];
+  const groupedOriginalCaseColumns = getLegacyGroupedCaseColumnSchema().map(({ key, title, width }) => ({
+    key,
+    title,
+    width,
+    sorter: key === "base" || key === "phase" || key === "task",
+    render: (_: unknown, row: CaseRow) => {
+      switch (key) {
+        case "base":
+          return <><p><Button type="link" className="case-cell-link" onClick={() => void openCounselDetail(row)}>案号:{row.serial_no}</Button></p><p>阶段:{row.status || ""}</p></>;
+        case "parties":
+          return <><p>原告:{row.data.plaintiff || row.customer}</p><p>被告:{row.data.opponent || row.data.defendant || ""}</p></>;
+        case "court":
+          return <><p>法院:<Button type="link" className="case-cell-link case-inline-cell-link" onClick={() => void openCounselDetail(row)}>{row.data.court || ""}</Button></p><p>案号:{row.data.court_case_no || ""}</p></>;
+        case "lawyer":
+          return <><p>律师:{casePersonDisplayNames(row.data.handling_lawyers)}</p><p>助理:{casePersonDisplayName(row.data.assistant, row.data.assistant_display_name)}</p></>;
+        case "phase":
+          return <><p>变更时间:{row.data.phase_changed_at || ""}</p><p>变更时长:{row.data.phase_duration || row.data.phase_changed_days || ""}</p></>;
+        case "task":
+          return <><p>名称:<Button type="link" className="case-cell-link case-task-cell-link" onClick={() => openCaseTasks(row)}>{row.data.task_name || ""}</Button>　处理人:{casePersonDisplayName(row.data.task_handler || row.data.task_owner, row.data.task_handler_display_name || row.data.task_owner_display_name)}</p><p>内容:{row.data.task_content || ""}　到期日期:{row.data.task_due_date || row.data.task_deadline || ""}</p></>;
+        default:
+          return null;
+      }
+    },
+  }));
   const originalCaseColumns=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseColumns:groupedOriginalCaseColumns;
   const counselCaseColumns = [
     {title:"案件编号",dataIndex:"serial_no",width:170,sorter:true,render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openCounselDetail(row)}>{value}</Button>},
@@ -3276,7 +3294,7 @@ export default function CaseCenterPage({
   // All data columns below declare their widths. Keep the selection column inside
   // the horizontal viewport so the fixed right action column never overlays data.
   const companyArbitrationCaseTableScrollX=1610;
-  const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseTableScrollX:2420;
+  const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseTableScrollX:1645;
   const companyCriminalCaseTableScrollX=1610;
   const counselCaseTableScrollX=1460;
   const archiveCaseTableScrollX=archiveDone||archiveRefused?1700:1600;
