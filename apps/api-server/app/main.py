@@ -4049,19 +4049,15 @@ def _configured_user_job_role_name(user: User) -> str:
 
 
 async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
-    """Expose the contract workbench to explicitly configured contract auditors."""
+    """Resolve navigation and field grants from system-role configuration.
+
+    Personnel job roles describe business responsibilities, such as a reviewer
+    or an investigator.  They must not replace the menu/action grants saved in
+    System Center > Role Management: otherwise an account can see a feature
+    granted to its system role but receive a 403 when it uses that feature.
+    """
     role_ids = _system_user_role_ids(user)
     permission = await _permission_payload_for_roles(role_ids, db)
-    job_role_name = _configured_user_job_role_name(user)
-    if "admin" not in role_ids and job_role_name:
-        job_role = await db.scalar(select(JobRole).where(JobRole.name == job_role_name, JobRole.is_active.is_(True)))
-        # A personnel role is authoritative. Missing, inactive and empty roles
-        # must fail closed, and a non-admin account cannot inherit the protected
-        # SYSTEM-ADMIN job role through a stale legacy position value.
-        job_role_allowed = bool(job_role and job_role.code != "SYSTEM-ADMIN")
-        job_menu_keys = _job_role_menu_permission_keys(job_role.permissions or []) if job_role_allowed else []
-        permission["menu_keys"] = _expand_menu_permission_keys(job_menu_keys)
-        permission["field_keys"] = list(job_role.field_keys or []) if job_role_allowed else []
     overrides = _user_permission_overrides(user)
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])

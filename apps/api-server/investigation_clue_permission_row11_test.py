@@ -15,7 +15,7 @@ from app.main import (
     submit_investigation_clue,
     update_investigation_record,
 )
-from app.models import BusinessRecord, JobRole, User
+from app.models import BusinessRecord, JobRole, RolePermission, User
 
 
 def identity(username: str) -> dict:
@@ -58,12 +58,23 @@ class InvestigationCluePermissionRow11Test(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_effective_clue_menu_grant_can_create_submit_and_resubmit(self):
+    async def test_role_menu_grant_can_create_submit_and_resubmit_despite_job_role(self):
         async with self.sessions() as db:
+            # The System Center role configuration is the authorization source
+            # for visible UI functions.  A personnel role without clue actions
+            # must not replace this grant.
+            db.add(RolePermission(
+                role="user", display_name="普通用户", data_scope="本人及共享数据",
+                menu_keys=["investigation-task-sub-mine"], field_keys=[],
+            ))
+            db.add(JobRole(
+                code="ROW11-NO-CLUE", name="无提交线索岗位",
+                permissions=[], is_active=True,
+            ))
             menu_user = User(
                 username="row11-menu", display_name="菜单授权用户",
                 department="调查部", password_hash="x", role="user",
-                profile={"permission_overrides": {"menu_keys": ["clue"]}},
+                profile={"position": "无提交线索岗位"},
             )
             source_task = self._source_task(menu_user.username)
             db.add_all([menu_user, source_task])
