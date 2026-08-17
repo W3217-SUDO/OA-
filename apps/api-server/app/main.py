@@ -21927,8 +21927,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     account_type = str(body.data.get("account_type") or (employee.data or {}).get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
-    if account_type != "员工账号" and body.role != "user":
-        raise HTTPException(status_code=422, detail="客户账号和外部合作账号只能使用普通用户权限")
+    effective_role = body.role if account_type == "员工账号" else "user"
     username = str((employee.data or {}).get("username") or employee.owner).strip().lower()
     display_name = await _require_unique_hr_display_name(body.display_name, db, employee_id=employee.id, linked_username=username)
     user = await db.scalar(select(User).where(User.username == username))
@@ -21946,16 +21945,16 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
         return {"employee": _record_dict(employee), "user": None}
     username = await _rename_system_username(user, body.username, identity, db)
     if user.username == identity["username"] and not body.is_active: raise HTTPException(status_code=409, detail="不能停用当前登录账号")
-    if user.username == identity["username"] and body.role != "admin": raise HTTPException(status_code=409, detail="不能取消当前登录账号的管理员角色")
+    if user.username == identity["username"] and effective_role != "admin": raise HTTPException(status_code=409, detail="不能取消当前登录账号的管理员角色")
     # Login availability is independent from employment status: an active
     # employee may temporarily have login disabled without being offboarded.
     # Formal resignation/HR suspension still goes through the dedicated
     # transition endpoint, which also disables the linked account.
     previous_status = employee.status
     profile = {**(user.profile or {}), **body.data, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
-    user.display_name = display_name; user.department = body.department.strip(); user.role = body.role; user.role_ids = [body.role]; user.is_active = body.is_active; user.profile = profile
+    user.display_name = display_name; user.department = body.department.strip(); user.role = effective_role; user.role_ids = [effective_role]; user.is_active = body.is_active; user.profile = profile
     contract_approval_enabled = account_type == "员工账号" and bool(profile.get("contract_approval_enabled"))
-    employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": body.role, "is_active": body.is_active}
+    employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
