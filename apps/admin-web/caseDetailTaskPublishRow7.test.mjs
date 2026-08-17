@@ -21,12 +21,12 @@ assert.match(
 );
 assert.match(
   source,
-  /title=\{`发布案件任务：\$\{caseTaskCreateCase\?\.serial_no \|\| ""\}`\}[\s\S]*?okText="发布任务"[\s\S]*?onOk=\{createCaseTask\}/,
+  /title=\{`发布\$\{caseTaskKind\}：\$\{caseTaskCreateCase\?\.serial_no \|\| ""\}`\}[\s\S]*?okText=\{`发布\$\{caseTaskKind\}`\}[\s\S]*?onOk=\{createCaseTask\}/,
   "发布入口必须复用案件任务创建弹窗",
 );
 assert.match(
   source,
-  /await api\.post\("\/tasks", \{[\s\S]*?customer: targetCase\.customer,[\s\S]*?case_no: targetCase\.serial_no,[\s\S]*?source: "案件任务",[\s\S]*?\}\);/,
+  /await api\.post\("\/tasks", \{[\s\S]*?customer: targetCase\.customer,[\s\S]*?case_no: targetCase\.serial_no,[\s\S]*?source: taskKind,[\s\S]*?\}\);/,
   "发布任务必须自动绑定当前案件与客户",
 );
 assert.match(

@@ -2383,11 +2383,18 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "开庭律师保存失败");
     }
   };
-  const openCaseTaskCreator = (row: CaseRow, kind: CaseTaskKind = "案件任务") => {
+  const openCaseTaskCreator = (row: CaseRow) => {
     if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
     taskForm.resetFields();
     taskForm.setFieldsValue({ owner: profile.username || row.owner, deadline: undefined, priority: "普通", collaborators: [] });
-    setCaseTaskKind(kind);
+    setCaseTaskKind("案件任务");
+    setCaseTaskCreateCase(row);
+  };
+  const openCustomerTaskCreator = (row: CaseRow) => {
+    if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
+    taskForm.resetFields();
+    taskForm.setFieldsValue({ owner: profile.username || row.owner, deadline: undefined, priority: "普通", collaborators: [] });
+    setCaseTaskKind("客户任务");
     setCaseTaskCreateCase(row);
   };
   const createCaseTask = async () => {
@@ -4424,7 +4431,6 @@ export default function CaseCenterPage({
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",width:110,render:(_:unknown,row:CaseLogRow)=>casePersonDisplayName(row.operator,row.operator_display_name)}]}/></>},
               {key:"logs",label:"系统日志",children:<>{counselDetailCapabilities.can_create_log&&<Space style={{marginBottom:10}}><Button type="primary" icon={<PlusOutlined/>} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",width:110,render:(_:unknown,row:any)=>casePersonDisplayName(row.operator,row.operator_display_name)},{title:"说明",dataIndex:"comment"}]}/></>},
               {key:"tasks",label:"案件任务",children:<div className="case-legacy-tab-panel">
-                {counselDetailCapabilities.can_create_case_task&&<Button type="primary" icon={<PlusOutlined/>} style={{marginBottom:10}} onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button>}
                 <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1180}} dataSource={counselDetailTasks.filter(row=>row.source!=="客户任务")} columns={[
                   {title:"序号",width:65,render:(_:unknown,_row:TaskRow,index:number)=>index+1},
                   {title:"任务编号",dataIndex:"serial_no",width:155,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},
@@ -4438,9 +4444,10 @@ export default function CaseCenterPage({
                   {title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},
                   {title:"状态",dataIndex:"status",width:110,render:(value:string)=><Tag color={value==="已完成"||value==="已验收"?"green":value==="处理中"?"blue":"default"}>{value||"—"}</Tag>},
                 ]}/>
+                {counselDetailCapabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button></div>}
               </div>},
               {key:"customer-tasks",label:"客户任务",children:<div className="case-legacy-tab-panel">
-                {counselDetailCapabilities.can_create_case_task&&<Button type="primary" icon={<PlusOutlined/>} style={{marginBottom:10}} onClick={()=>openCaseTaskCreator(viewingCounselCase,"客户任务")}>发布客户任务</Button>}
+                {counselDetailCapabilities.can_create_case_task&&<Button type="primary" icon={<PlusOutlined/>} style={{marginBottom:10}} onClick={()=>openCustomerTaskCreator(viewingCounselCase)}>发布客户任务</Button>}
                 <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
               </div>},
               {key:"clues",label:"线索信息",children:<div className="case-legacy-tab-panel">
