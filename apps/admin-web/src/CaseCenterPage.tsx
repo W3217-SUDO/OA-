@@ -3728,6 +3728,12 @@ export default function CaseCenterPage({
               title={selectedCaseKeys.length !== 1 ? "请先选择一条案件" : "当前案件没有上传附件权限"}
               onClick={()=>caseUploadRef.current?.click()}
             >上传文件</Button>
+            {isCompanyCaseListRoute(initialView)&&<Button
+              aria-label="删除案件"
+              disabled={!canDeleteSelectedCompanyCase}
+              title={!selectedCase ? "请先选择一条案件" : canDeleteSelectedCompanyCase ? "删除选中的公司案件" : "当前账号或案件状态不允许删除"}
+              onClick={()=>selectedCase&&void deleteCompanyCase(selectedCase)}
+            >删除案件</Button>}
             {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button onClick={()=>void reviewCaseCreation(selectedCase,true)}>立案审批通过</Button>}
             {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button danger onClick={()=>void reviewCaseCreation(selectedCase,false)}>立案审批驳回</Button>}
             {counselListMode&&<>
