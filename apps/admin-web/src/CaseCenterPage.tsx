@@ -623,6 +623,7 @@ export default function CaseCenterPage({
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
+  const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
   const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<CaseAgentStatus | null>(null);
@@ -1503,8 +1504,9 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件任务加载失败");
     }
   };
-  const openCounselDetail = async (row: CaseRow) => {
+  const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
     if (!isCaseDetailView) {
+      sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
       const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
       rememberCaseDetailTarget({ id: row.id, serial_no: serialNo });
       sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({ route: initialView, page: originalPage, pageSize: originalPageSize, query: caseQuery }));
@@ -1512,6 +1514,9 @@ export default function CaseCenterPage({
       return;
     }
     try {
+      const storedTab = sessionStorage.getItem("sunhold:case-detail-tab");
+      if (preferredTab || storedTab) setActiveCounselDetailTab(preferredTab || storedTab || "documents");
+      if (storedTab) sessionStorage.removeItem("sunhold:case-detail-tab");
       // 基础案件详情必须先打开；历史、附件、提醒等附加面板不能因为单点失败
       // 阻断案号关联、搜索或通知进入详情。
       const recordRes = await api.get(`/records/${row.id}`);
@@ -2001,16 +2006,18 @@ export default function CaseCenterPage({
   const submitCounselBatchUpdate = async () => {
     const values=await batchUpdateForm.validateFields();
     const caseIds=selectedCaseKeys.map(Number);
-    if(!caseIds.length)return message.warning("请选择需要修改的法律顾问案件");
+    if(!caseIds.length)return message.warning("请选择需要修改的案件");
     const payload:any={case_ids:caseIds,comment:values.comment||""};
+    if(values.hearing_lawyer!==undefined)payload.hearing_lawyer=values.hearing_lawyer;
     if(values.handling_lawyers!==undefined)payload.handling_lawyers=values.handling_lawyers;
     if(values.assistant!==undefined)payload.assistant=values.assistant;
     if(values.case_stage!==undefined)payload.case_stage=values.case_stage;
-    if(payload.handling_lawyers===undefined&&payload.assistant===undefined&&payload.case_stage===undefined)return message.warning("请至少填写一个需要修改的字段");
+    if(payload.hearing_lawyer===undefined&&payload.handling_lawyers===undefined&&payload.assistant===undefined&&payload.case_stage===undefined)return message.warning("请至少填写一个需要修改的字段");
     try{
       const {data}=await api.post("/cases/batch-update",payload);
       message.success(`已修改 ${data.updated} 个案件`);setBatchUpdateOpen(false);batchUpdateForm.resetFields();
-      await loadCounselCases(caseQuery,counselPage,counselPageSize);
+      if (counselListMode) await loadCounselCases(caseQuery,counselPage,counselPageSize);
+      else await loadOrdinaryCases(caseQuery,originalPage,originalPageSize);
     }catch(error:any){message.error(error?.response?.data?.detail||"批量修改失败");}
   };
   const submitCounselBatchFee = async () => {
@@ -2431,13 +2438,13 @@ export default function CaseCenterPage({
       if (viewingCounselCase) void loadCounselDetailTasksPage(viewingCounselCase, nextPage, nextPageSize);
     },
   };
-  const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所") => {
+  const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所", expenseSubtype?: string) => {
     if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
     feeForm.resetFields();
     feeForm.setFieldsValue({ items: [{
       title: `${row.title}案件费用`, amount: row.data.amount || undefined,
       contract_record_id: Number(row.data.contract_record_id || row.data.contract_id) || undefined,
-      expense_scope: expenseScope, expense_subtype: expenseScope === "内部" ? "内部费用" : "官费",
+      expense_scope: expenseScope, expense_subtype: expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费"),
       fee_type: expenseScope === "内部" ? "内部费用" : "官方费用",
       commission_details: [],
       handler: profile.username || row.owner, court: row.data.court || "", payee: row.data.court || "",
@@ -3112,6 +3119,15 @@ export default function CaseCenterPage({
   const exportCaseQrWord = () => void downloadCaseExport(
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
   );
+  const generateSelectedCaseDocuments = async (documentType: string) => {
+    if (!selectedCases.length) return message.warning("请先选择需要生成文书的案件");
+    try {
+      await Promise.all(selectedCases.map((row) => api.post(`/cases/${row.id}/documents/${documentType}`)));
+      message.success(`已为 ${selectedCases.length} 个案件生成文书并归入案件附件`);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文书生成失败");
+    }
+  };
   const exportCounselCases = async (selectedOnly:boolean) => {
     if(selectedOnly&&!selectedCaseKeys.length)return message.warning("请选择需要导出的法律顾问案件");
     try {
@@ -3680,42 +3696,26 @@ export default function CaseCenterPage({
             <Dropdown
               trigger={["click"]}
               menu={{
-                items: counselListMode ? [
-                  { key: "selected-csv", label: "导出选中（CSV）", disabled: !selectedCaseKeys.length },
-                  { key: "all-csv", label: "导出当前查询（CSV）", disabled: !counselCases.length },
-                ] : [
-                  { key: "selected-excel", label: "导出选中（Excel）", disabled: !selectedCaseKeys.length },
-                  { key: "current-excel", label: "导出当前查询（Excel）", disabled: !originalCases.length },
-                  { key: "selected-qr", label: "导出选中二维码（Word）", disabled: !selectedCaseKeys.length },
-                  { key: "selected-manifest", label: "导出选中归档清单（Excel）", disabled: !selectedCaseKeys.length },
-                  { key: "all-csv", label: "导出当前查询（CSV）", disabled: !originalCases.length },
+                items: [
+                  { key: "selected-excel", label: "导出选中", disabled: !selectedCaseKeys.length },
+                  { key: "current-excel", label: "导出全部", disabled: !(counselListMode ? counselCases : originalCases).length },
+                  { key: "selected-manifest", label: "导出交接清单", disabled: !selectedCaseKeys.length },
                 ],
                 onClick: ({ key }) => {
-                  if (key === "selected-csv") void exportCounselCases(true);
-                  if (key === "selected-excel") exportSelectedCasesExcel(true);
-                  if (key === "current-excel") exportSelectedCasesExcel(false);
-                  if (key === "selected-qr") exportCaseQrWord();
+                  if (key === "selected-excel") counselListMode ? void exportCounselCases(true) : exportSelectedCasesExcel(true);
+                  if (key === "current-excel") counselListMode ? void exportCounselCases(false) : exportSelectedCasesExcel(false);
                   if (key === "selected-manifest") exportArchiveManifest();
-                  if (key === "all-csv") counselListMode ? void exportCounselCases(false) : exportCases();
                 },
               }}
             ><Button aria-label="导出案件">导出</Button></Dropdown>
-            <Select
-              aria-label="上传材料分类"
-              value={caseUploadCategory}
-              onChange={setCaseUploadCategory}
-              disabled={selectedCaseKeys.length !== 1 || !selectedCaseCapability.can_upload_attachment}
-              style={{ width: 150 }}
-              options={caseFileTypeOptions}
-            />
             <Button
               icon={<UploadOutlined />}
               disabled={selectedCaseKeys.length !== 1 || !selectedCaseCapability.can_upload_attachment}
               title={selectedCaseKeys.length !== 1 ? "请先选择一条案件" : "当前案件没有上传附件权限"}
               onClick={()=>caseUploadRef.current?.click()}
-            >上传案件文件</Button>
-            {["admin","manager"].includes(profile.role||"")&&<Button onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,true)}}>立案审批通过</Button>}
-            {["admin","manager"].includes(profile.role||"")&&<Button danger onClick={()=>{if(!selectedCase)return message.warning("请先选择案件");if(selectedCase.status!=="待立案审批")return message.warning("只有待立案审批案件可以审核");void reviewCaseCreation(selectedCase,false)}}>立案审批驳回</Button>}
+            >上传文件</Button>
+            {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button onClick={()=>void reviewCaseCreation(selectedCase,true)}>立案审批通过</Button>}
+            {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button danger onClick={()=>void reviewCaseCreation(selectedCase,false)}>立案审批驳回</Button>}
             {counselListMode&&<>
               <Button onClick={()=>selectedCase?void openCounselDetail(selectedCase):message.warning("请先选择案件")}>查看详情</Button>
               {(["admin","manager"].includes(profile.role||""))&&<Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要修改的案件");batchUpdateForm.resetFields();setBatchUpdateOpen(true);}}>批量修改</Button>}
@@ -3725,36 +3725,43 @@ export default function CaseCenterPage({
               trigger={["click"]}
               menu={{
                 items: selectedCase ? [
-                  ...(counselListMode && selectedCaseCapability.can_edit_basic ? [{ key: "edit", label: "修改基本信息" }] : []),
-                  ...(!counselListMode && legacyCaseListOperationState.canParticipant && selectedCaseCapability.can_edit_basic ? [{ key: "participant", label: legacyCaseListOperationLabels.participant }] : []),
-                  ...(!counselListMode && legacyCaseListOperationState.canPhase && selectedCaseCapability.can_change_phase ? [{ key: "phase", label: legacyCaseListOperationLabels.phase }] : []),
-                  ...(legacyCaseListOperationState.canCourt && selectedCaseCapability.can_edit_basic ? [{ key: "court", label: legacyCaseListOperationLabels.court }] : []),
-                  { key: "view", label: "案件任务" },
-                  ...(selectedCaseCapability.can_create_finance ? [{ key: "fee", label: "新增案件费用" }] : []),
-                  ...(selectedCaseCapability.can_assign_team ? [{ key: "assign", label: "人员分配" }] : []),
-                  { key: "documents", label: "案件文档" },
-                  { key: "letters", label: "委托书/律师函" },
-                  { key: "notary", label: "公证/调查表" },
-                  { key: "logs", label: "案件日志" },
-                  ...(!counselListMode && selectedCaseCapability.can_update_progress ? [{ key: "progress", label: "登记进展" }] : []),
-                  ...(!counselListMode && selectedCaseCapability.can_manage_hearing ? [{ key: "hearing", label: "开庭排期" }] : []),
-                  ...(selectedCaseCapability.can_archive ? [{ key: "archive", label: "案件归档" }] : []),
-                  ...(canDeleteSelectedCompanyCase ? [{ key: "delete", label: "删除案件", danger: true }] : []),
+                  { key: "upload-document", label: "上传案件文档", disabled: !selectedCaseCapability.can_upload_attachment },
+                  ...(selectedCaseCapability.can_create_finance ? [{ key: "firm-fees", label: "新增律所费用", children: [
+                    { key: "firm-官费", label: "新增官费" },
+                    { key: "firm-第三方费用", label: "新增第三方费用" },
+                    { key: "firm-代理费", label: "新增代理费" },
+                    { key: "firm-其他费用", label: "新增其他费用" },
+                  ] }, { key: "platform-fees", label: "新增平台费用", children: [
+                    { key: "platform-官费", label: "新增官费" },
+                    { key: "platform-第三方费用", label: "新增第三方费用" },
+                    { key: "platform-代理费", label: "新增代理费" },
+                    { key: "platform-其他费用", label: "新增其他费用" },
+                  ] }, { key: "internal-fee", label: "新增内部费用" }] : []),
+                  ...(["admin","manager"].includes(profile.role||"") ? [{ key: "batch-update", label: "批量修改", children: [
+                    { key: "batch-hearing-lawyer", label: "修改开庭律师" },
+                    { key: "batch-handling-lawyer", label: "修改经办律师" },
+                    { key: "batch-assistant", label: "修改律师助理" },
+                    { key: "batch-stage", label: "修改案件阶段" },
+                  ] }] : []),
+                  { key: "document-authorization-letter", label: "生成授权委托书" },
+                  { key: "document-law-firm-letter", label: "生成律所函" },
+                  { key: "document-identity-certificate", label: "生成身份证明" },
+                  { key: "document-settlement-list", label: "生成结算提成表" },
+                  { key: "case-tasks", label: "案件任务" },
+                  { key: "case-logs", label: "案件日志" },
+                  { key: "export-print-table", label: "导出案件打印表" },
                 ] : [{ key: "select", label: "请先选择案件", disabled: true }],
                 onClick: ({ key }) => {
                   if (!selectedCase) return message.warning("请先选择案件");
-                  if (key === "edit") openCounselEdit(selectedCase);
-                  if (key === "participant") openCaseLitigants(selectedCase);
-                  if (key === "phase") void openPhaseChange(selectedCases.length ? selectedCases : [selectedCase]);
-                  if (key === "court") openCompanyScheduleCourtInfo(selectedCase, "first");
-                  if (key === "view") openCaseTasks(selectedCase);
-                  if (key === "fee") openCaseFee(selectedCase);
-                  if (key === "assign") openAssign(selectedCase);
-                  if (["documents", "letters", "notary", "logs"].includes(key)) void openCounselDetail(selectedCase);
-                  if (key === "progress") openProgress(selectedCase);
-                  if (key === "hearing") openHearing(selectedCase);
-                  if (key === "archive") void openArchive(selectedCase);
-                  if (key === "delete") void deleteCompanyCase(selectedCase);
+                  if (key === "upload-document") caseUploadRef.current?.click();
+                  if (key.startsWith("firm-")) openCaseFee(selectedCase, "律所", key.slice("firm-".length));
+                  if (key.startsWith("platform-")) openCaseFee(selectedCase, "平台", key.slice("platform-".length));
+                  if (key === "internal-fee") openCaseFee(selectedCase, "内部", "内部费用");
+                  if (key.startsWith("batch-")) { batchUpdateForm.resetFields(); setBatchUpdateOpen(true); }
+                  if (key.startsWith("document-")) void generateSelectedCaseDocuments(key.slice("document-".length));
+                  if (key === "case-tasks") openCaseTasks(selectedCase);
+                  if (key === "case-logs") void openCounselDetail(selectedCase, "case-logs");
+                  if (key === "export-print-table") exportSelectedCasesExcel(true);
                 },
               }}
             ><Button aria-label="更多案件操作">更多操作 ▾</Button></Dropdown>
@@ -4306,6 +4313,8 @@ export default function CaseCenterPage({
           <div className="case-detail-body-grid">
             <div className="case-detail-tab-area">
           <Tabs
+            activeKey={activeCounselDetailTab}
+            onChange={setActiveCounselDetailTab}
             items={[
               {key:"documents",label:"文档信息",children:<div className="case-documents-layout">
                 <aside className="case-detail-doc-tree" aria-label="案件文档目录">
@@ -4585,9 +4594,10 @@ export default function CaseCenterPage({
       <Modal open={caseLogOpen} title={`${caseLogKind === "refund" ? "新增退费日志" : "新增案件日志"}：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselLog} onCancel={()=>setCaseLogOpen(false)}>
         <Form form={caseLogForm} layout="vertical"><Form.Item label="日志内容" name="content" rules={[{required:true,message:"请输入日志内容"},{max:1000}]}><Input.TextArea rows={5}/></Form.Item></Form>
       </Modal>
-      <Modal width={680} open={batchUpdateOpen} title={`批量修改法律顾问案件（已选 ${selectedCaseKeys.length} 个）`} okText="确定" cancelText="取消" onOk={submitCounselBatchUpdate} onCancel={()=>setBatchUpdateOpen(false)}>
+      <Modal width={680} open={batchUpdateOpen} title={`批量修改案件（已选 ${selectedCaseKeys.length} 个）`} okText="确定" cancelText="取消" onOk={submitCounselBatchUpdate} onCancel={()=>setBatchUpdateOpen(false)}>
         <Alert type="warning" showIcon title="只填写需要统一修改的字段；未填写字段保持原值。已进入归档流程的案件会被整体阻断。" style={{marginBottom:12}}/>
         <Form form={batchUpdateForm} layout="vertical">
+          <Form.Item label="开庭律师" name="hearing_lawyer"><Input placeholder="不修改则留空" /></Form.Item>
           <Form.Item label="经办律师" name="handling_lawyers"><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="不修改则留空"/></Form.Item>
           <div className="form-grid"><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="不修改则留空"/></Form.Item><Form.Item label="案件阶段" name="case_stage"><Input placeholder="不修改则留空"/></Form.Item></div>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
