@@ -2362,7 +2362,8 @@ class IncomingPaymentSettlementItem(BaseModel):
 
 
 class IncomingPaymentAllocationItem(BaseModel):
-    receivable_plan_id: int
+    receivable_plan_id: int | None = Field(default=None, ge=1)
+    fee_record_id: int | None = Field(default=None, ge=1)
     amount: float = Field(gt=0)
     case_no: str = ""
     payment_method: str = Field(default="", max_length=64)
@@ -14187,6 +14188,46 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
                 "received_amount": _round_fee_amount(plan.received_amount),
                 "remaining_amount": remaining,
             })
+
+    # Match the legacy allocation page: direct case fees remain selectable even
+    # when the customer has not configured a contract receivable plan yet.
+    fee_allocated: dict[int, float] = {}
+    for payment in (await db.scalars(select(IncomingPayment))).all():
+        for allocation in payment.allocations or []:
+            for settlement in allocation.get("settlement_items") or []:
+                fee_id = int(settlement.get("fee_record_id") or 0)
+                if fee_id:
+                    fee_allocated[fee_id] = _round_fee_amount(fee_allocated.get(fee_id, 0) + float(settlement.get("amount") or 0))
+    cases_by_id = {case_record.id: case_record for case_record in cases}
+    cases_by_no = {case_record.serial_no: case_record for case_record in cases}
+    fee_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.customer == item.claimed_customer,
+        *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    for fee_record in fee_records:
+        fee_data = fee_record.data or {}
+        if fee_record.status in {"已作废", "已拒绝"}:
+            continue
+        amount = _round_fee_amount(abs(float(fee_data.get("amount") or 0)))
+        received = _round_fee_amount(float(fee_data.get("received_amount") or 0) + fee_allocated.get(fee_record.id, 0))
+        remaining = _round_fee_amount(amount - received)
+        case_record = cases_by_id.get(int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)) or cases_by_no.get(str(fee_data.get("case_no") or "").strip())
+        if not case_record or remaining <= 0:
+            continue
+        case_data = case_record.data or {}
+        submitted_at = case_data.get("case_register_date") or case_data.get("submission_date") or case_data.get("filing_date") or (case_record.created_at.isoformat() if case_record.created_at else "")
+        rows.append({
+            "key": f"fee:{fee_record.id}", "receivable_plan_id": None, "fee_record_id": fee_record.id,
+            "contract_id": int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or case_data.get("contract_id") or case_data.get("contract_record_id") or 0) or None,
+            "contract_no": str(fee_data.get("contract_no") or case_data.get("contract_no") or ""),
+            "case_id": case_record.id, "case_no": case_record.serial_no, "case_title": case_record.title,
+            "plaintiff": str(case_data.get("plaintiff") or case_data.get("appellant_names") or item.claimed_customer),
+            "defendant": str(case_data.get("defendant") or case_data.get("appellee_names") or case_data.get("opponent") or ""),
+            "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or case_record.status),
+            "submission_date": str(submitted_at)[:10], "fee_type": _case_fee_display_type(fee_record),
+            "total_amount": amount, "received_amount": received, "remaining_amount": remaining,
+        })
     return {
         "items": rows,
         "total": len(rows),
@@ -14215,7 +14256,50 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             excessive_settlement = [item.fee_type for item in entry.settlement_items if item.settlement_amount > item.amount + 0.001]
             if excessive_settlement:
                 raise HTTPException(status_code=422, detail="结算金额不能大于分配金额：" + "、".join(excessive_settlement))
-        plan = await db.get(ReceivablePlan, entry.receivable_plan_id)
+        if entry.receivable_plan_id is None:
+            if entry.fee_record_id is None:
+                raise HTTPException(status_code=422, detail="分配项必须关联应收计划或案件费用")
+            fee_record = await _ensure_record_module(entry.fee_record_id, "finance", identity, db)
+            fee_data = fee_record.data or {}
+            contract_id = int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or 0)
+            contract_no = str(fee_data.get("contract_no") or "").strip()
+            if not contract_id and entry.case_no.strip():
+                linked_case = await db.scalar(select(BusinessRecord).where(
+                    BusinessRecord.module == "case",
+                    BusinessRecord.serial_no == entry.case_no.strip(),
+                    *(await _record_scope_conditions(identity, db)),
+                ))
+                linked_case_data = linked_case.data or {} if linked_case else {}
+                contract_id = int(linked_case_data.get("contract_id") or linked_case_data.get("contract_record_id") or 0)
+                contract_no = contract_no or str(linked_case_data.get("contract_no") or "").strip()
+            if contract_id:
+                contract_for_fee = await _ensure_record_module(contract_id, "contract", identity, db)
+            elif contract_no:
+                contract_for_fee = await db.scalar(select(BusinessRecord).where(
+                    BusinessRecord.module == "contract",
+                    BusinessRecord.serial_no == contract_no,
+                    *(await _record_scope_conditions(identity, db)),
+                ))
+                if not contract_for_fee:
+                    raise HTTPException(status_code=409, detail="案件费用关联合同不存在，无法分配回款")
+            else:
+                raise HTTPException(status_code=409, detail="案件费用缺少关联合同，无法分配回款")
+            if contract_for_fee.customer.strip() != item.claimed_customer.strip():
+                raise HTTPException(status_code=409, detail="案件费用所属客户与到账认领客户不一致")
+            plan = ReceivablePlan(
+                contract_record_id=contract_for_fee.id,
+                phase=_case_fee_display_type(fee_record),
+                due_date=_case_fee_date(fee_data.get("due_date") or fee_data.get("created_at")) or date.today(),
+                amount=abs(float(fee_data.get("amount") or 0)),
+                received_amount=0,
+                status="待收款",
+                payer=contract_for_fee.customer,
+                remark=f"由案件费用 {fee_record.serial_no} 自动建立",
+            )
+            db.add(plan)
+            await db.flush()
+        else:
+            plan = await db.get(ReceivablePlan, entry.receivable_plan_id)
         if not plan: raise HTTPException(status_code=404, detail=f"应收计划 {entry.receivable_plan_id} 不存在")
         contract = await _ensure_record_module(plan.contract_record_id, "contract", identity, db)
         if contract.customer.strip() != item.claimed_customer.strip(): raise HTTPException(status_code=409, detail=f"应收计划 {plan.phase} 的客户与到账认领客户不一致")

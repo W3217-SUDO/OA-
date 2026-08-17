@@ -289,7 +289,8 @@ type Receivable = {
 };
 type AllocationCandidate = {
   key: string;
-  receivable_plan_id: number;
+  receivable_plan_id: number | null;
+  fee_record_id?: number | null;
   contract_id: number;
   contract_no: string;
   case_id: number | null;
@@ -2445,9 +2446,11 @@ export default function FinanceCenterPage({
     }
     const allocations = selected.map((row) => ({
       receivable_plan_id: row.receivable_plan_id,
+      fee_record_id: row.fee_record_id || undefined,
       amount: Number(allocationAmounts[row.key] || 0),
       case_no: row.case_no || "",
       settlement_items: [{
+        fee_record_id: row.fee_record_id || undefined,
         fee_type: row.fee_type || "代理费",
         amount: Number(allocationAmounts[row.key] || 0),
         settlement_amount: Number(allocationAmounts[row.key] || 0),
