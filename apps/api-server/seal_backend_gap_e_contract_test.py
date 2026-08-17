@@ -89,7 +89,7 @@ class SealBackendGapEContractTest(unittest.TestCase):
         self.assertIn("stamp_attachment_id", stamp_dto)
         self.assertIn("stamp_attachment_id", batch_dto)
         stamp = self._span("stamp_seal_application")
-        for token in ("stamp_attachment_id", "FileAttachment", "record_id != item.id", 'category != "用印文件"', "status_code=404"):
+        for token in ("stamp_attachment_ids", "FileAttachment", "record_id != item.id", "SEAL_STAMPED_FILE_CATEGORY", "status_code=404"):
             self.assertIn(token, stamp)
         batch = self._span("batch_stamp_seal_applications")
         for token in ("stamp_attachment_id", "source_attachment", "FileAttachment", "unlink(missing_ok=True)", "await db.rollback()"):
@@ -103,7 +103,9 @@ class SealBackendGapEContractTest(unittest.TestCase):
 
     def test_package_download_filters_seal_attachment_category(self):
         source = self._span("package_download_seal_files")
-        self.assertIn('FileAttachment.category == "用印文件"', source)
+        self.assertIn("SEAL_APPLICATION_FILE_CATEGORY", source)
+        self.assertIn("SEAL_STAMPED_FILE_CATEGORY", source)
+        self.assertIn("expected_category", source)
 
     def test_attachment_list_contract_has_server_pagination(self):
         source = self._span("list_attachments")
@@ -246,9 +248,9 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_single_stamp_validates_and_persists_attachment_id(self) -> None:
         record = await self.add_record("待用印", suffix="SINGLE-OWN")
-        own = await self.add_attachment(record, "single-own")
+        own = await self.add_attachment(record, "single-own", "盖章文件")
         other_record = await self.add_record("待用印", suffix="SINGLE-OTHER")
-        foreign = await self.add_attachment(other_record, "single-foreign")
+        foreign = await self.add_attachment(other_record, "single-foreign", "盖章文件")
         await self.db.commit()
 
         with self.assertRaises(HTTPException) as raised:
@@ -271,7 +273,7 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
     async def test_batch_stamp_copies_attachment_and_records_stamp_ids(self) -> None:
         first = await self.add_record("待用印", suffix="BATCH-FIRST")
         second = await self.add_record("待用印", suffix="BATCH-SECOND")
-        source = await self.add_attachment(first, "batch-source")
+        source = await self.add_attachment(first, "batch-source", "盖章文件")
         await self.db.commit()
 
         result = await batch_stamp_seal_applications(
@@ -292,7 +294,7 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
         copied = await self.db.get(FileAttachment, second.data["stamp_attachment_id"])
         self.assertIsNotNone(copied)
         self.assertEqual(copied.record_id, second.id)
-        self.assertEqual(copied.category, "用印文件")
+        self.assertEqual(copied.category, "盖章文件")
         self.assertTrue(Path(copied.path).is_file())
         self.assertEqual(Path(copied.path).read_bytes(), Path(source.path).read_bytes())
         self.assertEqual(
@@ -387,9 +389,10 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["record_id"], record.id)
         stored = await self.db.get(FileAttachment, item["id"])
         self.assertIsNotNone(stored)
+        self.assertEqual(stored.category, "盖章文件")
         self.assertTrue(Path(stored.path).is_file())
         await self.db.refresh(record)
-        self.assertIn("stamp-scan.pdf", record.data["document_names"])
+        self.assertNotIn("stamp-scan.pdf", record.data["document_names"])
         self.assertEqual(await self.event_count([record.id]), 1)
 
         before_count = len(list(self.upload_root.glob("*")))
@@ -433,8 +436,9 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["items"][0]["original_name"], "seal-scan.pdf")
+        self.assertEqual(result["items"][0]["category"], "盖章文件")
         await self.db.refresh(record)
-        self.assertIn("seal-scan.pdf", record.data["document_names"])
+        self.assertNotIn("seal-scan.pdf", record.data["document_names"])
         self.assertEqual(await self.event_count([record.id]), 1)
 
 

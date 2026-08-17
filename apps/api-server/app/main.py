@@ -118,6 +118,8 @@ REQUIRED_SEAL_ASSETS = (
 )
 REQUIRED_SEAL_TYPES = {seal_type for _, seal_type, _ in REQUIRED_SEAL_ASSETS}
 SEAL_USE_TYPES = {"案件用印", "合同用印", "行政用印"}
+SEAL_APPLICATION_FILE_CATEGORY = "用印文件"
+SEAL_STAMPED_FILE_CATEGORY = "盖章文件"
 ADMINISTRATIVE_CLIENT_POSITIONS = {"原告/申请人", "被告/被申请人", "第三人"}
 CASE_CREATE_PERMISSION_KEYS = list(CASE_CREATE_PERMISSION_BY_TYPE.values())
 CASE_CREATE_STATUS_ALIASES = {"新案待分配": "新案待分配", "待分配": "新案待分配"}
@@ -2981,6 +2983,7 @@ class SealStampInput(BaseModel):
     archive_no: str = ""
     comment: str = ""
     stamp_attachment_id: int | None = Field(default=None, gt=0)
+    stamp_attachment_ids: list[int] = Field(default_factory=list, max_length=100)
 
 
 class SealBatchStampInput(SealBatchApplicationInput):
@@ -20804,8 +20807,12 @@ async def upload_attachment(
             await _require_record_owner_or_manager(record, identity, db)
             if record.status not in {"草稿", "待用印"}:
                 raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
-            if category != "用印文件":
-                category = "用印文件"
+            if record.status == "待用印":
+                if identity.get("role") not in {"admin", "manager"}:
+                    raise HTTPException(status_code=403, detail="只有用印管理员可以上传盖章文件")
+                category = SEAL_STAMPED_FILE_CATEGORY
+            else:
+                category = SEAL_APPLICATION_FILE_CATEGORY
         if record.module == "official_outgoing":
             await _require_record_owner_or_manager(record, identity, db)
             if record.status not in {"草稿", "已拒绝", "已撤回"}:
@@ -20850,8 +20857,10 @@ async def upload_attachment(
         elif record and record.module == "customer":
             db.add(WorkflowEvent(record_id=record.id, action="上传客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
         elif record and record.module == "seal":
-            await _sync_seal_document_names(record, db)
-            db.add(WorkflowEvent(record_id=record.id, action="上传用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
+            if category == SEAL_APPLICATION_FILE_CATEGORY:
+                await _sync_seal_document_names(record, db)
+            action = "上传盖章文件" if category == SEAL_STAMPED_FILE_CATEGORY else "上传用印文件"
+            db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
         elif record and record.module == "official_outgoing":
             db.add(WorkflowEvent(record_id=record.id, action="上传正式发文附件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
         elif record and record.module == "task":
@@ -20977,9 +20986,15 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if record and record.module == "seal":
         record = await _ensure_record_module(record.id, "seal", identity, db)
         await _require_record_owner_or_manager(record, identity, db)
-        if record.status != "草稿":
-            raise HTTPException(status_code=409, detail="只有草稿用印申请可以删除用印文件")
-        if item.category != "用印文件":
+        may_delete_application_file = record.status == "草稿" and item.category == SEAL_APPLICATION_FILE_CATEGORY
+        may_delete_stamped_file = (
+            record.status == "待用印"
+            and item.category == SEAL_STAMPED_FILE_CATEGORY
+            and identity.get("role") in {"admin", "manager"}
+        )
+        if not (may_delete_application_file or may_delete_stamped_file):
+            raise HTTPException(status_code=409, detail="当前状态不允许删除该用印附件")
+        if item.category not in {SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY}:
             raise HTTPException(status_code=422, detail="用印申请附件类型无效")
         may_manage_seal_attachment = True
     if record and record.module == "official_outgoing":
@@ -21014,8 +21029,10 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     elif record and record.module == "customer":
         db.add(WorkflowEvent(record_id=record.id, action="删除客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
     elif record and record.module == "seal":
-        await _sync_seal_document_names(record, db)
-        db.add(WorkflowEvent(record_id=record.id, action="删除用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
+        if item.category == SEAL_APPLICATION_FILE_CATEGORY:
+            await _sync_seal_document_names(record, db)
+        action = "删除盖章文件" if item.category == SEAL_STAMPED_FILE_CATEGORY else "删除用印文件"
+        db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
     elif record and record.module == "official_outgoing":
         db.add(WorkflowEvent(record_id=record.id, action="删除正式发文附件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.category}：{item.original_name}"))
     elif record and record.module == "task":
@@ -21199,10 +21216,23 @@ async def _seal_record_dict(
     if users_by_username is None:
         users_by_username = await _user_display_map(_record_person_usernames(record), db)
     result = _apply_record_person_displays(_record_dict(record), record, users_by_username)
-    result["file_count"] = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
-        FileAttachment.record_id == record.id,
-        FileAttachment.category == "用印文件",
-    )) or 0)
+    file_category = (
+        SEAL_STAMPED_FILE_CATEGORY
+        if record.status in {"已用印", "已归档"}
+        else SEAL_APPLICATION_FILE_CATEGORY
+    )
+    visible_files = list((await db.scalars(
+        select(FileAttachment)
+        .where(FileAttachment.record_id == record.id, FileAttachment.category == file_category)
+        .order_by(FileAttachment.created_at, FileAttachment.id)
+    )).all())
+    result["file_count"] = len(visible_files)
+    result["file_category"] = file_category
+    result["data"] = {
+        **(result.get("data") or {}),
+        "file_names": [item.original_name for item in visible_files],
+        "file_category": file_category,
+    }
     asset_id = int((record.data or {}).get("seal_asset_id") or 0)
     asset = await db.get(SealAsset, asset_id) if asset_id else None
     result["seal_asset"] = _seal_asset_dict(asset) if asset else None
@@ -21288,7 +21318,10 @@ async def package_download_seal_files(body: SealPackageDownloadInput, identity: 
         records[record_id] = await _ensure_record_module(record_id, "seal", identity, db)
     attachments = (await db.scalars(
         select(FileAttachment)
-        .where(FileAttachment.record_id.in_(record_ids), FileAttachment.category == "用印文件")
+        .where(
+            FileAttachment.record_id.in_(record_ids),
+            FileAttachment.category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY}),
+        )
         .order_by(FileAttachment.record_id, FileAttachment.created_at, FileAttachment.id)
     )).all()
     if not attachments:
@@ -21299,10 +21332,17 @@ async def package_download_seal_files(body: SealPackageDownloadInput, identity: 
     upload_root = UPLOAD_ROOT.resolve()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for attachment in attachments:
+            record = records[int(attachment.record_id)]
+            expected_category = (
+                SEAL_STAMPED_FILE_CATEGORY
+                if record.status in {"已用印", "已归档"}
+                else SEAL_APPLICATION_FILE_CATEGORY
+            )
+            if attachment.category != expected_category:
+                continue
             path = Path(attachment.path)
             if not path.is_file() or upload_root not in path.resolve().parents:
                 continue
-            record = records[int(attachment.record_id)]
             safe_name = Path(attachment.original_name).name or attachment.stored_name
             archive.writestr(f"{record.serial_no}/{attachment.id}-{safe_name}", path.read_bytes())
             included += 1
@@ -21453,7 +21493,12 @@ async def list_seal_application_files(
     db: AsyncSession = Depends(get_db),
 ):
     record = await _get_seal_application(record_id, identity, db)
-    conditions = [FileAttachment.record_id == record.id, FileAttachment.category == "用印文件"]
+    category = (
+        SEAL_STAMPED_FILE_CATEGORY
+        if record.status in {"待用印", "已用印", "已归档"}
+        else SEAL_APPLICATION_FILE_CATEGORY
+    )
+    conditions = [FileAttachment.record_id == record.id, FileAttachment.category == category]
     total = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(*conditions)) or 0)
     rows = (await db.scalars(
         select(FileAttachment)
@@ -21482,8 +21527,11 @@ async def upload_seal_application_files(
     await _require_record_owner_or_manager(record, identity, db)
     if record.status not in {"草稿", "待用印"}:
         raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
+    if record.status == "待用印" and identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="只有用印管理员可以上传盖章文件")
     if not files:
         raise HTTPException(status_code=422, detail="请至少选择一个用印文件")
+    category = SEAL_STAMPED_FILE_CATEGORY if record.status == "待用印" else SEAL_APPLICATION_FILE_CATEGORY
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
     prepared: list[tuple[UploadFile, bytes, Path, str]] = []
     try:
@@ -21500,7 +21548,7 @@ async def upload_seal_application_files(
         for file, content, target, _ in prepared:
             db.add(FileAttachment(
                 record_id=record.id,
-                category="用印文件",
+                category=category,
                 original_name=Path(file.filename or target.name).name,
                 stored_name=target.name,
                 content_type=file.content_type or "application/octet-stream",
@@ -21510,8 +21558,10 @@ async def upload_seal_application_files(
                 remark=remark,
             ))
         await db.flush()
-        await _sync_seal_document_names(record, db)
-        db.add(WorkflowEvent(record_id=record.id, action="上传用印文件", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{len(prepared)} 个文件"))
+        if category == SEAL_APPLICATION_FILE_CATEGORY:
+            await _sync_seal_document_names(record, db)
+        action = "上传盖章文件" if category == SEAL_STAMPED_FILE_CATEGORY else "上传用印文件"
+        db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{len(prepared)} 个文件"))
         await db.commit()
     except Exception:
         await db.rollback()
@@ -21604,17 +21654,22 @@ async def stamp_seal_application(record_id: int, body: SealStampInput, identity:
     if body.actual_copies > requested: raise HTTPException(status_code=409, detail=f"实际用印份数不能超过申请份数 {requested}")
     asset = await db.get(SealAsset, int((item.data or {}).get("seal_asset_id") or 0))
     if not asset or asset.status != "可用": raise HTTPException(status_code=409, detail="关联印章不存在或当前不可用")
-    if body.stamp_attachment_id:
-        stamp_attachment = await db.get(FileAttachment, body.stamp_attachment_id)
-        if not stamp_attachment or stamp_attachment.record_id != item.id or stamp_attachment.category != "用印文件":
+    stamp_attachment_ids = list(dict.fromkeys([
+        *body.stamp_attachment_ids,
+        *([body.stamp_attachment_id] if body.stamp_attachment_id else []),
+    ]))
+    for attachment_id in stamp_attachment_ids:
+        stamp_attachment = await db.get(FileAttachment, attachment_id)
+        if not stamp_attachment or stamp_attachment.record_id != item.id or stamp_attachment.category != SEAL_STAMPED_FILE_CATEGORY:
             raise HTTPException(status_code=404, detail="所选盖章附件不存在")
         stamp_path = Path(stamp_attachment.path)
         if not stamp_path.is_file() or UPLOAD_ROOT.resolve() not in stamp_path.resolve().parents:
             raise HTTPException(status_code=404, detail="所选盖章附件文件不存在")
     old = item.status; item.status = "已用印"; data = dict(item.data or {})
     data.update({"actual_copies": body.actual_copies, "stamp_operator": body.operator or identity["username"], "stamped_at": datetime.now().isoformat(), "archive_no": body.archive_no}); item.data = data
-    if body.stamp_attachment_id:
-        data["stamp_attachment_id"] = body.stamp_attachment_id
+    if stamp_attachment_ids:
+        data["stamp_attachment_id"] = stamp_attachment_ids[0]
+        data["stamp_attachment_ids"] = stamp_attachment_ids
         item.data = data
     asset.usage_count += body.actual_copies; asset.last_used_at = datetime.now()
     db.add(WorkflowEvent(record_id=item.id, action="完成实际用印", from_status=old, to_status=item.status, operator=identity["username"], comment=f"实际 {body.actual_copies} 份；归档号：{body.archive_no}。{body.comment}"))
@@ -21639,7 +21694,7 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
     try:
         if body.stamp_attachment_id:
             source_attachment = await db.get(FileAttachment, body.stamp_attachment_id)
-            if not source_attachment or source_attachment.category != "用印文件" or source_attachment.record_id not in ids:
+            if not source_attachment or source_attachment.category != SEAL_STAMPED_FILE_CATEGORY or source_attachment.record_id not in ids:
                 raise HTTPException(status_code=404, detail="所选盖章附件不存在")
             source_path = Path(source_attachment.path)
             if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
@@ -21665,7 +21720,7 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
                     created_targets.append(target)
                     copied = FileAttachment(
                         record_id=item.id,
-                        category="用印文件",
+                        category=SEAL_STAMPED_FILE_CATEGORY,
                         original_name=source_attachment.original_name,
                         stored_name=target.name,
                         content_type=source_attachment.content_type or "application/octet-stream",

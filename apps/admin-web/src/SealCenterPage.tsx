@@ -147,13 +147,6 @@ function validateSealUploadFile(file: File | undefined): string | null {
   if (file.size > 20 * 1024 * 1024) return "单个文件不能超过 20MB";
   return null;
 }
-function sealUploadedAttachmentId(response: { data?: any } | undefined): number | null {
-  const direct = Number(response?.data?.id);
-  if (Number.isFinite(direct) && direct > 0) return direct;
-  const nested = Number(response?.data?.attachment?.id);
-  if (Number.isFinite(nested) && nested > 0) return nested;
-  return null;
-}
 function sealActionFailureMessage(type: "approve" | "reject" | "stamp" | "archive"): string {
   return {
     approve: "审批失败",
@@ -262,6 +255,12 @@ const sealTypes = [
   "财务专用章",
   "财务三排章",
 ];
+const SEAL_APPLICATION_FILE_CATEGORY = "用印文件";
+const SEAL_STAMPED_FILE_CATEGORY = "盖章文件";
+const sealVisibleFileCategory = (row: SealRow) =>
+  ["已用印", "已归档"].includes(row.status)
+    ? SEAL_STAMPED_FILE_CATEGORY
+    : SEAL_APPLICATION_FILE_CATEGORY;
 
 const listSealRowFileNames = (row: SealRow): string[] => {
   const names: string[] = [];
@@ -283,12 +282,14 @@ const listSealRowFileNames = (row: SealRow): string[] => {
       .forEach((name) => names.push(name));
   };
 
-  append(row.data.document_names);
-  append(row.data.documentNames);
   append(row.data.file_names);
   append(row.data.fileNames);
   append(row.data.attachments);
   append(row.data.files);
+  if (!["已用印", "已归档"].includes(row.status)) {
+    append(row.data.document_names);
+    append(row.data.documentNames);
+  }
 
   return Array.from(new Set(names)).slice(0, 5);
 };
@@ -385,7 +386,7 @@ export default function SealCenterPage({
   const [fileListPageSize, setFileListPageSize] = useState(sealFilePagination.defaultPageSize);
   const [fileListTotal, setFileListTotal] = useState(0);
   const [stampAttachments, setStampAttachments] = useState<AttachmentRow[]>([]);
-  const [stampAttachmentId, setStampAttachmentId] = useState<number | null>(null);
+  const [stampAttachmentIds, setStampAttachmentIds] = useState<number[]>([]);
   const [stampAttachmentLoading, setStampAttachmentLoading] = useState(false);
   const [stampAttachmentPage, setStampAttachmentPage] = useState(1);
   const [stampAttachmentPageSize, setStampAttachmentPageSize] = useState(sealFilePagination.defaultPageSize);
@@ -1123,12 +1124,12 @@ export default function SealCenterPage({
   };
   const resetStampAttachmentState = () => {
     setStampAttachments([]);
-    setStampAttachmentId(null);
+    setStampAttachmentIds([]);
     setStampAttachmentLoading(false);
     setStampAttachmentPage(1);
     setStampAttachmentPageSize(sealFilePagination.defaultPageSize);
     setStampAttachmentTotal(0);
-    actionForm.setFieldValue("stamp_attachment_id", undefined);
+    actionForm.setFieldValue("stamp_attachment_ids", []);
   };
   const loadStampAttachments = async (
     row: SealRow,
@@ -1141,7 +1142,7 @@ export default function SealCenterPage({
       const { data } = await api.get("/attachments", {
         params: {
           record_id: row.id,
-          category: "用印文件",
+          category: SEAL_STAMPED_FILE_CATEGORY,
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -1178,11 +1179,13 @@ export default function SealCenterPage({
       actual_copies: row.data.copies,
       operator: "admin",
       stamp_attachment_id: undefined,
+      stamp_attachment_ids: [],
     });
     const { items, total } = await loadStampAttachments(row);
-    if (items.length === 1 && total === 1) {
-      setStampAttachmentId(items[0].id);
-      actionForm.setFieldValue("stamp_attachment_id", items[0].id);
+    if (items.length && items.length === total) {
+      const ids = items.map((item: AttachmentRow) => item.id);
+      setStampAttachmentIds(ids);
+      actionForm.setFieldValue("stamp_attachment_ids", ids);
     }
   };
   const loadMoreStampAttachments = async () => {
@@ -1195,32 +1198,32 @@ export default function SealCenterPage({
       true,
     );
   };
-  const uploadStampAttachment = async (file: File, row: SealRow): Promise<number | null> => {
-    const validationError = validateSealUploadFile(file);
+  const uploadStampAttachments = async (files: File[], row: SealRow): Promise<number[]> => {
+    const validationError = files.map(validateSealUploadFile).find(Boolean);
     if (validationError) {
       message.error(validationError);
-      return null;
+      return [];
     }
     const body = new FormData();
-    body.append("file", file);
-    body.append("record_id", String(row.id));
-    body.append("category", "用印文件");
+    files.forEach((file) => body.append("files", file));
     setStampAttachmentUploading(true);
     try {
-      const response = await postSeal("/attachments", body);
-      const uploadedStampAttachmentId = sealUploadedAttachmentId(response);
-      if (!uploadedStampAttachmentId) {
-        message.error("盖章附件上传失败：未返回附件标识");
-        return null;
+      const response = await postSeal(`/seals/applications/${row.id}/files`, body);
+      const uploadedItems = Array.isArray(response?.data?.items) ? response.data.items : [];
+      const uploadedIds = uploadedItems.map((item: AttachmentRow) => Number(item.id)).filter(Boolean);
+      if (!uploadedIds.length) {
+        message.error("盖章文件上传失败：未返回附件标识");
+        return [];
       }
-      setStampAttachmentId(uploadedStampAttachmentId);
-      actionForm.setFieldValue("stamp_attachment_id", uploadedStampAttachmentId);
-      message.success("已上传盖章附件：" + file.name);
-      await loadStampAttachments(row);
-      return uploadedStampAttachmentId;
+      const { items } = await loadStampAttachments(row, 1, Math.max(sealFilePagination.defaultPageSize, uploadedItems.length));
+      const selectedIds = items.map((item: AttachmentRow) => Number(item.id)).filter(Boolean);
+      setStampAttachmentIds(selectedIds);
+      actionForm.setFieldValue("stamp_attachment_ids", selectedIds);
+      message.success(`已上传盖章文件：${files.length} 份`);
+      return uploadedIds;
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "盖章附件上传失败");
-      return null;
+      message.error(error?.response?.data?.detail || "盖章文件上传失败");
+      return [];
     } finally {
       setStampAttachmentUploading(false);
     }
@@ -1228,15 +1231,17 @@ export default function SealCenterPage({
   const runAction = async () => {
     if (!action) return;
     const v = await actionForm.validateFields();
-    let stampAttachmentForSubmit: number | null = null;
+    let stampAttachmentsForSubmit: number[] = [];
     if (action.type === "stamp") {
       if (stampAttachmentUploading) {
         message.info("盖章附件正在上传，请稍后确认");
         return;
       }
-      stampAttachmentForSubmit = Number(v.stamp_attachment_id ?? stampAttachmentId);
-      if (!Number.isFinite(stampAttachmentForSubmit) || stampAttachmentForSubmit <= 0) {
-        message.error("请先选择或上传盖章附件");
+      stampAttachmentsForSubmit = (v.stamp_attachment_ids || stampAttachmentIds)
+        .map(Number)
+        .filter((value: number) => Number.isFinite(value) && value > 0);
+      if (!stampAttachmentsForSubmit.length) {
+        message.error("请先选择或上传盖章文件");
         return;
       }
     }
@@ -1254,7 +1259,8 @@ export default function SealCenterPage({
       else if (action.type === "stamp")
         await postSeal(`/seals/applications/${action.row.id}/stamp`, {
           ...v,
-          stamp_attachment_id: stampAttachmentForSubmit,
+          stamp_attachment_id: stampAttachmentsForSubmit[0],
+          stamp_attachment_ids: stampAttachmentsForSubmit,
         });
       else
         await postSeal(`/seals/applications/${action.row.id}/archive`, {
@@ -1319,7 +1325,7 @@ export default function SealCenterPage({
       const { data } = await api.get("/attachments", {
         params: {
           record_id: row.id,
-          category: "用印文件",
+          category: sealVisibleFileCategory(row),
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -1356,7 +1362,7 @@ export default function SealCenterPage({
       api.get("/attachments", {
         params: {
           record_id: row.id,
-          category: "用印文件",
+          category: sealVisibleFileCategory(row),
           page: 1,
           page_size: sealFilePagination.defaultPageSize,
         },
@@ -1433,7 +1439,7 @@ export default function SealCenterPage({
       const { data } = await api.get("/attachments", {
         params: {
           record_id: row.id,
-          category: "用印文件",
+          category: sealVisibleFileCategory(row),
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -1513,7 +1519,7 @@ export default function SealCenterPage({
       const { data } = await api.get("/attachments", {
         params: {
           record_id: row.id,
-          category: "用印文件",
+          category: sealVisibleFileCategory(row),
           page: 1,
           page_size: sealFilePagination.defaultPageSize,
         },
@@ -1805,7 +1811,7 @@ export default function SealCenterPage({
             {hasFiles && (
               <Popover
                 trigger="click"
-                title="用印文件"
+                title={sealVisibleFileCategory(r)}
                 content={
                   <Space direction="vertical" size={0}>
                     {names.length ? (
@@ -1833,13 +1839,13 @@ export default function SealCenterPage({
                       size="small"
                       onClick={() => void openFileList(r)}
                     >
-                      全部用印文件
+                      全部{sealVisibleFileCategory(r)}
                     </Button>
                   </Space>
                 }
               >
                 <Button type="link" size="small">
-                  用印文件
+                  {sealVisibleFileCategory(r)}
                 </Button>
               </Popover>
             )}
@@ -2811,19 +2817,20 @@ export default function SealCenterPage({
                 <Input placeholder="例如：YY-2026-0042" />
               </Form.Item>
               <Form.Item
-                label="盖章附件"
-                name="stamp_attachment_id"
-                rules={[{ required: true, message: "请先选择或上传盖章附件" }]}
+                label="盖章文件"
+                name="stamp_attachment_ids"
+                rules={[{ required: true, message: "请先选择或上传盖章文件" }]}
               >
                 <Select
+                  mode="multiple"
                   allowClear
                   loading={stampAttachmentLoading || stampAttachmentUploading}
-                  placeholder="选择已上传盖章附件"
+                  placeholder="选择已上传盖章文件"
                   options={stampAttachments.map((file) => ({
                     value: file.id,
                     label: file.original_name + "｜" + personDisplayName(file.uploader_display_name),
                   }))}
-                  onChange={(value) => setStampAttachmentId(Number(value) || null)}
+                  onChange={(values) => setStampAttachmentIds(values.map(Number).filter(Boolean))}
                   dropdownRender={(menu) => (
                     <>
                       {menu}
@@ -2836,7 +2843,7 @@ export default function SealCenterPage({
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => void loadMoreStampAttachments()}
                           >
-                            加载更多盖章附件（{stampAttachments.length}/{stampAttachmentTotal}）
+                            加载更多盖章文件（{stampAttachments.length}/{stampAttachmentTotal}）
                           </Button>
                         </div>
                       )}
@@ -2845,16 +2852,21 @@ export default function SealCenterPage({
                 />
               </Form.Item>
               <Upload
+                multiple
                 showUploadList={false}
-                beforeUpload={(file) => {
+                beforeUpload={(file, fileList) => {
                   const row = action?.type === "stamp" ? action.row : null;
                   if (!row) return Upload.LIST_IGNORE;
-                  void uploadStampAttachment(file as File, row);
+                  const firstFile = fileList[0] as File & { uid?: string };
+                  const currentFile = file as File & { uid?: string };
+                  if (!firstFile || firstFile.uid === currentFile.uid || firstFile === currentFile) {
+                    void uploadStampAttachments(fileList as File[], row);
+                  }
                   return Upload.LIST_IGNORE;
                 }}
               >
                 <Button icon={<UploadOutlined />} loading={stampAttachmentUploading}>
-                  上传盖章附件
+                  上传盖章文件
                 </Button>
               </Upload>
             </>
@@ -3054,7 +3066,7 @@ export default function SealCenterPage({
               ]}
             />
             <h3 className="seal-history-title">
-              <FileDoneOutlined /> 用印文件
+              <FileDoneOutlined /> {sealVisibleFileCategory(detail)}
             </h3>
             {detail.status === "草稿" && (
               <Space>
@@ -3112,7 +3124,7 @@ export default function SealCenterPage({
                 },
               }}
               locale={{
-                emptyText: "暂无用印文件；提交审批前请上传至少一个文件",
+                emptyText: `暂无${sealVisibleFileCategory(detail)}`,
               }}
               dataSource={attachments}
               columns={[

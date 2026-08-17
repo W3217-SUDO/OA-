@@ -31,7 +31,7 @@ from app.main import (
     batch_withdraw_seal_applications,
     create_seal_application,
 )
-from app.models import BusinessRecord, FileAttachment, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 ADMIN = {"username": "admin", "role": "admin", "department": "上海分所"}
@@ -49,6 +49,7 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
             BusinessRecord.__table__,
+            ContractApprovalStep.__table__,
             WorkflowEvent.__table__,
             SealAsset.__table__,
             SealAssetAudit.__table__,
