@@ -21191,8 +21191,14 @@ def _seal_asset_audit_dict(item: SealAssetAudit) -> dict:
     return {"id": item.id, "asset_id": item.asset_id, "asset_code": item.asset_code, "asset_name": item.asset_name, "action": item.action, "operator": item.operator, "comment": item.comment, "created_at": item.created_at}
 
 
-async def _seal_record_dict(record: BusinessRecord, db: AsyncSession) -> dict:
-    result = _record_dict(record)
+async def _seal_record_dict(
+    record: BusinessRecord,
+    db: AsyncSession,
+    users_by_username: dict[str, User] | None = None,
+) -> dict:
+    if users_by_username is None:
+        users_by_username = await _user_display_map(_record_person_usernames(record), db)
+    result = _apply_record_person_displays(_record_dict(record), record, users_by_username)
     result["file_count"] = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(
         FileAttachment.record_id == record.id,
         FileAttachment.category == "用印文件",
@@ -21263,7 +21269,15 @@ async def list_seal_applications(view: str = "my", keyword: str = "", record_sta
     rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     all_seals = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "seal", *scope_conditions))).all()
     summary = {"total": len(all_seals), "pending": sum(x.status == "待审批" for x in all_seals), "waiting_stamp": sum(x.status == "待用印" for x in all_seals), "completed": sum(x.status in {"已用印", "已归档"} for x in all_seals)}
-    return {"items": [await _seal_record_dict(x, db) for x in rows], "total": total, "page": page, "page_size": page_size, "summary": summary}
+    seal_usernames = set().union(*(_record_person_usernames(row) for row in rows)) if rows else set()
+    users_by_username = await _user_display_map(seal_usernames, db)
+    return {
+        "items": [await _seal_record_dict(row, db, users_by_username) for row in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "summary": summary,
+    }
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/package-download")
