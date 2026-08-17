@@ -7075,7 +7075,7 @@ async def list_records(
     module: str = Query(min_length=1, max_length=32),
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
-    investigation_view: str = Query("", pattern="^(|published|assigned)$"),
+    investigation_view: str = Query("", pattern="^(|published|assigned|unassigned)$"),
     pending_approver_only: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
