@@ -5,6 +5,8 @@
 .case-phase-title { margin: -8px -7px 6px; padding: 9px 10px; color:#333; font-size:13px; font-weight:600; background:#d7dee7; }
 .case-phase-panel button { display:block; width:100%; padding:3px 4px; color:#555; font-size:12px; text-align:left; background:transparent; border:0; cursor:pointer; }
 .case-phase-panel button:hover { color:#079cc0; background:#fff; }
+.case-phase-change-options { display:flex; flex-direction:column; gap:8px; max-height:345px; overflow-y:auto; padding:4px 2px; }
+.case-phase-change-options .ant-radio-wrapper { margin-inline-start:0; }
 .case-original-panel.ant-card { border:0; border-radius:0; box-shadow:none; }
 .case-original-panel > .ant-card-head { min-height:34px; padding:0 8px; border-top:2px solid #19b894; border-bottom:1px solid #ddd; }
 .case-original-panel > .ant-card-head .ant-card-head-title { position:relative; padding:6px 0 6px 10px; font-size:14px; font-weight:400; }

@@ -28,9 +28,18 @@ test("case page opens a guarded phase editor and submits the dedicated endpoint"
 
 test("phase editing preserves permission and archive/merge guards", () => {
   assert.match(page, /can_change_phase/);
-  assert.match(page, /selectedCaseCapability\.can_change_phase/);
   assert.match(page, /getCaseCapability\(row\)\.can_change_phase/);
   assert.match(page, /待归档审核.*已归档.*已合并/);
   assert.match(page, /请先选择案件/);
   assert.match(page, /await load\(\)/);
+});
+
+test("case detail keeps phase change separate from basic information, matching the legacy compact picker", () => {
+  assert.match(page, /width=\{400\}/);
+  assert.match(page, /title=\{`变更阶段：/);
+  assert.match(page, /<Radio\.Group className="case-phase-change-options">/);
+  assert.match(page, /<Radio key=\{option\.id\} value=\{option\.id\}>\{option\.name\}<\/Radio>/);
+  assert.match(page, /<Form\.Item name="case_phase" hidden><Input \/><\/Form\.Item>/);
+  assert.doesNotMatch(page, /阶段变更支持单行或批量案件/);
+  assert.doesNotMatch(page, /<Form\.Item label="案件阶段" name="case_phase"/);
 });

@@ -14,6 +14,7 @@ import {
   InputNumber,
   message,
   Modal,
+  Radio,
   Select,
   Space,
   Steps,
@@ -3989,27 +3990,22 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={620}
+        width={400}
         open={Boolean(phaseEditing)}
-        title={`修改案件阶段：${phaseEditing?.map((row) => row.serial_no).join("、") || ""}`}
-        okText="保存阶段"
+        title={`变更阶段：${phaseEditing?.map((row) => row.serial_no).join("、") || ""}`}
+        okText="确定"
         cancelText="取消"
         onOk={savePhaseChange}
         onCancel={() => { setPhaseEditing(null); phaseForm.resetFields(); }}
         destroyOnHidden
       >
-        <Alert
-          type="info"
-          showIcon
-          title="阶段变更支持单行或批量案件；系统会先校验全部案件权限、归档状态和重复提交，再统一写入。"
-          style={{ marginBottom: 16 }}
-        />
-        <Form form={phaseForm} layout="vertical">
-          <Form.Item label="案件阶段" name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
-            <Select options={phaseOptions.map((option) => ({ value: option.id, label: `${option.name}（${option.canonical_name}）` }))} />
-          </Form.Item>
-          <Form.Item label="修改说明" name="comment">
-            <Input.TextArea rows={3} />
+        <Form form={phaseForm}>
+          <Form.Item name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
+            <Radio.Group className="case-phase-change-options">
+              {phaseOptions.map((option) => (
+                <Radio key={option.id} value={option.id}>{option.name}</Radio>
+              ))}
+            </Radio.Group>
           </Form.Item>
         </Form>
       </Modal>
@@ -4675,10 +4671,8 @@ export default function CaseCenterPage({
       >
         <Alert type="info" showIcon title="此表单对应旧系统民事、刑事、行政及国家赔偿案件的基本信息修改；归档案件和无办理权限账号不能保存。" style={{marginBottom:12}}/>
         <Form form={normalCaseEditForm} layout="vertical">
-          <div className="form-grid">
-            <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
-            <Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}><Select options={caseStatuses.map(value=>({value,label:value}))}/></Form.Item>
-          </div>
+          <Form.Item name="case_phase" hidden><Input /></Form.Item>
+          <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label={editingNormalCase?.data.case_type === "刑事案件" ? "罪名/案由" : "案由"} name="cause_or_charge" rules={[{required:true,message:"请输入案由或罪名"}]}><Input/></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
@@ -4695,7 +4689,8 @@ export default function CaseCenterPage({
       <Modal width={720} open={Boolean(editingArbitrationCase)} title={`修改仲裁案件基本信息：${editingArbitrationCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveArbitrationBasic} onCancel={()=>setEditingArbitrationCase(null)} destroyOnHidden>
         <Alert type="info" showIcon title="仲裁案件使用独立基本信息流程，不复用民事、刑事、行政或法律顾问案件接口。" style={{marginBottom:12}}/>
         <Form form={arbitrationBasicForm} layout="vertical">
-          <div className="form-grid"><Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}><Select options={caseStatuses.map(value=>({value,label:value}))}/></Form.Item></div>
+          <Form.Item name="case_phase" hidden><Input /></Form.Item>
+          <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item></div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
