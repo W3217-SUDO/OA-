@@ -82,6 +82,126 @@ type Fee = {
   updated_at?: string;
 };
 type FinanceFlow = Fee;
+
+type InvoiceCustomerDefaults = {
+  customer: string;
+  customer_no: string;
+  invoice_title: string;
+  taxpayer_id: string;
+  invoice_phone: string;
+  bank_account: string;
+  bank_name: string;
+  invoice_address: string;
+};
+
+type InvoiceSourceFields = {
+  case_no?: string;
+  case_record_id?: number | string;
+  contract_record_id?: number | string;
+  contract_no?: string;
+  external_contract_no?: string;
+  customer?: string;
+  customer_no?: string;
+  invoice_title?: string;
+  taxpayer_id?: string;
+  invoice_phone?: string;
+  bank_account?: string;
+  bank_name?: string;
+  invoice_address?: string;
+  amount?: number;
+};
+
+const invoiceText = (value: unknown) => String(value ?? "").trim();
+
+const findInvoiceContract = (fee: Fee, contracts: Fee[]) => {
+  const data = fee.data || {};
+  const contractId = Number(data.contract_id ?? data.contract_record_id);
+  const contractNo = invoiceText(data.contract_no);
+  return contracts.find((contract) =>
+    (Number.isFinite(contractId) && contractId > 0 && contract.id === contractId) ||
+    (contractNo && contract.serial_no === contractNo),
+  );
+};
+
+const findInvoiceCustomer = (
+  customerRows: Fee[],
+  customerName: unknown,
+  customerNo: unknown,
+  customerId: unknown,
+) => {
+  const name = invoiceText(customerName);
+  const serialNo = invoiceText(customerNo);
+  const id = Number(customerId);
+  return customerRows.find((customer) =>
+    (Number.isFinite(id) && id > 0 && customer.id === id) ||
+    (serialNo && customer.serial_no === serialNo) ||
+    (name && (customer.title === name || customer.customer === name)),
+  );
+};
+
+const buildInvoiceCustomerDefaults = (
+  customerRows: Fee[],
+  customerName: unknown,
+  customerNo: unknown,
+  customerId: unknown,
+): InvoiceCustomerDefaults => {
+  const customer = findInvoiceCustomer(customerRows, customerName, customerNo, customerId);
+  const data = customer?.data || {};
+  const name = invoiceText(customer?.title || customer?.customer || customerName);
+  return {
+    customer: name,
+    customer_no: invoiceText(customer?.serial_no || customerNo),
+    invoice_title: invoiceText(data.invoice_title || name),
+    taxpayer_id: invoiceText(
+      data.taxpayer_id || data.credit_code || data.unified_social_credit_code,
+    ),
+    invoice_phone: invoiceText(data.invoice_phone || data.phone || data.office_phone),
+    bank_account: invoiceText(data.bank_account),
+    bank_name: invoiceText(data.bank_name),
+    invoice_address: invoiceText(data.invoice_address || data.registered_address),
+  };
+};
+
+const invoiceFeeAvailableAmount = (fee: Fee) =>
+  Number(fee.data?.remaining_invoice_amount ?? fee.data?.amount ?? 0);
+
+const invoiceFeeIssuedAmount = (fee: Fee) => {
+  const data = fee.data || {};
+  if (data.invoiced_amount != null) return Number(data.invoiced_amount || 0);
+  return Math.max(0, Number(data.amount || 0) - invoiceFeeAvailableAmount(fee));
+};
+
+const buildInvoiceSourceFields = (
+  selectedFees: Fee[],
+  contracts: Fee[],
+  customerRows: Fee[],
+): InvoiceSourceFields => {
+  const first = selectedFees[0];
+  if (!first) return {};
+  const data = first.data || {};
+  const contract = findInvoiceContract(first, contracts);
+  const contractData = contract?.data || {};
+  const customerDefaults = buildInvoiceCustomerDefaults(
+    customerRows,
+    first.customer || data.customer || contract?.customer,
+    data.customer_no || contractData.customer_no,
+    data.customer_id || data.customer_record_id || contractData.customer_id,
+  );
+  return {
+    case_no: invoiceText(data.case_no),
+    case_record_id: data.case_id || data.case_record_id || undefined,
+    contract_record_id:
+      data.contract_id || data.contract_record_id || contract?.id || undefined,
+    contract_no: invoiceText(data.contract_no || contract?.serial_no),
+    external_contract_no: invoiceText(
+      data.external_contract_no || contractData.external_contract_no,
+    ),
+    ...customerDefaults,
+    amount: Number(
+      selectedFees.reduce((total, fee) => total + invoiceFeeAvailableAmount(fee), 0).toFixed(2),
+    ),
+  };
+};
 type FinancePersonOption = { value: string; label: string; username: string };
 type Attachment = {
   id: number;
@@ -1116,6 +1236,9 @@ export default function FinanceCenterPage({
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceEditTarget, setInvoiceEditTarget] =
     useState<FinanceFlow | null>(null);
+  const [invoiceSelectedFeeIds, setInvoiceSelectedFeeIds] = useState<number[]>([]);
+  const [invoiceFeeAmounts, setInvoiceFeeAmounts] = useState<Record<number, number>>({});
+  const [invoiceSourceFeeId, setInvoiceSourceFeeId] = useState<number | null>(null);
   const [refundOpen, setRefundOpen] = useState(false);
   const [invoiceForm] = Form.useForm();
   const [refundForm] = Form.useForm();
@@ -1125,28 +1248,36 @@ export default function FinanceCenterPage({
     void (async () => {
       try {
         const { data } = await api.get(`/records/${target.id}`);
-          if (data.module === "finance" && target.action === "create_invoice") {
-          const [contractResponse, feeResponse] = await Promise.all([
+        if (data.module === "finance" && target.action === "create_invoice") {
+          const [contractResponse, customerResponse, feeResponse] = await Promise.all([
             api.get("/records", { params: { module: "contract", page_size: 100 } }),
+            api.get("/records", { params: { module: "customer", page_size: 100 } }),
             api.get("/finance/case-fees/invoice-status", { params: { scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" } }),
           ]);
-          setContracts(Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : []);
-          setInvoiceCandidateFees(Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : []);
+          const contractRows = Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : [];
+          const customerRows = Array.isArray(customerResponse.data?.items) ? customerResponse.data.items : [];
+          const candidateRows = Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : [];
+          const sourceFee = candidateRows.find((fee: Fee) => Number(fee.id) === Number(data.id));
+          setContracts(contractRows);
+          setCustomers(customerRows);
+          setInvoiceCandidateFees(candidateRows);
+          setTab("invoices");
+          if (!sourceFee) {
+            message.warning("该费用当前不可申请开票（已申请、已开票或不在可开票范围内），未打开开票申请。");
+            return;
+          }
           invoiceForm.resetFields();
           invoiceForm.setFieldsValue({
-            case_no: data.data?.case_no || "",
-            case_record_id: data.data?.case_id || undefined,
-            contract_record_id: data.data?.contract_id || undefined,
-            case_fee_ids: [data.id],
-            customer: data.customer || "",
-            amount: Math.abs(Number(data.data?.amount || 0)) || undefined,
-            invoice_title: data.customer || "",
+            ...buildInvoiceSourceFields([sourceFee], contractRows, customerRows),
+            case_fee_ids: [sourceFee.id],
             extra_amount: 0,
             invoice_type: "增值税普通发票",
             invoice_content: "法律服务费",
             delivery_method: "电子发票",
           });
-          setTab("invoices");
+          setInvoiceSelectedFeeIds([sourceFee.id]);
+          setInvoiceFeeAmounts({ [sourceFee.id]: invoiceFeeAvailableAmount(sourceFee) });
+          setInvoiceSourceFeeId(sourceFee.id);
           setInvoiceOpen(true);
           return;
         }
@@ -1234,11 +1365,12 @@ export default function FinanceCenterPage({
   const [feeTypeOverride, setFeeTypeOverride] = useState("");
   const selectedFeeType = watchedFeeType || feeTypeOverride;
   const feeCommissionDetails = Form.useWatch("commission_details", feeForm) || [];
-  const invoiceCaseNo = Form.useWatch("case_no", invoiceForm);
-  const invoiceContractId = Form.useWatch("contract_record_id", invoiceForm);
-  const invoiceFeeOptions = invoiceEditTarget
-    ? invoiceCandidateFees.length ? invoiceCandidateFees : fees
-    : invoiceCandidateFees;
+  const invoiceFeeOptions = useMemo(() => {
+    if (!invoiceEditTarget) return invoiceCandidateFees;
+    return Array.from(
+      new Map([...invoiceCandidateFees, ...fees].map((fee) => [fee.id, fee])).values(),
+    );
+  }, [invoiceEditTarget, invoiceCandidateFees, fees]);
   const isInternalApprovalRoute = internalApprovalRoutes.includes(initialView);
   const isInternalDetailRoute = [
     "finance-internal-detail",
@@ -2702,18 +2834,63 @@ export default function FinanceCenterPage({
   };
   const loadInvoiceReferenceData = async () => {
     try {
-      const [contractResponse, feeResponse] = await Promise.all([
+      const [contractResponse, customerResponse, feeResponse] = await Promise.all([
         api.get("/records", { params: { module: "contract", page_size: 100 } }),
+        api.get("/records", { params: { module: "customer", page_size: 100 } }),
         api.get("/finance/case-fees/invoice-status", {
           params: { scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" },
         }),
       ]);
-      setContracts(Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : []);
-      setInvoiceCandidateFees(Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : []);
+      const contractRows = Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : [];
+      const customerRows = Array.isArray(customerResponse.data?.items) ? customerResponse.data.items : [];
+      const candidateRows = Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : [];
+      setContracts(contractRows);
+      setCustomers(customerRows);
+      setInvoiceCandidateFees(candidateRows);
+      return { contractRows, customerRows, candidateRows };
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "合同关联数据加载失败");
       throw error;
     }
+  };
+  const applyInvoiceFeeSelection = (nextIds: number[], candidateRows = invoiceFeeOptions) => {
+    const selectedFees = candidateRows.filter((fee) => nextIds.includes(fee.id));
+    if (!selectedFees.length) {
+      setInvoiceSelectedFeeIds([]);
+      setInvoiceFeeAmounts({});
+      invoiceForm.setFieldsValue({
+        case_no: undefined,
+        case_record_id: undefined,
+        contract_record_id: undefined,
+        contract_no: undefined,
+        external_contract_no: undefined,
+        customer: undefined,
+        customer_no: undefined,
+        amount: undefined,
+      });
+      return;
+    }
+    const first = buildInvoiceSourceFields([selectedFees[0]], contracts, customers);
+    const mismatched = selectedFees.some((fee) => {
+      const source = buildInvoiceSourceFields([fee], contracts, customers);
+      return source.case_no !== first.case_no ||
+        Number(source.contract_record_id || 0) !== Number(first.contract_record_id || 0) ||
+        source.customer !== first.customer;
+    });
+    if (mismatched) {
+      message.warning("一次申请开票只能选择同一案件、合同和客户下的费用。");
+      return;
+    }
+    setInvoiceSelectedFeeIds(nextIds);
+    setInvoiceFeeAmounts(
+      Object.fromEntries(
+        selectedFees.map((fee) => [fee.id, invoiceFeeAvailableAmount(fee)]),
+      ),
+    );
+    invoiceForm.setFieldsValue({
+      ...buildInvoiceSourceFields(selectedFees, contracts, customers),
+      case_fee_ids: nextIds,
+    });
   };
   const createInvoice = async () => {
     const v = await invoiceForm.validateFields();
@@ -2766,6 +2943,20 @@ export default function FinanceCenterPage({
   };
   const openInvoiceEdit = (row: FinanceFlow) => {
     setInvoiceEditTarget(row);
+    setInvoiceSourceFeeId(null);
+    const selectedFeeIds = Array.isArray(row.data?.case_fee_ids)
+        ? row.data.case_fee_ids.map(Number)
+        : row.data?.case_fee_id
+          ? [Number(row.data.case_fee_id)]
+          : [];
+    setInvoiceSelectedFeeIds(selectedFeeIds);
+    setInvoiceFeeAmounts(
+      Object.fromEntries(
+        invoiceFeeOptions
+          .filter((fee) => selectedFeeIds.includes(fee.id))
+          .map((fee) => [fee.id, invoiceFeeAvailableAmount(fee)]),
+      ),
+    );
     invoiceForm.setFieldsValue({
       ...row.data,
       customer: row.customer || row.data?.customer,
@@ -10558,6 +10749,11 @@ export default function FinanceCenterPage({
                           } catch {
                             return;
                           }
+                          setInvoiceEditTarget(null);
+                          setInvoiceSourceFeeId(null);
+                          setInvoiceSelectedFeeIds([]);
+                          setInvoiceFeeAmounts({});
+                          invoiceForm.resetFields();
                           invoiceForm.setFieldsValue({
                             invoice_type: "增值税普通发票",
                             invoice_content: "法律服务费",
@@ -11789,184 +11985,125 @@ export default function FinanceCenterPage({
           )}
         </Form>
       </Modal>
-      <Modal
-        width={760}
+      <Drawer
+        className="finance-invoice-request-drawer"
+        width="min(1180px, calc(100vw - 32px))"
         open={invoiceOpen}
         title={invoiceEditTarget ? "编辑发票申请" : "新增发票申请"}
-        okText={invoiceEditTarget ? "保存修改" : "保存草稿"}
-        cancelText="取消"
-        onOk={createInvoice}
-        onCancel={() => {
+        destroyOnHidden
+        onClose={() => {
           setInvoiceOpen(false);
           setInvoiceEditTarget(null);
+          setInvoiceSelectedFeeIds([]);
+          setInvoiceFeeAmounts({});
+          setInvoiceSourceFeeId(null);
           invoiceForm.resetFields();
         }}
+        footer={
+          <Space>
+            <Button onClick={() => setInvoiceOpen(false)}>取消</Button>
+            <Button type="primary" onClick={() => void createInvoice()}>
+              {invoiceEditTarget ? "保存修改" : "保存草稿"}
+            </Button>
+          </Space>
+        }
       >
-        <Form form={invoiceForm} layout="vertical">
-          <div className="form-grid">
-            <Form.Item className="span-2" label="关联案件" name="case_no">
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={cases.map((x) => ({
-                  value: x.serial_no,
-                  label: `${x.serial_no}｜${x.customer}｜${x.title}`,
-                }))}
-                onChange={(no) => {
-                  const item = cases.find((x) => x.serial_no === no);
-                  if (item)
-                    invoiceForm.setFieldValue("customer", item.customer);
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              label="关联合同"
-              name="contract_record_id"
-              rules={[{ required: !invoiceEditTarget, message: "请选择关联合同" }]}
-            >
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={contracts.map((x) => ({
-                  value: x.id,
-                  label: `${x.serial_no}｜${x.title || x.customer || ""}`,
-                }))}
-                onChange={(id) => {
-                  const contract = contracts.find((x) => Number(x.id) === Number(id));
-                  if (contract) {
-                    invoiceForm.setFieldsValue({
-                      customer: contract.customer || undefined,
-                      case_fee_ids: undefined,
-                    });
-                  }
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              label="关联案件费用"
-              name="case_fee_ids"
-              rules={[{ required: !invoiceEditTarget, type: "array", min: 1, message: "至少选择一笔案件费用" }]}
-            >
-              <Select
-                mode="multiple"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={invoiceFeeOptions
-                  .filter((x) => {
-                    const selectedContractId = invoiceContractId;
-                    const contract = contracts.find((item) => Number(item.id) === Number(selectedContractId));
-                    const feeContractId = x.data?.contract_id ?? x.data?.contract_record_id;
-                    const feeContractNo = String(x.data?.contract_no || "").trim();
-                    return (!selectedContractId || feeContractId == null && !feeContractNo || Number(feeContractId) === Number(selectedContractId) || feeContractNo === String(contract?.serial_no || ""))
-                      && (!invoiceCaseNo || x.data?.case_no === invoiceCaseNo)
-                      && Number(x.data?.remaining_invoice_amount ?? x.data?.amount ?? 0) > 0;
-                  })
-                  .map((x) => ({
-                    value: x.id,
-                    label: `${x.data?.contract_no || "无合同号"}｜${x.data?.case_no || "无案号"}｜${x.data?.fee_type || x.title || "费用"}｜费用 ${Number(x.data?.amount || 0).toFixed(2)}｜可申请 ${Number(x.data?.remaining_invoice_amount ?? x.data?.amount ?? 0).toFixed(2)}`,
-                  }))}
-                onChange={(ids) => {
-                  const selected = invoiceFeeOptions.filter((item) => ids?.includes(item.id));
-                  if (!selected.length) return;
-                  const first = selected[0];
-                  const total = selected.reduce((sum, item) => sum + Number(item.data?.remaining_invoice_amount ?? item.data?.amount ?? 0), 0);
-                  invoiceForm.setFieldsValue({
-                    case_no: first.data?.case_no || undefined,
-                    customer: first.customer || first.data?.customer || undefined,
-                    amount: Number(total.toFixed(2)),
-                  });
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              label="客户"
-              name="customer"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item
-              label="开票金额"
-              name="amount"
-              rules={[{ required: true }]}
-            >
-              <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item
-              label="发票抬头"
-              name="invoice_title"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item
-              label="纳税人识别号"
-              name="taxpayer_id"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item label="公司电话" name="invoice_phone"><Input /></Form.Item>
-            <Form.Item label="银行账号" name="bank_account"><Input /></Form.Item>
-            <Form.Item label="开户银行" name="bank_name"><Input /></Form.Item>
-            <Form.Item label="开票地址" name="invoice_address"><Input /></Form.Item>
-            <Form.Item label="高开发票金额" name="extra_amount">
-              <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item
-              label="发票类型"
-              name="invoice_type"
-              rules={[{ required: true }]}
-            >
-              <Select
-                options={[
-                  "增值税普通发票",
-                  "增值税专用发票",
-                  "电子普通发票",
-                  "电子专用发票",
-                ].map((v) => ({ value: v, label: v }))}
-              />
-            </Form.Item>
-            <Form.Item
-              label="开票内容"
-              name="invoice_content"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item label="交付方式" name="delivery_method">
-              <Select
-                options={["电子发票", "邮寄纸质发票", "现场领取"].map((v) => ({
-                  value: v,
-                  label: v,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item label="接收邮箱" name="email">
-              <Input />
-            </Form.Item>
-            <Form.Item label="收件人" name="recipient">
-              <Input />
-            </Form.Item>
-            <Form.Item label="联系电话" name="recipient_phone">
-              <Input />
-            </Form.Item>
-            <Form.Item
-              className="span-2"
-              label="邮寄地址"
-              name="delivery_address"
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item className="span-2" label="备注" name="remark">
-              <Input.TextArea rows={2} />
-            </Form.Item>
-          </div>
+        <Form form={invoiceForm} layout="vertical" className="finance-invoice-request-form">
+          <Form.Item name="case_record_id" hidden><Input /></Form.Item>
+          <Form.Item name="contract_record_id" hidden><Input /></Form.Item>
+          <Form.Item name="case_fee_ids" hidden><Input /></Form.Item>
+          <section className="finance-invoice-request-section">
+            <h3>申请信息</h3>
+            <div className="finance-invoice-request-grid">
+              <Form.Item label="来源案件" name="case_no">
+                <Input readOnly placeholder="从发票明细自动带入" />
+              </Form.Item>
+              <Form.Item label="合同编号" name="contract_no">
+                <Input readOnly placeholder="从发票明细自动带入" />
+              </Form.Item>
+              <Form.Item label="外部合同号" name="external_contract_no">
+                <Input readOnly placeholder="从发票明细自动带入" />
+              </Form.Item>
+              <Form.Item label="客户名称" name="customer" rules={[{ required: true }]}>
+                <Input readOnly placeholder="从发票明细自动带入" />
+              </Form.Item>
+              <Form.Item label="申请开票金额" name="amount" rules={[{ required: true }]}>
+                <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
+              </Form.Item>
+            </div>
+          </section>
+          <section className="finance-invoice-request-section">
+            <h3>发票内容</h3>
+            <div className="finance-invoice-request-grid">
+              <Form.Item label="发票抬头" name="invoice_title" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="纳税人识别号" name="taxpayer_id" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="公司电话" name="invoice_phone"><Input /></Form.Item>
+              <Form.Item label="银行账号" name="bank_account"><Input /></Form.Item>
+              <Form.Item label="开户银行" name="bank_name"><Input /></Form.Item>
+              <Form.Item className="span-2" label="开票地址" name="invoice_address"><Input /></Form.Item>
+            </div>
+          </section>
+          <section className="finance-invoice-request-section">
+            <h3>服务项</h3>
+            <div className="finance-invoice-request-grid">
+              <Form.Item label="发票类型" name="invoice_type" rules={[{ required: true }]}>
+                <Select options={["增值税普通发票", "增值税专用发票", "电子普通发票", "电子专用发票"].map((value) => ({ value, label: value }))} />
+              </Form.Item>
+              <Form.Item label="开票内容" name="invoice_content" rules={[{ required: true }]}><Input /></Form.Item>
+              <Form.Item label="高开发票金额" name="extra_amount"><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
+              <Form.Item label="交付方式" name="delivery_method"><Select options={["电子发票", "邮寄纸质发票", "现场领取"].map((value) => ({ value, label: value }))} /></Form.Item>
+              <Form.Item label="接收邮箱" name="email"><Input /></Form.Item>
+              <Form.Item label="收件人" name="recipient"><Input /></Form.Item>
+              <Form.Item label="联系电话" name="recipient_phone"><Input /></Form.Item>
+              <Form.Item className="span-2" label="邮寄地址" name="delivery_address"><Input /></Form.Item>
+              <Form.Item className="span-2" label="备注" name="remark"><Input.TextArea rows={2} /></Form.Item>
+            </div>
+          </section>
+          <section className="finance-invoice-request-section finance-invoice-request-details">
+            <div className="finance-invoice-request-section-heading">
+              <h3>发票明细</h3>
+              <span>{invoiceSourceFeeId ? "来源费用已自动绑定" : "选择费用后自动带入案件、合同和客户"}</span>
+            </div>
+            <div className="finance-invoice-request-table-wrap">
+              <table className="finance-invoice-request-table">
+                <thead>
+                  <tr>
+                    <th>选择</th><th>合同编号</th><th>外部合同号</th><th>案件名称</th><th>案件阶段</th><th>案号</th><th>费用类型</th><th>费用金额</th><th>已到账金额</th><th>已开票金额</th><th>本次开票</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoiceFeeOptions.map((fee) => {
+                    const feeData = fee.data || {};
+                    const availableAmount = invoiceFeeAvailableAmount(fee);
+                    const selected = invoiceSelectedFeeIds.includes(fee.id);
+                    const currentAmount = invoiceFeeAmounts[fee.id] ?? availableAmount;
+                    return <tr key={fee.id} className={selected ? "is-selected" : undefined}>
+                      <td><Checkbox checked={selected} disabled={Boolean(invoiceSourceFeeId)} onChange={(event) => {
+                        const nextIds = event.target.checked
+                          ? [...invoiceSelectedFeeIds, fee.id]
+                          : invoiceSelectedFeeIds.filter((id) => id !== fee.id);
+                        applyInvoiceFeeSelection(nextIds);
+                      }} /></td>
+                      <td>{feeData.contract_no || "—"}</td><td>{feeData.external_contract_no || "—"}</td><td>{feeData.case_name || feeData.case_title || fee.title || "—"}</td><td>{feeData.case_stage || feeData.stage || "—"}</td><td>{feeData.case_no || "—"}</td><td>{feeData.fee_type || fee.title || "—"}</td><td>{Number(feeData.amount || 0).toFixed(2)}</td><td>{Number(feeData.received_amount ?? feeData.cashed_amount ?? feeData.paid_amount ?? 0).toFixed(2)}</td><td>{invoiceFeeIssuedAmount(fee).toFixed(2)}</td>
+                      <td><InputNumber min={0} max={availableAmount} precision={2} disabled={!selected || Boolean(invoiceSourceFeeId)} value={currentAmount} onChange={(value) => {
+                        const nextAmount = Math.min(availableAmount, Math.max(0, Number(value || 0)));
+                        const nextAmounts = { ...invoiceFeeAmounts, [fee.id]: nextAmount };
+                        setInvoiceFeeAmounts(nextAmounts);
+                        invoiceForm.setFieldValue("amount", Number(invoiceSelectedFeeIds.reduce((total, id) => total + Number(nextAmounts[id] ?? invoiceFeeAvailableAmount(invoiceFeeOptions.find((item) => item.id === id) || fee)), 0).toFixed(2)));
+                      }} /></td>
+                    </tr>;
+                  })}
+                  {!invoiceFeeOptions.length && <tr><td colSpan={11}>暂无可申请开票的费用</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </Form>
-      </Modal>
+      </Drawer>
       <Modal
         width={760}
         open={refundOpen}

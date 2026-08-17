@@ -5,7 +5,9 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
 
 test("row 29 blocks a second case-fee invoice application before opening the form", () => {
-  assert.match(source, /\["已申请","已开票"\]\.includes\(String\(selectedFirmFee!\.data\.invoice_status\|\|""\)\)/);
-  assert.match(source, /不能重复申请开票/);
+  assert.match(source, /api\.get\("\/finance\/case-fees\/invoice-status"/);
+  assert.match(source, /invoice_status:"未开票"/);
+  assert.match(source, /resolveCaseFeeInvoiceEligibility\(selectedFirmFee!\.id/);
+  assert.match(source, /if\(!eligibility\.ok\)\{message\.warning\(eligibility\.error\);return;\}/);
   assert.match(source, /action:key==="invoice"\?"create_invoice":"create_refund"/);
 });

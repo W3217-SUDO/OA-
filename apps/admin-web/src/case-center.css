@@ -156,10 +156,11 @@
 .case-fee-entry-table,.case-fee-payment-table{overflow-x:auto;border:1px solid #d9d9d9}
 .case-fee-entry-head,.case-fee-entry-row{display:grid;grid-template-columns:82px 95px 92px 65px minmax(100px,1fr) 92px 50px;min-width:0}
 .case-fee-payment-head,.case-fee-payment-row{display:grid;grid-template-columns:105px 100px 75px minmax(130px,1fr) minmax(150px,1.2fr);min-width:560px}
+.case-fee-payment-request-table .case-fee-payment-head,.case-fee-payment-request-table .case-fee-payment-row{grid-template-columns:105px 110px 80px 120px minmax(130px,1fr) minmax(150px,1.1fr) minmax(150px,1.1fr);min-width:900px}
 .case-fee-entry-head>span,.case-fee-payment-head>span{padding:7px 5px;border-right:1px solid #e5e5e5;background:#fafafa;text-align:center;font-weight:600}
 .case-fee-entry-row>*,.case-fee-payment-row>*{min-width:0;border-top:1px solid #e5e5e5;border-right:1px solid #e5e5e5}
 .case-fee-entry-row .ant-form-item,.case-fee-payment-row .ant-form-item{margin:0}
-.case-fee-entry-row .ant-select-selector,.case-fee-entry-row .ant-input,.case-fee-entry-row .ant-input-number,.case-fee-entry-row .ant-picker,.case-fee-payment-row .ant-input{border:0!important;border-radius:0!important;box-shadow:none!important}
+.case-fee-entry-row .ant-select-selector,.case-fee-entry-row .ant-input,.case-fee-entry-row .ant-input-number,.case-fee-entry-row .ant-picker,.case-fee-payment-row .ant-input,.case-fee-payment-row .ant-input-number{border:0!important;border-radius:0!important;box-shadow:none!important}
 .case-fee-static-value,.case-fee-payment-row>span{padding:7px 5px;text-align:center}
 .case-fee-amount-input{width:100%;background:#fff500}
 .case-fee-row-actions{display:flex;align-items:center;justify-content:center}

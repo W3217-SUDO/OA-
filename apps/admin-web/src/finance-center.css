@@ -1770,3 +1770,24 @@
 }
 .finance-fee-commission-details{margin-top:12px;padding:12px;border:1px solid #d9d9d9;background:#fafafa}.finance-fee-commission-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.finance-fee-commission-row{display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(120px,1fr) minmax(110px,.8fr) minmax(140px,1.2fr) 32px;gap:0 8px;align-items:end}.finance-fee-commission-row .ant-form-item{margin-bottom:8px}.finance-fee-commission-row>.ant-btn{margin-bottom:12px}.finance-fee-commission-total{text-align:right;font-weight:600}@media(max-width:800px){.finance-fee-commission-row{grid-template-columns:1fr 1fr}.finance-fee-commission-row>.ant-btn{justify-self:end}}
 .case-fee-commission-details{margin-top:12px;padding:12px;border:1px solid #d9d9d9;background:#fafafa}.case-fee-commission-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.case-fee-commission-row{display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(120px,1fr) minmax(110px,.8fr) minmax(140px,1.2fr) 32px;gap:0 8px;align-items:end}.case-fee-commission-row .ant-form-item{margin-bottom:8px}.case-fee-commission-row>.ant-btn{margin-bottom:12px}@media(max-width:800px){.case-fee-commission-row{grid-template-columns:1fr 1fr}.case-fee-commission-row>.ant-btn{justify-self:end}}
+.finance-invoice-request-drawer .ant-drawer-body { padding: 16px 20px; background: #f5f7fa; }
+.finance-invoice-request-drawer .ant-drawer-footer { display: flex; justify-content: flex-end; padding: 12px 20px; }
+.finance-invoice-request-form { min-width: 0; }
+.finance-invoice-request-section { margin-bottom: 14px; border: 1px solid #d9e1ea; background: #fff; }
+.finance-invoice-request-section h3 { margin: 0; padding: 8px 12px; color: #17365d; font-size: 14px; font-weight: 600; border-bottom: 1px solid #d9e1ea; background: #edf3f8; }
+.finance-invoice-request-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 14px; padding: 12px 14px 2px; }
+.finance-invoice-request-grid .ant-form-item { margin-bottom: 10px; }
+.finance-invoice-request-grid .span-2 { grid-column: span 2; }
+.finance-invoice-request-grid .ant-input[readonly] { color: #52616b; background: #fafafa; }
+.finance-invoice-request-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #d9e1ea; background: #edf3f8; }
+.finance-invoice-request-section-heading h3 { flex: 1; border-bottom: 0; }
+.finance-invoice-request-section-heading span { padding-right: 12px; color: #6b7785; font-size: 12px; }
+.finance-invoice-request-table-wrap { overflow-x: auto; }
+.finance-invoice-request-table { width: 100%; min-width: 1110px; border-collapse: collapse; font-size: 12px; }
+.finance-invoice-request-table th, .finance-invoice-request-table td { height: 36px; padding: 5px 8px; text-align: center; white-space: nowrap; border: 1px solid #d9e1ea; }
+.finance-invoice-request-table th { color: #33475b; font-weight: 600; background: #f7f9fb; }
+.finance-invoice-request-table td { color: #43515e; }
+.finance-invoice-request-table tr.is-selected td { background: #f0f8ff; }
+.finance-invoice-request-table .ant-input-number { width: 104px; }
+@media (max-width: 900px) { .finance-invoice-request-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .finance-invoice-request-drawer .ant-drawer-body { padding: 12px; } .finance-invoice-request-grid { grid-template-columns: 1fr; padding: 10px 12px 0; } .finance-invoice-request-grid .span-2 { grid-column: span 1; } .finance-invoice-request-section-heading { align-items: flex-start; flex-direction: column; gap: 2px; } .finance-invoice-request-section-heading span { padding: 0 12px 8px; } }

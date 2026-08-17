@@ -2188,6 +2188,8 @@ class FinanceActionInput(BaseModel):
     comment: str = ""
     amount: float | None = Field(default=None, gt=0)
     payment_account: str = Field(default="", max_length=128)
+    payment_payee: str = Field(default="", max_length=256)
+    payment_remark: str = Field(default="", max_length=1000)
 
 
 class FinancePaymentCancelInput(BaseModel):
@@ -16435,6 +16437,10 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         account = body.payment_account.strip()
         if not account:
             raise HTTPException(status_code=422, detail="请输入付款账号")
+        payee = body.payment_payee.strip()
+        if not payee:
+            raise HTTPException(status_code=422, detail="请输入收款单位")
+        payment_remark = body.payment_remark.strip()
         requested = _round_fee_amount(body.amount)
         paid = _round_fee_amount(float(await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(
             FinanceTransaction.finance_record_id == item.id,
@@ -16451,11 +16457,14 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             **data,
             "payment_requested_amount": _round_fee_amount(previous_requested + requested),
             "payment_account": account,
+            "payment_payee": payee,
+            "payment_remark": payment_remark,
+            "payee": payee,
             "payment_applied_at": applied_at,
             "payment_applied_by": identity["username"],
             "payment_status": "待审批",
         }
-        db.add(WorkflowEvent(record_id=item.id, action="提交费用付款申请", from_status=previous, to_status="待审批", operator=identity["username"], comment=body.comment.strip() or f"申请付款 {requested:.2f} 元"))
+        db.add(WorkflowEvent(record_id=item.id, action="提交费用付款申请", from_status=previous, to_status="待审批", operator=identity["username"], comment=payment_remark or body.comment.strip() or f"申请付款 {requested:.2f} 元"))
         await db.commit(); await db.refresh(item)
         return await _record_dict_for_identity(item, identity, db)
     previous = item.status; item.status = "待审批"

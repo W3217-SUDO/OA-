@@ -56,6 +56,7 @@ import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNaviga
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
+import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
   buildCaseOrdinarySearchPayload,
@@ -2587,7 +2588,12 @@ export default function CaseCenterPage({
     const requested = Number(row.data.payment_requested_amount || 0);
     const remaining = Math.max(Number(row.data.amount || 0) - paid - requested, 0);
     paymentRequestForm.resetFields();
-    paymentRequestForm.setFieldsValue({ amount: remaining || Number(row.data.amount || 0), payment_account: row.data.payment_account || "" });
+    paymentRequestForm.setFieldsValue({
+      amount: remaining || Number(row.data.amount || 0),
+      payment_remark: row.data.payment_remark || row.description || "",
+      payment_payee: row.data.payment_payee || row.data.payee || row.data.court || "",
+      payment_account: row.data.payment_account || "",
+    });
     setPaymentRequestFee(row);
   };
   const submitPaymentRequest = async () => {
@@ -2596,8 +2602,10 @@ export default function CaseCenterPage({
       const values = await paymentRequestForm.validateFields();
       await api.post(`/finance/fees/${paymentRequestFee.id}/submit`, {
         amount: Number(values.amount),
+        payment_remark: String(values.payment_remark || "").trim(),
+        payment_payee: String(values.payment_payee || "").trim(),
         payment_account: String(values.payment_account || "").trim(),
-        comment: `案件 ${paymentRequestFee.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款`,
+        comment: String(values.payment_remark || `案件 ${paymentRequestFee.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款`).trim(),
       });
       message.success("付款申请已提交审批");
       setPaymentRequestFee(null);
@@ -3399,15 +3407,21 @@ export default function CaseCenterPage({
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
     return true;
   };
-  const handleFirmFeeOperation=(key:string)=>{
+  const handleFirmFeeOperation=async(key:string)=>{
     if(!requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":"标记不缴费"))return;
-    if(key==="payment")return void submitCaseFeePayment(selectedFirmFee!);
+    if(key==="payment")return openPaymentRequest(selectedFirmFee!);
     if(key==="edit")return editCaseFee(selectedFirmFee!);
     if(key==="delete")return deleteCaseFee(selectedFirmFee!);
     if(key==="no-payment")return markCaseFeeNoPayment(selectedFirmFee!);
-    if(key==="invoice"&&["已申请","已开票"].includes(String(selectedFirmFee!.data.invoice_status||""))){
-      message.warning(`该费用${selectedFirmFee!.data.invoice_status}，不能重复申请开票`);
-      return;
+    if(key==="invoice"){
+      try {
+        const {data}=await api.get("/finance/case-fees/invoice-status",{params:{scope:"company",invoice_status:"未开票",case_no:selectedFirmFee!.data.case_no||viewingCounselCase?.serial_no||"",fee_types:"",page:1,page_size:200}});
+        const eligibility=resolveCaseFeeInvoiceEligibility(selectedFirmFee!.id,Array.isArray(data?.items)?data.items:[]);
+        if(!eligibility.ok){message.warning(eligibility.error);return;}
+      }catch(error:any){
+        message.error(error?.response?.data?.detail||"开票资格检查失败");
+        return;
+      }
     }
     rememberBusinessRecordDetailTarget({
       id:selectedFirmFee!.id,
@@ -4189,23 +4203,32 @@ export default function CaseCenterPage({
         <p>金额：{paymentPackagePreview?.total_amount ?? paymentPackagePreview?.source?.amount ?? "—"}</p>
         <p>付款包号：{paymentPackagePreview?.package_no || "—"}</p>
       </Modal>
-      <Modal
+      <Drawer
         open={Boolean(paymentRequestFee)}
-        title={`申请付款：${paymentRequestFee?.serial_no || ""}`}
-        okText="申请付款"
-        cancelText="取消"
-        onOk={submitPaymentRequest}
-        onCancel={() => { setPaymentRequestFee(null); paymentRequestForm.resetFields(); }}
-        destroyOnHidden
+        title="申请付款"
+        width={860}
+        className="case-fee-create-drawer case-fee-payment-request-drawer"
+        onClose={() => { setPaymentRequestFee(null); paymentRequestForm.resetFields(); }}
+        destroyOnClose
+        footer={<Space className="case-fee-drawer-footer"><Button type="primary" onClick={submitPaymentRequest}>申请付款</Button><Button onClick={() => { setPaymentRequestFee(null); paymentRequestForm.resetFields(); }}>取消</Button></Space>}
       >
-        <Alert type="info" showIcon title="填写本次申请付款金额和付款账号" style={{ marginBottom: 12 }} />
-        <Form form={paymentRequestForm} layout="vertical">
-          <Form.Item label="费用编号"><Input value={paymentRequestFee?.serial_no || ""} disabled /></Form.Item>
-          <Form.Item label="费用金额"><Input value={paymentRequestFee?.data.amount ?? ""} disabled /></Form.Item>
-          <Form.Item label="申请付款金额" name="amount" rules={[{ required: true, message: "请输入申请付款金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
-          <Form.Item label="付款账号" name="payment_account" rules={[{ required: true, message: "请输入付款账号" }]}><Input placeholder="请输入付款账号" /></Form.Item>
+        <Steps size="small" current={1} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
+        <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
+        <Form form={paymentRequestForm} component={false}>
+          <div className="case-fee-payment-table case-fee-payment-request-table">
+            <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>申请付款金额</span><span>付款备注</span><span>收款单位</span><span>付款账号</span></div>
+            <div className="case-fee-payment-row">
+              <span>{paymentRequestFee?.data.case_no || viewingCounselCase?.serial_no || "—"}</span>
+              <span>{paymentRequestFee?.data.expense_subtype || paymentRequestFee?.data.fee_type || paymentRequestFee?.title || "—"}</span>
+              <span>{paymentRequestFee?.data.amount ?? "—"}</span>
+              <Form.Item name="amount" rules={[{ required: true, message: "请输入申请付款金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
+              <Form.Item name="payment_remark"><Input placeholder="付款备注" /></Form.Item>
+              <Form.Item name="payment_payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input placeholder="收款单位" /></Form.Item>
+              <Form.Item name="payment_account" rules={[{ required: true, message: "请输入付款账号" }]}><Input placeholder="付款账号" /></Form.Item>
+            </div>
+          </div>
         </Form>
-      </Modal>
+      </Drawer>
       <Modal open={Boolean(caseTaskCreateCase)} title={`发布${caseTaskKind}：${caseTaskCreateCase?.serial_no || ""}`} okText={`发布${caseTaskKind}`} cancelText="取消" onOk={createCaseTask} onCancel={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); }} destroyOnHidden>
         <Alert type="info" showIcon title={`任务创建后会自动关联当前案件并即时回填到“${caseTaskKind}”页签。`} style={{ marginBottom: 16 }} />
         <Form form={taskForm} layout="vertical">
@@ -4372,7 +4395,7 @@ export default function CaseCenterPage({
                 ]}/>
                 <Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key==="commission"?handleInternalFeeAction("create"):openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
                 </Space>
               </div>},
               {key:"platform-fees",label:"平台费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={platformFeeRows} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
