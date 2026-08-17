@@ -11101,7 +11101,7 @@ async def list_tasks(
     # explicit legacy query semantics while this candidate query prevents an
     # unrelated task from entering the in-memory page window.
     task_conditions = [BusinessRecord.module == "task"]
-    if identity.get("role") != "admin" and scope in {"mine", "default"}:
+    if scope in {"mine", "default"}:
         username_token = f'"{identity["username"]}"'
         task_conditions.append(or_(
             BusinessRecord.owner == identity["username"],
@@ -11121,7 +11121,7 @@ async def list_tasks(
             *department_tokens,
         ))
     tasks = list((await db.scalars(select(BusinessRecord).where(*task_conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
-    if identity.get("role") != "admin" and scope in {"mine", "default"}:
+    if scope in {"mine", "default"}:
         username = identity["username"]
         tasks = [task for task in tasks if task.owner == username or (task.data or {}).get("initiator") == username or username in (task.data or {}).get("collaborators", [])]
     elif scope == "department":
@@ -11145,14 +11145,13 @@ async def list_tasks(
         if relation == "collaborating":
             tasks = [task for task in tasks if (task.data or {}).get("collaborators", [])]
     elif scope != "department":
-        # Administrators retain the full company set even from a personal
-        # entry; ordinary personal views remain participant-specific.
-        is_admin_global_view = identity.get("role") == "admin"
-        if relation == "initiated" and not is_admin_global_view:
+        # Personal entries remain personal for every role. Administrators use
+        # the explicit company menu when they need the company-wide range.
+        if relation == "initiated":
             tasks = [task for task in tasks if (task.data or {}).get("initiator") == username]
-        elif relation == "owned" and not is_admin_global_view:
+        elif relation == "owned":
             tasks = [task for task in tasks if task.owner == username]
-        elif relation == "collaborating" and not is_admin_global_view:
+        elif relation == "collaborating":
             tasks = [task for task in tasks if username in (task.data or {}).get("collaborators", [])]
     items = await _task_display_dicts(tasks, db)
     all_task_items = list(items)

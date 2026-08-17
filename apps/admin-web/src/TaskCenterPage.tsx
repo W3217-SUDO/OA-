@@ -502,16 +502,11 @@ export default function TaskCenterPage({
     // back to the current user's tasks.
     if (!isPersonalView) return tasks;
     if (isCreated) return tasks.filter((row) => names.includes(row.initiator));
-    if (isAccepted)
-      return profile.role === "admin"
-        ? tasks
-        : tasks.filter((row) => names.includes(row.owner));
+    if (isAccepted) return tasks.filter((row) => names.includes(row.owner));
     if (isCollaborating)
-      return profile.role === "admin"
-        ? tasks
-        : tasks.filter((row) =>
-            (row.collaborators || []).some((name) => names.includes(name)),
-          );
+      return tasks.filter((row) =>
+        (row.collaborators || []).some((name) => names.includes(name)),
+      );
     return tasks;
   }, [tasks, isPersonalView, isCreated, isAccepted, isCollaborating, profile]);
 
@@ -1019,10 +1014,10 @@ export default function TaskCenterPage({
         <Button
           className="task-cell-link task-table-identifier"
           type="link"
-          title={value || ""}
+          title={`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}
           onClick={() => openCommunication(row)}
         >
-          {value}
+          {`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}
         </Button>
       ),
     },
