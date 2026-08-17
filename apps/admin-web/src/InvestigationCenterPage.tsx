@@ -603,7 +603,7 @@ export default function InvestigationCenterPage({
           !["已完成", "已取消"].includes(row.status),
       );
     }
-    if (initialTab.includes("-my-") && profile.role !== "admin") {
+    if (initialTab.includes("-my-") && Boolean(profile.username)) {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
         names.includes(
