@@ -1104,7 +1104,7 @@ export default function ContractCenterPage({
       const { submit: enterSealCenter, ...sealValues } = values;
       const { data } = await api.post(`/contracts/${wizardDraft.id}/seal-application`, {
         ...sealValues,
-        submit: wizardDraft.status === "审批中" && Boolean(enterSealCenter),
+        submit: Boolean(enterSealCenter),
         use_date: formatRequiredDate(values.use_date, "计划用印日期"),
       });
       const contract = await loadWizardContext(wizardDraft.id);

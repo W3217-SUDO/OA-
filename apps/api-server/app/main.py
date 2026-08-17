@@ -8932,8 +8932,10 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
     sync_submission = contract.status == "审批中" and body.submit and bool((contract.data or {}).get("sync_seal"))
-    if body.submit and not sync_submission:
-        raise HTTPException(status_code=409, detail="只有合同提交同步用印时才能在此直接提交审批")
+    direct_submission = contract.status in {CONTRACT_APPROVED_STATUS, "已完成"} and body.submit
+    submitted = sync_submission or direct_submission
+    if body.submit and not submitted:
+        raise HTTPException(status_code=409, detail="当前合同状态不支持提交用印审批")
     if contract.status not in {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
     approver = await db.scalar(select(User).where(User.username == body.approver.strip(), User.is_active.is_(True)))
@@ -8952,7 +8954,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     if asset.status != "可用":
         raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
-    seal_status = "待审批" if sync_submission else "草稿"
+    seal_status = "待审批" if submitted else "草稿"
     seal = BusinessRecord(
         module="seal",
         serial_no=serial,
@@ -8993,8 +8995,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
             "sync_seal_file_required": False,
         }
     db.add_all([
-        WorkflowEvent(record_id=seal.id, action="创建合同用印申请并提交审批" if sync_submission else "创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),
-        WorkflowEvent(record_id=contract.id, action="配置同步用印" if contract.status == "审批中" else "发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if sync_submission else "，保存为草稿")),
+        WorkflowEvent(record_id=seal.id, action="创建合同用印申请并提交审批" if submitted else "创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),
+        WorkflowEvent(record_id=contract.id, action="配置同步用印" if contract.status == "审批中" else "发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if submitted else "，保存为草稿")),
     ])
     await db.commit()
     await db.refresh(seal)
