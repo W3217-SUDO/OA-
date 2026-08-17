@@ -123,6 +123,55 @@ class CustomerAccountDirectoryContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((record.data or {}).get("account_type"), "客户账号")
             self.assertEqual((record.data or {}).get("username"), "codexcustomer12")
 
+    async def test_existing_non_admin_login_can_be_restored_as_customer_account(self):
+        async with self.sessions() as db:
+            db.add(User(
+                username="codexlegacycustomer",
+                display_name="CODEX旧客户账号",
+                department="上海分所",
+                role="manager",
+                role_ids=["manager"],
+                profile={"account_type": "员工账号"},
+                password_hash=hash_password("CodexLegacy123"),
+                is_active=True,
+                must_change_password=False,
+            ))
+            await db.commit()
+
+        admin_login = await self._login("admin", "..123456")
+        admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+        restored = await self.client.post(
+            f"{API}/hr/employees",
+            headers=admin_headers,
+            json={
+                "username": "codexlegacycustomer",
+                "display_name": "CODEX旧客户账号",
+                "employee_no": "SYS-0099",
+                "company": "上海申浩律师事务所",
+                "department": "上海分所",
+                "password": "",
+                "role": "user",
+                "position": "客户联系人",
+                "is_active": True,
+                "account_type": "客户账号",
+                "data": {"account_type": "客户账号", "staff_role": "客户联系人"},
+            },
+        )
+        self.assertEqual(restored.status_code, status.HTTP_201_CREATED, restored.text)
+        self.assertEqual(restored.json()["user"]["role"], "user")
+        self.assertEqual(restored.json()["user"]["role_ids"], ["user"])
+
+        directory = await self.client.get(
+            f"{API}/users/directory", headers=admin_headers, params={"purpose": "customer_contact"},
+        )
+        self.assertEqual(directory.status_code, status.HTTP_200_OK, directory.text)
+        restored_item = next(item for item in directory.json()["items"] if item["username"] == "codexlegacycustomer")
+        self.assertEqual(restored_item["account_type"], "客户账号")
+        self.assertTrue(restored_item["eligible_customer_person"])
+
+        customer_login = await self._login("codexlegacycustomer", "CodexLegacy123")
+        self.assertEqual(customer_login.status_code, status.HTTP_200_OK, customer_login.text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22007,19 +22007,29 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
             raise HTTPException(status_code=409, detail="该登录账号已关联其他员工档案")
         user = await db.scalar(select(User).where(User.username == username))
         if user:
-            if user.role == "admin":
+            if "admin" in _system_user_role_ids(user):
                 raise HTTPException(status_code=409, detail="不能通过员工档案覆盖管理员账号")
-            raise HTTPException(status_code=409, detail="登录账号已存在")
-        policy = await _security_policy(db)
-        if len(body.password) < policy.min_password_length:
-            raise HTTPException(status_code=422, detail=f"登录账号密码至少需要 {policy.min_password_length} 位")
-        user = User(
-            username=username, display_name=display_name, department=body.department.strip(),
-            # Job position controls business capability. Customer accounts also
-            # need a real low-privilege User so they can be bound and activated.
-            role="user", role_ids=["user"], profile=profile, password_hash=hash_password(body.password),
-            is_active=body.is_active, password_changed_at=None, must_change_password=True,
-        )
+            if account_type != "客户账号":
+                raise HTTPException(status_code=409, detail="登录账号已存在")
+            # Legacy customer logins can outlive their customer-account HR row.
+            # Re-adopt that login instead of forcing users to create another account.
+            user.display_name = display_name
+            user.department = body.department.strip()
+            user.role = "user"
+            user.role_ids = ["user"]
+            user.profile = {**(user.profile or {}), **profile}
+            user.is_active = body.is_active
+        else:
+            policy = await _security_policy(db)
+            if len(body.password) < policy.min_password_length:
+                raise HTTPException(status_code=422, detail=f"登录账号密码至少需要 {policy.min_password_length} 位")
+            user = User(
+                username=username, display_name=display_name, department=body.department.strip(),
+                # Job position controls business capability. Customer accounts also
+                # need a real low-privilege User so they can be bound and activated.
+                role="user", role_ids=["user"], profile=profile, password_hash=hash_password(body.password),
+                is_active=body.is_active, password_changed_at=None, must_change_password=True,
+            )
     employee = BusinessRecord(
         module="hr", serial_no=employee_no, title=display_name, customer=body.company.strip(),
         status="在职" if body.is_active else "停用", owner=username if user else identity["username"], department=body.department.strip(), description="",

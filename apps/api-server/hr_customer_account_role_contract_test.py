@@ -15,3 +15,9 @@ def test_orphan_customer_account_can_rebuild_its_login_user() -> None:
     assert 'if account_type == "客户账号" and not stored_username' in SOURCE
     assert "password_hash=hash_password(uuid4().hex)" in SOURCE
     assert "employee.owner = username" in SOURCE
+
+
+def test_existing_non_admin_login_can_be_restored_as_customer_account() -> None:
+    assert 'if account_type != "客户账号"' in SOURCE
+    assert 'user.profile = {**(user.profile or {}), **profile}' in SOURCE
+    assert 'user.role_ids = ["user"]' in SOURCE
