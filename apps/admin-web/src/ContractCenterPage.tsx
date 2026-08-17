@@ -1101,22 +1101,24 @@ export default function ContractCenterPage({
     if (!wizardDraft) return;
     try {
       const values = await sealForm.validateFields();
-      const { submit: enterSealCenter, ...sealValues } = values;
+      const { submit: submitApplication, ...sealValues } = values;
       const { data } = await api.post(`/contracts/${wizardDraft.id}/seal-application`, {
         ...sealValues,
-        submit: Boolean(enterSealCenter),
+        submit: Boolean(submitApplication),
         use_date: formatRequiredDate(values.use_date, "计划用印日期"),
       });
       const contract = await loadWizardContext(wizardDraft.id);
       if (contract.status !== "审批中") localStorage.removeItem(WIZARD_STORAGE_KEY);
-      message.success(enterSealCenter
-        ? (data.status === "待审批" ? "合同用印申请已提交审批，正在进入用印中心" : "合同用印申请草稿已创建，正在进入用印中心")
+      message.success(submitApplication
+        ? (data.status === "待审批" ? "合同审批与用印申请已分别提交至对应审批渠道" : "合同用印申请已创建")
         : "合同用印申请草稿已创建，请到用印中心提交审批");
       setWizardDraft(contract);
       await load();
-      if (enterSealCenter) {
+      if (submitApplication) {
+        localStorage.removeItem(WIZARD_STORAGE_KEY);
         setOpen(false);
-        onNavigate?.("seal-my-pending");
+        const route = buildContractDetailRoute(contract);
+        if (route) onNavigate?.(route);
       }
       return data;
     } catch (error: any) {
@@ -2270,7 +2272,7 @@ export default function ContractCenterPage({
             {wizardStep === 1 && wizardDraft?.status === "审批中" && <Button type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) onNavigate?.(route); }}>查看合同详情</Button>}
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button>}
-            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button>}
+            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>提交申请</Button>}
             {wizardStep === 3 && Boolean(wizardDraft?.data.seal_application_id) && <Button onClick={() => startCreate()}>开始新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button onClick={() => startCreate()}>继续新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button type="primary" onClick={() => onNavigate?.("seal-my")}>进入用印中心</Button>}
@@ -2727,7 +2729,7 @@ export default function ContractCenterPage({
             wizardStep === 1 && wizardDraft?.status === "审批中" ? <Button key="detail" type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) { setOpen(false); onNavigate?.(route); } }}>查看合同详情</Button> : null,
             wizardStep === 2 ? <Button key="refresh" type="primary" onClick={refreshWizard}>刷新审批状态</Button> : null,
             wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-save" onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button> : null,
-            wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-submit" type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button> : null,
+            wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-submit" type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>提交申请</Button> : null,
             wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" ? <Button key="seal" type="primary" onClick={() => { setOpen(false); onNavigate?.("seal-my"); }}>进入用印中心</Button> : null,
           ]
         }
