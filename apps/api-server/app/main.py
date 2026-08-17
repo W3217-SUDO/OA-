@@ -3725,6 +3725,27 @@ def _stored_menu_permission_keys(menu_keys: list[str]) -> list[str]:
     return list(dict.fromkeys(result))
 
 
+JOB_ACTION_MENU_GRANTS: dict[str, tuple[str, ...]] = {
+    # Historical personnel roles stored approval capabilities as business-action
+    # labels. Keep those records effective without widening them to an entire
+    # business center.
+    "合同审批": ("contract-audit",),
+    "用印审批": ("seal-audit",),
+}
+
+
+def _job_role_menu_permission_keys(permissions: list[str]) -> list[str]:
+    """Resolve explicit menu keys and narrow legacy approval-action grants."""
+    result: list[str] = []
+    for value in permissions:
+        key = str(value or "").strip()
+        candidates = (key,) if key in SYSTEM_MENU_ROUTE_KEYS else JOB_ACTION_MENU_GRANTS.get(key, ())
+        for candidate in candidates:
+            if candidate not in result:
+                result.append(candidate)
+    return result
+
+
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
     "clear": "清理", "reset": "重置", "permissions": "维护权限",
@@ -4020,7 +4041,7 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         # must fail closed, and a non-admin account cannot inherit the protected
         # SYSTEM-ADMIN job role through a stale legacy position value.
         job_role_allowed = bool(job_role and job_role.code != "SYSTEM-ADMIN")
-        job_menu_keys = [key for key in (job_role.permissions or []) if key in SYSTEM_MENU_ROUTE_KEYS] if job_role_allowed else []
+        job_menu_keys = _job_role_menu_permission_keys(job_role.permissions or []) if job_role_allowed else []
         permission["menu_keys"] = _expand_menu_permission_keys(job_menu_keys)
         permission["field_keys"] = list(job_role.field_keys or []) if job_role_allowed else []
     overrides = _user_permission_overrides(user)
@@ -4032,8 +4053,8 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         permission["data_scope"] = overrides["data_scope"]
     can_approve_contract = await _is_contract_approver(user, db)
     menu_keys = list(permission["menu_keys"])
-    if can_approve_contract and "contract" not in menu_keys:
-        menu_keys.append("contract")
+    if can_approve_contract and "contract-audit" not in menu_keys:
+        menu_keys.append("contract-audit")
     return {**permission, "menu_keys": _expand_menu_permission_keys(menu_keys), "can_approve_contract": can_approve_contract}
 
 
@@ -5767,6 +5788,16 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         ("待审核归档", cases, {"待归档审核"}, None, "待审核预损费用", finances, pending_statuses, fee_match("预损")),
     ]
     todos = [[left, count(left_rows, left_states, True, left_pred), count(left_rows, left_states, False, left_pred), right, count(right_rows, right_states, True, right_pred), count(right_rows, right_states, False, right_pred)] for left, left_rows, left_states, left_pred, right, right_rows, right_states, right_pred in todo_specs]
+    pending_contract_ids = set((await db.scalars(select(ContractApprovalStep.contract_record_id).where(
+        ContractApprovalStep.approver == username,
+        ContractApprovalStep.status == "待审批",
+    ))).all())
+    for todo in todos:
+        if todo[0] == "待审批合同":
+            # A contract approver's personal queue is defined by the active
+            # approval step, not by who originally created the contract.
+            todo[1] = sum(item.id in pending_contract_ids and item.status in pending_statuses for item in by_module["contract"])
+            break
     current_month = date.today().replace(day=1); month_keys = []
     for offset in range(9, -1, -1):
         year, month = current_month.year, current_month.month - offset
@@ -6009,7 +6040,7 @@ async def user_directory(
     roles_by_name = {item.name: item for item in job_roles}
     payload = []
     for item in items:
-        position = str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "")
+        position = _configured_user_job_role_name(item)
         account_type = str((item.profile or {}).get("account_type") or "员工账号").strip()
         job_role = roles_by_name.get(position)
         job_permissions = list(job_role.permissions or []) if job_role else []
