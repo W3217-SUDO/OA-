@@ -212,3 +212,20 @@
 .case-detail-static-root .case-court-summary,
 .case-detail-static-root .case-archive-summary{flex:0 0 auto}
 .case-detail-static-root .case-detail-body-grid{min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+
+/* Match the legacy case-detail operation menu: primary actions on the right,
+   with nested actions opening into a separate panel on the left. */
+.case-detail-legacy-operation-menu,
+.case-detail-legacy-submenu-panel{width:188px;padding:4px 0;border:1px solid #d9d9d9;background:#fff;box-shadow:0 3px 9px rgba(0,0,0,.16)}
+.case-detail-legacy-operation-menu>.ant-btn,
+.case-detail-legacy-submenu>.ant-btn,
+.case-detail-legacy-submenu-panel>.ant-btn{display:flex;width:100%;height:32px;align-items:center;justify-content:flex-start;padding:0 14px;border:0;border-radius:0;text-align:left}
+.case-detail-legacy-operation-menu>.ant-btn:hover,
+.case-detail-legacy-submenu>.ant-btn:hover,
+.case-detail-legacy-submenu-panel>.ant-btn:hover{color:#04915f;background:#f2f8f5}
+.case-detail-legacy-submenu{position:relative}
+.case-detail-legacy-submenu-trigger{position:relative;padding-left:24px!important}
+.case-detail-legacy-submenu-trigger::before{position:absolute;left:10px;top:50%;width:0;height:0;border-top:4px solid transparent;border-right:5px solid #888;border-bottom:4px solid transparent;content:"";transform:translateY(-50%)}
+.case-detail-legacy-submenu-panel{position:absolute;right:calc(100% - 1px);bottom:0;z-index:1100;display:none}
+.case-detail-legacy-submenu:hover>.case-detail-legacy-submenu-panel,
+.case-detail-legacy-submenu:focus-within>.case-detail-legacy-submenu-panel{display:block}
