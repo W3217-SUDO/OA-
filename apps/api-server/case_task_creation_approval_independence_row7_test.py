@@ -94,19 +94,25 @@ class CaseTaskCreationApprovalIndependenceRow7Test(unittest.IsolatedAsyncioTestC
         self.assertEqual(listed.status_code, 200, listed.text)
         self.assertEqual(listed.json()["items"][0]["title"], "ROW7 browser task")
 
-    async def test_historical_case_with_legacy_creation_marker_keeps_task_action(self) -> None:
+    async def test_historical_case_with_legacy_creation_marker_keeps_customer_task_action(self) -> None:
         capabilities = await self.client.get(f"{API}/cases/{self.historical_id}/action-capabilities")
         self.assertEqual(capabilities.status_code, 200, capabilities.text)
         self.assertTrue(capabilities.json()["can_create_case_task"])
 
         created = await self.client.post(f"{API}/tasks", json={
-            "title": "ROW7 historical task", "customer": "ignored customer",
+            "title": "ROW7 historical customer task", "customer": "ignored customer",
             "owner": ADMIN["username"], "collaborators": [], "case_no": "ROW7-HISTORICAL",
             "deadline": str(date.today() + timedelta(days=7)), "priority": "普通",
-            "source": "案件任务", "description": "historical case acceptance",
+            "source": "客户任务", "description": "historical case acceptance",
         })
         self.assertEqual(created.status_code, 201, created.text)
         self.assertEqual(created.json()["case_no"], "ROW7-HISTORICAL")
+        self.assertEqual(created.json()["source"], "客户任务")
+
+        listed = await self.client.get(f"{API}/cases/{self.historical_id}/tasks")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(listed.json()["items"][0]["title"], "ROW7 historical customer task")
+        self.assertEqual(listed.json()["items"][0]["source"], "客户任务")
 
     async def test_archived_case_keeps_case_tasks_read_only(self) -> None:
         capabilities = await self.client.get(f"{API}/cases/{self.archived_id}/action-capabilities")
