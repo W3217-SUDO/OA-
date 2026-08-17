@@ -26,5 +26,6 @@ test('普通案件列表遵循旧系统的六组字段顺序', () => {
   assert.equal(source.includes('title:"判决信息",key:"judgment"'), false);
   assert.match(source, /case "court":[\s\S]*?case-inline-cell-link[\s\S]*?openCounselDetail\(row\)/);
   assert.match(source, /case "task":[\s\S]*?case-task-cell-link[\s\S]*?openCaseTasks\(row\)/);
-  assert.match(source, /const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns\(initialView\)\?companyArbitrationCaseTableScrollX:1645;/);
+  assert.match(source, /const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns\(initialView\)\?companyArbitrationCaseTableScrollX:undefined;/);
+  assert.deepEqual(schema.map(({ width }) => width), ['12%', '17%', '19%', '13%', '13%', '20%']);
 });

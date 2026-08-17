@@ -220,12 +220,12 @@ export const getCompanyArbitrationQueryFields = () => [
   ["court", "仲裁机构", "仲裁机构"],
 ];
 export const getLegacyGroupedCaseColumnSchema = () => [
-  { key: "base", title: "基本信息", width: 205 },
-  { key: "parties", title: "当事人信息", width: 280 },
-  { key: "court", title: "法院信息", width: 300 },
-  { key: "lawyer", title: "委托律师", width: 210 },
-  { key: "phase", title: "阶段信息", width: 220 },
-  { key: "task", title: "任务信息", width: 430 },
+  { key: "base", title: "基本信息", width: "12%" },
+  { key: "parties", title: "当事人信息", width: "17%" },
+  { key: "court", title: "法院信息", width: "19%" },
+  { key: "lawyer", title: "委托律师", width: "13%" },
+  { key: "phase", title: "阶段信息", width: "13%" },
+  { key: "task", title: "任务信息", width: "20%" },
 ];
 export const getCompanyScheduleQueryFields = (): [string,string,string?,string?][] => [
   ["plaintiff", "原告/申请人/公诉机关", "text", "原告"],
@@ -3294,7 +3294,7 @@ export default function CaseCenterPage({
   // All data columns below declare their widths. Keep the selection column inside
   // the horizontal viewport so the fixed right action column never overlays data.
   const companyArbitrationCaseTableScrollX=1610;
-  const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseTableScrollX:1645;
+  const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseTableScrollX:undefined;
   const companyCriminalCaseTableScrollX=1610;
   const counselCaseTableScrollX=1460;
   const archiveCaseTableScrollX=archiveDone||archiveRefused?1700:1600;
