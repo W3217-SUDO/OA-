@@ -992,6 +992,7 @@ export default function ContractCenterPage({
     if (!wizardDraft) return;
     try {
       const values = await submitForm.validateFields();
+      const syncSealRequested = Boolean(values.sync_seal);
       const attachmentResponse = await api.get("/attachments", { params: { record_id: wizardDraft.id } });
       const currentAttachments = (attachmentResponse.data.items || []).map((item: Attachment) => ({ ...item, ...normalizeContractAttachment(item) }));
       setAttachments(currentAttachments);
@@ -1009,13 +1010,21 @@ export default function ContractCenterPage({
         return;
       }
       setSubmittingWizard(true);
-      const response = await api.post(`/contracts/${wizardDraft.id}/submit`, { approvers: values.approvers ? [values.approvers] : [], comment: values.comment || "", sync_seal: Boolean(values.sync_seal) });
+      const response = await api.post(`/contracts/${wizardDraft.id}/submit`, { approvers: values.approvers ? [values.approvers] : [], comment: values.comment || "", sync_seal: syncSealRequested });
       const feedback = normalizeContractActionResponse(response, "提交审批失败");
       if (!feedback.ok) throw new Error(feedback.message);
       const contract = await loadWizardContext(wizardDraft.id);
       const approverName = approvalOptions.find((option) => option.value === values.approvers)?.label || personName(values.approvers);
       message.success(`合同已进入 ${approverName} 的待审批列表`);
-      if (values.sync_seal) {
+      if (syncSealRequested) {
+        sealForm.setFieldsValue({
+          copies: 1,
+          use_date: dayjs().add(1, "day"),
+          delivery_method: "现场用印",
+          document_names: currentAttachments.map((item: Attachment) => item.original_name).join("、"),
+          purpose: `${contract.title}合同用印`,
+          submit: true,
+        });
         setWizardStep(3);
         message.info("已同步进入申请用印，请填写用印信息后生成用印申请");
       } else {
@@ -1109,7 +1118,7 @@ export default function ContractCenterPage({
       await load();
       if (enterSealCenter) {
         setOpen(false);
-        onNavigate?.("seal-my");
+        onNavigate?.("seal-my-pending");
       }
       return data;
     } catch (error: any) {
@@ -2264,7 +2273,7 @@ export default function ContractCenterPage({
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>生成用印申请并进入用印中心</Button>}
-            {wizardStep === 3 && <Button onClick={() => startCreate()}>开始新建合同</Button>}
+            {wizardStep === 3 && Boolean(wizardDraft?.data.seal_application_id) && <Button onClick={() => startCreate()}>开始新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button onClick={() => startCreate()}>继续新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button type="primary" onClick={() => onNavigate?.("seal-my")}>进入用印中心</Button>}
           </Space></div>

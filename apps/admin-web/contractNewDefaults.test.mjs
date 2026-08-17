@@ -85,10 +85,13 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /保存用印草稿/);
   assert.match(contractPage, /生成用印申请并进入用印中心/);
   assert.match(contractPage, /const \{ submit: enterSealCenter, \.\.\.sealValues \} = values/);
-  assert.match(contractPage, /if \(enterSealCenter\)[\s\S]{0,180}onNavigate\?\.\("seal-my"\)/);
+  assert.match(contractPage, /if \(enterSealCenter\)[\s\S]{0,180}onNavigate\?\.\("seal-my-pending"\)/);
   assert.match(contractPage, /label="是否同步用印" name="sync_seal"/);
-  assert.match(contractPage, /sync_seal: Boolean\(values\.sync_seal\)/);
-  assert.match(contractPage, /if \(values\.sync_seal\)[\s\S]{0,180}setWizardStep\(3\)/);
+  assert.match(contractPage, /sync_seal: syncSealRequested/);
+  assert.match(contractPage, /const syncSealRequested = Boolean\(values\.sync_seal\)/);
+  assert.match(contractPage, /if \(syncSealRequested\)[\s\S]{0,420}setWizardStep\(3\)/);
+  assert.match(contractPage, /onNavigate\?\.\("seal-my-pending"\)/);
+  assert.match(contractPage, /wizardStep === 3 && Boolean\(wizardDraft\?\.data\.seal_application_id\)[\s\S]{0,160}>开始新建合同</);
   assert.match(contractPage, /CONTRACT_SEAL_READY_STATUSES = \["审批中", "已通过"/);
   assert.doesNotMatch(contractPage, /wizardDraft\.status === "审批中"\) \{\s*message\.warning\("合同仍在审批中/);
   assert.match(contractPage, /const load = async \(queryOverride\?\: Record<string, any>\)/);

@@ -69,8 +69,13 @@ test("I19 submit success returns to contract detail, not approval or seal workbe
   );
   assert.match(
     submitWizardSource,
-    /if \(values\.sync_seal\) \{[\s\S]*setWizardStep\(3\)[\s\S]*else \{[\s\S]*onNavigate\?\.\(`contract-detail-/,
+    /const syncSealRequested = Boolean\(values\.sync_seal\);[\s\S]*if \(syncSealRequested\) \{[\s\S]*setWizardStep\(3\)[\s\S]*else \{[\s\S]*onNavigate\?\.\(`contract-detail-/,
     "only an explicit sync-seal choice enters the seal step; otherwise submit returns to contract detail",
+  );
+  assert.match(
+    submitWizardSource,
+    /if \(syncSealRequested\) \{[\s\S]*sealForm\.setFieldsValue\([\s\S]*submit: true,[\s\S]*setWizardStep\(3\)/,
+    "the sync-seal choice must survive the approval context refresh and initialize the seal form",
   );
 });
 
@@ -117,5 +122,10 @@ test("I19 independent seal setup supports pending approval and approved contract
     createSealApplicationSource,
     /同步用印资料/,
     "the seal save path must not preserve the removed pending-approval sync-seal wording",
+  );
+  assert.match(
+    createSealApplicationSource,
+    /onNavigate\?\.\("seal-my-pending"\)/,
+    "a submitted sync-seal application must open the applicant pending list directly",
   );
 });
