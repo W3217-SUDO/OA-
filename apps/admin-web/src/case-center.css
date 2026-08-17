@@ -149,6 +149,22 @@
 .case-court-summary-grid p{display:grid;grid-template-columns:minmax(66px,auto) minmax(0,1fr);min-height:24px;margin:0;border-right:1px solid #dce2e8;border-bottom:1px solid #dce2e8}
 .case-court-summary-grid strong,.case-court-summary-grid span{padding:4px 6px;overflow:hidden;line-height:15px;text-overflow:ellipsis;white-space:nowrap}
 .case-court-summary-grid strong{border-right:1px solid #dce2e8;background:#fafbfc;text-align:right;font-weight:400}
+.case-fee-create-drawer .ant-drawer-body{padding:14px 16px}
+.case-fee-create-drawer .ant-steps{margin-bottom:12px}
+.case-fee-legacy-tip{margin-bottom:10px;border-radius:0}
+.case-fee-legacy-tip .ant-alert-description ol{margin:2px 0 0;padding-left:22px}
+.case-fee-entry-table,.case-fee-payment-table{overflow-x:auto;border:1px solid #d9d9d9}
+.case-fee-entry-head,.case-fee-entry-row{display:grid;grid-template-columns:82px 95px 92px 65px minmax(100px,1fr) 92px 50px;min-width:0}
+.case-fee-payment-head,.case-fee-payment-row{display:grid;grid-template-columns:105px 100px 75px minmax(130px,1fr) minmax(150px,1.2fr);min-width:560px}
+.case-fee-entry-head>span,.case-fee-payment-head>span{padding:7px 5px;border-right:1px solid #e5e5e5;background:#fafafa;text-align:center;font-weight:600}
+.case-fee-entry-row>*,.case-fee-payment-row>*{min-width:0;border-top:1px solid #e5e5e5;border-right:1px solid #e5e5e5}
+.case-fee-entry-row .ant-form-item,.case-fee-payment-row .ant-form-item{margin:0}
+.case-fee-entry-row .ant-select-selector,.case-fee-entry-row .ant-input,.case-fee-entry-row .ant-input-number,.case-fee-entry-row .ant-picker,.case-fee-payment-row .ant-input{border:0!important;border-radius:0!important;box-shadow:none!important}
+.case-fee-static-value,.case-fee-payment-row>span{padding:7px 5px;text-align:center}
+.case-fee-amount-input{width:100%;background:#fff500}
+.case-fee-row-actions{display:flex;align-items:center;justify-content:center}
+.case-fee-row-actions .ant-btn{width:24px;padding:0}
+.case-fee-drawer-footer{display:flex;justify-content:flex-end}
 .case-archive-summary-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr)}
 .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 250px;min-height:calc(100vh - 315px);border-top:0}
 .case-detail-tab-area{padding:0}

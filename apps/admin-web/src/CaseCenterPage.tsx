@@ -700,6 +700,10 @@ export default function CaseCenterPage({
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
+  const [caseFeeCreateStep, setCaseFeeCreateStep] = useState(0);
+  const [createdCaseFees, setCreatedCaseFees] = useState<CaseRow[]>([]);
+  const [caseFeePaymentDrafts, setCaseFeePaymentDrafts] = useState<Array<{ payment_remark: string; payment_account: string }>>([]);
+  const [caseFeeSubmitting, setCaseFeeSubmitting] = useState(false);
   const [paymentRequestFee, setPaymentRequestFee] = useState<CaseRow | null>(null);
   const [paymentPackagePreview, setPaymentPackagePreview] = useState<any | null>(null);
   const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
@@ -2427,8 +2431,11 @@ export default function CaseCenterPage({
       fee_type: expenseScope === "内部" ? "内部费用" : "官方费用",
       commission_details: [],
       handler: profile.username || row.owner, court: row.data.court || "", payee: row.data.court || "",
-      deadline: undefined, description: `来源案件 ${row.serial_no}`,
+      deadline: undefined, description: "",
     }] });
+    setCaseFeeCreateStep(0);
+    setCreatedCaseFees([]);
+    setCaseFeePaymentDrafts([]);
     setFeeCase(row);
   };
   const createCaseFee = async () => {
@@ -2441,18 +2448,58 @@ export default function CaseCenterPage({
         const payload = { ...values, ...commonPayload, deadline: values.deadline ? formatRequiredDate(values.deadline, "截止日期") : undefined };
         const { data } = await api.put(`/finance/fees/${editingFeeRow.id}`, payload);
         message.success(`费用 ${data.serial_no} 已保存`);
+        setEditingFeeRow(null); feeForm.resetFields(); await load();
+        if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
       } else {
-        const created: string[] = [];
+        const created: CaseRow[] = [];
         for (const item of values.items || []) {
           const payload = { ...item, ...commonPayload, deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : undefined };
           const { data } = await api.post("/finance/fees", payload);
-          created.push(data.serial_no);
+          created.push(data);
         }
         message.success(`已创建 ${created.length} 条费用草稿`);
+        setCreatedCaseFees(created);
+        setCaseFeePaymentDrafts(created.map((row) => ({
+          payment_remark: "",
+          payment_account: row.data.payee || row.data.court || "",
+        })));
+        setCaseFeeCreateStep(1);
+        await load();
+        if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
       }
-      setFeeCase(null); setEditingFeeRow(null); feeForm.resetFields(); await load();
-      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
     } catch (error: any) { message.error(error?.response?.data?.detail || "费用保存失败"); }
+  };
+  const closeCaseFeeCreator = () => {
+    setFeeCase(null);
+    setCaseFeeCreateStep(0);
+    setCreatedCaseFees([]);
+    setCaseFeePaymentDrafts([]);
+    feeForm.resetFields();
+  };
+  const submitCreatedCaseFeePayments = async () => {
+    if (caseFeePaymentDrafts.some((item) => !item.payment_account.trim())) {
+      message.warning("请输入收款单位");
+      return;
+    }
+    setCaseFeeSubmitting(true);
+    try {
+      for (const [index, row] of createdCaseFees.entries()) {
+        const item = caseFeePaymentDrafts[index];
+        await api.post(`/finance/fees/${row.id}/submit`, {
+          amount: Number(row.data.amount || 0),
+          payment_account: String(item.payment_account || "").trim(),
+          comment: String(item.payment_remark || `案件 ${feeCase?.serial_no || ""} 申请付款`).trim(),
+        });
+      }
+      message.success(`已提交 ${createdCaseFees.length} 条付款申请`);
+      closeCaseFeeCreator();
+      await load();
+      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "付款申请提交失败");
+    } finally {
+      setCaseFeeSubmitting(false);
+    }
   };
   const openCourtRefund = (row: CaseRow) => {
     const amount = Number(row.data.amount || 0);
@@ -4015,15 +4062,15 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        open={Boolean(feeCase || editingFeeRow)}
-        title={`${editingFeeRow ? "修改案件费用" : "新增案件费用"}：${feeCase?.serial_no || editingFeeRow?.data.case_no || ""}`}
-        okText={editingFeeRow ? "保存费用草稿" : "创建费用草稿"}
+        open={Boolean(editingFeeRow)}
+        title={`修改案件费用：${editingFeeRow?.data.case_no || ""}`}
+        okText="保存费用草稿"
         cancelText="取消"
         onOk={createCaseFee}
-        onCancel={() => { setFeeCase(null); setEditingFeeRow(null); feeForm.resetFields(); }}
+        onCancel={() => { setEditingFeeRow(null); feeForm.resetFields(); }}
       >
         <Form form={feeForm} layout="vertical">
-          {editingFeeRow ? <>
+          <>
             <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
             <div className="form-grid">
               <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={feeContractOptions} /></Form.Item>
@@ -4033,22 +4080,46 @@ export default function CaseCenterPage({
             </div>
               <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
               {feeExpenseSubtype === "代理费" && <Form.List name="commission_details">{(fields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{fields.map((field) => <div className="case-fee-commission-row" key={field.key}><Form.Item {...field} name={[field.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...field} name={[field.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...field} name={[field.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...field} name={[field.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} /></div>)}</section>}</Form.List>}
-          </> : <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => <>
-            {fields.map((field, index) => <Card key={field.key} size="small" title={`费用 ${index + 1}`} extra={fields.length > 1 ? <Button type="text" danger icon={<MinusCircleOutlined />} aria-label={`删除费用 ${index + 1}`} onClick={() => remove(field.name)} /> : null} style={{ marginBottom: 12 }}>
-              <Form.Item label="费用名称" name={[field.name, "title"]} rules={[{ required: true, message: "请输入费用名称" }]}><Input /></Form.Item>
-              <div className="form-grid">
-                <Form.Item label="合同号" name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={feeContractOptions} /></Form.Item>
-                <Form.Item label="费用归属" name={[field.name, "expense_scope"]} rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items", field.name, "expense_subtype"], value === "内部" ? "内部费用" : "官费"); feeForm.setFieldValue(["items", field.name, "fee_type"], value === "内部" ? "内部费用" : "官方费用"); }} /></Form.Item>
-                <Form.Item label="费用类别" name={[field.name, "expense_subtype"]} rules={[{ required: true }]}><Select options={["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用", "内部费用"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue(["items", field.name, "fee_type"], ({ "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
-                <Form.Item label="金额" name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item label="经办人员" name={[field.name, "handler"]} rules={[{ required: true, message: "请输入经办人员" }]}><Input /></Form.Item><Form.Item label="收款单位" name={[field.name, "payee"]}><Input /></Form.Item><Form.Item label="缴费法院/机构" name={[field.name, "court"]}><Input /></Form.Item><Form.Item label="缴费通知文号" name={[field.name, "document_no"]}><Input /></Form.Item><Form.Item label="截止日期" name={[field.name, "deadline"]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-              </div>
-              <Form.Item label="说明" name={[field.name, "description"]}><Input.TextArea rows={2} /></Form.Item>
-              {feeItems[field.name]?.expense_subtype === "代理费" && <Form.List name={[field.name, "commission_details"]}>{(commissionFields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{commissionFields.map((commissionField) => <div className="case-fee-commission-row" key={commissionField.key}><Form.Item {...commissionField} name={[commissionField.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...commissionField} name={[commissionField.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...commissionField} name={[commissionField.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...commissionField} name={[commissionField.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(commissionField.name)} /></div>)}</section>}</Form.List>}
-            </Card>)}
-            <Button block icon={<PlusOutlined />} onClick={() => add({ expense_scope: "律所", expense_subtype: "官费", fee_type: "官方费用", commission_details: [], handler: profile.username || feeCase?.owner, description: `来源案件 ${feeCase?.serial_no || ""}` })}>新增费用</Button>
-          </>}</Form.List>}
+          </>
         </Form>
       </Modal>
+      <Drawer
+        open={Boolean(feeCase)}
+        title="新增费用"
+        width={620}
+        className="case-fee-create-drawer"
+        onClose={closeCaseFeeCreator}
+        footer={<Space className="case-fee-drawer-footer">
+          <Button type="primary" loading={caseFeeSubmitting} onClick={() => caseFeeCreateStep === 0 ? void createCaseFee() : void submitCreatedCaseFeePayments()}>{caseFeeCreateStep === 0 ? "下一步" : "申请付款"}</Button>
+          <Button onClick={closeCaseFeeCreator}>取消</Button>
+        </Space>}
+      >
+        <Steps size="small" current={caseFeeCreateStep} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
+        {caseFeeCreateStep === 0 ? <>
+          <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>点击表格头部（费用类型、金额、备注、截止日期）可将第一行数据同步到各行。</li><li>截止日期默认为申请之日第5天，如有特殊情况，可在申请时修改。</li></ol>} />
+          <Form form={feeForm} component={false}>
+            <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => <div className="case-fee-entry-table">
+              <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
+              {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
+                <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
+                <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" options={feeContractOptions} /></Form.Item>
+                <Form.Item name={[field.name, "expense_subtype"]} rules={[{ required: true, message: "请选择费用类型" }]}><Select options={(["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用", "内部费用"]).map(value => ({ value, label: value }))} onChange={(value) => { const feeType=(value==="内部费用"?"内部费用":["官费","诉讼费","保全费","鉴定费","公证费","公告费","执行费"].includes(value)?"官方费用":value==="代理费"?"代理费":"其他费用"); feeForm.setFieldValue(["items",field.name,"fee_type"],feeType); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${value}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
+                <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
+                <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
+                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
+                <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
+              </div>)}
+            </div>}</Form.List>
+          </Form>
+        </> : <>
+          <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
+          <div className="case-fee-payment-table">
+            <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span></div>
+            {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span><Input value={caseFeePaymentDrafts[index]?.payment_remark || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_remark: event.target.value } : item))} /><Input value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
+          </div>
+        </>}
+      </Drawer>
       <Modal
         open={Boolean(paymentPackagePreview)}
         title={`申请付款：${paymentPackagePreview?.source?.request_no || ""}`}
@@ -4244,7 +4315,7 @@ export default function CaseCenterPage({
                   {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
                 ]}/>
                 <Space className="case-legacy-bottom-actions">
-                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"官费"},{key:"诉讼费",label:"诉讼费"},{key:"保全费",label:"保全费"},{key:"鉴定费",label:"鉴定费"},{key:"公证费",label:"公证费"},{key:"公告费",label:"公告费"},{key:"执行费",label:"执行费"},{key:"第三方费用",label:"第三方费用"},{key:"代理费",label:"代理费"},{key:"其他费用",label:"其他费用"}],onClick:({key})=>openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
+                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key==="commission"?handleInternalFeeAction("create"):openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
                   <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
                 </Space>
               </div>},
