@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.main import _user_permission_payload, dashboard
+from app.main import _user_permission_payload, dashboard, list_records
 from app.models import BusinessRecord, ContractApprovalStep, JobRole, RolePermission, User
 
 
@@ -79,6 +79,32 @@ class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
         contract_todo = next(row for row in payload["todos"] if row[0] == "待审批合同")
         self.assertEqual(contract_todo[1], 1)
         self.assertEqual(contract_todo[2], 1)
+
+    async def test_pending_contract_list_uses_assigned_approval_step(self):
+        async with self.sessions() as db:
+            other_contract = BusinessRecord(
+                module="contract", serial_no="CODEX-OTHER-APPROVAL", title="其他审批人的合同",
+                status="审批中", owner="contract_owner", department="其他部门",
+                data={"current_approver": "other_approver"},
+            )
+            db.add(other_contract)
+            await db.flush()
+            db.add(ContractApprovalStep(
+                contract_record_id=other_contract.id, step_order=1,
+                approver="other_approver", status="待审批",
+            ))
+            await db.commit()
+
+            payload = await list_records(
+                module="contract", keyword="", record_status="", scope="audit", statuses="审批中",
+                customer_id=None, customer="", customer_no="", exclude_archived=False,
+                investigation_view="", pending_approver_only=True, page=1, page_size=20,
+                identity={"username": "codex_approval_assistant", "role": "user", "role_ids": ["user"]},
+                db=db,
+            )
+
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual([item["serial_no"] for item in payload["items"]], ["CODEX-ASSIGNED-APPROVAL"])
 
 
 if __name__ == "__main__":

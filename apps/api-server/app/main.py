@@ -7058,6 +7058,7 @@ async def list_records(
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
     investigation_view: str = Query("", pattern="^(|published|assigned)$"),
+    pending_approver_only: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -7131,6 +7132,12 @@ async def list_records(
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
         # them server-side so mine/dept/company/audit/recycle stay isolated.
+        if scope == "audit" and pending_approver_only:
+            conditions.append(select(ContractApprovalStep.id).where(
+                ContractApprovalStep.contract_record_id == BusinessRecord.id,
+                ContractApprovalStep.approver == identity["username"],
+                ContractApprovalStep.status == "待审批",
+            ).exists())
         if statuses:
             requested_statuses = [value.strip() for value in statuses.split(",") if value.strip()]
             if requested_statuses:

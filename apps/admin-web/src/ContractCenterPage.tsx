@@ -41,7 +41,6 @@ import {
   createContractNumber,
   type LinkedCustomerContext,
 } from "./contractCreateContext";
-import { filterPendingContractApprovals } from "./contractAuditScope";
 import { readContractListQuery, saveContractListQuery } from "./contractListQuery";
 import { readContractListPagination, saveContractListPagination } from "./contractListPagination.mjs";
 import { buildContractPaymentNavigation } from "./contractPaymentNavigation";
@@ -698,7 +697,7 @@ export default function ContractCenterPage({
     let list = customerRelationQueryRef.current
       ? allRows
       : initialView === "contract-audit-pending"
-        ? filterPendingContractApprovals(allRows, profile.username)
+        ? allRows
         : initialView === "contract-audit-refused"
           ? allRows.filter((x) => auditViewConfig.statuses.includes(x.status))
         : initialView === "contract-audit-approved"

@@ -140,6 +140,7 @@ export const buildContractListRequestParams = (view, pagination, query = {}) => 
     const value = query[field];
     if (value !== undefined && value !== null && value !== "") params[field] = value;
   }
+  if (view === "contract-audit-pending") params.pending_approver_only = true;
   if (config.statuses.length) params.statuses = config.statuses.join(",");
   return params;
 };
