@@ -100,7 +100,7 @@ test("I19 approval actions appear only for the current approver while status is 
 test("I19 independent seal setup supports pending approval and approved contracts", () => {
   assert.match(
     contractSource,
-    /const CONTRACT_SEAL_READY_STATUSES = \["审批中", "已通过", "履行中", "已完成"\];/,
+    /const CONTRACT_SEAL_READY_STATUSES = \["审批中", "审批通过", "已完成"\];/,
     "pending, approved, in-performance, and completed contracts remain eligible for independent seal setup",
   );
   assert.match(

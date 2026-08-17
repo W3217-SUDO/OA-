@@ -343,7 +343,7 @@ class BackendGapFContractTest(unittest.IsolatedAsyncioTestCase):
         prefix = f"CODEX-F-J2-{uuid.uuid4().hex[:8]}"
         async with self.sessions() as db:
             customer = BusinessRecord(module="customer", serial_no=f"{prefix}-CUST", title=f"{prefix} 客户", customer=f"{prefix} 客户", status="正常", owner=ADMIN["username"], department=ADMIN["department"])
-            contract = BusinessRecord(module="contract", serial_no=f"{prefix}-HT", title=f"{prefix} 合同", customer=f"{prefix} 客户", status="履行中", owner=ADMIN["username"], department=ADMIN["department"], data={"amount": 1000})
+            contract = BusinessRecord(module="contract", serial_no=f"{prefix}-HT", title=f"{prefix} 合同", customer=f"{prefix} 客户", status="审批通过", owner=ADMIN["username"], department=ADMIN["department"], data={"amount": 1000})
             db.add_all([customer, contract])
             await db.flush()
             case = BusinessRecord(module="case", serial_no=f"{prefix}-CASE", title=f"{prefix} 案件", customer=f"{prefix} 客户", status="文书准备", owner=ADMIN["username"], department=ADMIN["department"], data={"contract_id": contract.id})

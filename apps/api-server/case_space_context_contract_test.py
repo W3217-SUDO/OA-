@@ -45,7 +45,7 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
         )
         contract = BusinessRecord(
             module="contract", serial_no="HT-SPACE-001", title="案件空间合同", customer="案件空间客户",
-            status="履行中", owner="lawyer", department="上海", data={"amount": 100000},
+            status="审批通过", owner="lawyer", department="上海", data={"amount": 100000},
         )
         db.add_all([customer, contract])
         await db.flush()

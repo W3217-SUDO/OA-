@@ -50,7 +50,7 @@ class InvestigationSubtaskRegionRow8Test(unittest.IsolatedAsyncioTestCase):
                 serial_no="HT-CODEX-813-R8",
                 title="区域调查合同",
                 customer="CODEX-813-R8 客户",
-                status="已通过",
+                status="审批通过",
                 owner="admin",
                 department="总部",
                 data={},

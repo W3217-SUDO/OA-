@@ -105,7 +105,8 @@ CASE_CREATE_PERMISSION_BY_TYPE = {
 CASE_CREATABLE_TYPES = {"民事案件", "刑事案件", "行政案件及国家赔偿", "法律顾问", "仲裁"}
 NORMAL_CASE_BASIC_TYPES = {"民事案件", "刑事案件", "行政案件及国家赔偿"}
 CASE_BASIC_EDITABLE_PHASES = {"等待公证书", "等待审核公证书", "待立案审批", "新案待分配", "文书准备", "一审立案受理", "一审准备开庭", "待上诉", "二审", "执行"}
-CASE_SOURCE_CONTRACT_STATUSES = {"审批中", "已通过", "履行中", "已完成"}
+CONTRACT_APPROVED_STATUS = "审批通过"
+CASE_SOURCE_CONTRACT_STATUSES = {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}
 REQUIRED_SEAL_ASSETS = (
     ("YZ-HT-001", "合同章", "行政部保险柜 A01"),
     ("YZ-GZ-001", "公章", "行政部保险柜 A02"),
@@ -465,6 +466,18 @@ def _upgrade_schema(connection) -> None:
         admin_fields = json.dumps(FIELD_KEYS, ensure_ascii=False).replace("'", "''")
         connection.execute(text(f"UPDATE job_roles SET field_keys = '{admin_fields}' WHERE code = 'SYSTEM-ADMIN'"))
     connection.execute(text("CREATE TABLE IF NOT EXISTS schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
+    contract_status_migrated = connection.execute(text(
+        "SELECT key FROM schema_migrations WHERE key = 'contract_approved_status_v1'"
+    )).first()
+    if not contract_status_migrated:
+        connection.execute(text(
+            "UPDATE business_records SET status = '审批通过' "
+            "WHERE module = 'contract' AND status IN ('已通过', '履行中')"
+        ))
+        connection.execute(text(
+            'UPDATE "FCM_Contract" SET "ContractStatus" = 20 WHERE "ContractStatus" = 70'
+        ))
+        connection.execute(text("INSERT INTO schema_migrations (key) VALUES ('contract_approved_status_v1')"))
     conflict_capability_migrated = connection.execute(text(
         "SELECT key FROM schema_migrations WHERE key = 'customer_conflict_leaf_v1'"
     )).first()
@@ -2995,7 +3008,7 @@ class SealAssetUpdate(BaseModel):
 
 WORKFLOW_TRANSITIONS: dict[str, dict[str, list[str]]] = {
     "customer": {"跟进中": ["正常", "公海"], "正常": ["待共享", "公海"], "待共享": ["正常"], "公海": ["跟进中", "已回收"]},
-    "contract": {"草稿": ["审批中"], "审批中": ["已通过", "已拒绝"], "已通过": ["履行中"], "履行中": ["已完成"]},
+    "contract": {"草稿": ["审批中"], "审批中": [CONTRACT_APPROVED_STATUS, "已拒绝"], CONTRACT_APPROVED_STATUS: ["已完成"]},
     "case": {"等待公证书": ["等待审核公证书"], "等待审核公证书": ["新案待分配"], "新案待分配": ["文书准备"], "文书准备": ["一审立案受理"], "一审立案受理": ["一审准备开庭"], "一审准备开庭": ["待上诉", "二审", "执行", "已归档"], "待上诉": ["二审", "执行", "已归档"], "二审": ["执行", "已归档"], "执行": ["已归档"]},
     "task": {"待处理": ["处理中", "已撤回"], "处理中": ["已完成", "已逾期", "已撤回"], "已逾期": ["处理中", "已完成"]},
     "clue": {"草稿": ["待审批"], "待审批": ["待取证", "已驳回"], "待取证": ["已取证"], "已取证": ["待公证", "已转案件"], "待公证": ["已转案件", "已驳回"]},
@@ -3677,7 +3690,7 @@ def _seed_business_records() -> list[BusinessRecord]:
         ("customer", "KH20260714001", "光明乳业股份有限公司", "光明乳业股份有限公司", "正常", "朱菁芸", {"contact": "法务部", "phone": "021-12345678", "level": "重点客户"}),
         ("customer", "KH20260714002", "萨普托乳业（中国）有限公司", "萨普托乳业（中国）有限公司", "跟进中", "朱淑旖", {"contact": "品牌保护部", "phone": "021-87654321", "level": "重点客户"}),
         ("contract", "HT2026070018", "知识产权维权专项法律服务合同", "迈大食品（上海）有限公司", "审批中", "陈名涛", {"amount": "280000.00", "signed_at": "2026-07-08", "type": "专项服务"}),
-        ("contract", "HT2026060097", "常年法律顾问合同", "上海天路人造草坪有限公司", "履行中", "陶勇刚", {"amount": "120000.00", "signed_at": "2026-06-20", "type": "法律顾问"}),
+        ("contract", "HT2026060097", "常年法律顾问合同", "上海天路人造草坪有限公司", CONTRACT_APPROVED_STATUS, "陶勇刚", {"amount": "120000.00", "signed_at": "2026-06-20", "type": "法律顾问"}),
         ("case", "SH191000382B", "光明乳业商标侵权纠纷", "光明乳业股份有限公司", "文书准备", "陈名涛", {"court": "上海市宝山区人民法院", "case_type": "民事案件", "opponent": "安徽鑫牛食品有限公司"}),
         ("case", "SHMS2600387", "龙角散商标侵权纠纷", "株式会社龙角散", "一审立案受理", "陶勇刚", {"court": "杭州市余杭区人民法院", "case_type": "民事案件", "opponent": "杭州取道贸易有限公司"}),
         ("task", "RW20260714001", "准备开庭代理词及证据目录", "上海天路人造草坪有限公司", "处理中", "陶勇刚", {"deadline": "2026-07-15", "priority": "紧急", "source": "案件任务"}),
@@ -8895,7 +8908,7 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
                 next_step.status = "待审批"; action = "合同节点通过"
                 contract.data = {**(contract.data or {}), "current_approver": next_step.approver}
             else:
-                contract.status = "已通过"; action = "合同审批完成"
+                contract.status = CONTRACT_APPROVED_STATUS; action = "合同审批完成"
                 contract.data = {**(contract.data or {}), "current_approver": ""}
                 seal_application_id = int((contract.data or {}).get("seal_application_id") or 0)
                 if seal_application_id and (contract.data or {}).get("sync_seal"):
@@ -8919,7 +8932,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     sync_submission = contract.status == "审批中" and body.submit and bool((contract.data or {}).get("sync_seal"))
     if body.submit and not sync_submission:
         raise HTTPException(status_code=409, detail="只有合同提交同步用印时才能在此直接提交审批")
-    if contract.status not in {"审批中", "已通过", "履行中", "已完成"}:
+    if contract.status not in {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
     approver = await db.scalar(select(User).where(User.username == body.approver.strip(), User.is_active.is_(True)))
     if not approver:
@@ -8990,7 +9003,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
 async def create_contract_investigation(contract_id: int, body: ContractInvestigationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status not in {"审批中", "已通过", "履行中", "已完成"}:
+    if contract.status not in {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="合同审批通过后才能新建调查任务")
     if body.authorized_to < body.authorized_from:
         raise HTTPException(status_code=422, detail="授权结束日期不能早于开始日期")
@@ -9059,7 +9072,7 @@ async def archive_contract(contract_id: int, identity: dict = Depends(current_id
     await _require_record_owner_or_manager(contract, identity, db)
     if contract.status == "已归档":
         raise HTTPException(status_code=409, detail="合同已经归档")
-    if contract.status not in {"已通过", "履行中", "已完成"}:
+    if contract.status not in {CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="只有审批全部通过且处于履行或完成阶段的合同可以归档")
     pending_or_rejected = int(await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id, ContractApprovalStep.status != "已通过")) or 0)
     if pending_or_rejected:
@@ -9201,7 +9214,7 @@ async def _contract_object_writable(contract: BusinessRecord, identity: dict, db
         raise HTTPException(status_code=409, detail="已归档合同的合同标的只读")
     if contract.status == "审批中":
         raise HTTPException(status_code=409, detail="合同审批中不能修改合同标的；请先撤回或等待审批结果")
-    if contract.status not in {"草稿", "已拒绝", "已通过", "履行中", "已完成"}:
+    if contract.status not in {"草稿", "已拒绝", CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="当前合同状态不能维护合同标的")
 
 
@@ -9450,8 +9463,8 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     await _require_record_owner_or_manager(contract, identity, db)
     if contract.status in {"审批中", "已归档"}:
         raise HTTPException(status_code=409, detail="审批中或已归档合同不能发起合同付款")
-    if contract.status not in {"已通过", "履行中", "已完成"}:
-        raise HTTPException(status_code=409, detail="仅已通过或履行中的合同可以发起合同付款")
+    if contract.status not in {CONTRACT_APPROVED_STATUS, "已完成"}:
+        raise HTTPException(status_code=409, detail="仅审批通过或已完成的合同可以发起合同付款")
     payment_type = await db.scalar(select(SystemParameter).where(SystemParameter.category == "payment_type", SystemParameter.name == body.payment_type.strip(), SystemParameter.is_active.is_(True)))
     if not payment_type:
         raise HTTPException(status_code=422, detail="付款类型不存在或已停用")
@@ -9557,7 +9570,7 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
     contract = await _ensure_record_visible(contract_id, identity, db)
     if contract.module != "contract": raise HTTPException(status_code=404, detail="合同不存在")
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status not in {"已通过", "履行中"}: raise HTTPException(status_code=409, detail="只有已通过或履行中的合同可以发起变更")
+    if contract.status != CONTRACT_APPROVED_STATUS: raise HTTPException(status_code=409, detail="只有审批通过的合同可以发起变更")
     data = dict(contract.data or {}); changes = []
     if (data.get("pending_change") or {}).get("status") == "待审批":
         raise HTTPException(status_code=409, detail="已有合同变更正在审批")
@@ -9710,7 +9723,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
             raise HTTPException(status_code=422, detail="父调查任务必须从合同创建并绑定有效合同")
         contract = await _ensure_record_visible(contract_id, identity, db)
         if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-            raise HTTPException(status_code=409, detail="只能从审批中、已通过、履行中或已完成的合同创建调查任务")
+            raise HTTPException(status_code=409, detail="只能从审批中、审批通过或已完成的合同创建调查任务")
         supervisor = await _configured_investigation_supervisor(db)
         requested_owner = str(payload.get("owner") or "").strip()
         if requested_owner and requested_owner != supervisor.username:
@@ -10577,7 +10590,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     else:
         contract = await _ensure_record_visible(int(requested_contract_id), identity, db)
     if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-        raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
+        raise HTTPException(status_code=409, detail="只能绑定审批中、审批通过或已完成的合同")
     if source.customer.strip() != contract.customer.strip():
         raise HTTPException(status_code=422, detail="所选合同客户必须与调查事项客户一致")
     if not source_contract_id:
@@ -10721,7 +10734,7 @@ async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindin
         raise HTTPException(status_code=409, detail=f"来源调查任务已绑定合同 {existing_contract.serial_no}")
     contract = await _ensure_record_visible(body.contract_record_id, identity, db)
     if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-        raise HTTPException(status_code=409, detail="只能绑定审批中、已通过、履行中或已完成的合同")
+        raise HTTPException(status_code=409, detail="只能绑定审批中、审批通过或已完成的合同")
     contract_data = {"contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
     source_task.customer = contract.customer
     source_task.data = {**(source_task.data or {}), **contract_data}
@@ -25908,11 +25921,10 @@ async def agent_chat(body: DifyRequest, identity: dict = Depends(current_identit
 LEGACY_CONTRACT_STATUS_BY_NEW = {
     "草稿": 0,
     "审批中": 10,
-    "已通过": 20,
+    CONTRACT_APPROVED_STATUS: 20,
     "已拒绝": 30,
     "已回收": 40,
     "已归档": 60,
-    "履行中": 70,
     "已完成": 80,
 }
 

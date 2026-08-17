@@ -44,8 +44,8 @@ class FinanceIncomingGapsDContractTest(unittest.IsolatedAsyncioTestCase):
                 RolePermission(role="user", display_name="财务D员工", data_scope="全所数据", menu_keys=["finance"], field_keys=[]),
             ])
             customer = BusinessRecord(module="customer", serial_no="CODEX-FINANCE-D-CUST", title="CODEX D 客户", customer="CODEX D 客户", status="正常", owner="finance-d-admin", department="上海分所")
-            contract = BusinessRecord(module="contract", serial_no="CODEX-FINANCE-D-HT", title="CODEX D 合同", customer="CODEX D 客户", status="履行中", owner="finance-d-admin", department="上海分所", data={"amount": 1000})
-            other_contract = BusinessRecord(module="contract", serial_no="CODEX-FINANCE-D-HT2", title="CODEX D 合同二", customer="CODEX D 客户", status="履行中", owner="finance-d-admin", department="上海分所", data={"amount": 600})
+            contract = BusinessRecord(module="contract", serial_no="CODEX-FINANCE-D-HT", title="CODEX D 合同", customer="CODEX D 客户", status="审批通过", owner="finance-d-admin", department="上海分所", data={"amount": 1000})
+            other_contract = BusinessRecord(module="contract", serial_no="CODEX-FINANCE-D-HT2", title="CODEX D 合同二", customer="CODEX D 客户", status="审批通过", owner="finance-d-admin", department="上海分所", data={"amount": 600})
             db.add_all([customer, contract, other_contract])
             await db.flush()
             self.customer_id = customer.id

@@ -33,7 +33,7 @@ class RecordImportRelationResolutionContractTest(unittest.IsolatedAsyncioTestCas
             customer = BusinessRecord(module="customer", serial_no="KH-IMPORT-001", title="自动关联客户", customer="自动关联客户", status="正常", owner=IDENTITY["username"], department=IDENTITY["department"], data={})
             db.add(customer)
             await db.flush()
-            contract = BusinessRecord(module="contract", serial_no="HT-IMPORT-001", title="自动关联合同", customer=customer.title, status="已通过", owner=IDENTITY["username"], department=IDENTITY["department"], data={"customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no})
+            contract = BusinessRecord(module="contract", serial_no="HT-IMPORT-001", title="自动关联合同", customer=customer.title, status="审批通过", owner=IDENTITY["username"], department=IDENTITY["department"], data={"customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no})
             db.add(contract)
             await db.flush()
             case = BusinessRecord(module="case", serial_no="AJ-IMPORT-001", title="自动关联案件", customer=customer.title, status="新案待分配", owner=IDENTITY["username"], department=IDENTITY["department"], data={"customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no})

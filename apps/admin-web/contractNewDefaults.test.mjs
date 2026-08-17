@@ -92,7 +92,7 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /if \(syncSealRequested\)[\s\S]{0,420}setWizardStep\(3\)/);
   assert.match(contractPage, /onNavigate\?\.\("seal-my-pending"\)/);
   assert.match(contractPage, /wizardStep === 3 && Boolean\(wizardDraft\?\.data\.seal_application_id\)[\s\S]{0,160}>开始新建合同</);
-  assert.match(contractPage, /CONTRACT_SEAL_READY_STATUSES = \["审批中", "已通过"/);
+  assert.match(contractPage, /CONTRACT_SEAL_READY_STATUSES = \["审批中", "审批通过"/);
   assert.doesNotMatch(contractPage, /wizardDraft\.status === "审批中"\) \{\s*message\.warning\("合同仍在审批中/);
   assert.match(contractPage, /const load = async \(queryOverride\?\: Record<string, any>\)/);
   assert.match(contractPage, /void load\(normalized\)/);

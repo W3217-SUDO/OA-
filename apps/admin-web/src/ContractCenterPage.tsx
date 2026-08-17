@@ -186,15 +186,14 @@ type PaymentTypeOption = { value:string; label:string; payee:string; account:str
 const colors: Record<string, string> = {
   草稿: "default",
   审批中: "orange",
-  已通过: "green",
-  履行中: "blue",
+  审批通过: "green",
   已完成: "green",
   已拒绝: "red",
 };
 const CONTRACT_TYPE_OPTIONS = ["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"].map((value) => ({ value, label: value }));
 const CONTRACT_FEE_MODE_OPTIONS = ["固定收费", "固定+后期", "免费代理", "法律援助", "计时收费", "全风险代理"].map((value) => ({ value, label: value }));
 const CONTRACT_CREATE_STEP_TITLES = ["合同基本信息", "提交审批", "合同审批", "合同用印"];
-const CONTRACT_SEAL_READY_STATUSES = ["审批中", "已通过", "履行中", "已完成"];
+const CONTRACT_SEAL_READY_STATUSES = ["审批中", "审批通过", "已完成"];
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
 const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-return-view";
 const CONTRACT_DETAIL_TAB_STORAGE_KEY = "sunhold:contract-detail-active-tab";

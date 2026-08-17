@@ -106,7 +106,7 @@ def insert_fixture(conn: sqlite3.Connection, marker: str) -> dict[str, int | str
     customer_id = cur.lastrowid
     cur.execute(
         "INSERT INTO business_records(module,serial_no,title,customer,status,owner,department,description,data,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-        ("contract", contract_serial, f"{marker}-CONTRACT-TITLE", f"{marker}-CUSTOMER-TITLE", "已通过", "admin", "诉讼一部", "", json.dumps(contract_data, ensure_ascii=False), now, now),
+        ("contract", contract_serial, f"{marker}-CONTRACT-TITLE", f"{marker}-CUSTOMER-TITLE", "审批通过", "admin", "诉讼一部", "", json.dumps(contract_data, ensure_ascii=False), now, now),
     )
     contract_id = cur.lastrowid
     case_data["contract_id"] = contract_id

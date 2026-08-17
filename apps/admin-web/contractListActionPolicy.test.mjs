@@ -5,8 +5,8 @@ import { contractListActionPolicy } from "./src/contractWorkflowPolicy.mjs";
 
 const contractSource = await readFile(new URL("./src/ContractCenterPage.tsx", import.meta.url), "utf8");
 
-test("contract list keeps legacy payment and invoice status gates", () => {
-  assert.deepEqual(contractListActionPolicy("已通过"), { canPayment: true, canInvoice: true, canCreateCase: true });
+test("contract list keeps payment and invoice status gates", () => {
+  assert.deepEqual(contractListActionPolicy("审批通过"), { canPayment: true, canInvoice: true, canCreateCase: true });
   assert.deepEqual(contractListActionPolicy("审批中"), { canPayment: false, canInvoice: true, canCreateCase: true });
   assert.deepEqual(contractListActionPolicy("已归档"), { canPayment: false, canInvoice: false, canCreateCase: false });
 });

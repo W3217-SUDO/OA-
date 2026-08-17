@@ -130,7 +130,7 @@ class LegacyOfficialDocumentProjectionRuntimeTest(unittest.IsolatedAsyncioTestCa
             contract.status = "审批中"
             contract.data = {**contract.data, "approval_count": 1, "submitted_at": "2026-08-12T10:00:00"}
             await _sync_legacy_contract_audit(contract, identity, db, 10, "提交")
-            contract.status = "已通过"
+            contract.status = "审批通过"
             contract.data = {**contract.data, "approved_at": "2026-08-12T11:00:00"}
             await _sync_legacy_contract_audit(contract, identity, db, 20, "同意")
             await db.commit()

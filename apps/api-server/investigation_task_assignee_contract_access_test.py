@@ -42,7 +42,7 @@ class InvestigationTaskAssigneeContractAccessTest(unittest.IsolatedAsyncioTestCa
             ])
             contract = BusinessRecord(
                 module="contract", serial_no="HT-CODEX-ASSIGNEE", title="管理员合同",
-                customer="CODEX 客户", status="已通过", owner="admin", department="总部", data={},
+                customer="CODEX 客户", status="审批通过", owner="admin", department="总部", data={},
             )
             db.add(contract)
             await db.flush()
@@ -84,7 +84,7 @@ class InvestigationTaskAssigneeContractAccessTest(unittest.IsolatedAsyncioTestCa
             ])
             contract = BusinessRecord(
                 module="contract", serial_no="HT-CODEX-DELEGATE", title="调查合同",
-                customer="CODEX 双账号客户", status="已通过", owner="admin", department="总部", data={},
+                customer="CODEX 双账号客户", status="审批通过", owner="admin", department="总部", data={},
             )
             db.add(contract)
             await db.flush()

@@ -50,7 +50,7 @@ class IncomingAllocationCasesRow15Test(unittest.IsolatedAsyncioTestCase):
             contract = BusinessRecord(
                 module="contract", serial_no="CODEX-814-R15-CONTRACT",
                 title="CODEX Row 15 Contract", customer="CODEX Row 15 Customer",
-                status="履行中", owner="row15-admin", department="Finance", data={},
+                status="审批通过", owner="row15-admin", department="Finance", data={},
             )
             db.add_all([customer, contract])
             await db.flush()

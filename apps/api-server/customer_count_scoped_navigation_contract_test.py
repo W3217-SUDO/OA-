@@ -36,7 +36,7 @@ class CustomerCountScopedNavigationContractTest(unittest.IsolatedAsyncioTestCase
             self.customer_a_id = customer_a.id
             db.add_all([
                 BusinessRecord(module="contract", serial_no="HT-CNT-001", title="客户A合同一", customer="客户A", status="草稿", owner="other-owner", department="其他分所", data={"customer_id": customer_a.id, "customer_no": "KH-A"}),
-                BusinessRecord(module="contract", serial_no="HT-CNT-002", title="客户A合同二", customer="客户A", status="履行中", owner=ADMIN["username"], department=ADMIN["department"], data={"customer_id": customer_a.id, "customer_no": "KH-A"}),
+                BusinessRecord(module="contract", serial_no="HT-CNT-002", title="客户A合同二", customer="客户A", status="审批通过", owner=ADMIN["username"], department=ADMIN["department"], data={"customer_id": customer_a.id, "customer_no": "KH-A"}),
                 BusinessRecord(module="contract", serial_no="HT-CNT-003", title="客户A归档合同", customer="客户A", status="已归档", owner=ADMIN["username"], department=ADMIN["department"], data={"customer_id": customer_a.id, "customer_no": "KH-A"}),
                 BusinessRecord(module="contract", serial_no="HT-CNT-004", title="子公司合同", customer="客户A子公司", status="草稿", owner=ADMIN["username"], department=ADMIN["department"], data={"customer_id": customer_a_child.id, "customer_no": "KH-A-CHILD"}),
                 BusinessRecord(module="case", serial_no="CA-CNT-001", title="客户A民事案件", customer="客户A", status="办理中", owner="other-owner", department="其他分所", data={"case_type": "民事案件", "customer_id": customer_a.id, "customer_no": "KH-A"}),

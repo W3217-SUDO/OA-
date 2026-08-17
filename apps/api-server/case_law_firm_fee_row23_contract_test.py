@@ -24,7 +24,7 @@ class CaseLawFirmFeeRow23ContractTest(unittest.IsolatedAsyncioTestCase):
             await connection.run_sync(Base.metadata.create_all)
         async with self.sessions() as db:
             db.add(User(username=IDENTITY["username"], display_name=IDENTITY["display_name"], department=IDENTITY["department"], role="admin", password_hash="x", is_active=True))
-            contract = BusinessRecord(module="contract", serial_no="ROW23-CONTRACT", title="Row23 Contract", customer="Row23 Customer", status="已通过", owner=IDENTITY["username"], department=IDENTITY["department"], data={})
+            contract = BusinessRecord(module="contract", serial_no="ROW23-CONTRACT", title="Row23 Contract", customer="Row23 Customer", status="审批通过", owner=IDENTITY["username"], department=IDENTITY["department"], data={})
             case = BusinessRecord(module="case", serial_no="ROW23-CASE", title="Row23 Case", customer="Row23 Customer", status="一审阶段", owner=IDENTITY["username"], department=IDENTITY["department"], data={"case_creation_step": "completed", "contract_record_id": 1, "contract_no": "ROW23-CONTRACT"})
             db.add_all([contract, case])
             await db.flush()

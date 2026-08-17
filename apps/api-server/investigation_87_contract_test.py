@@ -87,7 +87,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             contract = BusinessRecord(
                 module="contract", serial_no="HT-CODEX-87", title="CODEX调查合同", customer="CODEX客户",
-                status="已通过", owner="admin", department="上海", data={},
+                status="审批通过", owner="admin", department="上海", data={},
             )
             db.add(contract)
             await db.flush()
@@ -146,7 +146,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             contract = BusinessRecord(
                 module="contract", serial_no="HT-CODEX-87-REPAIR", title="CODEX修复合同", customer="CODEX正确客户",
-                status="已通过", owner="admin", department="上海", data={},
+                status="审批通过", owner="admin", department="上海", data={},
             )
             db.add(contract)
             await db.flush()

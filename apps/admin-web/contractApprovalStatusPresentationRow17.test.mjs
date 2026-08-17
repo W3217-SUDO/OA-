@@ -6,8 +6,10 @@ import { displayContractStatus } from "./src/contractStatusPresentation.mjs";
 
 const pageSource = fs.readFileSync(new URL("./src/ContractCenterPage.tsx", import.meta.url), "utf8");
 
-test("approved contract status is presented as 审批通过 without changing the raw status", () => {
+test("approved contract status is canonically presented as 审批通过", () => {
+  assert.equal(displayContractStatus("审批通过"), "审批通过");
   assert.equal(displayContractStatus("已通过"), "审批通过");
+  assert.equal(displayContractStatus("履行中"), "审批通过");
   assert.equal(displayContractStatus("审批中"), "审批中");
   assert.equal(displayContractStatus("已拒绝"), "已拒绝");
   assert.equal(displayContractStatus(null), null);
@@ -20,7 +22,7 @@ test("contract lists, detail, approval steps, and both wizard status entries use
   assert.match(pageSource, /displayContractStatus\(s\.status\)/);
 });
 
-test("status presentation is display-only and does not rewrite workflow comparisons", () => {
+test("status presentation keeps workflow comparisons on canonical raw values", () => {
   assert.match(pageSource, /wizardDraft\?\.status === "审批中"/);
   assert.match(pageSource, /step\.status === "待审批"/);
   assert.match(pageSource, /colors\[wizardDraft\.status\]/);

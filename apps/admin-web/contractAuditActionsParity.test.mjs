@@ -34,9 +34,9 @@ test("contract center uses the policy for audit actions and detail return", () =
   assert.match(pageSource, /normalizeContractDetailReturnView\(view\)/);
 });
 
-test("audit view config preserves the legacy status matrix", () => {
+test("audit view config uses the canonical approved status", () => {
   assert.deepEqual(contractAuditViewConfig("contract-audit-pending").statuses, ["审批中"]);
   assert.deepEqual(contractAuditViewConfig("contract-audit-refused").statuses, ["已拒绝", "已驳回"]);
-  assert.deepEqual(contractAuditViewConfig("contract-audit-approved").statuses, ["已通过", "履行中", "已完成", "已归档"]);
+  assert.deepEqual(contractAuditViewConfig("contract-audit-approved").statuses, ["审批通过", "已完成", "已归档"]);
   assert.deepEqual(contractAuditViewConfig("contract-audit").statuses, []);
 });

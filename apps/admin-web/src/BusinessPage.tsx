@@ -24,7 +24,7 @@ const personDisplayName=(value:unknown)=>String(value||'').trim()||'姓名待维
 
 const configs:Record<string,ModuleConfig> = {
   customer:{title:'客户管理',prefix:'KH',statuses:['正常','跟进中','待共享','公海','已回收'],fields:[{key:'contact',label:'联系人'},{key:'phone',label:'联系电话'},{key:'level',label:'客户等级'}]},
-  contract:{title:'合同中心',prefix:'HT',statuses:['草稿','审批中','已通过','履行中','已完成','已拒绝'],fields:[{key:'amount',label:'合同金额'},{key:'signed_at',label:'签订日期'},{key:'type',label:'合同类型'}]},
+  contract:{title:'合同中心',prefix:'HT',statuses:['草稿','审批中','审批通过','已完成','已拒绝'],fields:[{key:'amount',label:'合同金额'},{key:'signed_at',label:'签订日期'},{key:'type',label:'合同类型'}]},
   case:{title:'案件中心',prefix:'AJ',statuses:['新案待分配','文书准备','一审立案受理','一审准备开庭','二审','执行','已归档'],fields:[{key:'court',label:'承办法院'},{key:'case_type',label:'案件类型'},{key:'opponent',label:'对方当事人'}]},
   task:{title:'事务中心',prefix:'RW',statuses:['待处理','处理中','已完成','已逾期','已撤回'],fields:[{key:'deadline',label:'截止日期'},{key:'priority',label:'优先级'},{key:'source',label:'任务来源'}]},
   clue:{title:'调查大厅',prefix:'XS',statuses:['草稿','待审批','调查中','待公证','已转案件','已驳回'],fields:[{key:'platform',label:'调查平台'},{key:'product',label:'侵权产品'},{key:'notary',label:'公证状态'}]},
@@ -39,7 +39,7 @@ const configs:Record<string,ModuleConfig> = {
   system:{title:'系统中心',prefix:'XT',statuses:['启用','停用'],fields:[{key:'type',label:'配置类型'},{key:'value',label:'配置值'},{key:'scope',label:'生效范围'}]},
 }
 
-const statusColors:Record<string,string> = {'正常':'green','履行中':'green','已完成':'green','已通过':'green','已签收':'green','已归档':'green','已用印':'green','已付款':'green','已审批':'green','待审批':'orange','审批中':'orange','待处理':'blue','处理中':'blue','调查中':'blue','草稿':'default','已拒绝':'red','已驳回':'red','已逾期':'red','已退回':'red'}
+const statusColors:Record<string,string> = {'正常':'green','审批通过':'green','已完成':'green','已签收':'green','已归档':'green','已用印':'green','已付款':'green','已审批':'green','待审批':'orange','审批中':'orange','待处理':'blue','处理中':'blue','调查中':'blue','草稿':'default','已拒绝':'red','已驳回':'red','已逾期':'red','已退回':'red'}
 
 function nextSerial(prefix:string){
   const d=new Date(); const pad=(v:number,n=2)=>String(v).padStart(n,'0')

@@ -1063,7 +1063,7 @@ export default function InvestigationCenterPage({
         setContractOptions(
           contractData.items.filter(
             (contract: Contract) =>
-              ["审批中", "已通过", "履行中", "已完成"].includes(
+            ["审批中", "审批通过", "已完成"].includes(
                 contract.status,
               ) && contract.customer === unresolved.customer,
           ),
@@ -1402,7 +1402,7 @@ export default function InvestigationCenterPage({
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
-            ["审批中", "已通过", "履行中", "已完成"].includes(contract.status) &&
+            ["审批中", "审批通过", "已完成"].includes(contract.status) &&
             contract.customer === row.customer,
         ),
       );

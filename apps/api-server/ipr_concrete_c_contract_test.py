@@ -65,7 +65,7 @@ class IprConcreteCBackendContractTest(unittest.IsolatedAsyncioTestCase):
             )
             contract = BusinessRecord(
                 module="contract", serial_no="CODEX-IPR-C-CONTRACT-001", title="IPR C 合同",
-                customer="IPR C 客户", status="履行中", owner=IDENTITY["username"],
+                customer="IPR C 客户", status="审批通过", owner=IDENTITY["username"],
                 department=IDENTITY["department"], data={},
             )
             db.add_all([customer, contract])

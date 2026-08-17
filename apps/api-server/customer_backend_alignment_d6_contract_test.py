@@ -190,7 +190,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             customer = await db.get(BusinessRecord, self.customer_id)
             db.add(BusinessRecord(
                 module="contract", serial_no="HT-D6-BLOCK", title="D6 关联合同",
-                customer=customer.title, status="履行中", owner="customer-admin", department="上海分所",
+                customer=customer.title, status="审批通过", owner="customer-admin", department="上海分所",
                 data={"customer_id": customer.id, "customer_no": customer.serial_no},
             ))
             before_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())

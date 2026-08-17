@@ -33,7 +33,7 @@ class LegacyProjectionSyncContractTest(unittest.TestCase):
         for marker in (
             "LEGACY_CONTRACT_STATUS_BY_NEW = {",
             '"审批中": 10',
-            '"已通过": 20',
+            'CONTRACT_APPROVED_STATUS: 20',
             "LEGACY_INVESTIGATION_STATUS = {",
             "LEGACY_INVESTIGATION_TASK_STATUS = {",
             "LEGACY_INVESTIGATION_CLUE_STATUS = {",

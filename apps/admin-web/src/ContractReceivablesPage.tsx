@@ -348,7 +348,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
             showSearch
             optionFilterProp="label"
             placeholder="选择可见合同"
-            options={visibleContracts.filter((contract) => ["已通过", "履行中"].includes(contract.status)).map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))}
+            options={visibleContracts.filter((contract) => contract.status === "审批通过").map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }))}
           />
         </Form.Item>
         <Form.Item label="应收阶段" name="phase" rules={[{ required: true, message: "请填写应收阶段" }]}><Input placeholder="例如：首期代理费" /></Form.Item>

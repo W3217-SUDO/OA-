@@ -10,7 +10,7 @@ SOURCE = pathlib.Path(__file__).parent / "app" / "main.py"
 class CaseContractPendingLitigantProjectionTest(unittest.TestCase):
     def test_pending_contract_is_an_eligible_case_source(self):
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertIn('CASE_SOURCE_CONTRACT_STATUSES = {"审批中", "已通过", "履行中", "已完成"}', source)
+        self.assertIn('CASE_SOURCE_CONTRACT_STATUSES = {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}', source)
         self.assertIn('if contract.status not in CASE_SOURCE_CONTRACT_STATUSES:', source)
 
     def test_litigants_sync_the_legacy_detail_projection(self):
