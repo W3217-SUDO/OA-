@@ -69,7 +69,6 @@
 .case-doc-all{padding-left:8px}
 .case-detail-tab-area .ant-tabs-nav{margin-bottom:6px}
 .case-detail-tab-area .ant-tabs-tab{padding:7px 0}
-.case-detail-quick-actions{padding-right:2px}.case-detail-quick-actions .ant-btn{height:26px;padding:0 7px;font-size:12px}
 @media(max-width:1280px) and (min-width:901px){
   .case-detail-body-grid{grid-template-columns:210px minmax(420px,1fr) 230px}
   .case-detail-side-panel{grid-column:auto;display:block;border-top:0;border-left:1px solid #dce2e8}
