@@ -4186,6 +4186,11 @@ export default function CaseCenterPage({
           <div className="case-detail-body-grid">
             <div className="case-detail-tab-area">
           <Tabs
+            tabBarExtraContent={<Space size={4} className="case-detail-quick-actions">
+              {counselDetailCapabilities.can_create_reminder&&<Button size="small" icon={<CalendarOutlined/>} title="新增案件提醒" onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}
+              {counselDetailCapabilities.can_create_log&&<Button size="small" icon={<FileTextOutlined/>} title="新增案件日志" onClick={()=>openCounselLogCreator("case")}>新增日志</Button>}
+              {counselDetailCapabilities.can_create_case_task&&<Button size="small" type="primary" icon={<PlusOutlined/>} title="发布案件任务" onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button>}
+            </Space>}
             items={[
               {key:"documents",label:"文档信息",children:<div className="case-documents-layout">
                 <aside className="case-detail-doc-tree" aria-label="案件文档目录">

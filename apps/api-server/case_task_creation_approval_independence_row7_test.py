@@ -38,10 +38,12 @@ class CaseTaskCreationApprovalIndependenceRow7Test(unittest.IsolatedAsyncioTestC
             ))
             db.add_all([
                 self._case("ROW7-PENDING", "待立案审批"),
+                self._case("ROW7-HISTORICAL", "新案待分配", creation_step="basic"),
                 self._case("ROW7-ARCHIVED", "已归档"),
             ])
             await db.flush()
             self.pending_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "ROW7-PENDING"))
+            self.historical_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "ROW7-HISTORICAL"))
             self.archived_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "ROW7-ARCHIVED"))
             await db.commit()
         self.previous_overrides = dict(app.dependency_overrides)
@@ -50,12 +52,12 @@ class CaseTaskCreationApprovalIndependenceRow7Test(unittest.IsolatedAsyncioTestC
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://row7.test")
 
     @staticmethod
-    def _case(serial_no: str, status: str) -> BusinessRecord:
+    def _case(serial_no: str, status: str, *, creation_step: str = "completed") -> BusinessRecord:
         return BusinessRecord(
             module="case", serial_no=serial_no, title=serial_no, customer="Row 7 Customer",
             status=status, owner=ADMIN["username"], department=ADMIN["department"],
             data={
-                "case_type": "民事案件", "case_creation_step": "completed",
+                "case_type": "民事案件", "case_creation_step": creation_step,
                 "case_creation_approval_status": "待审批",
                 "handling_lawyer_usernames": [ADMIN["username"]],
                 "case_team_usernames": [ADMIN["username"]],
@@ -91,6 +93,20 @@ class CaseTaskCreationApprovalIndependenceRow7Test(unittest.IsolatedAsyncioTestC
         listed = await self.client.get(f"{API}/cases/{self.pending_id}/tasks")
         self.assertEqual(listed.status_code, 200, listed.text)
         self.assertEqual(listed.json()["items"][0]["title"], "ROW7 browser task")
+
+    async def test_historical_case_with_legacy_creation_marker_keeps_task_action(self) -> None:
+        capabilities = await self.client.get(f"{API}/cases/{self.historical_id}/action-capabilities")
+        self.assertEqual(capabilities.status_code, 200, capabilities.text)
+        self.assertTrue(capabilities.json()["can_create_case_task"])
+
+        created = await self.client.post(f"{API}/tasks", json={
+            "title": "ROW7 historical task", "customer": "ignored customer",
+            "owner": ADMIN["username"], "collaborators": [], "case_no": "ROW7-HISTORICAL",
+            "deadline": str(date.today() + timedelta(days=7)), "priority": "普通",
+            "source": "案件任务", "description": "historical case acceptance",
+        })
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["case_no"], "ROW7-HISTORICAL")
 
     async def test_archived_case_keeps_case_tasks_read_only(self) -> None:
         capabilities = await self.client.get(f"{API}/cases/{self.archived_id}/action-capabilities")

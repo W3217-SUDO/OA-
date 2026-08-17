@@ -18407,11 +18407,10 @@ async def _require_case_note_write_access(case_record: BusinessRecord, identity:
 
 
 async def _require_case_task_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
-    """Allow responsible case members to publish tasks before creation approval."""
+    """Allow responsible case members to publish tasks for every active case."""
     role = await _case_team_role(case_record, identity, db)
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以发布案件任务")
-    _require_case_creation_completed(case_record, require_approval=False)
     if case_record.status in {"待归档审核", "已归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能发布案件任务")
 
