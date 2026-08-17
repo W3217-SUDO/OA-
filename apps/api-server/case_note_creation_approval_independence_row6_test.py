@@ -37,10 +37,12 @@ class CaseNoteCreationApprovalIndependenceRow6Test(unittest.IsolatedAsyncioTestC
             ))
             db.add_all([
                 self._case("ROW6-PENDING", "待立案审批"),
+                self._case("ROW6-HISTORICAL", "新案待分配", creation_step="basic"),
                 self._case("ROW6-ARCHIVED", "已归档"),
             ])
             await db.flush()
             self.pending_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "ROW6-PENDING"))
+            self.historical_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "ROW6-HISTORICAL"))
             self.archived_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "ROW6-ARCHIVED"))
             await db.commit()
         self.previous_overrides = dict(app.dependency_overrides)
@@ -49,12 +51,12 @@ class CaseNoteCreationApprovalIndependenceRow6Test(unittest.IsolatedAsyncioTestC
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://row6.test")
 
     @staticmethod
-    def _case(serial_no: str, status: str) -> BusinessRecord:
+    def _case(serial_no: str, status: str, *, creation_step: str = "completed") -> BusinessRecord:
         return BusinessRecord(
             module="case", serial_no=serial_no, title=serial_no, customer="Row 6 Customer",
             status=status, owner=ADMIN["username"], department=ADMIN["department"],
             data={
-                "case_type": "民事案件", "case_creation_step": "completed",
+                "case_type": "民事案件", "case_creation_step": creation_step,
                 "case_creation_approval_status": "待审批",
                 "handling_lawyer_usernames": [ADMIN["username"]],
                 "case_team_usernames": [ADMIN["username"]],
@@ -93,6 +95,19 @@ class CaseNoteCreationApprovalIndependenceRow6Test(unittest.IsolatedAsyncioTestC
 
         deleted = await self.client.delete(f"{API}/cases/{self.pending_id}/reminders/{reminder.json()['id']}")
         self.assertEqual(deleted.status_code, 204, deleted.text)
+
+    async def test_historical_case_with_legacy_creation_marker_keeps_note_actions(self) -> None:
+        capabilities = await self.client.get(f"{API}/cases/{self.historical_id}/action-capabilities")
+        self.assertEqual(capabilities.status_code, 200, capabilities.text)
+        self.assertTrue(capabilities.json()["can_create_reminder"])
+        self.assertTrue(capabilities.json()["can_create_log"])
+
+        reminder = await self.client.post(f"{API}/cases/{self.historical_id}/reminders", json={
+            "reminder_date": "2026-08-22", "deadline": "2026-08-23", "content": "ROW6 historical reminder",
+        })
+        log = await self.client.post(f"{API}/cases/{self.historical_id}/logs", json={"content": "ROW6 historical log"})
+        self.assertEqual(reminder.status_code, 201, reminder.text)
+        self.assertEqual(log.status_code, 201, log.text)
 
     async def test_archived_case_keeps_notes_read_only(self) -> None:
         capabilities = await self.client.get(f"{API}/cases/{self.archived_id}/action-capabilities")

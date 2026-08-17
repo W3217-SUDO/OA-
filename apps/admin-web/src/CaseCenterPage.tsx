@@ -4308,11 +4308,11 @@ export default function CaseCenterPage({
             </div>
             <aside className="case-detail-side-panel">
               <section>
-                <div className="case-detail-side-title"><span>案件提醒</span>{counselDetailCapabilities.can_create_reminder && <Button type="link" size="small" onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增</Button>}</div>
+                <div className="case-detail-side-title"><span>案件提醒</span>{counselDetailCapabilities.can_create_reminder && <Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}</div>
                 {counselReminders.length?counselReminders.slice(0,5).map((item)=><p key={item.id}>{item.data.reminder_date || item.data.deadline}　{item.description}</p>):<p className="case-detail-empty">暂无提醒</p>}
               </section>
               <section>
-                <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}</div>
+                <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>退费日志</Button></Space>}</div>
                 {counselLogs.length?counselLogs.slice(0,5).map((item)=><p key={item.id}>{item.created_at}　{item.content}</p>):<p className="case-detail-empty">暂无日志</p>}
               </section>
             </aside>

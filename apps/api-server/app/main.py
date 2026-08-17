@@ -18393,10 +18393,15 @@ async def _require_case_detail_write_access(case_record: BusinessRecord, identit
 
 
 async def _require_case_note_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
-    """Allow reminders and logs before creation approval without opening other case writes."""
+    """Allow case-team notes independently from the case-creation wizard state.
+
+    Historical and duplicated cases can carry legacy ``case_creation_step``
+    values even though they are already active records.  Reminders and logs
+    belong to the case itself, so their write gate must not depend on that
+    wizard-only marker.
+    """
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件团队成员或系统管理员可以维护案件提醒和日志")
-    _require_case_creation_completed(case_record, require_approval=False)
     if case_record.status in {"待归档审核", "已归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
 
