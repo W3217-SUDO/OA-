@@ -740,6 +740,8 @@ export default function InvestigationCenterPage({
           shop_name: values.shop_name || "",
           shop_id: values.shop_id || "",
           has_product: Boolean(values.has_product),
+          product_url: values.product_url || "",
+          sale_num: values.sale_num || "",
           investigated_at: values.investigated_at
             ? formatRequiredDate(values.investigated_at, "调查日期")
             : "",
@@ -2520,6 +2522,8 @@ export default function InvestigationCenterPage({
           shop_name: "",
           shop_id: "",
           has_product: false,
+          product_url: "",
+          sale_num: "",
           producer: "",
           indictee: "",
           investigation_assistant: "",
@@ -3357,10 +3361,11 @@ export default function InvestigationCenterPage({
           </div>
         </Form>
       </Modal>
-      <Modal
+      <Drawer
         open={clueCreateOpen}
-        title="新建调查线索"
-        cancelText="取消"
+        title="线索报备"
+        placement="right"
+        width={620}
         footer={
           <Space>
             <Button onClick={() => void create(false)}>暂存线索</Button>
@@ -3369,7 +3374,7 @@ export default function InvestigationCenterPage({
             </Button>
           </Space>
         }
-        onCancel={() => {
+        onClose={() => {
           setClueCreateOpen(false);
           setCreateContextTask(null);
           setCreateModule(tab);
@@ -3378,6 +3383,12 @@ export default function InvestigationCenterPage({
         }}
       >
         <Form form={createForm} layout="vertical">
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="提交审批前请确认主体信息完整"
+          />
           <div className="form-grid">
             <Form.Item
               label="线索编号"
@@ -3452,6 +3463,12 @@ export default function InvestigationCenterPage({
                 ]}
               />
             </Form.Item>
+            <Form.Item label="产品链接" name="product_url">
+              <Input placeholder="请输入产品链接" />
+            </Form.Item>
+            <Form.Item label="规模" name="sale_num">
+              <Input placeholder="请输入规模" />
+            </Form.Item>
             <Form.Item label="调查地址" name="address">
               <Input placeholder="请输入调查地址" />
             </Form.Item>
@@ -3514,7 +3531,7 @@ export default function InvestigationCenterPage({
             </Form.Item>
           </div>
         </Form>
-      </Modal>
+      </Drawer>
       {(initialTab === "notary-import-files" ||
         initialTab === "notary-import-invoices") && (
         <Card size="small" style={{ marginBottom: 12 }}>
