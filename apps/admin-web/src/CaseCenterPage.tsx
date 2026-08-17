@@ -4346,7 +4346,12 @@ export default function CaseCenterPage({
             <div className="case-detail-tab-area">
           <Tabs
             activeKey={activeCounselDetailTab}
-            onChange={setActiveCounselDetailTab}
+            onChange={(key) => {
+              setActiveCounselDetailTab(key);
+              if ((key === "tasks" || key === "customer-tasks") && viewingCounselCase) {
+                void loadCounselDetailTasksPage(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
+              }
+            }}
             items={[
               {key:"documents",label:"文档信息",children:<div className="case-documents-layout">
                 <aside className="case-detail-doc-tree" aria-label="案件文档目录">
