@@ -222,6 +222,11 @@
 .case-detail-static-root .case-counsel-detail-card,
 .case-detail-static-root .case-court-summary,
 .case-detail-static-root .case-archive-summary{flex:0 0 auto}
+.case-archive-application-alert{margin-bottom:12px;border-radius:0}
+.case-archive-application-table .ant-table{border:1px solid #e5e7eb}
+.case-archive-application-table .ant-table-cell{vertical-align:middle}
+.case-archive-application-table .ant-input{border:0;border-radius:0;box-shadow:none}
+.case-archive-application-footer{display:flex;justify-content:flex-end;gap:8px}
 .case-detail-static-root .case-detail-body-grid{min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 
 /* Match the legacy case-detail operation menu: primary actions on the right,

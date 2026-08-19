@@ -4043,7 +4043,7 @@ export default function CaseCenterPage({
       <Modal open={Boolean(notaryInfoCase)} title="修改公证信息" okText="保存" cancelText="取消" onCancel={() => { setNotaryInfoCase(null); notaryInfoForm.resetFields(); }} onOk={() => void submitNotaryInfo()}>
         <Form form={notaryInfoForm} layout="vertical">
           <Form.Item label="公证书号" name="notary_nos" rules={[{ required: true, message: "请输入公证书号" }]}><Input placeholder="多个编号请用逗号分隔" /></Form.Item>
-          <Form.Item label="存放位置" name="deposit_address"><Input /></Form.Item>
+          <Form.Item label="仓库位置" name="deposit_address"><Input /></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={2} maxLength={1000} /></Form.Item>
         </Form>
       </Modal>
@@ -5016,36 +5016,58 @@ export default function CaseCenterPage({
           </Form>
         </Card>}
       </Drawer>
-      <Modal
+      <Drawer
         width={620}
         open={Boolean(archiving)}
-        title={`${archiveType === "deficit" ? "亏损归档申请" : "正常归档申请"}：${archiving?.serial_no || ""}`}
-        okText="提交归档审核"
-        cancelText="取消"
-        onOk={() => archive(true)}
-        onCancel={() => setArchiving(null)}
-        footer={() => (
-          <>
-            <Button onClick={() => setArchiving(null)}>取消</Button>
-            <Button type="primary" onClick={() => archive(true)}>申请归档</Button>
-          </>
+        title={archiveType === "deficit" ? "亏损归档申请" : "正常归档申请"}
+        onClose={() => { setArchiving(null); archiveForm.resetFields(); }}
+        destroyOnHidden
+        footer={(
+          <div className="case-archive-application-footer">
+            <Button type="primary" onClick={() => void archive(true)}>申请归档</Button>
+            <Button onClick={() => { setArchiving(null); archiveForm.resetFields(); }}>取消</Button>
+          </div>
         )}
       >
         <Alert
           type="info"
           showIcon
-          title="请检查待归档案件材料是否齐全、退费是否有退完。归档号由系统在归档审核通过后自动生成。"
+          title="温馨提示：请检查待归档案件材料是否齐全，退费是否有退完。"
+          className="case-archive-application-alert"
         />
-        <Form
-          form={archiveForm}
-          layout="vertical"
-          className="archive-check-form"
-        >
-          <Form.Item label="归档意见" name="comment">
-            <Input.TextArea rows={3} />
-          </Form.Item>
+        <Form form={archiveForm} component={false}>
+          <Table
+            rowKey="id"
+            size="small"
+            pagination={false}
+            tableLayout="fixed"
+            className="case-archive-application-table"
+            dataSource={archiving ? [archiving] : []}
+            columns={[
+              { title: "案号", dataIndex: "serial_no", width: 145 },
+              { title: "案件阶段", width: 110, render: (_: unknown, row: CaseRow) => row.data.case_phase || row.status || "—" },
+              {
+                title: "备注",
+                render: () => (
+                  <Form.Item
+                    name="comment"
+                    rules={archiveType === "deficit" ? [{ required: true, whitespace: true, message: "请填写亏损原因" }] : []}
+                    noStyle
+                  >
+                    <Input aria-label={archiveType === "deficit" ? "亏损原因" : "归档备注"} />
+                  </Form.Item>
+                ),
+              },
+              {
+                title: "操作",
+                width: 64,
+                align: "center" as const,
+                render: () => <Button type="text" danger icon={<CloseOutlined />} title="移除" onClick={() => setArchiving(null)} />,
+              },
+            ]}
+          />
         </Form>
-      </Modal>
+      </Drawer>
       <Modal
         open={Boolean(courtRefundFee)}
         title={`法院退费：${courtRefundFee?.serial_no || ""}`}

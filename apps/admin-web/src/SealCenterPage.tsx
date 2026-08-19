@@ -1322,10 +1322,8 @@ export default function SealCenterPage({
   ) => {
     const requestId = detailRequestTracker.next();
     try {
-      const { data } = await api.get("/attachments", {
+      const { data } = await api.get(`/seals/applications/${row.id}/files`, {
         params: {
-          record_id: row.id,
-          category: sealVisibleFileCategory(row),
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -1436,10 +1434,8 @@ export default function SealCenterPage({
   ) => {
     const requestId = fileListRequestTracker.next();
     try {
-      const { data } = await api.get("/attachments", {
+      const { data } = await api.get(`/seals/applications/${row.id}/files`, {
         params: {
-          record_id: row.id,
-          category: sealVisibleFileCategory(row),
           page: nextPage,
           page_size: nextPageSize,
         },

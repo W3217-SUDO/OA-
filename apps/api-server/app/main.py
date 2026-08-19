@@ -20217,6 +20217,8 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
     if case_record.status == "待归档审核" and body.submit: raise HTTPException(status_code=409, detail="案件已提交归档审核，请等待审核")
     checks = await _case_archive_checks(case_record, db)
     archive_type = body.archive_type if body.archive_type in {"normal", "deficit"} else "normal"
+    if body.submit and archive_type == "deficit" and not body.comment.strip():
+        raise HTTPException(status_code=422, detail="亏损归档必须填写亏损原因")
     details = {"archive_no": body.archive_no.strip(), "paper_archive_location": body.paper_archive_location.strip(), "paper_volume_count": body.paper_volume_count, "archive_type": archive_type}
     case_record.data = {**(case_record.data or {}), **checks, **details}
     if body.submit and archive_type == "normal" and not checks["fees_settled"]:
@@ -20241,7 +20243,9 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
     if case_record.status != "待归档审核": raise HTTPException(status_code=409, detail="只有待归档审核案件可以审核")
     if body.approved:
         checks = await _case_archive_checks(case_record, db)
-        if not all(checks.values()):
+        archive_type = str((case_record.data or {}).get("archive_type") or "normal")
+        required_checks = {key: value for key, value in checks.items() if archive_type != "deficit" or key != "fees_settled"}
+        if not all(required_checks.values()):
             raise HTTPException(status_code=409, detail="归档条件在审核前发生变化，请退回补齐后重新提交")
     data = case_record.data or {}; previous = case_record.status
     if body.approved:
@@ -21689,9 +21693,8 @@ async def _seal_record_dict(
         .where(FileAttachment.record_id == record.id, FileAttachment.category == file_category)
         .order_by(FileAttachment.created_at, FileAttachment.id)
     )).all())
-    persisted_names = [item.original_name for item in visible_files if item.original_name]
-    file_names = list(dict.fromkeys([*persisted_names, *_seal_legacy_file_names(record)]))
-    result["file_count"] = len(file_names)
+    file_names = list(dict.fromkeys(item.original_name for item in visible_files if item.original_name))
+    result["file_count"] = len(visible_files)
     result["file_category"] = file_category
     result["data"] = {
         **(result.get("data") or {}),
@@ -21878,6 +21881,50 @@ async def _copy_seal_source_attachments(
         raise
 
 
+async def _resolve_seal_source_attachment_ids(
+    body: SealApplicationInput,
+    case_no: str,
+    contract_no: str,
+    identity: dict,
+    db: AsyncSession,
+) -> list[int]:
+    """Resolve real files from the selected contract/case and reject cross-record selections."""
+    explicit_ids = list(dict.fromkeys(
+        int(item_id)
+        for item_id in [*body.source_attachment_ids, *body.contract_file_ids, *body.case_file_ids]
+        if int(item_id) > 0
+    ))
+    module = "contract" if contract_no else "case" if case_no else ""
+    serial_no = contract_no or case_no
+    if not module:
+        if explicit_ids:
+            raise HTTPException(status_code=422, detail="行政用印不能选择合同或案件来源文件")
+        return []
+
+    scope = await _record_scope_conditions(identity, db)
+    source_record = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == module,
+        BusinessRecord.serial_no == serial_no,
+        *scope,
+    ))
+    if not source_record:
+        raise HTTPException(status_code=422, detail="关联业务记录不存在或当前账号无权使用")
+
+    if explicit_ids:
+        selected = list((await db.scalars(
+            select(FileAttachment).where(FileAttachment.id.in_(explicit_ids))
+        )).all())
+        if len(selected) != len(explicit_ids) or any(item.record_id != source_record.id for item in selected):
+            raise HTTPException(status_code=422, detail="选择的来源文件不属于当前关联合同或案件")
+        return explicit_ids
+
+    return list((await db.scalars(
+        select(FileAttachment.id)
+        .where(FileAttachment.record_id == source_record.id)
+        .order_by(FileAttachment.created_at, FileAttachment.id)
+    )).all())
+
+
 @app.post(f"{settings.api_prefix}/seals/applications", status_code=status.HTTP_201_CREATED)
 async def create_seal_application(body: SealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     asset = await db.get(SealAsset, body.seal_asset_id)
@@ -21890,7 +21937,9 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
     item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
     copied_targets: list[Path] = []
-    source_attachment_ids = [*body.source_attachment_ids, *body.contract_file_ids, *body.case_file_ids]
+    source_attachment_ids = await _resolve_seal_source_attachment_ids(
+        body, case_no, contract_no, identity, db
+    )
     # FileAttachment copies are created inside the same transaction as the draft.
     try:
         db.add(item); await db.flush()
@@ -21960,7 +22009,7 @@ async def list_seal_application_files(
     record = await _get_seal_application(record_id, identity, db)
     category = (
         SEAL_STAMPED_FILE_CATEGORY
-        if record.status in {"待用印", "已用印", "已归档"}
+        if record.status in {"已用印", "已归档"}
         else SEAL_APPLICATION_FILE_CATEGORY
     )
     conditions = [FileAttachment.record_id == record.id, FileAttachment.category == category]
