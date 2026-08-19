@@ -443,6 +443,14 @@ def _upgrade_schema(connection) -> None:
     if "parent_department_id" not in department_columns:
         connection.execute(text("ALTER TABLE departments ADD COLUMN parent_department_id INTEGER"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_departments_parent_department_id ON departments (parent_department_id)"))
+    law_firm_columns = {item["name"] for item in inspect(connection).get_columns("law_firms")}
+    for column, definition in {
+        "firm_type": "VARCHAR(64) NOT NULL DEFAULT ''",
+        "firm_level": "VARCHAR(32) NOT NULL DEFAULT ''",
+    }.items():
+        if column not in law_firm_columns:
+            connection.execute(text(f"ALTER TABLE law_firms ADD COLUMN {column} {definition}"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_law_firms_firm_type ON law_firms (firm_type)"))
     user_columns = {item["name"] for item in inspect(connection).get_columns("users")}
     if "department" not in user_columns:
         connection.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(64) NOT NULL DEFAULT '上海分所'"))
