@@ -62,7 +62,7 @@ class SealFileListRealAttachmentTest(unittest.IsolatedAsyncioTestCase):
         self.db.add(FileAttachment(
             record_id=contract.id, category="合同附件", original_name="真实合同附件.pdf",
             stored_name=source_path.name, content_type="application/pdf", size=source_path.stat().st_size,
-            path=str(source_path), uploader=ADMIN["username"],
+            path="/app/uploads/source-contract.pdf", uploader=ADMIN["username"],
         ))
         await self.db.commit()
 

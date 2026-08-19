@@ -19,6 +19,7 @@ from sqlalchemy import select
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
+from app.main import UPLOAD_ROOT, _attachment_storage_path
 from app.models import BusinessRecord, FileAttachment, WorkflowEvent
 
 
@@ -80,10 +81,10 @@ async def run(apply: bool) -> None:
                 continue
             try:
                 for source in matched:
-                    source_path = Path(source.path)
-                    if not source_path.is_file():
-                        raise FileNotFoundError(f"source file missing: {source_path}")
-                    target = source_path.parent / f"{uuid4().hex}{source_path.suffix.lower()}"
+                    source_path = _attachment_storage_path(source)
+                    if source_path is None:
+                        raise FileNotFoundError(f"source file missing: {source.path}")
+                    target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
                     target.write_bytes(source_path.read_bytes())
                     created_paths.append(target)
                     db.add(FileAttachment(

@@ -971,6 +971,24 @@ UPLOAD_ROOT = (
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 
+def _attachment_storage_path(item: FileAttachment) -> Path | None:
+    """Resolve files whose database path may still use a legacy container root."""
+    upload_root = UPLOAD_ROOT.resolve()
+    candidates = [Path(item.path)]
+    if item.stored_name:
+        candidates.append(upload_root / Path(item.stored_name).name)
+    if item.path:
+        candidates.append(upload_root / Path(item.path).name)
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except (OSError, RuntimeError):
+            continue
+        if resolved.is_file() and upload_root in resolved.parents:
+            return resolved
+    return None
+
+
 class DifyRequest(BaseModel):
     query: str
     conversation_id: str | None = None
@@ -21329,8 +21347,8 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
         record = await _ensure_attachment_record_visible(item.record_id, identity, db)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
-    path = Path(item.path)
-    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+    path = _attachment_storage_path(item)
+    if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
     return FileResponse(path, media_type=item.content_type, filename=item.original_name)
 
@@ -21346,8 +21364,8 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
-    path = Path(item.path)
-    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+    path = _attachment_storage_path(item)
+    if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
 
     suffix = Path(item.original_name).suffix.lower()
@@ -21853,8 +21871,8 @@ async def _copy_seal_source_attachments(
                 await _ensure_record_module(source_record.id, "case", identity, db)
             else:
                 raise HTTPException(status_code=422, detail="鐢ㄥ嵃鐢宠鍙兘浠庡悎鍚屾垨妗堜欢澶嶅埗鏉ユ簮鏂囦欢")
-            source_path = Path(source.path)
-            if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
+            source_path = _attachment_storage_path(source)
+            if source_path is None:
                 raise HTTPException(status_code=404, detail=f"鏉ユ簮鏂囦欢 {source.original_name} 涓嶅瓨鍦?")
             target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
             target.write_bytes(source_path.read_bytes())
