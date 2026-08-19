@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, SystemParameter, WorkflowEvent
+from app.models import BusinessRecord, LegacyCase, SystemParameter, WorkflowEvent
 from app.security import current_identity
 
 
@@ -202,6 +202,42 @@ class CaseApiRuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         })
         self.assertFalse(payload["checks"]["case_closed"])
         self.assertFalse(payload["checks"]["documents_complete"])
+
+    async def test_deficit_archive_persists_reason_and_legacy_projection(self) -> None:
+        missing_reason = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive",
+            json={"archive_type": "deficit", "comment": "", "submit": True},
+        )
+        self.assertEqual(missing_reason.status_code, 422, missing_reason.text)
+
+        reason = "CODEX-818-R21-deficit-reason"
+        response = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive",
+            json={"archive_type": "deficit", "comment": reason, "submit": True},
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        async with self.session_factory() as session:
+            case = await session.get(BusinessRecord, self.case_id)
+            legacy_case = await session.scalar(
+                select(LegacyCase).where(LegacyCase.CaseNo == case.serial_no)
+            )
+            event = await session.scalar(
+                select(WorkflowEvent)
+                .where(
+                    WorkflowEvent.record_id == self.case_id,
+                    WorkflowEvent.action == "提交归档审核",
+                )
+                .order_by(WorkflowEvent.id.desc())
+            )
+
+        self.assertEqual(case.status, "待归档审核")
+        self.assertEqual(case.data["archive_type"], "deficit")
+        self.assertEqual(case.data["archive_submit_comment"], reason)
+        self.assertIsNotNone(legacy_case)
+        self.assertEqual(legacy_case.ToAuditRemark, reason)
+        self.assertIsNotNone(event)
+        self.assertEqual(event.comment, reason)
 
     async def test_batch_update_preflights_every_case_before_writing(self) -> None:
         before = await self._workflow_event_count()

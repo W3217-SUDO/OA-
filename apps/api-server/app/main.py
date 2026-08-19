@@ -20249,11 +20249,19 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
     previous = case_record.status
     action = "保存归档检查"
     if body.submit:
-        case_record.data = {**(case_record.data or {}), "status_before_archive": previous, "archive_submitted_at": datetime.now().isoformat(timespec="seconds"), "archive_submitter": identity["username"], "archive_reject_reason": ""}
+        case_record.data = {
+            **(case_record.data or {}),
+            "status_before_archive": previous,
+            "archive_submitted_at": datetime.now().isoformat(timespec="seconds"),
+            "archive_submitter": identity["username"],
+            "archive_submit_comment": body.comment.strip(),
+            "archive_reject_reason": "",
+        }
         case_record.status = "待归档审核"
         action = "提交归档审核"
     type_label = "亏损归档" if archive_type == "deficit" else "正常归档"
     db.add(WorkflowEvent(record_id=case_record.id, action=action, from_status=previous, to_status=case_record.status, operator=identity["username"], comment=body.comment or (f"{type_label}；归档号：{details['archive_no']}；纸质卷宗：{details['paper_archive_location']}，{details['paper_volume_count']} 卷" if body.submit else f"更新{type_label}检查项")))
+    await _sync_legacy_case(case_record, identity, db)
     await db.commit()
     await db.refresh(case_record)
     return {"record": _record_dict(case_record), "checks": checks, "ready": all(checks.values())}
@@ -26895,6 +26903,7 @@ async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSes
     legacy.ClosingTime = _legacy_case_datetime(data.get("case_closed_at"))
     legacy.ToAuditTime = _legacy_case_datetime(data.get("archive_submitted_at"))
     legacy.ToAuditApplicant = _legacy_case_text(data.get("archive_submitter"), 20)
+    legacy.ToAuditRemark = _legacy_case_text(data.get("archive_submit_comment"), 2000)
     legacy.Auditor = _legacy_case_text(data.get("archive_reviewer"), 20)
     legacy.AuditedTime = _legacy_case_datetime(data.get("archived_at") or data.get("archive_reviewed_at"))
     legacy.AuditedRemark = _legacy_case_text(data.get("archive_review_comment") or data.get("archive_reject_reason"), 2000)
