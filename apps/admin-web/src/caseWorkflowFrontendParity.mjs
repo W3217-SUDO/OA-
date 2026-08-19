@@ -22,7 +22,7 @@ export const getCaseHearingDeleteValidationError = (role) =>
 
 export const getCaseArchiveReviewValidationError = ({ role, status } = {}) => {
   if (!new Set(["admin", "manager"]).has(role)) return "\u53ea\u6709\u7ba1\u7406\u5458\u6216\u90e8\u95e8\u8d1f\u8d23\u4eba\u53ef\u4ee5\u5ba1\u6838\u5f52\u6863";
-  if (status !== "\u5f85\u5f52\u6863\u5ba1\u6838") return "\u53ea\u6709\u5f85\u5f52\u6863\u5ba1\u6838\u6848\u4ef6\u53ef\u4ee5\u5ba1\u6838";
+  if (!new Set(["\u5f85\u5f52\u6863\u5ba1\u6838", "\u4e8f\u635f\u5185\u5ba1", "\u4e8f\u635f\u5ba1\u6838"]).has(status)) return "\u53ea\u6709\u5f85\u5f52\u6863\u5ba1\u6838\u6848\u4ef6\u53ef\u4ee5\u5ba1\u6838";
   return "";
 };
 

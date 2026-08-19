@@ -552,8 +552,15 @@ const statusColors: Record<string, string> = {
   二审: "geekblue",
   执行: "volcano",
   待归档审核: "gold",
+  亏损内审: "orange",
+  亏损审核: "gold",
+  亏损归档: "green",
+  亏损归档拒绝: "red",
   已归档: "green",
 };
+const ARCHIVE_REVIEW_STATUSES = ["待归档审核", "亏损内审", "亏损审核"];
+const ARCHIVE_FINAL_STATUSES = ["已归档", "亏损归档"];
+const ARCHIVE_LOCKED_STATUSES = [...ARCHIVE_REVIEW_STATUSES, ...ARCHIVE_FINAL_STATUSES];
 export default function CaseCenterPage({
   initialView,
   onNavigate,
@@ -1369,7 +1376,7 @@ export default function CaseCenterPage({
     const v = await archiveForm.validateFields();
     try {
       await api.post(`/cases/${archiving.id}/archive`, { ...v, archive_type: archiveType, submit });
-      message.success(submit ? "已提交归档审核" : "归档检查已保存");
+      message.success(submit ? (archiveType === "deficit" ? "已提交亏损归档内部审核" : "已提交归档审核") : "归档检查已保存");
       setArchiving(null);
       load();
     } catch (error: any) {
@@ -1386,7 +1393,12 @@ export default function CaseCenterPage({
         approved: reviewing.approved,
         comment: v.comment,
       });
-      message.success(reviewing.approved ? "归档审核已通过" : "归档审核已驳回");
+      const internalStage = reviewing.row.status === "亏损内审";
+      message.success(
+        internalStage
+          ? (reviewing.approved ? "内部审核已通过，案件进入亏损审核" : "内部审核已驳回")
+          : (reviewing.approved ? "归档审核已通过" : "归档审核已驳回"),
+      );
       setReviewing(null);
       reviewForm.resetFields();
       load();
@@ -2427,7 +2439,7 @@ export default function CaseCenterPage({
   };
   const openCaseLitigants = (row: CaseRow) => {
     if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改当事人权限");
-    if (["待归档审核", "已归档"].includes(row.status)) return message.warning("归档中的案件不能修改当事人");
+    if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改当事人");
     caseLitigantsForm.setFieldsValue({
       plaintiffs: row.data.plaintiffs || (row.data.plaintiff ? [row.data.plaintiff] : row.customer ? [row.customer] : []),
       plaintiff_agents: row.data.plaintiff_agents || [],
@@ -2454,7 +2466,7 @@ export default function CaseCenterPage({
   };
   const openCaseHearingLawyer = (row: CaseRow) => {
     if (!getCaseCapability(row).can_assign_team) return message.warning("当前账号没有修改开庭律师权限");
-    if (["待归档审核", "已归档"].includes(row.status)) return message.warning("归档中的案件不能修改开庭律师");
+    if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改开庭律师");
     caseHearingLawyerForm.setFieldsValue({ hearing_lawyer: row.data.hearing_lawyer || "", comment: "" });
     setEditingCaseHearingLawyer(row);
   };
@@ -2768,7 +2780,7 @@ export default function CaseCenterPage({
   };
   const openProgress = (row: CaseRow) => {
     if (!getCaseCapability(row).can_update_progress) return message.warning("当前账号没有案件进展维护权限");
-    if (["待归档审核", "已归档", "已合并"].includes(row.status)) return message.warning("归档中、已归档或已合并案件不能维护案件进展");
+    if ([...ARCHIVE_LOCKED_STATUSES, "已合并"].includes(row.status)) return message.warning("归档中、已归档或已合并案件不能维护案件进展");
     progressForm.resetFields();
     progressForm.setFieldsValue({
       ...row.data,
@@ -2782,7 +2794,7 @@ export default function CaseCenterPage({
     const selected = rows.filter(Boolean);
     if (!selected.length) return message.warning("请先选择案件");
     if (selected.some((row) => !getCaseCapability(row).can_change_phase)) return message.warning("当前账号没有案件阶段维护权限");
-    if (selected.some((row) => ["待归档审核", "已归档", "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改案件阶段");
+    if (selected.some((row) => [...ARCHIVE_LOCKED_STATUSES, "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改案件阶段");
     try {
       const { data } = await api.get("/cases/phases");
       const options = (Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[];
@@ -2801,14 +2813,14 @@ export default function CaseCenterPage({
     const selected = rows.filter(Boolean);
     if (!selected.length) return message.warning("请先选择执行案件");
     if (selected.some((row) => !getCaseCapability(row).can_update_progress)) return message.warning("当前账号没有案件进展维护权限");
-    if (selected.some((row) => ["待归档审核", "已归档", "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改执行状态");
+    if (selected.some((row) => [...ARCHIVE_LOCKED_STATUSES, "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改执行状态");
     executionStatusForm.resetFields();
     executionStatusForm.setFieldsValue({ execution_status: selected[0].data.execution_status || CASE_EXECUTION_STATUSES[0], comment: "" });
     setExecutionStatusEditing(selected);
   };
   const openCompanyScheduleCourtInfo = (row: CaseRow, level: CompanyScheduleCourtLevel) => {
     if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有法院信息维护权限");
-    if (["待归档审核","已归档","已合并"].includes(row.status)) return message.warning("当前案件阶段不能修改法院信息");
+    if ([...ARCHIVE_LOCKED_STATUSES,"已合并"].includes(row.status)) return message.warning("当前案件阶段不能修改法院信息");
     const courtPrefix = `${level}_court`;
     const data = row.data || {};
     const firstInstance = level === "first";
@@ -3002,7 +3014,7 @@ export default function CaseCenterPage({
             {capability.can_assign_team && <Button
               type="link"
               icon={<TeamOutlined />}
-              disabled={["待归档审核", "已归档"].includes(r.status)}
+              disabled={ARCHIVE_LOCKED_STATUSES.includes(r.status)}
               onClick={() => openAssign(r)}
             >
               分配
@@ -3031,7 +3043,7 @@ export default function CaseCenterPage({
             {capability.can_manage_hearing && <Button
               type="link"
               icon={<CalendarOutlined />}
-              disabled={["待归档审核", "已归档"].includes(r.status)}
+              disabled={ARCHIVE_LOCKED_STATUSES.includes(r.status)}
               onClick={() => openHearing(r)}
             >
               排期
@@ -3039,7 +3051,7 @@ export default function CaseCenterPage({
             {capability.can_archive && <Button
               type="link"
               icon={<CheckSquareOutlined />}
-              disabled={["待归档审核", "已归档"].includes(r.status)}
+              disabled={ARCHIVE_LOCKED_STATUSES.includes(r.status)}
               onClick={() => openArchive(r)}
             >
               归档
@@ -3140,7 +3152,7 @@ export default function CaseCenterPage({
       fixed: "right" as const,
       width: 190,
       render: (_: unknown, r: CaseRow) =>
-        r.status === "待归档审核" && canReview ? (
+        ARCHIVE_REVIEW_STATUSES.includes(r.status) && canReview ? (
           <Space>
             <Button
               type="link"
@@ -3162,7 +3174,7 @@ export default function CaseCenterPage({
               驳回
             </Button>
           </Space>
-        ) : r.status === "已归档" ? (
+        ) : ARCHIVE_FINAL_STATUSES.includes(r.status) ? (
           <Tag color="green">已归档</Tag>
         ) : getCaseCapability(r).can_archive ? (
           <Button type="link" onClick={() => openArchive(r)}>
@@ -3171,6 +3183,12 @@ export default function CaseCenterPage({
         ) : null,
     },
   ];
+  const archiveRows = cases.filter((row) =>
+    ARCHIVE_REVIEW_STATUSES.includes(row.status)
+    || ARCHIVE_FINAL_STATUSES.includes(row.status)
+    || row.status === "亏损归档拒绝"
+    || Boolean(row.data.archive_reject_reason),
+  );
   const scopedCases =
     initialView.startsWith("case-mine")
       ? cases.filter((r) =>
@@ -3375,7 +3393,7 @@ export default function CaseCenterPage({
     {title:"律师助理",key:"assistant",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.assistant,row.data.assistant_display_name)},
     {title:"案源人",key:"source_person",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.source_person||row.owner,row.data.source_person_display_name||row.owner_display_name)},
     {title:"剩余时间",key:"remaining_days",width:105,render:(_:unknown,row:CaseRow)=>{const end=dayjs(String(row.data.counsel_end||""));const days=end.isValid()?Math.max(0,end.startOf("day").diff(dayjs().startOf("day"),"day")):0;return <span style={{color:days<10?"red":"green"}}>{days} 天</span>;}},
-    {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={["待归档审核","已归档"].includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
+    {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={ARCHIVE_LOCKED_STATUSES.includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
   ];
   const phaseLabels=["等待公证书","审核公证书","待主体披露","新案待分配","文书准备","客户盖章","等待立案","补充取证","提交立案","一审阶段","二审阶段","再审阶段","执行阶段","归档阶段"];
   const criminalPhaseItems=[{label:"待分配",value:"新案待分配"},{label:"公安侦查",value:"公安侦查"},{label:"批捕",value:"批捕"},{label:"检察院审查起诉",value:"检察院审查起诉"},{label:"一审阶段",value:"一审阶段"},{label:"二审阶段",value:"二审阶段"},{label:"再审阶段",value:"再审阶段"},{label:"归档阶段",value:"归档阶段"}];
@@ -3386,7 +3404,7 @@ export default function CaseCenterPage({
   const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog);
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
-  const originalArchiveRows=cases.filter(row=>archiveDone?row.status==="已归档":archiveRefused?Boolean(row.data.archive_reject_reason):row.status==="待归档审核").filter(row=>{
+  const originalArchiveRows=cases.filter(row=>archiveDone?ARCHIVE_FINAL_STATUSES.includes(row.status):archiveRefused?row.status==="亏损归档拒绝"||Boolean(row.data.archive_reject_reason):ARCHIVE_REVIEW_STATUSES.includes(row.status)).filter(row=>{
     const match=(value:unknown,key:string)=>!caseQuery[key]||String(value||"").toLowerCase().includes(String(caseQuery[key]).toLowerCase());
     return match(row.data.plaintiff||row.customer,"plaintiff")&&match(row.serial_no,"serial_no")&&match(row.data.assistant,"assistant")&&match(row.data.court,"court")&&match(row.data.opponent,"defendant")&&match(row.data.notary_no,"notary_no")&&match(row.data.hearing_lawyer,"hearing_lawyer")&&match((row.data.handling_lawyers||[]).join(","),"handling_lawyer")&&match(row.data.archive_submitter||row.owner,"submitter");
   });
@@ -3575,7 +3593,7 @@ export default function CaseCenterPage({
   };
   const primaryOperationLabels = getLegacyCaseDetailPrimaryOperationLabels();
   const moreOperationLabels = getLegacyCaseDetailMoreOperationLabels();
-  const detailEditLocked = Boolean(viewingCounselCase && ["待归档审核", "已归档", "已合并"].includes(viewingCounselCase.status));
+  const detailEditLocked = Boolean(viewingCounselCase && [...ARCHIVE_LOCKED_STATUSES, "已合并"].includes(viewingCounselCase.status));
   const openLegacyBasicInfo = () => {
     if (!viewingCounselCase) return;
     if (viewingCounselCase.data.case_type === "法律顾问") return openCounselEdit(viewingCounselCase);
@@ -3640,10 +3658,10 @@ export default function CaseCenterPage({
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates")}>修改检察院信息</Button>}
     {counselDetailCapabilities.can_edit_basic && ["民事案件", "刑事案件", "行政案件及国家赔偿", "仲裁"].includes(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
     {counselDetailCapabilities.can_archive && <div className="case-detail-legacy-submenu">
-      <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
+      <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-archive-submenu">
-        <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "normal")}>正常归档</Button>
-        <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "deficit")}>亏损归档</Button>
+        <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "normal")}>正常归档</Button>
+        <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "deficit")}>亏损归档</Button>
       </div>
     </div>}
     {(counselDetailCapabilities.can_edit_basic || counselDetailCapabilities.can_merge_case || counselDetailCapabilities.can_duplicate_case) && <div className="case-detail-legacy-submenu case-detail-legacy-more-submenu" data-testid="case-detail-more-operation">
@@ -3802,7 +3820,7 @@ export default function CaseCenterPage({
                 if (key === "archive") void openArchive(selectedCase);
                 if (key === "approve" || key === "reject") {
                   if (!isArchiveManager) return message.warning("当前账号没有归档审核权限");
-                  if (selectedCase.status !== "待归档审核") return message.warning("只有待归档审核案件可执行审核");
+                  if (!ARCHIVE_REVIEW_STATUSES.includes(selectedCase.status)) return message.warning("只有待归档审核案件可执行审核");
                   reviewForm.resetFields();
                   setReviewing({ row: selectedCase, approved: key === "approve" });
                 }
@@ -4023,7 +4041,7 @@ export default function CaseCenterPage({
             loading={loading}
             size="small"
             columns={archiveColumns}
-            dataSource={cases}
+            dataSource={archiveRows}
             scroll={{ x: 1900 }}
             pagination={{ pageSize: 20 }}
           />
@@ -4479,10 +4497,16 @@ export default function CaseCenterPage({
           <section className="case-archive-summary" aria-label="归档信息">
             <div className="case-court-summary-title">归档信息</div>
             <div className="case-court-summary-grid case-archive-summary-grid">
+              <p><strong>归档类型</strong><span>{viewingCounselCase.data.archive_type === "deficit" ? "亏损归档" : viewingCounselCase.data.archive_type === "normal" ? "正常归档" : "—"}</span></p>
               <p><strong>提交人</strong><span>{viewingCounselCase.data.archive_submitter ? casePersonDisplayName(viewingCounselCase.data.archive_submitter, viewingCounselCase.data.archive_submitter_display_name) : "—"}</span></p>
               <p><strong>提交时间</strong><span>{viewingCounselCase.data.archive_submitted_at || "—"}</span></p>
               <p><strong>提交备注</strong><span>{viewingCounselCase.data.archive_submit_comment || "—"}</span></p>
               <p><strong>审核状态</strong><span>{viewingCounselCase.data.archive_status || "—"}</span></p>
+              {viewingCounselCase.data.archive_type === "deficit" && <>
+                <p><strong>内部审核人</strong><span>{viewingCounselCase.data.archive_internal_reviewer ? casePersonDisplayName(viewingCounselCase.data.archive_internal_reviewer) : "—"}</span></p>
+                <p><strong>内部审核时间</strong><span>{viewingCounselCase.data.archive_internal_reviewed_at || "—"}</span></p>
+                <p><strong>内部审核意见</strong><span>{viewingCounselCase.data.archive_internal_review_comment || "—"}</span></p>
+              </>}
               <p><strong>审核人</strong><span>{viewingCounselCase.data.archive_reviewer ? casePersonDisplayName(viewingCounselCase.data.archive_reviewer, viewingCounselCase.data.archive_reviewer_display_name) : "—"}</span></p>
               <p><strong>审核时间</strong><span>{viewingCounselCase.data.archive_reviewed_at || viewingCounselCase.data.archived_at || "—"}</span></p>
               <p><strong>审核备注</strong><span>{viewingCounselCase.data.archive_review_comment || viewingCounselCase.data.archive_reject_reason || "—"}</span></p>
@@ -5085,7 +5109,7 @@ export default function CaseCenterPage({
       </Modal>
       <Modal
         open={Boolean(reviewing)}
-        title={`${reviewing?.approved ? "通过" : "驳回"}归档审核：${reviewing?.row.serial_no || ""}`}
+        title={`${reviewing?.approved ? "通过" : "驳回"}${reviewing?.row.status === "亏损内审" ? "内部审核" : "归档审核"}：${reviewing?.row.serial_no || ""}`}
         okText={reviewing?.approved ? "确认通过" : "确认驳回"}
         okButtonProps={{ danger: reviewing?.approved === false }}
         cancelText="取消"
@@ -5096,9 +5120,13 @@ export default function CaseCenterPage({
           type={reviewing?.approved ? "success" : "warning"}
           showIcon
           title={
-            reviewing?.approved
-              ? "审核通过后案件进入已归档，归档资料只读保留。"
-              : "驳回后案件恢复提交前阶段，经办人修改后可重新提交。"
+            reviewing?.row.status === "亏损内审"
+              ? (reviewing?.approved
+                ? "内部审核通过后案件进入亏损审核，仍需完成最终归档审核。"
+                : "内部审核驳回后案件进入亏损归档拒绝，可查看内部审核意见。")
+              : reviewing?.approved
+                ? `审核通过后案件进入${reviewing?.row.data.archive_type === "deficit" ? "亏损归档" : "已归档"}，归档资料只读保留。`
+                : "驳回后保留审核意见，经办人可根据原因处理。"
           }
           style={{ marginBottom: 16 }}
         />

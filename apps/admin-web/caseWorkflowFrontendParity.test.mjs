@@ -39,6 +39,8 @@ test("archive review validates role and pending status before the API", () => {
   assert.equal(helper.getCaseArchiveReviewValidationError({ role: "user", status: "待归档审核" }), "只有管理员或部门负责人可以审核归档");
   assert.equal(helper.getCaseArchiveReviewValidationError({ role: "admin", status: "执行" }), "只有待归档审核案件可以审核");
   assert.equal(helper.getCaseArchiveReviewValidationError({ role: "manager", status: "待归档审核" }), "");
+  assert.equal(helper.getCaseArchiveReviewValidationError({ role: "manager", status: "亏损内审" }), "");
+  assert.equal(helper.getCaseArchiveReviewValidationError({ role: "admin", status: "亏损审核" }), "");
   assert.match(page, /getCaseArchiveReviewValidationError/);
 });
 

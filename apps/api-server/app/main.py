@@ -935,6 +935,25 @@ async def lifespan(_: FastAPI):
         for contract in approval_contracts:
             if not await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)):
                 db.add(ContractApprovalStep(contract_record_id=contract.id, step_order=1, approver="admin", status="待审批", comment="历史合同补充默认审批节点"))
+        # v1.0.234: earlier builds incorrectly sent deficit archives directly to
+        # the normal final-review queue. Restore the legacy first-stage queue.
+        deficit_archives = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "case",
+            BusinessRecord.status == "待归档审核",
+        ))).all())
+        for record in deficit_archives:
+            data = dict(record.data or {})
+            if data.get("archive_type") != "deficit" or data.get("archive_internal_reviewed_at"):
+                continue
+            record.status = "亏损内审"
+            record.data = {
+                **data,
+                "case_phase": "亏损内审",
+                "case_phase_id": 106016,
+                "archive_status": "待内部审核",
+                "archive_status_code": 7,
+            }
+            await _sync_legacy_case(record, {"username": "system"}, db)
         await db.commit()
     await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
@@ -6002,7 +6021,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         ("待审批线索", by_module["clue"], pending_statuses, None, "待审批内部费用", finances, pending_statuses, fee_match("内部")),
         ("待审批合同", by_module["contract"], pending_statuses, None, "待审批结算费用", finances, pending_statuses, fee_match("结算")),
         ("待审批用印", by_module["seal"], pending_statuses, None, "待审批归档费用", finances, pending_statuses, fee_match("归档")),
-        ("待审核归档", cases, {"待归档审核"}, None, "待审核预损费用", finances, pending_statuses, fee_match("预损")),
+        ("待审核归档", cases, {"待归档审核", "亏损内审", "亏损审核"}, None, "待审核预损费用", finances, pending_statuses, fee_match("预损")),
     ]
     todos = [[left, count(left_rows, left_states, True, left_pred), count(left_rows, left_states, False, left_pred), right, count(right_rows, right_states, True, right_pred), count(right_rows, right_states, False, right_pred)] for left, left_rows, left_states, left_pred, right, right_rows, right_states, right_pred in todo_specs]
     pending_contract_ids = set((await db.scalars(select(ContractApprovalStep.contract_record_id).where(
@@ -8797,7 +8816,7 @@ async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession) -
     case_id = int((item.data or {}).get("case_id") or 0)
     if case_id:
         case = await _ensure_record_visible(case_id, identity, db)
-        if case.status in {"待归档审核", "已归档"}:
+        if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail="归档中的案件费用不可修改或删除")
     return item
 
@@ -12301,7 +12320,7 @@ async def _advance_case_from_fixed_task(task: BusinessRecord, db: AsyncSession, 
     if data.get("task_type") != "固定任务" or task.status != "已验收":
         return
     case_record = await db.get(BusinessRecord, int(data.get("case_id") or 0))
-    if not case_record or case_record.module != "case" or case_record.status in {"待归档审核", "已归档"}:
+    if not case_record or case_record.module != "case" or case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         return
     targets = {"filing-registration": "一审立案受理", "service-tracking": "一审准备开庭"}
     target = targets.get(str(data.get("fixed_task_key") or ""))
@@ -17190,7 +17209,7 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
         if all(existing.id != case.id for existing in cases): cases.append(case)
     for case in cases:
         _require_case_creation_completed(case)
-        if case.status in {"待归档审核", "已归档"}:
+        if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case.serial_no} 已进入归档流程，不能批量修改")
         data = dict(case.data or {})
         changes = []
@@ -17393,7 +17412,7 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     for case_record in ordered_cases:
         await _require_record_owner_or_manager(case_record, identity, db)
         _require_case_creation_completed(case_record)
-        if case_record.status in {"待归档审核", "已归档"}:
+        if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
     created: list[BusinessRecord] = []
     amount = _round_fee_amount(body.amount)
@@ -18262,7 +18281,7 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     if not source:
         raise HTTPException(status_code=404, detail="未找到待合并案件，或当前账号无权查看")
     await _require_record_owner_or_manager(source, identity, db)
-    blocked_statuses = {"待归档审核", "已归档", "已合并"}
+    blocked_statuses = {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     if target.status in blocked_statuses or source.status in blocked_statuses:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能参与合并")
     if source.customer != target.customer:
@@ -18333,7 +18352,7 @@ async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, ident
     data = dict(case_record.data or {})
     if str(data.get("case_type") or "") != "民事案件":
         raise HTTPException(status_code=409, detail="仅民事案件可以维护公证信息")
-    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="当前案件状态不能维护公证信息")
     previous_notary = str(data.get("notary_nos") or data.get("notary_no") or "")
     previous_address = str(data.get("deposit_address") or "")
@@ -18357,7 +18376,7 @@ async def update_case_settlement_amount(case_id: int, body: CaseSettlementAmount
     data = dict(case_record.data or {})
     if str(data.get("case_type") or "") not in {"民事案件", "刑事案件", "行政案件及国家赔偿", "仲裁"}:
         raise HTTPException(status_code=409, detail="当前案件类型不能维护诉讼或判决金额")
-    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="当前案件状态不能维护诉讼或判决金额")
     previous_litigation = data.get("litigation_amount", 0)
     previous_settlement = data.get("settlement_amount", 0)
@@ -18378,7 +18397,7 @@ async def update_case_settlement_amount(case_id: int, body: CaseSettlementAmount
 async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改当事人")
     creation_step = str((case_record.data or {}).get("case_creation_step") or "")
     # New-case wizard records still advance from basic -> litigants. Existing
@@ -18437,7 +18456,7 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
 async def complete_case_creation(case_id: int, body: CaseCreationCompleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能完成新建")
     case_data = case_record.data or {}
     if str(case_data.get("case_type") or "") != "法律顾问":
@@ -18480,7 +18499,7 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
     case_data = case_record.data or {}
     if str(case_data.get("case_type") or "") != "法律顾问":
         raise HTTPException(status_code=409, detail="该接口仅用于法律顾问案件")
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的法律顾问案件不能修改基本信息")
     if str(case_data.get("case_creation_step") or "") != "completed":
         raise HTTPException(status_code=409, detail="请先完成法律顾问案件新建流程")
@@ -18533,7 +18552,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     if case_type not in NORMAL_CASE_BASIC_TYPES:
         raise HTTPException(status_code=409, detail="该接口仅用于民事、刑事、行政及国家赔偿案件")
     _require_case_creation_completed(case_record, require_approval=False)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改基本信息")
     title = body.title.strip()
     phase = body.case_phase.strip()
@@ -18610,7 +18629,7 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     if str(case_data.get("case_type") or "") != "仲裁":
         raise HTTPException(status_code=409, detail="该接口仅用于仲裁案件")
     _require_case_creation_completed(case_record, require_approval=False)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的仲裁案件不能修改基本信息")
     title, phase, cause_or_charge = body.title.strip(), body.case_phase.strip(), body.cause_or_charge.strip()
     active_phase_values = await _active_case_phase_values(db)
@@ -18651,7 +18670,7 @@ async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: As
     record = await _ensure_record_module(case_id, "case", identity, db); await _require_record_owner_or_manager(record, identity, db)
     if str((record.data or {}).get("case_type") or "") != "刑事案件": raise HTTPException(status_code=409, detail="该接口仅用于刑事案件")
     _require_case_creation_completed(record)
-    if record.status in {"待归档审核", "已归档"}: raise HTTPException(status_code=409, detail="归档中的刑事案件不能维护资料")
+    if record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}: raise HTTPException(status_code=409, detail="归档中的刑事案件不能维护资料")
     return record
 
 
@@ -18704,7 +18723,7 @@ async def maintain_criminal_courts(case_id: int, body: CriminalCourtMaintenanceI
 async def update_case_judicial(case_id: int, body: CaseJudicialInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改司法机关信息")
     if str((case_record.data or {}).get("case_creation_step") or "") != "litigants":
         raise HTTPException(status_code=409, detail="请先完成当事人信息")
@@ -18842,7 +18861,7 @@ async def _require_case_detail_write_access(case_record: BusinessRecord, identit
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以办理案件详情")
     _require_case_creation_completed(case_record)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
 
 
@@ -18856,7 +18875,7 @@ async def _require_case_note_write_access(case_record: BusinessRecord, identity:
     """
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件团队成员或系统管理员可以维护案件提醒和日志")
-    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
 
 
@@ -18865,7 +18884,7 @@ async def _require_case_task_write_access(case_record: BusinessRecord, identity:
     role = await _case_team_role(case_record, identity, db)
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以发布案件任务")
-    if case_record.status in {"待归档审核", "已归档", "已合并"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能发布案件任务")
 
 
@@ -18873,7 +18892,7 @@ async def _require_case_attachment_upload_access(case_record: BusinessRecord, id
     """Allow case materials before creation approval without widening other writes."""
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以上传案件文档")
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能上传案件文档")
 
 
@@ -18883,7 +18902,7 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以维护案件进展和开庭排期")
     _require_case_creation_completed(case_record)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
     if case_record.status == "已合并":
         raise HTTPException(status_code=409, detail="已合并案件不能维护进展或开庭排期")
@@ -18895,7 +18914,7 @@ async def _require_case_phase_change_access(case_record: BusinessRecord, identit
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以修改案件阶段")
     _require_case_creation_completed(case_record, require_approval=False)
-    if case_record.status in {"待归档审核", "已归档"}:
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能修改案件阶段")
     if case_record.status == "已合并":
         raise HTTPException(status_code=409, detail="已合并案件不能修改案件阶段")
@@ -20089,7 +20108,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/progress")
 async def update_case_progress(case_id: int, body: CaseProgressInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db); await _require_case_progress_write_access(case_record, identity, db)
-    if case_record.status in {"等待公证书", "等待审核公证书", "待归档审核", "已归档"}: raise HTTPException(status_code=409, detail="当前案件阶段不能登记诉讼进展")
+    if case_record.status in {"等待公证书", "等待审核公证书", "待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}: raise HTTPException(status_code=409, detail="当前案件阶段不能登记诉讼进展")
     values = body.model_dump()
     for key, value in list(values.items()):
         if isinstance(value, date):
@@ -20215,7 +20234,7 @@ async def close_case_for_archive(case_id: int, body: TaskActionInput, identity: 
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
     _require_case_creation_completed(case_record)
-    if case_record.status in {"待归档审核", "已归档"}: raise HTTPException(status_code=409, detail="归档审核中或已归档案件不能重复办结")
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}: raise HTTPException(status_code=409, detail="归档审核中或已归档案件不能重复办结")
     if (case_record.data or {}).get("case_closed_at"): raise HTTPException(status_code=409, detail="案件已经办理办结确认")
     tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all()
     active_tasks = [
@@ -20237,7 +20256,7 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
     await _require_record_owner_or_manager(case_record, identity, db)
     _require_case_creation_completed(case_record)
     if case_record.status == "已归档": raise HTTPException(status_code=409, detail="案件已经归档")
-    if case_record.status == "待归档审核" and body.submit: raise HTTPException(status_code=409, detail="案件已提交归档审核，请等待审核")
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核"} and body.submit: raise HTTPException(status_code=409, detail="案件已提交归档审核，请等待审核")
     checks = await _case_archive_checks(case_record, db)
     archive_type = body.archive_type if body.archive_type in {"normal", "deficit"} else "normal"
     if body.submit and archive_type == "deficit" and not body.comment.strip():
@@ -20257,8 +20276,27 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
             "archive_submit_comment": body.comment.strip(),
             "archive_reject_reason": "",
         }
-        case_record.status = "待归档审核"
-        action = "提交归档审核"
+        if archive_type == "deficit":
+            case_record.status = "亏损内审"
+            case_record.data = {
+                **(case_record.data or {}),
+                "case_phase": "亏损内审",
+                "case_phase_id": 106016,
+                "archive_status": "待内部审核",
+                "archive_status_code": 7,
+                "archive_internal_reviewer": "",
+                "archive_internal_review_comment": "",
+                "archive_internal_reviewed_at": None,
+            }
+            action = "提交亏损归档内部审核"
+        else:
+            case_record.status = "待归档审核"
+            case_record.data = {
+                **(case_record.data or {}),
+                "archive_status": "待审核",
+                "archive_status_code": 10,
+            }
+            action = "提交归档审核"
     type_label = "亏损归档" if archive_type == "deficit" else "正常归档"
     db.add(WorkflowEvent(record_id=case_record.id, action=action, from_status=previous, to_status=case_record.status, operator=identity["username"], comment=body.comment or (f"{type_label}；归档号：{details['archive_no']}；纸质卷宗：{details['paper_archive_location']}，{details['paper_volume_count']} 卷" if body.submit else f"更新{type_label}检查项")))
     await _sync_legacy_case(case_record, identity, db)
@@ -20271,27 +20309,86 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
 async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以审核归档")
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    if case_record.status != "待归档审核": raise HTTPException(status_code=409, detail="只有待归档审核案件可以审核")
-    if body.approved:
+    if case_record.status not in {"待归档审核", "亏损内审", "亏损审核"}: raise HTTPException(status_code=409, detail="只有待归档审核案件可以审核")
+    data = dict(case_record.data or {})
+    archive_type = str(data.get("archive_type") or "normal")
+    if archive_type == "deficit" and case_record.status == "待归档审核" and not data.get("archive_internal_reviewed_at"):
+        case_record.status = "亏损内审"
+    if body.approved and case_record.status != "亏损内审" and archive_type != "deficit":
         checks = await _case_archive_checks(case_record, db)
-        archive_type = str((case_record.data or {}).get("archive_type") or "normal")
-        required_checks = {key: value for key, value in checks.items() if archive_type != "deficit" or key != "fees_settled"}
-        if not all(required_checks.values()):
+        if not all(checks.values()):
             raise HTTPException(status_code=409, detail="归档条件在审核前发生变化，请退回补齐后重新提交")
-    data = case_record.data or {}; previous = case_record.status
-    if body.approved:
-        case_record.status = "已归档"
+    previous = case_record.status
+    reviewed_at = datetime.now()
+    if previous == "亏损内审":
+        case_record.data = {
+            **data,
+            "archive_internal_reviewer": identity["username"],
+            "archive_internal_reviewed_at": reviewed_at.isoformat(timespec="seconds"),
+            "archive_internal_review_comment": body.comment.strip(),
+        }
+        if body.approved:
+            case_record.status = "亏损审核"
+            case_record.data = {
+                **(case_record.data or {}),
+                "case_phase": "亏损审核",
+                "case_phase_id": 106017,
+                "archive_status": "待审核",
+                "archive_status_code": 10,
+                "archive_reject_reason": "",
+            }
+            action = "亏损归档内部审核通过"
+        else:
+            case_record.status = "亏损归档拒绝"
+            case_record.data = {
+                **(case_record.data or {}),
+                "case_phase": "亏损归档拒绝",
+                "case_phase_id": 106019,
+                "archive_status": "已拒绝",
+                "archive_reject_reason": body.comment.strip(),
+            }
+            action = "亏损归档内部审核驳回"
+    elif body.approved:
+        case_record.status = "亏损归档" if archive_type == "deficit" else "已归档"
         archived_at = datetime.now()
-        archive_no = str(data.get("archive_no") or "").strip() or await _next_case_archive_no(db, archived_at.year)
-        case_record.data = {**data, "archived_at": archived_at.isoformat(timespec="seconds"), "archive_no": archive_no, "archive_reviewer": identity["username"], "archive_review_comment": body.comment, "archive_reject_reason": ""}
-        action = "归档审核通过"
+        archive_no = str(data.get("archive_no") or "").strip()
+        if archive_type != "deficit" and not archive_no:
+            archive_no = await _next_case_archive_no(db, archived_at.year)
+        case_record.data = {
+            **data,
+            "case_phase": "亏损归档" if archive_type == "deficit" else data.get("case_phase", "已归档"),
+            "case_phase_id": 106018 if archive_type == "deficit" else data.get("case_phase_id"),
+            "archive_status": "审核通过",
+            "archive_status_code": 20,
+            "archived_at": archived_at.isoformat(timespec="seconds"),
+            "archive_reviewed_at": archived_at.isoformat(timespec="seconds"),
+            "archive_no": archive_no,
+            "archive_reviewer": identity["username"],
+            "archive_review_comment": body.comment.strip(),
+            "archive_reject_reason": "",
+        }
+        action = "亏损归档审核通过" if archive_type == "deficit" else "归档审核通过"
     else:
         restored_status = str(data.get("status_before_archive") or "执行")
-        if restored_status in {"待归档审核", "已归档"}: restored_status = "执行"
-        case_record.status = restored_status
-        case_record.data = {**data, "archive_reviewer": identity["username"], "archive_reviewed_at": datetime.now().isoformat(timespec="seconds"), "archive_reject_reason": body.comment}
-        action = "归档审核驳回"
+        if archive_type == "deficit":
+            case_record.status = "亏损归档拒绝"
+            case_record.data = {
+                **data,
+                "case_phase": "亏损归档拒绝",
+                "case_phase_id": 106019,
+                "archive_status": "已拒绝",
+                "archive_reviewer": identity["username"],
+                "archive_reviewed_at": reviewed_at.isoformat(timespec="seconds"),
+                "archive_reject_reason": body.comment.strip(),
+            }
+            action = "亏损归档审核驳回"
+        else:
+            if restored_status in {"待归档审核", "已归档"}: restored_status = "执行"
+            case_record.status = restored_status
+            case_record.data = {**data, "archive_reviewer": identity["username"], "archive_reviewed_at": reviewed_at.isoformat(timespec="seconds"), "archive_reject_reason": body.comment.strip()}
+            action = "归档审核驳回"
     db.add(WorkflowEvent(record_id=case_record.id, action=action, from_status=previous, to_status=case_record.status, operator=identity["username"], comment=body.comment))
+    await _sync_legacy_case(case_record, identity, db)
     await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
 
@@ -26897,13 +26994,22 @@ async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSes
     legacy.DepositAddress = _legacy_case_text(data.get("deposit_address"), 1000)
     legacy.ConsultantBeginDate = _legacy_case_datetime(data.get("counsel_start"))
     legacy.ConsultantEndDate = _legacy_case_datetime(data.get("counsel_end"))
-    legacy.ArchiveStatus = 20 if record.status == "已归档" else 10 if record.status == "待归档审核" else 0
+    legacy.ArchiveStatus = (
+        20 if record.status in {"已归档", "亏损归档"}
+        else 10 if record.status in {"待归档审核", "亏损审核"}
+        else 7 if record.status == "亏损内审"
+        else 0
+    )
+    legacy.ArchiveTypeId = 2 if data.get("archive_type") == "deficit" else 1 if data.get("archive_type") == "normal" else None
     legacy.FileNo = _legacy_case_text(data.get("archive_no"), 20)
     legacy.ArchivedFileNo = _legacy_case_text(data.get("archive_no"), 100)
     legacy.ClosingTime = _legacy_case_datetime(data.get("case_closed_at"))
     legacy.ToAuditTime = _legacy_case_datetime(data.get("archive_submitted_at"))
     legacy.ToAuditApplicant = _legacy_case_text(data.get("archive_submitter"), 20)
     legacy.ToAuditRemark = _legacy_case_text(data.get("archive_submit_comment"), 2000)
+    legacy.InternalAuditor = _legacy_case_text(data.get("archive_internal_reviewer"), 20)
+    legacy.InternalAuditedTime = _legacy_case_datetime(data.get("archive_internal_reviewed_at"))
+    legacy.InternalAuditedRemark = _legacy_case_text(data.get("archive_internal_review_comment"), 200)
     legacy.Auditor = _legacy_case_text(data.get("archive_reviewer"), 20)
     legacy.AuditedTime = _legacy_case_datetime(data.get("archived_at") or data.get("archive_reviewed_at"))
     legacy.AuditedRemark = _legacy_case_text(data.get("archive_review_comment") or data.get("archive_reject_reason"), 2000)

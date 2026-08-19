@@ -226,18 +226,56 @@ class CaseApiRuntimeContractTests(unittest.IsolatedAsyncioTestCase):
                 select(WorkflowEvent)
                 .where(
                     WorkflowEvent.record_id == self.case_id,
-                    WorkflowEvent.action == "提交归档审核",
+                    WorkflowEvent.action == "提交亏损归档内部审核",
                 )
                 .order_by(WorkflowEvent.id.desc())
             )
 
-        self.assertEqual(case.status, "待归档审核")
+        self.assertEqual(case.status, "亏损内审")
         self.assertEqual(case.data["archive_type"], "deficit")
         self.assertEqual(case.data["archive_submit_comment"], reason)
+        self.assertEqual(case.data["archive_status"], "待内部审核")
+        self.assertEqual(case.data["case_phase_id"], 106016)
         self.assertIsNotNone(legacy_case)
+        self.assertEqual(legacy_case.ArchiveStatus, 7)
+        self.assertEqual(legacy_case.ArchiveTypeId, 2)
         self.assertEqual(legacy_case.ToAuditRemark, reason)
         self.assertIsNotNone(event)
         self.assertEqual(event.comment, reason)
+
+        internal_comment = "无负责人；内部审核同意"
+        internal_response = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": internal_comment},
+        )
+        self.assertEqual(internal_response.status_code, 200, internal_response.text)
+        self.assertEqual(internal_response.json()["status"], "亏损审核")
+
+        async with self.session_factory() as session:
+            case = await session.get(BusinessRecord, self.case_id)
+            legacy_case = await session.scalar(select(LegacyCase).where(LegacyCase.CaseNo == case.serial_no))
+        self.assertEqual(case.data["archive_status"], "待审核")
+        self.assertEqual(case.data["case_phase_id"], 106017)
+        self.assertEqual(case.data["archive_internal_review_comment"], internal_comment)
+        self.assertEqual(legacy_case.ArchiveStatus, 10)
+        self.assertEqual(legacy_case.InternalAuditedRemark, internal_comment)
+
+        final_comment = "亏损归档审核同意"
+        final_response = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": final_comment},
+        )
+        self.assertEqual(final_response.status_code, 200, final_response.text)
+        self.assertEqual(final_response.json()["status"], "亏损归档")
+
+        async with self.session_factory() as session:
+            case = await session.get(BusinessRecord, self.case_id)
+            legacy_case = await session.scalar(select(LegacyCase).where(LegacyCase.CaseNo == case.serial_no))
+        self.assertEqual(case.data["archive_status"], "审核通过")
+        self.assertEqual(case.data["case_phase_id"], 106018)
+        self.assertEqual(case.data["archive_no"], "")
+        self.assertEqual(legacy_case.ArchiveStatus, 20)
+        self.assertEqual(legacy_case.AuditedRemark, final_comment)
 
     async def test_batch_update_preflights_every_case_before_writing(self) -> None:
         before = await self._workflow_event_count()
