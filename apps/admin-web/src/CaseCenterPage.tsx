@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Key } from "react";
 import {
   Alert,
@@ -164,7 +164,44 @@ type CaseAgentStatus = {
   skills?: AgentSkill[];
   error?: string | null;
 };
-type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; sort_order?: number };
+type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; case_type?: string; parent_code?: string; sort_order?: number };
+type CasePhaseListItem = { label: string; value: string; count: number };
+type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
+const LEGACY_PHASE_GROUPS = new Set(["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"]);
+const legacyPhaseGroupFor = (name: string) => {
+  if (name.includes("一审")) return "一审阶段";
+  if (name.includes("二审")) return "二审阶段";
+  if (name.includes("再审")) return "再审阶段";
+  if (name.includes("执行")) return "执行阶段";
+  if (name.includes("归档")) return "归档阶段";
+  return "";
+};
+export const buildLegacyCasePhaseTree = (items: CasePhaseListItem[], catalog: CasePhaseOption[]): CasePhaseTreeItem[] => {
+  const counts = new Map(items.map((item) => [item.value, item.count]));
+  return items.map((item) => {
+    if (!LEGACY_PHASE_GROUPS.has(item.label)) return { ...item, children: [] };
+    const children = catalog
+      .filter((option) => legacyPhaseGroupFor(option.name || option.canonical_name) === item.label)
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+      .map((option) => ({
+        label: option.name,
+        value: option.canonical_name || option.name,
+        count: Number(counts.get(option.canonical_name) ?? counts.get(option.name) ?? 0),
+      }))
+      .filter((child, index, all) => all.findIndex((candidate) => candidate.value === child.value) === index);
+    const aggregate = children.reduce((total, child) => total + child.count, 0);
+    return { ...item, count: aggregate || item.count, children };
+  });
+};
+const renderCasePhaseTree = (options: CasePhaseOption[], parentCode = ""): ReactNode => options
+  .filter((option) => (option.parent_code || "") === parentCode)
+  .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+  .map((option) => (
+    <div key={option.id} className="case-phase-tree-node">
+      <Radio value={option.id}>{option.name}</Radio>
+      <div className="case-phase-tree-children">{renderCasePhaseTree(options, option.code)}</div>
+    </div>
+  ));
 export const scopeCasesByListRoute = (rows: CaseRow[], initialView: string) => {
   const routeCaseType = initialView.includes("civil") ? "民事案件"
     : initialView.includes("criminal") ? "刑事案件"
@@ -374,6 +411,7 @@ type TaskRow = {
   deadline: string;
   priority: string;
   source: string;
+  task_type?: string;
   case_no: string;
   days_remaining?: number | null;
   collaborators?: string[];
@@ -381,6 +419,11 @@ type TaskRow = {
 type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 const CASE_TASK_DEFAULT_PAGE = 1;
 const CASE_TASK_DEFAULT_PAGE_SIZE = 15;
+const caseTaskTypeLabel = (row: TaskRow) => {
+  const taskType = String(row.task_type || "").trim();
+  if (taskType === "固定任务" || taskType === "自动任务" || row.source === "自动任务" || row.source === "自动") return "自动";
+  return "人工";
+};
 const normalizeCaseTaskPageState = (
   payload: any,
   fallbackPage = CASE_TASK_DEFAULT_PAGE,
@@ -621,6 +664,7 @@ export default function CaseCenterPage({
   const [assigning, setAssigning] = useState<CaseRow | null>(null);
   const [hearingOpen, setHearingOpen] = useState(false);
   const [archiving, setArchiving] = useState<CaseRow | null>(null);
+  const [archiveType, setArchiveType] = useState<"normal" | "deficit">("normal");
   const [archiveChecks, setArchiveChecks] = useState<Record<string, boolean>>({});
   const [reviewing, setReviewing] = useState<{
     row: CaseRow;
@@ -629,6 +673,8 @@ export default function CaseCenterPage({
   const [progressEditing, setProgressEditing] = useState<CaseRow | null>(null);
   const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
+  const [phaseCatalog, setPhaseCatalog] = useState<CasePhaseOption[]>([]);
+  const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>({});
   const [executionStatusEditing, setExecutionStatusEditing] = useState<CaseRow[] | null>(null);
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
@@ -1040,6 +1086,12 @@ export default function CaseCenterPage({
       sessionStorage.removeItem("sunhold:case-list-return");
     }
     void (async () => {
+      try {
+        const { data } = await api.get("/cases/phases");
+        setPhaseCatalog((Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[]);
+      } catch {
+        setPhaseCatalog([]);
+      }
       await load();
       if (isCreateView || isCaseDetailView) return;
       if (initialView.includes("counsel")) {
@@ -1282,7 +1334,7 @@ export default function CaseCenterPage({
       },
     });
   };
-  const openArchive = async (row: CaseRow) => {
+  const openArchive = async (row: CaseRow, type: "normal" | "deficit" = "normal") => {
     if (!getCaseCapability(row).can_archive) return message.warning("当前账号没有案件归档权限");
     try {
       const { data } = await api.get(`/cases/${row.id}/archive-readiness`);
@@ -1291,9 +1343,11 @@ export default function CaseCenterPage({
         archive_no: data.archive_no,
         paper_archive_location: data.paper_archive_location,
         paper_volume_count: data.paper_volume_count || 1,
+        archive_type: type,
         comment: "",
       });
       setArchiveChecks(data.checks || {});
+      setArchiveType(type);
       setArchiving(row);
     } catch {
       message.error("归档检查加载失败");
@@ -1314,7 +1368,7 @@ export default function CaseCenterPage({
     if (!archiving) return;
     const v = await archiveForm.validateFields();
     try {
-      await api.post(`/cases/${archiving.id}/archive`, { ...v, submit });
+      await api.post(`/cases/${archiving.id}/archive`, { ...v, archive_type: archiveType, submit });
       message.success(submit ? "已提交归档审核" : "归档检查已保存");
       setArchiving(null);
       load();
@@ -2271,19 +2325,52 @@ export default function CaseCenterPage({
     }
   };
   const isNormalEditableCase = (row: CaseRow) => ["民事案件", "刑事案件", "行政案件及国家赔偿"].includes(String(row.data.case_type || ""));
-  const openNormalCaseEdit = (row: CaseRow) => {
+  const ensureCaseCustomerOption = async (row: CaseRow) => {
+    let customerId = Number(row.data.customer_record_id || row.data.customer_id) || caseCustomers.find((item) => item.title === row.customer)?.id || 0;
+    if (customerId && !caseCustomers.some((item) => item.id === customerId)) {
+      try {
+        const { data } = await api.get(`/records/${customerId}`);
+        if (data?.module === "customer") {
+          setCaseCustomers((current) => current.some((item) => item.id === data.id) ? current : [...current, data]);
+          return Number(data.id) || customerId;
+        }
+      } catch {
+        // Fall through to the name lookup for legacy cases without a usable link.
+      }
+    }
+    if (!customerId && row.customer) {
+      try {
+        const { data } = await api.get("/records", { params: { module: "customer", keyword: row.customer, page_size: 100 } });
+        const match = (data.items || []).find((item: CaseRow) => item.title === row.customer);
+        if (match) {
+          customerId = Number(match.id);
+          setCaseCustomers((current) => current.some((item) => item.id === match.id) ? current : [...current, match]);
+        }
+      } catch {
+        // Keep the standard validation error when the linked customer is not visible.
+      }
+    }
+    if (!customerId && row.customer) {
+      const legacyCustomerId = -Math.max(Number(row.id) || 1, 1);
+      setCaseCustomers((current) => current.some((item) => item.id === legacyCustomerId) ? current : [...current, { id: legacyCustomerId, serial_no: "", title: row.customer, status: "正常", data: {} } as CaseRow]);
+      return legacyCustomerId;
+    }
+    return customerId;
+  };
+  const openNormalCaseEdit = async (row: CaseRow) => {
     if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
     if (!isNormalEditableCase(row)) return message.warning("当前案件类型没有普通案件基本信息修改入口");
+    const customerRecordId = await ensureCaseCustomerOption(row);
     const clueIds = Array.isArray(row.data.investigation_clue_ids) ? row.data.investigation_clue_ids.map(Number).filter(Boolean) : (Number(row.data.investigation_clue_id || row.data.clue_record_id) ? [Number(row.data.investigation_clue_id || row.data.clue_record_id)] : []);
     normalCaseEditForm.setFieldsValue({
-      customer_record_id: Number(row.data.customer_record_id || row.data.customer_id) || caseCustomers.find((item) => item.title === row.customer)?.id,
+      customer_record_id: customerRecordId || undefined,
       title: row.title,
       case_phase: row.status,
       cause_or_charge: row.data.cause_or_charge || "",
       handling_lawyers: row.data.handling_lawyers || [],
       assistant: row.data.assistant || "",
-      business_owner: row.data.business_owner || row.data.source_person || "",
-      investigator: row.data.investigator || "",
+      business_owner: resolveCasePersonValue(row.data.business_owner || row.data.source_person || ""),
+      investigator: resolveCasePersonValue(row.data.investigator || ""),
       investigation_clue_ids: clueIds,
       right_type: row.data.right_type || "",
       comment: "",
@@ -2293,10 +2380,10 @@ export default function CaseCenterPage({
   const saveNormalCaseBasic = async () => {
     if (!editingNormalCase) return;
     const values = await normalCaseEditForm.validateFields();
-    const validationError = getCaseEditValidationError(values);
+    const validationError = getCaseEditValidationError(Number(editingNormalCase.data.customer_record_id || editingNormalCase.data.customer_id) ? values : { ...values, customer_record_id: 1 });
     if (validationError) return message.warning(validationError);
     try {
-      const { data } = await api.put(`/cases/${editingNormalCase.id}/normal-basic`, normalizeCaseEditPayload(values, "normal"));
+      const { data } = await api.put(`/cases/${editingNormalCase.id}/normal-basic`, normalizeCaseEditPayload({ ...values, customer_record_id: Number(values.customer_record_id) > 0 ? values.customer_record_id : null, legacy_case_edit: true }, "normal"));
       message.success("案件基本信息已保存");
       setEditingNormalCase(null);
       setViewingCounselCase(data);
@@ -2305,13 +2392,14 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件基本信息保存失败");
     }
   };
-  const openArbitrationBasicEdit = (row: CaseRow) => {
+  const openArbitrationBasicEdit = async (row: CaseRow) => {
     if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
     if (row.data.case_type !== "仲裁") return message.warning("当前案件不是仲裁案件");
+    const customerRecordId = await ensureCaseCustomerOption(row);
     arbitrationBasicForm.setFieldsValue({
-      customer_record_id: Number(row.data.customer_record_id || row.data.customer_id) || caseCustomers.find(item=>item.title===row.customer)?.id,
+      customer_record_id: customerRecordId || undefined,
       title: row.title, case_phase: row.status, cause_or_charge: row.data.cause_or_charge || "",
-      handling_lawyers: row.data.handling_lawyers || [], assistant: row.data.assistant || "", investigator: row.data.investigator || "",
+      handling_lawyers: row.data.handling_lawyers || [], assistant: row.data.assistant || "", investigator: resolveCasePersonValue(row.data.investigator || ""),
       investigation_clue_ids: Array.isArray(row.data.investigation_clue_ids) ? row.data.investigation_clue_ids : [], comment: "",
     });
     setEditingArbitrationCase(row);
@@ -2319,10 +2407,10 @@ export default function CaseCenterPage({
   const saveArbitrationBasic = async () => {
     if (!editingArbitrationCase) return;
     const values = await arbitrationBasicForm.validateFields();
-    const validationError = getCaseEditValidationError(values);
+    const validationError = getCaseEditValidationError(Number(editingArbitrationCase.data.customer_record_id || editingArbitrationCase.data.customer_id) ? values : { ...values, customer_record_id: 1 });
     if (validationError) return message.warning(validationError);
     try {
-      const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, normalizeCaseEditPayload(values, "arbitration"));
+      const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, normalizeCaseEditPayload({ ...values, customer_record_id: Number(values.customer_record_id) > 0 ? values.customer_record_id : null, legacy_case_edit: true }, "arbitration"));
       message.success("仲裁案件基本信息已保存"); setEditingArbitrationCase(null); setViewingCounselCase(data); await load();
     } catch(error:any) { message.error(error?.response?.data?.detail||"仲裁案件基本信息保存失败"); }
   };
@@ -2374,7 +2462,6 @@ export default function CaseCenterPage({
     if (!editingCaseHearingLawyer) return;
     const values = await caseHearingLawyerForm.validateFields();
     const handling = Array.isArray(editingCaseHearingLawyer.data.handling_lawyers) ? editingCaseHearingLawyer.data.handling_lawyers : [];
-    if (!handling.length) return message.error("请先分配经办律师后再修改开庭律师");
     try {
       const { data } = await api.post(`/cases/${editingCaseHearingLawyer.id}/assign`, {
         customer_manager: editingCaseHearingLawyer.data.customer_manager || "",
@@ -2421,6 +2508,7 @@ export default function CaseCenterPage({
         deadline: formatRequiredDate(v.deadline, "截止日期"),
         priority: v.priority || "普通",
         source: taskKind,
+        task_type: "手动任务",
         description: v.description || "",
       });
       message.success(`${taskKind}已创建`);
@@ -2747,28 +2835,50 @@ export default function CaseCenterPage({
   };
   const submitCompanyScheduleCourtInfo = async () => {
     if (!companyScheduleCourtInfo) return;
-    if (!["first", "second"].includes(companyScheduleCourtInfo.level)) {
-      message.warning("当前环境尚未提供执行、再审法院信息的独立保存接口");
-      return;
-    }
     try {
       const values = await companyScheduleCourtInfoForm.validateFields();
+      const readCourtField = (name: string) => {
+        const formValue = values[name];
+        if (typeof formValue === "string" && formValue.trim()) return formValue;
+        const inputValue = (document.querySelector(`.ant-modal-root input#${name}`) as HTMLInputElement | null)?.value || "";
+        return inputValue || formValue || "";
+      };
+      const courtValue = readCourtField("court");
+      const caseNoValue = readCourtField("case_no");
+      const courtroomValue = readCourtField("courtroom");
+      const judgeValue = readCourtField("judge");
+      const clerkValue = readCourtField("clerk");
       const firstInstance = companyScheduleCourtInfo.level === "first";
       const levelLabel = getCompanyScheduleCourtLevels().find(([key]) => key === companyScheduleCourtInfo.level)?.[1] || "";
-      const { data } = await api.post(`/cases/${companyScheduleCourtInfo.row.id}/progress`, {
-        first_instance_court: firstInstance ? values.court : companyScheduleCourtInfo.row.data.first_instance_court || "",
-        first_instance_case_no: firstInstance ? values.case_no : companyScheduleCourtInfo.row.data.first_instance_case_no || "",
-        second_instance_court: firstInstance ? companyScheduleCourtInfo.row.data.second_instance_court || "" : values.court,
-        second_instance_case_no: firstInstance ? companyScheduleCourtInfo.row.data.second_instance_case_no || "" : values.case_no,
-        courtroom: values.courtroom || "",
-        judge: values.judge || "",
-        clerk: values.clerk || "",
-        judgment_date: values.judgment_date?.format("YYYY-MM-DD"),
+      const data = companyScheduleCourtInfo.row.data || {};
+      const levelPrefix = `${companyScheduleCourtInfo.level}_court`;
+      const payload: Record<string, unknown> = {
+        first_instance_court: firstInstance ? values.court || "" : data.first_instance_court || "",
+        first_instance_case_no: firstInstance ? values.case_no || "" : data.first_instance_case_no || "",
+        second_instance_court: companyScheduleCourtInfo.level === "second" ? values.court || "" : data.second_instance_court || "",
+        second_instance_case_no: companyScheduleCourtInfo.level === "second" ? values.case_no || "" : data.second_instance_case_no || "",
+        execution_court_name: companyScheduleCourtInfo.level === "execution" ? courtValue : data.execution_court_name || "",
+        execution_court_case_no: companyScheduleCourtInfo.level === "execution" ? caseNoValue : data.execution_court_case_no || "",
+        retrial_court_name: companyScheduleCourtInfo.level === "retrial" ? courtValue : data.retrial_court_name || "",
+        retrial_court_case_no: companyScheduleCourtInfo.level === "retrial" ? caseNoValue : data.retrial_court_case_no || "",
+        courtroom: firstInstance ? courtroomValue : data.courtroom || "",
+        judge: firstInstance ? judgeValue : data.judge || "",
+        clerk: firstInstance ? clerkValue : data.clerk || "",
+        judgment_date: firstInstance ? values.judgment_date?.format("YYYY-MM-DD") || null : data.judgment_date || null,
+        [`${levelPrefix}_name`]: courtValue,
+        [`${levelPrefix}_case_no`]: caseNoValue,
+        [`${levelPrefix}_courtroom`]: courtroomValue,
+        [`${levelPrefix}_judge`]: judgeValue,
+        [`${levelPrefix}_clerk`]: clerkValue,
+        [`${levelPrefix}_filing_date`]: values.filing_date?.format("YYYY-MM-DD") || null,
+        [`${levelPrefix}_hearing_date`]: values.hearing_date?.format("YYYY-MM-DD HH:mm:ss") || null,
+        [`${levelPrefix}_judgment_date`]: values.judgment_date?.format("YYYY-MM-DD") || null,
         comment: `修改${levelLabel}法院信息`,
-      });
+      };
+      const { data: updatedCase } = await api.post(`/cases/${companyScheduleCourtInfo.row.id}/progress`, payload);
       message.success(`${levelLabel}法院信息已更新`);
       cancelCompanyScheduleCourtInfo();
-      await openCounselDetail(data);
+      await openCounselDetail(updatedCase);
       void load();
     } catch (error: any) {
       if (!error?.errorFields) message.error(error?.response?.data?.detail || "法院信息更新失败");
@@ -3273,6 +3383,7 @@ export default function CaseCenterPage({
   const phaseItems = counselListMode
     ? buildCasePhaseItems(scopedCases,initialView,phaseDefinitions)
     : buildCasePhaseItemsFromCounts(ordinaryPhaseCounts,phaseDefinitions);
+  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog);
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?row.status==="已归档":archiveRefused?Boolean(row.data.archive_reject_reason):row.status==="待归档审核").filter(row=>{
@@ -3528,7 +3639,13 @@ export default function CaseCenterPage({
     </div>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates")}>修改检察院信息</Button>}
     {counselDetailCapabilities.can_edit_basic && ["民事案件", "刑事案件", "行政案件及国家赔偿", "仲裁"].includes(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
-    {counselDetailCapabilities.can_archive && <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase)}>{primaryOperationLabels[7]}</Button>}
+    {counselDetailCapabilities.can_archive && <div className="case-detail-legacy-submenu">
+      <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
+      <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-archive-submenu">
+        <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "normal")}>正常归档</Button>
+        <Button type="text" block disabled={["待归档审核", "已归档"].includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "deficit")}>亏损归档</Button>
+      </div>
+    </div>}
     {(counselDetailCapabilities.can_edit_basic || counselDetailCapabilities.can_merge_case || counselDetailCapabilities.can_duplicate_case) && <div className="case-detail-legacy-submenu case-detail-legacy-more-submenu" data-testid="case-detail-more-operation">
       <Button type="text" block className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[8]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-more-operation-panel">{caseDetailMoreActionButtons}</div>
@@ -3711,7 +3828,17 @@ export default function CaseCenterPage({
           }}>解档审批</Button>}
         </Space></div>
       </Card> : originalListMode && <div className="case-original-layout">
-        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div>{phaseItems.map(({label,value,count})=><button key={value} type="button" onClick={()=>void searchByPhase(value)}>📁 {label}【{count}】</button>)}</aside>
+        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div><div className="case-phase-tree">{phaseTreeItems.map(({label,value,count,children})=>{
+          const grouped = children.length > 0 || LEGACY_PHASE_GROUPS.has(label);
+          const expanded = Boolean(expandedPhaseGroups[label]);
+          return <div key={value} className={grouped ? "case-phase-group" : "case-phase-group case-phase-group-leaf"}>
+            <div className="case-phase-row">
+              {grouped ? <button type="button" className="case-phase-toggle" aria-label={`${expanded ? "收起" : "展开"}${label}`} onClick={()=>setExpandedPhaseGroups((current)=>({...current,[label]:!expanded}))}>{expanded ? "▾" : "▸"}</button> : <span className="case-phase-toggle-placeholder" />}
+              <button type="button" className="case-phase-filter" onClick={()=>void searchByPhase(value)}>📁 {label}【{count}】</button>
+            </div>
+            {expanded && <div className="case-phase-children">{children.map((child)=><button key={`${label}-${child.value}`} type="button" className="case-phase-child" onClick={()=>void searchByPhase(child.value)}>📁 {child.label}【{child.count}】</button>)}</div>}
+          </div>;
+        })}</div></aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
           <Form form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>
             {counselListMode ? <>
@@ -3933,12 +4060,11 @@ export default function CaseCenterPage({
         title={`修改法院信息 · ${companyScheduleCourtLevelLabel}`}
         okText="保存"
         cancelText="取消"
-        okButtonProps={{disabled:Boolean(companyScheduleCourtInfo && !["first", "second"].includes(companyScheduleCourtInfo.level))}}
+        okButtonProps={{disabled:false}}
         onOk={() => void submitCompanyScheduleCourtInfo()}
         onCancel={cancelCompanyScheduleCourtInfo}
         destroyOnHidden
       >
-        {companyScheduleCourtInfo && !["first", "second"].includes(companyScheduleCourtInfo.level) && <Alert type="info" showIcon title="执行、再审法院信息当前仅供核对；本地专用保存接口尚未开放。" style={{marginBottom:12}} />}
         <Form form={companyScheduleCourtInfoForm} layout="vertical">
           <div className="form-grid">
             <Form.Item label="法院" name="court"><Input placeholder="法院" /></Form.Item>
@@ -4027,9 +4153,7 @@ export default function CaseCenterPage({
         <Form form={phaseForm}>
           <Form.Item name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
             <Radio.Group className="case-phase-change-options">
-              {phaseOptions.map((option) => (
-                <Radio key={option.id} value={option.id}>{option.name}</Radio>
-              ))}
+              {renderCasePhaseTree(phaseOptions)}
             </Radio.Group>
           </Form.Item>
         </Form>
@@ -4324,7 +4448,7 @@ export default function CaseCenterPage({
                   <tr><th>案件名称</th><td colSpan={3}>{viewingCounselCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayName(viewingCounselCase.data.hearing_lawyer||viewingCounselCase.data.handling_lawyers?.[0],viewingCounselCase.data.hearing_lawyer_display_name)}</td><th>被告</th><td>{viewingCounselCase.data.defendant||viewingCounselCase.data.opponent||caseDetailNames(viewingCounselCase.data.defendants)}</td></tr>
                   <tr><th>客户</th><td colSpan={3}><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCounselCase.data.customer_id) || undefined, serial_no: viewingCounselCase.data.customer_no, title: viewingCounselCase.customer })}>{viewingCounselCase.customer||"—"}</Button></td><th>经办律师</th><td>{casePersonDisplayNames(viewingCounselCase.data.handling_lawyers)}</td><th>第三人</th><td>{viewingCounselCase.data.third_party||caseDetailNames(viewingCounselCase.data.third_parties)}</td></tr>
                   <tr><th>合同号</th><td>{viewingCounselCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCounselCase.data.contract_record_id) || undefined, serial_no: viewingCounselCase.data.contract_no })}>{viewingCounselCase.data.contract_no}</Button>:"—"}</td><th>调查员</th><td>{casePersonDisplayName(viewingCounselCase.data.investigator,viewingCounselCase.data.investigator_display_name)}</td><th>律师助理</th><td>{casePersonDisplayName(viewingCounselCase.data.assistant,viewingCounselCase.data.assistant_display_name)}</td><th>公证书号</th><td>{viewingCounselCase.data.notarial_no||viewingCounselCase.data.notary_no||viewingCounselCase.data.certificate_no||"—"}</td></tr>
-                  <tr><th>线索号</th><td colSpan={3}>{String(viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no||viewingCounselCase.data.investigation_clue_nos||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCounselCase.data.clue_record_id || viewingCounselCase.data.investigation_clue_id) || undefined, serial_no: viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no || viewingCounselCase.data.investigation_clue_nos })}>{caseDetailNames(viewingCounselCase.data.investigation_clue_nos||viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no)}</Button>:"—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCounselCase.data.case_register_date||viewingCounselCase.data.filing_date||viewingCounselCase.data.first_court_filing_date)}</td><th>仓库位置</th><td>{viewingCounselCase.data.warehouse||viewingCounselCase.data.warehouse_location||viewingCounselCase.data.storage_location||viewingCounselCase.data.location||"—"}</td></tr>
+                  <tr><th>线索号</th><td colSpan={3}>{String(viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no||viewingCounselCase.data.investigation_clue_nos||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCounselCase.data.clue_record_id || viewingCounselCase.data.investigation_clue_id) || undefined, serial_no: viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no || viewingCounselCase.data.investigation_clue_nos })}>{caseDetailNames(viewingCounselCase.data.investigation_clue_nos||viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no)}</Button>:"—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCounselCase.data.case_register_date||viewingCounselCase.data.filing_date||viewingCounselCase.data.first_court_filing_date)}</td><th>仓库位置</th><td>{viewingCounselCase.data.warehouse||viewingCounselCase.data.warehouse_location||viewingCounselCase.data.storage_location||viewingCounselCase.data.location||viewingCounselCase.data.deposit_address||"—"}</td></tr>
                   <tr><th>诉讼标的</th><td>{viewingCounselCase.data.litigation_subject||viewingCounselCase.data.litigation_amount||"—"}</td><th>判决/调解金额</th><td>{viewingCounselCase.data.judgment_amount||viewingCounselCase.data.settlement_amount||viewingCounselCase.data.mediation_amount||"—"}</td><th>分案日期</th><td>{caseDetailDate(viewingCounselCase.data.case_divisional_date||viewingCounselCase.data.assignment_date)}</td><th>案源人</th><td>{casePersonDisplayName(viewingCounselCase.data.business_owner||viewingCounselCase.data.source_person||viewingCounselCase.owner,viewingCounselCase.data.business_owner_display_name||viewingCounselCase.data.source_person_display_name||viewingCounselCase.owner_display_name)}</td></tr>
                 </tbody>
               </table>
@@ -4333,12 +4457,17 @@ export default function CaseCenterPage({
           {viewingCounselCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
             <div className="case-court-summary-title">法院信息</div>
             <div className="case-court-summary-grid">
-              <p><strong>一审法院</strong><span>{viewingCounselCase.data.first_court_name||viewingCounselCase.data.court||"—"}</span></p>
+              <p><strong>一审法院</strong><span>{viewingCounselCase.data.first_court_name||viewingCounselCase.data.first_instance_court||viewingCounselCase.data.court||"—"}</span></p>
               <p><strong>法庭</strong><span>{viewingCounselCase.data.first_court_courtroom||"—"}</span></p>
               <p><strong>一审案号</strong><span>{viewingCounselCase.data.first_court_case_no||viewingCounselCase.data.court_case_no||"—"}</span></p>
               <p><strong>立案时间</strong><span>{viewingCounselCase.data.first_court_filing_date||viewingCounselCase.data.filing_date||"—"}</span></p>
               <p><strong>开庭时间</strong><span>{viewingCounselCase.data.first_court_hearing_date||viewingCounselCase.data.hearing_date||"—"}</span></p>
               <p><strong>判决日期</strong><span>{viewingCounselCase.data.first_court_judgment_date||viewingCounselCase.data.judgment_date||"—"}</span></p>
+              <p><strong>二审法院</strong><span>{viewingCounselCase.data.second_court_name||viewingCounselCase.data.second_instance_court||"—"}</span></p>
+              <p><strong>二审法庭</strong><span>{viewingCounselCase.data.second_court_courtroom||"—"}</span></p>
+              <p><strong>二审案号</strong><span>{viewingCounselCase.data.second_court_case_no||viewingCounselCase.data.second_instance_case_no||"—"}</span></p>
+              <p><strong>二审立案日期</strong><span>{viewingCounselCase.data.second_court_filing_date||"—"}</span></p>
+              <p><strong>二审开庭日期</strong><span>{viewingCounselCase.data.second_court_hearing_date||"—"}</span></p>
               <p><strong>执行法院</strong><span>{viewingCounselCase.data.execution_court_name||"—"}</span></p>
               <p><strong>法庭</strong><span>{viewingCounselCase.data.execution_court_courtroom||"—"}</span></p>
               <p><strong>执行案号</strong><span>{viewingCounselCase.data.execution_court_case_no||"—"}</span></p>
@@ -4457,7 +4586,7 @@ export default function CaseCenterPage({
                 <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1180}} dataSource={counselDetailTasks.filter(row=>row.source!=="客户任务")} columns={[
                   {title:"序号",width:65,render:(_:unknown,_row:TaskRow,index:number)=>index+1},
                   {title:"任务编号",dataIndex:"serial_no",width:155,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},
-                  {title:"类型",dataIndex:"source",width:90,ellipsis:true},
+                  {title:"类型",width:90,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},
                   {title:"标题",dataIndex:"title",width:280,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},
                   {title:"提交时间",width:120,render:(_:unknown,row:TaskRow)=>String((row as any).created_at||(row as any).submitted_at||"").slice(0,10)||"—"},
                   {title:"截止日期",dataIndex:"deadline",width:120,ellipsis:true},
@@ -4471,7 +4600,7 @@ export default function CaseCenterPage({
               </div>},
               {key:"customer-tasks",label:"客户任务",children:<div className="case-legacy-tab-panel">
                 {counselDetailCapabilities.can_create_case_task&&<Button type="primary" icon={<PlusOutlined/>} style={{marginBottom:10}} onClick={()=>openCustomerTaskCreator(viewingCounselCase)}>发布客户任务</Button>}
-                <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",dataIndex:"source",width:100,ellipsis:true},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
+                <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailTasks.filter(row=>row.source==="客户任务")} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",width:100,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
               </div>},
               {key:"clues",label:"线索信息",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1540}} dataSource={counselDetailClues} columns={[
@@ -4701,15 +4830,20 @@ export default function CaseCenterPage({
       >
         <Alert type="info" showIcon title="此表单对应旧系统民事、刑事、行政及国家赔偿案件的基本信息修改；归档案件和无办理权限账号不能保存。" style={{marginBottom:12}}/>
         <Form form={normalCaseEditForm} layout="vertical">
-          <Form.Item name="case_phase" hidden><Input /></Form.Item>
-          <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
+          <Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}>
+            <Select showSearch optionFilterProp="label" options={phaseCatalog.map((option) => ({
+              value: option.canonical_name || option.name,
+              label: option.name,
+            }))} />
+          </Form.Item>
+          <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select disabled={!Number(editingNormalCase?.data.customer_record_id || editingNormalCase?.data.customer_id)} showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label={editingNormalCase?.data.case_type === "刑事案件" ? "罪名/案由" : "案由"} name="cause_or_charge" rules={[{required:true,message:"请输入案由或罪名"}]}><Input/></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
             <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
-            <Form.Item label="调查员" name="investigator"><Input/></Form.Item>
-            {editingNormalCase?.data.case_type === "民事案件" && <Form.Item label="案源人" name="business_owner"><Input/></Form.Item>}
+            <Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
+            {editingNormalCase?.data.case_type === "民事案件" && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
@@ -4720,9 +4854,9 @@ export default function CaseCenterPage({
         <Alert type="info" showIcon title="仲裁案件使用独立基本信息流程，不复用民事、刑事、行政或法律顾问案件接口。" style={{marginBottom:12}}/>
         <Form form={arbitrationBasicForm} layout="vertical">
           <Form.Item name="case_phase" hidden><Input /></Form.Item>
-          <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
+          <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select disabled={!Number(editingArbitrationCase?.data.customer_record_id || editingArbitrationCase?.data.customer_id)} showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
-          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><Input/></Form.Item></div>
+          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item></div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -4781,7 +4915,9 @@ export default function CaseCenterPage({
       </Modal>
       <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
         <Form form={caseHearingLawyerForm} layout="vertical">
-          <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请输入开庭律师"}]}><Input placeholder="输入在职律师姓名" /></Form.Item>
+          <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}>
+            <Select allowClear showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="输入关键词选择在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" />
+          </Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
@@ -4883,65 +5019,28 @@ export default function CaseCenterPage({
       <Modal
         width={620}
         open={Boolean(archiving)}
-        title={`归档检查：${archiving?.serial_no || ""}`}
+        title={`${archiveType === "deficit" ? "亏损归档申请" : "正常归档申请"}：${archiving?.serial_no || ""}`}
         okText="提交归档审核"
         cancelText="取消"
         onOk={() => archive(true)}
         onCancel={() => setArchiving(null)}
         footer={() => (
           <>
-            <Button onClick={() => archive(false)}>保存检查</Button>
             <Button onClick={() => setArchiving(null)}>取消</Button>
-            <Button type="primary" onClick={() => archive(true)}>提交归档审核</Button>
+            <Button type="primary" onClick={() => archive(true)}>申请归档</Button>
           </>
         )}
       >
         <Alert
-          type="warning"
+          type="info"
           showIcon
-          title="四项条件由系统根据办结记录、费用、归档附件和财务状态自动核验；审核通过才会正式归档。"
+          title="请检查待归档案件材料是否齐全、退费是否有退完。归档号由系统在归档审核通过后自动生成。"
         />
-        {!archiveChecks.case_closed && <Button style={{marginTop:12}} onClick={closeCase}>确认案件办结</Button>}
         <Form
           form={archiveForm}
           layout="vertical"
           className="archive-check-form"
         >
-          <Form.Item name="case_closed" valuePropName="checked">
-            <Checkbox disabled>案件已经办结或终止（系统核验）</Checkbox>
-          </Form.Item>
-          <Form.Item name="fees_settled" valuePropName="checked">
-            <Checkbox disabled>官方费用、内部费用及结算费用已结清（系统核验）</Checkbox>
-          </Form.Item>
-          <Form.Item name="documents_complete" valuePropName="checked">
-            <Checkbox disabled>委托材料、证据材料、诉讼文书和裁判文书齐全（系统核验）</Checkbox>
-          </Form.Item>
-          <Form.Item name="finance_complete" valuePropName="checked">
-            <Checkbox disabled>回款、开票、退费及财务流程已完成（系统核验）</Checkbox>
-          </Form.Item>
-          <div className="form-grid">
-            <Form.Item
-              label="案件归档号"
-              name="archive_no"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item
-              label="纸质卷宗卷数"
-              name="paper_volume_count"
-              rules={[{ required: true }]}
-            >
-              <Input type="number" min={1} />
-            </Form.Item>
-          </div>
-          <Form.Item
-            label="纸质卷宗存放位置"
-            name="paper_archive_location"
-            rules={[{ required: true }]}
-          >
-            <Input placeholder="例如：上海档案室 A-03-12" />
-          </Form.Item>
           <Form.Item label="归档意见" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>

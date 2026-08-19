@@ -62,7 +62,7 @@ export const buildCaseCreatePayload = (
   investigation_clue: text(draft.investigation_clue),
 });
 
-export const getCaseEditValidationError = (draft: Record<string, unknown>) => {
+export const getCaseEditValidationError = (draft: Record<string, unknown>, requireCustomer = true) => {
   if (!Number(draft.customer_record_id)) return "请选择可见且有效的客户.";
   if (!text(draft.case_phase)) return "请选择案件阶段.";
   if (!text(draft.cause_or_charge)) return "请输入案由或罪名.";
@@ -72,7 +72,8 @@ export const getCaseEditValidationError = (draft: Record<string, unknown>) => {
 };
 
 export const normalizeCaseEditPayload = (draft: Record<string, unknown>, kind: CaseEditKind) => ({
-  customer_record_id: Number(draft.customer_record_id),
+  customer_record_id: Number(draft.customer_record_id) > 0 ? Number(draft.customer_record_id) : null,
+  legacy_case_edit: Boolean(draft.legacy_case_edit),
   title: text(draft.title),
   case_phase: text(draft.case_phase),
   cause_or_charge: text(draft.cause_or_charge),

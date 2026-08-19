@@ -4,6 +4,7 @@ import {
   AutoComplete,
   Button,
   Card,
+  Cascader,
   Checkbox,
   DatePicker,
   Descriptions,
@@ -409,12 +410,10 @@ export default function InvestigationCenterPage({
     const inheritedProvince = String(target.data.province || "").trim();
     const province = allowedGroups.some((group) => group.province === inheritedProvince)
       ? inheritedProvince
-      : allowedGroups[0]?.province || "";
+      : "";
     const provinceGroup = allowedGroups.find((group) => group.province === province);
     const inheritedCity = String(target.data.city || "").trim();
-    const city = provinceGroup?.cities.includes(inheritedCity)
-      ? inheritedCity
-      : provinceGroup?.cities[0] || "";
+    const city = provinceGroup?.cities.includes(inheritedCity) ? inheritedCity : "";
     taskForm.resetFields();
     taskForm.setFieldsValue({
       title: `${target.title || target.serial_no} - 调查子任务`,
@@ -431,6 +430,7 @@ export default function InvestigationCenterPage({
       authorization_scope: String(target.data.authorization_scope || "").trim(),
       province,
       city,
+      region_path: province && city ? [province, city] : [],
       contract_record_id:
         target.data.contract_id || target.data.contract_record_id || undefined,
     });
@@ -1391,16 +1391,28 @@ export default function InvestigationCenterPage({
       const parentTask =
         existingTasks.find((task) => !task.parent_task_id) || existingTasks[0];
       const hasParent = Boolean(parentTask);
+      const taskContext =
+        createSubtask && parentTask
+          ? ({
+              ...row,
+              title: parentTask.title || row.title,
+              serial_no: parentTask.serial_no || row.serial_no,
+              data: {
+                ...(parentTask.data || {}),
+                ...(row.data || {}),
+              },
+            } as Row)
+          : row;
       setTaskTarget(row);
       setTasks(existingTasks);
-      setCreatingSubtask(createSubtask && hasParent);
-      resetTaskForm(row);
+      // The investigation record is itself the parent task. A first child
+      // can therefore be created even when no task projection exists yet.
+      setCreatingSubtask(Boolean(createSubtask));
+      resetTaskForm(taskContext);
       taskForm.setFieldValue(
         "parent_task_id",
         createSubtask && hasParent ? parentTask.id : undefined,
       );
-      if (createSubtask && !hasParent)
-        message.warning("先创建首个调查任务；后续“新增子任务”将自动关联该任务");
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
@@ -1416,12 +1428,15 @@ export default function InvestigationCenterPage({
     if (!taskTarget) return;
     try {
       const v = await taskForm.validateFields();
+      const regionPath = Array.isArray(v.region_path) ? v.region_path : [];
       await api.post(`/investigations/${taskTarget.id}/tasks`, {
         ...v,
-        authorization_scope:
-          [v.province, v.city].filter(Boolean).join("、") ||
-          v.authorization_scope ||
-          "",
+        province: regionPath[0] || v.province || "",
+        city: regionPath[1] || v.city || "",
+        // Keep the selected investigation area distinct from the inherited
+        // authorization scope.  The API still inherits the scope from the
+        // parent when this concrete province/city path is supplied.
+        authorization_scope: regionPath.length ? "" : v.authorization_scope || "",
         deadline: formatRequiredDate(v.deadline, "截止日期"),
         start_date: v.start_date ? formatRequiredDate(v.start_date, "开始日期") : undefined,
         end_date: v.end_date ? formatRequiredDate(v.end_date, "结束日期") : undefined,
@@ -3211,6 +3226,11 @@ export default function InvestigationCenterPage({
   const taskAuthorizationScope = String(
     taskTarget?.data.authorization_scope || "未配置",
   ).trim();
+  const taskRegionOptions = taskScopeGroups.map((group) => ({
+    value: group.province,
+    label: group.province,
+    children: group.cities.map((city) => ({ value: city, label: city })),
+  }));
   return (
     <>
       <Modal
@@ -4295,6 +4315,15 @@ export default function InvestigationCenterPage({
             <Form.Item name="authorization_scope" hidden>
               <Input />
             </Form.Item>
+            {creatingSubtask && !tasks.some((task) => !task.parent_task_id) && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message={`父调查任务：${taskTarget?.serial_no || "当前调查任务"}`}
+                description="本次子任务将自动继承当前调查任务的客户、合同、授权范围、授权时间和调查区域。"
+              />
+            )}
             <Form.Item
               label="任务名称"
               name="title"
@@ -4302,7 +4331,7 @@ export default function InvestigationCenterPage({
             >
               <Input />
             </Form.Item>
-            {creatingSubtask && (
+            {creatingSubtask && tasks.some((task) => !task.parent_task_id) && (
               <Form.Item
                 label="父调查任务"
                 name="parent_task_id"
@@ -4416,6 +4445,23 @@ export default function InvestigationCenterPage({
             </div>
             <Form.Item label="备注" name="description">
               <Input.TextArea rows={3} />
+            </Form.Item>
+            <Form.Item
+              label="调查区域"
+              name="region_path"
+              rules={[{ required: true, type: "array", min: 2, message: "请选择调查区域" }]}
+              extra="按省、市选择调查区域，系统会自动继承到任务并限制在授权范围内"
+            >
+              <Cascader
+                options={taskRegionOptions}
+                placeholder="请选择调查区域"
+                showSearch
+                expandTrigger="hover"
+                onChange={(path) => {
+                  const [provinceValue, cityValue] = (path || []) as string[];
+                  taskForm.setFieldsValue({ province: provinceValue || "", city: cityValue || "" });
+                }}
+              />
             </Form.Item>
             <Space>
               <Button type="primary" onClick={() => void createTask("complete")}>

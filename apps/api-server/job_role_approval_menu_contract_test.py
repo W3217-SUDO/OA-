@@ -1,5 +1,6 @@
 import unittest
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -68,6 +69,26 @@ class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("contract-new", menu_keys)
         self.assertNotIn("contract-company", menu_keys)
         self.assertNotIn("seal-admin", menu_keys)
+
+    async def test_empty_personnel_role_does_not_inherit_default_user_menus(self):
+        async with self.sessions() as db:
+            db.add(JobRole(
+                code="CODEX-EMPTY", name="CODEX Empty Role", permissions=[], field_keys=[], is_active=True,
+            ))
+            db.add(User(
+                username="codex_empty_role_user", display_name="CODEX Empty Role User", department="Test",
+                role="user", role_ids=["user"], password_hash="x", is_active=True,
+                profile={"permission_role": "CODEX Empty Role"},
+            ))
+            await db.commit()
+            user = await db.scalar(select(User).where(User.username == "codex_empty_role_user"))
+            payload = await _user_permission_payload(user, db)
+
+        menu_keys = set(payload["menu_keys"])
+        self.assertEqual(menu_keys, set())
+        self.assertNotIn("customer", menu_keys)
+        self.assertNotIn("contract", menu_keys)
+        self.assertNotIn("case", menu_keys)
 
     async def test_dashboard_personal_contract_count_uses_assigned_approval_step(self):
         async with self.sessions() as db:

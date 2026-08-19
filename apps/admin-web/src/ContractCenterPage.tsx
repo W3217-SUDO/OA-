@@ -193,7 +193,7 @@ const colors: Record<string, string> = {
 const CONTRACT_TYPE_OPTIONS = ["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"].map((value) => ({ value, label: value }));
 const CONTRACT_FEE_MODE_OPTIONS = ["固定收费", "固定+后期", "免费代理", "法律援助", "计时收费", "全风险代理"].map((value) => ({ value, label: value }));
 const CONTRACT_CREATE_STEP_TITLES = ["合同基本信息", "提交审批", "合同审批", "合同用印"];
-const CONTRACT_SEAL_READY_STATUSES = ["审批中", "审批通过", "已完成"];
+const CONTRACT_SEAL_READY_STATUSES = ["审批中", "审批通过", "已完成", "履行中", "已通过"];
 const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
 const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-return-view";
 const CONTRACT_DETAIL_TAB_STORAGE_KEY = "sunhold:contract-detail-active-tab";
@@ -1097,13 +1097,15 @@ export default function ContractCenterPage({
       message.error(extractContractErrorMessage(error, "审批失败"));
     }
   };
-  const createSealApplication = async () => {
+  const createSealApplication = async (forcedSubmit?: boolean) => {
     if (!wizardDraft) return;
     try {
       const values = await sealForm.validateFields();
-      const { submit: submitApplication, ...sealValues } = values;
+      const { submit: submitFromForm, ...sealValues } = values;
+      const submitApplication = forcedSubmit ?? Boolean(submitFromForm);
       const { data } = await api.post(`/contracts/${wizardDraft.id}/seal-application`, {
         ...sealValues,
+        source_attachment_ids: attachments.map((item) => Number(item.id)).filter(Boolean),
         submit: Boolean(submitApplication),
         use_date: formatRequiredDate(values.use_date, "计划用印日期"),
       });
@@ -1863,6 +1865,7 @@ export default function ContractCenterPage({
       fixed: "right" as const,
       render: (_: unknown, r: Contract) => (
         <Space size={0}>
+          {CONTRACT_SEAL_READY_STATUSES.includes(r.status) && <Button type="link" onClick={() => void startSelectedSeal(r)}>合同用印</Button>}
           <Button type="link" onClick={() => openContractAttachments(r)}>合同附件</Button>
           <Button type="link" onClick={() => openContractApprovalInfo(r)}>审批信息</Button>
           <Button type="link" onClick={() => openContractRelatedCaseFromList(r)}>关联案件</Button>
@@ -2272,7 +2275,7 @@ export default function ContractCenterPage({
             {wizardStep === 1 && wizardDraft?.status === "审批中" && <Button type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) onNavigate?.(route); }}>查看合同详情</Button>}
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button>}
-            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>提交申请</Button>}
+            {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button type="primary" onClick={() => { void createSealApplication(true); }}>提交申请</Button>}
             {wizardStep === 3 && Boolean(wizardDraft?.data.seal_application_id) && <Button onClick={() => startCreate()}>开始新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button onClick={() => startCreate()}>继续新建合同</Button>}
             {wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" && <Button type="primary" onClick={() => onNavigate?.("seal-my")}>进入用印中心</Button>}
@@ -2729,7 +2732,7 @@ export default function ContractCenterPage({
             wizardStep === 1 && wizardDraft?.status === "审批中" ? <Button key="detail" type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) { setOpen(false); onNavigate?.(route); } }}>查看合同详情</Button> : null,
             wizardStep === 2 ? <Button key="refresh" type="primary" onClick={refreshWizard}>刷新审批状态</Button> : null,
             wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-save" onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(); }}>保存用印草稿</Button> : null,
-            wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-submit" type="primary" onClick={() => { sealForm.setFieldValue("submit", true); void createSealApplication(); }}>提交申请</Button> : null,
+            wizardStep === 3 && !wizardDraft?.data.seal_application_id ? <Button key="seal-submit" type="primary" onClick={() => { void createSealApplication(true); }}>提交申请</Button> : null,
             wizardStep === 3 && wizardDraft?.data.seal_application_id && wizardDraft?.status !== "审批中" ? <Button key="seal" type="primary" onClick={() => { setOpen(false); onNavigate?.("seal-my"); }}>进入用印中心</Button> : null,
           ]
         }

@@ -67,4 +67,15 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
     if user.must_change_password and request.url.path != f"{settings.api_prefix}/auth/me":
         raise HTTPException(status_code=428, detail="首次登录必须先修改初始密码")
     role_ids = user_role_ids(user)
-    return {"username": user.username, "role": role_ids[0], "role_ids": role_ids, "display_name": user.display_name, "department": user.department, "must_change_password": user.must_change_password}
+    profile = user.profile or {}
+    return {
+        "username": user.username,
+        "role": role_ids[0],
+        "role_ids": role_ids,
+        "display_name": user.display_name,
+        "department": user.department,
+        "permission_role": profile.get("permission_role") or "",
+        "staff_role": profile.get("staff_role") or "",
+        "position": profile.get("position") or "",
+        "must_change_password": user.must_change_password,
+    }

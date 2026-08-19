@@ -127,6 +127,7 @@
 
 ## Current-Session Excel Execution Rule
 
+- **Completion-state gate:** Before reading screenshots, reproducing, testing, editing, deploying, or creating test data for any Excel row, inspect that row's designated "完成状态" cell. If its value is exactly `1`, the row is already complete and must be skipped unconditionally. Do not let a stale test note, rework note, empty date, screenshot, or any other column override this gate; do not re-accept it or alter its ledger cells unless the user explicitly reopens that exact row.
 - For every current and future Excel issue, the agent must first read the issue text and inspect all screenshots embedded on that exact row. Screenshot annotations and old-system comparison screenshots are requirements, not optional context.
 - Locate and change only the new OA system source in the active `dev` worktree. The legacy system is read-only evidence and must never be used as the implementation target.
 - Work strictly one row at a time: reproduce in the new system, identify the root cause, implement, run focused regression and build checks, then use the Codex in-app browser to accept the exact reported path. Do not begin the next row before recording the browser result in the ledger.

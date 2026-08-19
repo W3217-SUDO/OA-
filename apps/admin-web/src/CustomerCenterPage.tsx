@@ -103,6 +103,8 @@ type Contact = {
   email: string;
   position: string;
   contact_status: string;
+  portal_account?: string;
+  portal_enabled?: boolean;
   is_valid: boolean;
   is_primary: boolean;
   remark: string;
@@ -2101,6 +2103,8 @@ export default function CustomerCenterPage({
             <Form.Item name="phone" label="移动电话"><Input /></Form.Item>
             <Form.Item name="im_account" label="IM"><Input /></Form.Item>
             <Form.Item name="email" label="邮箱"><Input /></Form.Item>
+            <Form.Item name="portal_account" label="客户服务账号"><Input placeholder="可选；保存后同步到员工管理" /></Form.Item>
+            <Form.Item name="portal_password" label="客户服务密码" rules={[{ min: 8, message: "密码至少 8 位" }]}><Input.Password placeholder="填写后可直接登录客户服务端" /></Form.Item>
             <Form.Item name="contact_status" label="联系状态" initialValue="正常联系"><Select options={["正常联系","暂缓联系","停止联系"].map(value=>({value,label:value}))} /></Form.Item>
           </div>
           <Form.Item name="is_valid" valuePropName="checked" initialValue><Checkbox>是否有效</Checkbox></Form.Item>
@@ -2382,6 +2386,12 @@ export default function CustomerCenterPage({
                         </Form.Item>
                         <Form.Item label="邮箱" name="email">
                           <Input />
+                        </Form.Item>
+                        <Form.Item label="客户服务账号" name="portal_account">
+                          <Input placeholder="可选；保存后同步到员工管理" />
+                        </Form.Item>
+                        <Form.Item label="客户服务密码" name="portal_password" rules={[{ min: 8, message: "密码至少 8 位" }]}>
+                          <Input.Password placeholder="填写后可直接登录客户服务端" />
                         </Form.Item>
                         <Form.Item label="联系状态" name="contact_status" initialValue="正常联系">
                           <Select options={["正常联系", "暂缓联系", "停止联系"].map(value => ({ value, label: value }))} />
