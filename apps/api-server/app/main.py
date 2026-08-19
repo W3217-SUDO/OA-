@@ -969,22 +969,27 @@ UPLOAD_ROOT = (
     else Path(__file__).resolve().parent.parent / "uploads"
 )
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+LEGACY_UPLOAD_ROOTS = (
+    Path("/var/lib/docker/volumes/sunhold-legal-platform_uploads_data/_data"),
+)
 
 
 def _attachment_storage_path(item: FileAttachment) -> Path | None:
     """Resolve files whose database path may still use a legacy container root."""
     upload_root = UPLOAD_ROOT.resolve()
-    candidates = [Path(item.path)]
-    if item.stored_name:
-        candidates.append(upload_root / Path(item.stored_name).name)
-    if item.path:
-        candidates.append(upload_root / Path(item.path).name)
-    for candidate in candidates:
+    trusted_roots = [upload_root, *(root.expanduser().resolve() for root in LEGACY_UPLOAD_ROOTS)]
+    candidates = [(Path(item.path), upload_root)]
+    for root in trusted_roots:
+        if item.stored_name:
+            candidates.append((root / Path(item.stored_name).name, root))
+        if item.path:
+            candidates.append((root / Path(item.path).name, root))
+    for candidate, trusted_root in candidates:
         try:
             resolved = candidate.expanduser().resolve()
         except (OSError, RuntimeError):
             continue
-        if resolved.is_file() and upload_root in resolved.parents:
+        if resolved.is_file() and trusted_root in resolved.parents:
             return resolved
     return None
 

@@ -21,7 +21,11 @@ class SealFileListRealAttachmentTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory(prefix="codex-seal-real-files-")
         self.original_upload_root = main.UPLOAD_ROOT
-        main.UPLOAD_ROOT = Path(self.tempdir.name)
+        self.original_legacy_upload_roots = main.LEGACY_UPLOAD_ROOTS
+        main.UPLOAD_ROOT = Path(self.tempdir.name) / "shared"
+        main.UPLOAD_ROOT.mkdir()
+        main.LEGACY_UPLOAD_ROOTS = (Path(self.tempdir.name) / "legacy",)
+        main.LEGACY_UPLOAD_ROOTS[0].mkdir()
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
             BusinessRecord.__table__,
@@ -40,6 +44,7 @@ class SealFileListRealAttachmentTest(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
         await self.engine.dispose()
         main.UPLOAD_ROOT = self.original_upload_root
+        main.LEGACY_UPLOAD_ROOTS = self.original_legacy_upload_roots
         self.tempdir.cleanup()
 
     async def test_contract_application_copies_real_file_and_lists_it(self) -> None:
@@ -57,7 +62,7 @@ class SealFileListRealAttachmentTest(unittest.IsolatedAsyncioTestCase):
         )
         self.db.add_all([asset, contract])
         await self.db.flush()
-        source_path = main.UPLOAD_ROOT / "source-contract.pdf"
+        source_path = main.LEGACY_UPLOAD_ROOTS[0] / "source-contract.pdf"
         source_path.write_bytes(b"real contract file")
         self.db.add(FileAttachment(
             record_id=contract.id, category="合同附件", original_name="真实合同附件.pdf",
