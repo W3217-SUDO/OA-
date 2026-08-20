@@ -1,11 +1,12 @@
 {
   "name": "sunhold-admin-web",
   "private": true,
-  "version": "1.0.236",
+  "version": "1.0.237",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build"
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
