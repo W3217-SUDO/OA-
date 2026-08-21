@@ -90,6 +90,22 @@ class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("contract", menu_keys)
         self.assertNotIn("case", menu_keys)
 
+    async def test_blank_legacy_permission_role_falls_back_to_personnel_role(self):
+        async with self.sessions() as db:
+            db.add(User(
+                username="codex_legacy_assistant", display_name="历史律师助理", department="诉讼部",
+                role="user", role_ids=["user"], password_hash="x", is_active=True,
+                profile={"permission_role": "", "staff_role": "验收律师助理"},
+            ))
+            await db.commit()
+            user = await db.scalar(select(User).where(User.username == "codex_legacy_assistant"))
+            payload = await _user_permission_payload(user, db)
+
+        menu_keys = set(payload["menu_keys"])
+        self.assertIn("contract-audit-pending", menu_keys)
+        self.assertIn("seal-audit-pending", menu_keys)
+        self.assertNotIn("customer", menu_keys)
+
     async def test_dashboard_personal_contract_count_uses_assigned_approval_step(self):
         async with self.sessions() as db:
             payload = await dashboard(

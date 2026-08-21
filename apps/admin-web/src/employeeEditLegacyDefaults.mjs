@@ -10,9 +10,10 @@ export function resolveEmployeeSystemRole({ permissionRole, accountRole, recordR
   const permission = String(permissionRole || "").trim();
   if (permission) return `business:${permission}`;
 
+  const businessRole = String(staffRole || position || "").trim();
+  if (businessRole) return `business:${businessRole}`;
+
   const storedRole = String(accountRole || recordRole || "").trim();
   if (BASE_ROLES.has(storedRole)) return storedRole;
-
-  const businessRole = String(staffRole || position || storedRole || "").trim();
-  return businessRole ? `business:${businessRole}` : "user";
+  return storedRole ? `business:${storedRole}` : "user";
 }

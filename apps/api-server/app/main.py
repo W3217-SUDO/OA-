@@ -4217,15 +4217,17 @@ def _configured_user_job_role_name(user: User) -> str:
     normal account when its role assignment is missing or deleted.
     """
     profile = user.profile or {}
-    if "permission_role" in profile:
-        return str(profile.get("permission_role") or "").strip()
-    if "staff_role" in profile:
-        return str(profile.get("staff_role") or "").strip()
+    permission_role = str(profile.get("permission_role") or "").strip()
+    if permission_role:
+        return permission_role
+    staff_role = str(profile.get("staff_role") or "").strip()
+    if staff_role:
+        return staff_role
     # Older employee records used the position field for business-role
     # assignment. It remains a compatibility fallback only when it is not a
     # system-administrator label; that label must never escalate a user role.
     position = str(profile.get("position") or "").strip()
-    return position if position and position not in {"系统管理员", "管理员"} else position
+    return position
 
 
 async def _job_role_for_name(name: str, db: AsyncSession) -> JobRole | None:
@@ -22634,7 +22636,21 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
     position = await db.scalar(select(JobRole).where(JobRole.name == body.position, JobRole.is_active.is_(True)))
     if not position:
         raise HTTPException(status_code=422, detail="所选职务不存在或已停用")
-    profile = {**body.data, "account_type": account_type, "employee_no": employee_no, "company": body.company.strip(), "position": body.position.strip()}
+    staff_role = str(body.data.get("staff_role") or body.position).strip()
+    if account_type == "员工账号":
+        assigned_role = await _job_role_for_name(staff_role, db)
+        if not assigned_role:
+            raise HTTPException(status_code=422, detail="所选人员角色不存在或已停用")
+        staff_role = assigned_role.name
+    profile = {
+        **body.data,
+        "account_type": account_type,
+        "employee_no": employee_no,
+        "company": body.company.strip(),
+        "position": body.position.strip(),
+        "staff_role": staff_role,
+        "permission_role": staff_role if account_type == "员工账号" else "",
+    }
     user: User | None = None
     login_backed_account = account_type in {"员工账号", "客户账号"}
     if login_backed_account:
@@ -22711,6 +22727,19 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
     effective_role = body.role if account_type == "员工账号" else "user"
+    requested_staff_role = str(body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
+    staff_role: str | None = requested_staff_role or None
+    if account_type == "员工账号":
+        if requested_staff_role:
+            assigned_role = await _job_role_for_name(requested_staff_role, db)
+            if not assigned_role:
+                raise HTTPException(status_code=422, detail="所选人员角色不存在或已停用")
+            staff_role = assigned_role.name
+    elif account_type == "客户账号":
+        staff_role = "客户联系人"
+    role_binding = ({"staff_role": staff_role, "permission_role": staff_role} if staff_role is not None else {})
+    if account_type != "员工账号":
+        role_binding["permission_role"] = ""
     stored_username = str((employee.data or {}).get("username") or "").strip().lower()
     requested_username = body.username.strip().lower()
     username = stored_username or (str(employee.owner or "").strip().lower() if account_type == "员工账号" else "")
@@ -22737,7 +22766,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
         raise HTTPException(status_code=409, detail="请先在人事中心员工管理中解除登录账号关联，再变更为非员工账号")
     if not user:
         previous_status = employee.status
-        profile = {**(employee.data or {}), **body.data, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
+        profile = {**(employee.data or {}), **body.data, **role_binding, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
         employee.title = display_name; employee.department = body.department.strip(); employee.data = profile
         db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"账号类型：{account_type}；未关联系统登录账号"))
         await db.commit(); await db.refresh(employee)
@@ -22750,7 +22779,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     # Formal resignation/HR suspension still goes through the dedicated
     # transition endpoint, which also disables the linked account.
     previous_status = employee.status
-    profile = {**(user.profile or {}), **body.data, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
+    profile = {**(user.profile or {}), **body.data, **role_binding, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
     user.display_name = display_name; user.department = body.department.strip(); user.role = effective_role; user.role_ids = [effective_role]; user.is_active = body.is_active; user.profile = profile
     contract_approval_enabled = account_type == "员工账号" and bool(profile.get("contract_approval_enabled"))
     employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
