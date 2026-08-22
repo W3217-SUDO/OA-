@@ -48,6 +48,52 @@ export const normalizePhaseCounts = (value) => {
   );
 };
 
+export const LEGACY_CASE_PHASE_GROUPS = ["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"];
+
+const legacyCasePhaseGroupFor = (value) => {
+  const name = normalizeText(value);
+  if (name.includes("一审")) return "一审阶段";
+  if (name.includes("二审")) return "二审阶段";
+  if (name.includes("再审")) return "再审阶段";
+  if (name.includes("执行")) return "执行阶段";
+  if (name.includes("归档") || ["亏损内审", "亏损审核", "亏损归档", "已归档"].includes(name)) return "归档阶段";
+  return "";
+};
+
+export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
+  const counts = normalizePhaseCounts(phaseCounts);
+  const catalogOptions = Array.isArray(catalog) ? catalog : [];
+  const groupNames = new Set(LEGACY_CASE_PHASE_GROUPS);
+
+  return items.map((item) => {
+    if (!groupNames.has(item.label)) return { ...item, children: [] };
+
+    const candidates = [
+      ...catalogOptions.map((option) => ({
+        label: normalizeText(option.name || option.canonical_name),
+        value: normalizeText(option.canonical_name || option.name),
+        sortOrder: Number(option.sort_order || 0),
+      })),
+      ...Object.keys(counts).map((phase, index) => ({ label: phase, value: phase, sortOrder: 100000 + index })),
+    ];
+    const children = candidates
+      .filter((candidate) => candidate.value && candidate.value !== item.value && legacyCasePhaseGroupFor(candidate.value) === item.label)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((candidate) => ({
+        label: candidate.label,
+        value: candidate.value,
+        count: Number(counts[candidate.value] || counts[candidate.label] || 0),
+      }))
+      .filter((child, index, all) => all.findIndex((candidate) => candidate.value === child.value) === index);
+    const directCount = Number(counts[item.value] ?? item.count ?? 0);
+    return {
+      ...item,
+      count: directCount + children.reduce((total, child) => total + child.count, 0),
+      children,
+    };
+  });
+};
+
 export const parseOrdinarySearchResult = (data = {}, fallbackPage = 1, fallbackPageSize = 15) => {
   const input = data && typeof data === "object" ? data : {};
   const numericTotal = Number(input.total);

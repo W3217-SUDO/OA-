@@ -2,10 +2,32 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
   parseOrdinarySearchResult,
 } from "./src/caseOrdinarySearchParity.mjs";
+
+test("buildLegacyCasePhaseTree keeps raw child counts and aggregates legacy groups", () => {
+  const items = [
+    { label: "二审阶段", value: "二审阶段", count: 0 },
+    { label: "归档阶段", value: "归档阶段", count: 0 },
+  ];
+  const catalog = [{ name: "二审", canonical_name: "二审", sort_order: 10 }];
+  const tree = buildLegacyCasePhaseTree(items, catalog, {
+    二审: 1,
+    待归档审核: 2,
+    亏损内审: 1,
+  });
+
+  assert.equal(tree[0].count, 1);
+  assert.deepEqual(tree[0].children, [{ label: "二审", value: "二审", count: 1 }]);
+  assert.equal(tree[1].count, 3);
+  assert.deepEqual(
+    tree[1].children.map(({ value, count }) => ({ value, count })),
+    [{ value: "待归档审核", count: 2 }, { value: "亏损内审", count: 1 }],
+  );
+});
 
 test("buildCaseOrdinarySearchPayload maps ordinary filters to the server contract", () => {
   const formatted = { format: (pattern) => (pattern === "YYYY-MM-DD" ? "2026-08-03" : "unexpected") };
@@ -32,6 +54,8 @@ test("buildCaseOrdinarySearchPayload maps ordinary filters to the server contrac
     {
       scope: "department",
       case_types: ["民事案件"],
+      customer_id: null,
+      customer_no: "",
       customer: "客户甲",
       serial_no: "ORD-001",
       keyword: "案由",

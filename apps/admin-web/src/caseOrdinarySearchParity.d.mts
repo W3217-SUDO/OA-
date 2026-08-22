@@ -80,6 +80,22 @@ export type OrdinarySearchResult = {
   phaseCounts: Record<string, number>;
 };
 
+export type CasePhaseListItem = { label: string; value: string; count: number };
+export type CasePhaseOption = {
+  name?: string;
+  canonical_name?: string;
+  sort_order?: number;
+};
+export type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
+
+export const LEGACY_CASE_PHASE_GROUPS: string[];
+
+export function buildLegacyCasePhaseTree(
+  items?: CasePhaseListItem[],
+  catalog?: CasePhaseOption[],
+  phaseCounts?: Record<string, number>,
+): CasePhaseTreeItem[];
+
 export function createLatestRequestGuard(): LatestRequestGuard;
 
 export function normalizePhaseCounts(value?: unknown): Record<string, number>;

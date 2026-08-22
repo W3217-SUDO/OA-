@@ -60,8 +60,10 @@ import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
+  buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
+  LEGACY_CASE_PHASE_GROUPS,
   parseOrdinarySearchResult,
 } from "./caseOrdinarySearchParity.mjs";
 import {
@@ -167,32 +169,7 @@ type CaseAgentStatus = {
 type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; case_type?: string; parent_code?: string; sort_order?: number };
 type CasePhaseListItem = { label: string; value: string; count: number };
 type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
-const LEGACY_PHASE_GROUPS = new Set(["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"]);
-const legacyPhaseGroupFor = (name: string) => {
-  if (name.includes("一审")) return "一审阶段";
-  if (name.includes("二审")) return "二审阶段";
-  if (name.includes("再审")) return "再审阶段";
-  if (name.includes("执行")) return "执行阶段";
-  if (name.includes("归档")) return "归档阶段";
-  return "";
-};
-export const buildLegacyCasePhaseTree = (items: CasePhaseListItem[], catalog: CasePhaseOption[]): CasePhaseTreeItem[] => {
-  const counts = new Map(items.map((item) => [item.value, item.count]));
-  return items.map((item) => {
-    if (!LEGACY_PHASE_GROUPS.has(item.label)) return { ...item, children: [] };
-    const children = catalog
-      .filter((option) => legacyPhaseGroupFor(option.name || option.canonical_name) === item.label)
-      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
-      .map((option) => ({
-        label: option.name,
-        value: option.canonical_name || option.name,
-        count: Number(counts.get(option.canonical_name) ?? counts.get(option.name) ?? 0),
-      }))
-      .filter((child, index, all) => all.findIndex((candidate) => candidate.value === child.value) === index);
-    const aggregate = children.reduce((total, child) => total + child.count, 0);
-    return { ...item, count: aggregate || item.count, children };
-  });
-};
+const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
 const renderCasePhaseTree = (options: CasePhaseOption[], parentCode = ""): ReactNode => options
   .filter((option) => (option.parent_code || "") === parentCode)
   .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
@@ -3401,7 +3378,7 @@ export default function CaseCenterPage({
   const phaseItems = counselListMode
     ? buildCasePhaseItems(scopedCases,initialView,phaseDefinitions)
     : buildCasePhaseItemsFromCounts(ordinaryPhaseCounts,phaseDefinitions);
-  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog);
+  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts) as CasePhaseTreeItem[];
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?ARCHIVE_FINAL_STATUSES.includes(row.status):archiveRefused?row.status==="亏损归档拒绝"||Boolean(row.data.archive_reject_reason):ARCHIVE_REVIEW_STATUSES.includes(row.status)).filter(row=>{
