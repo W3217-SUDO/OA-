@@ -3385,6 +3385,8 @@ export default function CaseCenterPage({
     const match=(value:unknown,key:string)=>!caseQuery[key]||String(value||"").toLowerCase().includes(String(caseQuery[key]).toLowerCase());
     return match(row.data.plaintiff||row.customer,"plaintiff")&&match(row.serial_no,"serial_no")&&match(row.data.assistant,"assistant")&&match(row.data.court,"court")&&match(row.data.opponent,"defendant")&&match(row.data.notary_no,"notary_no")&&match(row.data.hearing_lawyer,"hearing_lawyer")&&match((row.data.handling_lawyers||[]).join(","),"handling_lawyer")&&match(row.data.archive_submitter||row.owner,"submitter");
   });
+  const selectedArchiveCase = originalArchiveRows.find((row) => selectedCaseKeys.includes(row.id));
+  const selectedArchiveCaseCapability = getCaseCapability(selectedArchiveCase);
   const originalArchiveColumns:any[]=[
     {title:"提交人",key:"submitter",width:105,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.archive_submitter||row.owner,row.data.archive_submitter_display_name||row.owner_display_name)},
     {title:"提交日期",key:"submitted",width:150,render:(_:unknown,row:CaseRow)=>row.data.archive_submitted_at||""},
@@ -3784,42 +3786,42 @@ export default function CaseCenterPage({
           <Button onClick={exportArchiveManifest}>导出选中归档清单（Excel）</Button>
           <Dropdown
             menu={{
-              items: selectedCase ? [
+              items: selectedArchiveCase ? [
                 { key: "tasks", label: "案件任务" },
-                ...(selectedCaseCapability.can_archive ? [{ key: "archive", label: "归档检查" }] : []),
+                ...(selectedArchiveCaseCapability.can_archive ? [{ key: "archive", label: "归档检查" }] : []),
                 ...(!archiveDone && !archiveRefused && isArchiveManager ? [{ key: "approve", label: "通过归档审核" }, { key: "reject", label: "驳回归档审核" }] : []),
-                ...(archiveDone && selectedCaseCapability.can_edit_basic ? [{ key: "unarchive-request", label: "申请解档" }] : []),
+                ...(archiveDone && selectedArchiveCaseCapability.can_edit_basic ? [{ key: "unarchive-request", label: "申请解档" }] : []),
                 ...(archiveDone && isArchiveManager ? [{ key: "unarchive-approve", label: "通过解档审批" }, { key: "unarchive-reject", label: "驳回解档审批" }] : []),
               ] : [{ key: "select", label: "请先选择一条案件", disabled: true }],
               onClick: ({ key }) => {
-                if (!selectedCase) return message.warning("请先选择一条案件");
-                if (key === "tasks") openCaseTasks(selectedCase);
-                if (key === "archive") void openArchive(selectedCase);
+                if (!selectedArchiveCase) return message.warning("请先选择一条案件");
+                if (key === "tasks") openCaseTasks(selectedArchiveCase);
+                if (key === "archive") void openArchive(selectedArchiveCase);
                 if (key === "approve" || key === "reject") {
                   if (!isArchiveManager) return message.warning("当前账号没有归档审核权限");
-                  if (!ARCHIVE_REVIEW_STATUSES.includes(selectedCase.status)) return message.warning("只有待归档审核案件可执行审核");
+                  if (!ARCHIVE_REVIEW_STATUSES.includes(selectedArchiveCase.status)) return message.warning("只有待归档审核案件可执行审核");
                   reviewForm.resetFields();
-                  setReviewing({ row: selectedCase, approved: key === "approve" });
+                  setReviewing({ row: selectedArchiveCase, approved: key === "approve" });
                 }
-                if (key === "unarchive-request") void requestUnarchive(selectedCase);
+                if (key === "unarchive-request") void requestUnarchive(selectedArchiveCase);
                 if (key === "unarchive-approve" || key === "unarchive-reject") {
                   if (!isArchiveManager) return message.warning("当前账号没有解档审批权限");
-                  if (selectedCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
-                  void openUnarchiveReview(selectedCase, key === "unarchive-approve");
+                  if (selectedArchiveCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
+                  void openUnarchiveReview(selectedArchiveCase, key === "unarchive-approve");
                 }
               },
             }}
           ><Button>更多操作</Button></Dropdown>
           {!archiveDone && !archiveRefused && isArchiveManager && <Button onClick={() => {
-            if (!selectedCase) return message.warning("请先选择一条案件");
+            if (!selectedArchiveCase) return message.warning("请先选择一条案件");
             reviewForm.resetFields();
-            setReviewing({ row: selectedCase, approved: true });
+            setReviewing({ row: selectedArchiveCase, approved: true });
           }}>归档审核</Button>}
-          {archiveDone && selectedCaseCapability.can_edit_basic && <Button onClick={() => selectedCase ? void requestUnarchive(selectedCase) : message.warning("请先选择一条案件")}>申请解档</Button>}
+          {archiveDone && selectedArchiveCaseCapability.can_edit_basic && <Button onClick={() => selectedArchiveCase ? void requestUnarchive(selectedArchiveCase) : message.warning("请先选择一条案件")}>申请解档</Button>}
           {archiveDone && isArchiveManager && <Button onClick={() => {
-            if (!selectedCase) return message.warning("请先选择一条案件");
-            if (selectedCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
-            void reviewUnarchive(selectedCase, true);
+            if (!selectedArchiveCase) return message.warning("请先选择一条案件");
+            if (selectedArchiveCase.data.unarchive_request?.status !== "待审批") return message.warning("该案件没有待审批的解档申请");
+            void reviewUnarchive(selectedArchiveCase, true);
           }}>解档审批</Button>}
         </Space></div>
       </Card> : originalListMode && <div className="case-original-layout">
