@@ -4,7 +4,8 @@ import fs from "node:fs";
 
 const source = fs.readFileSync(new URL("./src/ContractCenterPage.tsx", import.meta.url), "utf8");
 
-test("approved contract forwards the user's direct seal submission intent", () => {
-  assert.match(source, /submit: Boolean\(enterSealCenter\)/);
-  assert.doesNotMatch(source, /submit: wizardDraft\.status === "审批中" && Boolean\(enterSealCenter\)/);
+test("direct seal submission honors the backend sync-seal handoff contract", () => {
+  assert.match(source, /const deferSyncSealSubmission = wizardDraft\.status === "审批中" && Boolean\(wizardDraft\.data\.sync_seal\);/);
+  assert.match(source, /const submitApplication = deferSyncSealSubmission \? false : forcedSubmit \?\? Boolean\(submitFromForm\);/);
+  assert.match(source, /submit: Boolean\(submitApplication\)/);
 });

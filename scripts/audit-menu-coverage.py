@@ -437,7 +437,7 @@ def main() -> None:
     assert 'showSearchoptionFilterProp="label"placeholder="输入客户名称关键字后选择"' in normalized_contract, "contract customer must use searchable registered-customer selection"
     assert 'customerContextConsumerRef.current.consume()' in CONTRACT and 'CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY' in CONTRACT and 'sessionStorage.setItem("sunhold:contract-customer"' in CUSTOMER, "contract creation must consume customer context only from the customer page"
     assert 'user.can_approve_contract' in CONTRACT and 'approvalOptions' in CONTRACT and '合同审批资格' in CONTRACT and '没有可用审批人' in CONTRACT, "contract approval selector must use the explicit audit-flow directory and explain an empty directory"
-    assert all(token in MAIN for token in ('"can_approve_contract": await _is_contract_approver(item, db)', 'if not await _is_contract_approver(approver_user, db):', 'async def _is_contract_approver(user: User, db: AsyncSession)', 'if user.role == "admin":', 'BusinessRecord.module == "hr"', 'BusinessRecord.status.not_in({"离职", "停用"})', 'if can_approve_contract and "contract" not in menu_keys:')), "user directory, login permissions, and contract submission must preserve administrator authority and resolve ordinary approvers from explicit active-employee audit-flow membership"
+    assert all(token in MAIN for token in ('"can_approve_contract": await _is_contract_approver(item, db)', 'if not await _is_contract_approver(approver_user, db):', 'async def _is_contract_approver(user: User, db: AsyncSession)', 'if user.role == "admin":', 'BusinessRecord.module == "hr"', 'BusinessRecord.status.not_in({"离职", "停用"})', 'if can_approve_contract and "contract-audit" not in menu_keys:')), "user directory, login permissions, and contract submission must preserve administrator authority and resolve ordinary approvers from explicit active-employee audit-flow membership without granting the whole contract center"
     assert 'can_approve_contract = await _is_contract_approver(user, db)' in MAIN and 'permission = await _user_permission_payload(user, db)' in MAIN and '"can_approve_contract": can_approve_contract' in MAIN and '"access_token": create_token' in MAIN, "contract approver menu access must be built from explicit audit-flow membership and returned by login"
     assert '起草阶段可跳过；提交审批前须上传至少一份合同附件' in CONTRACT and 'uploadDraftContractAttachment' in CONTRACT and '合同草稿补传附件' in CONTRACT and 'FileAttachment.category == "合同附件"' in MAIN and '请先上传至少一份合同附件后再提交审批' in MAIN and '缺合同附件必须阻断' in SMOKE, "contract attachment may be deferred during drafting but must block direct approval submission"
     assert 'ROLE_DATA_SCOPES = frozenset({' in MAIN and 'if data_scope not in ROLE_DATA_SCOPES:' in MAIN and 'detail="数据范围无效"' in MAIN and 'if permission.data_scope not in ROLE_DATA_SCOPES:' in MAIN, "role-permission API must reject and repair data scopes outside the four UI-supported values"
@@ -482,7 +482,14 @@ def main() -> None:
     assert 'const revokeDraft = (contract: Contract)' in CONTRACT and 'api.delete(`/contracts/${contract.id}/draft`)' in CONTRACT and '>撤销草稿</Button>' in CONTRACT, "contract UI must expose the dedicated draft withdrawal action in both wizard and detail contexts"
     assert 'revocable_contract = create_record("contract", "草稿", "可撤销合同草稿"' in SMOKE and 'call("DELETE", f"/contracts/{revocable_contract[\'id\']}/draft", expected=(204,))' in SMOKE and 'call("DELETE", f"/contracts/{contract[\'id\']}/draft", expected=(409,))' in SMOKE, "smoke coverage must prove draft withdrawal cleans artifacts and cannot withdraw a submitted contract"
     print("CONTRACT_DRAFT_WITHDRAWAL_OK: only unsubmitted, unlinked contract drafts can be withdrawn through the contract flow")
-    assert '合同审批只能选择一名合同审批流程人员' in MAIN and '所选人员不在合同审批流程人员名单中' in MAIN and 'admin_override = identity.get("role") == "admin"' in MAIN and '管理员代办' in MAIN and '合同发起人不能审批自己提交的合同' not in MAIN, "contract API must enforce one explicitly configured active employee while retaining an auditable highest-permission admin override"
+    assert all(token in MAIN for token in (
+        '合同审批只能选择一名合同审批流程人员',
+        '所选人员不在合同审批流程人员名单中',
+        'CONTRACT_APPROVAL_ACTION_CODE = "contract.application.approve"',
+        'has_approval_action = "*" in action_keys or CONTRACT_APPROVAL_ACTION_CODE in action_keys',
+        'explicit_delegate = current.approver != identity["username"] and can_act',
+        'approval_actor = f"授权代办 {current.approver}" if explicit_delegate else current.approver',
+    )) and '合同发起人不能审批自己提交的合同' not in MAIN, "contract API must require the assigned approval action and keep delegated decisions auditable"
     assert 'approvers: values.approvers ? [values.approvers] : []' in CONTRACT and 'name="approvers"' in CONTRACT and 'placeholder="请选择后台已配置的合同审批人"' in CONTRACT, "contract approval UI must submit exactly one explicitly configured approver"
     assert 'value:customer.id' in normalized_contract and 'customer.id===Number(v.customer_id)' in normalized_contract, "contract customer selection must persist a unique customer id instead of an ambiguous duplicate name"
     assert 'title.normalize("NFKC").trim().toLocaleLowerCase()' in CONTRACT and 'label:customer.title' in normalized_contract and '${customer.serial_no}' not in CONTRACT[CONTRACT.index('const customerOptions'):CONTRACT.index('const openChange')], "contract customer selection must display only one option per normalized customer name without showing its number"
@@ -610,7 +617,7 @@ def main() -> None:
         'isOriginalCustomerList&&<divclassName="customer-original-pagination">',
         'summary={["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined:',
         'initialView==="customer-dept"?[{key:"assign",label:"分配客户"}',
-        'initialView==="customer-company"?[{key:"edit",label:"客户编辑"},{key:"release",label:"释放到公海"},{key:"delete",label:"客户删除"},{key:"assign",label:"分配客户"}',
+        'initialView==="customer-company"?[{key:"assign",label:"分配客户"}',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)&&<divclassName="customer-grid-footer">',
     ):
         assert token in normalized_customer, f"customer-dept original list contract missing: {token}"
@@ -697,7 +704,7 @@ def main() -> None:
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)&&rows.length===0?undefined',
         '(!["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-public","customer-shared","customer-recent-contact","customer-recent-update"].includes(initialView)||rows.length>0)&&<divclassName="customer-grid-footer">',
         '["customer-recycle","customer-dept","customer-dept-recycle","customer-company","customer-company-recycle","customer-recent-update"].includes(initialView)&&(<Buttondisabled={page===customerPageCount}onClick={()=>goToCustomerPage(customerPageCount)}>»</Button>)',
-        'initialView==="customer-company"?[{key:"edit",label:"客户编辑"},{key:"release",label:"释放到公海"},{key:"delete",label:"客户删除"},{key:"assign",label:"分配客户"}',
+        'initialView==="customer-company"?[{key:"assign",label:"分配客户"}',
     ):
         assert token in normalized_customer, f"customer-company original contract missing: {token}"
     assert 'customer-company' not in CUSTOMER[manager_lock_start:manager_lock_end], "company customer manager filter must remain editable"
@@ -1182,14 +1189,14 @@ def main() -> None:
         'const openTasks = async (row: Row, createSubtask = false) => {',
         'const hasParent = Boolean(parentTask);',
         'createSubtask && hasParent ? parentTask.id : undefined',
-        'setCreatingSubtask(createSubtask && hasParent);',
-        '先创建首个调查任务；后续“新增子任务”将自动关联该任务',
+        'setCreatingSubtask(Boolean(createSubtask));',
+        'creatingSubtask && !tasks.some((task) => !task.parent_task_id)',
         'rules={[{ required: true, message: "请选择父任务" }]}',
     ):
         assert token in INVESTIGATION, f"investigation subtask parent-link contract missing: {token}"
     print("INVESTIGATION_SUBTASK_PARENT_OK: subtask entry preselects and requires a same-investigation parent task")
     for token in (
-        'if (initialTab.includes("-my-") && profile.role !== "admin") {',
+        'initialTab.includes("-my-") &&\n      profile.role !== "admin"',
         'initialTab === "investigation-task-sub-published" &&\n      profile.role !== "admin"',
         'initialTab === "investigation-task-sub-mine" &&\n      profile.role !== "admin"',
     ):
@@ -1334,7 +1341,7 @@ def main() -> None:
     assert '.case-create-route-page{min-height:calc(100vh-95px);padding:8px;background:#fff}' in normalized_case_css
     for token in (
         'CASE_CREATABLE_TYPES = {"民事案件", "刑事案件", "行政案件及国家赔偿", "法律顾问", "仲裁"}',
-        'CASE_SOURCE_CONTRACT_STATUSES = {"审批中", "已通过", "履行中", "已完成"}',
+        'CASE_SOURCE_CONTRACT_STATUSES = {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}',
         'permission_key = CASE_CREATE_PERMISSION_BY_TYPE[case_type]',
         'ADMINISTRATIVE_CLIENT_POSITIONS = {"原告/申请人", "被告/被申请人", "第三人"}',
         'if case_type == "行政案件及国家赔偿" and client_position not in ADMINISTRATIVE_CLIENT_POSITIONS:',
@@ -1375,9 +1382,9 @@ def main() -> None:
     ):
         assert token in MAIN, f"criminal case backend guard missing: {token}"
     for token in (
-        'key:"public-security",label:"修改公安机关"',
-        'key:"procuratorates",label:"修改检察院"',
-        'key:"courts",label:"修改审级法院"',
+        'openCriminalMaintenance(viewingCounselCase,"public-security")}>修改公安信息',
+        'openCriminalMaintenance(viewingCounselCase,"procuratorates")}>修改检察院信息',
+        'openCriminalMaintenance(viewingCounselCase,"courts")}>修改法院信息',
         '["public_security_phone","联系电话"]',
         '`${level}_procuratorate_address`,`地址`',
         '`${level}_procuratorate_phone`,`联系电话`',
@@ -1435,7 +1442,7 @@ def main() -> None:
         'api.put(`/cases/${editingNormalCase.id}/normal-basic`',
         'api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`',
         'title={`修改仲裁案件基本信息：${editingArbitrationCase?.serial_no||""}`}',
-        'viewingCounselCase.data.case_type==="仲裁"&&<Button',
+        'if(viewingCounselCase.data.case_type==="仲裁")returnopenArbitrationBasicEdit(viewingCounselCase);',
         'constisNormalEditableCase=(row:CaseRow)=>["民事案件","刑事案件","行政案件及国家赔偿"].includes(String(row.data.case_type||""));',
         'label="关联调查线索"name="investigation_clue_ids"',
         'editingNormalCase?.data.case_type==="行政案件及国家赔偿"',
@@ -1449,17 +1456,17 @@ def main() -> None:
     assert 'onClick={()=>voidopenCounselDetail(row)}' in normalized_case, "case number action must open the case detail drawer rather than the task-creation flow"
     assert 'constrecordRes=awaitapi.get(`/records/${row.id}`);constdetailRecord=recordRes.dataasCaseRow;setViewingCounselCase(detailRecord);' in normalized_case, "case relation navigation must open the core record before loading supplementary panels"
     assert 'awaitPromise.allSettled([api.get(`/records/${row.id}/history`)' in normalized_case, "case supplementary detail panels must degrade independently of the core record"
-    assert 'tableLayout="fixed"scroll={{x:1130}}dataSource={counselDetailTasks.filter' in normalized_case, "case detail task tables must keep their identifier columns readable in narrow detail panes"
+    assert 'tableLayout="fixed"scroll={{x:1180}}dataSource={counselDetailTasks}' in normalized_case, "case detail task tables must keep their identifier columns readable in narrow detail panes"
     for token in (
         'constopenCaseTaskCreator=(row:CaseRow)=>',
-        'title={`发布案件任务：${caseTaskCreateCase?.serial_no||""}`}',
+        'title={`发布${caseTaskKind}：${caseTaskCreateCase?.serial_no||""}`}',
         '>发布任务</Button>',
         'title:"剩余时间"', 'title:"发起人"',
         'openCaseFeeBySubtype("律所",key)', 'openCaseFee(viewingCounselCase,"平台")', 'handleInternalFeeAction("create")',
     ):
         assert token in normalized_case, f"case detail tab action/legacy task field missing: {token}"
     assert 'display:block;width:100%;min-width:0;' in normalized_case_css, "case identifier links must stay within their table cell rather than overlap adjacent columns"
-    assert 'counselDetailCapabilities.can_edit_basic&&viewingCounselCase.data.case_type==="法律顾问"&&<Button' in normalized_case, "the counsel-only basic-information endpoint must not be exposed as a generic case edit button"
+    assert 'viewingCounselCase.data.case_type==="法律顾问")returnopenCounselEdit(viewingCounselCase)' in normalized_case and 'onClick={openLegacyBasicInfo}' in normalized_case, "the shared legacy basic-information action must dispatch legal counsel records to the counsel-only endpoint"
     normalized_main = re.sub(r"\s+", "", MAIN)
     assert 'asyncdef_next_case_serial(case_type:str,db:AsyncSession)->str:' in normalized_main and 'prefix=f"SH{type_code}{datetime.now():%y}"' in normalized_main and 'returnf"{prefix}{sequence:05d}"' in normalized_main, "case creation must generate the compact recognizable SH/type/year/sequence identifier"
     for token in (
@@ -1486,7 +1493,7 @@ def main() -> None:
         'gd-first-instance-appellant-lawyer-letter', 'gd-first-instance-appellee-lawyer-letter',
         'gd-second-instance-appellant-lawyer-letter', 'gd-second-instance-appellee-lawyer-letter', 'gd-execution-lawyer-letter',
     )
-    assert all(token in MAIN for token in ('CASE_DOCUMENT_TYPES = {', '/cases/{{case_id}}/documents/{{document_type}}', '生成案件文书', '已合并或已归档案件不能再生成办理文书', *case_document_types)) and all(token in CASE for token in ('caseDocumentTypes = [', 'generateCaseDocument', '生成案件文书', 'openCounselAttachmentSeal', 'submitCounselAttachmentSeal', '案件文件提交用印', '创建正式发文草稿', *case_document_types)), "ordinary case documents must cover every evidenced legacy type and Word-to-seal handoff through a dedicated DOCX-generation lifecycle with visible detail entries"
+    assert all(token in MAIN for token in ('CASE_DOCUMENT_TYPES = {', '/cases/{{case_id}}/documents/{{document_type}}', '生成案件文书', '已合并或已归档案件不能再生成办理文书', *case_document_types)) and all(token in CASE for token in ('caseDocumentTypes = [', 'generateCaseDocument', 'openCounselAttachmentSeal', 'submitCounselAttachmentSeal', '案件文件提交用印', '创建正式发文草稿', *case_document_types)), "ordinary case documents must cover every evidenced legacy type and Word-to-seal handoff through a dedicated DOCX-generation lifecycle with visible detail entries"
     print("CASE_COUNSEL_LIST_DETAIL_OK: evidenced counsel filters/columns, case detail tabs and protected basic-information editing")
     print("CASE_COUNSEL_SERVER_LIST_OK: role-scoped server paging/filter/sort plus selected/all CSV export with anti-bypass checks")
     for token in (
@@ -1494,11 +1501,11 @@ def main() -> None:
         'constloadCaseCapabilities=async(rows:CaseRow[])=>',
         'selectedCaseCapability.can_upload_attachment',
         'selectedCaseCapability.can_create_finance',
-        'selectedCaseCapability.can_assign_team',
-        'selectedCaseCapability.can_update_progress',
-        'selectedCaseCapability.can_manage_hearing',
-        'selectedCaseCapability.can_archive',
-        'getCaseCapability(row).can_update_progress?<Space><Button',
+        'if(!getCaseCapability(row).can_assign_team)returnmessage.warning(',
+        'if(!getCaseCapability(row).can_update_progress)returnmessage.warning(',
+        'if(!getCaseCapability(row).can_manage_hearing)returnmessage.warning(',
+        'if(!getCaseCapability(row).can_archive)returnmessage.warning(',
+        'getCaseCapability(row).can_update_progress&&<><Button',
         'specialMode==="schedule"&&<ButtononClick={()=>voidopenSelectedScheduleHearing()}',
         'if(!getCaseCapability(row).can_archive)returnmessage.warning(',
     ):
@@ -1550,7 +1557,8 @@ def main() -> None:
     print("CASE_CROSS_MODULE_RELATIONS_OK: case contract, customer, clue, original-case, task and fee references navigate to their real detail contexts")
     for token in (
         '"can_create_case_task":False',
-        '"can_create_case_task":can_progress',
+        'await_require_case_task_write_access(case_record,identity,db)',
+        'base["can_create_case_task"]=True',
         'ifsource=="案件任务"andnotcase_no:',
         'case_record=awaitdb.scalar(select(BusinessRecord).where(BusinessRecord.module=="case",BusinessRecord.serial_no==case_no))',
         'case_record=await_ensure_record_module(case_record.id,"case",identity,db)',
@@ -1741,11 +1749,14 @@ def main() -> None:
     assert 'label: "进行中"' in collaborating_tabs and 'label: "完成"' in collaborating_tabs, "my-collaborating tabs must match the original 进行中/完成 labels"
     for terminal_status in ("已拒绝", "已停止", "已撤回"):
         assert terminal_status not in collaborating_tabs, f"original my-collaborating node-status tabs do not include {terminal_status}"
-    assert 'elif relation == "collaborating" and not is_admin_global_view:' in MAIN, "task API collaborating relation is missing"
+    assert 'async def _require_company_task_read_scope' in MAIN, "company task views must use configured permission and data-scope authorization"
+    assert 'await _require_company_task_read_scope(identity, db, relation)' in MAIN, "company task routes must enforce company-scope authorization"
     relation_guard = re.search(r'username = identity\["username"\]\s*if scope == "company":.*?\s*items = await _task_display_dicts', MAIN, re.S)
-    assert relation_guard and 'elif relation == "collaborating" and not is_admin_global_view:' in relation_guard.group(0), "task participant-role narrowing must retain collaborating filtering for non-admin users"
-    assert 'is_admin_global_view = identity.get("role") == "admin"' in relation_guard.group(0), "administrators must retain organization-wide task views"
-    assert 'elif relation == "owned" and not is_admin_global_view:' in relation_guard.group(0), "administrators must retain organization-wide owned-task views"
+    assert relation_guard and 'elif scope != "department":' in relation_guard.group(0), "personal task routes must retain signed-in-user filtering"
+    assert 'elif relation == "collaborating":' in relation_guard.group(0), "task participant-role narrowing must retain collaborating filtering"
+    assert 'elif relation == "owned":' in relation_guard.group(0), "task participant-role narrowing must retain owned filtering"
+    assert 'if relation == "initiated":' in relation_guard.group(0), "task participant-role narrowing must retain initiated filtering"
+    assert 'Company-wide visibility requires scope=company.' in relation_guard.group(0), "administrators must use an explicit company scope for organization-wide task views"
     assert task_query_fields == [
         "priority", "serial_no", "title", "description", "initiator", "case_no",
         "source", "created_range", "owner", "plaintiff", "defendant", "deadline_range",
@@ -1902,7 +1913,7 @@ def main() -> None:
     for token in (
         'constisPersonalView=initialView.startsWith("task-my");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||initialView==="task-company-accepted";',
         'if(!isPersonalView)returntasks;',
         'taskMeta.total===0&&(isCreated||isAccepted||isCollaborating||isReminder||initialView==="task-dept-created"||initialView==="task-dept-accepted"||initialView==="task-company-created"||initialView==="task-company-accepted")',
         '{canManageInitiatedTask&&<ButtononClick={openCreateTask}>',
@@ -1956,7 +1967,7 @@ def main() -> None:
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisCollaborating=initialView.endsWith("-collaborating");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||initialView==="task-company-accepted";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'scope=isPersonalView?"mine":initialView.startsWith("task-dept")?"department"',
         'isCollaborating?"collaborating":"owned"',
@@ -2006,8 +2017,8 @@ def main() -> None:
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisCreated=initialView.endsWith("-created");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
-        'constcanManageCompanyCreatedTask=profile.role==="admin"&&initialView==="task-company-created";',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||initialView==="task-company-accepted";',
+        'constcanManageCompanyCreatedTask=initialView==="task-company-created";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'initialView.startsWith("task-company")?"company":"default"',
         'isCreated?"initiated":',
@@ -2042,7 +2053,7 @@ def main() -> None:
         "identity", "settlement", "caseTasks", "logs", "export",
     ], "company-created non-empty page must retain all 11 shared more-actions"
     for token in (
-        'if scope == "company" and identity.get("role") != "admin":',
+        'await _require_company_task_read_scope(identity, db, relation)',
         'admin_company_initiated_ids',
         'assert{outside_task["id"],department_collab_task["id"],department_peer_task["id"]}.issubset(admin_company_initiated_ids)',
         'promoted_company_ids',
@@ -2050,7 +2061,7 @@ def main() -> None:
         'assertcall("GET","/auth/me")["role"]=="manager"',
         'call("GET","/tasks?scope=company&relation=initiated",expected=(403,))',
     ):
-        source = MAIN if token.startswith('if scope') else NORMALIZED_SMOKE
+        source = MAIN if token.startswith('await _require') else NORMALIZED_SMOKE
         assert token in source, f"company-created company-scope/current-role evidence missing: {token}"
 
     # The original /9001003020 snapshot was naturally empty. Its route DOM
@@ -2060,8 +2071,8 @@ def main() -> None:
     for token in (
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisAccepted=initialView.endsWith("-accepted");',
-        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
-        'constcanManageCompanyCreatedTask=profile.role==="admin"&&initialView==="task-company-created";',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||initialView==="task-company-accepted";',
+        'constcanManageCompanyCreatedTask=initialView==="task-company-created";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'initialView.startsWith("task-company")?"company":"default"',
         'isAccepted?"owned":',
@@ -2091,7 +2102,7 @@ def main() -> None:
     ], "company-accepted non-empty page must retain all 11 shared more-actions"
     assert "canManageCompanyAcceptedTask" not in TASK, "company-accepted must not invent lifecycle controls absent from the original route"
     for token in (
-        'if scope == "company" and identity.get("role") != "admin":',
+        'await _require_company_task_read_scope(identity, db, relation)',
         "admin_company_owned_ids",
         'assert{outside_task["id"],company_owned_lifecycle_task["id"],department_collab_task["id"],department_peer_task["id"]}.issubset(admin_company_owned_ids)',
         "promoted_owned_ids",
@@ -2105,7 +2116,7 @@ def main() -> None:
         "admin_confirmed",
         "lifecycle_actions",
     ):
-        source = MAIN if token.startswith('if scope') else NORMALIZED_SMOKE
+        source = MAIN if token.startswith('await _require') else NORMALIZED_SMOKE
         assert token in source, f"company-accepted company-owned/admin lifecycle evidence missing: {token}"
 
     # Original /9001003030 is a non-empty company collaborating list: 187
@@ -2118,8 +2129,8 @@ def main() -> None:
         'constisPersonalView=initialView.startsWith("task-my");',
         'constisCollaborating=initialView.endsWith("-collaborating");',
         'constcanManageInitiatedTask=isPersonalView&&isCreated;',
-        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||(profile.role==="admin"&&initialView==="task-company-accepted");',
-        'constcanManageCompanyCreatedTask=profile.role==="admin"&&initialView==="task-company-created";',
+        'constcanManageAcceptedTask=(isPersonalView&&isAccepted)||initialView==="task-company-accepted";',
+        'constcanManageCompanyCreatedTask=initialView==="task-company-created";',
         'consttabs=isCreated?createdTabs:isCollaborating?collaboratingTabs:receivedTabs;',
         'initialView.startsWith("task-company")?"company":"default"',
         'isCollaborating?"collaborating":"owned"',
@@ -2157,7 +2168,7 @@ def main() -> None:
         assert token in TASK, f"company-collaborating row/detail operation missing: {token}"
     assert "canManageCompanyCollaboratingTask" not in TASK, "company-collaborating must not invent lifecycle controls without original evidence"
     for token in (
-        'if scope == "company" and identity.get("role") != "admin":',
+        'await _require_company_task_read_scope(identity, db, relation)',
         "company_collab_admin_task",
         'call("GET","/tasks?scope=company&relation=collaborating",expected=(403,))',
         "admin_company_collab_ids",
@@ -2174,7 +2185,7 @@ def main() -> None:
         "admin_collab_confirmed",
         "admin_collab_actions",
     ):
-        source = MAIN if token.startswith('if scope') else NORMALIZED_SMOKE
+        source = MAIN if token.startswith('await _require') else NORMALIZED_SMOKE
         assert token in source, f"company-collaborating company-scope/permission evidence missing: {token}"
 
     assert 'owner: profile.username || "admin"' in DOCUMENT, "document creation must default to the signed-in account"
@@ -2316,7 +2327,8 @@ def main() -> None:
         assert token in SMOKE, f"agent document smoke coverage missing: {token}"
     print("AGENT_DOCUMENT_SCOPE_AUDIT_OK: current record scope, immutable confirmation audit, capability UI and revocation smoke are protected")
     assert "'seal-my-pending': { view: 'my', statuses: [STATUS.draft, STATUS.pending] }" in SEAL_VIEW_MAPPING, "the pending seal page must keep drafts reachable for submission"
-    assert 'is_admin_global_view = identity.get("role") == "admin"' in MAIN, "task views must not shrink the administrator's full-firm data scope"
+    assert 'elif scope != "department":' in MAIN, "personal task views, including administrators, must stay scoped to the signed-in user"
+    assert 'await _require_company_task_read_scope(identity, db, relation)' in MAIN, "full-firm task visibility must require an explicit authorized company scope"
     assert 'BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"})' in MAIN, "seal audit history views must receive approved and rejected applications"
     assert '"approval_comment": body.comment.strip()' in MAIN, "seal approval must persist approver, time and opinion"
     for token in ('contract_no: str = ""', '"contract_no": contract_no', '"use_type": use_type', 'async def _validated_seal_relations'):
@@ -2339,9 +2351,9 @@ def main() -> None:
         assert token in MAIN, f"seal file/print lifecycle protection missing: {token}"
     for token in (
         "constloadDetailFiles=async",
-        "category:'用印文件'",
+        "constSEAL_APPLICATION_FILE_CATEGORY='用印文件'",
         "上传用印文件",
-        "暂无用印文件；提交审批前请上传至少一个文件",
+        "未上传文件不能提交审批",
         'is_electronic_seal',
         'is_offline_print',
     ):
@@ -2349,7 +2361,7 @@ def main() -> None:
     print("SEAL_FILES_AND_PRINT_OPTIONS_OK: real seal attachments, upload/download/delete, submission block and legacy print options are covered")
     for token in ("tab==='assets'", '印章资产台账', '>新增印章</Button>', 'columns={assetColumns.map((column:any)=>column.title===\'操作\'?{...column,fixed:undefined}:column', "dataSource={assets}", 'constremoveAsset=async', 'deleteSeal(`/seals/assets/${item.id}`)', '已被任何用印申请引用的印章将被系统阻断删除'):
         assert token in SEAL, f"seal asset ledger must render its own searchable, maintainable table: {token}"
-    for token in ('@app.delete(f"{settings.api_prefix}/seals/assets/{{asset_id}}", status_code=status.HTTP_204_NO_CONTENT)', '仅管理员可删除未使用印章', 'BusinessRecord.data["seal_asset_id"].as_integer() == item.id', '该印章已被 {referenced} 条用印申请引用，不能删除', 'SealAssetAudit(', 'action="删除印章资产"'):
+    for token in ('@app.delete(f"{settings.api_prefix}/seals/assets/{{asset_id}}", status_code=status.HTTP_204_NO_CONTENT)', 'await _require_seal_base_action(identity, db, "manage_assets")', 'BusinessRecord.data["seal_asset_id"].as_integer() == item.id', '该印章已被 {referenced} 条用印申请引用，不能删除', 'SealAssetAudit(', 'action="删除印章资产"'):
         assert token in MAIN, f"seal asset safe deletion/audit protection missing: {token}"
     print("SEAL_ASSET_DELETE_OK: unused assets can be administrator-deleted with a persistent audit snapshot; referenced assets are blocked")
     for token in ('/cases/reference-options', 'placeholder="输入关键词选择案由"', 'placeholder="请选择权利类型"', 'disabled={initialView !== "case-new" || Boolean(contractPrefill?.id)}', 'label="案源人"'):
@@ -3349,9 +3361,7 @@ def main() -> None:
         'const isArchiveSettlementPaymentRoute =',
         'initialView === "finance-archive-fee-payment"',
         '"/finance/archive-settlements/payment"',
-        'title="同意支付"',
-        'title="拒绝支付"',
-        'title={archiveSettlementReviewApproved ? "同意支付" : "拒绝支付"}',
+        'title={archiveSettlementReviewApproved ? "同意结算" : "拒绝结算"}',
         'finance-archive-payment-context',
         '归档审核人:',
         '归档申请人:',
@@ -3553,7 +3563,7 @@ def main() -> None:
         'const submitCaseMerge = async () => {',
         'api.post(`/cases/${mergingCase.id}/merge`, buildCaseMergePayload(values))',
         '仅可合并同一客户、同一案件类型且未归档的案件',
-        '>合并案件</Button>',
+        '>{moreOperationLabels[7]}</Button>',
     ):
         assert token in CASE, f"Case merge UI contract missing: {token}"
     print("CASE_MERGE_OK: same-customer/type and active-state controls, auditable fee/file migration, source retention, and explicit non-migrated work facts")
@@ -3571,8 +3581,8 @@ def main() -> None:
         'const submitSettlementAmount = async () => {',
         '`/cases/${notaryInfoCase.id}/notary-info`',
         '`/cases/${settlementAmountCase.id}/settlement-amount`',
-        '>修改公证信息</Button>',
-        '>修改诉讼/判决金额</Button>',
+        '>{primaryOperationLabels[2]}</Button>',
+        '>{primaryOperationLabels[6]}</Button>',
     ):
         assert token in CASE, f"Legacy case maintenance UI contract missing: {token}"
     print("CASE_LEGACY_MAINTENANCE_OK: separately controlled notary-number/storage and litigation/settlement amount actions with persistent audit")

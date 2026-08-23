@@ -69,14 +69,14 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
 
     def test_local_approve_has_role_state_data_and_workflow_audit(self):
         source = self._span("approve_seal_application")
-        for token in ("admin", "manager", "auditor", "status", "approved", "approver", "approved_at", "approval_comment", "WorkflowEvent", "await db.commit()"):
+        for token in ("_get_seal_application_for_action", '"approve" if body.approved else "reject"', "status", "approved", "approver", "approved_at", "approval_comment", "WorkflowEvent", "await db.commit()"):
             self.assertIn(token, source)
 
     def test_local_asset_mutation_permissions_validation_and_delete_audit(self):
         for function_name, tokens in {
-            "create_seal_asset": ("role\"] != \"admin\"", "REQUIRED_SEAL_TYPES", "status_code=409", "await db.commit()"),
-            "update_seal_asset": ("role\"] != \"admin\"", "status", "seal_type", "await db.commit()"),
-            "delete_seal_asset": ("role\"] != \"admin\"", "status_code=404", "status_code=409", "SealAssetAudit", "await db.commit()"),
+            "create_seal_asset": ('_require_seal_base_action(identity, db, "manage_assets")', "REQUIRED_SEAL_TYPES", "status_code=409", "await db.commit()"),
+            "update_seal_asset": ('_require_seal_base_action(identity, db, "manage_assets")', "status", "seal_type", "await db.commit()"),
+            "delete_seal_asset": ('_require_seal_base_action(identity, db, "manage_assets")', "status_code=404", "status_code=409", "SealAssetAudit", "await db.commit()"),
         }.items():
             source = self._span(function_name)
             for token in tokens:
@@ -84,7 +84,7 @@ class SealBackendAdminAuditContractTest(unittest.TestCase):
 
     def test_local_stamp_updates_asset_usage_and_workflow_event(self):
         source = self._span("stamp_seal_application")
-        for token in ('identity.get("role") not in', "待用印", "actual_copies", "asset.status", "usage_count", "last_used_at", "WorkflowEvent", "await db.commit()"):
+        for token in ('_require_seal_base_action(identity, db, "stamp")', "待用印", "actual_copies", "asset.status", "usage_count", "last_used_at", "WorkflowEvent", "await db.commit()"):
             self.assertIn(token, source)
 
     def test_gate_batch_rollback_endpoint_accepts_multiple_record_ids(self):

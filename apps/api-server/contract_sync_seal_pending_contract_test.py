@@ -6,16 +6,16 @@ SOURCE = Path(__file__).with_name("app") / "main.py"
 
 
 class ContractSyncSealPendingContractTest(unittest.TestCase):
-    def test_sync_seal_creation_can_enter_my_pending_directly(self):
+    def test_pending_contract_sync_seal_remains_draft_until_final_contract_approval(self):
         source = SOURCE.read_text(encoding="utf-8")
         start = source.index("async def create_contract_seal_application")
         end = source.index("async def create_contract_investigation", start)
         branch = source[start:end]
-        self.assertIn('sync_submission = contract.status == "审批中" and body.submit', branch)
-        self.assertIn("submitted = sync_submission or direct_submission", branch)
+        self.assertIn('sync_seal_requested = bool((contract.data or {}).get("sync_seal"))', branch)
+        self.assertIn('sync_seal_draft = contract.status == "审批中" and sync_seal_requested', branch)
+        self.assertIn("submitted = direct_submission", branch)
         self.assertIn('seal_status = "待审批" if submitted else "草稿"', branch)
-        self.assertIn('"sync_seal_file_required": False', branch)
-        self.assertIn('action="创建合同用印申请并提交审批" if submitted else "创建合同用印申请"', branch)
+        self.assertNotIn("sync_submission", branch)
 
     def test_sync_seal_enters_my_pending_after_contract_approval_without_file_gate(self):
         source = SOURCE.read_text(encoding="utf-8")

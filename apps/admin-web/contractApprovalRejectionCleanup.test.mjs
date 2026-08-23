@@ -20,7 +20,7 @@ const revokeDraftSource = sliceBetween(
 
 const approveWizardSource = sliceBetween(
   "  const approveWizard = async (approved: boolean) => {",
-  "  const createSealApplication = async () => {",
+  "  const createSealApplication = async (forcedSubmit?: boolean) => {",
   "approveWizard",
 );
 

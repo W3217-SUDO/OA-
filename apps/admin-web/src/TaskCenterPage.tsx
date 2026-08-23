@@ -330,9 +330,9 @@ export default function TaskCenterPage({
   const canManageInitiatedTask = isPersonalView && isCreated;
   const canManageAcceptedTask =
     (isPersonalView && isAccepted) ||
-    (profile.role === "admin" && initialView === "task-company-accepted");
+    initialView === "task-company-accepted";
   const canManageCompanyCreatedTask =
-    profile.role === "admin" && initialView === "task-company-created";
+    initialView === "task-company-created";
   const hideTaskFooter =
     taskMeta.total === 0 &&
     (isCreated ||

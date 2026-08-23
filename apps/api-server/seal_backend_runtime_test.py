@@ -31,7 +31,7 @@ from app.main import (
     batch_withdraw_seal_applications,
     create_seal_application,
 )
-from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 ADMIN = {"username": "admin", "role": "admin", "department": "上海分所"}
@@ -56,6 +56,9 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
             FileAttachment.__table__,
             User.__table__,
             RolePermission.__table__,
+            LegacyOfficialDocument.__table__,
+            LegacyOfficialDocumentAudit.__table__,
+            LegacyOfficialDocumentFile.__table__,
         ]
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))

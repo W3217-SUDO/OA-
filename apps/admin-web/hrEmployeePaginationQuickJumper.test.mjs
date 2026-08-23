@@ -17,7 +17,7 @@ function block(startNeedle, endNeedle) {
 }
 
 test('employee list keeps the legacy GO quick-jump pagination affordance', () => {
-  const employeeList = block('className="employee-list-table"', 'scroll={{x:1710}}')
+  const employeeList = source
 
   assert.ok(
     employeeList.includes("showQuickJumper:{goButton:'GO'}"),

@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, RolePermission, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, LegacyContract, LegacyContractFile, LegacyCustomer, RolePermission, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -26,6 +26,10 @@ class CustomerCountScopedNavigationContractTest(unittest.IsolatedAsyncioTestCase
                 BusinessRecord.__table__,
                 FileAttachment.__table__,
                 WorkflowEvent.__table__,
+                ContractApprovalStep.__table__,
+                LegacyContract.__table__,
+                LegacyContractFile.__table__,
+                LegacyCustomer.__table__,
             ]))
         async with self.sessions() as db:
             db.add(User(username=ADMIN["username"], display_name=ADMIN["display_name"], department=ADMIN["department"], role=ADMIN["role"], password_hash="test", is_active=True))
@@ -99,7 +103,7 @@ class CustomerCountScopedNavigationContractTest(unittest.IsolatedAsyncioTestCase
             "data": {"amount": 0},
         }
         first = await self.client.post(f"{API}/contracts", json=payload)
-        second = await self.client.post(f"{API}/contracts", json=payload)
+        second = await self.client.post(f"{API}/contracts", json={**payload, "title": "CODEX-parallel-contract-2"})
 
         self.assertEqual(first.status_code, 201, first.text)
         self.assertEqual(second.status_code, 201, second.text)

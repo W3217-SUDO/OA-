@@ -62,8 +62,7 @@ test("archive review and rollback preserve route-specific payloads", () => {
 });
 
 test("archive settlement review keeps legacy action wording and failure fallbacks", () => {
-  assert.match(source, /title="同意结算"/);
-  assert.match(source, /title="拒绝结算"/);
+  assert.match(source, /title=\{archiveSettlementReviewApproved \? "同意结算" : "拒绝结算"\}/);
   assert.match(source, /同意结算 \$\{response\.data\.reviewed\} 条归档费/);
   assert.match(source, /拒绝结算 \$\{response\.data\.reviewed\} 条归档费/);
   assert.match(source, /标识已结算出错\./);

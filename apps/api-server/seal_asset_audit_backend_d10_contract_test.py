@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import SealAsset, SealAssetAudit
+from app.models import RolePermission, SealAsset, SealAssetAudit
 from app.security import current_identity
 
 
@@ -32,6 +32,13 @@ class SealAssetAuditBackendD10Contract(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         async with self.sessions() as db:
+            db.add(RolePermission(
+                role="manager",
+                display_name="印章负责人",
+                data_scope="本部门数据",
+                menu_keys=["seal", "@action:seal.asset.manage"],
+                field_keys=[],
+            ))
             asset = SealAsset(code="SEAL-D10-A", name="D10 公章", seal_type="公章", custodian="admin", location="A01", status="可用")
             other = SealAsset(code="SEAL-D10-B", name="D10 合同章", seal_type="合同章", custodian="admin", location="A02", status="可用")
             db.add_all([asset, other])

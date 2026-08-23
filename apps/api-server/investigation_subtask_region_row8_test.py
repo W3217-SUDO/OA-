@@ -94,13 +94,15 @@ class InvestigationSubtaskRegionRow8Test(unittest.IsolatedAsyncioTestCase):
                 db,
             )
 
-        self.assertEqual(created["data"]["region"], "上海市、浦东新区")
+        self.assertEqual(created["data"]["region"], "上海市 市辖区 浦东新区")
         self.assertEqual(created["data"]["authorization_scope"], "上海市、浦东新区")
         self.assertEqual(created["data"]["province"], "上海市")
         self.assertEqual(created["data"]["city"], "市辖区")
         self.assertEqual(created["data"]["district"], "浦东新区")
-        self.assertEqual(created["data"]["authorized_from"], "2026-08-14")
-        self.assertEqual(created["data"]["authorized_to"], "2026-09-01")
+        self.assertEqual(created["data"]["authorized_from"], "2026-08-13")
+        self.assertEqual(created["data"]["authorized_to"], "2026-09-13")
+        self.assertEqual(created["data"]["start_date"], "2026-08-14")
+        self.assertEqual(created["data"]["end_date"], "2026-09-01")
 
 
 if __name__ == "__main__":

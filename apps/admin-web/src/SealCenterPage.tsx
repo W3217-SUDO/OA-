@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { sealViewSpec } from "./sealViewMapping";
 import {
   Alert,
   Button,
@@ -65,6 +64,8 @@ import {
   shouldCloseSealAssetAuditAfterDelete,
   sealErrorMessage,
   sealResponseIsFailure,
+  sealAttachmentTotal,
+  sealRouteStatuses,
   toSealAuditRows,
 } from "./sealWorkflowPolicy";
 import type { SealAssetAuditRow } from "./sealWorkflowPolicy";
@@ -83,6 +84,8 @@ type SealAsset = {
   usage_count: number;
   last_used_at?: string;
   remark: string;
+  action_keys?: string[];
+  capabilities?: { manage_assets?: boolean };
 };
 type SealRow = {
   id: number;
@@ -97,7 +100,13 @@ type SealRow = {
   seal_asset?: SealAsset;
   created_at: string;
   updated_at: string;
-  file_count: number;
+  file_count?: number;
+  application_file_count?: number;
+  stamped_file_count?: number;
+  application_file_names?: string[];
+  stamped_file_names?: string[];
+  action_keys?: string[];
+  capabilities?: Partial<Record<"approve" | "reject" | "stamp" | "archive", boolean>>;
 };
 type Summary = {
   total: number;
@@ -257,10 +266,9 @@ const sealTypes = [
 ];
 const SEAL_APPLICATION_FILE_CATEGORY = "用印文件";
 const SEAL_STAMPED_FILE_CATEGORY = "盖章文件";
-const sealVisibleFileCategory = (row: SealRow) =>
-  ["已用印", "已归档"].includes(row.status)
-    ? SEAL_STAMPED_FILE_CATEGORY
-    : SEAL_APPLICATION_FILE_CATEGORY;
+const sealAttachmentLabel = (category?: string) =>
+  category === SEAL_STAMPED_FILE_CATEGORY ? SEAL_STAMPED_FILE_CATEGORY : SEAL_APPLICATION_FILE_CATEGORY;
+const sealAttachmentListLabel = "用印附件";
 
 const listSealRowFileNames = (row: SealRow): string[] => {
   const names: string[] = [];
@@ -284,12 +292,14 @@ const listSealRowFileNames = (row: SealRow): string[] => {
 
   append(row.data.file_names);
   append(row.data.fileNames);
+  append(row.application_file_names);
+  append(row.stamped_file_names);
+  append(row.data.application_file_names);
+  append(row.data.stamped_file_names);
   append(row.data.attachments);
   append(row.data.files);
-  if (!["已用印", "已归档"].includes(row.status)) {
-    append(row.data.document_names);
-    append(row.data.documentNames);
-  }
+  append(row.data.document_names);
+  append(row.data.documentNames);
 
   return Array.from(new Set(names)).slice(0, 5);
 };
@@ -309,7 +319,7 @@ export default function SealCenterPage({
         : v === "seal-admin"
           ? "assets"
           : "my";
-  const statusFromView = (v: string): string[] => sealViewSpec(v).statuses;
+  const statusFromView = (v: string): string[] => sealRouteStatuses(v);
   const usesLegacyApplicationPagination = [
     "seal-my-pending",
     "seal-audit-pending",
@@ -322,6 +332,7 @@ export default function SealCenterPage({
   const [tab, setTab] = useState(tabFromView(initialView));
   const [rows, setRows] = useState<SealRow[]>([]);
   const [assets, setAssets] = useState<SealAsset[]>([]);
+  const [assetCapabilities, setAssetCapabilities] = useState<{ manage_assets?: boolean; action_keys?: string[] }>({});
   const [assetAuditOpen, setAssetAuditOpen] = useState(false);
   const [assetAuditAsset, setAssetAuditAsset] = useState<SealAsset | null>(null);
   const [assetAuditRows, setAssetAuditRows] = useState<SealAssetAuditRow[]>([]);
@@ -392,6 +403,7 @@ export default function SealCenterPage({
   const [stampAttachmentPageSize, setStampAttachmentPageSize] = useState(sealFilePagination.defaultPageSize);
   const [stampAttachmentTotal, setStampAttachmentTotal] = useState(0);
   const [stampAttachmentUploading, setStampAttachmentUploading] = useState(false);
+  const [stampAttachmentUploadFailed, setStampAttachmentUploadFailed] = useState(false);
   const [sourceAttachments, setSourceAttachments] = useState<AttachmentRow[]>([]);
   const [sourceAttachmentLoading, setSourceAttachmentLoading] = useState(false);
   const [sourceAttachmentPage, setSourceAttachmentPage] = useState(1);
@@ -410,14 +422,7 @@ export default function SealCenterPage({
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const actionGate = useMemo(() => createSealActionGate(), []);
   const assetAuditRequestTracker = useMemo(() => createSealAssetAuditRequestTracker(), []);
-  const sessionRole = useMemo(() => {
-    try {
-      return String((JSON.parse(localStorage.getItem("user") || "{}") as { role?: string }).role || "");
-    } catch {
-      return "";
-    }
-  }, []);
-  const canReadAssetAudit = canViewSealAssetAudit(sessionRole);
+  const canReadAssetAudit = canViewSealAssetAudit(assetCapabilities);
   const selectedUseType = Form.useWatch("use_type", createForm);
   const selectedCaseNo = Form.useWatch("case_no", createForm);
   const selectedContractNo = Form.useWatch("contract_no", createForm);
@@ -640,6 +645,10 @@ export default function SealCenterPage({
       setRows(items);
       setSummary(apps.data.summary);
       setAssets(inventory.data.items);
+      setAssetCapabilities({
+        ...(inventory.data.capabilities || {}),
+        action_keys: Array.isArray(inventory.data.action_keys) ? inventory.data.action_keys : [],
+      });
       setCases(caseResult.data.items);
       setContracts(contractResult.data.items);
       setCustomers(customerResult.data.items);
@@ -1129,6 +1138,7 @@ export default function SealCenterPage({
     setStampAttachmentPage(1);
     setStampAttachmentPageSize(sealFilePagination.defaultPageSize);
     setStampAttachmentTotal(0);
+    setStampAttachmentUploadFailed(false);
     actionForm.setFieldValue("stamp_attachment_ids", []);
   };
   const loadStampAttachments = async (
@@ -1201,17 +1211,20 @@ export default function SealCenterPage({
   const uploadStampAttachments = async (files: File[], row: SealRow): Promise<number[]> => {
     const validationError = files.map(validateSealUploadFile).find(Boolean);
     if (validationError) {
+      setStampAttachmentUploadFailed(true);
       message.error(validationError);
       return [];
     }
     const body = new FormData();
     files.forEach((file) => body.append("files", file));
     setStampAttachmentUploading(true);
+    setStampAttachmentUploadFailed(false);
     try {
       const response = await postSeal(`/seals/applications/${row.id}/files`, body);
       const uploadedItems = Array.isArray(response?.data?.items) ? response.data.items : [];
       const uploadedIds = uploadedItems.map((item: AttachmentRow) => Number(item.id)).filter(Boolean);
       if (!uploadedIds.length) {
+        setStampAttachmentUploadFailed(true);
         message.error("盖章文件上传失败：未返回附件标识");
         return [];
       }
@@ -1222,6 +1235,7 @@ export default function SealCenterPage({
       message.success(`已上传盖章文件：${files.length} 份`);
       return uploadedIds;
     } catch (error: any) {
+      setStampAttachmentUploadFailed(true);
       message.error(error?.response?.data?.detail || "盖章文件上传失败");
       return [];
     } finally {
@@ -1237,13 +1251,13 @@ export default function SealCenterPage({
         message.info("盖章附件正在上传，请稍后确认");
         return;
       }
+      if (stampAttachmentUploadFailed) {
+        message.error("盖章附件上传失败，请重新上传后再登记实际用印");
+        return;
+      }
       stampAttachmentsForSubmit = (v.stamp_attachment_ids || stampAttachmentIds)
         .map(Number)
         .filter((value: number) => Number.isFinite(value) && value > 0);
-      if (!stampAttachmentsForSubmit.length) {
-        message.error("请先选择或上传盖章文件");
-        return;
-      }
     }
     if (!actionGate.tryEnter()) {
       message.info("操作正在提交，请勿重复点击");
@@ -1322,8 +1336,9 @@ export default function SealCenterPage({
   ) => {
     const requestId = detailRequestTracker.next();
     try {
-      const { data } = await api.get(`/seals/applications/${row.id}/files`, {
+      const { data } = await api.get("/attachments", {
         params: {
+          record_id: row.id,
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -1360,7 +1375,6 @@ export default function SealCenterPage({
       api.get("/attachments", {
         params: {
           record_id: row.id,
-          category: sealVisibleFileCategory(row),
           page: 1,
           page_size: sealFilePagination.defaultPageSize,
         },
@@ -1434,8 +1448,9 @@ export default function SealCenterPage({
   ) => {
     const requestId = fileListRequestTracker.next();
     try {
-      const { data } = await api.get(`/seals/applications/${row.id}/files`, {
+      const { data } = await api.get("/attachments", {
         params: {
+          record_id: row.id,
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -1512,27 +1527,30 @@ export default function SealCenterPage({
   };
   const previewListAttachmentByName = async (row: SealRow, fileName?: string) => {
     try {
-      const { data } = await api.get("/attachments", {
-        params: {
-          record_id: row.id,
-          category: sealVisibleFileCategory(row),
-          page: 1,
-          page_size: sealFilePagination.defaultPageSize,
-        },
-      });
-      const items = Array.isArray(data.items) ? data.items : [];
-      const target =
-        items.find((item: AttachmentRow) => item.original_name === fileName) ||
-        items.find((item: AttachmentRow) =>
-          fileName
-            ? item.original_name.includes(fileName) ||
-              fileName.includes(item.original_name)
-            : false,
-        ) ||
-        items[0];
-      if (target) {
-        await previewAttachment(target);
-        return;
+      let page = 1;
+      let total = 0;
+      do {
+        const { data } = await api.get("/attachments", {
+          params: {
+            record_id: row.id,
+            page,
+            page_size: sealFilePagination.defaultPageSize,
+          },
+        });
+        const items = Array.isArray(data.items) ? data.items : [];
+        const target = items.find(
+          (item: AttachmentRow) => item.original_name === fileName,
+        );
+        if (target) {
+          await previewAttachment(target);
+          return;
+        }
+        total = Number(data.total ?? items.length);
+        if (!items.length) break;
+        page += 1;
+      } while ((page - 1) * sealFilePagination.defaultPageSize < total);
+      if (fileName) {
+        message.warning(`未找到文件：${fileName}`);
       }
       await openFileList(row);
     } catch {
@@ -1796,18 +1814,19 @@ export default function SealCenterPage({
       title: "文件数",
       width: 145,
       dataIndex: "file_count",
-      render: (value: number, r: SealRow) => {
+      render: (_value: number, r: SealRow) => {
         const names = listSealRowFileNames(r);
-        const hasFiles = Number(value || 0) > 0 || names.length > 0;
+        const total = sealAttachmentTotal(r);
+        const hasFiles = total > 0 || names.length > 0;
         return (
           <Space size={4} wrap>
             <Button type="link" onClick={() => void openFileList(r)}>
-              {value || 0}
+              {total}
             </Button>
             {hasFiles && (
               <Popover
                 trigger="click"
-                title={sealVisibleFileCategory(r)}
+                title={sealAttachmentListLabel}
                 content={
                   <Space direction="vertical" size={0}>
                     {names.length ? (
@@ -1835,13 +1854,13 @@ export default function SealCenterPage({
                       size="small"
                       onClick={() => void openFileList(r)}
                     >
-                      全部{sealVisibleFileCategory(r)}
+                      全部{sealAttachmentListLabel}
                     </Button>
                   </Space>
                 }
               >
                 <Button type="link" size="small">
-                  {sealVisibleFileCategory(r)}
+                  {sealAttachmentListLabel}
                 </Button>
               </Popover>
             )}
@@ -1915,27 +1934,31 @@ export default function SealCenterPage({
               </Button>
             </>
           )}
-          {tab === "audit" && canSealAction("approve", r) && (
+          {tab === "audit" && (canSealAction("approve", r) || canSealAction("reject", r)) && (
             <>
-              <Button
-                type="link"
-                onClick={() => {
-                  setAction({ type: "approve", row: r });
-                  actionForm.resetFields();
-                }}
-              >
-                通过
-              </Button>
-              <Button
-                danger
-                type="link"
-                onClick={() => {
-                  setAction({ type: "reject", row: r });
-                  actionForm.resetFields();
-                }}
-              >
-                拒绝
-              </Button>
+              {canSealAction("approve", r) && (
+                <Button
+                  type="link"
+                  onClick={() => {
+                    setAction({ type: "approve", row: r });
+                    actionForm.resetFields();
+                  }}
+                >
+                  通过
+                </Button>
+              )}
+              {canSealAction("reject", r) && (
+                <Button
+                  danger
+                  type="link"
+                  onClick={() => {
+                    setAction({ type: "reject", row: r });
+                    actionForm.resetFields();
+                  }}
+                >
+                  拒绝
+                </Button>
+              )}
             </>
           )}
           {tab === "admin" && canSealAction("archive", r) && (
@@ -1993,18 +2016,22 @@ export default function SealCenterPage({
               审计
             </Button>
           )}
-          <Button type="link" onClick={() => openAsset(r)}>
-            维护
-          </Button>
-          <Popconfirm
-            title="确认删除这枚未被用印申请引用的印章？"
-            description="已被任何用印申请引用的印章将被系统阻断删除。"
-            okText="确认删除"
-            cancelText="取消"
-            onConfirm={() => void removeAsset(r)}
-          >
-            <Button danger type="link" icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
+          {canReadAssetAudit && (
+            <>
+              <Button type="link" onClick={() => openAsset(r)}>
+                维护
+              </Button>
+              <Popconfirm
+                title="确认删除这枚未被用印申请引用的印章？"
+                description="已被任何用印申请引用的印章将被系统阻断删除。"
+                okText="确认删除"
+                cancelText="取消"
+                onConfirm={() => void removeAsset(r)}
+              >
+                <Button danger type="link" icon={<DeleteOutlined />}>删除</Button>
+              </Popconfirm>
+            </>
+          )}
         </Space>
       ),
     },
@@ -2135,13 +2162,15 @@ export default function SealCenterPage({
                 <Button icon={<ReloadOutlined />} onClick={load}>
                   刷新
                 </Button>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => openAsset()}
-                >
-                  新增印章
-                </Button>
+                {canReadAssetAudit && (
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => openAsset()}
+                  >
+                    新增印章
+                  </Button>
+                )}
               </Space>
             </div>
             <Table
@@ -2815,7 +2844,6 @@ export default function SealCenterPage({
               <Form.Item
                 label="盖章文件"
                 name="stamp_attachment_ids"
-                rules={[{ required: true, message: "请先选择或上传盖章文件" }]}
               >
                 <Select
                   mode="multiple"
@@ -2826,7 +2854,10 @@ export default function SealCenterPage({
                     value: file.id,
                     label: file.original_name + "｜" + personDisplayName(file.uploader_display_name),
                   }))}
-                  onChange={(values) => setStampAttachmentIds(values.map(Number).filter(Boolean))}
+                  onChange={(values) => {
+                    setStampAttachmentIds(values.map(Number).filter(Boolean));
+                    setStampAttachmentUploadFailed(false);
+                  }}
                   dropdownRender={(menu) => (
                     <>
                       {menu}
@@ -3062,7 +3093,7 @@ export default function SealCenterPage({
               ]}
             />
             <h3 className="seal-history-title">
-              <FileDoneOutlined /> {sealVisibleFileCategory(detail)}
+              <FileDoneOutlined /> {sealAttachmentListLabel}
             </h3>
             {detail.status === "草稿" && (
               <Space>
@@ -3120,7 +3151,7 @@ export default function SealCenterPage({
                 },
               }}
               locale={{
-                emptyText: `暂无${sealVisibleFileCategory(detail)}`,
+                emptyText: `暂无${sealAttachmentListLabel}`,
               }}
               dataSource={attachments}
               columns={[
@@ -3133,6 +3164,12 @@ export default function SealCenterPage({
                       {value}
                     </Button>
                   ),
+                },
+                {
+                  title: "附件类别",
+                  width: 100,
+                  dataIndex: "category",
+                  render: (value: string) => <Tag>{sealAttachmentLabel(value)}</Tag>,
                 },
                 {
                   title: "类型",

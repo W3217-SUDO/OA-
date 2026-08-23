@@ -66,7 +66,7 @@ class SealBackendBatchContractTest(unittest.TestCase):
         stamp_start = self.local.index("async def stamp_seal_application")
         stamp_end = self.local.index("@app.post", stamp_start + 10)
         stamp_source = self.local[stamp_start:stamp_end]
-        for token in ("status_code=403", "status_code=409", "item.status =", "asset.usage_count +=", "WorkflowEvent(record_id=item.id", "await db.commit()"):
+        for token in ("_require_seal_base_action", "status_code=409", "item.status =", "asset.usage_count +=", "WorkflowEvent(record_id=item.id", "await db.commit()"):
             self.assertIn(token, stamp_source)
 
     def test_local_package_download_is_read_only_and_has_404_path(self):

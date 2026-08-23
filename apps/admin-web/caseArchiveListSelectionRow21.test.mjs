@@ -7,10 +7,10 @@ const source = await readFile(new URL("./src/CaseCenterPage.tsx", import.meta.ur
 test("archive review actions resolve selection from the archive table rows", () => {
   assert.match(
     source,
-    /const selectedArchiveCase = originalArchiveRows\.find\(\(row\) => selectedCaseKeys\.includes\(row\.id\)\)/,
+    /const selectedArchiveCase = originalArchiveRows\.find\(\(row\) => selectedCaseKeySet\.has\(String\(row\.id\)\)\)/,
   );
-  assert.match(source, /setReviewing\(\{ row: selectedArchiveCase, approved: true \}\)/);
-  assert.match(source, /setReviewing\(\{ row: selectedArchiveCase, approved: key === "approve" \}\)/);
+  assert.match(source, /if \(key === "review"\)[\s\S]*?openArchiveReview\(selectedArchiveCase\)/);
+  assert.match(source, /<Button onClick=\{\(\) => \{[\s\S]*?openArchiveReview\(selectedArchiveCase\);[\s\S]*?\}\}>归档审核<\/Button>/);
   assert.doesNotMatch(
     source,
     /originalArchiveMode[\s\S]*?<Table[\s\S]*?setReviewing\(\{ row: selectedCase,/,

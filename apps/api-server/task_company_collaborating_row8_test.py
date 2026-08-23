@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, User
+from app.models import BusinessRecord, RolePermission, User
 from app.security import current_identity
 
 
@@ -37,6 +37,7 @@ class TaskCompanyCollaboratingRow8Test(unittest.IsolatedAsyncioTestCase):
                 User(username="row8-viewer", display_name="Row 8 Viewer", department="诉讼一部", role="user", password_hash="x", is_active=True),
                 User(username="row8-owner", display_name="Row 8 Owner", department="诉讼二部", role="user", password_hash="x", is_active=True),
                 User(username="row8-collaborator", display_name="Row 8 Collaborator", department="调查部", role="user", password_hash="x", is_active=True),
+                RolePermission(role="user", display_name="Company task reader", data_scope="全所数据", menu_keys=["task-company"], field_keys=[]),
             ])
             base_data = {
                 "deadline": str(date.today() + timedelta(days=7)), "priority": "普通",

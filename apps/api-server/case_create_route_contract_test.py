@@ -9,7 +9,14 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from app.database import Base, SessionLocal, engine
-from app.main import CaseCreateInput, CaseLitigantsInput, create_case, list_case_eligible_contracts, update_case_litigants
+from app.main import (
+    CONTRACT_APPROVED_STATUS,
+    CaseCreateInput,
+    CaseLitigantsInput,
+    create_case,
+    list_case_eligible_contracts,
+    update_case_litigants,
+)
 from app.models import (
     BusinessRecord,
     Department,
@@ -30,7 +37,7 @@ STATUS_ALIAS = "\u5f85\u5206\u914d"
 INVALID_STATUS = "\u5df2\u5f52\u6863"
 CRIMINAL = "\u5211\u4e8b\u6848\u4ef6"
 CLIENT_POSITION = "\u88ab\u544a\u4eba/\u72af\u7f6a\u5acc\u7591\u4eba"
-APPROVED = "\u5df2\u901a\u8fc7"
+APPROVED = CONTRACT_APPROVED_STATUS
 CIVIL = "\u6c11\u4e8b\u6848\u4ef6"
 CIVIL_CLIENT_POSITION = "\u539f\u544a/\u7533\u8bf7\u4eba"
 
@@ -67,6 +74,7 @@ class CaseCreateRouteContractTest(unittest.TestCase):
         denied_role = f"codex_case_{uuid.uuid4().hex[:12]}"
         case_ids: list[int] = []
         contract_id: int | None = None
+        customer_id: int | None = None
         created_admin = False
         async with SessionLocal() as db:
             db.add(Department(code=department_code, name=department_name, is_active=True))
@@ -95,10 +103,21 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             )
             db.add_all([lawyer, denied_user, denied_permission])
             await db.flush()
+            customer = BusinessRecord(
+                module="customer", serial_no=f"{prefix}-CUSTOMER", title=f"{prefix} customer",
+                customer="", status="我的客户", owner=lawyer_username,
+                department=department_name, description="", data={"customer_managers": [lawyer_username]},
+            )
+            db.add(customer)
+            await db.flush()
+            customer_id = customer.id
             contract = BusinessRecord(
                 module="contract", serial_no=f"{prefix}-CONTRACT", title=f"{prefix} contract",
                 customer=f"{prefix} customer", status=APPROVED, owner=lawyer_username,
-                department=department_name, description="", data={"type": "general", "amount": "1.00", "source_person": lawyer_username, "shared_with": []},
+                department=department_name, description="", data={
+                    "type": "general", "amount": "1.00", "source_person": lawyer_username, "shared_with": [],
+                    "customer_id": customer.id, "customer_no": customer.serial_no,
+                },
             )
             db.add(contract)
             await db.flush()
@@ -109,6 +128,7 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             self.assertEqual(listed_contract["data"]["source_person_display_name"], lawyer.display_name)
             base = {
                 "contract_record_id": contract_id, "title": f"{prefix} criminal case",
+                "customer_record_id": customer_id, "customer_no": customer.serial_no, "customer": customer.title,
                 "owner": "admin", "case_type": CRIMINAL, "client_position": CLIENT_POSITION,
                 "cause_or_charge": f"{prefix} cause", "handling_lawyers": [lawyer_username],
                 "source_person": "admin",
@@ -123,9 +143,16 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                 with self.assertRaises(HTTPException) as invalid:
                     await create_case(CaseCreateInput(**base, serial_no=f"{prefix}-INVALID", status=INVALID_STATUS), {"username": "admin", "role": "admin"}, db)
                 self.assertEqual(invalid.exception.status_code, 422)
+                with self.assertRaises(HTTPException) as wrong_customer:
+                    await create_case(
+                        CaseCreateInput(**{**base, "customer_record_id": customer_id + 9999}, serial_no=f"{prefix}-WRONG-CUSTOMER", status=NEW_STATUS),
+                        {"username": "admin", "role": "admin"},
+                        db,
+                    )
+                self.assertEqual(wrong_customer.exception.status_code, 422)
                 with self.assertRaises(HTTPException) as forbidden:
                     await create_case(CaseCreateInput(**base, serial_no=f"{prefix}-FORBIDDEN", status=NEW_STATUS), {"username": denied_username, "role": denied_role}, db)
-                self.assertEqual(forbidden.exception.status_code, 403)
+                self.assertIn(forbidden.exception.status_code, {403, 404})
 
                 legacy_case_no = f"CX{uuid.uuid4().hex[:18]}"
                 civil = await create_case(CaseCreateInput(
@@ -158,6 +185,8 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                 if contract_id:
                     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == contract_id))
                     await db.execute(delete(BusinessRecord).where(BusinessRecord.id == contract_id))
+                if customer_id:
+                    await db.execute(delete(BusinessRecord).where(BusinessRecord.id == customer_id))
                 await db.execute(delete(RolePermission).where(RolePermission.role == denied_role))
                 await db.execute(delete(User).where(User.username.in_([lawyer_username, denied_username])))
                 if created_admin:

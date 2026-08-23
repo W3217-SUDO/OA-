@@ -16,7 +16,7 @@ assert.equal(
   false,
   "content must not render a second workspace-tab row",
 );
-assert.match(app, /<Sider\s+width=\{200\}/);
+assert.match(app, /<Sider\s+width=\{280\}/);
 assert.match(css, /\.logo \{[\s\S]*?width: 200px;[\s\S]*?min-width: 200px;/);
 assert.match(css, /\.topbar-workspace-tabs\.ant-tabs-card > \.ant-tabs-nav \.ant-tabs-tab \{[\s\S]*?height: 50px;/);
 assert.equal(app.includes("caseQuickKeyword"), false, "duplicate case quick-search state must be removed");

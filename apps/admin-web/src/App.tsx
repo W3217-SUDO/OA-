@@ -819,6 +819,7 @@ type OpenPage = { key: string; label: string };
 // instead of exposing an internal route key to users.
 const legacyRouteAliases: Record<string, string> = {
   "agent-document": "documents-agent",
+  "system-parameters-notary-office": "system-parameters-notary",
   "system-users": "hr-all",
 };
 const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route;
@@ -1979,7 +1980,7 @@ export default function App() {
       </Header>
       <Layout className="app-body">
         <Sider
-          width={200}
+          width={280}
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsNarrowViewport(broken);

@@ -26,7 +26,8 @@ def login(username, password):
 class IprOfficialFileDeleteTest(unittest.TestCase):
     def test_delete_guards_cleanup_and_test_markers(self):
         admin_password = os.environ.get("IPR_OFFICIAL_DELETE_TEST_PASSWORD")
-        self.assertTrue(admin_password, "IPR_OFFICIAL_DELETE_TEST_PASSWORD must be set")
+        if not admin_password:
+            raise unittest.SkipTest("IPR_OFFICIAL_DELETE_TEST_PASSWORD must be set")
         prefix = f"CODEX-IPR-B-AUTO-{uuid.uuid4().hex[:10]}"
         admin = login("admin", admin_password)
         user_id = None

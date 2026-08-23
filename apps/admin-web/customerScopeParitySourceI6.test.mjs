@@ -112,7 +112,7 @@ test('recycle, restore and public-pool transitions keep legacy controller action
   assert.match(oldController, /CustomerClose\(long customerId\)/)
   assert.match(localPage, /const action = async \(r: Customer, name: string\)/)
   assert.match(localPage, /`\/customers\/\$\{r\.id\}\/\$\{name\}`/)
-  assert.match(localPage, /\["release", "recycle", "restore"\]/)
+  assert.match(localPage, /if \(\["recycle", "restore"\]\.includes\(key\)\)/)
   assert.match(localPage, /key === "claim"/)
 })
 

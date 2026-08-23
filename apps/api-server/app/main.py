@@ -480,6 +480,11 @@ def _upgrade_schema(connection) -> None:
         connection.execute(text("ALTER TABLE job_roles ADD COLUMN field_keys JSON NOT NULL DEFAULT '[]'"))
         admin_fields = json.dumps(FIELD_KEYS, ensure_ascii=False).replace("'", "''")
         connection.execute(text(f"UPDATE job_roles SET field_keys = '{admin_fields}' WHERE code = 'SYSTEM-ADMIN'"))
+    if "field_keys_configured" not in job_role_columns:
+        connection.execute(text("ALTER TABLE job_roles ADD COLUMN field_keys_configured BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("UPDATE job_roles SET field_keys_configured = TRUE WHERE code = 'SYSTEM-ADMIN'"))
+    if "data_scope" not in job_role_columns:
+        connection.execute(text("ALTER TABLE job_roles ADD COLUMN data_scope VARCHAR(64)"))
     connection.execute(text("CREATE TABLE IF NOT EXISTS schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
     contract_status_migrated = connection.execute(text(
         "SELECT key FROM schema_migrations WHERE key = 'contract_approved_status_v1'"
@@ -761,6 +766,9 @@ async def lifespan(_: FastAPI):
         if system_admin_job_role:
             system_admin_job_role.name = "系统管理员"
             system_admin_job_role.permissions = list(SYSTEM_ADMIN_JOB_PERMISSIONS)
+            system_admin_job_role.field_keys = list(FIELD_KEYS)
+            system_admin_job_role.field_keys_configured = True
+            system_admin_job_role.data_scope = "全所数据"
             system_admin_job_role.is_active = True
         # 七类印章是合同用印流程所需的基础资料，不属于演示数据。这里只补缺，
         # 不覆盖管理员已经维护的保管人、位置、状态、用印次数等真实台账字段。
@@ -1224,6 +1232,8 @@ class JobRoleInput(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     permissions: list[str] = Field(default_factory=list, max_length=50)
     field_keys: list[str] = Field(default_factory=list, max_length=50)
+    field_keys_configured: bool = False
+    data_scope: str | None = Field(default=None, max_length=64)
     description: str = Field(default="", max_length=1000)
     sort_order: int = Field(default=0, ge=0, le=99999)
     is_active: bool = True
@@ -1234,6 +1244,8 @@ class JobRoleUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     permissions: list[str] | None = Field(default=None, max_length=50)
     field_keys: list[str] | None = Field(default=None, max_length=50)
+    field_keys_configured: bool | None = None
+    data_scope: str | None = Field(default=None, max_length=64)
     description: str | None = Field(default=None, max_length=1000)
     sort_order: int | None = Field(default=None, ge=0, le=99999)
     is_active: bool | None = None
@@ -1242,6 +1254,8 @@ class JobRoleUpdate(BaseModel):
 class JobRolePermissionUpdate(BaseModel):
     permissions: list[str] = Field(default_factory=list, max_length=200)
     field_keys: list[str] | None = Field(default=None, max_length=50)
+    field_keys_configured: bool | None = None
+    data_scope: str | None = Field(default=None, max_length=64)
 
 
 class WarehouseBorrowInput(BaseModel):
@@ -1656,6 +1670,10 @@ class CasePhaseChangeInput(BaseModel):
 
 class CaseCreateInput(BaseModel):
     contract_record_id: int = Field(gt=0)
+    customer_record_id: int | None = Field(default=None, gt=0)
+    customer_id: int | None = Field(default=None, gt=0)
+    customer_no: str = Field(default="", max_length=128)
+    customer: str = Field(default="", max_length=256)
     serial_no: str = Field(default="", max_length=64)
     title: str = Field(min_length=1, max_length=256)
     status: str = "新案待分配"
@@ -2928,6 +2946,7 @@ class ContractDraftInput(BaseModel):
 class ContractApprovalInput(BaseModel):
     approved: bool
     comment: str = ""
+    action_key: str = Field(default="", max_length=128)
 
 
 class CaseCreationReviewInput(BaseModel):
@@ -3242,6 +3261,110 @@ def _contract_person_values(value: object) -> list[str]:
     return [item.strip() for item in re.split(r"[、,，;；]", str(value or "")) if item.strip()]
 
 
+def _positive_record_id(value: object) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _normalized_customer_name(value: object) -> str:
+    return " ".join(unicodedata.normalize("NFKC", str(value or "")).strip().casefold().split())
+
+
+def _customer_reference_from_maps(
+    customer_name: object,
+    data: dict,
+    customers_by_id: dict[int, BusinessRecord],
+    customers_by_no: dict[str, list[BusinessRecord]],
+    customers_by_name: dict[str, list[BusinessRecord]],
+) -> tuple[BusinessRecord | None, str]:
+    """Resolve ID, then customer number, then an unambiguous legacy name."""
+    name = _normalized_customer_name(customer_name)
+    customer_id = _positive_record_id(data.get("customer_id") or data.get("customer_record_id"))
+    customer_no = str(data.get("customer_no") or "").strip()
+    if customer_id:
+        customer = customers_by_id.get(customer_id)
+        if not customer:
+            return None, "missing_id"
+        if customer_no and customer.serial_no != customer_no:
+            return None, "mismatched_reference"
+        if name and _normalized_customer_name(customer.title) != name:
+            return None, "mismatched_reference"
+        return customer, "customer_id"
+    if customer_no:
+        candidates = customers_by_no.get(customer_no, [])
+        if len(candidates) != 1:
+            return None, "missing_number" if not candidates else "ambiguous_number"
+        customer = candidates[0]
+        if name and _normalized_customer_name(customer.title) != name:
+            return None, "mismatched_reference"
+        return customer, "customer_no"
+    candidates = customers_by_name.get(name, []) if name else []
+    if len(candidates) == 1:
+        return candidates[0], "unique_name"
+    return None, "missing_name" if not candidates else "ambiguous_name"
+
+
+async def _contract_customer_projection_context(records: list[BusinessRecord], db: AsyncSession) -> dict:
+    contracts = [record for record in records if record.module == "contract"]
+    if not contracts:
+        return {"customers_by_id": {}, "customers_by_no": {}, "customers_by_name": {}, "current_steps": {}}
+    customer_ids = {_positive_record_id((record.data or {}).get("customer_id") or (record.data or {}).get("customer_record_id")) for record in contracts}
+    customer_ids.discard(0)
+    customer_nos = {str((record.data or {}).get("customer_no") or "").strip() for record in contracts}
+    customer_nos.discard("")
+    customer_names = {_normalized_customer_name(record.customer) for record in contracts}
+    customer_names.discard("")
+    legacy_customer_names = {
+        _normalized_customer_name(record.customer)
+        for record in contracts
+        if not _positive_record_id((record.data or {}).get("customer_id") or (record.data or {}).get("customer_record_id"))
+        and not str((record.data or {}).get("customer_no") or "").strip()
+        and _normalized_customer_name(record.customer)
+    }
+    customer_conditions = [BusinessRecord.module == "customer", BusinessRecord.status.not_in({"已回收"})]
+    lookup_conditions = []
+    if customer_ids:
+        lookup_conditions.append(BusinessRecord.id.in_(customer_ids))
+    if customer_nos:
+        lookup_conditions.append(BusinessRecord.serial_no.in_(customer_nos))
+    if customer_names:
+        lookup_conditions.append(BusinessRecord.title.in_([record.customer for record in contracts if _normalized_customer_name(record.customer) in customer_names]))
+    customers = list((await db.scalars(select(BusinessRecord).where(*customer_conditions, or_(*lookup_conditions)))).all()) if lookup_conditions else []
+    if legacy_customer_names:
+        # Historical contracts may contain full-width characters or irregular
+        # whitespace. SQL equality cannot reproduce the NFKC key, so fetch the
+        # bounded customer directory once and resolve only unambiguous keys.
+        legacy_candidates = list((await db.scalars(select(BusinessRecord).where(*customer_conditions))).all())
+        seen_customer_ids = {customer.id for customer in customers}
+        customers.extend(
+            customer for customer in legacy_candidates
+            if customer.id not in seen_customer_ids and _normalized_customer_name(customer.title) in legacy_customer_names
+        )
+    customers_by_id = {customer.id: customer for customer in customers}
+    customers_by_no: dict[str, list[BusinessRecord]] = {}
+    customers_by_name: dict[str, list[BusinessRecord]] = {}
+    for customer in customers:
+        customers_by_no.setdefault(str(customer.serial_no or "").strip(), []).append(customer)
+        customers_by_name.setdefault(_normalized_customer_name(customer.title), []).append(customer)
+    contract_ids = [contract.id for contract in contracts]
+    steps = list((await db.scalars(select(ContractApprovalStep).where(
+        ContractApprovalStep.contract_record_id.in_(contract_ids),
+        ContractApprovalStep.status == "待审批",
+    ).order_by(ContractApprovalStep.contract_record_id, ContractApprovalStep.step_order))).all())
+    current_steps: dict[int, ContractApprovalStep] = {}
+    for step in steps:
+        current_steps.setdefault(step.contract_record_id, step)
+    return {
+        "customers_by_id": customers_by_id,
+        "customers_by_no": customers_by_no,
+        "customers_by_name": customers_by_name,
+        "current_steps": current_steps,
+    }
+
+
 RECORD_PERSON_FIELDS_BY_MODULE: dict[str, tuple[str, ...]] = {
     "case": (
         "source_person", "customer_manager", "hearing_lawyer", "assistant", "assistant_username",
@@ -3319,11 +3442,61 @@ async def _contract_customer_record_dict(
     investigations_by_id: dict[int, BusinessRecord] | None = None,
     names_by_username: dict[str, str] | None = None,
     users_by_username: dict[str, User] | None = None,
+    contract_context: dict | None = None,
+    identity: dict | None = None,
 ) -> dict:
     result = _record_dict(record, allowed_fields)
     if record.module not in {"contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
     data = result["data"]
+    if record.module == "contract":
+        context = contract_context or await _contract_customer_projection_context([record], db)
+        customer, relation_status = _customer_reference_from_maps(
+            record.customer,
+            record.data or {},
+            context["customers_by_id"],
+            context["customers_by_no"],
+            context["customers_by_name"],
+        )
+        current_step = context["current_steps"].get(record.id)
+        current_approver = current_step.approver if current_step else ""
+        if customer:
+            customer_data = customer.data or {}
+            data["customer_id"] = customer.id
+            data["customer_record_id"] = customer.id
+            data["customer_no"] = customer.serial_no
+            data["customer_name"] = customer.title
+            if not data.get("customer_managers") and not data.get("customer_manager"):
+                data["customer_managers"] = customer_data.get("customer_managers") or [customer.owner]
+        data["customer_relation_status"] = relation_status
+        data["signed_at"] = str(
+            data.get("signed_at") or data.get("signed_date") or data.get("sign_date") or data.get("contract_date") or ""
+        )
+        data["current_approver"] = current_approver
+        result.update({
+            "customer_id": customer.id if customer else None,
+            "customer_no": customer.serial_no if customer else str(data.get("customer_no") or ""),
+            "customer_name": customer.title if customer else record.customer,
+            "signed_at": data["signed_at"],
+            "current_approver": current_approver,
+        })
+        can_approve_current = bool(
+            identity
+            and record.status == "审批中"
+            and current_step
+            and await _can_act_on_contract_approval_step(
+                current_step,
+                identity,
+                CONTRACT_APPROVAL_ACTION_CODE,
+                db,
+            )
+        )
+        approval_capabilities = {
+            "can_approve_current": can_approve_current,
+            "current_approver": current_approver,
+        }
+        data["approval_capabilities"] = approval_capabilities
+        result["approval_capabilities"] = approval_capabilities
     if record.module == "task" and data.get("investigation_record_id"):
         try:
             investigation_id = int(data.get("investigation_record_id") or 0)
@@ -3390,6 +3563,7 @@ async def _contract_customer_record_dict(
 
 async def _contract_customer_record_dicts(
     records: list[BusinessRecord], allowed_fields: set[str] | None, db: AsyncSession,
+    identity: dict | None = None,
 ) -> list[dict]:
     investigation_ids: set[int] = set()
     for record in records:
@@ -3425,12 +3599,15 @@ async def _contract_customer_record_dicts(
     users = list((await db.scalars(select(User).where(func.lower(User.username).in_(usernames)))).all()) if usernames else []
     names_by_username = {user.username.lower(): user.display_name for user in users}
     users_by_username = {user.username.lower(): user for user in users}
+    contract_context = await _contract_customer_projection_context(records, db)
     results = [
         await _contract_customer_record_dict(
             record, allowed_fields, db,
             investigations_by_id=investigations_by_id,
             names_by_username=names_by_username,
             users_by_username=users_by_username,
+            contract_context=contract_context,
+            identity=identity,
         )
         for record in records
     ]
@@ -3898,6 +4075,45 @@ JOB_ROLE_LABEL_MENU_GRANTS.update({
 })
 
 
+JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
+    "员工新建": ("hr.employee.create",),
+    "员工修改": ("hr.employee.update",),
+    "客户新建": ("record.customer.create",),
+    "客户修改": ("record.customer.update",),
+    "客户编辑": ("record.customer.update",),
+    "合同审批": ("contract.application.approve",),
+    "案件分配": ("case.team.assign",),
+    "案件承办": (
+        "case.detail.update", "case.log.create", "case.reminder.manage",
+        "case.task.create", "case.attachment.write", "case.progress.update", "case.phase.update",
+    ),
+    "案件进展维护": ("case.progress.update", "case.phase.update"),
+    "案件办结": ("case.close",),
+    "案件归档申请": ("case.archive.apply",),
+    # 用印岗位动作必须和前端能力字段、审批接口共用同一组键。菜单仅控制
+    # 导航；这里才是后端可执行操作的授权来源。
+    "用印申请": ("seal.application.apply",),
+    "用印审批": ("seal.application.approve", "seal.application.reject"),
+    "印章管理": ("seal.application.stamp", "seal.application.archive", "seal.asset.manage"),
+}
+
+
+def _effective_job_role_action_keys(role: JobRole) -> list[str]:
+    """Resolve a role's action nodes without treating menus as write grants."""
+    result: list[str] = []
+    for raw_value in role.permissions or []:
+        value = str(raw_value or "").strip()
+        candidates = (
+            (value.removeprefix("action:"),)
+            if value.startswith("action:")
+            else JOB_ROLE_ACTION_KEY_GRANTS.get(value, ())
+        )
+        for candidate in candidates:
+            if candidate and candidate not in result:
+                result.append(candidate)
+    return result
+
+
 def _job_role_menu_permission_keys(permissions: list[str]) -> list[str]:
     """Resolve explicit menu keys and narrow legacy approval-action grants."""
     result: list[str] = []
@@ -4099,12 +4315,14 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
     if role == "admin":
         return {
             "menu_keys": list(MENU_KEYS),
+            "action_keys": ["*"],
             "data_scope": config["data_scope"],
             "field_keys": list(FIELD_KEYS),
         }
-    menu_keys, _ = _split_role_permission_keys(permission.menu_keys if permission else config["menu_keys"])
+    menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else config["menu_keys"])
     return {
         "menu_keys": _expand_menu_permission_keys(menu_keys),
+        "action_keys": action_keys,
         "data_scope": permission.data_scope if permission else config["data_scope"],
         "field_keys": list(permission.field_keys if permission else config["field_keys"]),
     }
@@ -4115,9 +4333,11 @@ async def _permission_payload_for_roles(role_ids: list[str], db: AsyncSession) -
         return await _permission_payload("admin", db)
     payloads = [await _permission_payload(role, db) for role in role_ids]
     menu_keys = list(dict.fromkeys(key for payload in payloads for key in payload["menu_keys"]))
+    action_keys = list(dict.fromkeys(key for payload in payloads for key in payload["action_keys"]))
     field_keys = list(dict.fromkeys(key for payload in payloads for key in payload["field_keys"]))
     return {
         "menu_keys": _expand_menu_permission_keys(menu_keys),
+        "action_keys": action_keys,
         # Multiple roles may broaden operations, but never data visibility.
         "data_scope": payloads[0]["data_scope"],
         "field_keys": field_keys,
@@ -4185,6 +4405,23 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
     granted_roots = {_menu_root(key) for key in permission["menu_keys"]}
     if not roots.intersection(granted_roots):
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的菜单权限")
+    action_key = {
+        ("customer", "新建"): "record.customer.create",
+        ("customer", "编辑"): "record.customer.update",
+    }.get((module, action))
+    if action_key and action_key not in permission.get("action_keys", []):
+        raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的动作权限")
+
+
+async def _require_hr_employee_action(identity: dict, db: AsyncSession, action_key: str, action: str) -> None:
+    """Guard HR employee create/update without expanding other HR endpoints."""
+    if "admin" in _identity_role_ids(identity):
+        return
+    permission = await _permission_payload_for_identity(identity, db)
+    if "hr" not in {_menu_root(key) for key in permission["menu_keys"]}:
+        raise HTTPException(status_code=403, detail="当前角色没有人事中心菜单权限")
+    if action_key not in permission.get("action_keys", []):
+        raise HTTPException(status_code=403, detail=f"当前角色没有{action}员工档案的动作权限")
 
 
 def _user_permission_overrides(user: User) -> dict:
@@ -4203,6 +4440,9 @@ def _configured_user_job_role_name(user: User) -> str:
     normal account when its role assignment is missing or deleted.
     """
     profile = user.profile or {}
+    permission_role_code = str(profile.get("permission_role_code") or "").strip()
+    if permission_role_code:
+        return permission_role_code
     permission_role = str(profile.get("permission_role") or "").strip()
     if permission_role:
         return permission_role
@@ -4226,8 +4466,31 @@ async def _job_role_for_name(name: str, db: AsyncSession) -> JobRole | None:
     ))
 
 
+def _denied_job_role_payload(payload: dict) -> dict:
+    """Fail closed for an invalid explicit personnel-role binding."""
+    return {**payload, "menu_keys": [], "action_keys": [], "field_keys": []}
+
+
+def _apply_job_role_policy(payload: dict, job_role: JobRole) -> dict:
+    """Overlay one explicitly bound personnel role onto a system-role fallback."""
+    if job_role.code == "SYSTEM-ADMIN":
+        # A profile must never turn a non-admin system account into an admin.
+        return _denied_job_role_payload(payload)
+    result = dict(payload)
+    result["menu_keys"] = _effective_job_role_menu_keys(job_role)
+    result["action_keys"] = _effective_job_role_action_keys(job_role)
+    if job_role.field_keys_configured:
+        result["field_keys"] = list(dict.fromkeys(job_role.field_keys or []))
+    if job_role.data_scope in ROLE_DATA_SCOPES:
+        result["data_scope"] = job_role.data_scope
+    return result
+
+
 async def _permission_payload_for_identity(identity: dict, db: AsyncSession) -> dict:
     """Resolve system-role grants plus the explicitly assigned HR role."""
+    user = await db.scalar(select(User).where(User.username == identity.get("username", "")))
+    if user:
+        return await _user_permission_payload(user, db)
     role_ids = _identity_role_ids(identity)
     payload = await _permission_payload_for_roles(role_ids, db)
     if "admin" in role_ids:
@@ -4235,16 +4498,11 @@ async def _permission_payload_for_identity(identity: dict, db: AsyncSession) -> 
     explicit_role_name = str(identity.get("permission_role") or identity.get("staff_role") or "").strip()
     if explicit_role_name:
         if explicit_role_name in {"系统管理员", "管理员"}:
-            return {"menu_keys": [], "data_scope": payload["data_scope"], "field_keys": []}
+            return _denied_job_role_payload(payload)
         job_role = await _job_role_for_name(explicit_role_name, db)
         if not job_role:
-            return {"menu_keys": [], "data_scope": payload["data_scope"], "field_keys": []}
-        # Once a concrete HR role is assigned, its checked tree is authoritative
-        # for navigation. An empty tree must remain empty; do not silently grant
-        # account-center menus to a role that has no checked permissions.
-        payload["menu_keys"] = _effective_job_role_menu_keys(job_role)
-        if job_role.field_keys:
-            payload["field_keys"] = list(dict.fromkeys(job_role.field_keys))
+            return _denied_job_role_payload(payload)
+        payload = _apply_job_role_policy(payload, job_role)
     return payload
 
 
@@ -4262,12 +4520,10 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     job_role = await _job_role_for_name(explicit_role_name, db) if explicit_role_name else None
     if explicit_role_name and "admin" not in role_ids:
         if explicit_role_name in {"系统管理员", "管理员"}:
-            return {"menu_keys": [], "data_scope": permission["data_scope"], "field_keys": []}
+            return _denied_job_role_payload(permission)
         if not job_role:
-            return {"menu_keys": [], "data_scope": permission["data_scope"], "field_keys": []}
-        permission["menu_keys"] = _effective_job_role_menu_keys(job_role)
-        if job_role.field_keys:
-            permission["field_keys"] = list(dict.fromkeys(job_role.field_keys))
+            return _denied_job_role_payload(permission)
+        permission = _apply_job_role_policy(permission, job_role)
     overrides = _user_permission_overrides(user)
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
@@ -4279,7 +4535,12 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     menu_keys = list(permission["menu_keys"])
     if can_approve_contract and "contract-audit" not in menu_keys:
         menu_keys.append("contract-audit")
-    return {**permission, "menu_keys": _expand_menu_permission_keys(menu_keys), "can_approve_contract": can_approve_contract}
+    return {
+        **permission,
+        "menu_keys": _expand_menu_permission_keys(menu_keys),
+        "action_keys": list(dict.fromkeys(permission.get("action_keys", []))),
+        "can_approve_contract": can_approve_contract,
+    }
 
 
 async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
@@ -4296,7 +4557,12 @@ async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
 
 
 async def _record_dict_for_identity(record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
-    return await _contract_customer_record_dict(record, await _allowed_field_keys(identity, db), db)
+    return await _contract_customer_record_dict(
+        record,
+        await _allowed_field_keys(identity, db),
+        db,
+        identity=identity,
+    )
 
 
 def _is_smoke_test_username(username: object) -> bool:
@@ -4401,7 +4667,6 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
     resolved_labels: list[str] = []
     resolved_usernames: list[str] = []
     invalid: list[str] = []
-    non_lawyers: list[str] = []
     for label in labels:
         user = by_username.get(label)
         if not user:
@@ -4410,19 +4675,16 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
         if not user:
             invalid.append(label)
             continue
-        position = str((user.profile or {}).get("position") or (user.profile or {}).get("staff_role") or "").strip()
-        if field_name == "经办律师" and ("律师" not in position or "助理" in position):
-            non_lawyers.append(label)
-            continue
         # Persist a stable, human-readable display value; usernames remain the
         # authoritative ACL identity and are what new selection controls submit.
+        # The legacy people picker allows every active staff account.  HR position
+        # text is optional for migrated accounts and must not invalidate a person
+        # that the authoritative picker already exposed.
         resolved_labels.append(user.display_name)
         if user.username not in resolved_usernames:
             resolved_usernames.append(user.username)
     if invalid:
         raise HTTPException(status_code=422, detail=f"{field_name}不存在、已停用或姓名不唯一：{'、'.join(invalid)}")
-    if non_lawyers:
-        raise HTTPException(status_code=422, detail=f"经办律师必须从系统已创建且在职的律师中选择：{'、'.join(non_lawyers)}")
     return resolved_labels, resolved_usernames
 
 
@@ -4479,11 +4741,7 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
         raise HTTPException(status_code=401, detail="当前用户不存在")
-    permission = await db.scalar(select(RolePermission).where(RolePermission.role == user.role))
-    scope = permission.data_scope if permission else DEFAULT_ROLE_PERMISSIONS.get(user.role, DEFAULT_ROLE_PERMISSIONS["user"])["data_scope"]
-    overrides = _user_permission_overrides(user)
-    if overrides.get("data_scope") is not None:
-        scope = overrides["data_scope"]
+    scope = (await _user_permission_payload(user, db))["data_scope"]
     if scope == "全所数据":
         return []
     public_customer = and_(BusinessRecord.module == "customer", BusinessRecord.status == "公海")
@@ -7415,7 +7673,7 @@ async def list_records(
     result = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all())
     allowed_fields = await _allowed_field_keys(identity, db)
     return {
-        "items": await _contract_customer_record_dicts(result, allowed_fields, db),
+        "items": await _contract_customer_record_dicts(result, allowed_fields, db, identity),
         "total": total or 0,
         "page": page,
         "page_size": page_size,
@@ -8662,6 +8920,34 @@ async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
     return employee_id is not None
 
 
+CONTRACT_APPROVAL_ACTION_CODE = "contract.application.approve"
+
+
+async def _has_explicit_contract_approval_action(identity: dict, action_key: str, db: AsyncSession) -> bool:
+    """Allow delegated approval only when the caller explicitly invokes an assigned action node."""
+    if action_key != CONTRACT_APPROVAL_ACTION_CODE:
+        return False
+    permission = await _permission_payload_for_identity(identity, db)
+    action_keys = set(permission.get("action_keys") or [])
+    return "*" in action_keys or CONTRACT_APPROVAL_ACTION_CODE in action_keys
+
+
+async def _can_act_on_contract_approval_step(
+    step: ContractApprovalStep,
+    identity: dict,
+    action_key: str,
+    db: AsyncSession,
+) -> bool:
+    permission = await _permission_payload_for_identity(identity, db)
+    action_keys = set(permission.get("action_keys") or [])
+    has_approval_action = "*" in action_keys or CONTRACT_APPROVAL_ACTION_CODE in action_keys
+    if not has_approval_action:
+        return False
+    if step.approver == identity.get("username"):
+        return True
+    return action_key == CONTRACT_APPROVAL_ACTION_CODE
+
+
 @app.get(f"{settings.api_prefix}/investigations/action-capabilities")
 async def investigation_action_capabilities(
     record_ids: str = Query(default="", max_length=1200),
@@ -9118,8 +9404,9 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
         steps = (await db.scalars(select(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract_id).order_by(ContractApprovalStep.step_order))).all()
         current = next((x for x in steps if x.status == "待审批"), None)
         if not current: raise HTTPException(status_code=409, detail="合同没有待处理的审批节点")
-        admin_override = identity.get("role") == "admin" and current.approver != identity["username"]
-        if current.approver != identity["username"] and not admin_override:
+        can_act = await _can_act_on_contract_approval_step(current, identity, body.action_key, db)
+        explicit_delegate = current.approver != identity["username"] and can_act
+        if not can_act:
             raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批")
         current.comment = body.comment.strip(); current.acted_at = datetime.now(); old = contract.status
         if not body.approved:
@@ -9143,8 +9430,9 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
                         seal_application.status = "待审批"
                         contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"), "sync_seal_file_required": False}
                         db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
+                        await _sync_legacy_official_audit(seal_application, identity, db, 10, f"来源合同 {contract.serial_no} 已审批通过")
         await _sync_legacy_contract_audit(contract, identity, db, 20 if body.approved else 30, body.comment)
-        approval_actor = f"管理员代办 {current.approver}" if admin_override else current.approver
+        approval_actor = f"授权代办 {current.approver}" if explicit_delegate else current.approver
         db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {approval_actor}：{body.comment}")); await db.commit(); await db.refresh(contract)
         return await _record_dict_for_identity(contract, identity, db)
     except HTTPException as exc:
@@ -9155,20 +9443,24 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
 async def create_contract_seal_application(contract_id: int, body: ContractSealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
-    sync_submission = contract.status == "审批中" and body.submit and bool((contract.data or {}).get("sync_seal"))
-    # Contracts created in the contract center may use legacy status labels.
-    # Only drafts and rejected contracts are blocked from direct seal submission.
-    direct_submission = body.submit and contract.status not in {"\u8349\u7a3f", "\u5df2\u62d2\u7edd"}
-    submitted = sync_submission or direct_submission
-    if body.submit and not submitted:
+    await _require_seal_base_action(identity, db, "apply")
+    sync_seal_requested = bool((contract.data or {}).get("sync_seal"))
+    sync_seal_draft = contract.status == "审批中" and sync_seal_requested
+    # Pending contracts retain an explicitly requested sync seal application as a
+    # draft until the final contract approval submits it automatically.
+    direct_submission = contract.status in {CONTRACT_APPROVED_STATUS, "已完成"} and body.submit
+    submitted = direct_submission
+    if contract.status == "审批中" and not sync_seal_draft:
+        raise HTTPException(status_code=409, detail="当前合同状态不支持提交用印审批")
+    if body.submit and not (sync_seal_draft or direct_submission):
         raise HTTPException(status_code=409, detail="当前合同状态不支持提交用印审批")
     if contract.status in {"\u8349\u7a3f", "\u5df2\u62d2\u7edd"}:
         raise HTTPException(status_code=409, detail="合同提交审批后才能配置同步用印")
     approver = await db.scalar(select(User).where(User.username == body.approver.strip(), User.is_active.is_(True)))
     if not approver:
         raise HTTPException(status_code=422, detail="用印审批人不存在或已停用")
-    if not await _is_contract_approver(approver, db):
-        raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
+    if not await _user_has_seal_action(approver, "approve", db):
+        raise HTTPException(status_code=422, detail="所选人员没有用印审批动作权限")
     existing_id = int((contract.data or {}).get("seal_application_id") or 0)
     if existing_id:
         existing = await db.get(BusinessRecord, existing_id)
@@ -9179,20 +9471,22 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用":
         raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
-    source_attachment_ids = list(dict.fromkeys(int(item_id) for item_id in body.source_attachment_ids if int(item_id) > 0))
+    explicit_source_attachment_ids = list(dict.fromkeys(int(item_id) for item_id in body.source_attachment_ids if int(item_id) > 0))
+    source_attachment_ids = list(explicit_source_attachment_ids)
     if not source_attachment_ids:
         source_attachment_ids = list((await db.scalars(select(FileAttachment.id).where(
             FileAttachment.record_id == contract.id,
-            FileAttachment.category == "合同附件",
-        ).order_by(FileAttachment.id))).all())
-    if source_attachment_ids:
-        source_files = list((await db.scalars(select(FileAttachment).where(
-            FileAttachment.id.in_(source_attachment_ids),
-            FileAttachment.record_id == contract.id,
-            FileAttachment.category == "合同附件",
-        ))).all())
-        if len(source_files) != len(source_attachment_ids):
-            raise HTTPException(status_code=422, detail="选中的文件必须属于当前合同的合同附件")
+        ).order_by(FileAttachment.created_at, FileAttachment.id))).all())
+    source_files = list((await db.scalars(select(FileAttachment).where(
+        FileAttachment.id.in_(source_attachment_ids),
+        FileAttachment.record_id == contract.id,
+    ))).all()) if source_attachment_ids else []
+    if explicit_source_attachment_ids and len(source_files) != len(source_attachment_ids):
+        raise HTTPException(status_code=422, detail="选中的来源文件必须全部归属于当前合同")
+    if not source_files:
+        raise HTTPException(status_code=409, detail="当前合同没有可复制的有效附件，不能发起同步用印")
+    if len(source_files) != len(source_attachment_ids):
+        raise HTTPException(status_code=422, detail="当前合同附件无法完整复制")
     serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
     seal_status = "待审批" if submitted else "草稿"
     seal = BusinessRecord(
@@ -9217,6 +9511,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
             "delivery_method": body.delivery_method,
             "document_names": body.document_names,
             "approver": approver.username,
+            "source_attachment_ids": source_attachment_ids,
         },
     )
     copied_targets: list[Path] = []
@@ -9229,18 +9524,16 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
             "seal_application_id": seal.id,
             "seal_application_no": seal.serial_no,
             "seal_requested_at": datetime.now().isoformat(timespec="seconds"),
-            "sync_seal": contract.status == "审批中",
+            "sync_seal": sync_seal_requested,
         }
-        if sync_submission:
-            contract.data = {
-                **(contract.data or {}),
-                "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"),
-                "sync_seal_file_required": False,
-            }
         db.add_all([
             WorkflowEvent(record_id=seal.id, action="创建合同用印申请并提交审批" if submitted else "创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),
             WorkflowEvent(record_id=contract.id, action="配置同步用印" if contract.status == "审批中" else "发起合同用印", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成用印申请 {seal.serial_no}" + ("并提交审批" if submitted else "，保存为草稿")),
         ])
+        if submitted:
+            await _sync_legacy_official_audit(seal, identity, db, 10, "合同用印申请已提交审批")
+        else:
+            await _sync_legacy_official_document(seal, identity, db)
         await db.commit()
         await db.refresh(seal)
     except Exception:
@@ -9248,7 +9541,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         for target in copied_targets:
             target.unlink(missing_ok=True)
         raise
-    return await _seal_record_dict(seal, db)
+    return await _seal_record_dict(seal, db, identity=identity)
 
 
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/investigation", status_code=status.HTTP_201_CREATED)
@@ -10851,6 +11144,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         db.add(WorkflowEvent(record_id=source.id, action="绑定调查事项合同", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}"))
     start_date = body.start_date or _investigation_task_date(parent_data.get("start_date") or parent_data.get("authorized_from")) or _investigation_task_date(source_data.get("authorized_from"))
     end_date = body.end_date or body.deadline or _investigation_task_date(parent_data.get("end_date") or parent_data.get("deadline") or parent_data.get("authorized_to")) or _investigation_task_date(source_data.get("authorized_to"))
+    authorized_from = _investigation_task_date(parent_data.get("authorized_from")) or _investigation_task_date(source_data.get("authorized_from")) or start_date
+    authorized_to = _investigation_task_date(parent_data.get("authorized_to")) or _investigation_task_date(source_data.get("authorized_to")) or end_date
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="调查结束时间必须不早于开始时间")
     parent_or_source = parent_data or source_data
@@ -10887,7 +11182,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "right_type": str(source_data.get("right_type") or ""),
         "region": region, "province": province, "city": city, "district": district,
         "start_date": str(start_date or ""), "end_date": str(end_date or ""),
-        "authorized_from": str(start_date or ""), "authorized_to": str(end_date or ""),
+        "authorized_from": str(authorized_from or ""), "authorized_to": str(authorized_to or ""),
         "source_owner": str(source_data.get("source_owner") or ""),
         "assigner": str(source_data.get("assigner") or source_data.get("assigned_by") or identity["username"]),
         "parent_task_id": parent.id if parent else None,
@@ -11314,6 +11609,40 @@ async def _business_rule_loop() -> None:
         await asyncio.sleep(3600)
 
 
+def _is_investigation_task(task: BusinessRecord) -> bool:
+    """Keep investigation child tasks out of the general task centre.
+
+    Investigation child tasks share the ``task`` module with ordinary and case
+    tasks.  Legacy rows do not consistently carry a case number, so case linkage
+    must never be used as a proxy for task-centre eligibility.  The investigation
+    relation/source fields are the stable discriminator across old and new rows.
+    """
+    data = task.data or {}
+    source = str(data.get("source") or "").strip()
+    business_type = str(data.get("task_business_type") or data.get("business_type") or "").strip()
+    return bool(
+        data.get("investigation_record_id")
+        or str(data.get("investigation_no") or "").strip()
+        or str(data.get("investigation_module") or "").strip() == "investigation"
+        or source in {"调查任务", "调查子任务"}
+        or business_type in {"调查任务", "调查子任务"}
+    )
+
+
+async def _require_company_task_read_scope(identity: dict, db: AsyncSession, relation: str) -> None:
+    """Authorize company task views from configured menu and data-range grants."""
+    permission = await _permission_payload_for_identity(identity, db)
+    required_menu = {
+        "initiated": "task-company-created",
+        "owned": "task-company-accepted",
+        "collaborating": "task-company-collaborating",
+    }.get(relation, "task-company")
+    if required_menu not in set(permission.get("menu_keys") or []):
+        raise HTTPException(status_code=403, detail="当前角色没有查看公司任务的菜单权限")
+    if str(permission.get("data_scope") or "") != "全所数据":
+        raise HTTPException(status_code=403, detail="当前角色没有查看公司任务的全所数据权限")
+
+
 @app.get(f"{settings.api_prefix}/tasks")
 async def list_tasks(
     keyword: str = "", status_filter: str = "", reminder_only: bool = False, scope: str = "default",
@@ -11343,8 +11672,8 @@ async def list_tasks(
             raise HTTPException(status_code=422, detail="无效的任务页面")
         scope, relation = mapped
     if scope not in {"default", "mine", "department", "company"}: raise HTTPException(status_code=422, detail="无效的任务范围")
-    if scope == "company" and identity.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="只有系统管理员可以查看公司任务")
+    if scope == "company":
+        await _require_company_task_read_scope(identity, db, relation)
     if created_from and created_to and created_from > created_to: raise HTTPException(status_code=422, detail="发起开始日期不能晚于结束日期")
     if deadline_from and deadline_to and deadline_from > deadline_to: raise HTTPException(status_code=422, detail="截止开始日期不能晚于结束日期")
     # Apply participant visibility in SQL before any Python filtering/pagination.
@@ -11354,7 +11683,7 @@ async def list_tasks(
     # explicit legacy query semantics while this candidate query prevents an
     # unrelated task from entering the in-memory page window.
     task_conditions = [BusinessRecord.module == "task"]
-    if identity.get("role") != "admin" and scope in {"mine", "default"}:
+    if scope in {"mine", "default"}:
         username_token = f'"{identity["username"]}"'
         task_conditions.append(or_(
             BusinessRecord.owner == identity["username"],
@@ -11374,7 +11703,7 @@ async def list_tasks(
             *department_tokens,
         ))
     tasks = list((await db.scalars(select(BusinessRecord).where(*task_conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
-    if identity.get("role") != "admin" and scope in {"mine", "default"}:
+    if scope in {"mine", "default"}:
         username = identity["username"]
         tasks = [task for task in tasks if task.owner == username or (task.data or {}).get("initiator") == username or username in (task.data or {}).get("collaborators", [])]
     elif scope == "department":
@@ -11398,21 +11727,16 @@ async def list_tasks(
         if relation == "collaborating":
             tasks = [task for task in tasks if (task.data or {}).get("collaborators", [])]
     elif scope != "department":
-        # Administrators retain the full company set even from a personal
-        # entry; ordinary personal views remain participant-specific.
-        is_admin_global_view = identity.get("role") == "admin"
-        if relation == "initiated" and not is_admin_global_view:
+        # Personal entries are always about the signed-in user, including for
+        # administrators.  Company-wide visibility requires scope=company.
+        if relation == "initiated":
             tasks = [task for task in tasks if (task.data or {}).get("initiator") == username]
-        elif relation == "owned" and not is_admin_global_view:
+        elif relation == "owned":
             tasks = [task for task in tasks if task.owner == username]
-        elif relation == "collaborating" and not is_admin_global_view:
+        elif relation == "collaborating":
             tasks = [task for task in tasks if username in (task.data or {}).get("collaborators", [])]
+    tasks = [task for task in tasks if not _is_investigation_task(task)]
     items = await _task_display_dicts(tasks, db)
-    # The事务中心 task list mirrors the legacy案件任务 list.  Investigation
-    # tasks have their own workbench and must not appear here even though they
-    # share the task record module; a real案件任务 is identified by its case
-    # number and keeps its own automatic/manual source value.
-    items = [item for item in items if str(item.get("case_no") or "").strip()]
     all_task_items = list(items)
 
     def contains(value: object, needle: str) -> bool:
@@ -17364,7 +17688,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/logs", status_code=status.HTTP_201_CREATED)
 async def create_case_log(case_id: int, body: CaseLogInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_note_write_access(case_record, identity, db)
+    await _require_case_note_write_access(case_record, identity, db, "case.log.create")
     content = body.content.strip()
     if not content:
         raise HTTPException(status_code=422, detail="请输入日志内容")
@@ -18059,7 +18383,34 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     if contract.module != "contract":
         raise HTTPException(status_code=422, detail="关联记录不是合同")
     if contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-        raise HTTPException(status_code=409, detail="合同审批通过后才能新建案件")
+        raise HTTPException(status_code=409, detail="只能从审批中、审批通过或已完成的合同新建案件")
+    contract_context = await _contract_customer_projection_context([contract], db)
+    contract_customer, relation_status = _customer_reference_from_maps(
+        contract.customer,
+        contract.data or {},
+        contract_context["customers_by_id"],
+        contract_context["customers_by_no"],
+        contract_context["customers_by_name"],
+    )
+    if not contract_customer:
+        detail = "关联合同未绑定唯一有效客户，不能新建案件"
+        if relation_status.startswith("ambiguous"):
+            detail = "关联合同客户名称存在重名，必须先绑定明确客户后再新建案件"
+        raise HTTPException(status_code=409, detail=detail)
+    requested_customer_id = body.customer_record_id or body.customer_id
+    if requested_customer_id and requested_customer_id != contract_customer.id:
+        raise HTTPException(status_code=422, detail="所选客户与关联合同绑定客户不一致")
+    if body.customer_no.strip() and body.customer_no.strip() != contract_customer.serial_no:
+        raise HTTPException(status_code=422, detail="客户编号与关联合同绑定客户不一致")
+    if body.customer.strip() and _normalized_customer_name(body.customer) != _normalized_customer_name(contract_customer.title):
+        raise HTTPException(status_code=422, detail="客户名称与关联合同绑定客户不一致")
+    contract.data = {
+        **(contract.data or {}),
+        "customer_id": contract_customer.id,
+        "customer_record_id": contract_customer.id,
+        "customer_no": contract_customer.serial_no,
+    }
+    contract.customer = contract_customer.title
     department = contract.department.strip()
     if not department or not await db.scalar(select(Department.id).where(Department.name == department, Department.is_active.is_(True))):
         raise HTTPException(status_code=409, detail="关联合同没有有效的所属部门")
@@ -18081,7 +18432,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         raise HTTPException(status_code=422, detail="案件负责人必须是有效用户")
     record = BusinessRecord(
         module="case", serial_no=serial_no, title=title,
-        customer=contract.customer, status=canonical_status, owner=owner,
+        customer=contract_customer.title, status=canonical_status, owner=owner,
         department=department, description="",
         data={
             "contract_id": contract.id,
@@ -18089,6 +18440,9 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
             "external_contract_no": contract_data.get("external_contract_no", ""),
             "external_contract_numbers": contract_data.get("external_contract_numbers", []),
             "contract_title": contract.title,
+            "customer_id": contract_customer.id,
+            "customer_record_id": contract_customer.id,
+            "customer_no": contract_customer.serial_no,
             "case_type": case_type,
             "client_position": client_position,
             "opponent": opponent,
@@ -18848,12 +19202,29 @@ async def _require_case_detail_write_access(case_record: BusinessRecord, identit
     """Apply one non-bypassable gate to every mutable case-detail feature."""
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以办理案件详情")
+    await _require_case_action(identity, db, "case.detail.update")
     _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
 
 
-async def _require_case_note_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+async def _case_action_granted(identity: dict, db: AsyncSession, action_code: str) -> bool:
+    permission = await _permission_payload_for_identity(identity, db)
+    action_keys = set(permission.get("action_keys") or [])
+    return "*" in action_keys or action_code in action_keys
+
+
+async def _require_case_action(identity: dict, db: AsyncSession, action_code: str) -> None:
+    if not await _case_action_granted(identity, db, action_code):
+        raise HTTPException(status_code=403, detail="当前岗位没有执行该案件操作的权限")
+
+
+async def _require_case_note_write_access(
+    case_record: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+    action_code: str = "case.reminder.manage",
+) -> None:
     """Allow case-team notes independently from the case-creation wizard state.
 
     Historical and duplicated cases can carry legacy ``case_creation_step``
@@ -18863,6 +19234,7 @@ async def _require_case_note_write_access(case_record: BusinessRecord, identity:
     """
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件团队成员或系统管理员可以维护案件提醒和日志")
+    await _require_case_action(identity, db, action_code)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
 
@@ -18872,6 +19244,7 @@ async def _require_case_task_write_access(case_record: BusinessRecord, identity:
     role = await _case_team_role(case_record, identity, db)
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以发布案件任务")
+    await _require_case_action(identity, db, "case.task.create")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能发布案件任务")
 
@@ -18880,6 +19253,7 @@ async def _require_case_attachment_upload_access(case_record: BusinessRecord, id
     """Allow case materials before creation approval without widening other writes."""
     if await _case_team_role(case_record, identity, db) == "none":
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以上传案件文档")
+    await _require_case_action(identity, db, "case.attachment.write")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能上传案件文档")
 
@@ -18889,6 +19263,7 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
     role = await _case_team_role(case_record, identity, db)
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以维护案件进展和开庭排期")
+    await _require_case_action(identity, db, "case.progress.update")
     _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
@@ -18901,6 +19276,7 @@ async def _require_case_phase_change_access(case_record: BusinessRecord, identit
     role = await _case_team_role(case_record, identity, db)
     if role not in {"manager", "handling_lawyer"}:
         raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以修改案件阶段")
+    await _require_case_action(identity, db, "case.phase.update")
     _require_case_creation_completed(case_record, require_approval=False)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能修改案件阶段")
@@ -18987,6 +19363,10 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     if not can_create_same_type and case_type in CASE_CREATE_PERMISSION_BY_TYPE:
         permission = await _permission_payload_for_identity(identity, db)
         can_create_same_type = CASE_CREATE_PERMISSION_BY_TYPE[case_type] in set(permission.get("menu_keys", []))
+    can_assign_team = role == "manager" and await _case_action_granted(identity, db, "case.team.assign")
+    can_edit_basic = role == "manager" and await _case_action_granted(identity, db, "case.detail.update")
+    can_close_case = role == "manager" and await _case_action_granted(identity, db, "case.close")
+    can_archive_case = role == "manager" and await _case_action_granted(identity, db, "case.archive.apply")
     base = {
         "can_write": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
@@ -18995,8 +19375,8 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_create_case_task": False, "can_duplicate_case": role == "manager" and can_create_same_type,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
         "can_merge_case": role == "manager",
-        "can_assign_team": role == "manager", "can_edit_basic": role == "manager",
-        "can_close_case": role == "manager", "can_archive": role == "manager",
+        "can_assign_team": can_assign_team, "can_edit_basic": can_edit_basic,
+        "can_close_case": can_close_case, "can_archive": can_archive_case,
         "can_create_finance": role == "manager", "team_role": role, "reason": "",
     }
     try:
@@ -19010,9 +19390,13 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     except HTTPException:
         pass
     try:
-        await _require_case_note_write_access(case_record, identity, db)
+        await _require_case_note_write_access(case_record, identity, db, "case.reminder.manage")
         base["can_create_reminder"] = True
         base["can_delete_reminder"] = True
+    except HTTPException:
+        pass
+    try:
+        await _require_case_note_write_access(case_record, identity, db, "case.log.create")
         base["can_create_log"] = True
     except HTTPException:
         pass
@@ -19025,14 +19409,12 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         await _require_case_detail_write_access(case_record, identity, db)
     except HTTPException as exc:
         return {**base, "reason": str(exc.detail)}
-    can_progress = role in {"manager", "handling_lawyer"}
+    can_progress = role in {"manager", "handling_lawyer"} and await _case_action_granted(identity, db, "case.progress.update")
     return {
         **base,
-        "can_write": True, "can_upload_attachment": True,
-        "can_delete_attachment": True, "can_create_reminder": True,
-        "can_delete_reminder": True, "can_create_log": True,
+        "can_write": True,
+        "can_delete_attachment": base["can_upload_attachment"],
         "can_update_progress": can_progress, "can_manage_hearing": can_progress,
-        "can_create_case_task": can_progress,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
     }
 
@@ -19871,6 +20253,7 @@ async def list_case_tasks(
     case_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=200),
+    scope: str = Query("", pattern="^(|case|customer)$"),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -19879,7 +20262,8 @@ async def list_case_tasks(
         BusinessRecord.data["case_id"].as_integer() == case_record.id,
         BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
     )
-    task_condition = [BusinessRecord.module == "task", link_condition]
+    base_task_condition = [BusinessRecord.module == "task", link_condition]
+    task_condition = list(base_task_condition)
     if identity.get("role") != "admin":
         username_token = f'"{identity["username"]}"'
         task_condition.append(or_(
@@ -19887,8 +20271,13 @@ async def list_case_tasks(
             BusinessRecord.data["initiator"].as_string() == identity["username"],
             BusinessRecord.data["collaborators"].as_string().contains(username_token),
         ))
+    visible_total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_condition)) or 0)
+    if scope == "customer":
+        task_condition.append(BusinessRecord.data["source"].as_string() == "客户任务")
+    elif scope == "case":
+        task_condition.append(func.coalesce(BusinessRecord.data["source"].as_string(), "") != "客户任务")
     total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_condition)) or 0)
-    if identity.get("role") != "admin" and total == 0:
+    if identity.get("role") != "admin" and visible_total == 0:
         all_linked = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
             BusinessRecord.module == "task", link_condition,
         )) or 0)
@@ -20304,8 +20693,10 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
         case_record.status = "亏损内审"
     if body.approved and case_record.status != "亏损内审" and archive_type != "deficit":
         checks = await _case_archive_checks(case_record, db)
-        if not all(checks.values()):
-            raise HTTPException(status_code=409, detail="归档条件在审核前发生变化，请退回补齐后重新提交")
+        # The legacy workflow treats material completeness and refund status as
+        # reviewer guidance. Only unsettled case fees are a hard blocker.
+        if not checks["fees_settled"]:
+            raise HTTPException(status_code=409, detail="案件费用未到账，不允许通过归档审核")
     previous = case_record.status
     reviewed_at = datetime.now()
     if previous == "亏损内审":
@@ -21795,32 +22186,110 @@ async def _seal_record_dict(
     record: BusinessRecord,
     db: AsyncSession,
     users_by_username: dict[str, User] | None = None,
+    identity: dict | None = None,
+    attachments_by_record: dict[int, list[FileAttachment]] | None = None,
+    assets_by_id: dict[int, SealAsset] | None = None,
+    authorization_context: dict | None = None,
 ) -> dict:
     if users_by_username is None:
         users_by_username = await _user_display_map(_record_person_usernames(record), db)
     result = _apply_record_person_displays(_record_dict(record), record, users_by_username)
-    file_category = (
-        SEAL_STAMPED_FILE_CATEGORY
-        if record.status in {"已用印", "已归档"}
-        else SEAL_APPLICATION_FILE_CATEGORY
-    )
-    visible_files = list((await db.scalars(
+    visible_files = attachments_by_record.get(record.id, []) if attachments_by_record is not None else list((await db.scalars(
         select(FileAttachment)
-        .where(FileAttachment.record_id == record.id, FileAttachment.category == file_category)
+        .where(
+            FileAttachment.record_id == record.id,
+            FileAttachment.category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY}),
+        )
         .order_by(FileAttachment.created_at, FileAttachment.id)
     )).all())
-    file_names = list(dict.fromkeys(item.original_name for item in visible_files if item.original_name))
+    application_files = [item for item in visible_files if item.category == SEAL_APPLICATION_FILE_CATEGORY]
+    stamped_files = [item for item in visible_files if item.category == SEAL_STAMPED_FILE_CATEGORY]
+    application_names = list(dict.fromkeys(item.original_name for item in application_files if item.original_name))
+    stamped_names = list(dict.fromkeys(item.original_name for item in stamped_files if item.original_name))
     result["file_count"] = len(visible_files)
-    result["file_category"] = file_category
+    result["application_file_count"] = len(application_files)
+    result["stamped_file_count"] = len(stamped_files)
+    result["application_file_names"] = application_names
+    result["stamped_file_names"] = stamped_names
+    result["file_category"] = "用印附件"
     result["data"] = {
         **(result.get("data") or {}),
-        "file_names": file_names,
-        "file_category": file_category,
+        "file_names": [*application_names, *(name for name in stamped_names if name not in application_names)],
+        "application_file_names": application_names,
+        "stamped_file_names": stamped_names,
+        "file_category": "用印附件",
     }
     asset_id = int((record.data or {}).get("seal_asset_id") or 0)
-    asset = await db.get(SealAsset, asset_id) if asset_id else None
+    asset = assets_by_id.get(asset_id) if assets_by_id is not None else (await db.get(SealAsset, asset_id) if asset_id else None)
     result["seal_asset"] = _seal_asset_dict(asset) if asset else None
+    if identity is not None:
+        capabilities = await _seal_application_capabilities(record, identity, db, authorization_context)
+        result["capabilities"] = capabilities
+        result["action_keys"] = [key for key in ("approve", "reject", "stamp", "archive") if capabilities.get(key)]
     return result
+
+
+SEAL_ACTION_CODES = {
+    "apply": "seal.application.apply",
+    "approve": "seal.application.approve",
+    "reject": "seal.application.reject",
+    "stamp": "seal.application.stamp",
+    "archive": "seal.application.archive",
+    "manage_assets": "seal.asset.manage",
+}
+
+
+async def _seal_authorization_context(identity: dict, db: AsyncSession) -> dict:
+    """Use the common role action-key payload for every seal workflow decision."""
+    permission = await _permission_payload_for_identity(identity, db)
+    action_keys = set(permission.get("action_keys") or [])
+    granted = {name: ("*" in action_keys or code in action_keys) for name, code in SEAL_ACTION_CODES.items()}
+    return {"identity": identity, "action_keys": action_keys, **granted}
+
+
+async def _user_has_seal_action(user: User, action: str, db: AsyncSession) -> bool:
+    if not user.is_active:
+        return False
+    permission = await _user_permission_payload(user, db)
+    keys = set(permission.get("action_keys") or [])
+    return "*" in keys or SEAL_ACTION_CODES[action] in keys
+
+
+async def _require_seal_base_action(identity: dict, db: AsyncSession, action: str) -> dict:
+    context = await _seal_authorization_context(identity, db)
+    if not context.get(action):
+        raise HTTPException(status_code=403, detail="当前账号没有对应的用印岗位动作权限")
+    return context
+
+
+async def _seal_application_capabilities(
+    record: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+    authorization_context: dict | None = None,
+) -> dict[str, bool]:
+    context = authorization_context or await _seal_authorization_context(identity, db)
+    selected_approver = str((record.data or {}).get("approver") or "").strip()
+    assigned_to_actor = not selected_approver or selected_approver == identity.get("username")
+    can_audit = bool(context["approve"] and assigned_to_actor)
+    return {
+        "apply": bool(context["apply"] and record.owner == identity.get("username") and record.status == "草稿"),
+        "approve": bool(can_audit and record.status == "待审批"),
+        "reject": bool(context["reject"] and assigned_to_actor and record.status == "待审批"),
+        "stamp": bool(context["stamp"] and record.status == "待用印"),
+        "archive": bool(context["archive"] and record.status == "已用印"),
+        "manage_assets": bool(context["manage_assets"]),
+    }
+
+
+async def _get_seal_application_for_action(record_id: int, action: str, identity: dict, db: AsyncSession) -> BusinessRecord:
+    item = await db.get(BusinessRecord, record_id)
+    if not item or item.module != "seal":
+        raise HTTPException(status_code=404, detail="用印申请不存在或无权访问")
+    capabilities = await _seal_application_capabilities(item, identity, db)
+    if not capabilities.get(action):
+        raise HTTPException(status_code=403, detail="当前账号没有执行该用印操作的权限")
+    return item
 
 
 async def _validated_seal_relations(body: SealApplicationInput, identity: dict, db: AsyncSession) -> tuple[str, str, str, str]:
@@ -21858,11 +22327,22 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
 @app.get(f"{settings.api_prefix}/seals/applications")
 async def list_seal_applications(view: str = "my", keyword: str = "", record_status: str = "", serial_no: str = "", applicant: str = "", date_from: date | None = None, date_to: date | None = None, case_no: str = "", contract_no: str = "", customer: str = "", use_type: str = "", file_name: str = "", page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if view not in {"my", "audit", "all"}: raise HTTPException(status_code=422, detail="无效的用印视图")
-    if view == "all" and identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以查看全部用印申请")
     scope_conditions = await _record_scope_conditions(identity, db)
-    conditions = [BusinessRecord.module == "seal", *scope_conditions]
+    context = await _seal_authorization_context(identity, db)
+    if view == "all" and not context["manage_assets"]:
+        raise HTTPException(status_code=403, detail="当前账号没有印章管理权限")
+    conditions = [BusinessRecord.module == "seal"]
     if view == "my": conditions.append(BusinessRecord.owner == identity["username"])
-    if view == "audit": conditions.append(BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"}))
+    elif view == "audit":
+        if not (context["approve"] or context["reject"]):
+            return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {"total": 0, "pending": 0, "waiting_stamp": 0, "completed": 0}}
+        approver = func.trim(func.coalesce(BusinessRecord.data["approver"].as_string(), ""))
+        conditions.extend([
+            BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"}),
+            or_(approver == "", approver == identity["username"]),
+        ])
+    else:
+        conditions.extend(scope_conditions)
     if record_status: conditions.append(BusinessRecord.status == record_status)
     def text_filter(column, value: str):
         if value.strip():
@@ -21881,12 +22361,44 @@ async def list_seal_applications(view: str = "my", keyword: str = "", record_sta
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like), BusinessRecord.data["case_no"].as_string().ilike(like), BusinessRecord.data["contract_no"].as_string().ilike(like), BusinessRecord.data["document_names"].as_string().ilike(like)))
     total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
     rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all()
-    all_seals = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "seal", *scope_conditions))).all()
-    summary = {"total": len(all_seals), "pending": sum(x.status == "待审批" for x in all_seals), "waiting_stamp": sum(x.status == "待用印" for x in all_seals), "completed": sum(x.status in {"已用印", "已归档"} for x in all_seals)}
+    status_counts = dict((await db.execute(
+        select(BusinessRecord.status, func.count()).where(*conditions).group_by(BusinessRecord.status)
+    )).all())
+    summary = {
+        "total": total,
+        "pending": int(status_counts.get("待审批", 0)),
+        "waiting_stamp": int(status_counts.get("待用印", 0)),
+        "completed": int(status_counts.get("已用印", 0)) + int(status_counts.get("已归档", 0)),
+    }
     seal_usernames = set().union(*(_record_person_usernames(row) for row in rows)) if rows else set()
     users_by_username = await _user_display_map(seal_usernames, db)
+    row_ids = [row.id for row in rows]
+    attachments = list((await db.scalars(
+        select(FileAttachment).where(
+            FileAttachment.record_id.in_(row_ids),
+            FileAttachment.category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY}),
+        ).order_by(FileAttachment.record_id, FileAttachment.created_at, FileAttachment.id)
+    )).all()) if row_ids else []
+    attachments_by_record: dict[int, list[FileAttachment]] = {}
+    for attachment in attachments:
+        attachments_by_record.setdefault(attachment.record_id, []).append(attachment)
+    asset_ids = {
+        int((row.data or {}).get("seal_asset_id") or 0)
+        for row in rows
+        if int((row.data or {}).get("seal_asset_id") or 0) > 0
+    }
+    assets = list((await db.scalars(select(SealAsset).where(SealAsset.id.in_(asset_ids)))).all()) if asset_ids else []
+    assets_by_id = {asset.id: asset for asset in assets}
     return {
-        "items": [await _seal_record_dict(row, db, users_by_username) for row in rows],
+        "items": [await _seal_record_dict(
+            row,
+            db,
+            users_by_username,
+            identity,
+            attachments_by_record,
+            assets_by_id,
+            context,
+        ) for row in rows],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -21917,13 +22429,6 @@ async def package_download_seal_files(body: SealPackageDownloadInput, identity: 
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for attachment in attachments:
             record = records[int(attachment.record_id)]
-            expected_category = (
-                SEAL_STAMPED_FILE_CATEGORY
-                if record.status in {"已用印", "已归档"}
-                else SEAL_APPLICATION_FILE_CATEGORY
-            )
-            if attachment.category != expected_category:
-                continue
             path = Path(attachment.path)
             if not path.is_file() or upload_root not in path.resolve().parents:
                 continue
@@ -22043,6 +22548,7 @@ async def _resolve_seal_source_attachment_ids(
 
 @app.post(f"{settings.api_prefix}/seals/applications", status_code=status.HTTP_201_CREATED)
 async def create_seal_application(body: SealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_seal_base_action(identity, db, "apply")
     asset = await db.get(SealAsset, body.seal_asset_id)
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
@@ -22061,19 +22567,21 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
         db.add(item); await db.flush()
         copied_targets = await _copy_seal_source_attachments(item, source_attachment_ids, identity, db)
         db.add(WorkflowEvent(record_id=item.id, action="创建用印申请", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
+        await _sync_legacy_official_document(item, identity, db)
         await db.commit(); await db.refresh(item)
     except Exception:
         await db.rollback()
         for target in copied_targets:
             target.unlink(missing_ok=True)
         raise
-    return await _seal_record_dict(item, db)
+    return await _seal_record_dict(item, db, identity=identity)
 
 
 @app.patch(f"{settings.api_prefix}/seals/applications/{{record_id}}")
 async def update_seal_application(record_id: int, body: SealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _get_seal_application(record_id, identity, db)
     await _require_record_owner_or_manager(item, identity, db)
+    await _require_seal_base_action(identity, db, "apply")
     if item.status != "草稿": raise HTTPException(status_code=409, detail="只有草稿用印申请可以修改")
     asset = await db.get(SealAsset, body.seal_asset_id)
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
@@ -22086,8 +22594,9 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     existing_names = str((item.data or {}).get("document_names") or "")
     item.data = {"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
     db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
+    await _sync_legacy_official_document(item, identity, db)
     await db.commit(); await db.refresh(item)
-    return await _seal_record_dict(item, db)
+    return await _seal_record_dict(item, db, identity=identity)
 
 
 @app.delete(f"{settings.api_prefix}/seals/applications/{{record_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -22123,12 +22632,10 @@ async def list_seal_application_files(
     db: AsyncSession = Depends(get_db),
 ):
     record = await _get_seal_application(record_id, identity, db)
-    category = (
-        SEAL_STAMPED_FILE_CATEGORY
-        if record.status in {"已用印", "已归档"}
-        else SEAL_APPLICATION_FILE_CATEGORY
-    )
-    conditions = [FileAttachment.record_id == record.id, FileAttachment.category == category]
+    conditions = [
+        FileAttachment.record_id == record.id,
+        FileAttachment.category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY}),
+    ]
     total = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(*conditions)) or 0)
     rows = (await db.scalars(
         select(FileAttachment)
@@ -22157,8 +22664,10 @@ async def upload_seal_application_files(
     await _require_record_owner_or_manager(record, identity, db)
     if record.status not in {"草稿", "待用印"}:
         raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
-    if record.status == "待用印" and identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="只有用印管理员可以上传盖章文件")
+    if record.status == "待用印":
+        await _require_seal_base_action(identity, db, "stamp")
+    else:
+        await _require_seal_base_action(identity, db, "apply")
     if not files:
         raise HTTPException(status_code=422, detail="请至少选择一个用印文件")
     category = SEAL_STAMPED_FILE_CATEGORY if record.status == "待用印" else SEAL_APPLICATION_FILE_CATEGORY
@@ -22192,6 +22701,7 @@ async def upload_seal_application_files(
             await _sync_seal_document_names(record, db)
         action = "上传盖章文件" if category == SEAL_STAMPED_FILE_CATEGORY else "上传用印文件"
         db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{len(prepared)} 个文件"))
+        await _sync_legacy_official_document(record, identity, db)
         await db.commit()
     except Exception:
         await db.rollback()
@@ -22205,13 +22715,15 @@ async def upload_seal_application_files(
 async def submit_seal_application(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _get_seal_application(record_id, identity, db)
     await _require_record_owner_or_manager(item, identity, db)
+    await _require_seal_base_action(identity, db, "apply")
     if item.status != "草稿": raise HTTPException(status_code=409, detail="只有草稿可以提交审批")
     attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == item.id, FileAttachment.category == "用印文件")) or 0)
     if not attachment_count:
         raise HTTPException(status_code=409, detail="请先上传至少一个用印文件后再提交审批")
     old = item.status; item.status = "待审批"
     db.add(WorkflowEvent(record_id=item.id, action="提交用印审批", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
-    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
+    await _sync_legacy_official_audit(item, identity, db, 10, body.comment)
+    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db, identity=identity)
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/withdraw")
@@ -22224,6 +22736,7 @@ async def withdraw_seal_application(record_id: int, body: TaskActionInput, ident
     previous = item.status
     item.status = "已撤回"
     db.add(WorkflowEvent(record_id=item.id, action="撤回用印申请", from_status=previous, to_status="已撤回", operator=identity["username"], comment=body.comment))
+    await _sync_legacy_official_audit(item, identity, db, 40, body.comment)
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
 
@@ -22247,6 +22760,7 @@ async def batch_withdraw_seal_applications(body: SealBatchApplicationInput, iden
             previous = item.status
             item.status = "已撤回"
             db.add(WorkflowEvent(record_id=item.id, action="批量撤回用印申请", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment.strip()))
+            await _sync_legacy_official_audit(item, identity, db, 40, body.comment.strip())
         await db.commit()
     except Exception:
         await db.rollback()
@@ -22256,12 +22770,7 @@ async def batch_withdraw_seal_applications(body: SealBatchApplicationInput, iden
 
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/approve")
 async def approve_seal_application(record_id: int, body: SealApprovalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item = await _get_seal_application(record_id, identity, db)
-    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有用印审批权限")
-    if item.status != "待审批": raise HTTPException(status_code=409, detail="申请不在待审批状态")
-    selected_approver = str((item.data or {}).get("approver") or "").strip()
-    if selected_approver and identity.get("role") != "admin" and selected_approver != identity.get("username"):
-        raise HTTPException(status_code=403, detail="当前账号不是该用印申请指定的审批人")
+    item = await _get_seal_application_for_action(record_id, "approve" if body.approved else "reject", identity, db)
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="驳回时必须填写审批意见")
     old = item.status; item.status = "待用印" if body.approved else "已拒绝"
@@ -22272,13 +22781,18 @@ async def approve_seal_application(record_id: int, body: SealApprovalInput, iden
         "approval_comment": body.comment.strip(),
     }
     db.add(WorkflowEvent(record_id=item.id, action="用印审批通过" if body.approved else "用印审批拒绝", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
-    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
+    await _sync_legacy_official_audit(item, identity, db, 20 if body.approved else 30, body.comment)
+    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db, identity=identity)
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/stamp")
 async def stamp_seal_application(record_id: int, body: SealStampInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item = await _get_seal_application(record_id, identity, db)
-    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记实际用印")
+    await _require_seal_base_action(identity, db, "stamp")
+    item = await db.get(BusinessRecord, record_id)
+    if not item or item.module != "seal":
+        raise HTTPException(status_code=404, detail="用印申请不存在或无权访问")
+    if item.status == "已用印" and (item.data or {}).get("stamped_at"):
+        return await _seal_record_dict(item, db, identity=identity)
     if item.status != "待用印": raise HTTPException(status_code=409, detail="申请尚未审批通过或已经用印")
     requested = int((item.data or {}).get("copies") or 0)
     if body.actual_copies > requested: raise HTTPException(status_code=409, detail=f"实际用印份数不能超过申请份数 {requested}")
@@ -22304,14 +22818,14 @@ async def stamp_seal_application(record_id: int, body: SealStampInput, identity:
     asset.usage_count += body.actual_copies; asset.last_used_at = datetime.now()
     db.add(WorkflowEvent(record_id=item.id, action="完成实际用印", from_status=old, to_status=item.status, operator=identity["username"], comment=f"实际 {body.actual_copies} 份；归档号：{body.archive_no}。{body.comment}"))
     db.add(SealAssetAudit(asset_id=asset.id, asset_code=asset.code, asset_name=asset.name, action="完成实际用印", operator=identity["username"], comment=f"用印申请 {item.serial_no}；实际 {body.actual_copies} 份"))
-    await db.commit(); await db.refresh(item); await db.refresh(asset); return await _seal_record_dict(item, db)
+    await _sync_legacy_official_audit(item, identity, db, 60, body.comment)
+    await db.commit(); await db.refresh(item); await db.refresh(asset); return await _seal_record_dict(item, db, identity=identity)
 
 
 @app.post(f"{settings.api_prefix}/seals/applications/batch-stamp")
 async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Stamp selected approved applications in one transaction."""
-    if identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记实际用印")
+    await _require_seal_base_action(identity, db, "stamp")
     ids = list(dict.fromkeys(body.application_ids))
     records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids), BusinessRecord.module == "seal"))).all())
     if len(records) != len(ids):
@@ -22330,9 +22844,9 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
             if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
                 raise HTTPException(status_code=404, detail="所选盖章附件文件不存在")
         for item in ordered:
-            await _ensure_record_visible(item.id, identity, db)
-            if item.status != "待用印":
-                raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 尚未审批通过或已经用印")
+            capabilities = await _seal_application_capabilities(item, identity, db)
+            if not capabilities["stamp"]:
+                raise HTTPException(status_code=403, detail=f"当前账号没有登记申请 {item.serial_no} 实际用印的权限")
             requested = int((item.data or {}).get("copies") or 0)
             if body.actual_copies > requested:
                 raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 实际用印份数不能超过申请份数 {requested}")
@@ -22374,6 +22888,7 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
             asset.last_used_at = datetime.now()
             db.add(WorkflowEvent(record_id=item.id, action="批量完成实际用印", from_status=previous, to_status=item.status, operator=identity["username"], comment=f"实际 {body.actual_copies} 份；归档号：{body.archive_no}。{body.comment}"))
             db.add(SealAssetAudit(asset_id=asset.id, asset_code=asset.code, asset_name=asset.name, action="批量完成实际用印", operator=identity["username"], comment=f"用印申请 {item.serial_no}；实际 {body.actual_copies} 份"))
+            await _sync_legacy_official_audit(item, identity, db, 60, body.comment)
         await db.commit()
     except Exception:
         await db.rollback()
@@ -22385,22 +22900,28 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
 
 @app.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/archive")
 async def archive_seal_application(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item = await _get_seal_application(record_id, identity, db)
-    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以归档用印材料")
-    if item.status != "已用印": raise HTTPException(status_code=409, detail="只有已用印申请可以归档")
+    item = await _get_seal_application_for_action(record_id, "archive", identity, db)
     if not (item.data or {}).get("archive_no"): raise HTTPException(status_code=409, detail="请先在用印登记中填写归档号")
     item.status = "已归档"
     db.add(WorkflowEvent(record_id=item.id, action="用印材料归档", from_status="已用印", to_status="已归档", operator=identity["username"], comment=body.comment))
-    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
+    await _sync_legacy_official_document(item, identity, db)
+    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db, identity=identity)
 
 
 @app.get(f"{settings.api_prefix}/seals/assets")
 async def list_seal_assets(keyword: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    context = await _seal_authorization_context(identity, db)
     conditions = []
     if keyword:
         like = f"%{keyword.strip()}%"; conditions.append(or_(SealAsset.code.ilike(like), SealAsset.name.ilike(like), SealAsset.seal_type.ilike(like), SealAsset.custodian.ilike(like)))
     items = (await db.scalars(select(SealAsset).where(*conditions).order_by(SealAsset.code))).all()
-    return {"items": [_seal_asset_dict(x) for x in items], "total": len(items)}
+    capabilities = {"manage_assets": bool(context["manage_assets"])}
+    return {
+        "items": [{**_seal_asset_dict(x), "capabilities": capabilities, "action_keys": ["manage_assets"] if capabilities["manage_assets"] else []} for x in items],
+        "total": len(items),
+        "capabilities": capabilities,
+        "action_keys": ["manage_assets"] if capabilities["manage_assets"] else [],
+    }
 
 
 @app.get(f"{settings.api_prefix}/seals/assets/{{asset_id}}/audit")
@@ -22417,8 +22938,7 @@ async def list_seal_asset_audit(
     db: AsyncSession = Depends(get_db),
 ):
     """Read-only, bounded history for one seal asset."""
-    if identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="仅管理员或部门负责人可查看印章资产审计")
+    await _require_seal_base_action(identity, db, "manage_assets")
     asset = await db.get(SealAsset, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="印章不存在")
@@ -22443,7 +22963,7 @@ async def list_seal_asset_audit(
 
 @app.post(f"{settings.api_prefix}/seals/assets", status_code=status.HTTP_201_CREATED)
 async def create_seal_asset(body: SealAssetInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity["role"] != "admin": raise HTTPException(status_code=403, detail="仅管理员可新增印章")
+    await _require_seal_base_action(identity, db, "manage_assets")
     if body.seal_type not in REQUIRED_SEAL_TYPES: raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
     if await db.scalar(select(SealAsset.id).where(SealAsset.code == body.code)): raise HTTPException(status_code=409, detail="印章编号已存在")
     item = SealAsset(**body.model_dump()); db.add(item); await db.flush()
@@ -22453,7 +22973,7 @@ async def create_seal_asset(body: SealAssetInput, identity: dict = Depends(curre
 
 @app.patch(f"{settings.api_prefix}/seals/assets/{{asset_id}}")
 async def update_seal_asset(asset_id: int, body: SealAssetUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity["role"] != "admin": raise HTTPException(status_code=403, detail="仅管理员可维护印章")
+    await _require_seal_base_action(identity, db, "manage_assets")
     item = await db.get(SealAsset, asset_id)
     if not item: raise HTTPException(status_code=404, detail="印章不存在")
     changes = body.model_dump(exclude_unset=True)
@@ -22467,7 +22987,7 @@ async def update_seal_asset(asset_id: int, body: SealAssetUpdate, identity: dict
 
 @app.delete(f"{settings.api_prefix}/seals/assets/{{asset_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_seal_asset(asset_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity["role"] != "admin": raise HTTPException(status_code=403, detail="仅管理员可删除未使用印章")
+    await _require_seal_base_action(identity, db, "manage_assets")
     item = await db.get(SealAsset, asset_id)
     if not item: raise HTTPException(status_code=404, detail="印章不存在")
     referenced = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
@@ -22500,7 +23020,7 @@ def _job_role_dict(item: JobRole, users_by_username: dict[str, User] | None = No
     users = users_by_username or {}
     created_name, created_missing = _person_reference_display(item.created_by, users)
     updated_name, updated_missing = _person_reference_display(item.updated_by, users)
-    return {"id": item.id, "code": item.code, "name": item.name, "permissions": item.permissions or [], "field_keys": item.field_keys or [], "description": item.description, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "created_by_display_name": created_name, "created_by_display_name_missing": created_missing, "updated_by": item.updated_by, "updated_by_display_name": updated_name, "updated_by_display_name_missing": updated_missing, "created_at": item.created_at, "updated_at": item.updated_at}
+    return {"id": item.id, "code": item.code, "name": item.name, "permissions": item.permissions or [], "field_keys": item.field_keys or [], "field_keys_configured": item.field_keys_configured, "data_scope": item.data_scope, "description": item.description, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "created_by_display_name": created_name, "created_by_display_name_missing": created_missing, "updated_by": item.updated_by, "updated_by_display_name": updated_name, "updated_by_display_name_missing": updated_missing, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 def _normalize_job_role_field_keys(values: list[str]) -> list[str]:
@@ -22508,6 +23028,15 @@ def _normalize_job_role_field_keys(values: list[str]) -> list[str]:
     invalid = sorted(set(normalized) - set(FIELD_KEYS))
     if invalid:
         raise HTTPException(status_code=422, detail=f"无效字段权限：{', '.join(invalid)}")
+    return normalized
+
+
+def _normalize_job_role_data_scope(value: str | None) -> str | None:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return None
+    if normalized not in ROLE_DATA_SCOPES:
+        raise HTTPException(status_code=422, detail="无效数据范围")
     return normalized
 
 
@@ -22607,10 +23136,12 @@ async def list_hr_employees(
 
 @app.post(f"{settings.api_prefix}/hr/employees", status_code=status.HTTP_201_CREATED)
 async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    _require_admin(identity)
+    await _require_hr_employee_action(identity, db, "hr.employee.create", "新建")
     account_type = (body.account_type or body.data.get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
+    if "admin" not in _identity_role_ids(identity) and body.role != "user":
+        raise HTTPException(status_code=403, detail="非系统管理员不能创建高权限系统账号")
     username = body.username.strip().lower()
     employee_no = body.employee_no.strip()
     display_name = await _require_unique_hr_display_name(body.display_name, db, linked_username=username)
@@ -22623,10 +23154,13 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
     if not position:
         raise HTTPException(status_code=422, detail="所选职务不存在或已停用")
     staff_role = str(body.data.get("staff_role") or body.position).strip()
+    assigned_role: JobRole | None = None
     if account_type == "员工账号":
         assigned_role = await _job_role_for_name(staff_role, db)
         if not assigned_role:
             raise HTTPException(status_code=422, detail="所选人员角色不存在或已停用")
+        if "admin" not in _identity_role_ids(identity) and assigned_role.code == "SYSTEM-ADMIN":
+            raise HTTPException(status_code=403, detail="非系统管理员不能绑定系统管理员岗位")
         staff_role = assigned_role.name
     profile = {
         **body.data,
@@ -22636,6 +23170,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
         "position": body.position.strip(),
         "staff_role": staff_role,
         "permission_role": staff_role if account_type == "员工账号" else "",
+        "permission_role_code": assigned_role.code if assigned_role else "",
     }
     user: User | None = None
     login_backed_account = account_type in {"员工账号", "客户账号"}
@@ -22695,11 +23230,42 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
     return {"employee": _record_dict(employee), "user": _system_user_dict(user) if user else None}
 
 
+async def _require_hr_employee_target_access(
+    employee: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+) -> None:
+    """Keep delegated HR editors inside their data scope and below administrators."""
+    if "admin" in _identity_role_ids(identity):
+        return
+    actor = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+    if not actor:
+        raise HTTPException(status_code=403, detail="当前账号不可修改员工档案")
+    target_username = str((employee.data or {}).get("username") or employee.owner or "").strip()
+    target_user = await db.scalar(select(User).where(User.username == target_username)) if target_username else None
+    if target_user and "admin" in _system_user_role_ids(target_user):
+        raise HTTPException(status_code=403, detail="非系统管理员不能修改管理员员工档案")
+    if target_user:
+        target_job_role = await _job_role_for_name(_configured_user_job_role_name(target_user), db)
+        if target_job_role and target_job_role.code == "SYSTEM-ADMIN":
+            raise HTTPException(status_code=403, detail="非系统管理员不能修改系统管理员岗位人员")
+    permission = await _permission_payload_for_identity(identity, db)
+    data_scope = str(permission.get("data_scope") or "")
+    if data_scope == "全所数据":
+        return
+    if data_scope == "本部门数据" and employee.department == actor.department:
+        return
+    if target_username == actor.username or employee.owner == actor.username:
+        return
+    raise HTTPException(status_code=403, detail="当前角色的数据范围不包含该员工档案")
+
+
 @app.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}")
 async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    _require_admin(identity)
+    await _require_hr_employee_action(identity, db, "hr.employee.update", "修改")
     employee = await db.get(BusinessRecord, employee_id)
     if not employee or employee.module != "hr": raise HTTPException(status_code=404, detail="员工档案不存在")
+    await _require_hr_employee_target_access(employee, identity, db)
     if body.role not in {"admin", "manager", "auditor", "user"}: raise HTTPException(status_code=422, detail="角色值无效")
     if body.left_at and body.left_at < body.joined_at: raise HTTPException(status_code=422, detail="离职日期不能早于入职日期")
     department = await db.scalar(select(Department).where(Department.name == body.department, Department.is_active.is_(True)))
@@ -22712,20 +23278,29 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     account_type = str(body.data.get("account_type") or (employee.data or {}).get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
+    if "admin" not in _identity_role_ids(identity) and body.role != "user":
+        raise HTTPException(status_code=403, detail="非系统管理员不能调整系统账号角色")
     effective_role = body.role if account_type == "员工账号" else "user"
-    requested_staff_role = str(body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
+    requested_staff_role = str(body.data.get("permission_role_code") or body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
+    current_staff_role = str((employee.data or {}).get("permission_role_code") or (employee.data or {}).get("staff_role") or (employee.data or {}).get("permission_role") or "").strip()
+    if "admin" not in _identity_role_ids(identity) and requested_staff_role and requested_staff_role != current_staff_role:
+        raise HTTPException(status_code=403, detail="非系统管理员不能调整员工的权限角色")
     staff_role: str | None = requested_staff_role or None
+    assigned_role: JobRole | None = None
     if account_type == "员工账号":
         if requested_staff_role:
             assigned_role = await _job_role_for_name(requested_staff_role, db)
             if not assigned_role:
                 raise HTTPException(status_code=422, detail="所选人员角色不存在或已停用")
+            if "admin" not in _identity_role_ids(identity) and assigned_role.code == "SYSTEM-ADMIN":
+                raise HTTPException(status_code=403, detail="非系统管理员不能绑定系统管理员岗位")
             staff_role = assigned_role.name
     elif account_type == "客户账号":
         staff_role = "客户联系人"
-    role_binding = ({"staff_role": staff_role, "permission_role": staff_role} if staff_role is not None else {})
+    role_binding = ({"staff_role": staff_role, "permission_role": staff_role, "permission_role_code": assigned_role.code if assigned_role else ""} if staff_role is not None else {})
     if account_type != "员工账号":
         role_binding["permission_role"] = ""
+        role_binding["permission_role_code"] = ""
     stored_username = str((employee.data or {}).get("username") or "").strip().lower()
     requested_username = body.username.strip().lower()
     username = stored_username or (str(employee.owner or "").strip().lower() if account_type == "员工账号" else "")
@@ -23149,6 +23724,9 @@ async def get_job_role_permissions(role_id: int, identity: dict = Depends(curren
     return {
         "role_id": role.id, "role_code": role.code, "permissions": permissions,
         "field_keys": list(dict.fromkeys(role.field_keys or [])),
+        "field_keys_configured": role.field_keys_configured,
+        "data_scope": role.data_scope,
+        "available_data_scopes": sorted(ROLE_DATA_SCOPES),
         "available_field_keys": FIELD_KEYS,
         "tree": _organization_permission_tree(menus, actions, set(permissions)),
     }
@@ -23165,8 +23743,10 @@ async def update_job_role_permissions(
         raise HTTPException(status_code=404, detail="岗位角色不存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
     field_keys = _normalize_job_role_field_keys(body.field_keys) if body.field_keys is not None else list(dict.fromkeys(role.field_keys or []))
+    field_keys_configured = body.field_keys_configured if body.field_keys_configured is not None else role.field_keys_configured
+    data_scope = _normalize_job_role_data_scope(body.data_scope) if "data_scope" in body.model_fields_set else role.data_scope
     if role.code == "SYSTEM-ADMIN":
-        if set(permissions) != set(SYSTEM_ADMIN_JOB_PERMISSIONS) or set(field_keys) != set(FIELD_KEYS):
+        if set(permissions) != set(SYSTEM_ADMIN_JOB_PERMISSIONS) or set(field_keys) != set(FIELD_KEYS) or not field_keys_configured or data_scope not in {None, "全所数据"}:
             raise HTTPException(status_code=422, detail="系统管理员角色权限不可修改")
     else:
         role_rows = (await db.scalars(select(JobRole).order_by(JobRole.id))).all()
@@ -23175,12 +23755,14 @@ async def update_job_role_permissions(
             {action.strip() for row in role_rows for action in (row.permissions or []) if action.strip()}
             | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
         ) - configured_menu_keys
-        allowed = configured_menu_keys | allowed_actions
+        allowed = configured_menu_keys | allowed_actions | {f"action:{key}" for values in JOB_ROLE_ACTION_KEY_GRANTS.values() for key in values}
         invalid = sorted(set(permissions) - allowed)
         if invalid:
             raise HTTPException(status_code=422, detail=f"无效菜单或业务动作权限：{', '.join(invalid)}")
     role.permissions = permissions
     role.field_keys = field_keys
+    role.field_keys_configured = bool(field_keys_configured)
+    role.data_scope = "全所数据" if role.code == "SYSTEM-ADMIN" else data_scope
     role.updated_by = identity["username"]
     await _record_organization_audit(db, identity, "修改岗位角色权限", f"岗位角色:{role.code}", {"role_id": role.id, "permissions": permissions})
     await db.commit(); await db.refresh(role)
@@ -23194,7 +23776,8 @@ async def create_job_role(body: JobRoleInput, identity: dict = Depends(current_i
     if await db.scalar(select(JobRole.id).where(or_(JobRole.code == code, JobRole.name == name))): raise HTTPException(status_code=409, detail="岗位角色代码或名称已存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
     field_keys = _normalize_job_role_field_keys(body.field_keys)
-    item = JobRole(**body.model_dump(exclude={"code", "name", "permissions", "description", "field_keys"}), code=code, name=name, permissions=permissions, field_keys=field_keys, description=body.description.strip(), created_by=identity["username"], updated_by=identity["username"])
+    data_scope = _normalize_job_role_data_scope(body.data_scope)
+    item = JobRole(**body.model_dump(exclude={"code", "name", "permissions", "description", "field_keys", "field_keys_configured", "data_scope"}), code=code, name=name, permissions=permissions, field_keys=field_keys, field_keys_configured=bool(body.field_keys_configured or field_keys), data_scope=data_scope, description=body.description.strip(), created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     await _record_organization_audit(db, identity, "创建岗位角色", f"岗位角色:{item.code}", {"role_id": item.id, "code": item.code, "name": item.name})
     await db.commit(); await db.refresh(item)
@@ -23211,17 +23794,24 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
         normalized_permissions = list(dict.fromkeys(entry.strip() for entry in requested_permissions if entry.strip()))
         requested_fields = body.field_keys if body.field_keys is not None else list(FIELD_KEYS)
         normalized_fields = _normalize_job_role_field_keys(requested_fields)
-        if body.code not in {None, "SYSTEM-ADMIN"} or body.name not in {None, "系统管理员"} or set(normalized_permissions) != set(SYSTEM_ADMIN_JOB_PERMISSIONS) or set(normalized_fields) != set(FIELD_KEYS) or body.is_active is False:
+        if body.code not in {None, "SYSTEM-ADMIN"} or body.name not in {None, "系统管理员"} or set(normalized_permissions) != set(SYSTEM_ADMIN_JOB_PERMISSIONS) or set(normalized_fields) != set(FIELD_KEYS) or body.field_keys_configured is False or body.data_scope not in {None, "全所数据"} or body.is_active is False:
             raise HTTPException(status_code=422, detail="系统管理员岗位必须保持启用、名称不变并保留全部业务动作权限")
     old_name = item.name; code = body.code.strip().upper() if body.code is not None else item.code; name = body.name.strip() if body.name is not None else item.name
     if await db.scalar(select(JobRole.id).where(JobRole.id != item.id, or_(JobRole.code == code, JobRole.name == name))): raise HTTPException(status_code=409, detail="岗位角色代码或名称已存在")
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
     for key, value in changes.items():
         if key == "permissions": value = list(dict.fromkeys(entry.strip() for entry in value if entry.strip()))
-        elif key == "field_keys": value = _normalize_job_role_field_keys(value)
+        elif key == "field_keys":
+            value = _normalize_job_role_field_keys(value)
+            if "field_keys_configured" not in changes:
+                item.field_keys_configured = True
+        elif key == "data_scope": value = _normalize_job_role_data_scope(value)
         elif key == "code": value = value.strip().upper()
         elif key in {"name", "description"}: value = value.strip()
         setattr(item, key, value)
+    if item.code == "SYSTEM-ADMIN":
+        item.field_keys_configured = True
+        item.data_scope = "全所数据"
     item.updated_by = identity["username"]
     if item.name != old_name:
         hr_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all()
@@ -26685,6 +27275,15 @@ LEGACY_INVESTIGATION_CLUE_STATUS = {
     "草稿": 0, "待审批": 10, "待客户审核": 15, "待取证": 20,
     "已取证": 30, "待公证": 35, "已转案件": 40, "已驳回": 50,
 }
+LEGACY_OFFICIAL_DOCUMENT_STATUS = {
+    "草稿": 0,
+    "待审批": 10,
+    "待用印": 20,
+    "已拒绝": 30,
+    "已撤回": 40,
+    "已用印": 60,
+    "已归档": 60,
+}
 
 # Legacy compatibility projections.
 async def _legacy_projection_pk(record: BusinessRecord, column: str, db: AsyncSession) -> dict[str, int]:
@@ -26895,17 +27494,27 @@ async def _sync_legacy_contract_files(record: BusinessRecord, legacy: LegacyCont
         FileAttachment.record_id == record.id,
         FileAttachment.category == "合同附件",
     ))).all()
+    connection = await db.connection()
+    next_sqlite_file_id = None
+    if connection.dialect.name == "sqlite":
+        next_sqlite_file_id = int(
+            await db.scalar(select(func.coalesce(func.max(LegacyContractFile.FileId), 0))) or 0
+        ) + 1
     for attachment in attachments:
         file_guid = str(uuid5(NAMESPACE_URL, f"contract-attachment:{attachment.id}"))
         legacy_file = await db.scalar(select(LegacyContractFile).where(LegacyContractFile.FileGuid == file_guid))
         if not legacy_file:
-            legacy_file = LegacyContractFile(
+            legacy_values = dict(
                 FileGuid=file_guid,
                 ContractGuid=legacy.ContractGuid,
                 CreateUser=identity["username"][:20],
                 CreateTime=datetime.now(),
                 IsActived="Y",
             )
+            if next_sqlite_file_id is not None:
+                legacy_values["FileId"] = next_sqlite_file_id
+                next_sqlite_file_id += 1
+            legacy_file = LegacyContractFile(**legacy_values)
             db.add(legacy_file)
         legacy_file.ContractGuid = legacy.ContractGuid
         legacy_file.FileName = attachment.original_name[:400]
@@ -26920,7 +27529,7 @@ async def _sync_legacy_contract_audit(record: BusinessRecord, identity: dict, db
     legacy = await _sync_legacy_contract(record, identity, db)
     round_id = int((record.data or {}).get("legacy_contract_audit_round") or 0) + 1
     record.data = {**(record.data or {}), "legacy_contract_audit_round": round_id}
-    db.add(LegacyContractAudit(
+    audit_values = dict(
         ContractId=legacy.ContractId,
         ContractNo=record.serial_no[:20],
         AuditRoundId=round_id,
@@ -26930,7 +27539,13 @@ async def _sync_legacy_contract_audit(record: BusinessRecord, identity: dict, db
         AuditContent=comment[:200],
         CreateUser=identity["username"][:20],
         CreateTime=datetime.now(),
-    ))
+    )
+    connection = await db.connection()
+    if connection.dialect.name == "sqlite":
+        audit_values["AuditId"] = int(
+            await db.scalar(select(func.coalesce(func.max(LegacyContractAudit.AuditId), 0))) or 0
+        ) + 1
+    db.add(LegacyContractAudit(**audit_values))
 
 def _legacy_case_text(value: object, limit: int) -> str | None:
     value = str(value or "").strip()
@@ -27315,6 +27930,183 @@ async def _sync_legacy_investigation_clue_evidence(
         target.ChangeTime = now
     return legacy
 
+
+async def _legacy_official_document_customer_no(record: BusinessRecord, data: dict, db: AsyncSession) -> str | None:
+    customer_no = _legacy_case_text(
+        data.get("customer_no") or _legacy_snapshot_value(data, "CustomerNo", "customer_no"),
+        50,
+    )
+    if customer_no:
+        return customer_no
+    for module, serial_no in (("case", data.get("case_no")), ("contract", data.get("contract_no"))):
+        if not serial_no:
+            continue
+        related = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == module,
+            BusinessRecord.serial_no == str(serial_no),
+        ))
+        related_data = related.data if related else {}
+        customer_no = _legacy_case_text(
+            related_data.get("customer_no") or _legacy_snapshot_value(related_data, "CustomerNo", "customer_no"),
+            50,
+        )
+        if customer_no:
+            return customer_no
+    customer = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "customer",
+        BusinessRecord.title == record.customer,
+    ))
+    customer_data = customer.data if customer else {}
+    return _legacy_case_text(
+        customer_data.get("customer_no") or _legacy_snapshot_value(customer_data, "CustomerNo", "customer_no"),
+        50,
+    )
+
+
+async def _sync_legacy_official_document_files(
+    record: BusinessRecord,
+    legacy: LegacyOfficialDocument,
+    identity: dict,
+    db: AsyncSession,
+) -> None:
+    attachments = list((await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id == record.id,
+        FileAttachment.category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY}),
+    ))).all())
+    now = datetime.now()
+    active_guids = set()
+    for attachment in attachments:
+        file_guid = str(uuid5(NAMESPACE_URL, f"official-document-attachment:{attachment.id}"))
+        active_guids.add(file_guid)
+        legacy_file = await db.scalar(select(LegacyOfficialDocumentFile).where(
+            LegacyOfficialDocumentFile.FileGuid == file_guid,
+        ))
+        if not legacy_file:
+            values = {
+                "FileGuid": file_guid,
+                "OfficialDocumentGuid": legacy.OfficialDocumentGuid,
+                "CreateUser": identity["username"][:20],
+                "CreateTime": now,
+            }
+            connection = await db.connection()
+            if connection.dialect.name == "sqlite":
+                values["FileId"] = -attachment.id
+            legacy_file = LegacyOfficialDocumentFile(**values)
+            db.add(legacy_file)
+        legacy_file.OfficialDocumentGuid = legacy.OfficialDocumentGuid
+        legacy_file.FileName = attachment.original_name[:400]
+        legacy_file.FilePath = attachment.path[:500]
+        legacy_file.FileSize = attachment.size
+        legacy_file.Uploader = attachment.uploader[:20]
+        legacy_file.UploadTime = _legacy_contract_datetime(attachment.created_at) or now
+        legacy_file.IsActived = "Y"
+        legacy_file.ChangeUser = identity["username"][:20]
+        legacy_file.ChangeTime = now
+
+    projected_files = list((await db.scalars(select(LegacyOfficialDocumentFile).where(
+        LegacyOfficialDocumentFile.OfficialDocumentGuid == legacy.OfficialDocumentGuid,
+    ))).all())
+    for legacy_file in projected_files:
+        if legacy_file.FileGuid not in active_guids:
+            legacy_file.IsActived = "N"
+            legacy_file.ChangeUser = identity["username"][:20]
+            legacy_file.ChangeTime = now
+
+
+async def _sync_legacy_official_document(
+    record: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+) -> LegacyOfficialDocument:
+    """Project a seal application into the legacy AWS official-document tables."""
+    data = record.data or {}
+    legacy = await db.scalar(select(LegacyOfficialDocument).where(
+        LegacyOfficialDocument.OfficialDocumentNo == record.serial_no[:20],
+    ))
+    now = datetime.now()
+    if not legacy:
+        values = {
+            **await _legacy_projection_pk(record, "OfficialDocumentId", db),
+            "OfficialDocumentNo": record.serial_no[:20],
+            "OfficialDocumentGuid": str(data.get("official_document_guid") or uuid5(NAMESPACE_URL, f"official-document:{record.id}")),
+            "CreateUser": identity["username"][:20],
+            "CreateTime": _legacy_contract_datetime(record.created_at) or now,
+            "IsActived": "Y",
+        }
+        legacy = LegacyOfficialDocument(**values)
+        db.add(legacy)
+    legacy.OfficialDocumentNo = record.serial_no[:20]
+    legacy.OfficialDocumentGuid = str(data.get("official_document_guid") or legacy.OfficialDocumentGuid or uuid5(NAMESPACE_URL, f"official-document:{record.id}"))[:36]
+    legacy.CaseNo = _legacy_case_text(data.get("case_no") or _legacy_snapshot_value(data, "CaseNo", "case_no"), 50)
+    legacy.ContractNo = _legacy_case_text(data.get("contract_no") or _legacy_snapshot_value(data, "ContractNo", "contract_no"), 50)
+    legacy.CustomerNo = await _legacy_official_document_customer_no(record, data, db)
+    legacy.OfficialDocumentName = record.title[:200]
+    legacy.CompanyId = _legacy_contract_int(data.get("company_id") or _legacy_snapshot_value(data, "CompanyId", "company_id"))
+    legacy.DepartmentId = _legacy_contract_int(data.get("department_id") or _legacy_snapshot_value(data, "DepartmentId", "department_id"))
+    legacy.BusinessOwner = record.owner[:20]
+    legacy.OfficialDocumentType = _legacy_contract_int(data.get("official_document_type_id") or data.get("official_document_type") or _legacy_snapshot_value(data, "OfficialDocumentType", "official_document_type_id"))
+    legacy.IsElectronicSeal = _legacy_yes_no(data.get("is_electronic_seal"))
+    legacy.IsOfflinePrint = _legacy_yes_no(data.get("is_offline_print"))
+    legacy.PrintQuantity = _legacy_contract_int(data.get("actual_copies") or data.get("print_quantity") or data.get("copies"))
+    legacy.PrintTime = _legacy_contract_datetime(data.get("stamped_at"))
+    legacy.Printer = _legacy_case_text(data.get("stamp_operator"), 20)
+    legacy.PrintStatus = 1 if record.status in {"已用印", "已归档"} else 0
+    legacy.SealType = _legacy_contract_int(data.get("seal_type_id") or data.get("seal_type") or _legacy_snapshot_value(data, "SealType", "seal_type_id"))
+    legacy.OfficialDocumentStatus = LEGACY_OFFICIAL_DOCUMENT_STATUS.get(record.status, 0)
+    legacy.ApplicationDate = _legacy_contract_datetime(data.get("application_date") or data.get("submitted_at")) or _legacy_contract_datetime(record.created_at)
+    legacy.OfficialDocumentBeginDate = _legacy_contract_datetime(data.get("official_document_begin_date") or data.get("use_date"))
+    legacy.OfficialDocumentEndDate = _legacy_contract_datetime(data.get("official_document_end_date") or data.get("use_date"))
+    legacy.AuditFlowId = _legacy_contract_int(data.get("audit_flow_id") or _legacy_snapshot_value(data, "AuditFlowId", "audit_flow_id"))
+    legacy.AuditFlowNodeId = _legacy_contract_int(data.get("audit_flow_node_id") or _legacy_snapshot_value(data, "AuditFlowNodeId", "audit_flow_node_id"))
+    legacy.Remark = _legacy_case_text(data.get("remark") or record.description, 1000)
+    legacy.IsActived = "N" if record.status in {"已删除", "已撤回"} else "Y"
+    legacy.ChangeUser = identity["username"][:20]
+    legacy.ChangeTime = now
+    await db.flush()
+    await _sync_legacy_official_document_files(record, legacy, identity, db)
+    return legacy
+
+
+async def _sync_legacy_official_audit(
+    record: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+    status_code: int,
+    comment: str = "",
+) -> None:
+    legacy = await _sync_legacy_official_document(record, identity, db)
+    data = record.data or {}
+    round_id = int(data.get("legacy_official_document_audit_round") or 0) + 1
+    record.data = {**data, "legacy_official_document_audit_round": round_id}
+    now = datetime.now()
+    audit_values = {
+        "OfficialDocumentId": legacy.OfficialDocumentId,
+        "OfficialDocumentNo": record.serial_no[:20],
+        "AuditFlowId": legacy.AuditFlowId,
+        "AuditFlowNodeId": legacy.AuditFlowNodeId,
+        "AuditRoundId": round_id,
+        "Auditor": identity["username"][:20],
+        "AuditDate": now,
+        "AuditStatus": status_code,
+        "AuditContent": comment[:200],
+        "CreateUser": identity["username"][:20],
+        "CreateTime": now,
+        "ChangeUser": identity["username"][:20],
+        "ChangeTime": now,
+    }
+    connection = await db.connection()
+    if connection.dialect.name == "sqlite":
+        audit_values["AuditId"] = int(
+            await db.scalar(select(func.coalesce(func.max(LegacyOfficialDocumentAudit.AuditId), 0))) or 0
+        ) + 1
+    db.add(LegacyOfficialDocumentAudit(**audit_values))
+    legacy.Auditor = _legacy_case_text(data.get("approver") or identity["username"], 20)
+    legacy.AuditStatus = status_code
+    legacy.AuditTime = now
+    legacy.AuditRemark = _legacy_case_text(data.get("approval_comment") or comment, 2000)
+    legacy.AuditRoundId = round_id
+
+
 async def _sync_legacy_projection(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Synchronize old-system projections in the caller's transaction."""
     if record.module == "customer":
@@ -27329,3 +28121,5 @@ async def _sync_legacy_projection(record: BusinessRecord, identity: dict, db: As
         await _sync_legacy_investigation_task(record, identity, db)
     elif record.module == "clue":
         await _sync_legacy_investigation_clue(record, identity, db)
+    elif record.module == "seal":
+        await _sync_legacy_official_document(record, identity, db)

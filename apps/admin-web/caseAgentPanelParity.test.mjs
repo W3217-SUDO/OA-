@@ -14,7 +14,7 @@ test('case detail exposes the LangGraph case agent panel', () => {
 });
 
 test('agent messages persist in the case thread and can be sent from the panel', () => {
-  assert.match(source, /agentState\?\.messages\?\.map/);
+  assert.match(source, /agentHistoryExpanded \? agentState\?\.messages : agentState\?\.messages\?\.slice\(-8\)\)\?\.map/);
   assert.match(source, /onPressEnter=/);
   assert.match(source, /概括案件现状/);
   assert.match(source, /检查最近期限风险/);

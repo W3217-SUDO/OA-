@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import SYSTEM_ACTION_DEFINITIONS, app
-from app.models import BusinessRecord, RolePermission, SystemConfig, SystemMenu, SystemParameter, WorkflowEvent
+from app.models import BusinessRecord, RolePermission, SystemConfig, SystemMenu, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -41,7 +41,7 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         tables = [
             SystemParameter.__table__, SystemConfig.__table__, SystemMenu.__table__,
-            RolePermission.__table__, BusinessRecord.__table__, WorkflowEvent.__table__,
+            RolePermission.__table__, User.__table__, BusinessRecord.__table__, WorkflowEvent.__table__,
         ]
         async with self.engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))

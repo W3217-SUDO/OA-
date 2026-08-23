@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 
-const mappingPath = path.join(process.cwd(), 'src', 'sealViewMapping.ts');
+const mappingPath = path.join(process.cwd(), 'src', 'sealWorkflowPolicy.ts');
 const javascript = ts.transpileModule(fs.readFileSync(mappingPath, 'utf8'), {
   fileName: mappingPath,
   compilerOptions: {
@@ -21,9 +21,9 @@ const wrapper = vm.runInThisContext(
   { filename: mappingPath },
 );
 wrapper(createRequire(import.meta.url), module, module.exports, mappingPath, path.dirname(mappingPath));
-const { sealViewMapping, sealViewSpec } = module.exports;
+const { sealRouteMapping, sealRouteStatuses } = module.exports;
 
-test('every declared route maps to its exact API view and statuses', () => {
+test('every declared route maps to its exact page statuses', () => {
   const expected = {
     'seal-my': { view: 'my', statuses: [] },
     'seal-my-pending': { view: 'my', statuses: ['待审批'] },
@@ -39,12 +39,12 @@ test('every declared route maps to its exact API view and statuses', () => {
     'seal-admin-pending': { view: 'all', statuses: ['待用印'] },
     'seal-admin-used': { view: 'all', statuses: ['已用印'] },
   };
-  assert.deepEqual(Object.keys(sealViewMapping).sort(), Object.keys(expected).sort());
+  expected['seal-admin-query'] = { view: 'all', statuses: [] };
+  assert.deepEqual(Object.keys(sealRouteMapping).sort(), Object.keys(expected).sort());
   for (const [route, spec] of Object.entries(expected)) {
-    assert.deepEqual(sealViewMapping[route], spec);
-    assert.deepEqual(sealViewSpec(route), spec);
+    assert.deepEqual(sealRouteMapping[route], spec);
+    assert.deepEqual(sealRouteStatuses(route), spec.statuses);
   }
-  assert.deepEqual(sealViewSpec('seal-admin-query'), { view: 'all', statuses: [] });
-  assert.deepEqual(sealViewSpec('seal-audit-extra'), { view: 'audit', statuses: [] });
-  assert.deepEqual(sealViewSpec('unknown'), { view: 'my', statuses: [] });
+  assert.deepEqual(sealRouteStatuses('seal-audit-extra'), []);
+  assert.deepEqual(sealRouteStatuses('unknown'), []);
 });

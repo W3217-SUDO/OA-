@@ -11,7 +11,7 @@ test('clue edit modal exposes every backend-editable investigation data field', 
 
 test('clue save sends the backend-editable investigation data fields', () => {
   assert.match(source, /data:\{region:v\.region\|\|''[\s\S]*address:v\.address\|\|''[\s\S]*infringement_method:v\.infringement_method\|\|''/)
-  assert.match(source, /platform:v\.platform\|\|''[\s\S]*product:v\.product\|\|''[\s\S]*source:v\.source\|\|''/)
+  assert.match(source, /platform:v\.sales_channel\|\|''[\s\S]*sales_channel:v\.sales_channel\|\|''[\s\S]*product:v\.product\|\|''[\s\S]*source:v\.source\|\|''/)
 })
 
 test('clue edits from every review stage re-enter pending review', () => {
@@ -28,7 +28,7 @@ test('investigation task list does not offer a second parent-task creation entry
 test('parent investigation routes request server-side scoped views', () => {
   assert.match(source, /investigationListView=\(route:string\)=>/)
   assert.match(source, /route==='investigation-task-unassigned'[\s\S]*return'assigned'/)
-  assert.match(source, /route==='investigation-task-mine'[\s\S]*return'published'/)
+  assert.match(source, /route==='investigation-task-mine'\)return'assigned'/)
   assert.match(source, /investigation_view:investigationListView\(initialTab\)/)
   assert.match(source, /scope:initialTab\.startsWith\('investigation-task-'\)&&!initialTab\.startsWith\('investigation-task-sub-'\)\?'mine':'all'/)
 })
@@ -107,10 +107,13 @@ test('case creation selects handling lawyers and assistants from active system p
 })
 
 test('investigation supervisor creates a child directly under the contract investigation', () => {
-  assert.doesNotMatch(source, /name='parent_task_id'/)
-  assert.match(source, /taskForm\.setFieldsValue\(\{priority:'普通'/)
+  assert.match(source, /createSubtask&&hasParent\?parentTask\.id:undefined/)
+  assert.match(source, /creatingSubtask&&!tasks\.some\(\(task\)=>!task\.parent_task_id\)/)
+  assert.match(source, /creatingSubtask&&tasks\.some\(\(task\)=>!task\.parent_task_id\)/)
+  assert.match(source, /constresetTaskForm=\(target:Row\)=>/)
+  assert.match(source, /resetTaskForm\(taskContext\)/)
   assert.match(source, /title:'父调查任务'/)
-  assert.match(source, /row\.investigation_no\|\|taskTarget\?\.serial_no/)
+  assert.match(source, /v\|\|row\.investigation_no\|\|taskTarget\?\.serial_no/)
   assert.match(source, /r\.data\.started_at\|\|r\.data\.authorized_from/)
   assert.match(source, /r\.data\.ended_at\|\|r\.data\.authorized_to\|\|r\.data\.deadline/)
 })

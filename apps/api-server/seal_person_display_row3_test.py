@@ -24,7 +24,11 @@ class SealPersonDisplayRow3Test(unittest.TestCase):
 
         self.assertIn("seal_usernames", endpoint)
         self.assertIn("users_by_username = await _user_display_map", endpoint)
-        self.assertIn("_seal_record_dict(row, db, users_by_username)", endpoint)
+        self.assertIn("await _seal_record_dict(", endpoint)
+        self.assertIn("users_by_username", endpoint)
+        self.assertIn("attachments_by_record", endpoint)
+        self.assertIn("assets_by_id", endpoint)
+        self.assertIn("context", endpoint)
 
 
 if __name__ == "__main__":

@@ -204,15 +204,16 @@ test("SealCenter preserves existing approval state and permission helper semanti
     canViewSealAssetAudit,
   } = loadPolicy();
 
-  assert.equal(canSealAction("approve", { status: "待审批" }), true);
-  assert.equal(canSealAction("reject", { status: "待审批" }), true);
-  assert.equal(canSealAction("approve", { status: "待用印" }), false);
-  assert.equal(canSealAction("stamp", { status: "待用印" }), true);
-  assert.equal(canSealAction("archive", { status: "已用印" }), true);
+  assert.equal(canSealAction("approve", { status: "pending" }), false);
+  assert.equal(canSealAction("approve", { status: "pending", capabilities: { approve: true } }), true);
+  assert.equal(canSealAction("reject", { status: "pending", action_keys: ["reject"] }), true);
+  assert.equal(canSealAction("approve", { status: "stamping" }), false);
+  assert.equal(canSealAction("stamp", { status: "stamping", capabilities: { stamp: true } }), true);
+  assert.equal(canSealAction("archive", { status: "used", action_keys: ["archive"] }), true);
   assert.equal(canBatchWithdrawSealRows([{ status: "待审批" }, { status: "待用印" }]), true);
-  assert.equal(canBatchStampSealRows([{ status: "待用印" }]), true);
+  assert.equal(canBatchStampSealRows([{ status: "stamping", action_keys: ["stamp"] }]), true);
   assert.equal(canBatchDeleteSealFiles("草稿", [1]), true);
-  assert.equal(canViewSealAssetAudit("admin"), true);
-  assert.equal(canViewSealAssetAudit("manager"), true);
-  assert.equal(canViewSealAssetAudit("user"), false);
+  assert.equal(canViewSealAssetAudit({ manage_assets: true }), true);
+  assert.equal(canViewSealAssetAudit({ action_keys: ["manage_assets"] }), true);
+  assert.equal(canViewSealAssetAudit("admin"), false);
 });

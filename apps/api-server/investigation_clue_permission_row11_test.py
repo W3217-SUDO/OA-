@@ -9,11 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import (
     RecordInput,
-    RecordUpdate,
-    TaskActionInput,
     create_investigation_record,
-    submit_investigation_clue,
-    update_investigation_record,
 )
 from app.models import BusinessRecord, JobRole, RolePermission, User
 
@@ -58,7 +54,7 @@ class InvestigationCluePermissionRow11Test(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_role_menu_grant_can_create_submit_and_resubmit_despite_job_role(self):
+    async def test_explicit_personnel_role_without_clue_action_overrides_system_role_menu(self):
         async with self.sessions() as db:
             # The System Center role configuration is the authorization source
             # for visible UI functions.  A personnel role without clue actions
@@ -80,24 +76,13 @@ class InvestigationCluePermissionRow11Test(unittest.IsolatedAsyncioTestCase):
             db.add_all([menu_user, source_task])
             await db.commit()
 
-            created = await create_investigation_record(
-                self._clue_input(source_task.id, "菜单授权线索"),
-                identity(menu_user.username), db,
-            )
-            submitted = await submit_investigation_clue(
-                created["id"], TaskActionInput(comment="提交审批"),
-                identity(menu_user.username), db,
-            )
+            with self.assertRaises(HTTPException) as caught:
+                await create_investigation_record(
+                    self._clue_input(source_task.id, "菜单授权线索"),
+                    identity(menu_user.username), db,
+                )
 
-            clue = await db.get(BusinessRecord, created["id"])
-            clue.status = "已驳回"
-            await db.commit()
-            resubmitted = await update_investigation_record(
-                clue.id, RecordUpdate(status="待审批"), identity(menu_user.username), db,
-            )
-
-        self.assertEqual(submitted["status"], "待审批")
-        self.assertEqual(resubmitted["status"], "待审批")
+        self.assertEqual(caught.exception.status_code, 403)
 
     async def test_explicit_submit_action_can_create_without_menu_override(self):
         async with self.sessions() as db:

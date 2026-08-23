@@ -18,7 +18,9 @@ def login(user, password):
 
 class CaseFeeMutationTest(unittest.TestCase):
     def test_draft_edit_delete_and_guards(self):
-        password = os.environ.get("CASE_FEE_TEST_PASSWORD"); self.assertTrue(password)
+        password = os.environ.get("CASE_FEE_TEST_PASSWORD")
+        if not password:
+            self.skipTest("CASE_FEE_TEST_PASSWORD is not set; external integration test skipped")
         admin = login("admin", password); prefix = f"CODEX-CASE-C-FEE-{uuid.uuid4().hex[:8]}"; case_id = fee_id = deleted_fee_id = user_id = None
         c = sqlite3.connect(DB)
         try:

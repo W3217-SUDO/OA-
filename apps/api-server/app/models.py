@@ -31,6 +31,11 @@ class JobRole(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     permissions: Mapped[list] = mapped_column(JSON, default=list)
     field_keys: Mapped[list] = mapped_column(JSON, default=list)
+    # Historical roles used an empty array before field-level permissions were
+    # configurable. Keep that state distinguishable from an explicit no-field grant.
+    field_keys_configured: Mapped[bool] = mapped_column(Boolean, default=False)
+    # None inherits the system-account role's range for backward compatibility.
+    data_scope: Mapped[str | None] = mapped_column(String(64), nullable=True)
     description: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

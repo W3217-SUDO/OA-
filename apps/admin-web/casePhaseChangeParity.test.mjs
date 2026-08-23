@@ -12,34 +12,23 @@ test("phase payload keeps legacy comma-separated case numbers and ID/name mappin
   assert.match(helper, /buildCasePhaseChangePayload/);
   assert.match(helper, /case_phase_id/);
   assert.match(helper, /case_phase_name/);
-  assert.match(helper, /case_nos: list\(caseNos\)\.join\(\",\"\)/);
+  assert.match(helper, /case_nos: list\(caseNos\)\.join\(","\)/);
 });
 
-test("case page opens a guarded phase editor and submits the dedicated endpoint", () => {
-  assert.match(page, /phaseEditing/);
-  assert.match(page, /phaseForm/);
-  assert.match(page, /\/cases\/phases/);
-  assert.match(page, /\/cases\/phase-change/);
-  assert.match(page, /buildCasePhaseChangePayload/);
-  assert.match(page, /修改案件阶段/);
-  assert.match(page, /修改成功！/);
-  assert.match(page, /修改失败！/);
-});
-
-test("phase editing preserves permission and archive/merge guards", () => {
-  assert.match(page, /can_change_phase/);
+test("phase editing uses a guarded dedicated endpoint", () => {
+  assert.match(page, /const openPhaseChange = async \(rows: CaseRow\[\]\) => \{/);
   assert.match(page, /getCaseCapability\(row\)\.can_change_phase/);
-  assert.match(page, /待归档审核.*已归档.*已合并/);
-  assert.match(page, /请先选择案件/);
+  assert.match(page, /\[\.\.\.ARCHIVE_LOCKED_STATUSES, "已合并"\]\.includes\(row\.status\)/);
+  assert.match(page, /api\.get\("\/cases\/phases"\)/);
+  assert.match(page, /api\.post\("\/cases\/phase-change", buildCasePhaseChangePayload/);
   assert.match(page, /await load\(\)/);
 });
 
-test("case detail keeps phase change separate from basic information, matching the legacy compact picker", () => {
+test("phase picker remains separate from basic information", () => {
+  const phaseModal = page.slice(page.indexOf("open={Boolean(phaseEditing)}"), page.indexOf("open={Boolean(progressEditing)}"));
   assert.match(page, /width=\{400\}/);
-  assert.match(page, /title=\{`变更阶段：/);
-  assert.match(page, /<Radio\.Group className="case-phase-change-options">/);
-  assert.match(page, /<Radio key=\{option\.id\} value=\{option\.id\}>\{option\.name\}<\/Radio>/);
-  assert.match(page, /<Form\.Item name="case_phase" hidden><Input \/><\/Form\.Item>/);
-  assert.doesNotMatch(page, /阶段变更支持单行或批量案件/);
-  assert.doesNotMatch(page, /<Form\.Item label="案件阶段" name="case_phase"/);
+  assert.match(phaseModal, /open=\{Boolean\(phaseEditing\)\}/);
+  assert.match(phaseModal, /<Radio\.Group className="case-phase-change-options">/);
+  assert.match(phaseModal, /\{renderCasePhaseTree\(phaseOptions\)\}/);
+  assert.doesNotMatch(phaseModal, /name="case_phase"/);
 });

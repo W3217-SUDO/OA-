@@ -168,7 +168,8 @@ export const contractListActionPolicy = (status) => {
   const normalized = String(status || "").trim();
   const archived = ["已归档", "Archived", "archived"].includes(normalized);
   const approved = ["审批通过", "A", "Approved", "approved"].includes(normalized);
-  return { canPayment: approved && !archived, canInvoice: !archived, canCreateCase: !archived };
+  const canCreateCase = ["审批中", "审批通过", "已完成", "A", "Approved", "approved"].includes(normalized);
+  return { canPayment: approved && !archived, canInvoice: !archived, canCreateCase };
 };
 export const contractSecondaryActionPolicy = (status) => {
   const archived = ["已归档", "Archived", "archived"].includes(String(status || "").trim());
@@ -274,6 +275,7 @@ export const canActOnContractApproval = (status, approver, username, role) =>
 export const buildContractApprovalPayload = (approved, comment) => ({
   approved,
   comment: String(comment || "").trim(),
+  action_key: "contract.application.approve",
 });
 
 export const canMutateContractAttachments = (status) => !CONTRACT_ATTACHMENT_LOCKED_STATUSES.includes(status);

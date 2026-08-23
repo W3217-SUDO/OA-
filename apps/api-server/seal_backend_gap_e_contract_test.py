@@ -33,7 +33,7 @@ from app.main import (
     upload_attachment,
     upload_seal_application_files,
 )
-from app.models import BusinessRecord, FileAttachment, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 HERE = Path(__file__).resolve().parent
@@ -105,7 +105,7 @@ class SealBackendGapEContractTest(unittest.TestCase):
         source = self._span("package_download_seal_files")
         self.assertIn("SEAL_APPLICATION_FILE_CATEGORY", source)
         self.assertIn("SEAL_STAMPED_FILE_CATEGORY", source)
-        self.assertIn("expected_category", source)
+        self.assertIn("category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY})", source)
 
     def test_attachment_list_contract_has_server_pagination(self):
         source = self._span("list_attachments")
@@ -135,6 +135,9 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
             FileAttachment.__table__,
             User.__table__,
             RolePermission.__table__,
+            LegacyOfficialDocument.__table__,
+            LegacyOfficialDocumentAudit.__table__,
+            LegacyOfficialDocumentFile.__table__,
         ]
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))

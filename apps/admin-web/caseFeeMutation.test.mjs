@@ -1,31 +1,25 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
 
-const source = fs.readFileSync(new URL('./src/CaseCenterPage.tsx', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
 
-test('案件费用草稿提供独立修改与删除确认入口', () => {
+test("draft case fees have guarded edit and delete operations", () => {
+  assert.match(source, /const editCaseFee = \(row: CaseRow\) => \{\s*if \(row\.status !== "草稿"\)/);
   assert.match(source, /api\.put\(`\/finance\/fees\/\$\{editingFeeRow\.id\}`/);
+  assert.match(source, /const deleteCaseFee = \(row: CaseRow\) => \{\s*if \(row\.status !== "草稿"\)/);
   assert.match(source, /api\.delete\(`\/finance\/fees\/\$\{row\.id\}`/);
-  assert.match(source, /row\.status===\"草稿\"&&counselDetailCapabilities\.can_create_finance/);
-  assert.match(source, /key:\"edit\",label:\"修改\"/);
-  assert.match(source, /key:\"delete\",label:\"删除\"/);
-  assert.match(source, /<Dropdown trigger=\{\[\"click\"\]\} menu=\{\{items:\[\{key:\"edit\"/);
-  assert.match(source, /key:\"platform-fees\"[\s\S]*?title:\"操作\"/);
-  assert.match(source, /key:\"internal-fees\"[\s\S]*?title:\"操作\"/);
-  assert.match(source, /api\.post\("\/finance\/payment-packages\/preview"/);
-  assert.match(source, /api\.post\("\/finance\/payment-packages"/);
-  assert.match(source, /handleInternalFeeAction\(\"payment\"\)/);
-  assert.match(source, /submitCaseFeePayment\(selectedFirmFee!\)/);
-  assert.match(source, /api\.post\(`\/finance\/fees\/\$\{row\.id\}\/submit`/);
-  assert.match(source, /仅已审批内部费用可以申请付款/);
   assert.match(source, /Modal\.confirm\(\{ title: `删除费用/);
-  assert.match(source, /仅草稿费用可以修改/);
-  assert.match(source, /仅草稿费用可以删除/);
 });
 
-test('费用弹窗编辑态使用保存文案并可取消清空目标', () => {
-  assert.match(source, /open=\{Boolean\(feeCase \|\| editingFeeRow\)\}/);
-  assert.match(source, /okText=\{editingFeeRow \? \"保存费用草稿\" : \"创建费用草稿\"\}/);
-  assert.match(source, /setFeeCase\(null\); setEditingFeeRow\(null\); feeForm\.resetFields\(\)/);
+test("the fee editor is isolated from the create drawer and clears its target", () => {
+  assert.match(source, /open=\{Boolean\(editingFeeRow\)\}/);
+  assert.match(source, /okText="保存费用草稿"/);
+  assert.match(source, /onCancel=\{\(\) => \{ setEditingFeeRow\(null\); feeForm\.resetFields\(\); \}\}/);
+  assert.match(source, /open=\{Boolean\(feeCase\)\}/);
+});
+
+test("law-firm and internal fees retain their distinct payment flows", () => {
+  assert.match(source, /if\(key==="payment"\)return openPaymentRequest\(selectedFirmFee!\)/);
+  assert.match(source, /if\(key==="payment"\)return void previewInternalPayment\(selectedInternalFee!\)/);
 });

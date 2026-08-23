@@ -42,7 +42,7 @@ test('employee edit approval switch follows account type, role and formal HR rec
     'shared approval guard should include account type',
   )
   assert.ok(
-    saveEmployeeEdit.includes('canConfigureContractApproval(value.system_role,editingEmployee.id,normalizedAccountType)'),
+    saveEmployeeEdit.includes('canConfigureContractApproval(roleValue,editingEmployee.id,normalizedAccountType)'),
     'edit save should use selected account type when deciding approval eligibility',
   )
   assert.ok(

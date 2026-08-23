@@ -7764,8 +7764,8 @@ export default function FinanceCenterPage({
       );
       message.success(
         archiveSettlementReviewApproved
-          ? `同意支付 ${response.data.reviewed} 条归档费`
-          : `拒绝支付 ${response.data.reviewed} 条归档费`,
+          ? `同意结算 ${response.data.reviewed} 条归档费`
+          : `拒绝结算 ${response.data.reviewed} 条归档费`,
       );
       setArchiveSettlementReviewTargets([]);
       setArchiveSettlementReviewComment("");
@@ -7779,8 +7779,8 @@ export default function FinanceCenterPage({
       message.error(
         error?.response?.data?.detail ||
           (archiveSettlementReviewApproved
-            ? "标识已支付出错."
-            : "拒绝支付出错."),
+            ? "标识已结算出错."
+            : "拒绝结算出错."),
       );
     } finally {
       financeActionGates.archiveSettlement.leave();
@@ -12714,7 +12714,7 @@ export default function FinanceCenterPage({
       <Modal
         className="finance-settlement-review-modal"
         open={archiveSettlementReviewTargets.length > 0}
-        title={archiveSettlementReviewApproved ? "同意支付" : "拒绝支付"}
+        title={archiveSettlementReviewApproved ? "同意结算" : "拒绝结算"}
         okText={archiveSettlementReviewApproved ? "同意" : "提交"}
         cancelText="取消"
         confirmLoading={archiveSettlementBusy}

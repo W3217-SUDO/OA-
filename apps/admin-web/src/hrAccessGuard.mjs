@@ -1,7 +1,18 @@
-export function hrActionAccess(role) {
-  const isAdmin = role === 'admin'
+function accessContext(input) {
+  if (typeof input === 'string') return { role: input, actionKeys: [] }
   return {
-    canEditEmployee: isAdmin,
+    role: String(input?.role || ''),
+    actionKeys: Array.isArray(input?.action_keys) ? input.action_keys.map(String) : [],
+  }
+}
+
+export function hrActionAccess(input) {
+  const { role, actionKeys } = accessContext(input)
+  const isAdmin = role === 'admin'
+  const hasAction = (key) => isAdmin || actionKeys.includes('*') || actionKeys.includes(key)
+  return {
+    canCreateEmployee: hasAction('hr.employee.create'),
+    canEditEmployee: hasAction('hr.employee.update'),
     canProcessStatus: isAdmin || role === 'manager',
     canManageAccount: isAdmin,
     canDeleteEmployee: isAdmin,

@@ -96,5 +96,5 @@ test('selection guard and explicit scope action dispatch prevent accidental cros
   assert.match(localPage, /const requireSingleSelected = \(\)/)
   assert.match(localPage, /selectedRowKeys\.length !== 1/)
   assert.match(localPage, /if \(!target\) return/)
-  assert.match(localPage, /if \(\["release", "recycle", "restore"\]\.includes\(key\)\)/)
+  assert.match(localPage, /if \(\["recycle", "restore"\]\.includes\(key\)\)/)
 })

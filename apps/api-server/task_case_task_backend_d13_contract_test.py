@@ -49,7 +49,7 @@ class TaskCaseTaskD13Contract(unittest.IsolatedAsyncioTestCase):
             db.add_all([
                 User(username="d13-user", display_name="D13 User", department="D13 Department", role="user", password_hash="x", is_active=True),
                 User(username="d13-other", display_name="D13 Other", department="Other Department", role="user", password_hash="x", is_active=True),
-                RolePermission(role="user", display_name="D13 User", data_scope="本人及共享数据", menu_keys=["task", "case"], field_keys=[]),
+                RolePermission(role="user", display_name="D13 User", data_scope="全所数据", menu_keys=["task", "case", "@action:case.progress.update"], field_keys=[]),
             ])
             base = date.today() + timedelta(days=30)
             rows = []
@@ -63,10 +63,11 @@ class TaskCaseTaskD13Contract(unittest.IsolatedAsyncioTestCase):
             relation_deadline = base - timedelta(days=300)
             rows.append(BusinessRecord(module="task", serial_no="D13-INITIATED", title="Initiated", owner="d13-other", department="Other Department", status="待接收", data={"deadline": str(relation_deadline), "initiator": "d13-user", "collaborators": []}))
             rows.append(BusinessRecord(module="task", serial_no="D13-COLLAB", title="Collaborating", owner="d13-other", department="Other Department", status="待接收", data={"deadline": str(relation_deadline), "initiator": "d13-other", "collaborators": ["d13-user"]}))
+            rows.append(BusinessRecord(module="task", serial_no="D13-INVESTIGATION-HIDDEN", title="Investigation child", owner="d13-user", department="D13 Department", status="待接收", data={"deadline": str(relation_deadline), "initiator": "d13-user", "collaborators": [], "source": "调查任务", "investigation_record_id": 999, "investigation_no": "DC-D13-001", "investigation_module": "investigation"}))
             rows.append(BusinessRecord(module="task", serial_no="D13-HIDDEN", title="Hidden", owner="d13-other", department="Other Department", status="待接收", data={"deadline": str(relation_deadline), "initiator": "d13-other", "collaborators": []}))
             db.add_all(rows)
             case = BusinessRecord(
-                module="case", serial_no="D13-CASE-001", title="D13 Case", owner="d13-user", department="D13 Department",
+                module="case", serial_no="D13-CASE-001", title="D13 Case", owner="d13-other", department="D13 Department",
                 status="办理中", data={"case_team_usernames": ["d13-user"], "case_creation_step": "completed"},
             )
             db.add(case)
@@ -117,6 +118,7 @@ class TaskCaseTaskD13Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(payload["items"]), 15)
         self.assertEqual(payload["items"][0]["serial_no"], "D13-T-000")
         self.assertNotIn("D13-HIDDEN", {item["serial_no"] for item in payload["items"]})
+        self.assertNotIn("D13-INVESTIGATION-HIDDEN", {item["serial_no"] for item in payload["items"]})
         self.assertTrue(any("deadline" in str(item) for item in payload["items"]))
         selects = [statement.lower() for statement in self.sql if "select" in statement.lower() and "business_records" in statement.lower()]
         self.assertTrue(any("owner" in statement and "module" in statement for statement in selects), selects)
@@ -178,7 +180,7 @@ class TaskCaseTaskD13Contract(unittest.IsolatedAsyncioTestCase):
 
     async def test_finished_case_ids_is_atomic_and_audited(self):
         async with self.sessions() as db:
-            case = BusinessRecord(module="case", serial_no="D13-FINISH-001", title="Finish", owner="d13-user", department="D13 Department", status="办理中", data={"case_team_usernames": ["d13-user"], "case_creation_step": "completed"})
+            case = BusinessRecord(module="case", serial_no="D13-FINISH-001", title="Finish", owner="d13-other", department="D13 Department", status="办理中", data={"handling_lawyer_usernames": ["d13-user"], "case_team_usernames": ["d13-user"], "case_creation_step": "completed"})
             db.add(case)
             await db.flush()
             db.add_all([
@@ -200,8 +202,8 @@ class TaskCaseTaskD13Contract(unittest.IsolatedAsyncioTestCase):
         blocked = await self.client.post(f"{API}/cases/tasks/finished", json={"case_ids": [self.case_id]})
         self.assertEqual(blocked.status_code, 403, blocked.text)
         async with self.sessions() as db:
-            good = BusinessRecord(module="case", serial_no="D13-FINISH-002", title="Good", owner="d13-user", department="D13 Department", status="办理中", data={"case_team_usernames": ["d13-user"], "case_creation_step": "completed"})
-            bad = BusinessRecord(module="case", serial_no="D13-FINISH-003", title="Bad", owner="d13-user", department="D13 Department", status="办理中", data={"case_team_usernames": ["d13-user"], "case_creation_step": "completed"})
+            good = BusinessRecord(module="case", serial_no="D13-FINISH-002", title="Good", owner="d13-other", department="D13 Department", status="办理中", data={"handling_lawyer_usernames": ["d13-user"], "case_team_usernames": ["d13-user"], "case_creation_step": "completed"})
+            bad = BusinessRecord(module="case", serial_no="D13-FINISH-003", title="Bad", owner="d13-other", department="D13 Department", status="办理中", data={"handling_lawyer_usernames": ["d13-user"], "case_team_usernames": ["d13-user"], "case_creation_step": "completed"})
             db.add_all([good, bad])
             await db.flush()
             good_task = BusinessRecord(module="task", serial_no="D13-F-3", title="Good", owner="d13-user", department="D13 Department", status="处理中", data={"case_id": good.id, "initiator": "d13-user", "collaborators": [], "deadline": str(date.today() + timedelta(days=3))})

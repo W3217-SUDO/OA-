@@ -1375,9 +1375,9 @@ export default function CustomerCenterPage({
           ...customerPortalActions,
         ]
       : initialView === "customer-dept"
-        ? [{ key: "assign", label: "分配客户" }, { key: "release", label: "释放到公海" }, ...customerNavigationActions, ...customerPortalActions]
+        ? [{ key: "assign", label: "分配客户" }]
       : initialView === "customer-company"
-        ? [{ key: "edit", label: "客户编辑" }, { key: "release", label: "释放到公海" }, { key: "delete", label: "客户删除" }, { key: "assign", label: "分配客户" }, ...customerNavigationActions, ...customerPortalActions]
+        ? [{ key: "assign", label: "分配客户" }]
         : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
           ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
           : initialView === "customer-shared"

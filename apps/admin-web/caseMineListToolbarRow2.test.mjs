@@ -16,7 +16,7 @@ for (const route of ["case-mine", "case-mine-civil", "case-mine-criminal", "case
 
 assert.match(source, /shouldShowCaseListActions\(initialView\)/);
 assert.match(source, /aria-label="导出案件"/);
-for (const label of ["导出选中", "导出全部", "导出交接清单"]) assert.match(source, new RegExp(label));
+for (const label of ["导出选中（Excel）", "导出当前查询（Excel）", "导出选中归档清单（Excel）", "导出选中二维码（Word）"]) assert.match(source, new RegExp(label));
 assert.match(source, />上传文件<\/Button>/);
 assert.match(source, /selectedCaseKeys\.length !== 1 \|\| !selectedCaseCapability\.can_upload_attachment/);
 assert.match(source, /aria-label="更多案件操作"/);

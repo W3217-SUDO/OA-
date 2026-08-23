@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, ContractApprovalStep, JobRole, User
+from app.models import BusinessRecord, ContractApprovalStep, JobRole, RolePermission, User
 from app.security import current_identity
 
 
@@ -25,7 +25,7 @@ class ContractApproverNameContractTest(unittest.IsolatedAsyncioTestCase):
             poolclass=StaticPool,
         )
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
-        tables = [User.__table__, BusinessRecord.__table__, ContractApprovalStep.__table__, JobRole.__table__]
+        tables = [User.__table__, BusinessRecord.__table__, ContractApprovalStep.__table__, JobRole.__table__, RolePermission.__table__]
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables))
         async with self.sessions() as db:

@@ -9,23 +9,33 @@ test('allows an offboarded or suspended employee to be reinstated', () => {
 
 test('limits employee account administration to administrators while allowing managers to process HR status', () => {
   assert.deepEqual(hrActionAccess('admin'), {
+    canCreateEmployee: true,
     canEditEmployee: true,
     canProcessStatus: true,
     canManageAccount: true,
     canDeleteEmployee: true,
   })
   assert.deepEqual(hrActionAccess('manager'), {
+    canCreateEmployee: false,
     canEditEmployee: false,
     canProcessStatus: true,
     canManageAccount: false,
     canDeleteEmployee: false,
   })
   assert.deepEqual(hrActionAccess('user'), {
+    canCreateEmployee: false,
     canEditEmployee: false,
     canProcessStatus: false,
     canManageAccount: false,
     canDeleteEmployee: false,
   })
+})
+
+test('uses explicit HR action keys for employee create and edit buttons', () => {
+  assert.equal(hrActionAccess({ role: 'user', action_keys: ['hr.employee.create'] }).canCreateEmployee, true)
+  assert.equal(hrActionAccess({ role: 'user', action_keys: ['hr.employee.create'] }).canEditEmployee, false)
+  assert.equal(hrActionAccess({ role: 'user', action_keys: ['hr.employee.update'] }).canCreateEmployee, false)
+  assert.equal(hrActionAccess({ role: 'user', action_keys: ['hr.employee.update'] }).canEditEmployee, true)
 })
 
 test('limits department and role administration to administrators', () => {

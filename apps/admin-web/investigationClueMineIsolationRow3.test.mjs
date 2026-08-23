@@ -11,11 +11,10 @@ const backend = fs.readFileSync(
   "utf8",
 );
 
-test("my investigation clues are isolated by their actual creator for every role", () => {
-  assert.match(frontend, /if \(initialTab\.includes\("-my-"\)\)/);
-  assert.doesNotMatch(
+test("my investigation clues isolate ordinary users while administrators retain full visibility", () => {
+  assert.match(
     frontend,
-    /initialTab\.includes\("-my-"\) && profile\.role !== "admin"/,
+    /initialTab\.includes\("-my-"\)\s*&&\s*profile\.role !== "admin"\s*&&\s*Boolean\(profile\.username\)/,
   );
   assert.match(
     frontend,

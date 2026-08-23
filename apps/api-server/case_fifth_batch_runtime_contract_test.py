@@ -246,6 +246,19 @@ class CaseApiRuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(legacy_case.FileNo, archive_no)
         self.assertEqual(legacy_case.ArchivedFileNo, archive_no)
 
+    async def test_normal_archive_review_does_not_block_on_advisory_material_checks(self) -> None:
+        async with self.session_factory() as session:
+            case = await session.get(BusinessRecord, self.case_id)
+            case.status = "\u5f85\u5f52\u6863\u5ba1\u6838"
+            case.data = {**(case.data or {}), "archive_type": "normal"}
+            await session.commit()
+
+        approved = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": "materials reviewed manually", "archive_no": "2026-ADVISORY"},
+        )
+        self.assertEqual(approved.status_code, 200, approved.text)
+
     async def test_deficit_archive_persists_reason_and_legacy_projection(self) -> None:
         missing_reason = await self.client.post(
             f"/api/v1/cases/{self.case_id}/archive",

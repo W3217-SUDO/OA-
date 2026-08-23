@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
-from app.main import app
+from app.main import _resolve_active_case_people, app
 from app.models import BusinessRecord, User
 from app.security import current_identity
 
@@ -55,7 +55,7 @@ class CaseReferencePeopleContractTests(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides.update(self.previous_overrides)
         await self.engine.dispose()
 
-    async def test_directory_and_case_options_only_return_unique_active_hr_people(self) -> None:
+    async def test_directory_uses_hr_records_while_case_picker_uses_active_accounts(self) -> None:
         directory = await self.client.get("/api/v1/users/directory")
         self.assertEqual(directory.status_code, 200, directory.text)
         self.assertEqual([item["username"] for item in directory.json()["items"]], ["fanwenling"])
@@ -64,8 +64,49 @@ class CaseReferencePeopleContractTests(unittest.IsolatedAsyncioTestCase):
         options = await self.client.get("/api/v1/cases/reference-options")
         self.assertEqual(options.status_code, 200, options.text)
         payload = options.json()
-        self.assertEqual(payload["case_assistants"], [{"value": "fanwenling", "label": "范文玲（北京分所）", "position": "律师"}])
+        self.assertEqual(
+            payload["case_assistants"],
+            [
+                {"value": "ghost-user", "label": "同部门旁观经理（北京分所）", "position": "律师"},
+                {"value": "former-user", "label": "离职员工（北京分所）", "position": "律师"},
+                {"value": "fanwenling", "label": "范文玲（北京分所）", "position": "律师"},
+            ],
+        )
         self.assertEqual(payload["case_lawyers"], payload["case_assistants"])
+
+    async def test_active_migrated_person_does_not_require_hr_position_text(self) -> None:
+        async with self.session_factory() as session:
+            migrated = User(
+                username="legacy-lawyer",
+                display_name="历史经办人",
+                department="北京分所",
+                password_hash="x",
+                role="user",
+                profile={"migration_source": "legacy"},
+                is_active=True,
+            )
+            inactive = User(
+                username="inactive-lawyer",
+                display_name="停用经办人",
+                department="北京分所",
+                password_hash="x",
+                role="user",
+                profile={"position": "律师"},
+                is_active=False,
+            )
+            session.add_all([migrated, inactive])
+            await session.commit()
+
+            labels, usernames = await _resolve_active_case_people(
+                ["历史经办人"], session, field_name="经办律师"
+            )
+            self.assertEqual(labels, ["历史经办人"])
+            self.assertEqual(usernames, ["legacy-lawyer"])
+
+            with self.assertRaisesRegex(Exception, "停用"):
+                await _resolve_active_case_people(
+                    ["inactive-lawyer"], session, field_name="经办律师"
+                )
 
 
 if __name__ == "__main__":

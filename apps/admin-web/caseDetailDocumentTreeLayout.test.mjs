@@ -18,7 +18,7 @@ test("case detail document tabs wrap the folder tree and file list", () => {
 });
 
 test("case folders use the legacy order and aligned yellow folder icons", () => {
-  const treeStart = page.indexOf("const counselDocTree=[");
+  const treeStart = page.indexOf("const counselDocTree:");
   const treeEnd = page.indexOf("];", treeStart);
   const tree = page.slice(treeStart, treeEnd);
 
@@ -26,7 +26,7 @@ test("case folders use the legacy order and aligned yellow folder icons", () => 
   const contract = tree.indexOf('label:"合同文档"');
   const caseFolder = tree.indexOf('label:"案件文档"');
   const investigation = tree.indexOf('label:"调查文档"');
-  assert.ok(customer < contract && contract < caseFolder && caseFolder < investigation);
+  assert.ok(customer < contract && contract < investigation && investigation < caseFolder);
   assert.match(page, /FolderOpenOutlined className="case-doc-icon"/);
   assert.match(page, /FolderOutlined className="case-doc-icon"/);
   assert.match(styles, /\.case-doc-icon\{[^}]*color:#e8b834/);

@@ -72,7 +72,7 @@ class CasePhaseChangeAtomicityContract(unittest.IsolatedAsyncioTestCase):
                         role="user",
                         display_name="Phase User",
                         data_scope="本人及共享数据",
-                        menu_keys=["case"],
+                        menu_keys=["case", "@action:case.phase.update"],
                         field_keys=[],
                     ),
                 ]

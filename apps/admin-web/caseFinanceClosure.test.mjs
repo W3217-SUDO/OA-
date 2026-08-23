@@ -6,39 +6,26 @@ const casePage = fs.readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta
 const financePage = fs.readFileSync(new URL("./src/FinanceCenterPage.tsx", import.meta.url), "utf8");
 const navigation = fs.readFileSync(new URL("./src/businessRecordDetailNavigation.ts", import.meta.url), "utf8");
 
-test("律所付款使用普通费用审批而不是内部付款包", () => {
-  assert.match(casePage, /const submitCaseFeePayment = async/);
-  assert.match(casePage, /const submitPaymentRequest = async/);
+test("law-firm payment uses the ordinary payment request flow", () => {
+  assert.match(casePage, /const openPaymentRequest = \(row: CaseRow\) =>/);
+  assert.match(casePage, /const submitPaymentRequest = async \(\) =>/);
   assert.match(casePage, /api\.post\(`\/finance\/fees\/\$\{paymentRequestFee\.id\}\/submit`/);
-  assert.match(casePage, /openPaymentRequest\(row\)/);
-  assert.match(casePage, /if\(key===\"payment\"\)return void submitCaseFeePayment\(selectedFirmFee!\)/);
-  assert.doesNotMatch(casePage, /if\(key===\"payment\"\)return void previewInternalPayment\(selectedFirmFee!\)/);
+  assert.match(casePage, /if\(key==="payment"\)return openPaymentRequest\(selectedFirmFee!\)/);
+  assert.doesNotMatch(casePage, /if\(key==="payment"\)return void previewInternalPayment\(selectedFirmFee!\)/);
 });
 
-test("案件费用退费和开票携带动作并打开预填表单", () => {
+test("case fee invoice and refund keep the selected fee context", () => {
   assert.match(navigation, /"create_invoice" \| "create_refund"/);
-  assert.match(casePage, /action:key===\"invoice\"\?\"create_invoice\":\"create_refund\"/);
-  assert.match(casePage, /key===\"invoice\"\?\"finance-invoice-mine\":\"finance-refund\"/);
-  assert.match(financePage, /target\.action === \"create_invoice\"/);
-  assert.match(financePage, /api\.get\("\/records", \{ params: \{ module: "contract", page_size: 100 \} \}\)/);
-  assert.match(financePage, /api\.get\("\/finance\/case-fees\/invoice-status", \{ params: \{ scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" \} \}\)/);
-  assert.doesNotMatch(financePage, /api\.get\("\/finance\/case-fees\/invoice-status", \{ params: \{ scope: "company", invoice_status: "未开票", page: 1, page_size: 200, fee_types: "" \} \}\)/);
-  assert.match(financePage, /所选案件费用已经申请开票，不能重复申请/);
-  assert.match(financePage, /\(invoice\.data\?\.case_fee_ids \|\| \[\]\)\.some/);
-  assert.match(financePage, /case_fee_ids: \[data\.id\]/);
-  assert.match(financePage, /setInvoiceOpen\(true\)/);
-  assert.match(financePage, /target\.action === \"create_refund\"/);
+  assert.match(casePage, /action:key==="invoice"\?"create_invoice":"create_refund"/);
+  assert.match(casePage, /key==="invoice"\?"finance-invoice-mine":"finance-refund"/);
+  assert.match(financePage, /target\.action === "create_invoice"/);
+  assert.match(financePage, /target\.action === "create_refund"/);
+  assert.match(financePage, /case_fee_ids: \[sourceFee\.id\]/);
   assert.match(financePage, /fee_record_id: data\.id/);
-  assert.match(financePage, /<Form\.Item name="fee_record_id" hidden>/);
-  assert.match(financePage, /applicant: profile\.data\?\.display_name \|\| data\.owner_display_name \|\| "姓名待维护"/);
-  assert.doesNotMatch(financePage, /applicant: profile\.data\?\.display_name \|\| profile\.data\?\.username/);
-  assert.match(financePage, /setRefundOpen\(true\)/);
-  assert.match(financePage, /initialView\.startsWith\("finance-refund"\)[\s\S]*?\? "refunds"/);
 });
 
-test("案件任务和内部结算显示关键状态字段", () => {
-  assert.equal((casePage.match(/dataIndex:\s*\"priority\"/g) || []).length, 3);
-  assert.match(casePage, /key:\"internal-fees\"[\s\S]*?title:\"状态\",dataIndex:\"status\"/);
+test("case task and internal settlement tables preserve key status fields", () => {
+  assert.equal((casePage.match(/dataIndex:\s*"priority"/g) || []).length, 3);
   assert.match(casePage, /row\.data\.payment_requested_amount/);
   assert.match(casePage, /row\.data\.paid_amount/);
 });

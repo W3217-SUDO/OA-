@@ -7,7 +7,7 @@ const start = source.indexOf('data-testid="case-legacy-summary"');
 const end = source.indexOf('</table>', start);
 const summary = source.slice(start, end);
 
-test("case detail summary follows the six legacy rows exactly", () => {
+test("case detail summary keeps the legacy rows and exposes the original-case relation", () => {
   assert.ok(start >= 0 && end > start);
   const labels = [...summary.matchAll(/<th>([^<]+)<\/th>/g)].map((match) => match[1]);
   assert.deepEqual(labels, [
@@ -16,9 +16,11 @@ test("case detail summary follows the six legacy rows exactly", () => {
     "客户", "经办律师", "第三人",
     "合同号", "调查员", "律师助理", "公证书号",
     "线索号", "立案日期", "仓库位置",
+    "原案件号", "复制/关联说明",
     "诉讼标的", "判决/调解金额", "分案日期", "案源人",
   ]);
-  assert.equal((summary.match(/<tr>/g) || []).length, 6);
+  assert.equal((summary.match(/<tr>/g) || []).length, 7);
+  assert.match(summary, /openRelatedOriginalCase/);
 });
 
 test("legacy summary maps imported case detail keys", () => {

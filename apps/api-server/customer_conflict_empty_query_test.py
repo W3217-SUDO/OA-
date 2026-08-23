@@ -1,4 +1,4 @@
-"""Regression: an empty customer-conflict query loads the default latest case."""
+"""Regression contracts for customer-conflict query validation and matching."""
 
 import asyncio
 from datetime import datetime
@@ -7,11 +7,12 @@ import sys
 from types import SimpleNamespace
 import unittest
 
+from fastapi import HTTPException
+
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from app.database import SessionLocal  # noqa: E402
 from app.main import customer_conflicts  # noqa: E402
 
 
@@ -37,7 +38,7 @@ def _record(**values):
         serial_no=values.pop("serial_no", ""),
         title=values.pop("title", ""),
         customer=values.pop("customer", ""),
-        status=values.pop("status", "正常"),
+        status=values.pop("status", "normal"),
         owner=values.pop("owner", ""),
         data=values.pop("data", {}),
         updated_at=values.pop("updated_at", datetime(2026, 1, 1)),
@@ -47,84 +48,48 @@ def _record(**values):
 
 
 class CustomerConflictEmptyQueryTest(unittest.TestCase):
-    def test_empty_query_returns_a_default_case(self):
-        async def run():
-            async with SessionLocal() as session:
-                return await customer_conflicts(
-                    name="",
-                    identity={"role": "admin"},
-                    db=session,
-                )
+    def assert_empty_query_rejected(self, db):
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(customer_conflicts(name="", identity={"role": "admin"}, db=db))
+        self.assertEqual(raised.exception.status_code, 422)
 
-        result = asyncio.run(run())
+    def test_empty_query_is_rejected_before_database_lookup(self):
+        self.assert_empty_query_rejected(_ConflictQueryDb(cases=[], customers=[], users=[]))
 
-        self.assertTrue(result["found"])
-        self.assertTrue(result["latest_case_no"])
+    def test_empty_query_does_not_resolve_blank_customer_managers(self):
+        self.assert_empty_query_rejected(_ConflictQueryDb(
+            cases=[_record(id=1, module="case", serial_no="CASE-BLANK", customer="Exact Customer")],
+            customers=[_record(id=99, module="customer", owner="blank-manager", data={"customer_managers": ["blank-manager"]})],
+            users=[SimpleNamespace(username="blank-manager", display_name="Blank Manager")],
+        ))
 
-    def test_empty_query_resolves_managers_from_default_case_customer(self):
-        """A blank-title customer must never supply a default case's managers."""
-        default_customer = "默认案件客户"
+    def test_empty_query_is_rejected_even_when_a_default_case_exists(self):
+        self.assert_empty_query_rejected(_ConflictQueryDb(
+            cases=[_record(id=1, module="case", serial_no="CASE-DEFAULT", customer="Exact Customer")],
+            customers=[_record(id=1, module="customer", title="Exact Customer", customer="Exact Customer", owner="exact-manager", data={"customer_managers": ["exact-manager"]})],
+            users=[SimpleNamespace(username="exact-manager", display_name="Exact Manager")],
+        ))
+
+    def test_exact_query_resolves_matching_case_customer_managers(self):
+        customer_name = "Exact Customer"
         db = _ConflictQueryDb(
-            cases=[_record(
-                id=1,
-                module="case",
-                serial_no="CASE-DEFAULT",
-                customer=default_customer,
-                data={"filing_date": "2026-01-02"},
-            )],
+            cases=[_record(id=1, module="case", serial_no="CASE-EXACT", customer=customer_name, data={"filing_date": "2026-01-03"})],
             customers=[
-                _record(
-                    id=99,
-                    module="customer",
-                    owner="blank-manager",
-                    data={"customer_managers": ["blank-manager"]},
-                ),
-                _record(
-                    id=1,
-                    module="customer",
-                    title=default_customer,
-                    customer=default_customer,
-                    owner="default-manager",
-                    data={"customer_managers": ["default-manager"]},
-                ),
+                _record(id=99, module="customer", owner="other-manager", data={"customer_managers": ["other-manager"]}),
+                _record(id=1, module="customer", title=customer_name, customer=customer_name, owner="exact-manager", data={"customer_managers": ["exact-manager"]}),
             ],
             users=[
-                SimpleNamespace(username="blank-manager", display_name="空名管理人"),
-                SimpleNamespace(username="default-manager", display_name="默认客户管理人"),
+                SimpleNamespace(username="other-manager", display_name="Other Manager"),
+                SimpleNamespace(username="exact-manager", display_name="Exact Manager"),
             ],
         )
 
-        result = asyncio.run(customer_conflicts(name="", identity={"role": "admin"}, db=db))
+        result = asyncio.run(customer_conflicts(name=customer_name, identity={"role": "admin"}, db=db))
 
-        self.assertEqual(result["our_customer"], default_customer)
-        self.assertEqual(result["customer_managers"], ["默认客户管理人"])
-
-    def test_empty_query_uses_default_case_customer_without_a_blank_customer(self):
-        """The default manager lookup also remains stable when no blank customer exists."""
-        default_customer = "无空名客户默认案件"
-        db = _ConflictQueryDb(
-            cases=[_record(
-                id=1,
-                module="case",
-                serial_no="CASE-NO-BLANK",
-                customer=default_customer,
-                data={"filing_date": "2026-01-03"},
-            )],
-            customers=[_record(
-                id=1,
-                module="customer",
-                title=default_customer,
-                customer=default_customer,
-                owner="default-manager",
-                data={"customer_managers": ["default-manager"]},
-            )],
-            users=[SimpleNamespace(username="default-manager", display_name="默认客户管理人")],
-        )
-
-        result = asyncio.run(customer_conflicts(name="", identity={"role": "admin"}, db=db))
-
-        self.assertEqual(result["our_customer"], default_customer)
-        self.assertEqual(result["customer_managers"], ["默认客户管理人"])
+        self.assertTrue(result["found"])
+        self.assertEqual(result["latest_case_no"], "CASE-EXACT")
+        self.assertEqual(result["our_customer"], customer_name)
+        self.assertEqual(result["customer_managers"], ["Exact Manager"])
 
 
 if __name__ == "__main__":

@@ -79,7 +79,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
                 IDENTITY, db,
             )
 
-        self.assertRegex(result["serial_no"], r"^XS\d{14}$")
+        self.assertRegex(result["serial_no"], r"^[MP]\d{8}$")
         self.assertNotEqual(result["serial_no"], "用户不能指定")
         self.assertEqual(result["owner"], "admin")
 

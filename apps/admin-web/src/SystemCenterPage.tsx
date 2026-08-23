@@ -51,12 +51,6 @@ type SystemConfig = {
   updated_by: string;
   updated_at: string;
 };
-type DirectoryOption = {
-  username: string;
-  display_name: string;
-  is_active: boolean;
-  job_permissions?: string[];
-};
 type CacheRow = {
   key: string;
   name: string;
@@ -126,6 +120,7 @@ const categoryByRoute: Record<string, string> = {
   "system-parameters-case-phase": "case_phase",
   "system-parameters-court": "court",
   "system-parameters-notary": "notary_office",
+  "system-parameters-notary-office": "notary_office",
   "system-parameters-cause": "cause",
   "system-parameters-payment": "payment_type",
   "system-parameters-customer-type": "customer_type",
@@ -231,9 +226,6 @@ export default function SystemCenterPage({
   const numericCode = category === "fee_type" || category === "case_phase";
   const [parameters, setParameters] = useState<ParameterRow[]>([]);
   const [configs, setConfigs] = useState<SystemConfig[]>([]);
-  const [investigationSupervisorOptions, setInvestigationSupervisorOptions] = useState<
-    { value: string; label: string }[]
-  >([]);
   const [caches, setCaches] = useState<CacheRow[]>([]);
   const [cacheTotal, setCacheTotal] = useState(0);
   const [cachePage, setCachePage] = useState(1);
@@ -274,7 +266,6 @@ export default function SystemCenterPage({
   const [parameterForm] = Form.useForm(),
     [shareForm] = Form.useForm(),
     [companyForm] = Form.useForm(),
-    [investigationSupervisorForm] = Form.useForm(),
     [menuForm] = Form.useForm(),
     [userForm] = Form.useForm(),
     [resetPasswordForm] = Form.useForm(),
@@ -299,14 +290,6 @@ export default function SystemCenterPage({
     try {
       const { data } = await api.get("/system/configs");
       setConfigs(data.items);
-      if (initialView === "system-management-config") {
-        setInvestigationSupervisorOptions(
-          (data.investigation_supervisor_options || []).map((item: DirectoryOption) => ({
-            value: item.username,
-            label: String(item.display_name || "").trim() || PERSON_NAME_PLACEHOLDER,
-          })),
-        );
-      }
       for (const item of data.items as SystemConfig[]) {
         if (
           item.key === "customer_share_policy" &&
@@ -318,28 +301,9 @@ export default function SystemCenterPage({
           initialView === "system-parameters-company"
         )
           companyForm.setFieldsValue(item.value);
-        if (
-          item.key === "investigation_assignment" &&
-          initialView === "system-management-config"
-        )
-          investigationSupervisorForm.setFieldsValue(item.value);
       }
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "系统配置加载失败");
-    }
-  };
-  const loadInvestigationSupervisorOptions = async () => {
-    try {
-      const { data } = await api.get("/users/directory");
-      setInvestigationSupervisorOptions(
-        (data.items || [])
-          .map((item: DirectoryOption) => ({
-            value: item.username,
-            label: String(item.display_name || "").trim() || PERSON_NAME_PLACEHOLDER,
-          })),
-      );
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "调查主管候选加载失败");
     }
   };
   const loadCaches = async (page = cachePage, pageSize = cachePageSize) => {
@@ -433,7 +397,6 @@ export default function SystemCenterPage({
       initialView === "system-management-config"
     ) {
       void loadConfigs();
-      if (initialView === "system-management-config") void loadInvestigationSupervisorOptions();
     }
     else if (initialView === "system-management-cache") void loadCaches();
     else if (initialView === "system-management-menu") void loadMenus();
@@ -1410,25 +1373,6 @@ export default function SystemCenterPage({
             showTotal: (total) => `共有${total}条`,
             }}
           />
-        </Card>
-        <Card className="panel system-focused" title="调查任务分配人">
-          <Form form={investigationSupervisorForm} layout="inline">
-            <Form.Item name="supervisor_username" label="调查主管" rules={[{ required: true, message: "请选择调查主管" }]}>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder="请选择启用的系统人员"
-                options={investigationSupervisorOptions}
-                onOpenChange={(open) => {
-                  if (open) void loadInvestigationSupervisorOptions();
-                }}
-                style={{ minWidth: 320 }}
-              />
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" onClick={() => saveConfig("investigation_assignment", investigationSupervisorForm)}>保存</Button>
-            </Form.Item>
-          </Form>
         </Card>
       </>
     );

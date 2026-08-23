@@ -1,7 +1,42 @@
 export type SealAction = "approve" | "reject" | "stamp" | "archive";
-export type SealActionRow = { status: string };
+export type SealActionCapabilities = Partial<Record<SealAction, boolean>>;
+export type SealActionRow = {
+  status: string;
+  /**
+   * The API owns permission decisions.  `action_keys` is the compact form and
+   * `capabilities` is the named form; both are accepted while the API rolls out.
+   */
+  action_keys?: readonly string[];
+  capabilities?: SealActionCapabilities;
+};
+export type SealAttachmentCounts = {
+  file_count?: unknown;
+  application_file_count?: unknown;
+  stamped_file_count?: unknown;
+};
 export type SealSelectionKey = string | number;
 export type SealAssetDefault = { id: SealSelectionKey; seal_type?: string; status?: string };
+
+export const sealRouteMapping = {
+  "seal-my": { view: "my", statuses: [] },
+  "seal-my-pending": { view: "my", statuses: ["\u5f85\u5ba1\u6279"] },
+  "seal-my-stamping": { view: "my", statuses: ["\u5f85\u7528\u5370"] },
+  "seal-my-used": { view: "my", statuses: ["\u5df2\u7528\u5370", "\u5df2\u5f52\u6863"] },
+  "seal-my-refused": { view: "my", statuses: ["\u5df2\u62d2\u7edd"] },
+  "seal-my-withdrawn": { view: "my", statuses: ["\u5df2\u64a4\u56de"] },
+  "seal-audit": { view: "audit", statuses: [] },
+  "seal-audit-pending": { view: "audit", statuses: ["\u5f85\u5ba1\u6279"] },
+  "seal-audit-stamping": { view: "audit", statuses: ["\u5f85\u7528\u5370"] },
+  "seal-audit-refused": { view: "audit", statuses: ["\u5df2\u62d2\u7edd"] },
+  "seal-admin": { view: "all", statuses: [] },
+  "seal-admin-pending": { view: "all", statuses: ["\u5f85\u7528\u5370"] },
+  "seal-admin-used": { view: "all", statuses: ["\u5df2\u7528\u5370"] },
+  "seal-admin-query": { view: "all", statuses: [] },
+} as const;
+
+export function sealRouteStatuses(route: string): string[] {
+  return [...(sealRouteMapping[route as keyof typeof sealRouteMapping]?.statuses || [])];
+}
 
 export function legacySealApplicationDefaults(assets: readonly SealAssetDefault[]) {
   const available = assets.filter((asset) => asset.status === "可用");
@@ -86,10 +121,27 @@ export function sealErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function hasBackendSealAction(action: SealAction, row: SealActionRow): boolean {
+  return row.capabilities?.[action] === true || row.action_keys?.includes(action) === true;
+}
+
 export function canSealAction(action: SealAction, row: SealActionRow): boolean {
-  if (action === "approve" || action === "reject") return row.status === "待审批";
-  if (action === "stamp") return row.status === "待用印";
-  return row.status === "已用印";
+  // Every mutable workflow control is driven by the backend capability contract.
+  return hasBackendSealAction(action, row);
+}
+
+function nonNegativeCount(value: unknown): number | undefined {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? count : undefined;
+}
+
+export function sealAttachmentTotal(row: SealAttachmentCounts): number {
+  const application = nonNegativeCount(row.application_file_count);
+  const stamped = nonNegativeCount(row.stamped_file_count);
+  if (application !== undefined || stamped !== undefined) {
+    return (application || 0) + (stamped || 0);
+  }
+  return nonNegativeCount(row.file_count) || 0;
 }
 
 export function canSealWithdraw(row: SealActionRow & { owner?: string }): boolean {
@@ -123,8 +175,11 @@ export const sealAssetAuditPagination = {
   showTotal: (total: number) => `共 ${total} 条审计记录`,
 };
 
-export function canViewSealAssetAudit(role: unknown): boolean {
-  return role === "admin" || role === "manager";
+export function canViewSealAssetAudit(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as { manage_assets?: unknown; action_keys?: unknown };
+  return payload.manage_assets === true
+    || (Array.isArray(payload.action_keys) && payload.action_keys.includes("manage_assets"));
 }
 
 export function shouldCloseSealAssetAuditAfterDelete(assetId: number, openAssetId: number | null): boolean {
@@ -203,7 +258,7 @@ export function canBatchDeleteSealFiles(
 }
 
 export function canBatchStampSealRows(rows: readonly SealActionRow[]): boolean {
-  return rows.length > 0 && rows.every((row) => row.status === "待用印");
+  return rows.length > 0 && rows.every((row) => canSealAction("stamp", row));
 }
 
 export function canBatchWithdrawSealRows(rows: readonly SealActionRow[]): boolean {

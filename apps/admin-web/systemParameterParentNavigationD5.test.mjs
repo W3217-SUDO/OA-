@@ -41,6 +41,16 @@ function loadAppModule() {
       CONTRACT_DETAIL_TARGET_EVENT: "contract-detail-target",
       clearContractDetailTarget() {},
     },
+    "./contractCreateContext": {
+      clearContractCustomerContext() {},
+      CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY: "contract-customer-route-source",
+    },
+    "dingtalk-jsapi/entry/union": {},
+    "dingtalk-jsapi/api/runtime/permission/requestAuthCode": {
+      __esModule: true,
+      default: async () => ({ code: "" }),
+    },
+    "dingtalk-jsapi/lib/env": { getENV: () => ({ platform: "notInDingTalk" }) },
   };
   return executeTsx(
     fs.readFileSync(appPath, "utf8"),

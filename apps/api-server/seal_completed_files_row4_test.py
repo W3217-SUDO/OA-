@@ -21,7 +21,7 @@ from app.main import (
     stamp_seal_application,
     upload_seal_application_files,
 )
-from app.models import BusinessRecord, FileAttachment, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 ADMIN = {"username": "codex_row4_stamper", "role": "admin", "department": "上海分所"}
@@ -41,6 +41,9 @@ class SealCompletedFilesRow4Test(unittest.IsolatedAsyncioTestCase):
             SealAssetAudit.__table__,
             User.__table__,
             RolePermission.__table__,
+            LegacyOfficialDocument.__table__,
+            LegacyOfficialDocumentAudit.__table__,
+            LegacyOfficialDocumentFile.__table__,
         ]
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
@@ -140,14 +143,20 @@ class SealCompletedFilesRow4Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record.status, "已用印")
         self.assertEqual(projection["owner_display_name"], applicant.display_name)
         self.assertEqual(projection["data"]["approver_display_name"], stamper.display_name)
-        self.assertEqual(projection["file_count"], 2)
-        self.assertEqual(projection["file_category"], SEAL_STAMPED_FILE_CATEGORY)
-        self.assertEqual(projection["data"]["file_names"], ["盖章文件一.pdf", "盖章文件二.pdf"])
+        self.assertEqual(projection["file_count"], 3)
+        self.assertEqual(projection["application_file_count"], 1)
+        self.assertEqual(projection["stamped_file_count"], 2)
+        self.assertEqual(projection["file_category"], "用印附件")
+        self.assertEqual(projection["application_file_names"], ["申请阶段待用印文件.pdf"])
+        self.assertEqual(projection["stamped_file_names"], ["盖章文件一.pdf", "盖章文件二.pdf"])
         self.assertEqual(projection["data"]["stamp_attachment_ids"], [item.id for item in stamped])
 
         listed = await list_seal_application_files(record.id, 1, 15, ADMIN, self.db)
-        self.assertEqual(listed["total"], 2)
-        self.assertEqual({item["original_name"] for item in listed["items"]}, {"盖章文件一.pdf", "盖章文件二.pdf"})
+        self.assertEqual(listed["total"], 3)
+        self.assertEqual(
+            {item["original_name"] for item in listed["items"]},
+            {"申请阶段待用印文件.pdf", "盖章文件一.pdf", "盖章文件二.pdf"},
+        )
         for item in stamped:
             response = await download_attachment(item.id, ADMIN, self.db)
             self.assertEqual(Path(response.path).read_bytes(), Path(item.path).read_bytes())

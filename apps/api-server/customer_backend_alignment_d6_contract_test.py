@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, JobRole, RolePermission, SystemParameter, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, JobRole, LegacyCustomer, LegacyCustomerContact, RolePermission, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -33,6 +33,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         tables = [
             User.__table__, JobRole.__table__, RolePermission.__table__, BusinessRecord.__table__,
             WorkflowEvent.__table__, FileAttachment.__table__, SystemParameter.__table__,
+            ContractApprovalStep.__table__, LegacyCustomer.__table__, LegacyCustomerContact.__table__,
         ]
         async with self.engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
@@ -304,6 +305,13 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
 
     async def test_generic_record_patch_response_uses_identity_field_projection(self):
         async with self.sessions() as db:
+            db.add(RolePermission(
+                role="user",
+                display_name="Test User",
+                data_scope="本人及共享数据",
+                menu_keys=["customer", "@action:record.customer.update"],
+                field_keys=["customer.legal"],
+            ))
             customer = BusinessRecord(
                 module="customer", serial_no="KH-D6-FIELD-PATCH", title="D6 字段投影客户", customer="D6 字段投影客户",
                 status="正常", owner=USER["username"], department=USER["department"],

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.main import _sync_legacy_case, _sync_legacy_contract, _sync_legacy_contract_audit, _sync_legacy_customer, _sync_legacy_investigation, _sync_legacy_investigation_clue, _sync_legacy_investigation_task, _sync_legacy_official_audit, _sync_legacy_official_document
+from app.main import _sync_legacy_case, _sync_legacy_contract, _sync_legacy_contract_audit, _sync_legacy_customer, _sync_legacy_investigation, _sync_legacy_investigation_clue, _sync_legacy_investigation_task, _sync_legacy_official_audit, _sync_legacy_official_document, _sync_legacy_projection
 from app.models import BusinessRecord, FileAttachment, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, WorkflowEvent
 
 
@@ -85,7 +85,7 @@ class LegacyOfficialDocumentProjectionRuntimeTest(unittest.IsolatedAsyncioTestCa
             db.add(FileAttachment(record_id=seal.id, category="用印文件", original_name="授权书.pdf", stored_name="seal-auth.pdf", content_type="application/pdf", size=256, path="/uploads/seal-auth.pdf", uploader="admin"))
             await db.flush()
 
-            await _sync_legacy_official_document(seal, identity, db)
+            await _sync_legacy_projection(seal, identity, db)
             seal.status = "待审批"
             await _sync_legacy_official_audit(seal, identity, db, 10, "提交")
             seal.status = "待用印"
@@ -141,8 +141,8 @@ class LegacyOfficialDocumentProjectionRuntimeTest(unittest.IsolatedAsyncioTestCa
             self.assertEqual(legacy.CustomerId, 7)
             self.assertEqual(legacy.CustomerNo, "CUS-001")
             self.assertEqual(legacy.BusinessOwner, "owner01")
-            self.assertEqual(legacy.ContractMoney, 12345.67)
-            self.assertEqual(legacy.TaxRate, 6.0)
+            self.assertEqual(float(legacy.ContractMoney), 12345.67)
+            self.assertEqual(float(legacy.TaxRate), 6.0)
             self.assertIsNone(legacy.ContractType)
             self.assertIsNone(legacy.ChargingType)
             self.assertEqual(legacy.ContractStatus, 20)

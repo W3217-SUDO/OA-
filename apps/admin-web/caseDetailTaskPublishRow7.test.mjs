@@ -37,8 +37,8 @@ assert.match(
 
 assert.match(
   source,
-  /onChange=\{\(key\) => \{\s*setActiveCounselDetailTab\(key\);\s*if \(\(key === "tasks" \|\| key === "customer-tasks"\) && viewingCounselCase\) \{\s*void loadCounselDetailTasksPage\(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE\);/,
-  "case task tab activation must refresh the persisted task list",
+  /key === "tasks" && viewingCounselCase[\s\S]*?loadCounselDetailTasksPage\(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE\)[\s\S]*?key === "customer-tasks" && viewingCounselCase[\s\S]*?loadCounselDetailCustomerTasksPage\(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE\)/,
+  "case and customer task tabs must refresh their own persisted task list",
 );
 
 console.log("case detail task publish row 7: PASS");

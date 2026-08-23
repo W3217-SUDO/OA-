@@ -23,7 +23,9 @@ test("调查员和调查区域都从系统受控选项中选择", () => {
   assert.match(source, /onChange=\{\(\) => taskForm\.setFieldValue\("city", undefined\)\}/);
   assert.match(source, /label="调查城市"[\s\S]*?options=\{taskCityOptions\.map/);
   assert.doesNotMatch(source, /<Form\.Item label="区县" name="district"><Input \/><\/Form\.Item>/);
-  assert.match(source, /authorization_scope:[\s\S]*?\[v\.province, v\.city\]\.filter\(Boolean\)\.join\("、"\)/);
+  assert.match(source, /province: regionPath\[0\] \|\| v\.province \|\| ""/);
+  assert.match(source, /city: regionPath\[1\] \|\| v\.city \|\| ""/);
+  assert.match(source, /authorization_scope: regionPath\.length \? "" : v\.authorization_scope \|\| ""/);
   assert.match(source, /return groups;/);
 });
 

@@ -57,7 +57,7 @@ test("customer-to-contract relation filters by exact identity and hides archived
 
 test("customer-to-contract relation survives duplicate page initialization but resets for a manual query", () => {
   assert.match(pageSource, /const relationQuery = consumedRelationQuery \|\| customerRelationQueryRef\.current/);
-  assert.match(pageSource, /\{ \.\.\.query, customer_id: undefined, customer_no: "", customer: "", \.\.\.relationQuery \}/);
+  assert.match(pageSource, /\{ \.\.\.baseQuery, customer_id: undefined, customer_no: "", customer: "", \.\.\.relationQuery \}/);
   assert.match(pageSource, /customerRelationQueryViewRef\.current !== initialView/);
   assert.match(pageSource, /customerRelationQueryRef\.current = null;\s*customerRelationQueryViewRef\.current = null;/);
 });

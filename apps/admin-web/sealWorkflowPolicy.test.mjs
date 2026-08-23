@@ -82,10 +82,10 @@ test("seal asset audit pagination and permission helper match the backend contra
   assert.equal(sealAssetAuditPagination.defaultPageSize, 15);
   assert.deepEqual(sealAssetAuditPagination.pageSizeOptions, [10, 15, 20, 50, 100, 200]);
   assert.equal(sealAssetAuditPagination.showQuickJumper.goButton, "GO");
-  assert.equal(canViewSealAssetAudit("admin"), true);
-  assert.equal(canViewSealAssetAudit("manager"), true);
-  assert.equal(canViewSealAssetAudit("user"), false);
-  assert.equal(canViewSealAssetAudit(""), false);
+  assert.equal(canViewSealAssetAudit({ manage_assets: true }), true);
+  assert.equal(canViewSealAssetAudit({ action_keys: ["manage_assets"] }), true);
+  assert.equal(canViewSealAssetAudit({ manage_assets: false }), false);
+  assert.equal(canViewSealAssetAudit(null), false);
   assert.equal(shouldCloseSealAssetAuditAfterDelete(7, 7), true);
   assert.equal(shouldCloseSealAssetAuditAfterDelete(7, 8), false);
   assert.equal(shouldCloseSealAssetAuditAfterDelete(7, null), false);
@@ -203,7 +203,10 @@ test("seal selection and draft batch-delete gate are runtime helpers", () => {
 });
 
 test("seal batch stamp and withdraw gates require compatible pending states", () => {
-  assert.equal(canBatchStampSealRows([{ status: "待用印" }, { status: "待用印" }]), true);
+  assert.equal(canBatchStampSealRows([
+    { status: "待用印", action_keys: ["stamp"] },
+    { status: "待用印", capabilities: { stamp: true } },
+  ]), true);
   assert.equal(canBatchStampSealRows([{ status: "待用印" }, { status: "已用印" }]), false);
   assert.equal(canBatchStampSealRows([]), false);
   assert.equal(canBatchWithdrawSealRows([{ status: "待审批" }, { status: "待用印" }]), true);
@@ -230,12 +233,13 @@ test("seal attachment metadata keeps size and extension projections readable", (
   assert.equal(getSealAttachmentExtension("untitled"), "");
 });
 
-test("seal action controls retain state gates while backend owns permission checks", () => {
-  assert.equal(canSealAction("approve", { status: "待审批" }), true);
-  assert.equal(canSealAction("approve", { status: "待审批", role: "staff" }), true);
+test("seal action controls require backend capabilities for every mutation", () => {
+  assert.equal(canSealAction("approve", { status: "待审批" }), false);
+  assert.equal(canSealAction("approve", { status: "待审批", capabilities: { approve: true } }), true);
   assert.equal(canSealAction("reject", { status: "待用印" }), false);
-  assert.equal(canSealAction("stamp", { status: "待用印" }), true);
-  assert.equal(canSealAction("archive", { status: "已用印" }), true);
+  assert.equal(canSealAction("stamp", { status: "待用印" }), false);
+  assert.equal(canSealAction("stamp", { status: "待用印", action_keys: ["stamp"] }), true);
+  assert.equal(canSealAction("archive", { status: "已用印", capabilities: { archive: true } }), true);
   assert.equal(canSealAction("archive", { status: "待用印" }), false);
 });
 

@@ -32,10 +32,6 @@ test("customer mutation handlers validate every existing response before success
     "assignCustomer",
     "action",
     "share",
-    "submitLevelChange",
-    "reviewLevelChange",
-    "submitKeyChange",
-    "reviewKeyChange",
     "openPortal",
     "closePortal",
   ]
@@ -49,13 +45,11 @@ test("customer mutation handlers validate every existing response before success
     const handlerSource = pageSource.slice(start, end)
     assert.ok(start >= 0, `${name} handler is present`)
     assert.match(handlerSource, /assertCustomerMutationSuccess\(response\?\.data\)/, `${name} validates response`)
-    assert.match(handlerSource, /getCustomerMutationErrorMessageI17\(error/, `${name} keeps legacy server message in catch`)
+    assert.match(handlerSource, /getCustomerMutationErrorMessage(?:I17)?\(error/, `${name} keeps legacy server message in catch`)
   }
   for (const endpoint of [
     "/customers/${assigning.id}/managers",
     "/customers/${sharing.id}/share",
-    "/level-change",
-    "/key-change",
     "/portal/open",
     "/portal/close",
   ]) assert.match(pageSource, new RegExp(endpoint.replace(/[${}]/g, "\\$&")))

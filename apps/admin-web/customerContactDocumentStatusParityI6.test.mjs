@@ -77,7 +77,8 @@ test('recycle, restore and public-pool state transitions retain old actions and 
   for (const action of ['CustomerRestore', 'CustomerOpen', 'CustomerClose']) assert.match(oldCustomer, new RegExp(`${action}\\s*\\(`))
   for (const route of ['claim', 'release', 'recycle', 'restore']) assert.match(localApi, new RegExp(`customers/\\{\\{customer_id\\}\\}/${route}`))
   assert.match(localApi, /status == .*公海|公海.*status ==/s)
-  assert.match(localPage, /\["release", "recycle", "restore"\]/)
+  assert.match(localPage, /const action = async \(r: Customer, name: string\)/)
+  assert.match(localPage, /if \(\["recycle", "restore"\]\.includes\(key\)\)/)
 })
 
 test('legacy login gate and local owner/manager checks are both explicit', () => {

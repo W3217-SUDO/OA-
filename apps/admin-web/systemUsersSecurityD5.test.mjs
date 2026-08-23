@@ -131,12 +131,12 @@ test("organization and audit routes remain explicit integration boundaries", () 
   assert.match(pageSource, /initialView === "system-users"/);
 });
 
-test("investigation supervisor selection refreshes enabled personnel when opened", () => {
-  assert.match(pageSource, /const loadInvestigationSupervisorOptions = async \(\) =>/);
-  assert.match(pageSource, /data\.investigation_supervisor_options/);
-  assert.match(pageSource, /api\.get\("\/users\/directory"\)/);
-  assert.doesNotMatch(pageSource, /\.filter\(\(item: DirectoryOption\) => item\.is_active\)/);
-  assert.match(pageSource, /onOpenChange=\{\(open\) => \{[\s\S]*if \(open\) void loadInvestigationSupervisorOptions\(\)/);
+test("system configuration remains a read-only projection instead of an unrelated assignment editor", () => {
+  assert.match(pageSource, /initialView === "system-management-config"/);
+  assert.match(pageSource, /dataSource=\{configs\}/);
+  assert.match(pageSource, /render: \(value\) => JSON\.stringify\(value\)/);
+  assert.doesNotMatch(pageSource, /loadInvestigationSupervisorOptions/);
+  assert.doesNotMatch(pageSource, /onOpenChange=\{\(open\) => \{[\s\S]*loadInvestigationSupervisorOptions/);
   assert.match(apiSource, /"investigation_supervisor_options": supervisor_options/);
   assert.match(apiSource, /select\(User\)\.where\(User\.is_active\.is_\(True\)\)/);
 });

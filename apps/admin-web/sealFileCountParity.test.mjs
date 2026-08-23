@@ -20,7 +20,7 @@ test("seal list exposes direct file-name preview entry beside file count", () =>
   assert.match(source, /function listSealRowFileNames|const listSealRowFileNames/);
   assert.match(source, /const previewListAttachmentByName = async/);
   assert.match(fileCountColumn, /listSealRowFileNames\(r\)/);
-  assert.match(fileCountColumn, /用印文件/);
+  assert.match(fileCountColumn, /sealAttachmentListLabel/);
   assert.match(fileCountColumn, /previewListAttachmentByName\(r, name\)/);
   assert.match(source, /previewAttachment\(target\)/);
   assert.match(source, /openFileList\(row\)/);

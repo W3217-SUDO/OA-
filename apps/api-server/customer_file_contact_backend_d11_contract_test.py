@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, RolePermission, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, RolePermission, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -33,7 +33,7 @@ class CustomerFileContactBackendD11Contract(unittest.IsolatedAsyncioTestCase):
             poolclass=StaticPool,
         )
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
-        tables = [User.__table__, RolePermission.__table__, BusinessRecord.__table__, WorkflowEvent.__table__, FileAttachment.__table__]
+        tables = [User.__table__, RolePermission.__table__, BusinessRecord.__table__, WorkflowEvent.__table__, FileAttachment.__table__, ContractApprovalStep.__table__]
         async with self.engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
         self.upload_root = Path(tempfile.mkdtemp(prefix="codex-customer-d11-"))

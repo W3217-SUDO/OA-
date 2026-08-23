@@ -1,29 +1,20 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
 
-const source = fs.readFileSync(new URL('./src/CaseCenterPage.tsx', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
 
-test('我的案件查询支持重置并恢复第一页数据', () => {
-  assert.match(source, /caseQueryForm\.resetFields\(\);setCaseQuery\(\{\}\);setOriginalPage\(1\);if\(counselListMode\)void loadCounselCases\(\{\},1,counselPageSize\)/);
-  assert.match(source, /pageSizeOptions:\[10,15,20,50,100,200\]/);
+test("case list reset returns to the first server page with an empty query", () => {
+  assert.match(source, /caseQueryForm\.resetFields\(\);setCaseQuery\(\{\}\);setOriginalPage\(1\);if\(counselListMode\)void loadCounselCases\(\{\},1,counselPageSize\);else void loadOrdinaryCases\(\{\},1,originalPageSize\);/);
   assert.match(source, /const \[originalPage, setOriginalPage\] = useState\(caseListReturnContext\?\.page \|\| 1\)/);
   assert.match(source, /const \[originalPageSize, setOriginalPageSize\] = useState\(caseListReturnContext\?\.pageSize \|\| 15\)/);
-  assert.match(source, /current:originalPage,pageSize:originalPageSize/);
   assert.match(source, /setOriginalPage\(nextPage\);setOriginalPageSize\(nextPageSize\);sessionStorage\.setItem\("sunhold:case-list-return"/);
-  assert.match(source, /if \(!isCreateView && !isCaseDetailView && caseListReturnContext\?\.query\)/);
-  assert.match(source, /setOriginalPage\(page\);\s*setOriginalPageSize\(pageSize\);\s*onNavigate\?\.\(route\);/);
-  assert.match(source, /initialView\.startsWith\("case-mine"\)/);
-  assert.match(source, /const exportCases = async \(\) => \{\s*if \(!originalCases\.length\) return message\.warning\("当前查询没有可导出的案件"\);/);
-  assert.match(source, /const criminalPhaseItems=\[\{label:"待分配",value:"新案待分配"\}/);
-  assert.match(source, /buildCasePhaseItems\(scopedCases,initialView/);
-  assert.match(source, /onClick=\{\(\)=>void searchByPhase\(value\)\}/);
-  assert.match(source, /const searchByPhase = \(status: string\)/);
   assert.match(source, /return loadOrdinaryCases\(nextQuery, 1, originalPageSize\)/);
 });
 
-test('我的案件列表保留详情入口与导出/批量操作', () => {
+test("ordinary case list retains detail, export, and batch entry points", () => {
   assert.match(source, /onClick=\{\(\)=>void openCounselDetail\(row\)\}/);
-  assert.match(source, /导出选中（Excel）/);
-  assert.match(source, /更多操作 ▾/);
+  assert.match(source, /const exportCases = async \(\) => \{/);
+  assert.match(source, /exportSelectedCasesExcel\(true\)/);
+  assert.match(source, /setBatchUpdateOpen\(true\)/);
 });

@@ -25,7 +25,7 @@ export const contractBackendMatrix = [
   { id: "object-case-finance", status: "已映射", local: "contract objects/cases/payment routes", evidence: "contract-linked records" },
   { id: "audit-list", status: "后端缺失", local: "dedicated pending/rejected/approved list", evidence: "generic records route has no current auditor matrix" },
   { id: "legacy-query-fields", status: "后端缺失", local: "title/serial/type/customer/case/fee/date/body filters", evidence: "records only accepts keyword and record_status" },
-  { id: "scope-filter", status: "后端缺失", local: "mine/department/company scope", evidence: "frontend scope is ignored by records endpoint" },
+  { id: "scope-filter", status: "已映射", local: "mine/department/company scope", evidence: "records endpoint applies contract scope server-side" },
   { id: "server-page-sizes", status: "后端缺失", local: "10/15/20/50/100/200 defaults", evidence: "generic endpoint caps page_size at 100" },
   { id: "customer-contract-query", status: "后端缺失", local: "customer-linked contract query", evidence: "no dedicated old service equivalent" },
   { id: "draft-multi-upload", status: "后端缺失", local: "legacy draft multi-file response", evidence: "only generic single-file upload exists" },
@@ -61,8 +61,8 @@ test("matrix points to the known server-side debt instead of masking it", () => 
   const recordsSignature = mainSource.match(/async def list_records\([\s\S]*?\n\):/u)?.[0] || "";
   assert.match(recordsSignature, /keyword/);
   assert.match(recordsSignature, /record_status/);
-  assert.doesNotMatch(recordsSignature, /scope/);
+  assert.match(recordsSignature, /scope/);
   assert.doesNotMatch(recordsSignature, /case_no/);
-  assert.equal(contractBackendMatrix.find((item) => item.id === "scope-filter")?.status, "后端缺失");
+  assert.equal(contractBackendMatrix.find((item) => item.id === "scope-filter")?.status, "已映射");
   assert.equal(contractBackendMatrix.find((item) => item.id === "legacy-query-fields")?.status, "后端缺失");
 });

@@ -20,18 +20,18 @@ const saveEmployeeEdit = block('const saveEmployeeEdit=', 'const openTransition=
 const editModal = block('const editModal=', 'const transitionModal=')
 
 test('employee edit keeps business role synchronized with account role, staff role, position and permission marker', () => {
-  assert.ok(saveEmployeeEdit.includes('selectedBusinessRole(value.system_role)'), 'system_role should detect business permission role selections')
-  assert.ok(saveEmployeeEdit.includes('effectiveSystemRole=permissionRole?systemRoleOf(permissionRole):value.system_role'), 'business permission role should map back to base system role')
-  assert.ok(saveEmployeeEdit.includes('effectivePosition=permissionRole||value.position'), 'business permission role should become the HR position')
-  assert.ok(saveEmployeeEdit.includes('editableData.staff_role=permissionRole||value.staff_role'), 'business permission role should sync staff_role')
+  assert.ok(saveEmployeeEdit.includes("permissionRole=normalizedAccountType===employeeAccountType?String(value.staff_role||'').trim():''"), 'staff role should remain the HR permission-role source')
+  assert.ok(saveEmployeeEdit.includes("selectedSystemRole=permissionRole?systemRoleOf(permissionRole):'user'"), 'business permission role should map back to base system role')
+  assert.ok(saveEmployeeEdit.includes("effectivePosition=normalizedAccountType==='客户账号'?'客户联系人':value.position"), 'customer accounts should use the customer-contact position')
+  assert.ok(saveEmployeeEdit.includes("editableData.staff_role=normalizedAccountType==='客户账号'?'客户联系人':permissionRole"), 'staff role should follow account type')
   assert.ok(saveEmployeeEdit.includes('editableData.permission_role=permissionRole'), 'business permission role marker should be preserved in employee data')
 })
 
 test('contract approval qualification follows the selected account role and is blocked for admin or non-formal accounts', () => {
   assert.ok(source.includes('const canConfigureContractApproval='), 'HR page should centralize contract approval eligibility')
-  assert.ok(source.includes("Form.useWatch('system_role',employeeEditForm)"), 'contract approval UI should react to system role changes')
+  assert.ok(source.includes("Form.useWatch('staff_role',employeeEditForm)"), 'contract approval UI should react to the selected staff role')
   assert.ok(
-    saveEmployeeEdit.includes('canConfigureContractApproval(value.system_role,editingEmployee.id)'),
+    saveEmployeeEdit.includes('canConfigureContractApproval(roleValue,editingEmployee.id,normalizedAccountType)'),
     'save path should evaluate approval eligibility from the selected role and employee id',
   )
   assert.ok(
@@ -39,7 +39,7 @@ test('contract approval qualification follows the selected account role and is b
     'save path should not persist approval qualification when the selected role is not eligible',
   )
   assert.ok(
-    editModal.includes('disabled={!canConfigureContractApproval(editingSystemRole,editingEmployee?.id)}'),
+    editModal.includes('disabled={!canConfigureContractApproval(editingSystemRole,editingEmployee?.id,editingAccountType)||savingEmployee}'),
     'contract approval switch should be disabled when admin/non-formal accounts cannot be approvers',
   )
 })

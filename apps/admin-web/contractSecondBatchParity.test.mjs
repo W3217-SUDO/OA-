@@ -24,7 +24,7 @@ test("contract draft defaults and required field validation follow the legacy cr
   const defaults = buildContractDraftDefaults({ serialNo: "HT20260802123456", profile, customer });
   assert.equal(defaults.serial_no, "HT20260802123456");
   assert.equal(defaults.status, "草稿");
-  assert.equal(defaults.type, "法律顾问合同");
+  assert.equal(defaults.type, undefined, "the legacy create form requires an explicit contract type choice");
   assert.equal(defaults.contract_body, "律所");
   assert.equal(defaults.fee_type, "固定收费");
   assert.equal(defaults.amount, 0);
@@ -58,7 +58,11 @@ test("approval actions enforce current-node ownership and trim the decision payl
   assert.equal(canActOnContractApproval("审批中", "other", "admin", "staff"), false);
   assert.equal(canActOnContractApproval("审批中", "other", "admin", "admin"), true);
   assert.equal(canActOnContractApproval("草稿", "admin", "admin", "admin"), false);
-  assert.deepEqual(buildContractApprovalPayload(false, "  缺少附件  "), { approved: false, comment: "缺少附件" });
+  assert.deepEqual(buildContractApprovalPayload(false, "  缺少附件  "), {
+    approved: false,
+    comment: "缺少附件",
+    action_key: "contract.application.approve",
+  });
 });
 
 test("attachment actions preserve legacy accept list, size guard, and locked statuses", () => {
@@ -80,7 +84,8 @@ test("contract center integrates the second-batch policy at each workflow bounda
   assert.match(pageSource, /validateContractDraftValues\(/);
   assert.match(pageSource, /resolveContractCustomerSelection\(/);
   assert.match(pageSource, /filterContractCaseOptions\(/);
-  assert.match(pageSource, /canActOnContractApproval\(/);
+  assert.match(pageSource, /approvalCapabilities\?\.can_approve_current/);
+  assert.match(pageSource, /currentApprover.*profile\.username/s);
   assert.match(pageSource, /buildContractApprovalPayload\(/);
   assert.match(pageSource, /validateContractAttachment\(/);
   assert.match(pageSource, /canMutateContractAttachments\(/);

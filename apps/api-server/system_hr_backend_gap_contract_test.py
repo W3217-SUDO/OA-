@@ -12,6 +12,7 @@ from app.database import Base, get_db
 from app.main import FIELD_KEYS, app
 from app.models import (
     BusinessRecord,
+    ContractApprovalStep,
     Department,
     FileAttachment,
     JobRole,
@@ -54,6 +55,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
                 JobRole.__table__,
                 Department.__table__,
                 BusinessRecord.__table__,
+                ContractApprovalStep.__table__,
                 FileAttachment.__table__,
                 LegacyContract.__table__,
                 LegacyContractFile.__table__,

@@ -98,7 +98,7 @@ class AttachmentCategoryUnrestrictedContractTest(unittest.IsolatedAsyncioTestCas
 
         expected = {
             task_result["id"]: "任务资料附件",
-            seal_result["id"]: "用印文件",
+            seal_result["id"]: "盖章文件",
             outgoing_result["id"]: "正式发文附件",
             hr_result["id"]: "员工档案",
         }

@@ -650,7 +650,7 @@ export default function IprCenterPage({
     }
   };
   const openLinkedCaseCustomerCases = (customer: IprCaseCustomer) => {
-    const customerKeyword = customer.name || customer.customer_no || "";
+    const customerKeyword = customer.customer_no || customer.name || "";
     setDetail(null);
     setKeyword(customerKeyword);
     void load(1, pageSize, customerKeyword);

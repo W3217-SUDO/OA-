@@ -18,8 +18,8 @@ test('8.7 row 2 keeps every legacy collection field and proof-file upload', () =
 test('8.7 row 3 resolves the contract from source tasks rather than a manual selector', () => {
   assert.match(source, /investigations\/clues\/case-contracts/)
   assert.match(source, /合同由线索来源调查任务自动绑定/)
-  assert.match(source, /生成新案待分配案件/)
-  assert.match(source, /合同由线索来源调查任务自动绑定/)
+  assert.match(source, /const openBatchCases = async \(\)/)
+  assert.match(source, /investigations\/clues\/batch-cases/)
   assert.match(source, /title: "基本信息"/)
   assert.match(source, /title: "生成结果"/)
 })

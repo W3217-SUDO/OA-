@@ -158,27 +158,41 @@ class BackendGapFContractTest(unittest.IsolatedAsyncioTestCase):
     async def test_i2_to_i4_investigation_task_contract_auth_scope_attachments_and_two_step(self):
         prefix = f"CODEX-F-I2-{uuid.uuid4().hex[:8]}"
         async with self.sessions() as db:
-            clue = BusinessRecord(module="clue", serial_no=f"{prefix}-CLUE", title=prefix, customer="CODEX-F 客户", status="待取证", owner=ADMIN["username"], department=ADMIN["department"], data={"contract_no": "OLD-HT", "contract_name": "旧合同", "authorization_scope": "旧授权范围"})
-            db.add(clue)
+            customer = f"{prefix} 客户"
+            contract = BusinessRecord(
+                module="contract", serial_no=f"{prefix}-HT", title=f"{prefix} 专项调查合同",
+                customer=customer, status="审批通过", owner=ADMIN["username"], department=ADMIN["department"],
+            )
+            clue = BusinessRecord(
+                module="clue", serial_no=f"{prefix}-CLUE", title=prefix, customer=customer,
+                status="待取证", owner=ADMIN["username"], department=ADMIN["department"],
+                data={"authorization_scope": "旧授权范围"},
+            )
+            db.add_all([contract, clue])
             await db.flush()
             attachment = FileAttachment(record_id=clue.id, category="调查资料", original_name="codex-a.pdf", stored_name=f"{uuid4().hex}.pdf", content_type="application/pdf", size=1, path="/tmp/codex-f-a.pdf", uploader=ADMIN["username"], remark="附件")
             db.add(attachment)
             await db.commit()
-            clue_id, attachment_id = clue.id, attachment.id
+            clue_id, contract_id, attachment_id = clue.id, contract.id, attachment.id
         task_id = None
         try:
             response = await self.client.post(f"{API}/investigations/{clue_id}/tasks", json={
                 "title": f"{prefix}-任务", "owner": ADMIN["username"], "deadline": (date.today() + timedelta(days=3)).isoformat(),
-                "priority": "紧急", "description": "调查任务", "contract_no": f"{prefix}-HT", "contract_name": "专项调查合同",
+                "priority": "紧急", "description": "调查任务", "contract_record_id": contract_id,
                 "authorization_scope": "华东区域授权", "attachment_ids": [attachment_id],
             })
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.text)
             task = response.json()
             task_id = task["id"]
             self.assertEqual(task["contract_no"], f"{prefix}-HT")
-            self.assertEqual(task["contract_name"], "专项调查合同")
+            self.assertEqual(task["contract_name"], f"{prefix} 专项调查合同")
             self.assertEqual(task["authorization_scope"], "华东区域授权")
             self.assertEqual(task["attachment_ids"], [attachment_id])
+            async with self.sessions() as db:
+                bound_clue = await db.get(BusinessRecord, clue_id)
+                self.assertEqual(bound_clue.data["contract_id"], contract_id)
+                self.assertEqual(bound_clue.data["contract_record_id"], contract_id)
+                self.assertEqual(bound_clue.data["contract_no"], f"{prefix}-HT")
             accepted = await self.client.post(f"{API}/tasks/{task_id}/accept", json={"comment": "接收"})
             self.assertEqual(accepted.status_code, status.HTTP_200_OK, accepted.text)
             self.assertEqual(accepted.json()["status"], "处理中")
@@ -186,7 +200,7 @@ class BackendGapFContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(completed.status_code, status.HTTP_200_OK, completed.text)
             self.assertEqual(completed.json()["status"], "已完成")
         finally:
-            record_ids = [clue_id] + ([task_id] if task_id else [])
+            record_ids = [clue_id, contract_id] + ([task_id] if task_id else [])
             await self._cleanup_records(record_ids, attachment_ids=[attachment_id])
 
     async def test_i5_to_i6_clue_review_persists_conflict_and_merge_fields(self):

@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { hrActionAccess } from './src/hrAccessGuard.mjs'
 
 const source = await readFile(new URL('./src/HrCenterPage.tsx', import.meta.url), 'utf8')
-const api = await readFile(new URL('../api-server/app/main.py', import.meta.url), 'utf8')
 
 test('请假记录支持显式查询与重置，并只过滤当前员工已经加载的记录', () => {
   assert.match(source, /\[leaveQueryDraft,setLeaveQueryDraft\]=useState\(''\)/)
@@ -19,6 +19,9 @@ test('请假维护按钮服从管理员或部门负责人权限，普通用户�
   assert.match(source, /function EmployeeSubrecords\(\{employeeId,kind,canManage=true\}/)
   assert.match(source, /kind==='leave'&&!canManage\?readonlyAction:action/)
   assert.match(source, /\(kind!=='leave'\|\|canManage\)&&<Button type="primary"/)
-  assert.match(source, /canManage=\{actionAccess\.canProcessStatus\}/)
-  assert.match(api, /identity\.get\("role"\) not in \{"admin", "manager"\}/)
+  assert.match(source, /const employeeTabs=.*canManageSubrecords=actionAccess\.canProcessStatus/)
+  assert.match(source, /kind="leave" canManage=\{canManageSubrecords\}/)
+  assert.equal(hrActionAccess('admin').canProcessStatus, true)
+  assert.equal(hrActionAccess('manager').canProcessStatus, true)
+  assert.equal(hrActionAccess('user').canProcessStatus, false)
 })

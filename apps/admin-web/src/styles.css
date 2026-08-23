@@ -319,9 +319,7 @@ body {
 }
 @media (max-width: 1200px) and (min-width: 721px) {
   .global-search {
-    width: 190px;
-    min-width: 190px;
-    flex-basis: 190px;
+    display: none;
   }
   .topbar-workspace-tabs {
     min-width: 110px;

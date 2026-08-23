@@ -137,14 +137,14 @@ test("stamp submission is gated on successful stamp attachment upload", () => {
 
 test("stamp upload failure path must not call the stamp endpoint", () => {
   const runAction = sliceBetween(page, "const runAction = async", "const runBatchStamp = async");
-  const uploadStampAttachment = sliceBetween(page, "const uploadStampAttachment = async", "const runAction = async");
+  const uploadStampAttachment = sliceBetween(page, "const uploadStampAttachments = async", "const runAction = async");
   assert.ok(
-    sourceHas(uploadStampAttachment, /catch\s*\([^)]*\)[\s\S]*?盖章附件上传失败[\s\S]*?return null/),
-    "a stamped-file upload failure must return null before any stamp attempt",
+    sourceHas(uploadStampAttachment, /catch\s*\([^)]*\)[\s\S]*?setStampAttachmentUploadFailed\(true\)[\s\S]*?return \[\]/),
+    "a stamped-file upload failure must be recorded before any stamp attempt",
   );
   assert.ok(
-    sourceHas(runAction, /stamp_attachment_id[\s\S]*?message\.error\("请先选择或上传盖章附件"\)[\s\S]*?return/),
-    "runAction must return without /stamp when no uploaded stamped attachment id is available",
+    sourceHas(runAction, /if \(stampAttachmentUploadFailed\)[\s\S]*?return[\s\S]*?stamp_attachment_id/),
+    "runAction must return without /stamp when the stamped-file upload failed",
   );
   assert.ok(
     !sourceHas(runAction, /catch\s*\([^)]*\)[\s\S]*?postSeal\([^)]*\/stamp/),

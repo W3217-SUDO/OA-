@@ -24,7 +24,7 @@ const submitWizardSource = sliceBetween(
 
 const createSealApplicationSource = sliceBetween(
   contractSource,
-  "  const createSealApplication = async () => {",
+  "  const createSealApplication = async (forcedSubmit?: boolean) => {",
   "  const downloadAttachment = async (item: Attachment) => {",
   "createSealApplication",
 );
@@ -36,23 +36,19 @@ const startSelectedSealSource = sliceBetween(
   "startSelectedSeal",
 );
 
-test("I19 customer-created contracts do not split the submit stage into approval or seal steps", () => {
-  const prematureWorkflowSteps = [
-    ...contractSource.matchAll(/\["合同基本信息", "提交审批", "合同审批", "合同用印"\]\.map/g),
-  ].map((match) => match.index);
-
-  assert.deepEqual(
-    prematureWorkflowSteps,
-    [],
-    "issue-list rows 16/17 require the customer-created contract submit stage to stop at 提交审批, not expose 合同审批/合同用印 before handoff",
+test("I19 customer-created contracts retain the legacy four-step workflow", () => {
+  assert.match(
+    contractSource,
+    /CONTRACT_CREATE_STEP_TITLES = \["合同基本信息", "提交审批", "合同审批", "合同用印"\]/,
+    "the customer entry uses the same persisted four-step contract workflow as the legacy UI",
   );
 });
 
-test("I19 customer submit flow does not offer sync-seal actions while contract approval is pending", () => {
-  assert.doesNotMatch(
+test("I19 sync-seal intent saves a draft while contract approval is pending", () => {
+  assert.match(
     contractSource,
-    /合同已提交审批，可预先配置同步用印|保存同步用印资料|同步用印资料已保存，等待合同审批/,
-    "a pending contract approval should not expose sync-seal setup from the customer submit flow",
+    /已选择同步用印[\s\S]{0,180}请保存用印资料为草稿；合同审批通过后，系统会自动提交用印审批。/,
+    "the customer submit flow must preserve the chosen sync intent without submitting seal approval early",
   );
 });
 
@@ -74,16 +70,16 @@ test("I19 submit success returns to contract detail, not approval or seal workbe
   );
   assert.match(
     submitWizardSource,
-    /if \(syncSealRequested\) \{[\s\S]*sealForm\.setFieldsValue\([\s\S]*submit: true,[\s\S]*setWizardStep\(3\)/,
-    "the sync-seal choice must survive the approval context refresh and initialize the seal form",
+    /if \(syncSealRequested\) \{[\s\S]*sealForm\.setFieldsValue\([\s\S]*submit: false,[\s\S]*setWizardStep\(3\)/,
+    "the sync-seal choice must initialize a draft-only seal form until contract approval completes",
   );
 });
 
 test("I19 approval actions appear only for the current approver while status is pending approval", () => {
   assert.match(
     contractSource,
-    /const canActOnCurrentApproval = Boolean\(currentApproval && canActOnContractApproval\("审批中", currentApproval\.approver, profile\.username, profile\.role\)\);/,
-    "approval action gate must include pending status, current approver, profile username, and role",
+    /const approvalTarget = reviewing \|\| wizardDraft;[\s\S]*approvalTarget\?\.status === "审批中"[\s\S]*approvalCapabilities\?\.can_approve_current[\s\S]*currentApprover[\s\S]*profile\.username/s,
+    "approval action gate must honor the server-provided current-node capability with an exact username fallback",
   );
   assert.match(
     contractSource,
@@ -100,7 +96,7 @@ test("I19 approval actions appear only for the current approver while status is 
 test("I19 independent seal setup supports pending approval and approved contracts", () => {
   assert.match(
     contractSource,
-    /const CONTRACT_SEAL_READY_STATUSES = \["审批中", "审批通过", "已完成"\];/,
+    /const CONTRACT_SEAL_READY_STATUSES = \["审批中", "审批通过", "已完成", "履行中", "已通过"\];/,
     "pending, approved, in-performance, and completed contracts remain eligible for independent seal setup",
   );
   assert.match(
@@ -118,14 +114,14 @@ test("I19 independent seal setup supports pending approval and approved contract
     /contract\.status !== "审批中"\) localStorage\.removeItem\(WIZARD_STORAGE_KEY\)/,
     "pending contracts keep the wizard context until the independent seal flow is complete",
   );
-  assert.doesNotMatch(
+  assert.match(
     createSealApplicationSource,
-    /同步用印资料/,
-    "the seal save path must not preserve the removed pending-approval sync-seal wording",
+    /const deferSyncSealSubmission = wizardDraft\.status === "审批中" && Boolean\(wizardDraft\.data\.sync_seal\);/,
+    "a selected sync flow must persist the seal application as a draft for the backend approval handoff",
   );
   assert.match(
     createSealApplicationSource,
-    /onNavigate\?\.\("seal-my-pending"\)/,
-    "a submitted sync-seal application must open the applicant pending list directly",
+    /if \(submitApplication\) \{[\s\S]*const route = buildContractDetailRoute\(contract\);[\s\S]*onNavigate\?\.\(route\);/,
+    "independently submitted seal applications return through the persisted contract detail route",
   );
 });

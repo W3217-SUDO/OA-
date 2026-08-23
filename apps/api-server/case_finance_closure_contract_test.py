@@ -100,7 +100,7 @@ class CaseFinanceClosureContract(unittest.IsolatedAsyncioTestCase):
     async def test_payment_request_from_draft_persists_amount_and_payment_account(self):
         response = await self.client.post(
             f"{API}/finance/fees/{self.payment_ready_id}/submit",
-            json={"amount": 120, "payment_account": "ROW28-TEST-ACCOUNT", "comment": "第28行付款申请"},
+            json={"amount": 120, "payment_account": "ROW28-TEST-ACCOUNT", "payment_payee": "第三方机构", "comment": "第28行付款申请"},
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["status"], "待审批")

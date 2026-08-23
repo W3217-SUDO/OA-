@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FinanceTransaction, RolePermission, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, FinanceTransaction, RolePermission, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -43,7 +43,7 @@ class FinanceRefundBackendD7Contract(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
-        tables = [User.__table__, RolePermission.__table__, BusinessRecord.__table__, WorkflowEvent.__table__, FinanceTransaction.__table__]
+        tables = [User.__table__, RolePermission.__table__, BusinessRecord.__table__, WorkflowEvent.__table__, FinanceTransaction.__table__, ContractApprovalStep.__table__]
         async with self.engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
         async with self.sessions() as db:

@@ -51,6 +51,9 @@ type JobRole = {
   code: string;
   name: string;
   permissions: string[];
+  field_keys: string[];
+  field_keys_configured: boolean;
+  data_scope: string | null;
   description: string;
   sort_order: number;
   is_active: boolean;
@@ -257,6 +260,11 @@ export default function OrganizationCenterPage({
     [editingRole, setEditingRole] = useState<JobRole | null>(null),
     [permissionRole, setPermissionRole] = useState<JobRole | null>(null),
     [selectedRolePermissions, setSelectedRolePermissions] = useState<string[]>([]);
+  const [selectedRoleFieldKeys, setSelectedRoleFieldKeys] = useState<string[]>([]);
+  const [roleFieldKeysConfigured, setRoleFieldKeysConfigured] = useState(false);
+  const [roleDataScope, setRoleDataScope] = useState<string | undefined>(undefined);
+  const [availableRoleFieldKeys, setAvailableRoleFieldKeys] = useState<string[]>([]);
+  const [availableRoleDataScopes, setAvailableRoleDataScopes] = useState<string[]>([]);
   const [rolePermissionTreeData, setRolePermissionTreeData] = useState<TreeDataNode[]>(permissionTreeData);
   const [rolePermissionLoading, setRolePermissionLoading] = useState(false);
   const [departmentForm] = Form.useForm(),
@@ -402,6 +410,9 @@ export default function OrganizationCenterPage({
     }
     setPermissionRole(row);
     setSelectedRolePermissions(rolePermissionsToTreeCheckedKeys(row.permissions || [], permissionTreeData));
+    setSelectedRoleFieldKeys(row.field_keys || []);
+    setRoleFieldKeysConfigured(Boolean(row.field_keys_configured));
+    setRoleDataScope(row.data_scope || undefined);
     setRolePermissionTreeData(permissionTreeData);
     setRolePermissionLoading(true);
     try {
@@ -409,6 +420,11 @@ export default function OrganizationCenterPage({
       const nextRolePermissionTreeData = data.tree || permissionTreeData;
       setRolePermissionTreeData(nextRolePermissionTreeData);
       setSelectedRolePermissions(rolePermissionsToTreeCheckedKeys(data.permissions || row.permissions || [], nextRolePermissionTreeData));
+      setSelectedRoleFieldKeys(data.field_keys || []);
+      setRoleFieldKeysConfigured(Boolean(data.field_keys_configured));
+      setRoleDataScope(data.data_scope || undefined);
+      setAvailableRoleFieldKeys(data.available_field_keys || []);
+      setAvailableRoleDataScopes(data.available_data_scopes || []);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "角色权限加载失败");
     } finally {
@@ -428,6 +444,9 @@ export default function OrganizationCenterPage({
     try {
       await api.patch(`/hr/job-roles/${permissionRole.id}/permissions`, {
         permissions: rolePermissionTreeKeysToPayload(selectedRolePermissions),
+        field_keys: selectedRoleFieldKeys,
+        field_keys_configured: roleFieldKeysConfigured,
+        data_scope: roleDataScope || "",
       });
       message.success("角色权限已保存.");
       setPermissionRole(null);
@@ -717,6 +736,36 @@ export default function OrganizationCenterPage({
                     onCheck={(checked) => setSelectedRolePermissions(normalizeRolePermissionCheckedKeys(Array.isArray(checked) ? checked : checked.checked))}
               />
             </div>
+          </Form.Item>
+          <Form.Item label="数据范围">
+            <Select
+              allowClear
+              placeholder="继承系统账号角色范围"
+              value={roleDataScope}
+              disabled={permissionRole?.code === "SYSTEM-ADMIN"}
+              options={availableRoleDataScopes.map((value) => ({ value, label: value }))}
+              onChange={(value) => setRoleDataScope(value)}
+            />
+          </Form.Item>
+          <Form.Item label="字段权限">
+            <Space direction="vertical" style={{ width: "100%" }}>
+              <Switch
+                checked={roleFieldKeysConfigured}
+                checkedChildren="自定义"
+                unCheckedChildren="继承"
+                disabled={permissionRole?.code === "SYSTEM-ADMIN"}
+                onChange={setRoleFieldKeysConfigured}
+              />
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder={roleFieldKeysConfigured ? "选择可见字段；留空表示不授予受控字段" : "继承系统账号角色字段"}
+                value={selectedRoleFieldKeys}
+                disabled={!roleFieldKeysConfigured || permissionRole?.code === "SYSTEM-ADMIN"}
+                options={availableRoleFieldKeys.map((value) => ({ value, label: value }))}
+                onChange={setSelectedRoleFieldKeys}
+              />
+            </Space>
           </Form.Item>
           {permissionRole?.code === "SYSTEM-ADMIN" && <Form.Item wrapperCol={{ offset: 7, span: 15 }}><Alert type="info" showIcon title="系统管理员权限由系统强制保持完整，不能在此降权。" /></Form.Item>}
         </Form>

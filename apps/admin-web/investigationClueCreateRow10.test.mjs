@@ -6,13 +6,14 @@ const source = await readFile(
   new URL("./src/InvestigationCenterPage.tsx", import.meta.url),
   "utf8",
 );
-const createModalStart = source.indexOf('title="新建调查线索"');
+const createModalStart = source.indexOf("open={clueCreateOpen}");
 const createModal = source.slice(
   createModalStart,
   source.indexOf('initialTab === "notary-import-files"', createModalStart),
 );
 
 test("8.13 row 10 restores the legacy clue-report fields and actions", () => {
+  assert.ok(createModalStart >= 0, "clue-report drawer must exist");
   const labels = [
     "线索编号",
     "调查员",
