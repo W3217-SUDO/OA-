@@ -1369,6 +1369,7 @@ export default function CaseCenterPage({
       await api.post(`/cases/${reviewing.row.id}/archive/review`, {
         approved: reviewing.approved,
         comment: v.comment,
+        archive_no: v.archive_no || "",
       });
       const internalStage = reviewing.row.status === "亏损内审";
       message.success(
@@ -3135,6 +3136,7 @@ export default function CaseCenterPage({
               type="link"
               onClick={() => {
                 reviewForm.resetFields();
+                reviewForm.setFieldsValue({ archive_no: r.data.archive_no || "" });
                 setReviewing({ row: r, approved: true });
               }}
             >
@@ -3145,6 +3147,7 @@ export default function CaseCenterPage({
               danger
               onClick={() => {
                 reviewForm.resetFields();
+                reviewForm.setFieldsValue({ archive_no: r.data.archive_no || "" });
                 setReviewing({ row: r, approved: false });
               }}
             >
@@ -3801,6 +3804,7 @@ export default function CaseCenterPage({
                   if (!isArchiveManager) return message.warning("当前账号没有归档审核权限");
                   if (!ARCHIVE_REVIEW_STATUSES.includes(selectedArchiveCase.status)) return message.warning("只有待归档审核案件可执行审核");
                   reviewForm.resetFields();
+                  reviewForm.setFieldsValue({ archive_no: selectedArchiveCase.data.archive_no || "" });
                   setReviewing({ row: selectedArchiveCase, approved: key === "approve" });
                 }
                 if (key === "unarchive-request") void requestUnarchive(selectedArchiveCase);
@@ -3815,6 +3819,7 @@ export default function CaseCenterPage({
           {!archiveDone && !archiveRefused && isArchiveManager && <Button onClick={() => {
             if (!selectedArchiveCase) return message.warning("请先选择一条案件");
             reviewForm.resetFields();
+            reviewForm.setFieldsValue({ archive_no: selectedArchiveCase.data.archive_no || "" });
             setReviewing({ row: selectedArchiveCase, approved: true });
           }}>归档审核</Button>}
           {archiveDone && selectedArchiveCaseCapability.can_edit_basic && <Button onClick={() => selectedArchiveCase ? void requestUnarchive(selectedArchiveCase) : message.warning("请先选择一条案件")}>申请解档</Button>}
@@ -5110,6 +5115,17 @@ export default function CaseCenterPage({
           style={{ marginBottom: 16 }}
         />
         <Form form={reviewForm} layout="vertical">
+          {reviewing?.approved
+            && reviewing?.row.status !== "亏损内审"
+            && (reviewing?.row.data.archive_type || "normal") !== "deficit" && (
+              <Form.Item
+                label="归档号"
+                name="archive_no"
+                rules={[{ required: true, whitespace: true, message: "请填写归档号" }]}
+              >
+                <Input maxLength={100} placeholder="请按旧系统归档号规则填写" />
+              </Form.Item>
+            )}
           <Form.Item
             label={reviewing?.approved ? "审核意见" : "驳回原因"}
             name="comment"

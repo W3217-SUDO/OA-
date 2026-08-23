@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
-from app.main import app
-from app.models import BusinessRecord, LegacyCase, SystemParameter, WorkflowEvent
+from app.main import ARCHIVE_REQUIRED_CATEGORIES, app
+from app.models import BusinessRecord, FileAttachment, LegacyCase, SystemParameter, WorkflowEvent
 from app.security import current_identity
 
 
@@ -202,6 +202,49 @@ class CaseApiRuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         })
         self.assertFalse(payload["checks"]["case_closed"])
         self.assertFalse(payload["checks"]["documents_complete"])
+
+    async def test_normal_archive_review_requires_reviewer_archive_number(self) -> None:
+        async with self.session_factory() as session:
+            case = await session.get(BusinessRecord, self.case_id)
+            case.status = "\u5f85\u5f52\u6863\u5ba1\u6838"
+            case.data = {
+                **(case.data or {}),
+                "archive_type": "normal",
+                "case_closed_at": "2026-08-23T10:00:00",
+                "case_closed_by": TEST_IDENTITY["username"],
+            }
+            for index, category in enumerate(ARCHIVE_REQUIRED_CATEGORIES):
+                session.add(FileAttachment(
+                    record_id=self.case_id,
+                    category=category,
+                    original_name=f"archive-{index}.txt",
+                    stored_name=f"archive-{index}.txt",
+                    path=f"archive-{index}.txt",
+                    uploader=TEST_IDENTITY["username"],
+                ))
+            await session.commit()
+
+        missing = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": "approved"},
+        )
+        self.assertEqual(missing.status_code, 422, missing.text)
+
+        archive_no = "2026-248"
+        approved = await self.client.post(
+            f"/api/v1/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": "approved", "archive_no": archive_no},
+        )
+        self.assertEqual(approved.status_code, 200, approved.text)
+
+        async with self.session_factory() as session:
+            case = await session.get(BusinessRecord, self.case_id)
+            legacy_case = await session.scalar(
+                select(LegacyCase).where(LegacyCase.CaseNo == case.serial_no)
+            )
+        self.assertEqual(case.data["archive_no"], archive_no)
+        self.assertEqual(legacy_case.FileNo, archive_no)
+        self.assertEqual(legacy_case.ArchivedFileNo, archive_no)
 
     async def test_deficit_archive_persists_reason_and_legacy_projection(self) -> None:
         missing_reason = await self.client.post(

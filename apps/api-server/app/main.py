@@ -2167,6 +2167,7 @@ class ArchiveCheckInput(BaseModel):
 class ArchiveReviewInput(BaseModel):
     approved: bool
     comment: str = Field(min_length=2, max_length=1000)
+    archive_no: str = Field(default="", max_length=100)
 
 
 class TaskInput(BaseModel):
@@ -3754,21 +3755,6 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     }
     case_record.data = {**(case_record.data or {}), **checks}
     return checks
-
-
-async def _next_case_archive_no(db: AsyncSession, year: int) -> str:
-    """Generate the legacy archive number format: YYYY-NNN, scoped to the year."""
-    records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all()
-    prefix = f"{year}-"
-    highest = 0
-    for item in records:
-        archive_no = str((item.data or {}).get("archive_no") or "")
-        if not archive_no.startswith(prefix):
-            continue
-        suffix = archive_no[len(prefix):]
-        if suffix.isdigit():
-            highest = max(highest, int(suffix))
-    return f"{prefix}{highest + 1:03d}"
 
 
 def _finance_transaction_dict(item: FinanceTransaction, record: BusinessRecord | None = None, attachments: list[FileAttachment] | None = None, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:
@@ -20353,9 +20339,9 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
     elif body.approved:
         case_record.status = "亏损归档" if archive_type == "deficit" else "已归档"
         archived_at = datetime.now()
-        archive_no = str(data.get("archive_no") or "").strip()
+        archive_no = body.archive_no.strip() or str(data.get("archive_no") or "").strip()
         if archive_type != "deficit" and not archive_no:
-            archive_no = await _next_case_archive_no(db, archived_at.year)
+            raise HTTPException(status_code=422, detail="请填写归档号")
         case_record.data = {
             **data,
             "case_phase": "亏损归档" if archive_type == "deficit" else data.get("case_phase", "已归档"),
