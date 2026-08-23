@@ -1594,7 +1594,7 @@ class CaseProgressInput(BaseModel):
     first_court_judge: str = ""
     first_court_clerk: str = ""
     first_court_filing_date: date | None = None
-    first_court_hearing_date: date | None = None
+    first_court_hearing_date: datetime | None = None
     first_court_judgment_date: date | None = None
     second_court_name: str = ""
     second_court_case_no: str = ""
@@ -1602,7 +1602,7 @@ class CaseProgressInput(BaseModel):
     second_court_judge: str = ""
     second_court_clerk: str = ""
     second_court_filing_date: date | None = None
-    second_court_hearing_date: date | None = None
+    second_court_hearing_date: datetime | None = None
     second_court_judgment_date: date | None = None
     execution_court_name: str = ""
     execution_court_case_no: str = ""
@@ -1610,7 +1610,7 @@ class CaseProgressInput(BaseModel):
     execution_court_judge: str = ""
     execution_court_clerk: str = ""
     execution_court_filing_date: date | None = None
-    execution_court_hearing_date: date | None = None
+    execution_court_hearing_date: datetime | None = None
     execution_court_judgment_date: date | None = None
     retrial_court_name: str = ""
     retrial_court_case_no: str = ""
@@ -1618,7 +1618,7 @@ class CaseProgressInput(BaseModel):
     retrial_court_judge: str = ""
     retrial_court_clerk: str = ""
     retrial_court_filing_date: date | None = None
-    retrial_court_hearing_date: date | None = None
+    retrial_court_hearing_date: datetime | None = None
     retrial_court_judgment_date: date | None = None
     comment: str = ""
 
