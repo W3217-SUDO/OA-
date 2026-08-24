@@ -366,7 +366,7 @@ DEFAULT_DEPARTMENTS = [
 ]
 SYSTEM_ADMIN_JOB_PERMISSIONS = [
     "客户查看", "客户新建", "客户修改", "客户分配", "客户回收/恢复", "客户共享", "利益冲突检索", "合同查看", "合同新建", "合同修改", "合同提交审批", "合同审批", "合同归档",
-    "案件查看", "案件新建", "案件分配", "案件承办", "案件进展维护", "开庭排期", "案件办结", "案件归档申请", "案件归档审核", "调查任务发起", "调查任务办理", "线索审核", "公证管理", "证据管理",
+    "案件查看", "案件新建", "案件分配", "案件承办", "案件进展维护", "案件法院信息修改", "开庭排期", "案件办结", "案件归档申请", "案件归档审核", "调查任务发起", "调查任务办理", "线索审核", "公证管理", "证据管理",
     "任务查看", "任务派发", "任务接受", "任务协作", "任务交接", "任务完成确认", "收文登记", "发文登记", "文书模板维护", "业务附件上传/下载", "智能文档生成", "智能文档人工确认",
     "费用查看", "费用申请", "费用审批", "回款登记", "回款分配", "付款登记", "付款审批", "开票申请", "开票审批", "退款办理", "内部结算", "对账", "用印申请", "用印审批", "印章管理",
     "员工查看", "员工新建", "员工修改", "部门管理", "岗位角色管理", "仓库查看", "仓库出入库", "报表查看", "报表导出", "系统权限配置", "系统参数配置", "审计日志查看",
@@ -1635,6 +1635,15 @@ class CaseProgressInput(BaseModel):
     retrial_court_hearing_date: datetime | None = None
     retrial_court_judgment_date: date | None = None
     comment: str = ""
+
+
+class CaseCourtInfoInput(CaseProgressInput):
+    """The detail-page court dialog may only update court information.
+
+    It deliberately has the same typed court fields as the legacy dialog, but
+    is handled by a separate endpoint so it cannot advance a case or inherit
+    the case-creation approval gate used by litigation-progress registration.
+    """
 
 
 CASE_EXECUTION_STATUSES = (
@@ -4088,6 +4097,7 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
         "case.task.create", "case.attachment.write", "case.progress.update", "case.phase.update",
     ),
     "案件进展维护": ("case.progress.update", "case.phase.update"),
+    "案件法院信息修改": ("case.court.update",),
     "案件办结": ("case.close",),
     "案件归档申请": ("case.archive.apply",),
     # 用印岗位动作必须和前端能力字段、审批接口共用同一组键。菜单仅控制
@@ -19271,6 +19281,13 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
         raise HTTPException(status_code=409, detail="已合并案件不能维护进展或开庭排期")
 
 
+async def _require_case_court_info_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Authorize the independent court-info dialog without workflow side effects."""
+    await _require_case_action(identity, db, "case.court.update")
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
+        raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能修改法院信息")
+
+
 async def _require_case_phase_change_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Keep phase maintenance independent from creation approval while preserving write guards."""
     role = await _case_team_role(case_record, identity, db)
@@ -19365,6 +19382,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         can_create_same_type = CASE_CREATE_PERMISSION_BY_TYPE[case_type] in set(permission.get("menu_keys", []))
     can_assign_team = role == "manager" and await _case_action_granted(identity, db, "case.team.assign")
     can_edit_basic = role == "manager" and await _case_action_granted(identity, db, "case.detail.update")
+    can_edit_court_info = await _case_action_granted(identity, db, "case.court.update") and case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     can_close_case = role == "manager" and await _case_action_granted(identity, db, "case.close")
     can_archive_case = role == "manager" and await _case_action_granted(identity, db, "case.archive.apply")
     base = {
@@ -19375,7 +19393,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_create_case_task": False, "can_duplicate_case": role == "manager" and can_create_same_type,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
         "can_merge_case": role == "manager",
-        "can_assign_team": can_assign_team, "can_edit_basic": can_edit_basic,
+        "can_assign_team": can_assign_team, "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
         "can_close_case": can_close_case, "can_archive": can_archive_case,
         "can_create_finance": role == "manager", "team_role": role, "reason": "",
     }
@@ -20539,6 +20557,54 @@ async def update_case_progress(case_id: int, body: CaseProgressInput, identity: 
     case_record.status = target; case_record.data = merged_progress
     db.add(WorkflowEvent(record_id=case_record.id, action="登记案件诉讼进展", from_status=previous, to_status=target, operator=identity["username"], comment=body.comment or "根据法院案号、裁判日期等案件要素自动推进阶段"))
     await db.commit(); await db.refresh(case_record); return _record_dict(case_record)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/court-info")
+async def update_case_court_info(case_id: int, body: CaseCourtInfoInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Persist one or more court-dialog fields without changing case workflow state."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_court_info_write_access(case_record, identity, db)
+    submitted_fields = set(body.model_fields_set) - {"comment"}
+    if not submitted_fields:
+        raise HTTPException(status_code=422, detail="请至少提交一项法院信息")
+    values = body.model_dump()
+    payload = {
+        key: (str(value) if isinstance(value, date) else value.strip() if isinstance(value, str) else value)
+        for key, value in values.items()
+        if key in submitted_fields
+    }
+    merged = {**(case_record.data or {}), **payload}
+    # Keep old and current field names synchronized, including deliberate clears.
+    if "first_instance_court" in payload:
+        merged["first_court_name"] = payload["first_instance_court"]
+        merged["court"] = payload["first_instance_court"]
+    if "first_instance_case_no" in payload:
+        merged["first_court_case_no"] = payload["first_instance_case_no"]
+    if "first_court_name" in payload:
+        merged["first_instance_court"] = payload["first_court_name"]
+        merged["court"] = payload["first_court_name"]
+    if "first_court_case_no" in payload:
+        merged["first_instance_case_no"] = payload["first_court_case_no"]
+    if "second_instance_court" in payload:
+        merged["second_court_name"] = payload["second_instance_court"]
+    if "second_instance_case_no" in payload:
+        merged["second_court_case_no"] = payload["second_instance_case_no"]
+    if "second_court_name" in payload:
+        merged["second_instance_court"] = payload["second_court_name"]
+    if "second_court_case_no" in payload:
+        merged["second_instance_case_no"] = payload["second_court_case_no"]
+    case_record.data = merged
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="修改法院信息",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator=identity["username"],
+        comment=body.comment.strip() or "直接维护法院信息",
+    ))
+    await db.commit()
+    await db.refresh(case_record)
+    return _record_dict(case_record)
 
 
 @app.get(f"{settings.api_prefix}/hearings")

@@ -445,6 +445,7 @@ type CaseDetailCapabilities = {
   can_merge_case: boolean;
   can_assign_team: boolean;
   can_edit_basic: boolean;
+  can_edit_court_info: boolean;
   can_close_case: boolean;
   can_archive: boolean;
   can_create_finance: boolean;
@@ -455,7 +456,7 @@ const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_write: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
   can_update_progress: false, can_change_phase: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
-  can_edit_basic: false, can_close_case: false, can_archive: false,
+  can_edit_basic: false, can_edit_court_info: false, can_close_case: false, can_archive: false,
   can_create_finance: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
 };
@@ -2880,7 +2881,7 @@ export default function CaseCenterPage({
     setExecutionStatusEditing(selected);
   };
   const openCompanyScheduleCourtInfo = (row: CaseRow, level: CompanyScheduleCourtLevel) => {
-    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有法院信息维护权限");
+    if (!getCaseCapability(row).can_edit_court_info) return message.warning("当前账号没有法院信息维护权限");
     if ([...ARCHIVE_LOCKED_STATUSES,"已合并"].includes(row.status)) return message.warning("当前案件阶段不能修改法院信息");
     const courtPrefix = `${level}_court`;
     const data = row.data || {};
@@ -2948,7 +2949,7 @@ export default function CaseCenterPage({
         [`${levelPrefix}_judgment_date`]: values.judgment_date?.format("YYYY-MM-DD") || null,
         comment: `修改${levelLabel}法院信息`,
       };
-      const { data: updatedCase } = await api.post(`/cases/${companyScheduleCourtInfo.row.id}/progress`, payload);
+      const { data: updatedCase } = await api.put(`/cases/${companyScheduleCourtInfo.row.id}/court-info`, payload);
       message.success(`${levelLabel}法院信息已更新`);
       cancelCompanyScheduleCourtInfo();
       await openCounselDetail(updatedCase);
@@ -3693,7 +3694,7 @@ export default function CaseCenterPage({
     {counselDetailCapabilities.can_edit_basic && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{primaryOperationLabels[4]}</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>修改公安信息</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "courts")}>修改法院信息</Button>}
-    {counselDetailCapabilities.can_edit_basic && <div className="case-detail-legacy-submenu">
+    {counselDetailCapabilities.can_edit_court_info && <div className="case-detail-legacy-submenu">
       <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">{viewingCounselCase.data.case_type === "仲裁" ? "修改仲裁信息" : primaryOperationLabels[5]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-court-submenu">
         {getCompanyScheduleCourtLevels().map(([key, label]) => <Button key={key} type="text" block onClick={() => openCompanyScheduleCourtInfo(viewingCounselCase, key)}>{label}</Button>)}
