@@ -1,7 +1,11 @@
 .content:has(.case-original-panel) > .page-head { display: none; }
 .content:has(.case-original-panel) { padding-top: 8px; }
 .case-original-layout { display: grid; grid-template-columns: 168px minmax(0,1fr); gap: 8px; }
-.case-phase-panel { height: calc(100vh - 58px); min-height:0; padding:8px 7px; overflow-y:auto; overscroll-behavior:contain; background:#e8edf3; border-right:1px solid #d2d7de; }
+.case-phase-panel { height: calc(100vh - 58px); min-height:0; padding:8px 7px; overflow-y:scroll; scrollbar-gutter:stable; overscroll-behavior:contain; background:#e8edf3; border-right:1px solid #d2d7de; }
+.case-phase-panel::-webkit-scrollbar { width:8px; }
+.case-phase-panel::-webkit-scrollbar-track { background:#d7dee7; }
+.case-phase-panel::-webkit-scrollbar-thumb { min-height:36px; background:#8f9dac; border:2px solid #d7dee7; border-radius:4px; }
+.case-phase-panel { scrollbar-width:thin; scrollbar-color:#8f9dac #d7dee7; }
 .case-phase-title { margin: -8px -7px 6px; padding: 9px 10px; color:#333; font-size:13px; font-weight:600; background:#d7dee7; }
 .case-phase-panel button { display:block; width:100%; padding:3px 4px; color:#555; font-size:12px; text-align:left; background:transparent; border:0; cursor:pointer; }
 .case-phase-panel button:hover { color:#079cc0; background:#fff; }
