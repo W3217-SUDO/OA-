@@ -23,51 +23,30 @@ test("customer-scoped case routes preserve the stable customer id across remount
   assert.equal(ordinaryCustomerIdForView("case-company-civil"), 0);
 });
 
-test("buildLegacyCasePhaseTree keeps raw child counts and aggregates legacy groups", () => {
+test("buildLegacyCasePhaseTree follows the exact legacy civil hierarchy and aggregates groups", () => {
   const items = [
+    { label: "一审阶段", value: "一审阶段", count: 0 },
     { label: "二审阶段", value: "二审阶段", count: 0 },
+    { label: "执行阶段", value: "执行阶段", count: 0 },
     { label: "归档阶段", value: "归档阶段", count: 0 },
   ];
-  const catalog = [{ name: "二审", canonical_name: "二审", sort_order: 10 }];
-  const tree = buildLegacyCasePhaseTree(items, catalog, {
+  const tree = buildLegacyCasePhaseTree(items, [], {
     二审: 1,
-    待归档审核: 2,
+    二审通知开庭: 2,
+    一审待执行: 3,
     亏损内审: 1,
   });
 
-  assert.equal(tree[0].count, 1);
-  assert.deepEqual(
-    tree[0].children.filter((child) => child.count > 0),
-    [{ label: "二审", value: "二审", count: 1 }],
-  );
-  assert.ok(tree[0].children.some((child) => child.label === "二审准备开庭" && child.count === 0));
-  assert.ok(tree[1].children.some((child) => child.label === "归档审核" && child.count === 0));
+  assert.ok(tree[0].children.some((child) => child.label === "一审补充代理意见"));
+  assert.ok(!tree[0].children.some((child) => child.label === "一审待执行"));
   assert.equal(tree[1].count, 3);
-  assert.deepEqual(
-    tree[1].children.filter((child) => child.count > 0).map(({ value, count }) => ({ value, count })),
-    [{ value: "待归档审核", count: 2 }, { value: "亏损内审", count: 1 }],
-  );
-});
-
-test("legacy case phase tree keeps every trial, enforcement, and archive group complete", () => {
-  const groups = ["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"];
-  const tree = buildLegacyCasePhaseTree(
-    groups.map((value) => ({ label: value, value, count: 0 })),
-    [],
-    {},
-  );
-  const children = Object.fromEntries(tree.map((group) => [group.label, group.children.map((child) => child.label)]));
-
-  assert.ok(children["一审阶段"].includes("一审立案受理"));
-  assert.ok(children["一审阶段"].includes("一审待客户回款"));
-  assert.ok(children["二审阶段"].includes("二审立案受理"));
-  assert.ok(children["二审阶段"].includes("二审判决结案"));
-  assert.ok(children["再审阶段"].includes("再审补充证据"));
-  assert.ok(children["再审阶段"].includes("再审待客户回款"));
-  assert.ok(children["执行阶段"].includes("执行立案"));
-  assert.ok(children["执行阶段"].includes("执行终结"));
-  assert.ok(children["归档阶段"].includes("归档审核"));
-  assert.ok(children["归档阶段"].includes("亏损归档拒绝"));
+  assert.ok(tree[1].children.some((child) => child.label === "二审通知开庭" && child.count === 2));
+  assert.ok(!tree[1].children.some((child) => child.label === "二审准备开庭"));
+  assert.ok(tree[2].children.some((child) => child.label === "一审待执行" && child.count === 3));
+  assert.deepEqual(tree[3].children.map((child) => child.label), [
+    "归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝",
+  ]);
+  assert.equal(tree[3].count, 1);
 });
 
 test("buildCaseOrdinarySearchPayload maps ordinary filters to the server contract", () => {
@@ -104,6 +83,7 @@ test("buildCaseOrdinarySearchPayload maps ordinary filters to the server contrac
       counsel_end: null,
       counsel_type: "",
       case_status: "进行中",
+      case_statuses: [],
       handling_lawyer: "律师甲",
       assistant: "助理甲",
       document_name: "文书.pdf",
@@ -180,6 +160,16 @@ test("buildCaseOrdinarySearchPayload applies safe scope, sort, paging, and date 
   assert.equal(payload.page_size, 200);
   assert.equal(payload.counsel_start, null);
   assert.equal(payload.counsel_end, null);
+  assert.deepEqual(payload.case_statuses, []);
+});
+
+test("phase group filter submits all exact legacy descendants", async () => {
+  const { legacyCasePhaseFilterValues } = await import("./src/caseOrdinarySearchParity.mjs");
+  const first = legacyCasePhaseFilterValues("一审阶段");
+  assert.ok(first.includes("一审"));
+  assert.ok(first.includes("一审补充代理意见"));
+  assert.ok(!first.includes("一审待执行"));
+  assert.deepEqual(legacyCasePhaseFilterValues("一审待执行"), ["一审待执行"]);
 });
 
 test("普通案件服务端搜索默认使用旧分页 15 条", () => {
