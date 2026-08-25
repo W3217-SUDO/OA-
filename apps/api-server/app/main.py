@@ -1497,6 +1497,8 @@ class ClueCollectionInput(BaseModel):
     notarization_no: str = Field(default="", max_length=128)
     invoice_no: str = Field(default="", max_length=128)
     storage_location: str = Field(default="", max_length=255)
+    warehouse_id: int | None = Field(default=None, gt=0)
+    storage_location_id: int | None = Field(default=None, gt=0)
     evidence_status: str = Field(default="未入库", max_length=32)
     evidence_file_ids: list[int] = Field(default_factory=list, max_length=100)
     comment: str = ""
@@ -1550,7 +1552,9 @@ class InvestigationPartyInput(BaseModel):
 class NotaryCertificateInput(BaseModel):
     certificate_no: str = Field(min_length=2, max_length=128)
     issued_date: date
-    storage_location: str = Field(min_length=2, max_length=255)
+    storage_location: str = Field(default="", max_length=255)
+    warehouse_id: int | None = Field(default=None, gt=0)
+    storage_location_id: int | None = Field(default=None, gt=0)
     physical_received: bool = False
     comment: str = ""
 
@@ -11744,6 +11748,10 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
             item = files.get(file_id)
             if not item or item.record_id != clue.id:
                 raise HTTPException(status_code=422, detail=f"取证文件 {file_id} 不属于当前线索")
+    if not body.storage_location_id:
+        raise HTTPException(status_code=422, detail="请选择仓库库位")
+    warehouse, location = await _resolve_warehouse_location(body, db)
+    storage_location = _warehouse_location_display(warehouse, location)
     evidence_status = body.evidence_status.strip() or "未入库"
     if evidence_status not in {"未入库", "已入库", "已出库", "已重新入库", "已销毁"}:
         raise HTTPException(status_code=422, detail="证物状态无效")
@@ -11751,7 +11759,8 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
         **(clue.data or {}), "collected_at": str(body.collected_at),
         "notary_institution": body.notary_institution.strip(),
         "notarization_no": body.notarization_no.strip(), "certificate_no": body.notarization_no.strip(),
-        "invoice_no": body.invoice_no.strip(), "storage_location": body.storage_location.strip(),
+        "invoice_no": body.invoice_no.strip(), "storage_location": storage_location,
+        **_warehouse_location_data(warehouse, location),
         "evidence_status": evidence_status, "collection_file_ids": evidence_file_ids,
         "collected_by": identity["username"], "collection_registered_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -11989,8 +11998,12 @@ async def register_notary_certificate(notary_id: int, body: NotaryCertificateInp
     if notary.status not in {"等待材料", "待审核", "审核驳回", "审核通过"}: raise HTTPException(status_code=409, detail="当前公证记录不能登记公证书信息")
     duplicate = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "notary", BusinessRecord.id != notary.id, BusinessRecord.data["certificate_no"].as_string() == body.certificate_no.strip()))
     if duplicate: raise HTTPException(status_code=409, detail="公证书编号已经登记")
-    notary.data = {**(notary.data or {}), "certificate_no": body.certificate_no.strip(), "certificate_issued_date": str(body.issued_date), "certificate_storage_location": body.storage_location.strip(), "physical_received": body.physical_received, "certificate_registered_at": datetime.now().isoformat(timespec="seconds"), "certificate_operator": identity["username"]}
-    db.add(WorkflowEvent(record_id=notary.id, action="登记公证书", from_status=notary.status, to_status=notary.status, operator=identity["username"], comment=f"{body.certificate_no}；{body.storage_location}。{body.comment}")); await db.commit(); await db.refresh(notary); return _record_dict(notary)
+    if not body.storage_location_id:
+        raise HTTPException(status_code=422, detail="请选择仓库库位")
+    warehouse, location = await _resolve_warehouse_location(body, db)
+    storage_location = _warehouse_location_display(warehouse, location)
+    notary.data = {**(notary.data or {}), "certificate_no": body.certificate_no.strip(), "certificate_issued_date": str(body.issued_date), "certificate_storage_location": storage_location, **_warehouse_location_data(warehouse, location), "physical_received": body.physical_received, "certificate_registered_at": datetime.now().isoformat(timespec="seconds"), "certificate_operator": identity["username"]}
+    db.add(WorkflowEvent(record_id=notary.id, action="登记公证书", from_status=notary.status, to_status=notary.status, operator=identity["username"], comment=f"{body.certificate_no}；{storage_location}。{body.comment}")); await db.commit(); await db.refresh(notary); return _record_dict(notary)
 
 
 @app.post(f"{settings.api_prefix}/investigations/{{record_id}}/assign")
@@ -26027,7 +26040,7 @@ def _warehouse_evidence_status(item: BusinessRecord) -> str:
 
 
 async def _resolve_warehouse_location(
-    body: WarehouseEvidenceInput | WarehouseEvidenceCheckInInput | WarehouseEvidenceRecheckInInput,
+    body: WarehouseEvidenceInput | WarehouseEvidenceCheckInInput | WarehouseEvidenceRecheckInInput | ClueCollectionInput | NotaryCertificateInput,
     db: AsyncSession,
 ) -> tuple[Warehouse, WarehouseStorageLocation]:
     """Resolve one active location from catalog master data, never free text."""
@@ -26063,6 +26076,10 @@ def _warehouse_location_data(warehouse: Warehouse, location: WarehouseStorageLoc
         "storage_location_no": location.storage_location_no,
         "location": location.name,
     }
+
+
+def _warehouse_location_display(warehouse: Warehouse, location: WarehouseStorageLocation) -> str:
+    return f"{warehouse.name} / {location.name}"
 
 
 async def _set_warehouse_evidence_location(

@@ -301,7 +301,8 @@ body {
   background: rgba(0, 0, 0, 0.08);
 }
 .topbar-workspace-tabs .ant-tabs-nav-more::before {
-  content: "";
+  content: "\25be";
+  font-size: 15px;
 }
 @media (max-width: 1500px) and (min-width: 721px) {
   .global-search {
