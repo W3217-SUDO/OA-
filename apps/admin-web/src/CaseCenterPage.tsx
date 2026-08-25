@@ -227,7 +227,8 @@ const CasePhasePickerTree = ({
   })).filter((node) => node.option || node.children.length);
   const renderNodes = (nodes: typeof tree, depth = 0): ReactNode => nodes.map((node) => {
     const expanded = !collapsedCodes.has(node.value);
-    const selectable = Boolean(node.option) && !LEGACY_PHASE_GROUPS.has(node.label);
+    const selectable = Boolean(node.option) && !node.children.length && !LEGACY_PHASE_GROUPS.has(node.label);
+    const selected = Number(value) === node.option?.id;
     return (
       <div key={node.value} className={`case-phase-group${node.children.length ? "" : " case-phase-group-leaf"}`}>
         <div className="case-phase-row">
@@ -244,13 +245,15 @@ const CasePhasePickerTree = ({
               })}
             >{expanded ? "▾" : "▸"}</button>
           ) : <span className="case-phase-toggle-placeholder" />}
-          <button
-            type="button"
-            className={`${depth > 0 ? "case-phase-child" : "case-phase-filter"}${Number(value) === node.option?.id ? " case-phase-selected" : ""}`}
-            aria-pressed={Number(value) === node.option?.id}
-            disabled={!selectable}
-            onClick={() => node.option && onChange?.(node.option.id)}
-          >📁 {node.label}</button>
+          {selectable ? (
+            <Checkbox
+              className={`case-phase-change-leaf${depth === 0 ? " case-phase-change-root-leaf" : ""}`}
+              checked={selected}
+              onChange={() => node.option && onChange?.(node.option.id)}
+            >{node.label}</Checkbox>
+          ) : (
+            <span className="case-phase-change-group-label">📁 {node.label}</span>
+          )}
         </div>
         {node.children.length > 0 && expanded && (
           <div className="case-phase-children">{renderNodes(node.children as typeof tree, depth + 1)}</div>
@@ -4472,13 +4475,14 @@ export default function CaseCenterPage({
         width={520}
         open={Boolean(phaseEditing)}
         title={`变更阶段：${phaseEditing?.map((row) => row.serial_no).join("、") || ""}`}
-        okText="确定"
+        okText="确认变更"
         cancelText="取消"
         onOk={savePhaseChange}
         onCancel={() => { setPhaseEditing(null); phaseForm.resetFields(); }}
         destroyOnHidden
       >
         <Form form={phaseForm}>
+          <Alert type="info" showIcon title="请选择一个末级阶段后确认变更；目录阶段不可直接选择。" style={{ marginBottom: 12 }} />
           <Form.Item name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
             <CasePhasePickerTree options={phaseOptions} />
           </Form.Item>

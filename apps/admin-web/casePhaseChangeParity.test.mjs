@@ -24,7 +24,7 @@ test("phase editing uses a guarded dedicated endpoint", () => {
   assert.match(page, /await load\(\)/);
 });
 
-test("phase picker remains separate from basic information", () => {
+test("phase picker exposes one selectable leaf stage and a clear confirmation action", () => {
   const phaseModal = page.slice(page.indexOf("open={Boolean(phaseEditing)}"), page.indexOf("open={Boolean(progressEditing)}"));
   assert.match(page, /width=\{520\}/);
   assert.match(phaseModal, /open=\{Boolean\(phaseEditing\)\}/);
@@ -34,9 +34,13 @@ test("phase picker remains separate from basic information", () => {
   assert.match(page, /buildLegacyCasePhaseTree\([\s\S]*?CASE_PHASE_ROOT_LABELS\.map/);
   assert.match(page, /\.filter\(\(child\) => child\.option\)/);
   assert.match(page, /\.filter\(\(node\) => node\.option \|\| node\.children\.length\)/);
-  assert.match(page, /depth > 0 \? "case-phase-child" : "case-phase-filter"/);
-  assert.match(page, /case-phase-selected/);
-  assert.match(page, /aria-pressed=\{Number\(value\) === node\.option\?\.id\}/);
+  assert.match(page, /Boolean\(node\.option\) && !node\.children\.length && !LEGACY_PHASE_GROUPS\.has\(node\.label\)/);
+  assert.match(page, /<Checkbox/);
+  assert.match(page, /checked=\{selected\}/);
+  assert.match(page, /onChange=\{\(\) => node\.option && onChange\?\.\(node\.option\.id\)\}/);
+  assert.match(page, /case-phase-change-leaf/);
+  assert.match(phaseModal, /okText="确认变更"/);
+  assert.match(phaseModal, /请选择一个末级阶段后确认变更；目录阶段不可直接选择。/);
   assert.match(page, /aria-label=\{\(expanded \? "收起" : "展开"\) \+ node\.label\}/);
   assert.match(page, /!LEGACY_PHASE_GROUPS\.has\(node\.label\)/);
   assert.doesNotMatch(page, /"一审": "一审立案受理"/);

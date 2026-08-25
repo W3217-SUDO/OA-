@@ -25,8 +25,10 @@
 .case-phase-change-tree { display:flex; flex-direction:column; gap:1px; }
 .case-phase-change-tree button { display:block; padding:3px 4px; color:#555; font-size:12px; text-align:left; background:transparent; border:0; cursor:pointer; }
 .case-phase-change-tree button:hover { color:#079cc0; background:#fff; }
-.case-phase-change-group-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.case-phase-change-leaf { min-height:27px; display:flex; align-items:center; padding-left:8px; }
+.case-phase-change-group-label { flex:1; min-width:0; padding:3px 4px; overflow:hidden; color:#555; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.case-phase-change-leaf { flex:1; min-width:0; min-height:27px; display:flex; align-items:center; padding-left:8px; color:#222; font-size:12px; }
+.case-phase-change-leaf .ant-checkbox + span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.case-phase-change-leaf:hover { color:#079cc0; background:#fff; }
 .case-phase-change-root-leaf { padding-left:0; }
 .case-original-panel.ant-card { border:0; border-radius:0; box-shadow:none; }
 .case-original-panel > .ant-card-head { min-height:34px; padding:0 8px; border-top:2px solid #19b894; border-bottom:1px solid #ddd; }
