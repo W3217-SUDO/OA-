@@ -297,66 +297,70 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("fee_type", "INTERNAL", "内部费用", {"group": "内部费用"}),
     ("fee_type", "SETTLEMENT", "结算费用", {"group": "结算费用"}),
     ("fee_type", "ARCHIVE", "归档费用", {"group": "归档费用"}),
-    ("case_phase", "NEW", "新案待分配", {"case_type": "民事争议", "parent_code": "", "sort_order": 10}),
-    ("case_phase", "DOCUMENT", "文书准备", {"case_type": "民事争议", "parent_code": "NEW", "sort_order": 20}),
-    ("case_phase", "FIRST", "一审", {"case_type": "民事争议", "parent_code": "DOCUMENT", "sort_order": 30}),
-    ("case_phase", "FIRST_ACCEPTED", "一审立案受理", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 40}),
-    ("case_phase", "FIRST_HEARING_PREP", "一审准备开庭", {"case_type": "民事争议", "parent_code": "FIRST_ACCEPTED", "sort_order": 50}),
-    ("case_phase", "WAIT_APPEAL", "待上诉", {"case_type": "民事争议", "parent_code": "FIRST_HEARING_PREP", "sort_order": 60}),
-    ("case_phase", "SECOND", "二审", {"case_type": "民事争议", "parent_code": "WAIT_APPEAL", "sort_order": 70}),
-    ("case_phase", "EXECUTION", "执行", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 80}),
-    # The legacy civil-case phase tree is broader than the original minimal
-    # migration set.  These are real selectable phases, shared by the list
-    # tree and the detail-page "修改案件阶段" action.
-    ("case_phase", "FIRST_EVIDENCE", "一审补充证据", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 41}),
-    ("case_phase", "FIRST_REHEARING", "一审再次开庭", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 51}),
-    ("case_phase", "FIRST_POST_HEARING", "一审庭后待判", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 52}),
-    ("case_phase", "FIRST_WAIT_APPEAL", "一审等待上诉", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 61}),
-    ("case_phase", "FIRST_APPEAL_PREP", "一审上诉准备", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 62}),
-    ("case_phase", "FIRST_MEDIATION", "一审和解中", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 63}),
-    ("case_phase", "FIRST_MEDIATION_CLOSED", "一审和解结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 64}),
-    ("case_phase", "FIRST_JUDGMENT_CLOSED", "一审判决结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 65}),
-    ("case_phase", "FIRST_CUSTOMER_PAYMENT", "一审待客户回款", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 66}),
-    ("case_phase", "SECOND_ACCEPTED", "二审立案受理", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 71}),
-    ("case_phase", "SECOND_EVIDENCE", "二审补充证据", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 72}),
-    ("case_phase", "SECOND_HEARING_PREP", "二审准备开庭", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 73}),
-    ("case_phase", "SECOND_REHEARING", "二审再次开庭", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 74}),
-    ("case_phase", "SECOND_POST_HEARING", "二审庭后待判", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 75}),
-    ("case_phase", "SECOND_WAIT_APPEAL", "二审等待上诉", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 76}),
-    ("case_phase", "SECOND_APPEAL_PREP", "二审上诉准备", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 77}),
-    ("case_phase", "SECOND_MEDIATION", "二审和解中", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 78}),
-    ("case_phase", "SECOND_MEDIATION_CLOSED", "二审和解结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 79}),
-    ("case_phase", "SECOND_JUDGMENT_CLOSED", "二审判决结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 80}),
-    ("case_phase", "SECOND_CUSTOMER_PAYMENT", "二审待客户回款", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 81}),
-    ("case_phase", "RETRIAL", "再审", {"case_type": "民事争议", "parent_code": "", "sort_order": 90}),
-    ("case_phase", "RETRIAL_ACCEPTED", "再审立案受理", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 91}),
-    ("case_phase", "RETRIAL_EVIDENCE", "再审补充证据", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 92}),
-    ("case_phase", "RETRIAL_HEARING_PREP", "再审准备开庭", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 93}),
-    ("case_phase", "RETRIAL_REHEARING", "再审再次开庭", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 94}),
-    ("case_phase", "RETRIAL_POST_HEARING", "再审庭后待判", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 95}),
-    ("case_phase", "RETRIAL_WAIT_APPEAL", "再审等待上诉", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 96}),
-    ("case_phase", "RETRIAL_APPEAL_PREP", "再审上诉准备", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 97}),
-    ("case_phase", "RETRIAL_MEDIATION", "再审和解中", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 98}),
-    ("case_phase", "RETRIAL_MEDIATION_CLOSED", "再审和解结案", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 99}),
-    ("case_phase", "RETRIAL_JUDGMENT_CLOSED", "再审判决结案", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 100}),
-    ("case_phase", "RETRIAL_CUSTOMER_PAYMENT", "再审待客户回款", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 101}),
-    ("case_phase", "EXECUTION_FILING", "执行立案", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 111}),
-    ("case_phase", "EXECUTION_PREP", "执行准备", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 112}),
-    ("case_phase", "EXECUTION_IN_PROGRESS", "执行中", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 113}),
-    ("case_phase", "EXECUTION_MEDIATION", "执行和解", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 114}),
-    ("case_phase", "EXECUTION_END_CURRENT", "执行终结本次", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 115}),
-    ("case_phase", "EXECUTION_CLOSED", "执行终结", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 116}),
-    ("case_phase", "EXECUTION_CUSTOMER_PAYMENT", "执行待客户回款", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 117}),
-    ("case_phase", "ARCHIVE", "归档", {"case_type": "民事争议", "parent_code": "", "sort_order": 120}),
-    ("case_phase", "ARCHIVE_IN_PROGRESS", "归档中", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 121}),
-    ("case_phase", "ARCHIVE_REVIEW", "归档审核", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 122}),
-    ("case_phase", "ARCHIVE_COMPLETED", "已归档", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 123}),
-    ("case_phase", "ARCHIVE_DEFICIT", "亏损归档", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 124}),
-    ("case_phase", "ARCHIVE_DEFICIT_REVIEW", "亏损归档审核", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 125}),
-    ("case_phase", "ARCHIVE_DEFICIT_REJECTED", "亏损归档拒绝", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 126}),
-    ("case_phase", "WAIT_NOTARY", "等待公证书", {"case_type": "民事争议", "parent_code": "NEW", "sort_order": 90}),
-    ("case_phase", "WAIT_NOTARY_REVIEW", "等待审核公证书", {"case_type": "民事争议", "parent_code": "WAIT_NOTARY", "sort_order": 100}),
-    ("case_phase", "PENDING_FILING_APPROVAL", "待立案审批", {"case_type": "民事争议", "parent_code": "WAIT_NOTARY_REVIEW", "sort_order": 110}),
+    ("case_phase", "WAIT_NOTARY", "等待公证书", {"case_type": "民事争议", "parent_code": "", "sort_order": 10}),
+    ("case_phase", "WAIT_NOTARY_REVIEW", "审核公证书", {"case_type": "民事争议", "parent_code": "", "sort_order": 20}),
+    ("case_phase", "SUBJECT_DISCLOSURE", "待主体披露", {"case_type": "民事争议", "parent_code": "", "sort_order": 30}),
+    ("case_phase", "NEW", "新案待分配", {"case_type": "民事争议", "parent_code": "", "sort_order": 40}),
+    ("case_phase", "DOCUMENT", "文书准备", {"case_type": "民事争议", "parent_code": "", "sort_order": 50}),
+    ("case_phase", "CUSTOMER_SEAL", "客户盖章", {"case_type": "民事争议", "parent_code": "", "sort_order": 60}),
+    ("case_phase", "WAIT_FILING", "等待立案", {"case_type": "民事争议", "parent_code": "", "sort_order": 70}),
+    ("case_phase", "EVIDENCE_SUPPLEMENT", "补充取证", {"case_type": "民事争议", "parent_code": "", "sort_order": 80}),
+    ("case_phase", "SUBMIT_FILING", "提交立案", {"case_type": "民事争议", "parent_code": "", "sort_order": 90}),
+    ("case_phase", "FIRST", "一审阶段", {"case_type": "民事争议", "parent_code": "", "sort_order": 100}),
+    ("case_phase", "SECOND", "二审阶段", {"case_type": "民事争议", "parent_code": "", "sort_order": 110}),
+    ("case_phase", "RETRIAL", "再审阶段", {"case_type": "民事争议", "parent_code": "", "sort_order": 120}),
+    ("case_phase", "EXECUTION", "执行阶段", {"case_type": "民事争议", "parent_code": "", "sort_order": 130}),
+    ("case_phase", "ARCHIVE", "归档阶段", {"case_type": "民事争议", "parent_code": "", "sort_order": 140}),
+    ("case_phase", "FIRST_ACCEPTED", "一审立案受理", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 201}),
+    ("case_phase", "FIRST_EVIDENCE", "一审补充证据", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 202}),
+    ("case_phase", "FIRST_HEARING_PREP", "一审准备开庭", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 203}),
+    ("case_phase", "FIRST_REHEARING", "一审再次开庭", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 204}),
+    ("case_phase", "FIRST_POST_HEARING", "一审庭后待判", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 205}),
+    ("case_phase", "FIRST_WAIT_APPEAL", "一审等待上诉", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 206}),
+    ("case_phase", "FIRST_APPEAL_PREP", "一审上诉准备", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 207}),
+    ("case_phase", "FIRST_AGENT_OPINION", "一审补充代理意见", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 208}),
+    ("case_phase", "FIRST_MEDIATION", "一审和解中", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 209}),
+    ("case_phase", "FIRST_MEDIATION_CLOSED", "一审和解结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 210}),
+    ("case_phase", "FIRST_JUDGMENT_CLOSED", "一审判决结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 211}),
+    ("case_phase", "FIRST_CUSTOMER_PAYMENT", "一审待客户回款", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 212}),
+    ("case_phase", "SECOND_ACCEPTED", "二审立案受理", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 301}),
+    ("case_phase", "SECOND_EVIDENCE", "二审补充证据", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 302}),
+    ("case_phase", "SECOND_HEARING_PREP", "二审通知开庭", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 303}),
+    ("case_phase", "SECOND_REHEARING", "二审再次开庭", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 304}),
+    ("case_phase", "SECOND_POST_HEARING", "二审庭后待判", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 305}),
+    ("case_phase", "SECOND_AGENT_OPINION", "二审补充代理意见", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 306}),
+    ("case_phase", "SECOND_MEDIATION", "二审和解中", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 307}),
+    ("case_phase", "SECOND_MEDIATION_CLOSED", "二审和解结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 308}),
+    ("case_phase", "SECOND_JUDGMENT_CLOSED", "二审判决结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 309}),
+    ("case_phase", "SECOND_CUSTOMER_PAYMENT", "二审待客户回款", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 310}),
+    ("case_phase", "RETRIAL_ACCEPTED", "再审立案受理", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 401}),
+    ("case_phase", "RETRIAL_EVIDENCE", "再审补充证据", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 402}),
+    ("case_phase", "RETRIAL_HEARING_PREP", "再审通知开庭", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 403}),
+    ("case_phase", "RETRIAL_POST_HEARING", "再审庭后待判", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 404}),
+    ("case_phase", "RETRIAL_PENDING_EXECUTION", "再审待执行", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 405}),
+    ("case_phase", "RETRIAL_MEDIATION", "再审和解中", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 406}),
+    ("case_phase", "RETRIAL_MEDIATION_CLOSED", "再审和解结案", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 407}),
+    ("case_phase", "RETRIAL_JUDGMENT_CLOSED", "再审判决结案", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 408}),
+    ("case_phase", "RETRIAL_CUSTOMER_PAYMENT", "再审待客户回款", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 409}),
+    ("case_phase", "FIRST_PENDING_EXECUTION", "一审待执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 501}),
+    ("case_phase", "SECOND_PENDING_EXECUTION", "二审待执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 502}),
+    ("case_phase", "EXECUTION_PREP_MATERIALS", "准备材料", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 503}),
+    ("case_phase", "EXECUTION_SUBMIT_COURT", "提交法院", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 504}),
+    ("case_phase", "EXECUTION_ACCEPTED", "执行受理", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 505}),
+    ("case_phase", "EXECUTION_SUSPENDED", "执行中止", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 506}),
+    ("case_phase", "EXECUTION_CLOSED_CASE", "执行结案", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 507}),
+    ("case_phase", "EXECUTION_TERMINATED_CURRENT", "执行终本", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 508}),
+    ("case_phase", "EXECUTION_TERMINATED", "执行终结", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 509}),
+    ("case_phase", "EXECUTION_DEFICIT", "执行亏损", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 510}),
+    ("case_phase", "EXECUTION_OBJECTION", "执行异议", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 511}),
+    ("case_phase", "EXECUTION_MEDIATING", "执行和解中", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 512}),
+    ("case_phase", "ARCHIVE_REVIEW", "归档审核", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 601}),
+    ("case_phase", "ARCHIVE_COMPLETED", "已归档", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 602}),
+    ("case_phase", "ARCHIVE_REJECTED", "归档拒绝", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 603}),
+    ("case_phase", "ARCHIVE_DEFICIT_INTERNAL", "亏损内审", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 604}),
+    ("case_phase", "ARCHIVE_DEFICIT_REVIEW", "亏损审核", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 605}),
+    ("case_phase", "ARCHIVE_DEFICIT", "亏损归档", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 606}),
+    ("case_phase", "ARCHIVE_DEFICIT_REJECTED", "亏损拒绝", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 607}),
     ("court", "SHBS", "上海市宝山区人民法院", {}),
     ("court", "SHXH", "上海市徐汇区人民法院", {}),
     ("court", "SHIP", "上海知识产权法院", {}),
@@ -833,6 +837,26 @@ async def lifespan(_: FastAPI):
         for index, (category, code, name, extra) in enumerate(DEFAULT_SYSTEM_PARAMETERS, start=1):
             if (category, code) not in existing_parameters:
                 db.add(SystemParameter(category=category, code=code, name=name, extra=extra, sort_order=index, created_by="system", updated_by="system"))
+        await db.flush()
+        civil_phase_defaults = {
+            code: (name, extra)
+            for category, code, name, extra in DEFAULT_SYSTEM_PARAMETERS
+            if category == "case_phase" and str(extra.get("case_type") or "").strip() == "民事争议"
+        }
+        civil_phases = (await db.scalars(select(SystemParameter).where(SystemParameter.category == "case_phase"))).all()
+        for phase in civil_phases:
+            expected = civil_phase_defaults.get(phase.code)
+            configured_type = str((phase.extra or {}).get("case_type") or "").strip()
+            if expected:
+                name, extra = expected
+                phase.name = name
+                phase.extra = dict(extra)
+                phase.sort_order = int(extra.get("sort_order") or 0)
+                phase.is_active = True
+                phase.updated_by = "system"
+            elif configured_type in {"民事争议", "民事案件"} and phase.created_by == "system":
+                phase.is_active = False
+                phase.updated_by = "system"
         existing_configs = {item.key: item for item in (await db.scalars(select(SystemConfig))).all()}
         for key, config in DEFAULT_SYSTEM_CONFIGS.items():
             if key not in existing_configs:
@@ -1787,11 +1811,14 @@ CASE_EXECUTION_STATUSES = (
 
 
 CASE_PHASE_STATUS_BY_CODE = {
+    "WAIT_NOTARY_REVIEW": "等待审核公证书",
     "NEW": "新案待分配",
     "DOCUMENT": "文书准备",
-    "FIRST": "一审立案受理",
+    "FIRST": "一审",
     "SECOND": "二审",
+    "RETRIAL": "再审",
     "EXECUTION": "执行",
+    "ARCHIVE": "归档",
 }
 
 
@@ -2261,6 +2288,7 @@ class CounselCaseSearchInput(BaseModel):
     counsel_end: date | None = None
     counsel_type: str = Field(default="", max_length=128)
     case_status: str = Field(default="", max_length=64)
+    case_statuses: list[str] = Field(default_factory=list, max_length=100)
     status: str = Field(default="", max_length=64)
     handling_lawyer: str = Field(default="", max_length=128)
     assistant: str = Field(default="", max_length=128)
@@ -19661,7 +19689,10 @@ async def _query_counsel_cases(
         hearing_dates = [data.get(key) for key in ("hearing_date", "first_court_hearing_date", "second_court_hearing_date", "retrial_court_hearing_date")]
         if (body.hearing_from or body.hearing_to) and not any(date_condition(candidate, body.hearing_from, body.hearing_to) for candidate in hearing_dates): continue
         if not contains(data.get("counsel_type"), body.counsel_type): continue
-        if include_status_filter and not contains(record.status, body.case_status or body.status): continue
+        if include_status_filter and body.case_statuses:
+            allowed_statuses = {str(status or "").strip() for status in body.case_statuses if str(status or "").strip()}
+            if str(record.status or "").strip() not in allowed_statuses: continue
+        elif include_status_filter and not contains(record.status, body.case_status or body.status): continue
         if not contains("、".join(data.get("handling_lawyers") or []), body.handling_lawyer): continue
         if not contains(data.get("assistant"), body.assistant): continue
         if not contains(document_names.get(record.id, ""), body.document_name): continue
@@ -19768,7 +19799,7 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
     # The legacy phase tree remains a dashboard for the current non-phase search
     # scope. Selecting a tree node must filter the table without erasing all of
     # the sibling counts to zero.
-    has_phase_filter = bool((body.case_status or body.status).strip())
+    has_phase_filter = bool(body.case_statuses or (body.case_status or body.status).strip())
     count_records = records if not has_phase_filter else await _query_counsel_cases(
         body,
         identity,

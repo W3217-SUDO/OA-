@@ -50,95 +50,48 @@ export const normalizePhaseCounts = (value) => {
 
 export const LEGACY_CASE_PHASE_GROUPS = ["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"];
 
-const LEGACY_PHASE_CHILDREN = {
-  "一审阶段": ["一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判", "一审等待上诉", "一审上诉准备", "一审和解中", "一审和解结案", "一审判决结案", "一审待客户回款"],
-  "二审阶段": ["二审立案受理", "二审补充证据", "二审准备开庭", "二审再次开庭", "二审庭后待判", "二审等待上诉", "二审上诉准备", "二审和解中", "二审和解结案", "二审判决结案", "二审待客户回款"],
-  "再审阶段": ["再审立案受理", "再审补充证据", "再审准备开庭", "再审再次开庭", "再审庭后待判", "再审等待上诉", "再审上诉准备", "再审和解中", "再审和解结案", "再审判决结案", "再审待客户回款"],
-  "执行阶段": ["执行立案", "执行准备", "执行中", "执行和解", "执行终结本次", "执行终结", "执行待客户回款"],
-  "归档阶段": ["归档中", "归档审核", "已归档", "亏损归档", "亏损归档审核", "亏损归档拒绝"],
+export const LEGACY_PHASE_CHILDREN = {
+  "一审阶段": ["一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判", "一审等待上诉", "一审上诉准备", "一审补充代理意见", "一审和解中", "一审和解结案", "一审判决结案", "一审待客户回款"],
+  "二审阶段": ["二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判", "二审补充代理意见", "二审和解中", "二审和解结案", "二审判决结案", "二审待客户回款"],
+  "再审阶段": ["再审立案受理", "再审补充证据", "再审通知开庭", "再审庭后待判", "再审待执行", "再审和解中", "再审和解结案", "再审判决结案", "再审待客户回款"],
+  "执行阶段": ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案", "执行终本", "执行终结", "执行亏损", "执行异议", "执行和解中"],
+  "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
 };
 
-const LEGACY_PHASE_DISPLAY_ALIASES = new Map([
-  ["一审", "一审立案受理"],
-  ["二审", "二审立案受理"],
-  ["再审", "再审立案受理"],
-]);
-
-export const legacyCasePhaseGroupFor = (value) => {
-  const name = normalizeText(value);
-  if (name.includes("一审")) return "一审阶段";
-  if (name.includes("二审")) return "二审阶段";
-  if (name.includes("再审")) return "再审阶段";
-  if (name.includes("执行")) return "执行阶段";
-  if (name.includes("归档") || ["亏损内审", "亏损审核", "亏损归档", "已归档"].includes(name)) return "归档阶段";
-  return "";
+const LEGACY_PHASE_COUNT_ALIASES = {
+  "审核公证书": ["等待审核公证书"],
+  "一审阶段": ["一审"],
+  "二审阶段": ["二审"],
+  "再审阶段": ["再审"],
+  "执行阶段": ["执行"],
+  "归档阶段": ["归档"],
 };
 
-export const buildCasePhasePickerTree = (options = [], rootDefinitions = []) => {
-  const catalog = Array.isArray(options) ? options : [];
-  const allowedRootNames = new Set(
-    (Array.isArray(rootDefinitions) ? rootDefinitions : [])
-      .filter((definition) => !LEGACY_CASE_PHASE_GROUPS.includes(normalizeText(definition?.label)))
-      .flatMap((definition) => [normalizeText(definition?.label), normalizeText(definition?.value)])
-      .filter(Boolean),
-  );
-  const groups = LEGACY_CASE_PHASE_GROUPS.map((label) => ({ label, options: [] }));
-  const groupMap = new Map(groups.map((group) => [group.label, group]));
-  const ungrouped = [];
-  const seenPhaseNames = new Set();
-  const seenPhaseLabels = new Set();
+const phaseCount = (counts, phase) => [phase, ...(LEGACY_PHASE_COUNT_ALIASES[phase] || [])]
+  .reduce((total, name) => total + Number(counts[name] || 0), 0);
 
-  catalog
-    .slice()
-    .sort((left, right) => Number(left?.sort_order || 0) - Number(right?.sort_order || 0))
-    .forEach((option) => {
-      const phaseName = normalizeText(option?.canonical_name || option?.name);
-      const phaseLabel = normalizeText(option?.name || option?.canonical_name);
-      if (!phaseName || seenPhaseNames.has(phaseName) || seenPhaseLabels.has(phaseLabel)) return;
-      seenPhaseNames.add(phaseName);
-      seenPhaseLabels.add(phaseLabel);
-      const group = groupMap.get(legacyCasePhaseGroupFor(phaseName));
-      if (group) group.options.push(option);
-      else if (!allowedRootNames.size || allowedRootNames.has(phaseName) || allowedRootNames.has(phaseLabel)) ungrouped.push(option);
-    });
-
-  return {
-    ungrouped,
-    groups: groups.filter((group) => group.options.length > 0),
-  };
+export const legacyCasePhaseFilterValues = (phase) => {
+  const normalized = normalizeText(phase);
+  const children = LEGACY_PHASE_CHILDREN[normalized] || [];
+  return [...new Set([
+    normalized,
+    ...(LEGACY_PHASE_COUNT_ALIASES[normalized] || []),
+    ...children,
+  ].filter(Boolean))];
 };
 
 export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
   const counts = normalizePhaseCounts(phaseCounts);
-  const catalogOptions = Array.isArray(catalog) ? catalog : [];
   const groupNames = new Set(LEGACY_CASE_PHASE_GROUPS);
 
   return items.map((item) => {
     if (!groupNames.has(item.label)) return { ...item, children: [] };
-
-    const candidates = [
-      ...(LEGACY_PHASE_CHILDREN[item.label] || []).map((phase, index) => ({
-        label: phase,
-        value: phase,
-        sortOrder: index,
-      })),
-      ...catalogOptions.map((option) => ({
-        label: LEGACY_PHASE_DISPLAY_ALIASES.get(normalizeText(option.name || option.canonical_name)) || normalizeText(option.name || option.canonical_name),
-        value: normalizeText(option.canonical_name || option.name),
-        sortOrder: 1000 + Number(option.sort_order || 0),
-      })),
-      ...Object.keys(counts).map((phase, index) => ({ label: phase, value: phase, sortOrder: 100000 + index })),
-    ];
-    const children = candidates
-      .filter((candidate) => candidate.value && candidate.value !== item.value && legacyCasePhaseGroupFor(candidate.value) === item.label)
-      .sort((left, right) => left.sortOrder - right.sortOrder)
-      .map((candidate) => ({
-        label: candidate.label,
-        value: candidate.value,
-        count: Number(counts[candidate.value] || counts[candidate.label] || 0),
-      }))
-      .filter((child, index, all) => all.findIndex((candidate) => candidate.label === child.label) === index);
-    const directCount = Number(counts[item.value] ?? item.count ?? 0);
+    const children = LEGACY_PHASE_CHILDREN[item.label].map((phase) => ({
+      label: phase,
+      value: phase,
+      count: phaseCount(counts, phase),
+    }));
+    const directCount = phaseCount(counts, item.value);
     return {
       ...item,
       count: directCount + children.reduce((total, child) => total + child.count, 0),
@@ -194,6 +147,7 @@ export const buildCaseOrdinarySearchPayload = (
     counsel_end: normalizeDate(counselRange ? counselRange[1] : input.counsel_end),
     counsel_type: normalizeText(input.counsel_type),
     case_status: normalizeText(input.status ?? input.case_status),
+    case_statuses: normalizeList(input.case_statuses),
     handling_lawyer: normalizeText(input.handling_lawyer),
     assistant: normalizeText(input.assistant),
     document_name: normalizeText(input.document_name),

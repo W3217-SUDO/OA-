@@ -6,6 +6,7 @@ export type CaseOrdinarySearchValues = Record<string, unknown> & {
   keyword?: unknown;
   status?: unknown;
   case_status?: unknown;
+  case_statuses?: unknown;
   counsel_range?: unknown;
   counsel_start?: unknown;
   counsel_end?: unknown;
@@ -41,6 +42,7 @@ export type CaseOrdinarySearchPayload = {
   counsel_end: string | null;
   counsel_type: string;
   case_status: string;
+  case_statuses: string[];
   handling_lawyer: string;
   assistant: string;
   document_name: string;
@@ -82,35 +84,21 @@ export type OrdinarySearchResult = {
 
 export type CasePhaseListItem = { label: string; value: string; count: number };
 export type CasePhaseOption = {
-  id?: number;
-  code?: string;
   name?: string;
   canonical_name?: string;
-  case_type?: string;
-  parent_code?: string;
   sort_order?: number;
 };
 export type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
-export type CasePhasePickerGroup<T extends CasePhaseOption = CasePhaseOption> = { label: string; options: T[] };
-export type CasePhasePickerTree<T extends CasePhaseOption = CasePhaseOption> = {
-  ungrouped: T[];
-  groups: CasePhasePickerGroup<T>[];
-};
 
 export const LEGACY_CASE_PHASE_GROUPS: string[];
+export const LEGACY_PHASE_CHILDREN: Record<string, string[]>;
+export function legacyCasePhaseFilterValues(phase?: unknown): string[];
 
 export function buildLegacyCasePhaseTree(
   items?: CasePhaseListItem[],
   catalog?: CasePhaseOption[],
   phaseCounts?: Record<string, number>,
 ): CasePhaseTreeItem[];
-
-export function legacyCasePhaseGroupFor(value?: unknown): string;
-
-export function buildCasePhasePickerTree<T extends CasePhaseOption = CasePhaseOption>(
-  options?: T[],
-  rootDefinitions?: Array<{ label: string; value: string }>,
-): CasePhasePickerTree<T>;
 
 export function createLatestRequestGuard(): LatestRequestGuard;
 
