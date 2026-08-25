@@ -144,7 +144,59 @@ export const buildContractListRequestParams = (view, pagination, query = {}) => 
   if (config.statuses.length) params.statuses = config.statuses.join(",");
   return params;
 };
-export const canAccessContractView = (view, profile = {}) => CONTRACT_LIST_ROUTES.has(view) && profile.role !== "guest";
+const CONTRACT_WORKSPACE_MENUS = ["contract", "contract-mine", "contract-dept", "contract-company"];
+const CONTRACT_AUDIT_MENUS = ["contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"];
+
+// The backend emits snake_case arrays today. Keep the camelCase and nested
+// fallbacks for profiles cached by earlier admin-web versions.
+const profileKeys = (profile, name) => {
+  const camelName = name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const candidates = [
+    profile?.[name],
+    profile?.[camelName],
+    profile?.permissions?.[name],
+    profile?.permissions?.[camelName],
+  ];
+  return [...new Set(candidates.flatMap((value) => Array.isArray(value) ? value : []))];
+};
+
+const isAdministrator = (profile = {}) => String(profile.role || "").trim().toLowerCase() === "admin";
+const profileHasKnownKeys = (profile, name) => {
+  const camelName = name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  return [profile?.[name], profile?.[camelName], profile?.permissions?.[name], profile?.permissions?.[camelName]]
+    .some((value) => Array.isArray(value));
+};
+const hasAnyKey = (keys, expected) => expected.some((key) => keys.includes(key) || keys.includes("*"));
+const hasMenuAccess = (profile, expectedMenus) => {
+  if (isAdministrator(profile)) return true;
+  // Keep the pre-/auth-me loading state compatible with the existing view
+  // shell. Once a profile carries menu keys, absence is an explicit denial.
+  if (!profileHasKnownKeys(profile, "menu_keys")) return profile?.role !== "guest";
+  return hasAnyKey(profileKeys(profile, "menu_keys"), expectedMenus);
+};
+
+export const CONTRACT_WORKFLOW_ACTION_KEYS = {
+  create: ["contract.application.create", "contract.create"],
+  update: ["contract.application.update", "contract.update"],
+  submit: ["contract.application.submit", "contract.submit"],
+  change: ["contract.application.change", "contract.change.submit", "contract.change"],
+  changeReview: ["contract.application.change.approve", "contract.change.review"],
+  payment: ["contract.payment.create", "contract.payment.apply"],
+  invoice: ["contract.invoice.apply"],
+  archive: ["contract.archive.close"],
+  approve: ["contract.application.approve"],
+};
+
+const hasActionAccess = (profile, action) => {
+  if (isAdministrator(profile)) return true;
+  const actionKeys = profileKeys(profile, "action_keys");
+  return hasAnyKey(actionKeys, CONTRACT_WORKFLOW_ACTION_KEYS[action] || []);
+};
+
+export const canAccessContractView = (view, profile = {}) => {
+  if (!CONTRACT_LIST_ROUTES.has(view) || profile.role === "guest") return false;
+  return hasMenuAccess(profile, String(view).startsWith("contract-audit") ? CONTRACT_AUDIT_MENUS : CONTRACT_WORKSPACE_MENUS);
+};
 export const validateContractApprovalSubmission = (status, approvers, attachmentCount) => {
   const errors = [];
   if (!CONTRACT_DRAFT_EDITABLE_STATUSES.includes(status)) errors.push("status");
@@ -175,6 +227,38 @@ export const contractSecondaryActionPolicy = (status) => {
   const archived = ["已归档", "Archived", "archived"].includes(String(status || "").trim());
   return { canEdit: !archived, canInvestigation: !archived, canArchive: !archived };
 };
+export const contractWorkflowActionPolicy = (profile = {}, contract = {}, options = {}) => {
+  const status = String(contract?.status || options.status || "").trim();
+  const data = contract?.data || {};
+  const listPolicy = contractListActionPolicy(status);
+  const secondaryPolicy = contractSecondaryActionPolicy(status);
+  const editable = ["\u8349\u7a3f", "\u5df2\u62d2\u7edd"].includes(status);
+  const awaitingApproval = status === "\u5ba1\u6279\u4e2d";
+  const pendingChange = String(data.pending_change?.status || options.pendingChangeStatus || "").trim() === "\u5f85\u5ba1\u6279";
+  const currentApprover = String(options.currentApprover || data.current_approver || data.approval_capabilities?.current_approver || "").trim();
+  const currentUser = String(profile.username || "").trim();
+  const serverApprovalCapability = options.canApproveCurrent ?? data.approval_capabilities?.can_approve_current;
+  const isCurrentApprover = currentApprover && currentApprover.toLowerCase() === currentUser.toLowerCase();
+  const approvalAssignmentAllowed = isAdministrator(profile)
+    || (typeof serverApprovalCapability === "boolean" ? serverApprovalCapability : isCurrentApprover);
+  const allowed = (action, stateAllowed, audit = false) => stateAllowed
+    && hasMenuAccess(profile, audit ? CONTRACT_AUDIT_MENUS : CONTRACT_WORKSPACE_MENUS)
+    && hasActionAccess(profile, action);
+
+  return {
+    canCreate: allowed("create", true),
+    canEdit: allowed("update", editable),
+    canSubmit: allowed("submit", editable),
+    canChange: allowed("change", listPolicy.canPayment),
+    canReviewChange: allowed("changeReview", pendingChange, true),
+    canPayment: allowed("payment", listPolicy.canPayment),
+    canInvoice: allowed("invoice", listPolicy.canInvoice),
+    canArchive: allowed("archive", secondaryPolicy.canArchive),
+    canOpenApproval: allowed("approve", awaitingApproval, true),
+    canApprove: allowed("approve", awaitingApproval && approvalAssignmentAllowed, true),
+  };
+};
+
 export const contractAuditViewConfig = (view) => {
   if (view === "contract-audit-pending") return { statuses: ["审批中"] };
   if (view === "contract-audit-refused") return { statuses: ["已拒绝", "已驳回"] };

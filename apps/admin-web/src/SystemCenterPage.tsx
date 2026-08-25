@@ -42,6 +42,17 @@ type ParameterRow = {
   created_at: string;
   updated_at: string;
 };
+type ParameterRelationKind =
+  | "case-type-file-types"
+  | "file-type-fee-types"
+  | "case-type-case-phases";
+type ParameterRelationEditor = {
+  kind: ParameterRelationKind;
+  title: string;
+  source: ParameterRow;
+  targetCategory: string;
+  targetLabel: string;
+};
 type SystemConfig = {
   key: string;
   label: string;
@@ -213,6 +224,80 @@ export function cleanCompanyDigitsInputEvent(event: {
   return sanitized;
 }
 
+export function caseFileTypeParentOptions(
+  rows: ParameterRow[],
+  editingParameterId?: number,
+): { value: string; label: string }[] {
+  return rows
+    .filter(
+      (row) =>
+        row.category === "case_file_type" &&
+        row.is_active &&
+        row.id !== editingParameterId,
+    )
+    .sort(
+      (left, right) =>
+        left.sort_order - right.sort_order || left.code.localeCompare(right.code),
+    )
+    .map((row) => ({ value: row.code, label: `${row.name}（${row.code}）` }));
+}
+
+export function isCaseFileTypeParentValid(
+  parentCode: unknown,
+  rows: ParameterRow[],
+  editingParameterId?: number,
+): boolean {
+  const normalized = String(parentCode || "").trim();
+  return (
+    !normalized ||
+    caseFileTypeParentOptions(rows, editingParameterId).some(
+      (option) => option.value === normalized,
+    )
+  );
+}
+
+const parameterRelationConfigs: Record<
+  ParameterRelationKind,
+  Omit<ParameterRelationEditor, "source">
+> = {
+  "case-type-file-types": {
+    kind: "case-type-file-types",
+    title: "关联文件类型",
+    targetCategory: "case_file_type",
+    targetLabel: "案件文件类型",
+  },
+  "file-type-fee-types": {
+    kind: "file-type-fee-types",
+    title: "关联费用类型",
+    targetCategory: "fee_type",
+    targetLabel: "费用类型",
+  },
+  "case-type-case-phases": {
+    kind: "case-type-case-phases",
+    title: "关联案件阶段",
+    targetCategory: "case_phase",
+    targetLabel: "案件阶段",
+  },
+};
+
+export function relationTargetIds(payload: unknown, sourceId?: number): number[] {
+  const response = payload as {
+    target_ids?: unknown;
+    relations?: Record<string, unknown>;
+  };
+  const value =
+    response?.target_ids ??
+    (sourceId ? response?.relations?.[String(sourceId)] : undefined);
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0),
+    ),
+  );
+}
+
 const PERSON_NAME_PLACEHOLDER = "姓名待维护";
 const personDisplayName = (row?: { display_name?: string }) =>
   String(row?.display_name || "").trim() || PERSON_NAME_PLACEHOLDER;
@@ -256,6 +341,15 @@ export default function SystemCenterPage({
   const [editingParameter, setEditingParameter] = useState<ParameterRow | null>(
     null,
   );
+  const [relationEditor, setRelationEditor] =
+    useState<ParameterRelationEditor | null>(null);
+  const [relationTargetOptions, setRelationTargetOptions] = useState<
+    { value: number; label: string; disabled?: boolean }[]
+  >([]);
+  const [selectedRelationTargetIds, setSelectedRelationTargetIds] = useState<
+    number[]
+  >([]);
+  const [relationSaving, setRelationSaving] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editingMenu, setEditingMenu] = useState<MenuRow | null>(null);
   const [userOpen, setUserOpen] = useState(false),
@@ -451,6 +545,18 @@ export default function SystemCenterPage({
   };
   const saveParameter = async () => {
     const value = await parameterForm.validateFields();
+    if (
+      category === "case_file_type" &&
+      !isCaseFileTypeParentValid(value.parent_code, parameters, editingParameter?.id)
+    ) {
+      parameterForm.setFields([
+        {
+          name: "parent_code",
+          errors: ["请选择有效的上级文件类型，且不能选择自身"],
+        },
+      ]);
+      return;
+    }
     const extra =
       category === "ipr_case_file_type"
         ? {
@@ -505,6 +611,59 @@ export default function SystemCenterPage({
       void loadParameters("");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "删除失败");
+    }
+  };
+  const openParameterRelation = async (
+    kind: ParameterRelationKind,
+    source: ParameterRow,
+  ) => {
+    const config = parameterRelationConfigs[kind];
+    try {
+      const [targetsResult, relationResult] = await Promise.all([
+        api.get("/system/parameters", {
+          params: { category: config.targetCategory },
+        }),
+        api.get(`/system/parameter-relations/${kind}`, {
+          params: { source_id: source.id },
+        }),
+      ]);
+      const targetIds = relationTargetIds(relationResult.data, source.id);
+      const targetIdSet = new Set(targetIds);
+      const targets = (targetsResult.data.items as ParameterRow[])
+        .filter((row) => row.is_active || targetIdSet.has(row.id))
+        .sort(
+          (left, right) =>
+            left.sort_order - right.sort_order ||
+            left.code.localeCompare(right.code),
+        )
+        .map((row) => ({
+          value: row.id,
+          label: `${row.name}（${row.code}）${row.is_active ? "" : "（已停用）"}`,
+          disabled: !row.is_active,
+        }));
+      setRelationTargetOptions(targets);
+      setSelectedRelationTargetIds(targetIds);
+      setRelationEditor({ ...config, source });
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || `${config.title}加载失败`);
+    }
+  };
+  const saveParameterRelation = async () => {
+    if (!relationEditor) return;
+    setRelationSaving(true);
+    try {
+      await api.put(`/system/parameter-relations/${relationEditor.kind}`, {
+        source_id: relationEditor.source.id,
+        target_ids: selectedRelationTargetIds,
+      });
+      message.success(`${relationEditor.title}已保存`);
+      setRelationEditor(null);
+      setRelationTargetOptions([]);
+      setSelectedRelationTargetIds([]);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || `${relationEditor.title}保存失败`);
+    } finally {
+      setRelationSaving(false);
     }
   };
   const clearCache = async (row: CacheRow) => {
@@ -737,7 +896,12 @@ export default function SystemCenterPage({
   const actionColumn = {
     title: "操作",
     key: "action",
-    width: 120,
+    width:
+      category === "case_type"
+        ? 300
+        : category === "case_file_type"
+          ? 220
+          : 120,
     render: (_value: unknown, row: ParameterRow) => (
       <Space size={0}>
         <Button
@@ -747,6 +911,34 @@ export default function SystemCenterPage({
         >
           修改
         </Button>
+        {category === "case_type" && (
+          <>
+            <Button
+              type="link"
+              onClick={() =>
+                openParameterRelation("case-type-file-types", row)
+              }
+            >
+              关联文件类型
+            </Button>
+            <Button
+              type="link"
+              onClick={() =>
+                openParameterRelation("case-type-case-phases", row)
+              }
+            >
+              关联案件阶段
+            </Button>
+          </>
+        )}
+        {category === "case_file_type" && (
+          <Button
+            type="link"
+            onClick={() => openParameterRelation("file-type-fee-types", row)}
+          >
+            关联费用类型
+          </Button>
+        )}
         {category !== "case_type" && (
           <Popconfirm title="确认删除？" onConfirm={() => removeParameter(row)}>
             <Button type="link" danger icon={<DeleteOutlined />} />
@@ -2013,14 +2205,52 @@ export default function SystemCenterPage({
             </Form.Item>
             {(extraFields[category] || []).map((item) => {
               const numericParent = item.key === "parent_code";
+              const isCaseFileTypeParent =
+                category === "case_file_type" && item.key === "parent_code";
               return (
-                <Form.Item key={item.key} label={item.label} name={item.key}>
-                  <Input
-                    inputMode={numericParent ? "numeric" : undefined}
-                    onInput={
-                      numericParent ? cleanCompanyDigitsInputEvent : undefined
-                    }
-                  />
+                <Form.Item
+                  key={item.key}
+                  label={item.label}
+                  name={item.key}
+                  rules={
+                    isCaseFileTypeParent
+                      ? [
+                          {
+                            validator: async (_, value) => {
+                              if (
+                                isCaseFileTypeParentValid(
+                                  value,
+                                  parameters,
+                                  editingParameter?.id,
+                                )
+                              )
+                                return;
+                              throw new Error(
+                                "请选择有效的上级文件类型，且不能选择自身",
+                              );
+                            },
+                          },
+                        ]
+                      : undefined
+                  }
+                >
+                  {isCaseFileTypeParent ? (
+                    <Select
+                      allowClear
+                      placeholder="请选择上级文件类型"
+                      options={caseFileTypeParentOptions(
+                        parameters,
+                        editingParameter?.id,
+                      )}
+                    />
+                  ) : (
+                    <Input
+                      inputMode={numericParent ? "numeric" : undefined}
+                      onInput={
+                        numericParent ? cleanCompanyDigitsInputEvent : undefined
+                      }
+                    />
+                  )}
                 </Form.Item>
               );
             })}
@@ -2040,6 +2270,40 @@ export default function SystemCenterPage({
             </Form.Item>
           </div>
         </Form>
+      </Modal>
+      <Modal
+        open={Boolean(relationEditor)}
+        title={
+          relationEditor
+            ? `${relationEditor.source.name}：${relationEditor.title}`
+            : "关联维护"
+        }
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={relationSaving}
+        onOk={() => void saveParameterRelation()}
+        onCancel={() => {
+          if (relationSaving) return;
+          setRelationEditor(null);
+          setRelationTargetOptions([]);
+          setSelectedRelationTargetIds([]);
+        }}
+        destroyOnHidden
+      >
+        {relationEditor && (
+          <Form layout="vertical">
+            <Form.Item label={relationEditor.targetLabel} required>
+              <Select
+                mode="multiple"
+                placeholder={`请选择${relationEditor.targetLabel}`}
+                options={relationTargetOptions}
+                value={selectedRelationTargetIds}
+                onChange={(value) => setSelectedRelationTargetIds(value)}
+                optionFilterProp="label"
+              />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
       <Modal
         open={menuOpen}

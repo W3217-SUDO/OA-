@@ -28,10 +28,13 @@ import {
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { LegacyContractHistoryPanel } from "./LegacyContractHistoryPanel";
+import * as contractWorkflowPolicyModule from "./contractWorkflowPolicy.mjs";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { resolveDetailRelation } from "./detailRelationResolver";
 import { buildContractDetailRoute, consumeContractDetailTarget, sortContractObjectLogs, type ContractDetailNavigationContext } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
+import { legacyAttachmentQuarantineLabel, legacyAttachmentRecoveryLabel } from "./legacyHistoricalAttachmentPresentation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { buildContractCustomerQueryFromRelation, openContractCustomerCreation } from "./contractCenterCustomerNavigation";
 import {
@@ -77,7 +80,6 @@ import {
   canMutateContractAttachments,
   contractAttachmentActionPolicy,
   contractAuditActionPolicy,
-  contractAuditViewConfig,
   contractListActionPolicy,
   createContractListRequestGuard,
   contractListViewConfig,
@@ -177,10 +179,40 @@ type Change = {
   created_at: string;
   changes: { field: string; label: string; before: any; after: any }[];
 };
-type Profile = { username: string; display_name: string; department: string; role: string };
+type Profile = {
+  username: string;
+  display_name: string;
+  department: string;
+  role: string;
+  menu_keys?: string[];
+  action_keys?: string[];
+  menuKeys?: string[];
+  actionKeys?: string[];
+};
+type ContractWorkflowCapabilities = {
+  canCreate: boolean;
+  canEdit: boolean;
+  canSubmit: boolean;
+  canChange: boolean;
+  canReviewChange: boolean;
+  canPayment: boolean;
+  canInvoice: boolean;
+  canArchive: boolean;
+  canOpenApproval: boolean;
+  canApprove: boolean;
+};
+const contractWorkflowActionPolicy = (contractWorkflowPolicyModule as unknown as {
+  contractWorkflowActionPolicy: (profile: Profile, contract: Contract | Record<string, unknown>, options?: Record<string, unknown>) => ContractWorkflowCapabilities;
+}).contractWorkflowActionPolicy;
 type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
 type ApproverSetting = { username: string; display_name: string; display_name_valid?: boolean; department: string; position: string; selected: boolean };
 type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string; uploader?: string; uploader_display_name?: string };
+type LegacyHistoricalAttachment = {
+  id: number; legacy_file_id: number; legacy_file_guid: string; legacy_parent_no: string;
+  file_name: string; legacy_declared_size_bytes: number | null; legacy_file_path: string;
+  legacy_is_active: boolean; physical_exists: boolean; recovery_status: string; quarantine_reasons: string[];
+  download_available: false; preview_available: false; download_reason: string;
+};
 type AttachmentPreview = { name: string; kind: "image" | "pdf" | "text" | "docx"; url?: string; text?: string };
 type HistoryEvent = { id: number; action: string; from_status: string; to_status: string; operator: string; comment: string; created_at: string };
 type ContractEvent = { id: number; contract_record_id: number; content: string; operator: string; created_at: string; contract_guid?: string };
@@ -188,6 +220,9 @@ type SealAsset = { id: number; code: string; name: string; seal_type: string; st
 type CustomerRef = { id: number; serial_no: string; title: string; owner: string; data: { customer_managers?: string[] } };
 type ContractPaymentCandidate = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; fee_type:string; contract_amount:number; reserved_amount:number; remaining_amount:number; remark:string };
 type PaymentTypeOption = { value:string; label:string; payee:string; account:string };
+type ContractArchiveSubject = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; case_fee_ids:number[]; fee_type:string; contract_amount:number; paid_amount:number; invoiced_amount:number; fee_archived:boolean; materials_ready:boolean; archive_checks:Record<string,boolean> };
+type ContractArchiveSummary = { id:number; serial_no:string; title:string; customer:string; status:string };
+const archiveCheckLabels: Record<string,string> = { case_closed:"案件完结", fees_settled:"费用结清", documents_complete:"材料齐全", finance_complete:"财务完结" };
 const colors: Record<string, string> = {
   草稿: "default",
   审批中: "orange",
@@ -203,7 +238,7 @@ const WIZARD_STORAGE_KEY = "sunhold-contract-wizard-id";
 const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-return-view";
 const CONTRACT_DETAIL_TAB_STORAGE_KEY = "sunhold:contract-detail-active-tab";
 const normalizeContractDetailTabKey = (tab?: string | null) =>
-  ["objects", "events", "workflow", "attachments", "approvals"].includes(String(tab || ""))
+  ["objects", "events", "workflow", "attachments", "legacy-attachments", "approvals", "archive"].includes(String(tab || ""))
     ? String(tab)
     : "objects";
 const consumeContractDetailTabKey = () => {
@@ -239,6 +274,10 @@ const initialProfile = (): Profile => {
       display_name: stored.display_name || "",
       department: stored.department || "",
       role: stored.role || "",
+      menu_keys: Array.isArray(stored.menu_keys) ? stored.menu_keys : undefined,
+      action_keys: Array.isArray(stored.action_keys) ? stored.action_keys : undefined,
+      menuKeys: Array.isArray(stored.menuKeys) ? stored.menuKeys : undefined,
+      actionKeys: Array.isArray(stored.actionKeys) ? stored.actionKeys : undefined,
     };
   } catch {
     return { username: "", display_name: "", department: "", role: "" };
@@ -266,6 +305,7 @@ export default function ContractCenterPage({
       ? { serial_no: decodeURIComponent(contractPreviewRouteMatch[1]), at: Date.now() }
       : null;
   const [allRows, setAllRows] = useState<Contract[]>([]),
+    [listTotal, setListTotal] = useState(0),
     [loading, setLoading] = useState(false),
     [open, setOpen] = useState(initialView === "contract-new"),
     [editing, setEditing] = useState<Contract | null>(null),
@@ -306,6 +346,9 @@ export default function ContractCenterPage({
   const [approverSettingsSaving, setApproverSettingsSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
+  const [legacyHistoricalAttachments, setLegacyHistoricalAttachments] = useState<LegacyHistoricalAttachment[]>([]);
+  const [legacyHistoricalAttachmentsLoading, setLegacyHistoricalAttachmentsLoading] = useState(false);
+  const [legacyHistoricalAttachmentsError, setLegacyHistoricalAttachmentsError] = useState<string | null>(null);
   const [detailActiveTab, setDetailActiveTab] = useState("objects");
   const [selectedAttachmentKeys, setSelectedAttachmentKeys] = useState<Key[]>([]);
   const [attachmentBatchSaving, setAttachmentBatchSaving] = useState(false);
@@ -314,6 +357,12 @@ export default function ContractCenterPage({
   const [detailPayments, setDetailPayments] = useState<Contract[]>([]);
   const [detailApprovals, setDetailApprovals] = useState<Step[]>([]);
   const [detailApprovalsError, setDetailApprovalsError] = useState<string | null>(null);
+  const [archiveSummary, setArchiveSummary] = useState<ContractArchiveSummary | null>(null);
+  const [archiveSubjects, setArchiveSubjects] = useState<ContractArchiveSubject[]>([]);
+  const [archiveSubjectsLoading, setArchiveSubjectsLoading] = useState(false);
+  const [archiveClosureSaving, setArchiveClosureSaving] = useState(false);
+  const [selectedArchiveObjectKeys, setSelectedArchiveObjectKeys] = useState<Key[]>([]);
+  const [archiveClosureComment, setArchiveClosureComment] = useState("");
   type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
   const [contractObjects, setContractObjects] = useState<ContractObjectRow[]>([]);
   const [objectPage, setObjectPage] = useState<number>(1);
@@ -350,6 +399,9 @@ export default function ContractCenterPage({
   const [savingContract, setSavingContract] = useState(false);
   const [submittingWizard, setSubmittingWizard] = useState(false);
   const [profile, setProfile] = useState<Profile>(initialProfile);
+  const contractCapabilities = (contract?: Contract | null, options: Record<string, unknown> = {}) =>
+    contractWorkflowActionPolicy(profile, contract || {}, options);
+  const denyContractAction = () => message.warning("\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u8be5\u5408\u540c\u64cd\u4f5c\u6743\u9650");
   const customerRelationQueryRef = useRef<Record<string, any> | null>(null);
   const customerRelationQueryViewRef = useRef<string | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]),
@@ -373,6 +425,9 @@ export default function ContractCenterPage({
     contractEventRequestTracker.current.next();
     setViewing(null);
     setViewingAttachments([]);
+    setLegacyHistoricalAttachments([]);
+    setLegacyHistoricalAttachmentsLoading(false);
+    setLegacyHistoricalAttachmentsError(null);
     setSelectedAttachmentKeys([]);
     setAttachmentBatchSaving(false);
     setContractObjects([]);
@@ -384,6 +439,12 @@ export default function ContractCenterPage({
     setPaymentTypes([]);
     setSelectedPaymentObjectKeys([]);
     setPaymentAmounts({});
+    setArchiveSummary(null);
+    setArchiveSubjects([]);
+    setArchiveSubjectsLoading(false);
+    setArchiveClosureSaving(false);
+    setSelectedArchiveObjectKeys([]);
+    setArchiveClosureComment("");
     setContractEvents([]);
     setContractWorkflowEvents([]);
     setContractEventPage(1);
@@ -546,6 +607,24 @@ export default function ContractCenterPage({
       setViewingAttachmentsLoading(false);
     }
   };
+  const loadLegacyHistoricalAttachments = async (contract: Contract) => {
+    setLegacyHistoricalAttachmentsLoading(true);
+    setLegacyHistoricalAttachmentsError(null);
+    try {
+      const response = await api.get("/legacy-history/attachments", {
+        params: { legacy_entity_type: "FCM_Contract_File", legacy_parent_no: contract.serial_no, include_inactive: true, page_size: 200 },
+      });
+      setLegacyHistoricalAttachments(response.data.items || []);
+    } catch (error: any) {
+      setLegacyHistoricalAttachments([]);
+      setLegacyHistoricalAttachmentsError(extractContractErrorMessage(error, "历史合同附件元数据加载失败"));
+    } finally {
+      setLegacyHistoricalAttachmentsLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (viewing && detailActiveTab === "legacy-attachments") void loadLegacyHistoricalAttachments(viewing);
+  }, [detailActiveTab, viewing?.id]);
   const reloadDetailApprovals = async (contract: Contract) => {
     setDetailApprovalsError(null);
     try {
@@ -556,20 +635,66 @@ export default function ContractCenterPage({
       setDetailApprovalsError(extractContractErrorMessage(error, "合同审批信息加载失败"));
     }
   };
+  const loadArchiveSubjects = async (contract: Contract) => {
+    if (!contractCapabilities(contract).canArchive) {
+      denyContractAction();
+      return;
+    }
+    setArchiveSubjectsLoading(true);
+    try {
+      const { data } = await api.get(`/contracts/${contract.id}/archive-subjects`);
+      setArchiveSummary(data.contract || null);
+      setArchiveSubjects(data.items || []);
+      setSelectedArchiveObjectKeys([]);
+      setArchiveClosureComment("");
+    } catch (error: any) {
+      message.error(extractContractErrorMessage(error, "合同归档完结数据加载失败"));
+    } finally {
+      setArchiveSubjectsLoading(false);
+    }
+  };
+  const submitArchiveClosure = async () => {
+    if (!viewing) return;
+    if (!contractCapabilities(viewing).canArchive) {
+      denyContractAction();
+      return;
+    }
+    const selectedSubjects = archiveSubjects.filter((item) => selectedArchiveObjectKeys.includes(item.contract_object_id));
+    const caseFeeIds = Array.from(new Set(selectedSubjects.flatMap((item) => item.case_fee_ids || [])));
+    if (!caseFeeIds.length) {
+      message.warning("请选择至少一条可完结的案件费用");
+      return;
+    }
+    setArchiveClosureSaving(true);
+    try {
+      const { data } = await api.post(`/contracts/${viewing.id}/archive-closure`, {
+        case_fee_ids: caseFeeIds,
+        fee_archived: true,
+        comment: archiveClosureComment.trim(),
+      });
+      message.success(`已完结 ${data.updated} 条案件费用${data.changed ? `，其中 ${data.changed} 条状态已变更` : ""}`);
+      await Promise.all([loadArchiveSubjects(viewing), load()]);
+    } catch (error: any) {
+      message.error(extractContractErrorMessage(error, "合同归档完结提交失败"));
+    } finally {
+      setArchiveClosureSaving(false);
+    }
+  };
   const handleContractDetailTabChange = (key: string) => {
     setDetailActiveTab(key);
     if (!viewing || key === detailActiveTab) return;
     if (key === "attachments") void reloadViewingAttachments(viewing);
     else if (key === "events") void reloadContractEvents(viewing, contractEventPage, contractEventKeyword, contractEventPageSize);
     else if (key === "approvals") void reloadDetailApprovals(viewing);
+    else if (key === "archive") void loadArchiveSubjects(viewing);
     else void openViewing(viewing);
   };
   const returnFromDetail = () => {
     closeViewing();
     if (isContractDetailView) onNavigate?.(consumeContractDetailReturnView());
   };
-  const saveContractObject = async () => { if (!viewing || !objectEditing) return; try { const values=await objectForm.validateFields(); const request=objectEditing.id?api.patch(`/contracts/${viewing.id}/objects/${objectEditing.id}`,values):api.post(`/contracts/${viewing.id}/objects`,values); const response = await request; const feedback = normalizeContractActionResponse(response, "合同标的保存失败"); if (!feedback.ok) throw new Error(feedback.message); message.success(objectEditing.id?"合同标的已修改":"合同标的已新增"); setObjectEditing(null); objectForm.resetFields(); await openViewing(viewing) } catch(error:any) { if(!error?.errorFields) message.error(extractContractErrorMessage(error, "合同标的保存失败")) } };
-  const deleteContractObject = async (objectId:number) => { if(!viewing)return; try { const response = await api.delete(`/contracts/${viewing.id}/objects/${objectId}`); const feedback = normalizeContractActionResponse(response, "合同标的删除失败"); if (!feedback.ok) throw new Error(feedback.message); message.success("合同标的已删除"); await openViewing(viewing) } catch(error:any) { message.error(extractContractErrorMessage(error, "合同标的删除失败")) } };
+  const saveContractObject = async () => { if (!viewing || !objectEditing) return; if (!contractCapabilities(viewing).canEdit) { denyContractAction(); return; } try { const values=await objectForm.validateFields(); const request=objectEditing.id?api.patch(`/contracts/${viewing.id}/objects/${objectEditing.id}`,values):api.post(`/contracts/${viewing.id}/objects`,values); const response = await request; const feedback = normalizeContractActionResponse(response, "合同标的保存失败"); if (!feedback.ok) throw new Error(feedback.message); message.success(objectEditing.id?"合同标的已修改":"合同标的已新增"); setObjectEditing(null); objectForm.resetFields(); await openViewing(viewing) } catch(error:any) { if(!error?.errorFields) message.error(extractContractErrorMessage(error, "合同标的保存失败")) } };
+  const deleteContractObject = async (objectId:number) => { if(!viewing)return; if (!contractCapabilities(viewing).canEdit) { denyContractAction(); return; } try { const response = await api.delete(`/contracts/${viewing.id}/objects/${objectId}`); const feedback = normalizeContractActionResponse(response, "合同标的删除失败"); if (!feedback.ok) throw new Error(feedback.message); message.success("合同标的已删除"); await openViewing(viewing) } catch(error:any) { message.error(extractContractErrorMessage(error, "合同标的删除失败")) } };
   const resolveContractDetailTarget = async (target: ContractDetailNavigationContext): Promise<Contract | null> => {
     if (target.id) {
       try {
@@ -590,7 +715,10 @@ export default function ContractCenterPage({
       return null;
     }
   };
-  const load = async (queryOverride?: Record<string, any>) => {
+  const load = async (
+    queryOverride?: Record<string, any>,
+    paginationOverride?: { current: number; pageSize: number },
+  ) => {
     const requestId = contractListRequestGuard.begin();
     setLoading(true);
     const target = detailTarget || consumeContractDetailTarget() || contractDetailRouteTarget;
@@ -598,7 +726,7 @@ export default function ContractCenterPage({
       customerRelationQueryRef.current = null;
       customerRelationQueryViewRef.current = null;
     }
-    const consumedRelationQuery = buildContractCustomerQueryFromRelation(consumeCustomerRelationTarget());
+    const consumedRelationQuery = buildContractCustomerQueryFromRelation(consumeCustomerRelationTarget("contracts"));
     const relationQuery = consumedRelationQuery || customerRelationQueryRef.current;
     // Relationship navigation carries the immutable customer identity and must
     // replace stale customer filters restored from a previous list visit.
@@ -614,8 +742,12 @@ export default function ContractCenterPage({
       queryForm.setFieldsValue(relationQuery);
       setQuery(effectiveQuery);
     }
-    const recordsParams = buildContractListRequestParams(initialView, listPagination, effectiveQuery);
-    const recordsRequest = api.get("/records", { params: { ...recordsParams, scope: listViewConfig.scope, page: 1, page_size: 100 } });
+    const recordsParams = buildContractListRequestParams(
+      initialView,
+      paginationOverride || listPagination,
+      effectiveQuery,
+    );
+    const recordsRequest = api.get("/records", { params: recordsParams });
     const targetRequest = target ? resolveContractDetailTarget(target) : null;
     const auxiliaryRequests = Promise.allSettled([
       api.get("/auth/me"),
@@ -633,7 +765,10 @@ export default function ContractCenterPage({
     }
     try {
       const recordsRes = await recordsRequest;
-      if (contractListRequestGuard.isLatest(requestId)) setAllRows(recordsRes.data.items);
+      if (contractListRequestGuard.isLatest(requestId)) {
+        setAllRows(recordsRes.data.items || []);
+        setListTotal(Number(recordsRes.data.total || 0));
+      }
     } catch (error: any) {
       if (contractListRequestGuard.isLatest(requestId)) message.error(extractContractErrorMessage(error, "合同数据加载失败"));
     } finally {
@@ -649,25 +784,20 @@ export default function ContractCenterPage({
     }
   };
   useEffect(() => {
-    load();
-  }, [initialView, detailTarget?.id, detailTarget?.serial_no]);
-  useEffect(() => {
-    if (isContractDetailView || initialView === "contract-new") return;
-    const relationQuery = customerRelationQueryRef.current;
-    if (relationQuery) {
-      queryForm.resetFields();
-      queryForm.setFieldsValue(relationQuery);
-      setQuery(relationQuery);
+    if (isContractDetailView || initialView === "contract-new") {
+      void load();
       return;
     }
-    const savedQuery = readContractQuery(initialView);
-    setQuery(savedQuery);
+    const relationQuery = customerRelationQueryRef.current;
+    const nextQuery = relationQuery || readContractQuery(initialView);
+    const nextPagination = readContractListPagination(sessionStorage, initialView);
+    setQuery(nextQuery);
     queryForm.resetFields();
-    queryForm.setFieldsValue(savedQuery);
-  }, [initialView]);
-  useEffect(() => {
-    setListPagination(readContractListPagination(sessionStorage, initialView));
-  }, [initialView]);
+    queryForm.setFieldsValue(nextQuery);
+    setListPagination(nextPagination);
+    setSelectedRowKeys([]);
+    void load(nextQuery, nextPagination);
+  }, [initialView, detailTarget?.id, detailTarget?.serial_no]);
   useEffect(() => {
     if (initialView !== "contract-new") {
       customerContextConsumerRef.current.reset();
@@ -696,62 +826,9 @@ export default function ContractCenterPage({
     setApproverSettingsTargetUsername(targetUsername);
     void openApproverSettings();
   }, [initialView, profile.role, approverSettingsOpen, approverSettingsLoading]);
-  const auditViewConfig = contractAuditViewConfig(initialView);
-  const rows = useMemo(() => {
-    let list = customerRelationQueryRef.current
-      ? allRows
-      : initialView === "contract-audit-pending"
-        ? allRows
-        : initialView === "contract-audit-refused"
-          ? allRows.filter((x) => auditViewConfig.statuses.includes(x.status))
-        : initialView === "contract-audit-approved"
-            ? allRows.filter((x) => auditViewConfig.statuses.includes(x.status))
-        : initialView === "contract-mine"
-          ? allRows.filter((x) =>
-              [profile.username, profile.display_name].includes(x.owner),
-            )
-          : allRows;
-    const text = (v: any) => String(v || "").toLowerCase();
-    if (query.title)
-      list = list.filter((x) => text(x.title).includes(text(query.title)));
-    if (query.serial_no)
-      list = list.filter((x) =>
-        text(x.serial_no).includes(text(query.serial_no)),
-      );
-    if (query.type) list = list.filter((x) => x.data.type === query.type);
-    if (query.customer_id)
-      list = list.filter((x) => Number(x.data.customer_id) === Number(query.customer_id));
-    else if (query.customer_no)
-      list = list.filter((x) => text(x.data.customer_no) === text(query.customer_no));
-    else if (query.customer)
-      list = list.filter((x) =>
-        text(x.customer).includes(text(query.customer)),
-      );
-    if (query.exclude_archived)
-      list = list.filter((x) => !["已归档", "Archived", "archived"].includes(String(x.status || "").trim()));
-    if (query.case_no)
-      list = list.filter((x) =>
-        text(x.data.case_no).includes(text(query.case_no)),
-      );
-    if (query.fee_type)
-      list = list.filter((x) => x.data.fee_type === query.fee_type);
-    if (query.contract_body)
-      list = list.filter((x) => x.data.contract_body === query.contract_body);
-    if (query.source_person)
-      list = list.filter((x) =>
-        text(x.data.source_person || x.owner).includes(text(query.source_person)),
-      );
-    if (query.signed_at?.length === 2)
-      list = list.filter(
-        (x) =>
-          x.data.signed_at &&
-          dayjs(x.data.signed_at).isAfter(
-            query.signed_at[0].subtract(1, "day"),
-          ) &&
-          dayjs(x.data.signed_at).isBefore(query.signed_at[1].add(1, "day")),
-      );
-    return list;
-  }, [allRows, initialView, profile, query, auditViewConfig]);
+  // List filters, scope, status, and pagination are all applied by /records.
+  // Keeping the current response intact avoids slicing or re-filtering a partial page.
+  const rows = allRows;
   const getContractCustomerContext = (): LinkedCustomerContext | null => {
     if (sessionStorage.getItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY) !== "customer") {
       clearContractCustomerContext(sessionStorage);
@@ -858,6 +935,10 @@ export default function ContractCenterPage({
     }
   };
   const startEdit = (r: Contract) => {
+    if (!contractCapabilities(r).canEdit) {
+      denyContractAction();
+      return;
+    }
     setEditing(r);
     form.setFieldsValue({
       ...r,
@@ -872,6 +953,10 @@ export default function ContractCenterPage({
   };
   const canOpenSubmitWizard = (contract?: Contract | null) => ["草稿", "已拒绝"].includes(contract?.status || "");
   const openSubmitWizardFromList = async (contract: Contract) => {
+    if (!contractCapabilities(contract).canSubmit) {
+      denyContractAction();
+      return;
+    }
     if (!canOpenSubmitWizard(contract)) {
       message.warning("仅草稿或已拒绝合同可以提交审批");
       return;
@@ -899,6 +984,11 @@ export default function ContractCenterPage({
     void openRelatedCase(data.case_no || data.case_serial_no || data.related_case_no);
   };
   const save = async () => {
+    const target = editing || wizardDraft;
+    if (!(target ? contractCapabilities(target).canEdit : contractCapabilities().canCreate)) {
+      denyContractAction();
+      return;
+    }
     let v: any;
     try {
       v = await form.validateFields();
@@ -926,7 +1016,6 @@ export default function ContractCenterPage({
     }
     setSavingContract(true);
     try {
-      const target = editing || wizardDraft;
       const sourceData: Contract["data"] = target?.data || { amount: 0, signed_at: "", type: "" };
       const signedAt = dayjs.isDayjs(v.signed_at)
         ? v.signed_at
@@ -993,6 +1082,10 @@ export default function ContractCenterPage({
   };
   const submitWizard = async () => {
     if (!wizardDraft) return;
+    if (!contractCapabilities(wizardDraft).canSubmit) {
+      denyContractAction();
+      return;
+    }
     try {
       const values = await submitForm.validateFields();
       const syncSealRequested = Boolean(values.sync_seal);
@@ -1301,6 +1394,11 @@ export default function ContractCenterPage({
   };
   const submit = async () => {
     if (!submitting || !contractMutationGates.current.submit.tryEnter()) return;
+    if (!contractCapabilities(submitting).canSubmit) {
+      contractMutationGates.current.submit.leave();
+      denyContractAction();
+      return;
+    }
     setSubmitSaving(true);
     try {
       const v = await submitForm.validateFields();
@@ -1320,6 +1418,10 @@ export default function ContractCenterPage({
     }
   };
   const openReview = async (r: Contract) => {
+    if (!contractCapabilities(r).canOpenApproval) {
+      denyContractAction();
+      return;
+    }
     try {
       const { data } = await api.get(`/contracts/${r.id}/approvals`);
       setReviewing(r);
@@ -1362,6 +1464,10 @@ export default function ContractCenterPage({
     }
   };
   const openChange = (r: Contract) => {
+    if (!contractCapabilities(r).canChange) {
+      denyContractAction();
+      return;
+    }
     setChanging(r);
     setChangeFile(null);
     changeForm.resetFields();
@@ -1380,6 +1486,10 @@ export default function ContractCenterPage({
   };
   const saveChange = async () => {
     if (!changing) return;
+    if (!contractCapabilities(changing).canChange) {
+      denyContractAction();
+      return;
+    }
     const v = await changeForm.validateFields();
     try {
       const response = await api.post(`/contracts/${changing.id}/changes`, {
@@ -1407,6 +1517,10 @@ export default function ContractCenterPage({
     }
   };
   const reviewChange = async (contract: Contract, approved: boolean) => {
+    if (!contractCapabilities(contract).canReviewChange) {
+      denyContractAction();
+      return;
+    }
     try {
       const response = await api.post(`/contracts/${contract.id}/changes/review`, { approved, comment: approved ? "同意合同变更" : "变更内容需补充后重新提交" });
       const feedback = normalizeContractActionResponse(response, "合同变更审批失败");
@@ -1453,6 +1567,10 @@ export default function ContractCenterPage({
     }
   };
   const revokeDraft = (contract: Contract) => {
+    if (!contractCapabilities(contract).canEdit) {
+      denyContractAction();
+      return;
+    }
     Modal.confirm({
       title: "撤销合同草稿",
       content: "将删除该草稿及其附件、事项记录，且无法恢复。仅未提交、未产生后续业务的草稿可以撤销。",
@@ -1528,18 +1646,6 @@ export default function ContractCenterPage({
       },
     });
   };
-  const archive = async (r: Contract) => {
-    try {
-      const response = await api.post(`/contracts/${r.id}/archive`);
-      const feedback = normalizeContractActionResponse(response, "合同归档失败");
-      if (!feedback.ok) throw new Error(feedback.message);
-      message.success("合同已归档");
-      setSelectedRowKeys([]);
-      load();
-    } catch (error: any) {
-      message.error(extractContractErrorMessage(error, "合同归档失败"));
-    }
-  };
   const openInvestigation = async (r: Contract) => {
     investigationForm.resetFields();
     setSelectedInvestigationRegions([]);
@@ -1588,6 +1694,10 @@ export default function ContractCenterPage({
     }
   };
   const openContractPayment = async (contract: Contract) => {
+    if (!contractCapabilities(contract).canPayment) {
+      denyContractAction();
+      return;
+    }
     paymentForm.resetFields();
     setPaymentTarget(contract);
     setPaymentCandidates([]);
@@ -1606,6 +1716,11 @@ export default function ContractCenterPage({
   };
   const createContractPayment = async () => {
     if (!paymentTarget || !contractMutationGates.current.payment.tryEnter()) return;
+    if (!contractCapabilities(paymentTarget).canPayment) {
+      contractMutationGates.current.payment.leave();
+      denyContractAction();
+      return;
+    }
     setPaymentSaving(true);
     try {
       const values = await paymentForm.validateFields();
@@ -1639,6 +1754,10 @@ export default function ContractCenterPage({
     }
   };
   const openContractInvoice = (contract: Contract) => {
+    if (!contractCapabilities(contract).canInvoice) {
+      denyContractAction();
+      return;
+    }
     const invoiceDue = Number(contract.data.invoice_should || 0) - Number(contract.data.invoice_opened || 0);
     invoiceForm.resetFields();
     invoiceForm.setFieldsValue({
@@ -1652,6 +1771,11 @@ export default function ContractCenterPage({
   };
   const createContractInvoice = async () => {
     if (!invoiceTarget || !contractMutationGates.current.invoice.tryEnter()) return;
+    if (!contractCapabilities(invoiceTarget).canInvoice) {
+      contractMutationGates.current.invoice.leave();
+      denyContractAction();
+      return;
+    }
     setInvoiceSaving(true);
     try {
       const values = await invoiceForm.validateFields();
@@ -1711,22 +1835,18 @@ export default function ContractCenterPage({
     rememberCaseContractContext(sessionStorage, context);
     onNavigate?.("case-new");
   };
+  const buildContractExportParams = () => {
+    const { page: _page, page_size: _pageSize, ...exportParams } = buildContractListRequestParams(
+      initialView,
+      listPagination,
+      query,
+    );
+    return exportParams;
+  };
   const exportCsv = async () => {
     try {
-      const filters = {
-        title: query.title || undefined,
-        serial_no: query.serial_no || undefined,
-        type: query.type || undefined,
-        customer: query.customer || undefined,
-        case_no: query.case_no || undefined,
-        fee_type: query.fee_type || undefined,
-        contract_body: query.contract_body || undefined,
-        source_person: query.source_person || undefined,
-        signed_at_start: query.signed_at?.[0]?.format("YYYY-MM-DD"),
-        signed_at_end: query.signed_at?.[1]?.format("YYYY-MM-DD"),
-      };
       const res = await api.get("/records/export", {
-        params: { module: "contract", ...filters },
+        params: buildContractExportParams(),
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
@@ -1741,20 +1861,8 @@ export default function ContractCenterPage({
   };
   const exportExcel = async () => {
     try {
-      const filters = {
-        title: query.title || undefined,
-        serial_no: query.serial_no || undefined,
-        type: query.type || undefined,
-        customer: query.customer || undefined,
-        case_no: query.case_no || undefined,
-        fee_type: query.fee_type || undefined,
-        contract_body: query.contract_body || undefined,
-        source_person: query.source_person || undefined,
-        signed_at_start: query.signed_at?.[0]?.format("YYYY-MM-DD"),
-        signed_at_end: query.signed_at?.[1]?.format("YYYY-MM-DD"),
-      };
       const res = await api.get("/records/export-excel", {
-        params: { module: "contract", ...filters },
+        params: buildContractExportParams(),
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
@@ -1792,6 +1900,7 @@ export default function ContractCenterPage({
   const selected = rows.find((row) => row.id === Number(selectedRowKeys[0]));
   const selectedActionPolicy = contractListActionPolicy(selected?.status);
   const selectedSecondaryActionPolicy = contractSecondaryActionPolicy(selected?.status);
+  const selectedContractCapabilities = contractCapabilities(selected);
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const moneyKeys = [
     "official_paid",
@@ -1911,6 +2020,7 @@ export default function ContractCenterPage({
       fixed: "right" as const,
       render: (_: unknown, r: Contract) => (
         <Space size={0}>
+          {contractCapabilities(r).canEdit && <Button type="link" onClick={() => startEdit(r)}>编辑合同</Button>}
           {CONTRACT_SEAL_READY_STATUSES.includes(r.status) && <Button type="link" onClick={() => void startSelectedSeal(r)}>合同用印</Button>}
           <Button type="link" onClick={() => openContractAttachments(r)}>合同附件</Button>
           <Button type="link" onClick={() => openContractApprovalInfo(r)}>审批信息</Button>
@@ -1923,8 +2033,8 @@ export default function ContractCenterPage({
           >
             新建案件
           </Button>
-          {canOpenSubmitWizard(r) && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>重新上传</Button>}
-          {canOpenSubmitWizard(r) && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>提交审批</Button>}
+          {canOpenSubmitWizard(r) && contractCapabilities(r).canSubmit && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>重新上传</Button>}
+          {canOpenSubmitWizard(r) && contractCapabilities(r).canSubmit && <Button type="link" onClick={() => void openSubmitWizardFromList(r)}>提交审批</Button>}
         </Space>
       ),
     },
@@ -2020,14 +2130,15 @@ export default function ContractCenterPage({
     || approvalTarget?.data.current_approver
     || currentApproval?.approver;
   const canActOnCurrentApproval = Boolean(
-    approvalTarget?.status === "审批中"
-    && currentApproval?.status === "待审批"
-    && (typeof approvalCapabilities?.can_approve_current === "boolean"
-      ? approvalCapabilities.can_approve_current
-      : String(currentApprover || "").trim().toLowerCase() === String(profile.username || "").trim().toLowerCase()),
+    currentApproval?.status === "待审批"
+    && contractCapabilities(approvalTarget, {
+      currentApprover,
+      canApproveCurrent: approvalCapabilities?.can_approve_current,
+    }).canApprove,
   );
   const contractObjectPolicy = contractObjectActionPolicy(viewing?.status);
   const detailSecondaryActionPolicy = contractSecondaryActionPolicy(viewing?.status);
+  const detailContractCapabilities = contractCapabilities(viewing);
   const presentedReceipts = detailReceipts.map((row) => {
     const item = normalizeIncomingPaymentForContract(row, viewing || {});
     if (!item) return null;
@@ -2132,7 +2243,10 @@ export default function ContractCenterPage({
     onNavigate?.(target.page);
   };
   const updateListPagination = (current: number, pageSize: number) => {
-    setListPagination(saveContractListPagination(sessionStorage, initialView, { current, pageSize }));
+    const nextPagination = saveContractListPagination(sessionStorage, initialView, { current, pageSize });
+    setSelectedRowKeys([]);
+    setListPagination(nextPagination);
+    void load(undefined, nextPagination);
   };
   const applyQuery = (values: Record<string, any>) => {
     const normalized = normalizeContractQuery(values);
@@ -2140,8 +2254,10 @@ export default function ContractCenterPage({
     customerRelationQueryViewRef.current = null;
     saveContractListQuery(sessionStorage, initialView, normalized);
     setQuery(normalized);
-    updateListPagination(1, listPagination.pageSize);
-    void load(normalized);
+    const nextPagination = saveContractListPagination(sessionStorage, initialView, { current: 1, pageSize: listPagination.pageSize });
+    setSelectedRowKeys([]);
+    setListPagination(nextPagination);
+    void load(normalized, nextPagination);
   };
   const clearQuery = () => {
     queryForm.resetFields();
@@ -2205,8 +2321,8 @@ export default function ContractCenterPage({
           }}
           tableLayout="fixed"
           scroll={{ x: isAuditView ? 1450 : 2360, y: "calc(100dvh - 390px)" }}
-          pagination={{current:listPagination.current,pageSize:listPagination.pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:<Button size="small">GO</Button>},showTotal:()=>`共有${rows.length}条`,onChange:updateListPagination}}
-          summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}></Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
+          pagination={{current:listPagination.current,pageSize:listPagination.pageSize,total:listTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:<Button size="small">GO</Button>},showTotal:(total)=>`共有${total}条`,onChange:updateListPagination}}
+          summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}>本页合计</Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />
         {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
           <RecordImportButton module="contract" onImported={load} /><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
@@ -2217,15 +2333,14 @@ export default function ContractCenterPage({
           ) : (
             <Button danger disabled={!selected || selected.status !== "已回收"} onClick={()=>needSelected(()=>deleteRecycledContract(selected!))}>删除合同</Button>
           )}
-          <Button disabled={!selectedSecondaryActionPolicy.canEdit} onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
+          <Button disabled={!selectedContractCapabilities.canChange} onClick={()=>needSelected(()=>openChange(selected!))}>合同变更</Button>
           <Button onClick={()=>needSelected(()=>void startSelectedSeal(selected!))}>合同用印</Button>
-          <Button disabled={!selectedActionPolicy.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
-          <Button disabled={!selectedActionPolicy.canInvoice} onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
+          <Button disabled={!selectedContractCapabilities.canPayment} onClick={()=>needSelected(()=>void openContractPayment(selected!))}>合同付款</Button>
+          <Button disabled={!selectedContractCapabilities.canInvoice} onClick={()=>needSelected(()=>openContractInvoice(selected!))}>合同开票</Button>
           <Button disabled={!selectedActionPolicy.canCreateCase} onClick={()=>needSelected(()=>startCaseFromContract(selected!))}>新建案件</Button>
           <Button disabled={!selectedSecondaryActionPolicy.canInvestigation} onClick={()=>needSelected(()=>void openInvestigation(selected!))}>新建调查任务</Button>
-          <Button disabled={!selectedSecondaryActionPolicy.canArchive} onClick={()=>needSelected(()=>archive(selected!))}>合同归档</Button>
         </Space></div>}
-        {isAuditView && (!["contract-audit-pending", "contract-audit-refused", "contract-audit-approved"].includes(initialView) || rows.length > 0) && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>{auditActionPolicy.canReview && <Button type="primary" onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button>}{auditActionPolicy.canReviewChange && <><Button onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></>}</Space></div>}
+        {isAuditView && (!["contract-audit-pending", "contract-audit-refused", "contract-audit-approved"].includes(initialView) || rows.length > 0) && <div className="contract-bottom-actions"><Space><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>{auditActionPolicy.canReview && <Button type="primary" disabled={!selectedContractCapabilities.canOpenApproval} onClick={()=>needSelected(()=>{if(selected?.status!=="审批中")return message.warning("所选合同不在待审批状态");void openReview(selected!)})}>合同审批</Button>}{auditActionPolicy.canReviewChange && <><Button disabled={!selectedContractCapabilities.canReviewChange} onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,true)})}>通过合同变更</Button><Button danger disabled={!selectedContractCapabilities.canReviewChange} onClick={()=>needSelected(()=>{if(selected?.data.pending_change?.status!=="待审批")return message.warning("所选合同没有待审批变更");void reviewChange(selected!,false)})}>驳回合同变更</Button></>}</Space></div>}
       </Card>}
       {initialView === "contract-new" && (
         <Card className="panel contract-create-page" title="新建合同">
@@ -2334,9 +2449,9 @@ export default function ContractCenterPage({
           )}
           <div className="contract-page-actions"><Space>
             {wizardStep > 0 && wizardStep < CONTRACT_CREATE_STEP_TITLES.length && (wizardStep !== 1 || ["草稿", "已拒绝"].includes(wizardDraft?.status || "")) && <Button onClick={() => setWizardStep((step) => Math.max(0, step - 1))}>上一步</Button>}
-            {wizardStep === 0 && <Button type="primary" loading={savingContract} onClick={save}>下一步</Button>}
-            {wizardStep === 1 && wizardDraft?.status === "草稿" && <Button danger onClick={() => revokeDraft(wizardDraft)}>撤销草稿</Button>}
-            {wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") && <Button type="primary" loading={submittingWizard} onClick={submitWizard}>提交审批</Button>}
+            {wizardStep === 0 && <Button type="primary" loading={savingContract} disabled={!(editing || wizardDraft ? contractCapabilities(editing || wizardDraft).canEdit : contractCapabilities().canCreate)} onClick={save}>下一步</Button>}
+            {wizardStep === 1 && wizardDraft?.status === "草稿" && <Button danger disabled={!contractCapabilities(wizardDraft).canEdit} onClick={() => revokeDraft(wizardDraft)}>撤销草稿</Button>}
+            {wizardStep === 1 && ["草稿", "已拒绝"].includes(wizardDraft?.status || "") && <Button type="primary" loading={submittingWizard} disabled={!contractCapabilities(wizardDraft).canSubmit} onClick={submitWizard}>提交审批</Button>}
             {wizardStep === 1 && wizardDraft?.status === "审批中" && <Button type="primary" onClick={() => { const route = buildContractDetailRoute(wizardDraft); if (route) onNavigate?.(route); }}>查看合同详情</Button>}
             {wizardStep === 2 && <Button type="primary" onClick={refreshWizard}>刷新审批状态</Button>}
             {wizardStep === 3 && !wizardDraft?.data.seal_application_id && <Button onClick={() => { sealForm.setFieldValue("submit", false); void createSealApplication(false); }}>保存用印草稿</Button>}
@@ -2519,7 +2634,7 @@ export default function ContractCenterPage({
         width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
         title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
-        footer={<Space>{viewing?.status === "草稿" && <Button danger onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}{viewing && <Button disabled={!detailSecondaryActionPolicy.canEdit} onClick={() => openChange(viewing)}>合同变更</Button>}<Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
+        footer={<Space>{viewing?.status === "草稿" && <Button danger disabled={!detailContractCapabilities.canEdit} onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}{viewing && <Button disabled={!detailContractCapabilities.canChange} onClick={() => openChange(viewing)}>合同变更</Button>}<Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
         onCancel={returnFromDetail}
         getContainer={isContractDetailView ? false : undefined}
         mask={!isContractDetailView}
@@ -2563,7 +2678,7 @@ export default function ContractCenterPage({
                   label: "合同标的",
                   children: <>
                     <Space style={{ marginBottom: 8 }}>
-                      <Button size="small" type="primary" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.resetFields(); setObjectEditing({}); }}>新增标的</Button>
+                      <Button size="small" type="primary" disabled={!viewing || !contractObjectPolicy.canEdit || !detailContractCapabilities.canEdit} onClick={() => { objectForm.resetFields(); setObjectEditing({}); }}>新增标的</Button>
                     </Space>
                     <Table size="small" rowKey="id" scroll={{ x: 1120 }} dataSource={objectPageData.items} locale={{ emptyText: "暂无合同标的" }} pagination={{ current: objectPageData.current, pageSize: objectPageData.pageSize, total: objectPageData.total, showSizeChanger: true, pageSizeOptions: [...CONTRACT_OBJECT_PAGE_SIZES], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setObjectPage(page); setObjectPageSize(pageSize); } }} columns={[
                     { title: "序号", width: 64, render: (_: unknown, __: ContractObjectRow, index: number) => index + 1 },
@@ -2577,8 +2692,8 @@ export default function ContractCenterPage({
                     { title: "备注", dataIndex: "remark", width: 180 },
                     { title: "操作", width: 176, fixed: "right", render: (_: unknown, row: ContractObjectRow) => <Space size={0}>
                       {contractObjectHasLogs(row.logs) && <Button type="link" onClick={() => setObjectLogTarget(row)}>日志</Button>}
-                      <Button type="link" disabled={!viewing || !contractObjectPolicy.canEdit} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
-                      <Popconfirm title="确认删除该合同标的？" disabled={!viewing || !contractObjectPolicy.canDelete} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || !contractObjectPolicy.canDelete}>删除</Button></Popconfirm>
+                      <Button type="link" disabled={!viewing || !contractObjectPolicy.canEdit || !detailContractCapabilities.canEdit} onClick={() => { objectForm.setFieldsValue({ case_record_id: row.case_record_id, fee_type: row.fee_type, amount: row.amount, remark: row.remark }); setObjectEditing({ id: row.id }); }}>编辑</Button>
+                      <Popconfirm title="确认删除该合同标的？" disabled={!viewing || !contractObjectPolicy.canDelete || !detailContractCapabilities.canEdit} onConfirm={() => void deleteContractObject(row.id)}><Button type="link" danger disabled={!viewing || !contractObjectPolicy.canDelete || !detailContractCapabilities.canEdit}>删除</Button></Popconfirm>
                     </Space> },
                   ]} />
                   </>,
@@ -2617,6 +2732,81 @@ export default function ContractCenterPage({
                     { title: "上传日期", dataIndex: "created_at", width: 140, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD") : "—" },
                     { title: "操作", width: 180, render: (_: unknown, item: Attachment) => <Space size={0}><Button type="link" onClick={() => downloadAttachment(item)}>下载</Button><Button type="link" onClick={() => void previewAttachment(item)}>预览</Button><Popconfirm title="确认删除该合同附件？" disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)} onConfirm={() => void deleteViewingAttachment(item)}><Button type="link" danger disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}>删除</Button></Popconfirm></Space> },
                   ]} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件" />}
+                  </>,
+                },
+                {
+                  key: "legacy-contract-history",
+                  label: "历史合同",
+                  children: <LegacyContractHistoryPanel contractNo={viewing.serial_no} customerNo={String(viewing.data.customer_no || "")} />,
+                },
+                {
+                  key: "legacy-attachments",
+                  label: "历史附件元数据",
+                  children: <>
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 8 }}
+                      message="仅元数据：旧系统源文件不可恢复"
+                      description="此处保留历史文件编号、父合同、声明大小、旧路径和隔离状态；没有下载或预览功能。"
+                    />
+                    {legacyHistoricalAttachmentsError ? <Alert type="error" showIcon message={legacyHistoricalAttachmentsError} /> : legacyHistoricalAttachmentsLoading ? <span>正在加载历史合同附件元数据…</span> : <Table<LegacyHistoricalAttachment> size="small" rowKey="id" pagination={false} dataSource={legacyHistoricalAttachments} locale={{ emptyText: "暂无已导入的历史合同附件元数据" }} columns={[
+                      { title: "历史文件ID", dataIndex: "legacy_file_id", width: 130 },
+                      { title: "文件名称", dataIndex: "file_name", ellipsis: true },
+                      { title: "历史合同号", dataIndex: "legacy_parent_no", width: 150 },
+                      { title: "声明大小", dataIndex: "legacy_declared_size_bytes", width: 110, render: (value: number | null) => value == null ? "—" : `${value} B` },
+                      { title: "恢复状态", dataIndex: "recovery_status", width: 210, render: (value: string) => <Tag color="orange">{legacyAttachmentRecoveryLabel(value)}</Tag> },
+                      { title: "隔离原因", dataIndex: "quarantine_reasons", width: 210, render: (values: string[]) => legacyAttachmentQuarantineLabel(values) },
+                      { title: "物理文件", width: 140, render: () => <Tag color="default">源文件不可恢复</Tag> },
+                    ]} />}
+                  </>,
+                },
+                {
+                  key: "archive",
+                  label: "归档完结",
+                  children: <>
+                    {archiveSummary && <Descriptions size="small" bordered column={3} items={[
+                      { key: "contract", label: "合同编号", children: archiveSummary.serial_no },
+                      { key: "title", label: "合同名称", children: archiveSummary.title },
+                      { key: "customer", label: "客户", children: archiveSummary.customer || "—" },
+                    ]} style={{ marginBottom: 12 }} />}
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="按案件费用逐项归档完结"
+                      description="勾选未完结的案件费用后提交。支付、开票和材料检查结果来自服务端归档核验，提交将写入费用与合同标的操作记录。"
+                      style={{ marginBottom: 12 }}
+                    />
+                    <Table<ContractArchiveSubject>
+                      rowKey="contract_object_id"
+                      size="small"
+                      loading={archiveSubjectsLoading}
+                      pagination={false}
+                      scroll={{ x: 1280 }}
+                      dataSource={archiveSubjects}
+                      locale={{ emptyText: "暂无可归档完结的合同标的" }}
+                      columns={[
+                        { title: "案件编号", dataIndex: "case_no", width: 150, render: (value: string) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCase(value)}>{value}</Button> : "—" },
+                        { title: "案件名称", dataIndex: "case_title", width: 190, ellipsis: true },
+                        { title: "费用类型", dataIndex: "fee_type", width: 120 },
+                        { title: "合同费用", dataIndex: "contract_amount", width: 110, render: (value: number) => amount(value) },
+                        { title: "已支付", dataIndex: "paid_amount", width: 100, render: (value: number) => amount(value) },
+                        { title: "已开票", dataIndex: "invoiced_amount", width: 100, render: (value: number) => amount(value) },
+                        { title: "关联费用", dataIndex: "case_fee_ids", width: 96, render: (value: number[]) => value?.length || 0 },
+                        { title: "归档核验", width: 260, render: (_: unknown, row: ContractArchiveSubject) => <Space size={[4, 4]} wrap>{Object.entries(row.archive_checks || {}).map(([key, passed]) => <Tag key={key} color={passed ? "green" : "orange"}>{archiveCheckLabels[key] || key}{passed ? "已完成" : "待处理"}</Tag>)}</Space> },
+                        { title: "费用完结", width: 100, render: (_: unknown, row: ContractArchiveSubject) => <Tag color={row.fee_archived ? "green" : "default"}>{row.fee_archived ? "已完结" : "未完结"}</Tag> },
+                        { title: "本次完结", width: 110, fixed: "right", render: (_: unknown, row: ContractArchiveSubject) => <Checkbox checked={selectedArchiveObjectKeys.includes(row.contract_object_id)} disabled={!detailContractCapabilities.canArchive || row.fee_archived || !row.case_fee_ids.length} onChange={(event) => setSelectedArchiveObjectKeys((keys) => event.target.checked ? Array.from(new Set([...keys, row.contract_object_id])) : keys.filter((key) => key !== row.contract_object_id))}>完结</Checkbox> },
+                      ]}
+                    />
+                    <div style={{ marginTop: 12 }}>
+                      <Input.TextArea value={archiveClosureComment} disabled={!detailContractCapabilities.canArchive} onChange={(event) => setArchiveClosureComment(event.target.value)} maxLength={1000} showCount rows={3} placeholder="填写归档完结说明" />
+                      <Space style={{ marginTop: 12 }}>
+                        <span>已选 {selectedArchiveObjectKeys.length} 个合同标的</span>
+                        <Popconfirm title="确认提交归档完结？" description="所选案件费用将被标记为已归档完结，并写入操作记录。" onConfirm={() => void submitArchiveClosure()}>
+                          <Button type="primary" loading={archiveClosureSaving} disabled={!detailContractCapabilities.canArchive || !selectedArchiveObjectKeys.length}>提交归档完结</Button>
+                        </Popconfirm>
+                      </Space>
+                    </div>
                   </>,
                 },
                 {

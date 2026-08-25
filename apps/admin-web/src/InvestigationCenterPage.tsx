@@ -21,6 +21,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import {
@@ -36,6 +37,7 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useCascaderAreaData } from "@vant/area-data";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
@@ -125,6 +127,40 @@ type InvestigationRegionGroup = {
   province: string;
   cities: string[];
 };
+type AdministrativeRegionOption = {
+  text: string;
+  value: string;
+  children?: AdministrativeRegionOption[];
+};
+
+const INVESTIGATION_ADMINISTRATIVE_REGIONS = useCascaderAreaData() as AdministrativeRegionOption[];
+
+const investigationAdministrativeCity = (province: string, city: string) => {
+  const cities = INVESTIGATION_ADMINISTRATIVE_REGIONS.find(
+    (item) => item.text === province,
+  )?.children || [];
+  // The legacy contract scope represents municipalities as "市辖区", while the
+  // national division data names their only city node after the municipality.
+  if (city === "市辖区" && cities.length === 1) return cities[0];
+  return cities.find((item) => item.text === city);
+};
+
+const investigationDistrictsForCity = (province: string, city: string) =>
+  investigationAdministrativeCity(province, city)?.children?.map((item) => item.text) || [];
+
+const investigationTaskRegionOptions = (groups: InvestigationRegionGroup[]) =>
+  groups.map(({ province, cities }) => ({
+    value: province,
+    label: province,
+    children: cities.map((city) => ({
+      value: city,
+      label: city,
+      children: investigationDistrictsForCity(province, city).map((district) => ({
+        value: district,
+        label: district,
+      })),
+    })),
+  }));
 
 const CLUE_INFRINGEMENT_METHOD_OPTIONS = [
   "电商平台",
@@ -315,6 +351,10 @@ export default function InvestigationCenterPage({
   const [collectionFiles, setCollectionFiles] = useState<File[]>([]);
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [clueReviewing, setClueReviewing] = useState<Row | null>(null);
+  const [batchSubmitOpen, setBatchSubmitOpen] = useState(false);
+  const [turnOnAuditTarget, setTurnOnAuditTarget] = useState<Row | null>(null);
+  const [reviewerCandidates, setReviewerCandidates] = useState<PersonOption[]>([]);
+  const [reviewerCandidatesLoading, setReviewerCandidatesLoading] = useState(false);
   const [collectionTarget, setCollectionTarget] = useState<Row | null>(null);
   const [evidenceSource, setEvidenceSource] = useState<Row | null>(null);
   const [certificateTarget, setCertificateTarget] = useState<Row | null>(null);
@@ -362,11 +402,14 @@ export default function InvestigationCenterPage({
   const [createForm] = Form.useForm();
   const [reviewForm] = Form.useForm();
   const [clueReviewForm] = Form.useForm();
+  const [batchSubmitForm] = Form.useForm();
+  const [turnOnAuditForm] = Form.useForm();
   const [collectionForm] = Form.useForm();
   const [evidenceForm] = Form.useForm();
   const [certificateForm] = Form.useForm();
   const [taskForm] = Form.useForm();
   const taskProvince = Form.useWatch("province", taskForm);
+  const taskCity = Form.useWatch("city", taskForm);
   const [subtaskActionForm] = Form.useForm();
   const [materialForm] = Form.useForm();
   const [batchForm] = Form.useForm();
@@ -414,6 +457,10 @@ export default function InvestigationCenterPage({
     const provinceGroup = allowedGroups.find((group) => group.province === province);
     const inheritedCity = String(target.data.city || "").trim();
     const city = provinceGroup?.cities.includes(inheritedCity) ? inheritedCity : "";
+    const inheritedDistrict = String(target.data.district || "").trim();
+    const district = investigationDistrictsForCity(province, city).includes(inheritedDistrict)
+      ? inheritedDistrict
+      : "";
     taskForm.resetFields();
     taskForm.setFieldsValue({
       title: `${target.title || target.serial_no} - 调查子任务`,
@@ -430,7 +477,8 @@ export default function InvestigationCenterPage({
       authorization_scope: String(target.data.authorization_scope || "").trim(),
       province,
       city,
-      region_path: province && city ? [province, city] : [],
+      district,
+      region_path: province && city ? [province, city, ...(district ? [district] : [])] : [],
       contract_record_id:
         target.data.contract_id || target.data.contract_record_id || undefined,
     });
@@ -805,6 +853,80 @@ export default function InvestigationCenterPage({
       load("clue");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "提交失败");
+    }
+  };
+  const openBatchSubmit = () => {
+    if (!selectedRows.length) {
+      message.warning("请至少勾选一条待提交线索");
+      return;
+    }
+    if (
+      selectedRows.some(
+        (row) =>
+          row.module !== "clue" || !["草稿", "已驳回"].includes(row.status),
+      )
+    ) {
+      message.warning("仅可批量提交草稿或已驳回线索");
+      return;
+    }
+    batchSubmitForm.resetFields();
+    batchSubmitForm.setFieldsValue({ comment: "批量提交线索审批" });
+    setBatchSubmitOpen(true);
+  };
+  const submitCluesBatch = async () => {
+    const values = await batchSubmitForm.validateFields();
+    try {
+      const { data } = await api.post("/investigations/clues/batch-submit", {
+        clue_ids: selectedRows.map((row) => row.id),
+        comment: String(values.comment || "").trim(),
+      });
+      message.success(`已提交 ${data.updated || selectedRows.length} 条线索审批`);
+      setBatchSubmitOpen(false);
+      setSelectedClues([]);
+      load("clue");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量提交失败");
+    }
+  };
+  const openTurnOnAudit = async (row: Row) => {
+    setTurnOnAuditTarget(row);
+    setReviewerCandidates([]);
+    turnOnAuditForm.resetFields();
+    setReviewerCandidatesLoading(true);
+    try {
+      const { data } = await api.get(
+        `/investigations/clues/${row.id}/reviewer-candidates`,
+      );
+      setReviewerCandidates(
+        (data.items || []).map((item: PersonOption & { display_name?: string }) => ({
+          value: item.username || item.value,
+          username: item.username || item.value,
+          label: item.label || item.display_name || item.username || item.value,
+        })),
+      );
+    } catch (error: any) {
+      setTurnOnAuditTarget(null);
+      message.error(error?.response?.data?.detail || "审核人候选列表加载失败");
+    } finally {
+      setReviewerCandidatesLoading(false);
+    }
+  };
+  const saveTurnOnAudit = async () => {
+    if (!turnOnAuditTarget) return;
+    const values = await turnOnAuditForm.validateFields();
+    try {
+      await api.post(
+        `/investigations/clues/${turnOnAuditTarget.id}/turn-on-audit`,
+        {
+          reviewer: values.reviewer,
+          comment: String(values.comment || "").trim(),
+        },
+      );
+      message.success("线索已转交审核人");
+      setTurnOnAuditTarget(null);
+      load("clue");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "转交审核人失败");
     }
   };
   const reviewClue = async () => {
@@ -1437,6 +1559,7 @@ export default function InvestigationCenterPage({
         ...v,
         province: regionPath[0] || v.province || "",
         city: regionPath[1] || v.city || "",
+        district: regionPath[2] || v.district || "",
         // Keep the selected investigation area distinct from the inherited
         // authorization scope.  The API still inherits the scope from the
         // parent when this concrete province/city path is supplied.
@@ -1463,6 +1586,7 @@ export default function InvestigationCenterPage({
           deadline: "截止日期",
           province: "调查省份",
           city: "调查城市",
+          district: "调查区/县",
         };
         taskForm.scrollToField(error.errorFields[0].name);
         message.warning(`请填写${labels[name] || "必填信息"}后再创建任务`);
@@ -2184,6 +2308,12 @@ export default function InvestigationCenterPage({
                     内部审批
                   </Button>
                 )}
+              {investigationActions[String(r.id)]?.review_clue &&
+                r.status === "待审批" && (
+                  <Button type="link" onClick={() => void openTurnOnAudit(r)}>
+                    转交审核人
+                  </Button>
+                )}
               {investigationActions[String(r.id)]?.review_customer_clue &&
                 r.status === "待客户审核" && (
                   <Button
@@ -2252,6 +2382,10 @@ export default function InvestigationCenterPage({
               >
                 {r.data.clue_no}
               </Button>
+            ) : r.data.missing_clue_guid ? (
+              <Tooltip title={`旧系统线索记录已缺失：${r.data.missing_clue_guid}`}>
+                <Tag color="orange">旧线索已缺失</Tag>
+              </Tooltip>
             ) : (
               "—"
             ),
@@ -2363,6 +2497,10 @@ export default function InvestigationCenterPage({
               >
                 {r.data.clue_no}
               </Button>
+            ) : r.data.missing_clue_guid ? (
+              <Tooltip title={`旧系统线索记录已缺失：${r.data.missing_clue_guid}`}>
+                <Tag color="orange">旧线索已缺失</Tag>
+              </Tooltip>
             ) : (
               "—"
             ),
@@ -2456,7 +2594,7 @@ export default function InvestigationCenterPage({
     "investigation-task-unassigned": ["查询", "刷新", "新增子任务", "删除"],
     "investigation-task-sub-published": ["查询", "刷新", "修改", "批量删除"],
     "investigation-task-sub-mine": ["查询", "刷新", "新增线索"],
-    "clue-my-draft": ["查询", "修改", "提交", "新增文件", "批量删除"],
+    "clue-my-draft": ["查询", "修改", "提交", "批量提交", "新增文件", "批量删除"],
     "clue-my-pending": ["查询", "修改"],
     "clue-my-customer": ["查询", "修改"],
     "clue-my-collect": ["查询", "修改", "新增调查员", "取证"],
@@ -2470,10 +2608,10 @@ export default function InvestigationCenterPage({
       "取证",
       "生成案件",
     ],
-    "clue-my-refused": ["查询", "修改", "提交", "新增文件", "批量删除"],
+    "clue-my-refused": ["查询", "修改", "提交", "批量提交", "新增文件", "批量删除"],
     "clue-my-no-fee": ["查询", "修改", "申请费用"],
     "clue-my-fee": ["查询", "修改"],
-    "clue-audit-pending": ["查询", "刷新", "修改", "审批"],
+    "clue-audit-pending": ["查询", "刷新", "修改", "审批", "转交审核人"],
     "clue-audit-customer": ["查询", "刷新", "修改", "审批"],
   };
   const selectedRows = visibleRows.filter((row) =>
@@ -2555,6 +2693,19 @@ export default function InvestigationCenterPage({
     生成案件: () => void openBatchCases(),
     修改: () => requireSingleRow("修改", openEdit),
     提交: () => requireSingleRow("提交", (row) => void submitClue(row)),
+    批量提交: () => openBatchSubmit(),
+    转交审核人: () =>
+      requireSingleRow("转交审核人", (row) => {
+        if (row.status !== "待审批") {
+          message.warning("仅待审批线索可转交审核人");
+          return;
+        }
+        if (!investigationActions[String(row.id)]?.review_clue) {
+          message.error("当前账号没有该线索的内部审核权限");
+          return;
+        }
+        void openTurnOnAudit(row);
+      }),
     审批: () =>
       requireSingleRow("审批", (row) => {
         const actions = investigationActions[String(row.id)];
@@ -3227,14 +3378,14 @@ export default function InvestigationCenterPage({
   const taskCityOptions =
     taskScopeGroups.find((group) => group.province === taskSelectedProvince)
       ?.cities || [];
+  const taskDistrictOptions = investigationDistrictsForCity(
+    taskSelectedProvince,
+    String(taskCity || ""),
+  );
   const taskAuthorizationScope = String(
     taskTarget?.data.authorization_scope || "未配置",
   ).trim();
-  const taskRegionOptions = taskScopeGroups.map((group) => ({
-    value: group.province,
-    label: group.province,
-    children: group.cities.map((city) => ({ value: city, label: city })),
-  }));
+  const taskRegionOptions = investigationTaskRegionOptions(taskScopeGroups);
   return (
     <>
       <Modal
@@ -3777,6 +3928,57 @@ export default function InvestigationCenterPage({
               <Input.TextArea rows={3} />
             </Form.Item>
           </div>
+        </Form>
+      </Modal>
+      <Modal
+        open={batchSubmitOpen}
+        title={`批量提交线索审批（${selectedRows.length} 条）`}
+        okText="确认提交"
+        cancelText="取消"
+        onOk={submitCluesBatch}
+        onCancel={() => setBatchSubmitOpen(false)}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="已选线索将作为一个批次提交"
+          description="服务端会统一校验全部线索；任一线索不满足提交条件时，本次不会提交任何线索。"
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={batchSubmitForm} layout="vertical">
+          <Form.Item label="审批说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(turnOnAuditTarget)}
+        title={`转交审核人：${turnOnAuditTarget?.serial_no || ""}`}
+        okText="确认转交"
+        cancelText="取消"
+        confirmLoading={reviewerCandidatesLoading}
+        onOk={saveTurnOnAudit}
+        onCancel={() => setTurnOnAuditTarget(null)}
+      >
+        <Form form={turnOnAuditForm} layout="vertical">
+          <Form.Item
+            label="目标审核人"
+            name="reviewer"
+            rules={[{ required: true, message: "请选择具备线索审批岗位的审核人" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={reviewerCandidatesLoading}
+              options={reviewerCandidates}
+              notFoundContent={
+                reviewerCandidatesLoading ? "正在加载审核人" : "没有可用审核人"
+              }
+            />
+          </Form.Item>
+          <Form.Item label="转交说明" name="comment">
+            <Input.TextArea rows={3} />
+          </Form.Item>
         </Form>
       </Modal>
       <Modal
@@ -4432,7 +4634,11 @@ export default function InvestigationCenterPage({
                     value: group.province,
                     label: group.province,
                   }))}
-                  onChange={() => taskForm.setFieldValue("city", undefined)}
+                  onChange={() => taskForm.setFieldsValue({
+                    city: undefined,
+                    district: undefined,
+                    region_path: [],
+                  })}
                 />
               </Form.Item>
               <Form.Item
@@ -4444,6 +4650,23 @@ export default function InvestigationCenterPage({
                   placeholder="请选择授权范围内的城市"
                   disabled={!taskSelectedProvince}
                   options={taskCityOptions.map((city) => ({ value: city, label: city }))}
+                  onChange={() => taskForm.setFieldsValue({ district: undefined, region_path: [] })}
+                />
+              </Form.Item>
+              <Form.Item
+                label="调查区/县"
+                name="district"
+                rules={[{ required: true, message: "请选择调查城市下的区/县" }]}
+              >
+                <Select
+                  placeholder="请选择调查城市下的区/县"
+                  disabled={!taskCity}
+                  options={taskDistrictOptions.map((district) => ({ value: district, label: district }))}
+                  onChange={(district) => {
+                    if (taskSelectedProvince && taskCity) {
+                      taskForm.setFieldValue("region_path", [taskSelectedProvince, taskCity, district]);
+                    }
+                  }}
                 />
               </Form.Item>
             </div>
@@ -4453,8 +4676,8 @@ export default function InvestigationCenterPage({
             <Form.Item
               label="调查区域"
               name="region_path"
-              rules={[{ required: true, type: "array", min: 2, message: "请选择调查区域" }]}
-              extra="按省、市选择调查区域，系统会自动继承到任务并限制在授权范围内"
+              rules={[{ required: true, type: "array", min: 3, message: "请选择调查区域" }]}
+              extra="按省、市、区/县选择调查区域，系统会自动继承到任务并限制在授权范围内"
             >
               <Cascader
                 options={taskRegionOptions}
@@ -4462,8 +4685,12 @@ export default function InvestigationCenterPage({
                 showSearch
                 expandTrigger="hover"
                 onChange={(path) => {
-                  const [provinceValue, cityValue] = (path || []) as string[];
-                  taskForm.setFieldsValue({ province: provinceValue || "", city: cityValue || "" });
+                  const [provinceValue, cityValue, districtValue] = (path || []) as string[];
+                  taskForm.setFieldsValue({
+                    province: provinceValue || "",
+                    city: cityValue || "",
+                    district: districtValue || "",
+                  });
                 }}
               />
             </Form.Item>

@@ -33,6 +33,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { LegacyContractHistoryPanel } from "./LegacyContractHistoryPanel";
 import { buildChinesePersonOptions, displayChinesePersonName, displayChinesePersonNames } from "./contractPeoplePresentation.mjs";
 import { customerStatusLabel } from "./customerStatusLabel";
 import { consumeCustomerDetailTarget } from "./customerDetailNavigation";
@@ -144,6 +145,18 @@ type CustomerNotice = {
   comment: string;
   operator: string;
   created_at: string;
+};
+type LegacyCustomerHistory = {
+  coordinators: any[];
+  contacts: any[];
+  events: any[];
+  files: any[];
+  zero_baselines: { source_table: string; source_row_count: number; audit_status: string }[];
+  counts: { coordinators: number; contacts: number; events: number; files: number };
+};
+const EMPTY_LEGACY_CUSTOMER_HISTORY: LegacyCustomerHistory = {
+  coordinators: [], contacts: [], events: [], files: [], zero_baselines: [],
+  counts: { coordinators: 0, contacts: 0, events: 0, files: 0 },
 };
 type Customer = {
   id: number;
@@ -324,6 +337,8 @@ export default function CustomerCenterPage({
     [customerEventError, setCustomerEventError] = useState(""),
     [sharedObjects, setSharedObjects] = useState<string[]>([]),
     [sharedObjectsError, setSharedObjectsError] = useState(""),
+    [legacyCustomerHistory, setLegacyCustomerHistory] = useState<LegacyCustomerHistory>(EMPTY_LEGACY_CUSTOMER_HISTORY),
+    [legacyCustomerHistoryError, setLegacyCustomerHistoryError] = useState(""),
     [detailLoading, setDetailLoading] = useState(false),
     [detailTab, setDetailTab] = useState("contacts"),
     [documentFile, setDocumentFile] = useState<File | null>(null),
@@ -812,6 +827,8 @@ export default function CustomerCenterPage({
     let customerEventErrorMessage = "";
     let sharedObjectItems: string[] = [];
     let sharedObjectsErrorMessage = "";
+    let legacyHistoryItems: LegacyCustomerHistory = EMPTY_LEGACY_CUSTOMER_HISTORY;
+    let legacyHistoryErrorMessage = "";
     const customerGuid = getCustomerGuid(target);
     const customerEventListPath = buildCustomerEventListPath(customerGuid);
     const customerFileListPath = buildCustomerFileListPath(customerGuid);
@@ -825,11 +842,13 @@ export default function CustomerCenterPage({
       },
     };
     try {
-      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes] = await Promise.all([
-        api.get("/records", {
+      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes, legacyHistoryRes] = await Promise.all([
+        api.get("/customers", {
           params: {
-            module: "customer",
-            keyword: target.serial_no,
+            scope: originalCustomerScope,
+            customer_name: target.serial_no,
+            customer_type: target.data.customer_type || "客户",
+            page: 1,
             page_size: 10,
           },
         }).catch((error) => {
@@ -862,6 +881,12 @@ export default function CustomerCenterPage({
         contactListRequest
           ? api.get(contactListRequest.url, { params: contactListRequest.params }).catch(() => fallbackContactResponse)
           : Promise.resolve(fallbackContactResponse),
+        customerGuid
+          ? api.get(`/customers/guid/${encodeURIComponent(customerGuid)}/legacy-history`).catch((error) => {
+              legacyHistoryErrorMessage = getCustomerResponseMessage(error, "旧系统客户历史加载失败");
+              return { data: EMPTY_LEGACY_CUSTOMER_HISTORY };
+            })
+          : Promise.resolve({ data: EMPTY_LEGACY_CUSTOMER_HISTORY }),
       ]);
       let resolvedCustomer = target;
       try {
@@ -907,6 +932,15 @@ export default function CustomerCenterPage({
       } catch (error: any) {
         sharedObjectsErrorMessage = getCustomerResponseMessage(error, "\u5171\u4eab\u5bf9\u8c61\u52a0\u8f7d\u5931\u8d25");
       }
+      const rawLegacyHistory = legacyHistoryRes?.data || EMPTY_LEGACY_CUSTOMER_HISTORY;
+      legacyHistoryItems = {
+        coordinators: Array.isArray(rawLegacyHistory.coordinators) ? rawLegacyHistory.coordinators : [],
+        contacts: Array.isArray(rawLegacyHistory.contacts) ? rawLegacyHistory.contacts : [],
+        events: Array.isArray(rawLegacyHistory.events) ? rawLegacyHistory.events : [],
+        files: Array.isArray(rawLegacyHistory.files) ? rawLegacyHistory.files : [],
+        zero_baselines: Array.isArray(rawLegacyHistory.zero_baselines) ? rawLegacyHistory.zero_baselines : [],
+        counts: { ...EMPTY_LEGACY_CUSTOMER_HISTORY.counts, ...(rawLegacyHistory.counts || {}) },
+      };
     } finally {
       setEvents(historyItems);
       setHistoryError(historyErrorMessage);
@@ -916,6 +950,8 @@ export default function CustomerCenterPage({
       setCustomerEventError(customerEventErrorMessage);
       setSharedObjects(sharedObjectItems);
       setSharedObjectsError(sharedObjectsErrorMessage);
+      setLegacyCustomerHistory(legacyHistoryItems);
+      setLegacyCustomerHistoryError(legacyHistoryErrorMessage);
       setDetailLoading(false);
     }
   };
@@ -1001,11 +1037,12 @@ export default function CustomerCenterPage({
       managerKeyword,
     })));
     rememberCustomerRelationTarget({ id: customer.id, serial_no: customer.serial_no, title: customer.title, target: "civil-cases" });
-    const targetView = initialView === "customer-mine"
+    const targetViewBase = initialView === "customer-mine"
       ? "case-mine"
       : ["customer-dept", "customer-dept-recycle"].includes(initialView)
         ? "case-dept"
         : "case-company";
+    const targetView = `${targetViewBase}-civil-customer-${customer.id}`;
     onNavigate?.(targetView);
   };
   const openCustomerIprCases = (customer: Customer) => {
@@ -1709,6 +1746,52 @@ export default function CustomerCenterPage({
       ]}
     />
   );
+  const legacyCustomerHistoryStatusLabel = (value?: string) => ({
+    exact_username: "用户名精确匹配",
+    missing_new_user: "新系统无对应员工",
+    blank_source_username: "旧系统未记录员工",
+    exact_legacy_customer_guid: "客户精确匹配",
+    legacy_parent_missing: "旧客户缺失",
+    legacy_parent_mismatch: "旧客户信息不一致",
+    ambiguous_legacy_customer_guid: "客户映射存在歧义",
+    missing_new_customer_guid: "新系统无对应客户",
+    not_declared: "旧系统未记录照片",
+    missing_local_file: "源文件缺失",
+    zero_baseline: "旧系统记录数为零",
+    nonzero_requires_dedicated_reaudit: "存在记录，需专项复核",
+  }[value || ""] || value || "—");
+  const legacyCustomerHistoryTab = {
+    key: "legacy-customer-history",
+    label: `旧系统历史（${legacyCustomerHistory.counts.coordinators + legacyCustomerHistory.counts.contacts + legacyCustomerHistory.counts.events + legacyCustomerHistory.counts.files}）`,
+    children: (
+      <>
+        {legacyCustomerHistoryError && <Alert type="warning" showIcon message={legacyCustomerHistoryError} style={{ marginBottom: 8 }} />}
+        <Alert type="info" showIcon message="旧 CRM 历史为只读证据，不会写入当前跟进记录、实时附件或工作流。源文件缺失时仅展示元数据，不能下载或预览。" style={{ marginBottom: 12 }} />
+        <Table rowKey={(row: any) => `coordinator-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.coordinators} locale={{ emptyText: "暂无旧系统协作人" }} columns={[
+          { title: "旧系统协作人", dataIndex: "source_username", render: (value: string, row: any) => row.mapped_user?.display_name || value || "—" },
+          { title: "用户映射", dataIndex: "user_mapping_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) },
+          { title: "父客户映射", dataIndex: "parent_mapping_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) },
+          { title: "来源主键", dataIndex: "source_primary_key" },
+        ]} />
+        <Table style={{ marginTop: 12 }} rowKey={(row: any) => `contact-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.contacts} locale={{ emptyText: "暂无旧系统联系人" }} columns={[
+          { title: "姓名", dataIndex: "contact_name" }, { title: "职务", dataIndex: "title" }, { title: "移动电话", dataIndex: "mobile_phone" }, { title: "邮箱", dataIndex: "email" },
+          { title: "照片恢复状态", dataIndex: "photo_recovery_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) }, { title: "来源主键", dataIndex: "source_primary_key" },
+        ]} />
+        <Table style={{ marginTop: 12 }} rowKey={(row: any) => `event-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.events} locale={{ emptyText: "暂无旧系统事项" }} columns={[
+          { title: "事项内容", dataIndex: "content" }, { title: "操作人", dataIndex: "operator_username", render: (value: string, row: any) => row.mapped_user?.display_name || value || "—" },
+          { title: "操作时间", dataIndex: "operated_at" }, { title: "来源主键", dataIndex: "source_primary_key" },
+        ]} />
+        <Table style={{ marginTop: 12 }} rowKey={(row: any) => `file-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.files} locale={{ emptyText: "暂无旧系统文件" }} columns={[
+          { title: "文件名", dataIndex: "original_name" }, { title: "声明大小", dataIndex: "declared_size_bytes", render: (value: number) => value ? `${value} B` : "—" },
+          { title: "证照", dataIndex: "is_license", render: (value: boolean) => value ? "是" : "否" }, { title: "上传人", dataIndex: "uploader_username", render: (value: string, row: any) => row.mapped_user?.display_name || value || "—" },
+          { title: "物理恢复状态", dataIndex: "physical_recovery_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) }, { title: "操作", render: () => <span>源文件缺失，不能下载或预览</span> },
+        ]} />
+        <Table style={{ marginTop: 12 }} rowKey="source_table" size="small" pagination={false} dataSource={legacyCustomerHistory.zero_baselines} locale={{ emptyText: "未导入旧系统零基线" }} columns={[
+          { title: "旧系统零基线", dataIndex: "source_table" }, { title: "源记录数", dataIndex: "source_row_count" }, { title: "状态", dataIndex: "audit_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) },
+        ]} />
+      </>
+    ),
+  };
   return (
     <>
       {isReadOnlyCustomerList && detailPageOpen && contacts && (
@@ -1780,6 +1863,11 @@ export default function CustomerCenterPage({
             onChange={handleCustomerDetailTabChange}
             items={[
               {
+                key: "legacy-contract-history",
+                label: "历史合同",
+                children: <LegacyContractHistoryPanel customerNo={String(contacts.serial_no || (contacts.data as any).customer_no || "")} />,
+              },
+              {
                 key: "contacts",
                 label: "联系人",
                 children: <><Space style={{ marginBottom: 8 }}>{canManageCurrentCustomer && <Button size="small" type="primary" onClick={() => openNewEditor("contact")}>新建联系人</Button>}<Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshCustomerContacts()}>刷新</Button></Space><Table className="customer-contact-table" rowKey="id" size="small" tableLayout="fixed" pagination={{ current: contactPage, pageSize: contactPageSize, total: contactTotal, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (nextPage, nextPageSize) => void loadContactPage(contacts, nextPage, nextPageSize), showTotal: (count) => `共有${count}条` }} dataSource={contacts.data.contacts || []} scroll={{ x: 1460 }} locale={{emptyText:"没有查询到联系人"}} columns={[
@@ -1787,6 +1875,7 @@ export default function CustomerCenterPage({
                   {title:"查看",render:(_:unknown,row:Contact)=><Button type="link" onClick={()=>setViewingContact(row)}>查看</Button>},
                   ]} /></>,
               },
+              legacyCustomerHistoryTab,
               {
                 key: "contracts",
                 label: `合同（${contacts.data.contract_count ?? 0}）`,
@@ -2304,6 +2393,11 @@ export default function CustomerCenterPage({
           onChange={handleCustomerDetailTabChange}
           items={[
             {
+              key: "legacy-contract-history",
+              label: "历史合同",
+              children: <LegacyContractHistoryPanel customerNo={String(contacts?.serial_no || (contacts?.data as any)?.customer_no || "")} />,
+            },
+            {
               key: "contacts",
               label: `联系人（${contacts?.data.contacts?.length || 0}）`,
               children: (
@@ -2411,6 +2505,7 @@ export default function CustomerCenterPage({
                 </>
               ),
             },
+            legacyCustomerHistoryTab,
             {
               key: "contracts",
               label: `合同（${contacts?.data.contract_count ?? 0}）`,

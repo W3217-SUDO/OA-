@@ -48,6 +48,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
@@ -290,6 +291,7 @@ const menuItems: NavItem[] = [
       { key: "case-company", label: "全所案件" },
       { key: "case-schedule", label: "开庭排期" },
       { key: "case-execution", label: "执行案件" },
+      { key: "case-legacy-ls-history", label: "历史诉讼案件" },
       { key: "case-archive", label: "归档审核" },
     ],
   },
@@ -302,6 +304,11 @@ const menuItems: NavItem[] = [
       { key: "ipr-review", label: "知识产权立案审核" },
       { key: "ipr-office-files", label: "知识产权官文" },
       { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
+      { key: "ipr-source-person", label: "我是案源人" },
+      { key: "ipr-procurator", label: "我是代理人" },
+      { key: "ipr-copywriter", label: "我是撰稿人" },
+      { key: "ipr-officer", label: "我是处理人" },
+      { key: "ipr-business-owner", label: "我是案件管理人" },
     ],
   },
   {
@@ -981,7 +988,9 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
         const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
         ({ data } = await api.post("/auth/dingtalk/bind", { ...values, auth_code: result.code }));
       } else {
-        ({ data } = await api.post("/auth/login", form));
+        ({ data } = await api.post("/auth/login", form, {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        }));
       }
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
@@ -1739,6 +1748,8 @@ export default function App() {
       <IprCustomFileImportPage />
     ) : route.startsWith("ipr-") ? (
       <IprCenterPage initialView={active} onNavigate={navigate} />
+    ) : route === "case-legacy-ls-history" ? (
+      <LegacyLsHistoryPanel />
     ) : route.startsWith("case-") ? (
       <CaseCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "affairs-records" ? (

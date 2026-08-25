@@ -22,6 +22,7 @@ import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
+import { IprLegacyHistoryRelations } from "./IprLegacyHistoryRelations";
 import { formatRequiredDate } from "./formSafety";
 import {
   buildIprCaseActionPayload,
@@ -54,7 +55,18 @@ type IprRecord = {
   data: Record<string, any>;
   updated_at: string;
 };
+type LegacyIprCaseListItem = {
+  legacy_case_id: number;
+  case_no: string;
+  title: string;
+  case_type: string;
+  applicant: string;
+  deadline?: string | null;
+  relationship_state: string;
+  current_case_record_id: number | null;
+};
 type Customer = { id: number; title: string; serial_no: string };
+type PeopleOption = { username: string; label: string };
 type Attachment = {
   id: number;
   original_name: string;
@@ -89,16 +101,54 @@ type AssistedFee = {
   remark: string;
   receipt: Attachment | null;
 };
-type IprReminder = {
+type IprCaseEvent = {
   id: number;
   event_type_id: number;
   event_type: string;
-  reminder_date: string;
+  event_date: string;
   deadline: string;
   content: string;
   creator: string;
   creator_display_name?: string;
 };
+type IprCaseTask = {
+  id: number;
+  serial_no: string;
+  title: string;
+  customer: string;
+  owner: string;
+  owner_display_name?: string;
+  status: string;
+  deadline?: string;
+  priority?: string;
+  description?: string;
+  case_record_id?: number;
+  case_module?: string;
+  case_no?: string;
+};
+type IprReminderTypeQuery = {
+  case_kind?: string;
+  case_type?: string;
+  case_phase?: string;
+  statuses?: string[];
+  event_type_ids?: number[];
+  annual_fee_monitoring?: boolean | null;
+  deadline_from?: string;
+  deadline_to?: string;
+  deadline_within_days?: number | null;
+};
+type IprReminderType = {
+  id: number;
+  name: string;
+  query_object: IprReminderTypeQuery;
+  is_default: boolean;
+  is_active: boolean;
+  sort_order: number;
+  case_count: number;
+  created_by: string;
+  updated_by: string;
+};
+type IprReminderEventOption = { id: number; name: string };
 type ReminderEventType = { id: number; name: string; suppressed: boolean };
 type IprLawFirm = { id: number; law_firm_id: number; code: string; name: string; phone: string; email: string };
 type IprLawFirmCandidate = { id: number; code: string; name: string; phone: string; email: string; selected: boolean };
@@ -109,10 +159,12 @@ type IprCaseContact = CustomerContact & { customer_id: number; customer_name: st
 type IprBusinessLog = { id: number; content: string; created_by: string; created_by_display_name?: string; created_at: string };
 type IprOperationLog = { id: number; action: string; operator: string; operator_display_name?: string; comment: string; from_status?: string; to_status?: string; created_at: string };
 type IprHistoryItem = { id: number; action: string; operator: string; operator_display_name?: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
+type IprBatchCreateError = { row_no: number; message: string; errors: Record<string, string> };
 type IprDetailPageState = { page: number; pageSize: number; total: number; pages: number };
 type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number };
 const IPR_DETAIL_DEFAULT_PAGE = 1;
 const IPR_DETAIL_DEFAULT_PAGE_SIZE = 15;
+const isLegacyIprRecord = (record: IprRecord) => Number(record.data?.legacy_ipr_case_id || record.data?.legacy_case_id || 0) > 0;
 const personDisplayName = (value?: unknown) => String(value || "").trim() || "姓名待维护";
 const statusColor: Record<string, string> = {
   草稿: "default",
@@ -122,6 +174,13 @@ const statusColor: Record<string, string> = {
   已结案: "green",
 };
 const CUSTOMER_IPR_RELATION_STORAGE_KEY = "sunhold:customer-ipr-relation";
+const IPR_ROLE_VIEW_BY_ROUTE: Record<string, { roleView: string; label: string }> = {
+  "ipr-source-person": { roleView: "source_person", label: "我是案源人" },
+  "ipr-procurator": { roleView: "procurator", label: "我是代理人" },
+  "ipr-copywriter": { roleView: "copywriter", label: "我是撰稿人" },
+  "ipr-officer": { roleView: "officer", label: "我是处理人" },
+  "ipr-business-owner": { roleView: "business_owner", label: "我是案件管理人" },
+};
 const consumeCustomerIprRelationKeyword = () => {
   try {
     const raw = window.sessionStorage.getItem(CUSTOMER_IPR_RELATION_STORAGE_KEY);
@@ -148,6 +207,7 @@ export default function IprCenterPage({
       : initialView === "ipr-patent"
         ? "专利"
         : "";
+  const roleView = IPR_ROLE_VIEW_BY_ROUTE[initialView];
   const [items, setItems] = useState<IprRecord[]>([]),
     [total, setTotal] = useState(0),
     [loading, setLoading] = useState(false);
@@ -156,15 +216,24 @@ export default function IprCenterPage({
   const [pages, setPages] = useState(0);
   const [keyword, setKeyword] = useState(""),
     [annualFeeMonitoringFilter, setAnnualFeeMonitoringFilter] = useState<"" | "true" | "false">(""),
+    [reminderTypeId, setReminderTypeId] = useState<number | null>(null),
+    [reminderTypeName, setReminderTypeName] = useState(""),
     [form] = Form.useForm(),
     [createOpen, setCreateOpen] = useState(false),
     [detail, setDetail] = useState<IprRecord | null>(null),
+    [legacyHistoryOpen, setLegacyHistoryOpen] = useState(false),
+    [legacyHistoryItems, setLegacyHistoryItems] = useState<LegacyIprCaseListItem[]>([]),
+    [legacyHistoryTotal, setLegacyHistoryTotal] = useState(0),
+    [legacyHistoryLoading, setLegacyHistoryLoading] = useState(false),
+    [legacyHistoryKeyword, setLegacyHistoryKeyword] = useState(""),
+    [legacyHistoryCaseId, setLegacyHistoryCaseId] = useState<number | null>(null),
     [editing, setEditing] = useState<IprRecord | null>(null),
     [attachments, setAttachments] = useState<Attachment[]>([]);
   const [iprSectionErrors, setIprSectionErrors] = useState({
     files: "",
     logs: "",
     reminders: "",
+    tasks: "",
     assistedFees: "",
   });
   const [filesPageState, setFilesPageState] = useState<IprDetailPageState>({
@@ -179,6 +248,12 @@ export default function IprCenterPage({
     total: 0,
     pages: 0,
   });
+  const [iprTasksPageState, setIprTasksPageState] = useState<IprDetailPageState>({
+    page: IPR_DETAIL_DEFAULT_PAGE,
+    pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  });
   const [assistedFeesPageState, setAssistedFeesPageState] = useState<IprDetailPageState>({
     page: IPR_DETAIL_DEFAULT_PAGE,
     pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE,
@@ -186,6 +261,7 @@ export default function IprCenterPage({
     pages: 0,
   });
   const [customers, setCustomers] = useState<Customer[]>([]),
+    [peopleOptions, setPeopleOptions] = useState<PeopleOption[]>([]),
     [profile, setProfile] = useState<{ role?: string; username?: string }>({}),
     [maintenanceTarget, setMaintenanceTarget] = useState<IprRecord | null>(
       null,
@@ -197,10 +273,21 @@ export default function IprCenterPage({
     [transactTarget, setTransactTarget] = useState<AssistedFee | null>(null),
     [transactForm] = Form.useForm(),
     [receiptFile, setReceiptFile] = useState<File | null>(null),
-    [reminders, setReminders] = useState<IprReminder[]>([]),
-    [reminderOpen, setReminderOpen] = useState(false),
-    [reminderDetail, setReminderDetail] = useState<IprReminder | null>(null),
-    [reminderForm] = Form.useForm(),
+    [iprCaseEvents, setIprCaseEvents] = useState<IprCaseEvent[]>([]),
+    [iprEventOpen, setIprEventOpen] = useState(false),
+    [editingIprEvent, setEditingIprEvent] = useState<IprCaseEvent | null>(null),
+    [iprEventDetail, setIprEventDetail] = useState<IprCaseEvent | null>(null),
+    [iprEventForm] = Form.useForm(),
+    [iprCaseTasks, setIprCaseTasks] = useState<IprCaseTask[]>([]),
+    [iprTaskOpen, setIprTaskOpen] = useState(false),
+    [iprTaskForm] = Form.useForm(),
+    [reminderTypeWorkbenchOpen, setReminderTypeWorkbenchOpen] = useState(false),
+    [reminderTypeEditorOpen, setReminderTypeEditorOpen] = useState(false),
+    [reminderTypes, setReminderTypes] = useState<IprReminderType[]>([]),
+    [editingReminderType, setEditingReminderType] = useState<IprReminderType | null>(null),
+    [reminderTypeLoading, setReminderTypeLoading] = useState(false),
+    [reminderTypeEventOptions, setReminderTypeEventOptions] = useState<IprReminderEventOption[]>([]),
+    [reminderTypeForm] = Form.useForm(),
     [suppressionOpen, setSuppressionOpen] = useState(false),
     [reminderEventTypes, setReminderEventTypes] = useState<ReminderEventType[]>(
       [],
@@ -242,6 +329,12 @@ export default function IprCenterPage({
     [iprLogForm] = Form.useForm();
   const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
   const [deadlineOffsetForm] = Form.useForm();
+  const [iprBatchCreateOpen, setIprBatchCreateOpen] = useState(false);
+  const [iprBatchCreateForm] = Form.useForm();
+  const [iprBatchCreateErrors, setIprBatchCreateErrors] = useState<IprBatchCreateError[]>([]);
+  const [iprRebootOpen, setIprRebootOpen] = useState(false);
+  const [iprRebootForm] = Form.useForm();
+  const [iprRebootPreview, setIprRebootPreview] = useState<{ source_case_id: number; source_case_no: string; source_title: string; source_status: string; next_serial_no: string } | null>(null);
   const [iprDetailTab, setIprDetailTab] = useState<string>("files");
   const batchCaseIds = Form.useWatch("case_ids", iprBatchForm) as number[] | undefined;
   const batchSelectedKinds = useMemo(() => {
@@ -280,20 +373,29 @@ export default function IprCenterPage({
   const setIprSectionError = (section: keyof typeof iprSectionErrors, error: unknown) => {
     setIprSectionErrors((current) => ({
       ...current,
-      [section]: getIprSectionLoadError(section, error),
+      [section]: section === "tasks"
+        ? getIprApiErrorMessage(error, "案件任务加载失败")
+        : getIprSectionLoadError(section, error),
     }));
   };
   const handledDetailTarget = useRef("");
   const reviewView = initialView === "ipr-review";
-  const load = async (nextPage = page, nextPageSize = pageSize, nextKeyword = keyword) => {
+  const load = async (
+    nextPage = page,
+    nextPageSize = pageSize,
+    nextKeyword = keyword,
+    nextReminderTypeId = reminderTypeId,
+  ) => {
     setLoading(true);
     try {
       const { data } = await api.get("/ipr/cases", {
         params: {
           case_kind: kind,
           record_status: reviewView ? "待立案审核" : "",
+          role_view: roleView?.roleView,
           keyword: nextKeyword,
           annual_fee_monitoring: annualFeeMonitoringFilter || undefined,
+          reminder_type_id: nextReminderTypeId || undefined,
           page: nextPage,
           page_size: nextPageSize,
         },
@@ -308,6 +410,25 @@ export default function IprCenterPage({
     } finally {
       setLoading(false);
     }
+  };
+  const loadLegacyHistory = async (nextKeyword = legacyHistoryKeyword) => {
+    setLegacyHistoryLoading(true);
+    try {
+      const { data } = await api.get<{ items: LegacyIprCaseListItem[]; total: number }>("/legacy-ipr-history/cases", {
+        params: { keyword: nextKeyword, page: 1, page_size: 100 },
+      });
+      setLegacyHistoryItems(data.items || []);
+      setLegacyHistoryTotal(data.total || 0);
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || "Historical IPR cases are unavailable");
+    } finally {
+      setLegacyHistoryLoading(false);
+    }
+  };
+  const openLegacyHistory = () => {
+    setLegacyHistoryOpen(true);
+    setLegacyHistoryCaseId(null);
+    void loadLegacyHistory();
   };
   useEffect(() => {
     const relationKeyword = consumeCustomerIprRelationKeyword();
@@ -324,11 +445,148 @@ export default function IprCenterPage({
       .get<{ role?: string; username?: string }>("/auth/me")
       .then(({ data }) => setProfile(data))
       .catch(() => setProfile({}));
+    void api
+      .get<{ items: Array<{ username?: string; label?: string; value?: string }> }>("/people/options")
+      .then(({ data }) => setPeopleOptions((data.items || [])
+        .map((item) => ({
+          username: String(item.username || "").trim(),
+          label: String(item.label || item.value || "").trim(),
+        }))
+        .filter((item) => item.username && item.label)))
+      .catch(() => setPeopleOptions([]));
   }, [initialView, annualFeeMonitoringFilter]);
   const resetMainListSearch = () => {
     setKeyword("");
     setAnnualFeeMonitoringFilter("");
     setPage(1);
+    setReminderTypeId(null);
+    setReminderTypeName("");
+  };
+  const canManageReminderTypes = ["admin", "manager"].includes(profile.role || "");
+  const loadReminderTypes = async () => {
+    setReminderTypeLoading(true);
+    try {
+      const { data } = await api.get<{ items: IprReminderType[] }>("/ipr/reminder-types", {
+        params: { include_inactive: canManageReminderTypes || undefined },
+      });
+      setReminderTypes(data.items || []);
+    } catch (error: any) {
+      setReminderTypes([]);
+      message.error(error?.response?.data?.detail || "案件提醒类型加载失败");
+    } finally {
+      setReminderTypeLoading(false);
+    }
+  };
+  const loadReminderEventTypes = async () => {
+    try {
+      const { data } = await api.get<{ items: IprReminderEventOption[] }>("/ipr/reminder-event-types");
+      setReminderTypeEventOptions(data.items || []);
+    } catch (error: any) {
+      setReminderTypeEventOptions([]);
+      message.error(error?.response?.data?.detail || "案件提醒事件类型加载失败");
+    }
+  };
+  const openReminderTypeWorkbench = () => {
+    setReminderTypeWorkbenchOpen(true);
+    void loadReminderTypes();
+    void loadReminderEventTypes();
+  };
+  const openReminderTypeEditor = (item?: IprReminderType) => {
+    const query = item?.query_object || {};
+    setEditingReminderType(item || null);
+    void loadReminderEventTypes();
+    reminderTypeForm.resetFields();
+    reminderTypeForm.setFieldsValue({
+      name: item?.name || "",
+      case_kind: query.case_kind || undefined,
+      case_type: query.case_type || "",
+      case_phase: query.case_phase || "",
+      statuses: query.statuses || [],
+      event_type_ids: query.event_type_ids || [],
+      annual_fee_monitoring: query.annual_fee_monitoring ?? undefined,
+      deadline_from: query.deadline_from ? dayjs(query.deadline_from) : undefined,
+      deadline_to: query.deadline_to ? dayjs(query.deadline_to) : undefined,
+      deadline_within_days: query.deadline_within_days ?? undefined,
+      is_default: item?.is_default || false,
+      is_active: item?.is_active ?? true,
+      sort_order: item?.sort_order ?? 0,
+    });
+    setReminderTypeEditorOpen(true);
+  };
+  const saveReminderType = async () => {
+    try {
+      const values = await reminderTypeForm.validateFields();
+      const payload = {
+        name: String(values.name || "").trim(),
+        query_object: {
+          case_kind: values.case_kind || "",
+          case_type: String(values.case_type || "").trim(),
+          case_phase: String(values.case_phase || "").trim(),
+          statuses: values.statuses || [],
+          event_type_ids: values.event_type_ids || [],
+          annual_fee_monitoring: values.annual_fee_monitoring ?? null,
+          deadline_from: values.deadline_from ? formatRequiredDate(values.deadline_from, "起始期限") : null,
+          deadline_to: values.deadline_to ? formatRequiredDate(values.deadline_to, "结束期限") : null,
+          deadline_within_days: values.deadline_within_days ?? null,
+        },
+        is_default: !!values.is_default,
+        is_active: !!values.is_active,
+        sort_order: Number(values.sort_order || 0),
+      };
+      if (editingReminderType) {
+        await api.patch(`/ipr/reminder-types/${editingReminderType.id}`, payload);
+        message.success("案件提醒类型已更新");
+      } else {
+        await api.post("/ipr/reminder-types", payload);
+        message.success("案件提醒类型已创建");
+      }
+      setReminderTypeEditorOpen(false);
+      setEditingReminderType(null);
+      await loadReminderTypes();
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "保存案件提醒类型失败");
+    }
+  };
+  const deleteReminderType = (item: IprReminderType) => {
+    Modal.confirm({
+      title: `删除案件提醒类型：${item.name}`,
+      content: "删除后不能恢复，已按该类型筛选的案件不会被删除。",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.delete(`/ipr/reminder-types/${item.id}`);
+          if (reminderTypeId === item.id) {
+            setReminderTypeId(null);
+            setReminderTypeName("");
+            void load(1, pageSize, keyword, null);
+          }
+          message.success("案件提醒类型已删除");
+          await loadReminderTypes();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "删除案件提醒类型失败");
+        }
+      },
+    });
+  };
+  const applyReminderType = (item: IprReminderType) => {
+    setReminderTypeId(item.id);
+    setReminderTypeName(item.name);
+    setPage(1);
+    setReminderTypeWorkbenchOpen(false);
+    void load(1, pageSize, keyword, item.id);
+  };
+  const reminderTypeQuerySummary = (query: IprReminderTypeQuery) => {
+    const summary = [
+      query.case_kind,
+      query.case_type,
+      query.case_phase,
+      query.statuses?.length ? query.statuses.join("、") : "",
+      query.event_type_ids?.length ? `提醒事件：${query.event_type_ids.map((id) => reminderTypeEventOptions.find((item) => item.id === id)?.name || id).join("、")}` : "",
+      query.annual_fee_monitoring == null ? "" : query.annual_fee_monitoring ? "年费监控" : "未监控年费",
+      query.deadline_within_days == null ? "" : `${query.deadline_within_days} 天内到期`,
+      query.deadline_from || query.deadline_to ? `${query.deadline_from || "不限"} 至 ${query.deadline_to || "不限"}` : "",
+    ].filter(Boolean);
+    return summary.join("｜") || "全部可见知识产权案件";
   };
   const openCreate = () => {
     setEditing(null);
@@ -380,15 +638,14 @@ export default function IprCenterPage({
     setCreateOpen(true);
   };
   const openIprCaseTask = (record: IprRecord) => {
-    window.sessionStorage.setItem(
-      "sunhold:task-create-context",
-      JSON.stringify({
-        case_no: record.serial_no,
-        customer: record.customer,
-        title: `案件任务—${record.serial_no}`,
-      }),
-    );
-    onNavigate?.("task-my-created");
+    iprTaskForm.resetFields();
+    iprTaskForm.setFieldsValue({
+      title: `案件任务—${record.serial_no}`,
+      owner: profile.username || record.owner,
+      deadline: record.data.deadline ? dayjs(record.data.deadline) : dayjs().add(7, "day"),
+      priority: "普通",
+    });
+    setIprTaskOpen(true);
   };
   const applyDeadlineOffset = async () => {
     try {
@@ -460,17 +717,17 @@ export default function IprCenterPage({
   const refreshAssistedFees = () => {
     if (detail) void loadAssistedFees(detail.id, assistedFeesPageState.page, assistedFeesPageState.pageSize);
   };
-  const loadReminders = async (
+  const loadIprCaseEvents = async (
     caseId: number,
     nextPage = remindersPageState.page,
     nextPageSize = remindersPageState.pageSize,
   ) => {
     try {
-      const { data } = await api.get<IprDetailPagePayload<IprReminder>>(
-        `/ipr/cases/${caseId}/reminders`,
+      const { data } = await api.get<IprDetailPagePayload<IprCaseEvent>>(
+        `/ipr/cases/${caseId}/events`,
         { params: { page: nextPage, page_size: nextPageSize } },
       );
-      setReminders(data.items || []);
+      setIprCaseEvents(data.items || []);
       setRemindersPageState({
         page: data.page ?? nextPage,
         pageSize: data.page_size ?? nextPageSize,
@@ -480,6 +737,99 @@ export default function IprCenterPage({
       clearIprSectionError("reminders");
     } catch (error) {
       setIprSectionError("reminders", error);
+    }
+  };
+  const openBatchCreate = () => {
+    iprBatchCreateForm.resetFields();
+    iprBatchCreateForm.setFieldsValue({
+      case_kind: kind || "专利",
+      rows: [{ case_register_date: dayjs(), deadline: dayjs().add(30, "day") }],
+    });
+    setIprBatchCreateErrors([]);
+    setIprBatchCreateOpen(true);
+  };
+  const createIprCasesBatch = async () => {
+    try {
+      const values = await iprBatchCreateForm.validateFields();
+      const payload = {
+        customer: values.customer,
+        case_kind: values.case_kind,
+        rows: (values.rows || []).map((row: Record<string, any>) => ({
+          ...row,
+          case_register_date: row.case_register_date?.format("YYYY-MM-DD") || "",
+          deadline: row.deadline?.format("YYYY-MM-DD") || "",
+        })),
+      };
+      const { data } = await api.post("/ipr/cases/batch-create", payload);
+      const rowErrors = data.errors || [];
+      setIprBatchCreateErrors(rowErrors);
+      if (data.created_count) {
+        message.success(`已创建 ${data.created_count} 件知识产权案件`);
+        void load(1, pageSize);
+      }
+      if (!rowErrors.length) setIprBatchCreateOpen(false);
+      else {
+        // Successful rows have already committed. Keep only failed rows in the
+        // editor so a correction cannot accidentally create the valid rows twice.
+        const failedRows = rowErrors
+          .map((item: IprBatchCreateError) => values.rows?.[item.row_no - 1])
+          .filter(Boolean);
+        iprBatchCreateForm.setFieldsValue({ ...values, rows: failedRows });
+        message.warning(`${rowErrors.length} 行未创建，请按行提示修改后重新提交`);
+      }
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const rowErrors = Array.isArray(detail?.errors) ? detail.errors : [];
+      if (rowErrors.length) setIprBatchCreateErrors(rowErrors);
+      message.error(detail?.message || detail || "批量创建知识产权案件失败");
+    }
+  };
+  const openIprReboot = async (record: IprRecord) => {
+    try {
+      const { data } = await api.get(`/ipr/cases/${record.id}/reboot-preview`);
+      setIprRebootPreview(data);
+      iprRebootForm.resetFields();
+      setIprRebootOpen(true);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "无法获取案件重提信息");
+    }
+  };
+  const createIprReboot = async () => {
+    if (!iprRebootPreview) return;
+    try {
+      const values = await iprRebootForm.validateFields();
+      const { data } = await api.post(`/ipr/cases/${iprRebootPreview.source_case_id}/reboot`, {
+        reason: String(values.reason || "").trim(),
+      });
+      message.success(`已重提为新案件 ${data.serial_no}`);
+      setIprRebootOpen(false);
+      setIprRebootPreview(null);
+      await openDetail(data);
+      void load(1, pageSize);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件重提失败");
+    }
+  };
+  const loadIprCaseTasks = async (
+    caseId: number,
+    nextPage = iprTasksPageState.page,
+    nextPageSize = iprTasksPageState.pageSize,
+  ) => {
+    try {
+      const { data } = await api.get<IprDetailPagePayload<IprCaseTask>>(
+        `/ipr/cases/${caseId}/tasks`,
+        { params: { page: nextPage, page_size: nextPageSize } },
+      );
+      setIprCaseTasks(data.items || []);
+      setIprTasksPageState({
+        page: data.page ?? nextPage,
+        pageSize: data.page_size ?? nextPageSize,
+        total: data.total ?? data.items?.length ?? 0,
+        pages: data.pages ?? 0,
+      });
+      clearIprSectionError("tasks");
+    } catch (error) {
+      setIprSectionError("tasks", error);
     }
   };
   const loadReminderSuppressions = async (caseId: number) => {
@@ -649,6 +999,19 @@ export default function IprCenterPage({
       message.error(e?.response?.data?.detail || "关联客户加载失败");
     }
   };
+  const openLegacyIprCurrentCustomer = async (customerRecordId: number) => {
+    try {
+      const target = await resolveCustomerDetailTarget({ id: customerRecordId });
+      if (!target) {
+        message.warning("关联客户不存在或无权查看");
+        return;
+      }
+      rememberCustomerDetailTarget(target);
+      onNavigate?.("customer-company");
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || "关联客户加载失败");
+    }
+  };
   const openLinkedCaseCustomerCases = (customer: IprCaseCustomer) => {
     const customerKeyword = customer.customer_no || customer.name || "";
     setDetail(null);
@@ -707,11 +1070,13 @@ export default function IprCenterPage({
     setIprBusinessLogs([]);
     setIprOperationLogs([]);
     setAssistedFees([]);
-    setReminders([]);
+    setIprCaseEvents([]);
+    setIprCaseTasks([]);
     setFilesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
     setRemindersPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
+    setIprTasksPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
     setAssistedFeesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
-    setIprSectionErrors({ files: "", logs: "", reminders: "", assistedFees: "" });
+    setIprSectionErrors({ files: "", logs: "", reminders: "", tasks: "", assistedFees: "" });
     try {
       await Promise.all([
         loadIprFiles(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
@@ -721,7 +1086,8 @@ export default function IprCenterPage({
         loadIprLogs(record.id),
         loadIprHistory(record.id),
         loadAssistedFees(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
-        loadReminders(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
+        loadIprCaseEvents(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
+        loadIprCaseTasks(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadReminderSuppressions(record.id),
       ]);
     } catch (error) {
@@ -946,35 +1312,76 @@ export default function IprCenterPage({
       message.error(e?.response?.data?.detail || "删除资助费用失败");
     }
   };
-  const createReminder = async () => {
+  const saveIprCaseEvent = async () => {
     if (!detail) return;
     try {
-      const values = await reminderForm.validateFields();
-      await api.post(`/ipr/cases/${detail.id}/reminders`, {
-        ...values,
-        reminder_date: formatRequiredDate(values.reminder_date, "提醒日期"),
+      const values = await iprEventForm.validateFields();
+      const payload = {
+        event_type_id: Number(values.event_type_id),
+        event_date: formatRequiredDate(values.event_date, "事件日期"),
         deadline: formatRequiredDate(values.deadline, "截止日期"),
-      });
-      message.success("案件提醒已保存");
-      setReminderOpen(false);
-      reminderForm.resetFields();
-      await loadReminders(detail.id);
+        content: String(values.content || "").trim(),
+      };
+      if (editingIprEvent) {
+        await api.patch(`/ipr/cases/${detail.id}/events/${editingIprEvent.id}`, payload);
+        message.success("案件事件已更新");
+      } else {
+        await api.post(`/ipr/cases/${detail.id}/events`, payload);
+        message.success("案件事件已创建");
+      }
+      setIprEventOpen(false);
+      setEditingIprEvent(null);
+      iprEventForm.resetFields();
+      await loadIprCaseEvents(detail.id);
     } catch (e: any) {
       if (!e?.errorFields)
-        message.error(e?.response?.data?.detail || "新增案件提醒失败");
+        message.error(e?.response?.data?.detail || (editingIprEvent ? "更新案件事件失败" : "创建案件事件失败"));
     }
   };
-  const deleteReminder = async (row: IprReminder) => {
+  const deleteIprCaseEvent = async (row: IprCaseEvent) => {
     if (!detail) return;
     try {
-      await api.delete(`/ipr/cases/${detail.id}/reminders/${row.id}`);
-      message.success("案件提醒已删除");
-      await loadReminders(detail.id);
+      await api.delete(`/ipr/cases/${detail.id}/events/${row.id}`);
+      message.success("案件事件已删除");
+      await loadIprCaseEvents(detail.id);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || "删除案件提醒失败");
+      message.error(e?.response?.data?.detail || "删除案件事件失败");
     }
   };
-  const canDeleteIprReminder = (row: IprReminder) => row.creator === profile.username || ["admin", "manager"].includes(profile.role || "");
+  const openIprCaseEvent = (event?: IprCaseEvent) => {
+    setEditingIprEvent(event || null);
+    iprEventForm.resetFields();
+    iprEventForm.setFieldsValue({
+      event_type_id: event?.event_type_id,
+      event_date: event?.event_date ? dayjs(event.event_date) : dayjs(),
+      deadline: event?.deadline ? dayjs(event.deadline) : detail?.data.deadline ? dayjs(detail.data.deadline) : undefined,
+      content: event?.content || "",
+    });
+    setIprEventOpen(true);
+  };
+  const canManageIprCaseEvent = (row: IprCaseEvent) => row.creator === profile.username || ["admin", "manager"].includes(profile.role || "");
+  const createIprCaseTask = async () => {
+    if (!detail) return;
+    try {
+      const values = await iprTaskForm.validateFields();
+      await api.post(`/ipr/cases/${detail.id}/tasks`, {
+        title: String(values.title || "").trim(),
+        owner: String(values.owner || "").trim(),
+        deadline: formatRequiredDate(values.deadline, "任务截止日期"),
+        priority: values.priority || "普通",
+        description: String(values.description || "").trim(),
+        source: "案件任务",
+        case_record_id: detail.id,
+        case_module: "ipr_case",
+      });
+      message.success("案件任务已创建");
+      setIprTaskOpen(false);
+      iprTaskForm.resetFields();
+      await loadIprCaseTasks(detail.id);
+    } catch (e: any) {
+      if (!e?.errorFields) message.error(e?.response?.data?.detail || "创建案件任务失败");
+    }
+  };
   const confirmIprDeletion = (kind: string, label: string, operation: () => Promise<void>) => {
     const prompt = getIprCaseDeletionConfirmation(kind, label);
     Modal.confirm({ ...prompt, onOk: operation });
@@ -998,15 +1405,17 @@ export default function IprCenterPage({
         params: {
           case_kind: kind,
           record_status: reviewView ? "待立案审核" : "",
+          role_view: roleView?.roleView,
           keyword,
           annual_fee_monitoring: annualFeeMonitoringFilter || undefined,
+          reminder_type_id: reminderTypeId || undefined,
         },
         responseType: "blob",
       });
       const url = URL.createObjectURL(response.data);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${kind || "知识产权"}案件清单.xls`;
+      anchor.download = `${roleView?.label || kind || "知识产权"}案件清单.xls`;
       anchor.click();
       URL.revokeObjectURL(url);
       message.success("案件清单已导出");
@@ -1220,6 +1629,9 @@ export default function IprCenterPage({
                   重新开启
                 </Button>
               )}
+            {!isLegacyIprRecord(row) && <Button type="link" onClick={() => void openIprReboot(row)}>
+              案件重提
+            </Button>}
             {reviewView &&
               row.status === "待立案审核" &&
               ["admin", "manager"].includes(profile.role || "") && (
@@ -1272,16 +1684,27 @@ export default function IprCenterPage({
     showSizeChanger: true,
     pageSizeOptions: ["15", "20", "50"],
     onChange: (nextPage: number, nextPageSize: number) => {
-      if (detail) void loadReminders(detail.id, nextPage, nextPageSize);
+      if (detail) void loadIprCaseEvents(detail.id, nextPage, nextPageSize);
+    },
+  };
+  const iprTasksPagination = {
+    current: iprTasksPageState.page,
+    pageSize: iprTasksPageState.pageSize,
+    total: iprTasksPageState.total,
+    showSizeChanger: true,
+    pageSizeOptions: ["15", "20", "50"],
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (detail) void loadIprCaseTasks(detail.id, nextPage, nextPageSize);
     },
   };
   return (
     <div className="page-shell">
       <Card
-        title={reviewView ? "知识产权立案审核" : `${kind || "全部"}案件台账`}
+        title={reviewView ? "知识产权立案审核" : `${roleView?.label || kind || "全部"}案件台账`}
         extra={
           !reviewView && (
             <Space>
+              {roleView ? <Tag color="blue">身份筛选：{roleView.label}</Tag> : null}
               <Input
                 allowClear
                 placeholder="编号、名称、客户、申请号"
@@ -1292,6 +1715,9 @@ export default function IprCenterPage({
               />
               <Button onClick={() => void load(1, pageSize)}>查询</Button>
               <Button onClick={resetMainListSearch}>重置</Button>
+              <Button onClick={openReminderTypeWorkbench}>案件提醒类型</Button>
+              <Button onClick={openLegacyHistory}>Historical read-only cases</Button>
+              {reminderTypeId ? <Tag closable onClose={() => { setReminderTypeId(null); setReminderTypeName(""); void load(1, pageSize, keyword, null); }}>提醒类型：{reminderTypeName || reminderTypeId}</Tag> : null}
               <Select
                 value={annualFeeMonitoringFilter}
                 onChange={setAnnualFeeMonitoringFilter}
@@ -1299,6 +1725,7 @@ export default function IprCenterPage({
                 options={[{ value: "", label: "全部年费" }, { value: "true", label: "监控中" }, { value: "false", label: "未监控" }]}
               />
               <Button onClick={() => void exportExcel()}>导出Excel</Button>
+              <Button onClick={openBatchCreate}>批量新建案件</Button>
               <Button onClick={() => { iprBatchForm.resetFields(); iprBatchForm.setFieldsValue({ document_date: dayjs() }); void loadIprFileTypes(""); setIprBatchFile(null); setIprBatchOpen(true); }}>批量上传文档</Button>
               <Button onClick={() => onNavigate?.("ipr-custom-file-import")}>案件自定义文件导入</Button>
               <Button onClick={() => onNavigate?.("case-files-receipt")}>案件票据导入</Button>
@@ -1333,6 +1760,207 @@ export default function IprCenterPage({
           }}
         />
       </Card>
+      <Drawer
+        open={legacyHistoryOpen}
+        title="Historical IPR cases (read-only)"
+        width={980}
+        onClose={() => { setLegacyHistoryOpen(false); setLegacyHistoryCaseId(null); }}
+      >
+        <Space style={{ marginBottom: 12 }}>
+          <Input
+            allowClear
+            value={legacyHistoryKeyword}
+            placeholder="Legacy case number or name"
+            onChange={(event) => setLegacyHistoryKeyword(event.target.value)}
+            onPressEnter={() => void loadLegacyHistory()}
+            style={{ width: 280 }}
+          />
+          <Button onClick={() => void loadLegacyHistory()}>Search</Button>
+          <Tag>{legacyHistoryTotal} historical cases</Tag>
+        </Space>
+        <Table<LegacyIprCaseListItem>
+          rowKey="legacy_case_id"
+          size="small"
+          loading={legacyHistoryLoading}
+          pagination={false}
+          dataSource={legacyHistoryItems}
+          columns={[
+            { title: "Legacy case", dataIndex: "case_no", width: 180, ellipsis: true },
+            { title: "Title", dataIndex: "title", width: 240, ellipsis: true },
+            { title: "Type", dataIndex: "case_type", width: 120 },
+            { title: "Applicant", dataIndex: "applicant", width: 180, ellipsis: true },
+            { title: "State", dataIndex: "relationship_state", width: 110 },
+            {
+              title: "Open",
+              fixed: "right",
+              width: 190,
+              render: (_, row) => <Space size={0}>
+                {row.current_case_record_id ? <Button type="link" onClick={() => void api.get<IprRecord>(`/ipr/cases/${row.current_case_record_id}`).then(({ data }) => void openDetail(data))}>Current case</Button> : null}
+                <Button type="link" onClick={() => setLegacyHistoryCaseId(row.legacy_case_id)}>Read-only relations</Button>
+              </Space>,
+            },
+          ]}
+          scroll={{ x: 1000 }}
+        />
+      </Drawer>
+      <Drawer
+        open={legacyHistoryCaseId !== null}
+        title="Historical IPR relations (read-only)"
+        width={900}
+        onClose={() => setLegacyHistoryCaseId(null)}
+      >
+        {legacyHistoryCaseId !== null ? <IprLegacyHistoryRelations legacyCaseId={legacyHistoryCaseId} onOpenCurrentCustomer={(customerRecordId) => void openLegacyIprCurrentCustomer(customerRecordId)} /> : null}
+      </Drawer>
+      <Drawer
+        open={reminderTypeWorkbenchOpen}
+        title="案件提醒类型工作台"
+        width={920}
+        onClose={() => setReminderTypeWorkbenchOpen(false)}
+        extra={
+          <Space>
+            <Button onClick={() => void loadReminderTypes()}>刷新</Button>
+            {canManageReminderTypes ? <Button type="primary" onClick={() => openReminderTypeEditor()}>新建类型</Button> : null}
+          </Space>
+        }
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="提醒类型是保存的案件筛选条件"
+          description="案件数和点入后的清单均按当前账号的数据范围实时计算；它不等同于单条案件事件的事件类型。"
+          style={{ marginBottom: 16 }}
+        />
+        <Table<IprReminderType>
+          rowKey="id"
+          size="small"
+          loading={reminderTypeLoading}
+          pagination={false}
+          dataSource={reminderTypes}
+          scroll={{ x: 860 }}
+          columns={[
+            {
+              title: "提醒类型",
+              dataIndex: "name",
+              width: 180,
+              render: (value: string, row) => <Space><Button type="link" onClick={() => applyReminderType(row)}>{value}</Button>{row.is_default ? <Tag color="blue">默认</Tag> : null}{row.is_active ? null : <Tag>已停用</Tag>}</Space>,
+            },
+            { title: "筛选条件", width: 300, render: (_, row) => reminderTypeQuerySummary(row.query_object) },
+            { title: "当前可见案件", dataIndex: "case_count", width: 125, render: (count: number, row) => <Button type="link" onClick={() => applyReminderType(row)}>{count} 件</Button> },
+            { title: "排序", dataIndex: "sort_order", width: 75 },
+            {
+              title: "操作",
+              width: 155,
+              render: (_, row) => canManageReminderTypes ? <Space size={0}><Button type="link" onClick={() => openReminderTypeEditor(row)}>编辑</Button><Button type="link" danger disabled={row.is_default} onClick={() => deleteReminderType(row)}>删除</Button></Space> : "—",
+            },
+          ]}
+        />
+      </Drawer>
+      <Modal
+        open={reminderTypeEditorOpen}
+        title={editingReminderType ? `编辑提醒类型：${editingReminderType.name}` : "新建案件提醒类型"}
+        width={700}
+        onCancel={() => { setReminderTypeEditorOpen(false); setEditingReminderType(null); }}
+        onOk={() => void saveReminderType()}
+        okText="保存"
+      >
+        <Form form={reminderTypeForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item name="name" label="提醒类型名称" rules={[{ required: true, message: "请输入提醒类型名称" }]}>
+              <Input maxLength={128} />
+            </Form.Item>
+            <Form.Item name="sort_order" label="排序" initialValue={0}>
+              <InputNumber min={0} max={100000} style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item name="case_kind" label="案件类型">
+              <Select allowClear options={["专利", "商标"].map((value) => ({ value, label: value }))} />
+            </Form.Item>
+            <Form.Item name="annual_fee_monitoring" label="年费监控">
+              <Select allowClear options={[{ value: true, label: "仅监控中" }, { value: false, label: "仅未监控" }]} />
+            </Form.Item>
+            <Form.Item name="case_type" label="案件子类型"><Input maxLength={128} /></Form.Item>
+            <Form.Item name="case_phase" label="案件阶段"><Input maxLength={128} /></Form.Item>
+            <Form.Item name="event_type_ids" label="关联提醒事件">
+              <Select mode="multiple" allowClear optionFilterProp="label" options={reminderTypeEventOptions.map((item) => ({ value: item.id, label: item.name }))} />
+            </Form.Item>
+            <Form.Item name="deadline_from" label="期限起始"><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="deadline_to" label="期限结束"><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="deadline_within_days" label="未来到期天数"><InputNumber min={0} max={3650} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="statuses" label="案件状态">
+              <Select mode="multiple" options={["草稿", "待立案审核", "在办", "已驳回", "已结案"].map((value) => ({ value, label: value }))} />
+            </Form.Item>
+          </div>
+          <Space>
+            <Form.Item name="is_default" valuePropName="checked" noStyle><Checkbox>默认类型</Checkbox></Form.Item>
+            <Form.Item name="is_active" valuePropName="checked" noStyle><Checkbox>启用</Checkbox></Form.Item>
+          </Space>
+        </Form>
+      </Modal>
+      <Modal
+        open={iprBatchCreateOpen}
+        title="批量新建知识产权案件"
+        width={1120}
+        onCancel={() => setIprBatchCreateOpen(false)}
+        onOk={() => void createIprCasesBatch()}
+        okText="提交创建"
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="与旧系统一致：先选择客户，再逐行填写案件类型、案件阶段、立案日期和处理期限。"
+          description="系统先校验全部行；有效行会在同一事务内创建，错误行不会落库，并在下方按行提示。"
+          style={{ marginBottom: 16 }}
+        />
+        {iprBatchCreateErrors.length ? <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="以下行未创建" description={<ul style={{ margin: 0, paddingLeft: 18 }}>{iprBatchCreateErrors.map((item) => <li key={item.row_no}>第 {item.row_no} 行：{item.message}</li>)}</ul>} /> : null}
+        <Form form={iprBatchCreateForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item name="customer" label="客户" rules={[{ required: true, message: "请选择客户" }]}>
+              <Select showSearch optionFilterProp="label" options={customers.map((row) => ({ value: row.title, label: `${row.title}（${row.serial_no}）` }))} />
+            </Form.Item>
+            <Form.Item name="case_kind" label="案件类别" rules={[{ required: true }]}>
+              <Select options={["专利", "商标"].map((value) => ({ value, label: value }))} />
+            </Form.Item>
+          </div>
+          <Form.List name="rows" rules={[{ validator: async (_, rows) => { if (!rows?.length) throw new Error("请至少新增一行案件"); } }]}>
+            {(fields, { add, remove }) => <>
+              {fields.map((field, index) => (
+                <Card key={field.key} size="small" title={`第 ${index + 1} 行`} style={{ marginBottom: 12 }} extra={<Button danger type="link" disabled={fields.length === 1} onClick={() => remove(field.name)}>移除</Button>}>
+                  <div className="form-grid">
+                    <Form.Item {...field} name={[field.name, "case_type"]} label="案件类型" rules={[{ required: true, message: "请输入案件类型" }]}><Input placeholder="如发明专利申请、商标注册" /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "case_phase"]} label="案件阶段" rules={[{ required: true, message: "请输入案件阶段" }]}><Input placeholder="如申请阶段" /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "case_register_date"]} label="立案日期" rules={[{ required: true, message: "请选择立案日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "deadline"]} label="处理期限" rules={[{ required: true, message: "请选择处理期限" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "title"]} label="案件名称"><Input placeholder="未填写时按案件类型生成" /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "application_no"]} label="申请号/注册号"><Input /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "application_type"]} label="申请类型"><Input /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "applicant"]} label="申请人/权利人"><Input /></Form.Item>
+                  </div>
+                  <Form.Item {...field} name={[field.name, "description"]} label="说明"><Input.TextArea rows={2} maxLength={2000} /></Form.Item>
+                </Card>
+              ))}
+              <Button onClick={() => add({ case_register_date: dayjs(), deadline: dayjs().add(30, "day") })}>新增一行</Button>
+            </>}
+          </Form.List>
+        </Form>
+      </Modal>
+      <Modal
+        open={iprRebootOpen}
+        title="知识产权案件重提"
+        onCancel={() => { setIprRebootOpen(false); setIprRebootPreview(null); }}
+        onOk={() => void createIprReboot()}
+        okText="确认重提"
+      >
+        {iprRebootPreview ? <>
+          <Descriptions bordered size="small" column={1} items={[
+            { key: "source", label: "原案件", children: `${iprRebootPreview.source_case_no}｜${iprRebootPreview.source_title}` },
+            { key: "status", label: "原案件状态", children: iprRebootPreview.source_status },
+            { key: "target", label: "新案件编号", children: iprRebootPreview.next_serial_no },
+          ]} />
+          <Alert type="info" showIcon style={{ marginTop: 16 }} message="重提会复制业务信息和客户、联系人、协作律所关联，原案件不会被覆盖。新旧案件均会写入可追溯的审计事件。" />
+          <Form form={iprRebootForm} layout="vertical" style={{ marginTop: 16 }}>
+            <Form.Item name="reason" label="重提说明"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
+          </Form>
+        </> : null}
+      </Modal>
       <Modal open={iprBatchOpen} title="批量上传知识产权案件文档" onCancel={() => setIprBatchOpen(false)} onOk={() => void uploadIprBatchFile()} okText="批量上传">
         <Form form={iprBatchForm} layout="vertical"><Form.Item name="case_ids" label="目标案件" rules={[{ required: true, message: "请选择至少一个在办案件" }]}><Select mode="multiple" options={items.filter((item) => item.status === "在办").map((item) => ({ value: item.id, label: `${item.serial_no}｜${item.title}` }))}/></Form.Item>{batchSelectedKinds.length > 1 && <div style={{ marginTop: -14, marginBottom: 12, color: "#666" }}>已选择{batchSelectedKinds.join("、")}案件，仅显示同时适用的文档类型。</div>}<Form.Item name="category" label="文档类型" rules={[{ required: true }]}><Select notFoundContent={batchCaseIds?.length ? "没有同时适用于所选案件的文档类型" : "请先选择目标案件"} options={batchAvailableFileTypes.map((item) => ({ value: item.name, label: `${item.name}${item.requires_transmission ? "（待转文）" : ""}` }))}/></Form.Item><Form.Item name="document_date" label="文档日期" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }}/></Form.Item><Form.Item label="案件文档" required><input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar" onChange={(event) => setIprBatchFile(event.target.files?.[0] || null)}/>{iprBatchFile && <div>{iprBatchFile.name}</div>}</Form.Item><Form.Item name="remark" label="说明"><Input.TextArea rows={2} maxLength={1000}/></Form.Item></Form>
       </Modal>
@@ -1473,11 +2101,12 @@ export default function IprCenterPage({
           detail ? `${detail.data.case_kind}案件详情：${detail.serial_no}` : ""
         }
         width={820}
-        extra={detail ? <Space size={0}><Button onClick={() => openCopy(detail)}>复制案件</Button><Button onClick={() => openIprCaseTask(detail)}>案件任务</Button></Space> : null}
+        extra={detail && !isLegacyIprRecord(detail) ? <Space size={0}><Button onClick={() => openCopy(detail)}>复制案件</Button><Button onClick={() => void openIprReboot(detail)}>案件重提</Button><Button onClick={() => openIprCaseTask(detail)}>案件任务</Button></Space> : null}
         onClose={() => setDetail(null)}
       >
         {detail && (
           <>
+            {isLegacyIprRecord(detail) ? <Alert type="info" showIcon message="Historical IPR record: read-only" style={{ marginBottom: 12 }} /> : null}
             <Descriptions
               bordered
               size="small"
@@ -1534,6 +2163,16 @@ export default function IprCenterPage({
                   key: "rate",
                   label: "费率",
                   children: detail.data.rate ?? "—",
+                },
+                {
+                  key: "reboot-source",
+                  label: "重提原案件",
+                  children: detail.data.reboot_source_case_id ? <Button type="link" size="small" onClick={() => void api.get(`/ipr/cases/${detail.data.reboot_source_case_id}`).then(({ data }) => openDetail(data))}>{detail.data.reboot_source_case_no || detail.data.reboot_source_case_id}</Button> : "—",
+                },
+                {
+                  key: "reboot-targets",
+                  label: "已重提案件",
+                  children: Array.isArray(detail.data.reboot_case_ids) && detail.data.reboot_case_ids.length ? <Space size={0} wrap>{detail.data.reboot_case_ids.map((caseId: number, index: number) => <Button key={caseId} type="link" size="small" onClick={() => void api.get(`/ipr/cases/${caseId}`).then(({ data }) => openDetail(data))}>{detail.data.reboot_case_nos?.[index] || caseId}</Button>)}</Space> : "—",
                 },
                 {
                   key: "description",
@@ -1679,6 +2318,14 @@ export default function IprCenterPage({
                 ]}
               /> : "暂未选择协作律所"}
             </Card>
+            {Number(detail.data?.legacy_ipr_case_id || detail.data?.legacy_case_id || 0) > 0 ? (
+              <div style={{ marginTop: 16 }}>
+                <IprLegacyHistoryRelations
+                  legacyCaseId={Number(detail.data?.legacy_ipr_case_id || detail.data?.legacy_case_id)}
+                  onOpenCurrentCustomer={(customerRecordId) => void openLegacyIprCurrentCustomer(customerRecordId)}
+                />
+              </div>
+            ) : null}
             <Tabs
               activeKey={iprDetailTab}
               onChange={setIprDetailTab}
@@ -1916,32 +2563,20 @@ export default function IprCenterPage({
             />
             <Card
               size="small"
-              title="案件提醒"
+              title="案件事件"
               style={{ marginTop: 16 }}
               extra={
                 <Space>
+                  <Button size="small" onClick={() => detail && void loadIprCaseEvents(detail.id)}>
+                    刷新
+                  </Button>
                   {detail.status === "在办" && (
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        reminderForm.resetFields();
-                        reminderForm.setFieldsValue({
-                          reminder_date: dayjs(),
-                          deadline: detail.data.deadline
-                            ? dayjs(detail.data.deadline)
-                            : undefined,
-                        });
-                        setReminderOpen(true);
-                      }}
-                    >
-                      新增提醒
+                    <Button size="small" type="primary" onClick={() => openIprCaseEvent()}>
+                      新增事件
                     </Button>
                   )}
                   {detail.status === "在办" && (
-                    <Button
-                      size="small"
-                      onClick={() => setSuppressionOpen(true)}
-                    >
+                    <Button size="small" onClick={() => setSuppressionOpen(true)}>
                       设定不监控
                     </Button>
                   )}
@@ -1953,47 +2588,64 @@ export default function IprCenterPage({
                 rowKey="id"
                 size="small"
                 pagination={remindersPagination}
-                dataSource={reminders}
-                scroll={{ x: 700 }}
+                dataSource={iprCaseEvents}
+                scroll={{ x: 790 }}
                 columns={[
-                  { title: "提醒日期", dataIndex: "reminder_date", width: 110 },
+                  { title: "事件类型", dataIndex: "event_type", width: 140 },
+                  { title: "事件日期", dataIndex: "event_date", width: 110 },
                   { title: "截止日期", dataIndex: "deadline", width: 110 },
                   {
-                    title: "提醒内容",
+                    title: "事件内容",
                     dataIndex: "content",
                     ellipsis: true,
-                    render: (content: string, row: IprReminder) => (
-                      <Button type="link" onClick={() => setReminderDetail(row)}>
-                        {content}
-                      </Button>
+                    render: (content: string, row: IprCaseEvent) => (
+                      <Button type="link" onClick={() => setIprEventDetail(row)}>{content}</Button>
                     ),
                   },
-              { title: "创建人", dataIndex: "creator_display_name", width: 100, render: personDisplayName },
+                  { title: "创建人", dataIndex: "creator_display_name", width: 100, render: personDisplayName },
                   {
                     title: "操作",
-                    width: 80,
-                    render: (_, row: IprReminder) =>
-                      detail.status === "在办" && canDeleteIprReminder(row) ? (
-                        <Button
-                          type="link"
-                          danger
-                          onClick={() => confirmIprDeletion("reminder", row.content, () => deleteReminder(row))}
-                        >
-                          删除
-                        </Button>
-                      ) : (
-                        "—"
-                      ),
+                    width: 130,
+                    render: (_, row: IprCaseEvent) =>
+                      detail.status === "在办" && canManageIprCaseEvent(row) ? (
+                        <Space size={0}>
+                          <Button type="link" onClick={() => openIprCaseEvent(row)}>编辑</Button>
+                          <Button type="link" danger onClick={() => confirmIprDeletion("event", row.content, () => deleteIprCaseEvent(row))}>删除</Button>
+                        </Space>
+                      ) : "—",
                   },
                 ]}
               />
               <div style={{ marginTop: 8, color: "#777" }}>
-                不监控类型：
-                {reminderEventTypes
-                  .filter((item) => suppressedIds.includes(item.id))
-                  .map((item) => item.name)
-                  .join("、") || "未设置"}
+                不监控类型：{reminderEventTypes.filter((item) => suppressedIds.includes(item.id)).map((item) => item.name).join("、") || "未设置"}
               </div>
+            </Card>
+            <Card
+              size="small"
+              title="关联任务"
+              style={{ marginTop: 16 }}
+              extra={
+                <Space>
+                  <Button size="small" onClick={() => detail && void loadIprCaseTasks(detail.id)}>刷新</Button>
+                  {detail.status === "在办" && <Button size="small" type="primary" onClick={() => openIprCaseTask(detail)}>新建案件任务</Button>}
+                </Space>
+              }
+            >
+              {iprSectionErrors.tasks ? <Alert type="error" showIcon message={iprSectionErrors.tasks} style={{ marginBottom: 12 }} /> : null}
+              <Table
+                rowKey="id"
+                size="small"
+                pagination={iprTasksPagination}
+                dataSource={iprCaseTasks}
+                scroll={{ x: 760 }}
+                columns={[
+                  { title: "任务编号", dataIndex: "serial_no", width: 170, ellipsis: true },
+                  { title: "标题", dataIndex: "title", ellipsis: true },
+                  { title: "负责人", dataIndex: "owner_display_name", width: 110, render: personDisplayName },
+                  { title: "截止日期", dataIndex: "deadline", width: 110, render: (value) => value || "—" },
+                  { title: "状态", dataIndex: "status", width: 105, render: (value) => <Tag>{value}</Tag> },
+                ]}
+              />
             </Card>
             <Space style={{ marginTop: 16 }}>
               {["草稿", "已驳回"].includes(detail.status) && (
@@ -2112,16 +2764,26 @@ export default function IprCenterPage({
         </Form>
       </Modal>
       <Modal
-        open={reminderOpen}
-        title="新增知识产权案件提醒"
-        onCancel={() => setReminderOpen(false)}
-        onOk={() => void createReminder()}
-        okText="保存提醒"
+        open={iprEventOpen}
+        title={editingIprEvent ? "编辑知识产权案件事件" : "新增知识产权案件事件"}
+        onCancel={() => { setIprEventOpen(false); setEditingIprEvent(null); }}
+        onOk={() => void saveIprCaseEvent()}
+        okText={editingIprEvent ? "保存修改" : "创建事件"}
       >
-        <Form form={reminderForm} layout="vertical">
+        <Form form={iprEventForm} layout="vertical">
           <Form.Item
-            name="reminder_date"
-            label="提醒日期"
+            name="event_type_id"
+            label="事件类型"
+            rules={[{ required: true }]}
+          >
+            <Select
+              placeholder="选择事件类型"
+              options={reminderEventTypes.map((item) => ({ value: item.id, label: item.name }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="event_date"
+            label="事件日期"
             rules={[{ required: true }]}
           >
             <DatePicker style={{ width: "100%" }} />
@@ -2135,28 +2797,58 @@ export default function IprCenterPage({
           </Form.Item>
           <Form.Item
             name="content"
-            label="提醒内容"
-            rules={[{ required: true, message: "请输入提醒内容" }]}
+            label="事件内容"
+            rules={[{ required: true, message: "请输入事件内容" }]}
           >
             <Input.TextArea rows={3} maxLength={1000} />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
-        open={!!reminderDetail}
-        title="案件提醒详情"
+        open={!!iprEventDetail}
+        title="案件事件详情"
         footer={null}
-        onCancel={() => setReminderDetail(null)}
+        onCancel={() => setIprEventDetail(null)}
       >
-        {reminderDetail && (
+        {iprEventDetail && (
           <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="提醒类型">{reminderDetail.event_type}</Descriptions.Item>
-            <Descriptions.Item label="提醒日期">{reminderDetail.reminder_date}</Descriptions.Item>
-            <Descriptions.Item label="截止日期">{reminderDetail.deadline}</Descriptions.Item>
-            <Descriptions.Item label="创建人">{personDisplayName(reminderDetail.creator_display_name)}</Descriptions.Item>
-            <Descriptions.Item label="提醒内容">{reminderDetail.content}</Descriptions.Item>
+            <Descriptions.Item label="事件类型">{iprEventDetail.event_type}</Descriptions.Item>
+            <Descriptions.Item label="事件日期">{iprEventDetail.event_date}</Descriptions.Item>
+            <Descriptions.Item label="截止日期">{iprEventDetail.deadline}</Descriptions.Item>
+            <Descriptions.Item label="创建人">{personDisplayName(iprEventDetail.creator_display_name)}</Descriptions.Item>
+            <Descriptions.Item label="事件内容">{iprEventDetail.content}</Descriptions.Item>
           </Descriptions>
         )}
+      </Modal>
+      <Modal
+        open={iprTaskOpen}
+        title={detail ? `新建案件任务：${detail.serial_no}` : "新建案件任务"}
+        onCancel={() => setIprTaskOpen(false)}
+        onOk={() => void createIprCaseTask()}
+        okText="创建任务"
+      >
+        <Form form={iprTaskForm} layout="vertical">
+          <Form.Item name="title" label="任务标题" rules={[{ required: true, message: "请输入任务标题" }]}>
+            <Input maxLength={255} />
+          </Form.Item>
+          <Form.Item name="owner" label="负责人" rules={[{ required: true, message: "请选择负责人" }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择系统员工"
+              options={peopleOptions.map((item) => ({ value: item.username, label: item.label }))}
+            />
+          </Form.Item>
+          <Form.Item name="deadline" label="截止日期" rules={[{ required: true }]}>
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="priority" label="优先级">
+            <Select options={["普通", "重要", "紧急"].map((value) => ({ value, label: value }))} />
+          </Form.Item>
+          <Form.Item name="description" label="任务说明">
+            <Input.TextArea rows={3} maxLength={2000} />
+          </Form.Item>
+        </Form>
       </Modal>
       <Modal
         open={suppressionOpen}

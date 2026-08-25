@@ -47,6 +47,7 @@ type TaskRow = {
   days_remaining: number | null;
   priority: string;
   source: string;
+  creation_mode?: string;
   reminder_due: boolean;
   reminder_text: string;
   initiator: string;
@@ -54,6 +55,9 @@ type TaskRow = {
   collaborators: string[];
   collaborator_display_names?: string[];
   case_no: string;
+  case_nos?: string[];
+  start_at?: string;
+  end_at?: string;
   plaintiff: string;
   defendant: string;
   case_stage: string;
@@ -74,6 +78,7 @@ type TaskRow = {
   latest_unread_at: string;
   unread_count: number;
   latest_unread_notification_id?: number;
+  data?: Record<string, unknown>;
 };
 type Summary = {
   total: number;
@@ -133,6 +138,7 @@ type CaseRecord = {
   owner: string;
   owner_display_name?: string;
 };
+type PeopleOption = { username: string; label: string };
 type CaseContextTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 type DialogAction = "reject" | "resend";
 type FeeAction = "lawFee" | "platformFee" | "internalFee";
@@ -236,6 +242,34 @@ const formatTaskDate = (value?: string) =>
   value ? dayjs(value).format("YYYY-M-D") : "";
 const formatTaskDateTime = (value?: string) =>
   value ? dayjs(value).format("YYYY-M-D H:m:s") : "";
+const formatTaskScheduleTime = (value?: string) =>
+  value && /[T\s]\d{1,2}:\d{2}/.test(value)
+    ? dayjs(value).format("YYYY-M-D HH:mm")
+    : formatTaskDate(value);
+const taskDataValues = (value: unknown) => {
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .flatMap((item) => String(item || "").split(/[,，;；\n]/))
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+const taskCaseNos = (row: TaskRow) => Array.from(new Set([
+  ...taskDataValues(row.case_no),
+  ...taskDataValues(row.case_nos),
+  ...taskDataValues(row.data?.case_nos),
+  ...taskDataValues(row.data?.caseNos),
+  ...taskDataValues(row.data?.CaseNos),
+]));
+const taskTemporalValue = (row: TaskRow, keys: string[], fallback = "") => {
+  for (const key of keys) {
+    const value = String(row.data?.[key] || "").trim();
+    if (value) return value;
+  }
+  return fallback;
+};
+const taskStartedAt = (row: TaskRow) => row.start_at || taskTemporalValue(row, ["started_at", "start_at", "task_begin_time", "TaskBeginTime"]);
+const taskEndedAt = (row: TaskRow) => row.end_at || taskTemporalValue(row, ["deadline_at", "end_at", "task_end_time", "TaskEndTime"], row.deadline);
+const taskCreationMode = (row: TaskRow) => row.creation_mode === "自动" ? "自动" : "人工";
 const contains = (value: unknown, query?: string) =>
   !query?.trim() ||
   String(value || "")
@@ -257,6 +291,7 @@ export default function TaskCenterPage({
     }
   }, []);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [peopleOptions, setPeopleOptions] = useState<PeopleOption[]>([]);
   const [, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [taskMeta, setTaskMeta] = useState({
     total: 0,
@@ -335,8 +370,7 @@ export default function TaskCenterPage({
     initialView === "task-company-created";
   const hideTaskFooter =
     taskMeta.total === 0 &&
-    (isCreated ||
-      isAccepted ||
+    (isAccepted ||
       isCollaborating ||
       isReminder ||
       initialView === "task-dept-created" ||
@@ -495,6 +529,18 @@ export default function TaskCenterPage({
     void load({}, firstTab, 1, 15, null);
   }, [initialView]);
 
+  useEffect(() => {
+    let active = true;
+    void api.get<{ items?: PeopleOption[] }>("/people/options")
+      .then(({ data }) => {
+        if (active) setPeopleOptions(data.items || []);
+      })
+      .catch(() => {
+        if (active) setPeopleOptions([]);
+      });
+    return () => { active = false; };
+  }, []);
+
   const scopedTasks = useMemo(() => {
     const names = [profile.username, profile.display_name].filter(Boolean);
     // Department/company ranges are authoritative server-side scopes. Applying
@@ -543,7 +589,7 @@ export default function TaskCenterPage({
       if (!contains(row.description, query.description)) return false;
       if (!contains(row.initiator, query.initiator)) return false;
       if (!contains(row.case_no, query.case_no)) return false;
-      if (!contains(row.source, query.source)) return false;
+      if (!contains(taskCreationMode(row), query.source)) return false;
       if (!contains(row.owner, query.owner)) return false;
       if (!contains(row.plaintiff, query.plaintiff)) return false;
       if (!contains(row.defendant, query.defendant)) return false;
@@ -577,10 +623,17 @@ export default function TaskCenterPage({
     const values = await createForm.validateFields();
     if (!beginTaskAction()) return;
     try {
+      const caseNos = taskDataValues(values.case_nos);
+      const startAt = values.start_at as Dayjs;
+      const endAt = values.end_at as Dayjs;
       const { data: createdTask } = await api.post("/tasks", {
         ...values,
         collaborators: values.collaborators || [],
-        deadline: formatRequiredDate(values.deadline, "截止日期"),
+        case_no: caseNos[0] || "",
+        case_nos: caseNos,
+        start_at: startAt.format("YYYY-MM-DDTHH:mm:ss"),
+        end_at: endAt.format("YYYY-MM-DDTHH:mm:ss"),
+        deadline: formatRequiredDate(endAt, "结束时间"),
       });
       if (createMaterialFiles.length) {
         const materialBody = new FormData();
@@ -758,17 +811,17 @@ export default function TaskCenterPage({
     setFeedbackFiles([]);
     setTaskMaterialFiles([]);
   };
-  const resolveLinkedCase = async (row: TaskRow) => {
-    if (!row.case_no) {
+  const resolveLinkedCase = async (row: TaskRow, caseNo = row.case_no) => {
+    if (!caseNo) {
       message.warning("当前任务未关联案件");
       return null;
     }
     try {
       const { data } = await api.get("/records", {
-        params: { module: "case", keyword: row.case_no, page_size: 100 },
+        params: { module: "case", keyword: caseNo, page_size: 100 },
       });
       const record = (data.items as CaseRecord[]).find(
-        (item) => item.serial_no === row.case_no,
+        (item) => item.serial_no === caseNo,
       );
       if (!record) message.warning("未找到关联案件或当前账号无权查看");
       return record || null;
@@ -777,11 +830,24 @@ export default function TaskCenterPage({
       return null;
     }
   };
-  const openCaseDetail = async (row: TaskRow) => {
-    const record = await resolveLinkedCase(row);
+  const openCaseDetail = async (row: TaskRow, caseNo = row.case_no) => {
+    const record = await resolveLinkedCase(row, caseNo);
     if (!record) return;
     rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
     onNavigate?.("case-company");
+  };
+  const renderTaskCaseLinks = (row: TaskRow, className = "business-relation-link task-table-identifier") => {
+    const caseNos = taskCaseNos(row);
+    if (!caseNos.length) return "—";
+    return (
+      <Space size={4} wrap>
+        {caseNos.map((caseNo) => (
+          <Button key={caseNo} className={className} type="link" title={caseNo} onClick={() => void openCaseDetail(row, caseNo)}>
+            {caseNo}
+          </Button>
+        ))}
+      </Space>
+    );
   };
   const applyCaseContextTaskPageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
     const normalized = normalizeCaseContextTaskPageState(payload, fallbackPage, fallbackPageSize);
@@ -1014,10 +1080,10 @@ export default function TaskCenterPage({
         <Button
           className="task-cell-link task-table-identifier"
           type="link"
-          title={`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}
+          title={`(${taskCreationMode(row)})${String(value || "").replace(/^\([^)]*\)/, "")}`}
           onClick={() => openCommunication(row)}
         >
-          {`(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`}
+          {`(${taskCreationMode(row)})${String(value || "").replace(/^\([^)]*\)/, "")}`}
         </Button>
       ),
     },
@@ -1026,12 +1092,7 @@ export default function TaskCenterPage({
       dataIndex: "case_no",
       width: 180,
       ellipsis: true,
-      render: (value: string, row: TaskRow) =>
-        value ? (
-          <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>
-            {value}
-          </Button>
-        ) : "",
+      render: (_value: string, row: TaskRow) => renderTaskCaseLinks(row),
     },
     {
       title: "原告",
@@ -1097,12 +1158,18 @@ export default function TaskCenterPage({
       render: formatTaskDate,
     },
     {
-      title: "截止时间",
+      title: "开始时间",
+      key: "started_at",
+      width: 142,
+      render: (_: unknown, row: TaskRow) => formatTaskScheduleTime(taskStartedAt(row)) || "—",
+    },
+    {
+      title: "结束时间",
       dataIndex: "deadline",
       width: 110,
       sorter: true,
       sortOrder: taskSort?.field === "deadline" ? taskSort.order : null,
-      render: formatTaskDate,
+      render: (_: string, row: TaskRow) => formatTaskScheduleTime(taskEndedAt(row)) || "—",
     },
     {
       title: "剩余天数",
@@ -1136,8 +1203,8 @@ export default function TaskCenterPage({
     },
   ];
   const unreadColumns: any[] = [
-    { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true, render: (value: string, row: TaskRow) => { const label = `(${row.source || "人工"})${String(value || "").replace(/^\([^)]*\)/, "")}`; return <Button className="task-cell-link task-table-identifier" type="link" title={label} onClick={() => openCommunication(row)}>{label}</Button> } },
-    { title: "关联案号", dataIndex: "case_no", width: 180, ellipsis: true, render: (value: string, row: TaskRow) => value ? <Button className="business-relation-link task-table-identifier" type="link" title={value} onClick={() => void openCaseDetail(row)}>{value}</Button> : "—" },
+    { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true, render: (value: string, row: TaskRow) => { const label = `(${taskCreationMode(row)})${String(value || "").replace(/^\([^)]*\)/, "")}`; return <Button className="task-cell-link task-table-identifier" type="link" title={label} onClick={() => openCommunication(row)}>{label}</Button> } },
+    { title: "关联案号", dataIndex: "case_no", width: 180, ellipsis: true, render: (_: string, row: TaskRow) => renderTaskCaseLinks(row) },
     { title: "未读内容", dataIndex: "latest_unread_message", width: 360, ellipsis: true, render: (value: string) => value || "—" },
     { title: "发送人", dataIndex: "latest_unread_sender", width: 140, ellipsis: true, render: (value: string, row: TaskRow) => visibleOptionalPersonName(value, row.latest_unread_sender_display_name) },
     { title: "发送时间", dataIndex: "latest_unread_at", width: 165, sorter: true, sortOrder: taskSort?.field === "updated_at" ? taskSort.order : null, render: (value: string) => value ? formatTaskDateTime(value) : "—" },
@@ -1157,7 +1224,8 @@ export default function TaskCenterPage({
     },
   };
   const openCreateTask = () => {
-    createForm.setFieldsValue({ owner: profile.username || "admin", priority: "普通", source: "人工", collaborators: [], deadline: dayjs().add(7, "day") });
+    const startAt = dayjs().second(0);
+    createForm.setFieldsValue({ owner: profile.username || "admin", priority: "普通", source: "人工", collaborators: [], case_nos: [], start_at: startAt, end_at: startAt.add(7, "day") });
     setCreateOpen(true);
   };
   useEffect(() => {
@@ -1173,8 +1241,9 @@ export default function TaskCenterPage({
         priority: caseTaskDefaults.priority,
         source: "案件任务",
         collaborators: [],
-        deadline: caseTaskDefaults.deadline,
-        case_no: context.case_no,
+        case_nos: [context.case_no],
+        start_at: dayjs().second(0),
+        end_at: dayjs(caseTaskDefaults.deadline).hour(18).minute(0).second(0),
         customer: context.customer || "",
       });
       setCreateOpen(true);
@@ -1230,7 +1299,7 @@ export default function TaskCenterPage({
     assistant: "修改律师助理",
     case_stage: "修改案件阶段",
   };
-  const selectedCaseNos = Array.from(new Set(selectedRows.map((row) => row.case_no.trim()).filter(Boolean)));
+  const selectedCaseNos = Array.from(new Set(selectedRows.flatMap(taskCaseNos)));
   const openCaseBatch = (action: CaseBatchAction) => {
     if (!selectedCaseNos.length) return message.warning("请选择案件.");
     batchForm.resetFields();
@@ -1514,11 +1583,12 @@ export default function TaskCenterPage({
               </div>
               <button type="button" className="task-mobile-card-body" onClick={() => openCommunication(row)}>
                 <span><b>任务编号</b>{row.serial_no || "-"}</span>
-                <span><b>案件编号</b>{row.case_no || "-"}</span>
+                <span><b>案件编号</b>{taskCaseNos(row).join("、") || "-"}</span>
                 <span><b>负责人</b>{visiblePersonName(row.owner_display_name)}</span>
                 <span><b>优先级</b>{row.priority || "-"}</span>
                 <span><b>发起时间</b>{formatTaskDate(row.created_at) || "-"}</span>
-                <span><b>截止时间</b>{formatTaskDate(row.deadline) || "-"}</span>
+                <span><b>开始时间</b>{formatTaskScheduleTime(taskStartedAt(row)) || "-"}</span>
+                <span><b>结束时间</b>{formatTaskScheduleTime(taskEndedAt(row)) || "-"}</span>
               </button>
             </article>
           )) : <div className="task-mobile-empty">没有符合条件的任务</div>}
@@ -1739,14 +1809,28 @@ export default function TaskCenterPage({
           </Form.Item>
           <div className="form-grid">
             <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-              <Input />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="请选择系统员工"
+                options={peopleOptions.map((item) => ({ value: item.username, label: item.label }))}
+              />
             </Form.Item>
-            <Form.Item
-              label="截止日期"
-              name="deadline"
-              rules={[{ required: true }]}
-            >
+            <Form.Item label="开始时间" name="start_at" rules={[{ required: true, message: "请选择开始时间" }]}>
               <DatePicker
+                showTime={{ format: "HH:mm" }}
+                format="YYYY-MM-DD HH:mm"
+                style={{ width: "100%" }}
+                disabledDate={(date) =>
+                  date.isBefore(dayjs(), "day") ||
+                  date.isAfter(dayjs().add(30, "day"), "day")
+                }
+              />
+            </Form.Item>
+            <Form.Item label="结束时间" name="end_at" rules={[{ required: true, message: "请选择结束时间" }]}>
+              <DatePicker
+                showTime={{ format: "HH:mm" }}
+                format="YYYY-MM-DD HH:mm"
                 style={{ width: "100%" }}
                 disabledDate={(date) =>
                   date.isBefore(dayjs(), "day") ||
@@ -1777,13 +1861,19 @@ export default function TaskCenterPage({
           </div>
           <Form.Item label="协作人" name="collaborators">
             <Select
-              mode="tags"
-              tokenSeparators={[",", "，"]}
-              placeholder="输入账号后回车，可添加多人"
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择系统员工，可添加多人"
+              options={peopleOptions.map((item) => ({ value: item.username, label: item.label }))}
             />
           </Form.Item>
-          <Form.Item label="关联案号" name="case_no">
-            <Input />
+          <Form.Item label="关联案件" name="case_nos">
+            <Select
+              mode="tags"
+              tokenSeparators={[",", "，", ";", "；"]}
+              placeholder="输入案号后回车，可关联多个案件"
+            />
           </Form.Item>
           <Form.Item label="客户" name="customer">
             <Input />
@@ -1920,7 +2010,8 @@ export default function TaskCenterPage({
               { title: "任务编号", dataIndex: "serial_no", width: 200, ellipsis: true },
               { title: "任务名称", dataIndex: "title", width: 280, ellipsis: true },
               { title: "负责人", dataIndex: "owner", width: 100, render: (_: string, row: TaskRow) => visiblePersonName(row.owner_display_name) },
-              { title: "截止日期", dataIndex: "deadline", width: 115 },
+              { title: "开始时间", key: "started_at", width: 135, render: (_: unknown, row: TaskRow) => formatTaskScheduleTime(taskStartedAt(row)) || "—" },
+              { title: "结束时间", dataIndex: "deadline", width: 135, render: (_: string, row: TaskRow) => formatTaskScheduleTime(taskEndedAt(row)) || "—" },
               { title: "状态", dataIndex: "status", width: 95, render: (value: string) => <Tag color={statusColors[value] || "blue"}>{value}</Tag> },
             ]}
           />
@@ -1981,8 +2072,9 @@ export default function TaskCenterPage({
           <span><b>任务编号：</b>{communication?.serial_no?.replace(/^\([^)]*\)/, "") || "-"}</span>
           <span><b>当前负责人：</b>{visiblePersonName(communication?.owner_display_name)}</span>
           <span><b>发布人：</b>{visiblePersonName(communication?.initiator_display_name)}</span>
-          <span><b>关联案号：</b>{communication?.case_no ? <Button className="business-relation-link" type="link" onClick={() => void openCaseDetail(communication)}>{communication.case_no}</Button> : "-"}</span>
-          <span><b>截止日期：</b>{communication?.deadline || "-"}</span>
+          <span><b>关联案号：</b>{communication ? renderTaskCaseLinks(communication, "business-relation-link") : "-"}</span>
+          <span><b>开始时间：</b>{communication ? formatTaskScheduleTime(taskStartedAt(communication)) || "-" : "-"}</span>
+          <span><b>结束时间：</b>{communication ? formatTaskScheduleTime(taskEndedAt(communication)) || "-" : "-"}</span>
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
           <span><b>当前协作人：</b>{visibleCollaboratorNames(communication)}</span>
         </div>

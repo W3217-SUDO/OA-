@@ -83,6 +83,53 @@ type Fee = {
 };
 type FinanceFlow = Fee;
 
+type LegacyFinanceRecord = {
+  id: number;
+  source_table: string;
+  legacy_id: string;
+  record_kind: "ap_payment" | "ar_payment" | "invoice" | "ap_packing" | "case_fee";
+  status_code: string;
+  status_label: string;
+  is_active: boolean;
+  currency?: string;
+  legacy_contract_no?: string;
+  legacy_case_no?: string;
+  legacy_customer_no?: string;
+  contract_record_id?: number | null;
+  case_record_id?: number | null;
+  customer_record_id?: number | null;
+  mapping_status?: string;
+  allocation_count: number;
+  file_count: number;
+  audit_count: number;
+  primary_amount: number | null;
+  imported_at?: string;
+  updated_at?: string;
+  source_payload?: Record<string, unknown>;
+  allocations?: Array<Record<string, any>>;
+  files?: Array<Record<string, any>>;
+  audits?: Array<Record<string, any>>;
+  legacy_statuses?: Record<string, unknown>;
+  legacy_amounts?: Record<string, unknown>;
+  read_only?: boolean;
+};
+
+type LegacyFinanceSummary = {
+  records: Array<{
+    record_kind: LegacyFinanceRecord["record_kind"];
+    is_active: boolean;
+    count: number;
+    primary_amount: number | null;
+  }>;
+  allocations: Array<Record<string, any>>;
+  audits: Array<Record<string, any>>;
+  orphan_allocations: Array<Record<string, any>>;
+  orphan_files: Array<Record<string, any>>;
+  orphan_audits: Array<Record<string, any>>;
+  amount_visible: boolean;
+  read_only: boolean;
+};
+
 type InvoiceCustomerDefaults = {
   customer: string;
   customer_no: string;
@@ -112,6 +159,14 @@ type InvoiceSourceFields = {
 };
 
 const invoiceText = (value: unknown) => String(value ?? "").trim();
+
+const legacyInvoiceUpdateFailureMessage = (response: { data?: unknown }) => {
+  const payload = response?.data;
+  if (!payload || typeof payload !== "object") return "";
+  const result = payload as Record<string, unknown>;
+  if (result.IsSuccess !== false && result.success !== false) return "";
+  return invoiceText(result.message || result.Message || result.detail) || "发票申请更新失败";
+};
 
 const findInvoiceContract = (fee: Fee, contracts: Fee[]) => {
   const data = fee.data || {};
@@ -983,6 +1038,18 @@ export default function FinanceCenterPage({
     invoice_amount: 0,
     refund_amount: 0,
   });
+  const [legacyFinanceRows, setLegacyFinanceRows] = useState<LegacyFinanceRecord[]>([]);
+  const [legacyFinanceMeta, setLegacyFinanceMeta] = useState({ total: 0, page: 1, pageSize: 30 });
+  const [legacyFinanceSummary, setLegacyFinanceSummary] = useState<LegacyFinanceSummary>({
+    records: [], allocations: [], audits: [], orphan_allocations: [], orphan_files: [], orphan_audits: [], amount_visible: false, read_only: true,
+  });
+  const [legacyFinanceLoading, setLegacyFinanceLoading] = useState(false);
+  const [legacyFinanceKind, setLegacyFinanceKind] = useState("");
+  const [legacyFinanceKeyword, setLegacyFinanceKeyword] = useState("");
+  const [legacyFinanceStatusCode, setLegacyFinanceStatusCode] = useState("");
+  const [legacyFinanceIncludeInactive, setLegacyFinanceIncludeInactive] = useState(false);
+  const [legacyFinanceDetail, setLegacyFinanceDetail] = useState<LegacyFinanceRecord | null>(null);
+  const [legacyFinanceDetailLoading, setLegacyFinanceDetailLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [financeDataReady, setFinanceDataReady] = useState(false);
   const [role, setRole] = useState(sessionUser.role || "user");
@@ -2297,6 +2364,50 @@ export default function FinanceCenterPage({
       setFinanceDataReady(true);
     }
   };
+  const loadLegacyFinanceHistory = async (
+    page = legacyFinanceMeta.page,
+    pageSize = legacyFinanceMeta.pageSize,
+  ) => {
+    setLegacyFinanceLoading(true);
+    try {
+      const [listRes, summaryRes] = await Promise.all([
+        api.get("/finance/legacy-history", {
+          params: {
+            record_kind: legacyFinanceKind,
+            status_code: legacyFinanceStatusCode.trim(),
+            keyword: legacyFinanceKeyword.trim(),
+            include_inactive: legacyFinanceIncludeInactive,
+            page,
+            page_size: pageSize,
+          },
+        }),
+        api.get("/finance/legacy-history/summary"),
+      ]);
+      setLegacyFinanceRows(listRes.data.items || []);
+      setLegacyFinanceMeta({
+        total: Number(listRes.data.total || 0),
+        page: Number(listRes.data.page || page),
+        pageSize: Number(listRes.data.page_size || pageSize),
+      });
+      setLegacyFinanceSummary(summaryRes.data);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "历史财务账本加载失败");
+    } finally {
+      setLegacyFinanceLoading(false);
+    }
+  };
+  const openLegacyFinanceDetail = async (recordId: number) => {
+    setLegacyFinanceDetailLoading(true);
+    setLegacyFinanceDetail(null);
+    try {
+      const { data } = await api.get(`/finance/legacy-history/${recordId}`);
+      setLegacyFinanceDetail(data);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "历史财务明细加载失败");
+    } finally {
+      setLegacyFinanceDetailLoading(false);
+    }
+  };
   useEffect(() => {
     setTab(first);
     const defaults =
@@ -2921,10 +3032,12 @@ export default function FinanceCenterPage({
     }
     try {
       if (invoiceEditTarget) {
-        await api.patch(
+        const response = await api.patch(
           `/finance/invoices/${invoiceEditTarget.id}`,
           linked.payload,
         );
+        const legacyFailure = legacyInvoiceUpdateFailureMessage(response);
+        if (legacyFailure) throw { legacyInvoiceUpdateFailure: legacyFailure };
         message.success("发票申请草稿已更新");
       } else {
         await api.post("/finance/invoices", linked.payload);
@@ -2938,6 +3051,7 @@ export default function FinanceCenterPage({
     } catch (error: any) {
       message.error(
         error?.response?.data?.detail ||
+          error?.legacyInvoiceUpdateFailure ||
           (invoiceEditTarget
             ? "发票申请更新失败，请确认后端已提供 PATCH /finance/invoices/{id}"
             : "发票申请创建失败"),
@@ -3900,6 +4014,68 @@ export default function FinanceCenterPage({
         ),
     },
   ];
+  const legacyFinanceKindLabel: Record<LegacyFinanceRecord["record_kind"], string> = {
+    ap_payment: "历史请款",
+    ar_payment: "历史回款",
+    invoice: "历史开票",
+    ap_packing: "历史付款打包",
+    case_fee: "历史案件应收费用",
+  };
+  const legacyFinanceAmount = (value: number | null | undefined) =>
+    legacyFinanceSummary.amount_visible ? money(Number(value || 0)) : "无权限";
+  const legacyFinanceMappingLabel = (value?: string) => {
+    const normalized = String(value || "").trim();
+    if (!normalized || ["matched", "exact"].includes(normalized)) return "已精确关联";
+    if (/parent_not_present|orphan|missing_parent/i.test(normalized)) return "孤儿 / 父级缺失";
+    if (normalized === "missing") return "缺少业务关联";
+    if (/unmapped|not_mapped|unlinked/i.test(normalized)) return "未关联实时业务";
+    return normalized;
+  };
+  const legacyFinanceStatusLabel = (value?: string) => {
+    const normalized = String(value || "").trim();
+    const legacyCode = normalized.match(/^legacy_status_(.+)$/i);
+    return legacyCode ? `旧状态码 ${legacyCode[1]}` : (normalized || "未标注");
+  };
+  const legacyFinanceMappingColor = (value?: string) => {
+    const normalized = String(value || "");
+    if (/parent_not_present|orphan|missing_parent/i.test(normalized)) return "orange";
+    if (/unmapped|not_mapped|unlinked/i.test(normalized)) return "default";
+    return "green";
+  };
+  const legacyFinanceSummaryByKind = (kind: LegacyFinanceRecord["record_kind"]) =>
+    legacyFinanceSummary.records
+      .filter((row) => row.record_kind === kind && (legacyFinanceIncludeInactive || row.is_active))
+      .reduce(
+        (total, row) => ({ count: total.count + Number(row.count || 0), amount: total.amount + Number(row.primary_amount || 0) }),
+        { count: 0, amount: 0 },
+      );
+  const legacyFinanceColumns = [
+    {
+      title: "历史编号",
+      dataIndex: "legacy_id",
+      width: 148,
+      render: (value: string, row: LegacyFinanceRecord) => (
+        <Button type="link" onClick={() => void openLegacyFinanceDetail(row.id)}>{value || `#${row.id}`}</Button>
+      ),
+    },
+    { title: "账本类型", dataIndex: "record_kind", width: 112, render: (value: LegacyFinanceRecord["record_kind"]) => legacyFinanceKindLabel[value] || value },
+    { title: "状态", dataIndex: "status_label", width: 108, render: (value: string, row: LegacyFinanceRecord) => <Tag color={row.is_active ? "blue" : "default"}>{legacyFinanceStatusLabel(value)}</Tag> },
+    { title: "合同编号", dataIndex: "legacy_contract_no", width: 150, render: (value: string) => value || "—" },
+    { title: "案件编号", dataIndex: "legacy_case_no", width: 150, render: (value: string) => value || "—" },
+    { title: "客户编号", dataIndex: "legacy_customer_no", width: 140, render: (value: string) => value || "—" },
+    { title: "金额", dataIndex: "primary_amount", align: "right" as const, width: 126, render: legacyFinanceAmount },
+    { title: "分配", dataIndex: "allocation_count", align: "right" as const, width: 70 },
+    { title: "发票文件", dataIndex: "file_count", align: "right" as const, width: 88 },
+    {
+      title: "关联状态",
+      dataIndex: "mapping_status",
+      width: 142,
+      render: (value: string) => <Tag color={legacyFinanceMappingColor(value)}>{legacyFinanceMappingLabel(value)}</Tag>,
+    },
+    { title: "来源表", dataIndex: "source_table", width: 150 },
+    { title: "导入时间", dataIndex: "imported_at", width: 170, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+    { title: "审批记录", dataIndex: "audit_count", align: "right" as const, width: 82 },
+  ];
   const shownFees = useMemo(() => {
     let result =
       tab === "audit" ? fees.filter((x) => x.status === "待审批") : fees;
@@ -4186,6 +4362,9 @@ export default function FinanceCenterPage({
     currentUser,
     contractPaymentSource,
   ]);
+  useEffect(() => {
+    if (tab === "legacy-history") void loadLegacyFinanceHistory(1, legacyFinanceMeta.pageSize);
+  }, [tab, legacyFinanceKind, legacyFinanceIncludeInactive]);
   const setOriginalField = (key: string, value: any) =>
     setOriginalQueryDraft((current) => ({ ...current, [key]: value }));
   const queryField = (
@@ -10886,6 +11065,7 @@ export default function FinanceCenterPage({
                 activeKey={tab}
                 onChange={setTab}
                 items={[
+                  { key: "legacy-history", label: "历史财务账本" },
                   { key: "fees", label: "费用管理" },
                   {
                     key: "audit",
@@ -10977,6 +11157,89 @@ export default function FinanceCenterPage({
                   dataSource={transactions}
                   scroll={{ x: 1500 }}
                 />
+              ) : tab === "legacy-history" ? (
+                <>
+                  <Alert
+                    className="finance-rule"
+                    type="info"
+                    showIcon
+                    title="历史财务账本"
+                    description="历史请款、回款、开票及付款打包与实时财务口径完全分离；仅可检索和查看原始迁移信息。"
+                  />
+                  <div className="finance-stats">
+                    {(["ap_payment", "ar_payment", "invoice", "ap_packing", "case_fee"] as LegacyFinanceRecord["record_kind"][]).map((kind) => {
+                      const item = legacyFinanceSummaryByKind(kind);
+                      return (
+                        <Card key={kind} size="small">
+                          <Statistic
+                            title={legacyFinanceKindLabel[kind]}
+                            value={legacyFinanceSummary.amount_visible ? item.amount : item.count}
+                            suffix={legacyFinanceSummary.amount_visible ? "元" : "条"}
+                            formatter={(value) => legacyFinanceSummary.amount_visible ? money(Number(value || 0)) : String(value)}
+                          />
+                          <div className="finance-stat-caption">{item.count.toLocaleString("zh-CN")} 条记录</div>
+                        </Card>
+                      );
+                    })}
+                    {(legacyFinanceSummary.orphan_allocations.length || legacyFinanceSummary.orphan_files.length || legacyFinanceSummary.orphan_audits.length) ? (
+                      <Card size="small">
+                        <Statistic
+                          title="孤儿历史引用"
+                          value={legacyFinanceSummary.orphan_allocations.reduce((sum, item) => sum + Number(item.count || 0), 0) + legacyFinanceSummary.orphan_files.reduce((sum, item) => sum + Number(item.count || 0), 0) + legacyFinanceSummary.orphan_audits.reduce((sum, item) => sum + Number(item.count || 0), 0)}
+                          suffix="条"
+                        />
+                        <div className="finance-stat-caption">父记录在旧库快照中缺失，已保留来源信息</div>
+                      </Card>
+                    ) : null}
+                  </div>
+                  <Space wrap style={{ margin: "8px 0 12px" }}>
+                    <Input.Search
+                      aria-label="历史财务账本检索"
+                      placeholder="历史编号、合同、案件或客户编号"
+                      value={legacyFinanceKeyword}
+                      onChange={(event) => setLegacyFinanceKeyword(event.target.value)}
+                      onSearch={() => void loadLegacyFinanceHistory(1, legacyFinanceMeta.pageSize)}
+                      style={{ width: 250 }}
+                    />
+                    <Input
+                      aria-label="旧库状态码"
+                      placeholder="旧库状态码"
+                      value={legacyFinanceStatusCode}
+                      onChange={(event) => setLegacyFinanceStatusCode(event.target.value)}
+                      onPressEnter={() => void loadLegacyFinanceHistory(1, legacyFinanceMeta.pageSize)}
+                      style={{ width: 118 }}
+                    />
+                    <Select
+                      aria-label="历史财务账本类型"
+                      value={legacyFinanceKind || undefined}
+                      placeholder="全部账本类型"
+                      allowClear
+                      options={(["ap_payment", "ar_payment", "invoice", "ap_packing", "case_fee"] as LegacyFinanceRecord["record_kind"][]).map((kind) => ({ value: kind, label: legacyFinanceKindLabel[kind] }))}
+                      onChange={(value) => setLegacyFinanceKind(value || "")}
+                      style={{ width: 150 }}
+                    />
+                    <Checkbox checked={legacyFinanceIncludeInactive} onChange={(event) => setLegacyFinanceIncludeInactive(event.target.checked)}>显示已停用</Checkbox>
+                    <Button icon={<ReloadOutlined />} onClick={() => void loadLegacyFinanceHistory()}>刷新</Button>
+                    <Tag color="default">只读</Tag>
+                    {legacyFinanceSummary.amount_visible === false && <Tag color="orange">金额无查看权限</Tag>}
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    loading={legacyFinanceLoading}
+                    size="small"
+                    columns={legacyFinanceColumns}
+                    dataSource={legacyFinanceRows}
+                    pagination={{
+                      current: legacyFinanceMeta.page,
+                      pageSize: legacyFinanceMeta.pageSize,
+                      total: legacyFinanceMeta.total,
+                      showSizeChanger: true,
+                      pageSizeOptions: [30, 50, 100, 200],
+                      onChange: (page, pageSize) => void loadLegacyFinanceHistory(page, pageSize),
+                    }}
+                    scroll={{ x: 1550 }}
+                  />
+                </>
               ) : (
                 <Table
                   rowKey="id"
@@ -10990,6 +11253,97 @@ export default function FinanceCenterPage({
             </Card>
           </>
         ))}
+      <Drawer
+        open={legacyFinanceDetailLoading || Boolean(legacyFinanceDetail)}
+        title="历史财务账本明细"
+        width={760}
+        placement="right"
+        onClose={() => {
+          setLegacyFinanceDetail(null);
+          setLegacyFinanceDetailLoading(false);
+        }}
+        footer={<Tag color="default">只读历史镜像</Tag>}
+      >
+        {legacyFinanceDetailLoading ? (
+          <div className="finance-empty">正在加载历史财务明细...</div>
+        ) : legacyFinanceDetail ? (
+          <>
+            <Alert
+              type={/parent_not_present|orphan|missing_parent/i.test(String(legacyFinanceDetail.mapping_status || "")) ? "warning" : "info"}
+              showIcon
+              title={legacyFinanceMappingLabel(legacyFinanceDetail.mapping_status)}
+              description="此记录来自旧 FAM 数据迁移，仅用于审计追溯，不参与实时财务汇总或业务操作。"
+            />
+            <Descriptions column={2} size="small" bordered style={{ marginTop: 12 }}>
+              <Descriptions.Item label="历史编号">{legacyFinanceDetail.legacy_id || `#${legacyFinanceDetail.id}`}</Descriptions.Item>
+              <Descriptions.Item label="账本类型">{legacyFinanceKindLabel[legacyFinanceDetail.record_kind]}</Descriptions.Item>
+              <Descriptions.Item label="状态">{legacyFinanceStatusLabel(legacyFinanceDetail.status_label)}</Descriptions.Item>
+              <Descriptions.Item label="金额">{legacyFinanceAmount(legacyFinanceDetail.primary_amount)}</Descriptions.Item>
+              <Descriptions.Item label="合同编号">{legacyFinanceDetail.legacy_contract_no || "—"}</Descriptions.Item>
+              <Descriptions.Item label="案件编号">{legacyFinanceDetail.legacy_case_no || "—"}</Descriptions.Item>
+              <Descriptions.Item label="客户编号">{legacyFinanceDetail.legacy_customer_no || "—"}</Descriptions.Item>
+              <Descriptions.Item label="来源表">{legacyFinanceDetail.source_table || "—"}</Descriptions.Item>
+              <Descriptions.Item label="关联状态">{legacyFinanceMappingLabel(legacyFinanceDetail.mapping_status)}</Descriptions.Item>
+              <Descriptions.Item label="导入时间">{legacyFinanceDetail.imported_at ? dayjs(legacyFinanceDetail.imported_at).format("YYYY-MM-DD HH:mm") : "—"}</Descriptions.Item>
+              <Descriptions.Item label="币种来源">{legacyFinanceDetail.currency === "UNRECORDED_IN_LEGACY_SCHEMA" ? "旧库未记录" : (legacyFinanceDetail.currency || "旧库未记录")}</Descriptions.Item>
+              <Descriptions.Item label="审批记录数">{legacyFinanceDetail.audit_count || 0}</Descriptions.Item>
+            </Descriptions>
+            <Tabs
+              style={{ marginTop: 14 }}
+              items={[
+                {
+                  key: "allocations",
+                  label: `分配行（${legacyFinanceDetail.allocations?.length || 0}）`,
+                  children: <Table size="small" rowKey="id" pagination={false} dataSource={legacyFinanceDetail.allocations || []} columns={[
+                    { title: "来源键", dataIndex: "legacy_key", width: 120 },
+                    { title: "类型", dataIndex: "allocation_kind", width: 100 },
+                    { title: "案件编号", dataIndex: "legacy_case_no", width: 140, render: (value: string) => value || "—" },
+                    { title: "金额", dataIndex: "amount", align: "right" as const, width: 110, render: legacyFinanceAmount },
+                    { title: "关联状态", dataIndex: "mapping_status", width: 130, render: (value: string) => legacyFinanceMappingLabel(value) },
+                  ]} scroll={{ x: 620 }} />,
+                },
+                {
+                  key: "files",
+                  label: `发票文件（${legacyFinanceDetail.files?.length || 0}）`,
+                  children: <Table size="small" rowKey="id" pagination={false} dataSource={legacyFinanceDetail.files || []} columns={[
+                    { title: "文件名", dataIndex: "filename", render: (value: string) => value || "未保留文件名" },
+                    { title: "大小", dataIndex: "size_bytes", width: 100, render: (value: number) => value ? `${Math.ceil(Number(value) / 1024)} KB` : "—" },
+                    { title: "物理文件", dataIndex: "physical_file_verified", width: 100, render: (value: boolean) => <Tag color={value ? "green" : "orange"}>{value ? "已验证" : "仅元数据"}</Tag> },
+                    { title: "开票日期", dataIndex: "invoice_date", width: 110, render: (value: string) => value || "—" },
+                  ]} scroll={{ x: 620 }} />,
+                },
+                {
+                  key: "legacy-fields",
+                  label: "旧库原始金额与状态",
+                  children: <Descriptions column={2} size="small" bordered>
+                    {Object.entries(legacyFinanceDetail.legacy_statuses || {}).map(([key, value]) => <Descriptions.Item key={`status-${key}`} label={key}>{String(value ?? "")}</Descriptions.Item>)}
+                    {Object.entries(legacyFinanceDetail.legacy_amounts || {}).map(([key, value]) => <Descriptions.Item key={`amount-${key}`} label={key}>{String(value ?? "")}</Descriptions.Item>)}
+                  </Descriptions>,
+                },
+                {
+                  key: "audits",
+                  label: `审批历史（${legacyFinanceDetail.audits?.length || 0}）`,
+                  children: <Table size="small" rowKey="id" pagination={false} dataSource={legacyFinanceDetail.audits || []} columns={[
+                    { title: "审批编号", dataIndex: "legacy_id", width: 92 },
+                    { title: "状态码", dataIndex: "audit_status_code", width: 70 },
+                    { title: "流程", dataIndex: "audit_flow_id", width: 70 },
+                    { title: "节点", dataIndex: "audit_flow_node_id", width: 70 },
+                    { title: "轮次", dataIndex: "audit_round_id", width: 70 },
+                    { title: "审批人", dataIndex: "auditor_display_name", width: 100, render: (value: string) => value || "—" },
+                    { title: "审批时间", dataIndex: "audit_date", width: 160, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "-" },
+                    { title: "审批意见", dataIndex: "audit_content", width: 220, render: (value: string) => value || "-" },
+                  ]} scroll={{ x: 900 }} />,
+                },
+                {
+                  key: "payload",
+                  label: "源数据",
+                  children: <pre className="finance-source-payload">{JSON.stringify(legacyFinanceDetail.source_payload || {}, null, 2)}</pre>,
+                },
+              ]}
+            />
+          </>
+        ) : null}
+      </Drawer>
       <Drawer
         open={Boolean(feeReviewTargets.length)}
         title={<h5>{initialView === "finance-payment-audit" ? "付款审批" : "提成审批"}</h5>}

@@ -113,3 +113,6 @@ export function buildCaseOrdinarySearchPayload(
   page?: unknown,
   pageSize?: unknown,
 ): CaseOrdinarySearchPayload;
+
+export function ordinaryCaseTypesForView(view?: unknown): string[];
+export function ordinaryCustomerIdForView(view?: unknown): number;

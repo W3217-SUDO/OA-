@@ -46,6 +46,8 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { LegacyContractHistoryPanel } from "./LegacyContractHistoryPanel";
+import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
@@ -58,12 +60,20 @@ import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
+import {
+  FEE_SUBTYPE_TO_TYPE,
+  filterCaseFileTypesForCaseType,
+  filterCasePhasesForCaseType,
+  filterFeeSubtypesForFileType,
+} from "./caseRelationConsumption.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
   buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
   LEGACY_CASE_PHASE_GROUPS,
+  ordinaryCustomerIdForView,
+  ordinaryCaseTypesForView,
   parseOrdinarySearchResult,
 } from "./caseOrdinarySearchParity.mjs";
 import {
@@ -167,6 +177,16 @@ type CaseAgentStatus = {
   error?: string | null;
 };
 type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; case_type?: string; parent_code?: string; sort_order?: number };
+type ParameterRelation = {
+  sources: Array<{ id: number; code?: string; name?: string }>;
+  targets: Array<{ id: number; code?: string; name?: string }>;
+  relations: Record<string, number[]>;
+};
+type CaseRelationCatalog = {
+  caseTypeFileTypes: ParameterRelation;
+  fileTypeFeeTypes: ParameterRelation;
+  caseTypePhases: ParameterRelation;
+};
 type CasePhaseListItem = { label: string; value: string; count: number };
 type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
 const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
@@ -296,6 +316,8 @@ export const shouldShowCompanyScheduleActions = (initialView: string, rowCount: 
 export const shouldUseCompanySchedulePagination = (initialView: string) => initialView === "case-company-schedule";
 export const getCompanySchedulePageSizeOptions = () => ["10","15","20","50","100","200"];
 export const shouldShowCompanyScheduleSinglePageJumper = (initialView: string, rowCount: number, pageSize: number) => initialView === "case-company-schedule" && rowCount > 0 && rowCount <= pageSize;
+export const isCivilCaseType = (caseType: unknown) => ["民事案件", "民事争议", "民事"].includes(String(caseType || "").trim());
+export const isNormalCaseBasicType = (caseType: unknown) => isCivilCaseType(caseType) || ["刑事案件", "行政案件及国家赔偿"].includes(String(caseType || "").trim());
 export const getLegacyCaseDetailPrimaryOperationLabels = () => [
   "修改基本信息",
   "修改案件阶段",
@@ -388,6 +410,7 @@ type TaskRow = {
   deadline: string;
   priority: string;
   source: string;
+  creation_mode?: string;
   task_type?: string;
   case_no: string;
   days_remaining?: number | null;
@@ -397,6 +420,7 @@ type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSi
 const CASE_TASK_DEFAULT_PAGE = 1;
 const CASE_TASK_DEFAULT_PAGE_SIZE = 15;
 const caseTaskTypeLabel = (row: TaskRow) => {
+  if (row.creation_mode === "自动" || row.creation_mode === "人工") return row.creation_mode;
   const taskType = String(row.task_type || "").trim();
   if (taskType === "固定任务" || taskType === "自动任务" || row.source === "自动任务" || row.source === "自动") return "自动";
   return "人工";
@@ -423,7 +447,15 @@ const normalizeCaseTaskPageState = (
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string};
 type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;options?:CaseFileTypeOption[]};
-type AttachmentPreview = {name:string;kind:"image"|"pdf"|"text"|"docx";url?:string;text?:string};
+type AttachmentPreview = {
+  name: string;
+  kind: "image" | "pdf" | "text" | "docx";
+  url?: string;
+  text?: string;
+  attachmentId?: number;
+  page?: number;
+  pageCount?: number;
+};
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
 type CaseLogRow = {id:number;content:string;operator:string;operator_display_name?:string;created_at:string};
 type CaseLogKind = "case" | "refund";
@@ -659,11 +691,19 @@ export default function CaseCenterPage({
   const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
   const [phaseCatalog, setPhaseCatalog] = useState<CasePhaseOption[]>([]);
-  const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>({});
+  const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>(() => ({
+    "一审阶段": true,
+    "二审阶段": true,
+    "再审阶段": true,
+    "执行阶段": true,
+    "归档阶段": true,
+  }));
   const [executionStatusEditing, setExecutionStatusEditing] = useState<CaseRow[] | null>(null);
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
+  const [legacyLsHistoryCaseIds, setLegacyLsHistoryCaseIds] = useState<Record<number, number>>({});
+  const [legacyLsHistoryOpen, setLegacyLsHistoryOpen] = useState(false);
   const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
   const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
@@ -725,6 +765,7 @@ export default function CaseCenterPage({
   const [counselDetailCustomerAttachments, setCounselDetailCustomerAttachments] = useState<AttachmentRow[]>([]);
   const [counselDetailContractAttachments, setCounselDetailContractAttachments] = useState<AttachmentRow[]>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
+  const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
@@ -782,7 +823,10 @@ export default function CaseCenterPage({
   const legacyCaseListDefaults = getLegacyCaseListDefaults(initialView);
   const legacyCaseListOperationLabels = getLegacyCaseListOperationLabels();
   const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
+  const [caseUploadOpen, setCaseUploadOpen] = useState(false);
   const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
+  const [caseFileTypeCatalog, setCaseFileTypeCatalog] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
+  const [caseRelations, setCaseRelations] = useState<CaseRelationCatalog | null>(null);
   const [courtOptions, setCourtOptions] = useState<{value:string;label:string;code?:string}[]>([]);
   const [courtOfficerOptions, setCourtOfficerOptions] = useState<{value:string;label:string;court_code?:string;role?:string;phone?:string}[]>([]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
@@ -829,6 +873,17 @@ export default function CaseCenterPage({
     const values = Array.isArray(sources) ? sources : [sources];
     const names = values.filter(Boolean).map((value) => casePersonDisplayName(value));
     return names.length ? names.join("、") : "—";
+  };
+  const legacyCaseParticipantDisplayNames = (data: Record<string, any>) => {
+    const resolved = data.legacy_participant_display_names;
+    if (Array.isArray(resolved) && resolved.length) {
+      return resolved.map((value) => String(value || "").trim()).filter(Boolean).join("、") || "—";
+    }
+    const participants = Array.isArray(data.legacy_participants) ? data.legacy_participants : [];
+    const fallback = participants
+      .map((participant: any) => participant?.display_name || participant?.staff_name)
+      .filter(Boolean);
+    return fallback.length ? casePersonDisplayNames(fallback) : "—";
   };
   const firstCourtEnabled = Form.useWatch("first_court_enabled", createForm);
   const secondCourtEnabled = Form.useWatch("second_court_enabled", createForm);
@@ -883,7 +938,9 @@ export default function CaseCenterPage({
     setCreateDefendantEditorOpen(false);
   };
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
+  const batchFeeSourceFileType = Form.useWatch("source_file_type", batchFeeForm);
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
+  const feeSourceFileType = Form.useWatch("source_file_type", feeForm);
   const feeExpenseSubtype = Form.useWatch("expense_subtype", feeForm);
   const feeItems = Form.useWatch("items", feeForm) || [];
   const feeEmployeeOptions = caseAssistantOptions;
@@ -891,6 +948,34 @@ export default function CaseCenterPage({
     () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow),
     [contracts, editingFeeRow, feeCase, viewingCounselCase],
   );
+  const fileTypeOptionsForCase = (caseType: unknown) => buildCaseFileTypeTreeOptions(
+    filterCaseFileTypesForCaseType(String(caseType || ""), caseFileTypeCatalog, caseRelations?.caseTypeFileTypes),
+  );
+  const phaseOptionsForCaseType = (caseType: unknown, phases: CasePhaseOption[]) => {
+    const normalizedCaseType = String(caseType || "").trim();
+    const names = new Set([normalizedCaseType]);
+    if (normalizedCaseType === "民事案件") names.add("民事争议");
+    if (normalizedCaseType === "民事争议") names.add("民事案件");
+    const configured = filterCasePhasesForCaseType(normalizedCaseType, phases, caseRelations?.caseTypePhases);
+    const builtin = phases.filter((phase) => names.has(String(phase.case_type || "").trim()));
+    return Array.from(new Map([...configured, ...builtin].map((phase) => [phase.id, phase])).values());
+  };
+  const normalEditPhaseOptions = useMemo(
+    () => phaseOptionsForCaseType(editingNormalCase?.data.case_type, phaseCatalog),
+    [caseRelations, editingNormalCase?.data.case_type, phaseCatalog],
+  );
+  const feeSourceCase = feeCase || viewingCounselCase;
+  const feeSourceFileTypeOptions = useMemo(
+    () => fileTypeOptionsForCase(feeSourceCase?.data.case_type),
+    [caseFileTypeCatalog, caseRelations, feeSourceCase?.data.case_type],
+  );
+  const applicableFeeSubtypes = (scope: string, sourceFileType: unknown) => {
+    const scoped = scope === "内部"
+      ? ["内部费用"]
+      : ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"];
+    return filterFeeSubtypesForFileType(String(sourceFileType || ""), scoped, caseRelations?.fileTypeFeeTypes);
+  };
+  const feeSubtypeOptions = applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
   const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
   const loadCaseCapabilities = async (rows: CaseRow[]) => {
     const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
@@ -904,6 +989,23 @@ export default function CaseCenterPage({
     } catch {
       setCaseActionCapabilities((previous) => ({ ...previous, ...fallback }));
     }
+  };
+  const loadCaseRelations = async () => {
+    const responses = await Promise.allSettled([
+      api.get<ParameterRelation>("/system/parameter-relations/case-type-file-types"),
+      api.get<ParameterRelation>("/system/parameter-relations/file-type-fee-types"),
+      api.get<ParameterRelation>("/system/parameter-relations/case-type-case-phases"),
+    ]);
+    if (responses.every((response) => response.status === "fulfilled")) {
+      const [caseTypeFileTypes, fileTypeFeeTypes, caseTypePhases] = responses.map((response) =>
+        (response as PromiseFulfilledResult<{ data: ParameterRelation }>).value.data,
+      );
+      setCaseRelations({ caseTypeFileTypes, fileTypeFeeTypes, caseTypePhases });
+      return;
+    }
+    // The existing configuration endpoint is administrator-only. Keep the current
+    // server-backed controls usable when the caller cannot read configuration.
+    setCaseRelations(null);
   };
   const load = async () => {
     setLoading(true);
@@ -962,6 +1064,7 @@ export default function CaseCenterPage({
       setCaseTypeOptions(referenceRes.data.case_types || []);
       setCauseOptions(referenceRes.data.causes || []);
       if ((referenceRes.data.case_file_types || []).length) {
+        setCaseFileTypeCatalog(referenceRes.data.case_file_types);
         const nextFileTypes = buildCaseFileTypeTreeOptions(referenceRes.data.case_file_types);
         setCaseFileTypeOptions(nextFileTypes);
         setCaseUploadCategory((current) => resolveCaseFileTypeSelection(current, nextFileTypes));
@@ -974,6 +1077,7 @@ export default function CaseCenterPage({
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
       setCaseCustomers(customerRes.data.items || []);
       setCaseClues(clueRes.data.items || []);
+      void loadCaseRelations();
       if (isCreateView && contractPrefill?.id) {
         const selected = contractRes.data.items.find((row:ContractRow) => row.id === contractPrefill.id);
         if (selected) createForm.setFieldsValue({ customer: selected.customer, source_person: resolveCasePersonValue(resolveCaseSourcePerson(selected)) });
@@ -988,10 +1092,7 @@ export default function CaseCenterPage({
   const counselSearchPayload = (values:Record<string,any>, page:number, pageSize:number, extra:Record<string,any>={}) =>
     buildCaseCounselSearchPayload(values, counselScope, page, pageSize, extra);
   const ordinaryScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
-  const ordinaryCaseTypes = initialView.includes("civil") ? ["民事案件"]
-    : initialView.includes("criminal") ? ["刑事案件"]
-      : initialView.includes("administrative") ? ["行政案件及国家赔偿"]
-        : initialView.includes("arbitration") ? ["仲裁"] : [];
+  const ordinaryCaseTypes = ordinaryCaseTypesForView(initialView);
   const loadOrdinaryCases = async (values:Record<string,any>=caseQuery, page=1, pageSize=originalPageSize) => {
     const requestId = ordinaryRequestGuard.begin();
     setLoading(true);
@@ -1072,11 +1173,12 @@ export default function CaseCenterPage({
   useEffect(() => {
     setTab(first);
     if (isCreateView) startCreate();
-    const relationTarget = consumeCustomerRelationTarget();
-    const relationQuery = relationTarget?.target === "civil-cases" ? {
-      customer_id: relationTarget.id,
-      customer_no: relationTarget.serial_no,
-      customer: relationTarget.title,
+    const relationTarget = consumeCustomerRelationTarget("civil-cases");
+    const routeCustomerId = ordinaryCustomerIdForView(initialView);
+    const relationQuery = routeCustomerId || relationTarget?.target === "civil-cases" ? {
+      customer_id: routeCustomerId || relationTarget?.id,
+      customer_no: relationTarget?.serial_no,
+      customer: relationTarget?.title,
     } : {};
     let initialListQuery: Record<string, any> = relationQuery;
     if (relationQuery.customer_id || relationQuery.customer_no || relationQuery.customer) {
@@ -1627,6 +1729,14 @@ export default function CaseCenterPage({
       const recordRes = await api.get(`/records/${row.id}`);
       const detailRecord = recordRes.data as CaseRow;
       setViewingCounselCase(detailRecord);
+      void api.get<{ legacy_case_id: number }>(`/legacy-ls-history/current-records/${detailRecord.id}`)
+        .then((response) => setLegacyLsHistoryCaseIds((current) => ({ ...current, [detailRecord.id]: response.data.legacy_case_id })))
+        .catch(() => setLegacyLsHistoryCaseIds((current) => {
+          if (!(detailRecord.id in current)) return current;
+          const next = { ...current };
+          delete next[detailRecord.id];
+          return next;
+        }));
       document.querySelector<HTMLElement>(".content")?.scrollTo({top:0,left:0});
       setSelectedCounselAttachmentKeys([]);
       setActiveCounselDocCategory("");
@@ -2261,7 +2371,23 @@ export default function CaseCenterPage({
         message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
         return;
       }
-      if (data.kind === "pdf" || data.kind === "image") {
+      if (data.kind === "pdf") {
+        const metadata = await api.get(`/attachments/${item.id}/pdf-preview`);
+        const response = await api.get(`/attachments/${item.id}/pdf-preview/pages/1.png`, {
+          params: { width: 1440 },
+          responseType: "blob",
+        });
+        setAttachmentPreview({
+          name: item.original_name,
+          kind: "pdf",
+          url: URL.createObjectURL(response.data),
+          attachmentId: item.id,
+          page: 1,
+          pageCount: Number(metadata.data.page_count || 1),
+        });
+        return;
+      }
+      if (data.kind === "image") {
         const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
         setAttachmentPreview({ name: item.original_name, kind: data.kind, url: URL.createObjectURL(response.data) });
         return;
@@ -2269,6 +2395,25 @@ export default function CaseCenterPage({
       setAttachmentPreview({ name: item.original_name, kind: data.kind, text: data.text || "" });
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件文件预览失败");
+    }
+  };
+  const loadAttachmentPdfPage = async (page: number) => {
+    if (!attachmentPreview?.attachmentId || attachmentPreview.kind !== "pdf") return;
+    const targetPage = Math.min(Math.max(page, 1), attachmentPreview.pageCount || 1);
+    if (targetPage === attachmentPreview.page) return;
+    setAttachmentPreviewLoading(true);
+    try {
+      const response = await api.get(`/attachments/${attachmentPreview.attachmentId}/pdf-preview/pages/${targetPage}.png`, {
+        params: { width: 1440 },
+        responseType: "blob",
+      });
+      const nextUrl = URL.createObjectURL(response.data);
+      if (attachmentPreview.url) URL.revokeObjectURL(attachmentPreview.url);
+      setAttachmentPreview({ ...attachmentPreview, page: targetPage, url: nextUrl });
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "PDF 页面加载失败");
+    } finally {
+      setAttachmentPreviewLoading(false);
     }
   };
   const closeAttachmentPreview = () => {
@@ -2305,13 +2450,14 @@ export default function CaseCenterPage({
     }
   };
   const selectCounselDocCategory = (category: string) => {
+    const applicableOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
     setActiveCounselDocCategory(category);
-    if (hasCaseFileTypeOption(category, caseFileTypeOptions) || getCustomCaseDocumentFolders(viewingCounselCase).includes(category)) {
+    if (hasCaseFileTypeOption(category, applicableOptions) || getCustomCaseDocumentFolders(viewingCounselCase).includes(category)) {
       setCounselUploadCategory(category);
       setSelectedCounselAttachmentKeys([]);
       return;
     }
-    setCounselUploadCategory(caseFileTypeOptions.some((item) => item.value === category) ? category : DEFAULT_CASE_ATTACHMENT_CATEGORY);
+    setCounselUploadCategory(hasCaseFileTypeOption(category, applicableOptions) ? category : DEFAULT_CASE_ATTACHMENT_CATEGORY);
     setSelectedCounselAttachmentKeys([]);
   };
   const toggleCounselDocGroup = (category: string) => {
@@ -2353,7 +2499,6 @@ export default function CaseCenterPage({
     }});
   };
   const openCounselEdit = (row: CaseRow) => {
-    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
     counselEditForm.setFieldsValue({
       title: row.title,
       customer: row.customer,
@@ -2387,7 +2532,7 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "法律顾问案件基本信息保存失败");
     }
   };
-  const isNormalEditableCase = (row: CaseRow) => ["民事案件", "刑事案件", "行政案件及国家赔偿"].includes(String(row.data.case_type || ""));
+  const isNormalEditableCase = (row: CaseRow) => isNormalCaseBasicType(row.data.case_type);
   const ensureCaseCustomerOption = async (row: CaseRow) => {
     let customerId = Number(row.data.customer_record_id || row.data.customer_id) || caseCustomers.find((item) => item.title === row.customer)?.id || 0;
     if (customerId && !caseCustomers.some((item) => item.id === customerId)) {
@@ -2421,7 +2566,6 @@ export default function CaseCenterPage({
     return customerId;
   };
   const openNormalCaseEdit = async (row: CaseRow) => {
-    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
     if (!isNormalEditableCase(row)) return message.warning("当前案件类型没有普通案件基本信息修改入口");
     const customerRecordId = await ensureCaseCustomerOption(row);
     const clueIds = Array.isArray(row.data.investigation_clue_ids) ? row.data.investigation_clue_ids.map(Number).filter(Boolean) : (Number(row.data.investigation_clue_id || row.data.clue_record_id) ? [Number(row.data.investigation_clue_id || row.data.clue_record_id)] : []);
@@ -2456,7 +2600,6 @@ export default function CaseCenterPage({
     }
   };
   const openArbitrationBasicEdit = async (row: CaseRow) => {
-    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改案件基本信息权限");
     if (row.data.case_type !== "仲裁") return message.warning("当前案件不是仲裁案件");
     const customerRecordId = await ensureCaseCustomerOption(row);
     arbitrationBasicForm.setFieldsValue({
@@ -2478,7 +2621,6 @@ export default function CaseCenterPage({
     } catch(error:any) { message.error(error?.response?.data?.detail||"仲裁案件基本信息保存失败"); }
   };
   const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
-    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有维护刑事案件资料权限");
     const dateFields=["first_court_filing_date","first_court_hearing_date","second_court_filing_date","second_court_hearing_date","execution_court_filing_date","execution_court_hearing_date","retrial_court_filing_date","retrial_court_hearing_date"];
     criminalMaintenanceForm.setFieldsValue({...row.data,...Object.fromEntries(dateFields.map(key=>[key,row.data[key]?dayjs(row.data[key]):undefined])),comment:""}); setCriminalMaintenance({row,kind});
   };
@@ -2489,7 +2631,6 @@ export default function CaseCenterPage({
     try { const {data}=await api.put(`/cases/${criminalMaintenance.row.id}/criminal/${criminalMaintenance.kind}`,payload); message.success("刑事案件资料已保存"); setCriminalMaintenance(null);setViewingCounselCase(data);await load(); } catch(error:any){message.error(error?.response?.data?.detail||"刑事案件资料保存失败");}
   };
   const openCaseLitigants = (row: CaseRow) => {
-    if (!getCaseCapability(row).can_edit_basic) return message.warning("当前账号没有修改当事人权限");
     if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改当事人");
     caseLitigantsForm.setFieldsValue({
       plaintiffs: row.data.plaintiffs || (row.data.plaintiff ? [row.data.plaintiff] : row.customer ? [row.customer] : []),
@@ -2619,12 +2760,16 @@ export default function CaseCenterPage({
   };
   const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所", expenseSubtype?: string) => {
     if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
+    const sourceFileType = resolveCaseFileTypeSelection("", fileTypeOptionsForCase(row.data.case_type));
+    const preferredSubtype = expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
+    const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
+    const initialSubtype = allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : allowedSubtypes[0];
     feeForm.resetFields();
-    feeForm.setFieldsValue({ items: [{
+    feeForm.setFieldsValue({ source_file_type: sourceFileType, items: [{
       title: `${row.title}案件费用`, amount: row.data.amount || undefined,
       contract_record_id: Number(row.data.contract_record_id || row.data.contract_id) || undefined,
-      expense_scope: expenseScope, expense_subtype: expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费"),
-      fee_type: expenseScope === "内部" ? "内部费用" : "官方费用",
+      expense_scope: expenseScope, expense_subtype: initialSubtype,
+      fee_type: FEE_SUBTYPE_TO_TYPE[initialSubtype] || initialSubtype,
       commission_details: [],
       handler: profile.username || row.owner, court: row.data.court || "", payee: row.data.court || "",
       deadline: undefined, description: "",
@@ -2638,17 +2783,20 @@ export default function CaseCenterPage({
     const caseSource = feeCase || (editingFeeRow ? viewingCounselCase : null);
     if (!caseSource) return;
     const values = await feeForm.validateFields();
+    const { source_file_type: sourceFileType, ...feeValues } = values;
+    // This selector constrains the UI only; the current finance API has no source-file-type field.
+    void sourceFileType;
     try {
       const commonPayload = { customer: feeCase?.customer || editingFeeRow?.customer || "", case_no: feeCase?.serial_no || editingFeeRow?.data.case_no || "", case_record_id: feeCase?.id || editingFeeRow?.data.case_id };
       if (editingFeeRow) {
-        const payload = { ...values, ...commonPayload, deadline: values.deadline ? formatRequiredDate(values.deadline, "截止日期") : undefined };
+        const payload = { ...feeValues, ...commonPayload, deadline: feeValues.deadline ? formatRequiredDate(feeValues.deadline, "截止日期") : undefined };
         const { data } = await api.put(`/finance/fees/${editingFeeRow.id}`, payload);
         message.success(`费用 ${data.serial_no} 已保存`);
         setEditingFeeRow(null); feeForm.resetFields(); await load();
         if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
       } else {
         const created: CaseRow[] = [];
-        for (const item of values.items || []) {
+        for (const item of feeValues.items || []) {
           const payload = { ...item, ...commonPayload, deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : undefined };
           const { data } = await api.post("/finance/fees", payload);
           created.push(data);
@@ -2754,6 +2902,7 @@ export default function CaseCenterPage({
   };
   const editCaseFee = (row: CaseRow) => {
     if (row.status !== "草稿") return message.warning("仅草稿费用可以修改");
+    feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
     feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: row.data.expense_scope || "律所", expense_subtype: row.data.expense_subtype || "官费", fee_type: row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
     setEditingFeeRow(row);
   };
@@ -2855,10 +3004,13 @@ export default function CaseCenterPage({
   const openPhaseChange = async (rows: CaseRow[]) => {
     const selected = rows.filter(Boolean);
     if (!selected.length) return message.warning("请先选择案件");
-    if (selected.some((row) => !getCaseCapability(row).can_change_phase)) return message.warning("当前账号没有案件阶段维护权限");
+    const selectedCaseTypes = Array.from(new Set(selected.map((row) => String(row.data.case_type || "").trim())));
+    if (selectedCaseTypes.length > 1) return message.warning("不同案件类型的阶段范围不同，请分别修改");
     if (selected.some((row) => [...ARCHIVE_LOCKED_STATUSES, "已合并"].includes(row.status))) return message.warning("归档中、已归档或已合并案件不能修改案件阶段");
     try {
-      const { data } = await api.get("/cases/phases");
+      const { data } = await api.get("/cases/phases", { params: { case_type: selectedCaseTypes[0] || "" } });
+      // The endpoint has already applied the case-type relation. Re-filtering
+      // here can erase valid phases for historical case-type aliases.
       const options = (Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[];
       if (!options.length) return message.error("案件阶段加载失败");
       setPhaseOptions(options);
@@ -3264,6 +3416,22 @@ export default function CaseCenterPage({
     );
   const counselListMode = originalListMode && initialView.includes("counsel");
   const originalCases = ordinaryCases;
+  const selectedBatchCases = useMemo(
+    () => (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id))),
+    [counselCases, counselListMode, originalCases, selectedCaseKeySet],
+  );
+  const batchFeeSourceFileTypeOptions = useMemo(() => {
+    const caseTypes = [...new Set(selectedBatchCases.map((row) => String(row.data.case_type || "")))];
+    if (!caseTypes.length) return [];
+    const optionsByType = caseTypes.map((caseType) =>
+      filterCaseFileTypesForCaseType(caseType, caseFileTypeCatalog, caseRelations?.caseTypeFileTypes),
+    );
+    const first = optionsByType[0] || [];
+    return buildCaseFileTypeTreeOptions(first.filter((option) =>
+      optionsByType.every((options) => hasCaseFileTypeOption(option.value, options)),
+    ));
+  }, [caseFileTypeCatalog, caseRelations, selectedBatchCases]);
+  const batchFeeSubtypeOptions = applicableFeeSubtypes(String(batchExpenseScope || ""), batchFeeSourceFileType);
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeySet.has(String(row.id)));
   const selectedCaseCapability = getCaseCapability(selectedCase);
   const canDeleteSelectedCompanyCase = isCompanyCaseListRoute(initialView)
@@ -3307,9 +3475,19 @@ export default function CaseCenterPage({
     selectedOnly ? selectedCaseKeys : originalCases.map((row) => row.id),
     selectedOnly ? "请选择需要导出的案件" : "当前查询没有可导出的案件",
   );
-  const exportArchiveManifest = () => void downloadCaseExport(
-    "/cases/export/archive-manifest", "案件归档清单.xls", selectedCaseKeys, "请选择需要导出归档清单的案件",
-  );
+  const exportArchiveManifest = (selectedOnly: boolean) => {
+    const currentArchiveIds = originalArchiveRows.map((row) => row.id);
+    const currentArchiveIdSet = new Set(currentArchiveIds.map(String));
+    const ids = selectedOnly
+      ? selectedCaseKeys.filter((key) => currentArchiveIdSet.has(String(key)))
+      : currentArchiveIds;
+    void downloadCaseExport(
+      "/cases/export/archive-manifest",
+      selectedOnly ? "案件归档清单-选中.xls" : "案件归档清单-当前筛选.xls",
+      ids,
+      selectedOnly ? "请选择需要导出归档清单的案件" : "当前筛选没有可导出的归档案件",
+    );
+  };
   const exportCaseQrWord = () => void downloadCaseExport(
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
   );
@@ -3351,9 +3529,23 @@ export default function CaseCenterPage({
     if (uploadValidationError) return message.warning(uploadValidationError);
     if (!file || !selectedCase) return message.warning("请先选择案件再上传文件");
     const category = initialView === "case-files-receipt" ? "案件票据文件" : caseUploadCategory;
+    if (initialView !== "case-files-receipt" && !hasCaseFileTypeOption(category, fileTypeOptionsForCase(selectedCase.data.case_type))) {
+      return message.warning("当前案件类型未配置该材料类型，请先在系统参数中维护关联");
+    }
     const data = new FormData(); data.append("file",file); data.append("record_id",String(selectedCase.id)); data.append("category",category); data.append("remark",initialView==="case-files-receipt"?"案件票据批量上传":`案件列表上传：${category}`);
     try { await api.post("/attachments",data); message.success("案件文件已上传"); } catch(error:any){message.error(error?.response?.data?.detail||"上传失败");}
     finally { if(caseUploadRef.current) caseUploadRef.current.value=""; }
+  };
+  const openCaseFileUpload = () => {
+    if (!selectedCase) return message.warning("请先选择案件再上传文件");
+    const options = fileTypeOptionsForCase(selectedCase.data.case_type);
+    if (!options.length) return message.warning("当前案件类型未配置可上传的材料类型，请先在系统参数中维护关联");
+    setCaseUploadCategory((current) => resolveCaseFileTypeSelection(current, options));
+    setCaseUploadOpen(true);
+  };
+  const confirmCaseFileUpload = () => {
+    setCaseUploadOpen(false);
+    window.setTimeout(() => caseUploadRef.current?.click(), 0);
   };
   const uploadCaseInvoiceFile = async (file?: File) => {
     if (!file) return;
@@ -3415,7 +3607,11 @@ export default function CaseCenterPage({
         case "court":
           return <><p>法院:<Button type="link" className="case-cell-link case-inline-cell-link" onClick={() => void openCounselDetail(row)}>{row.data.court || ""}</Button></p><p>案号:{row.data.court_case_no || ""}</p></>;
         case "lawyer":
-          return <><p>律师:{casePersonDisplayNames(row.data.handling_lawyers)}</p><p>助理:{casePersonDisplayName(row.data.assistant, row.data.assistant_display_name)}</p></>;
+          return <>
+            <p>律师:{casePersonDisplayNames(row.data.handling_lawyers)}</p>
+            <p>助理:{casePersonDisplayName(row.data.assistant, row.data.assistant_display_name)}</p>
+            {Array.isArray(row.data.legacy_participants) && row.data.legacy_participants.length > 0 && <p>案件参与人:{legacyCaseParticipantDisplayNames(row.data)}</p>}
+          </>;
         case "phase":
           return <><p>变更时间:{row.data.phase_changed_at || ""}</p><p>变更时长:{row.data.phase_duration || row.data.phase_changed_days || ""} <Button type="link" size="small" onClick={() => openCaseLogViewer(row)}>查看日志</Button></p></>;
         case "task":
@@ -3557,7 +3753,8 @@ export default function CaseCenterPage({
     invoice:[{title:"文件名",dataIndex:"original_name"},{title:"案件编号",render:(_:unknown,row:AttachmentRow)=>{const target=invoiceCase(row);const caseNo=target?.serial_no||relatedFinance(row.record_id||0)?.data?.case_no||"";return caseNo?<Button type="link" className="case-cell-link" onClick={()=>openSpecialCaseDetail(target||{case_no:caseNo})}>{caseNo}</Button>:""}},{title:"案件类型",render:(_:unknown,row:AttachmentRow)=>invoiceCase(row)?.data.case_type||""},{title:"发票申请人",render:(_:unknown,row:AttachmentRow)=>casePersonDisplayName(row.uploader,row.uploader_display_name)},{title:"费用类型",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.fee_type||row.category},{title:"费用金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据编号",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_no||row.remark||""},{title:"票据金额",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_amount??relatedFinance(row.record_id||0)?.data?.amount??""},{title:"票据日期",render:(_:unknown,row:AttachmentRow)=>relatedFinance(row.record_id||0)?.data?.invoice_date||row.created_at}],
   };
   const customCaseDocumentFolders=getCustomCaseDocumentFolders(viewingCounselCase);
-  const counselUploadCategoryOptions=[...caseFileTypeOptions,...customCaseDocumentFolders.filter(name=>!hasCaseFileTypeOption(name,caseFileTypeOptions)).map(name=>({value:name,label:name}))];
+  const counselCaseFileTypeOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
+  const counselUploadCategoryOptions=[...counselCaseFileTypeOptions,...customCaseDocumentFolders.filter(name=>!hasCaseFileTypeOption(name,counselCaseFileTypeOptions)).map(name=>({value:name,label:name}))];
   const counselDocTree:Array<{label:string;category:string;type:string;parent?:string;custom?:boolean}>=[
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
@@ -3689,7 +3886,7 @@ export default function CaseCenterPage({
   const caseDetailPrimaryActionButtons = viewingCounselCase ? <div className="case-detail-legacy-operation-menu">
     {counselDetailCapabilities.can_edit_basic && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyBasicInfo}>{primaryOperationLabels[0]}</Button>}
     {counselDetailCapabilities.can_change_phase && <Button type="text" block disabled={detailEditLocked} onClick={() => void openPhaseChange([viewingCounselCase])}>{primaryOperationLabels[1]}</Button>}
-    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "民事案件" && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyNotaryInfo}>{primaryOperationLabels[2]}</Button>}
+    {counselDetailCapabilities.can_edit_basic && isCivilCaseType(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyNotaryInfo}>{primaryOperationLabels[2]}</Button>}
     {counselDetailCapabilities.can_assign_team && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseHearingLawyer(viewingCounselCase)}>{primaryOperationLabels[3]}</Button>}
     {counselDetailCapabilities.can_edit_basic && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{primaryOperationLabels[4]}</Button>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>修改公安信息</Button>}
@@ -3701,7 +3898,7 @@ export default function CaseCenterPage({
       </div>
     </div>}
     {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates")}>修改检察院信息</Button>}
-    {counselDetailCapabilities.can_edit_basic && ["民事案件", "刑事案件", "行政案件及国家赔偿", "仲裁"].includes(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
+    {counselDetailCapabilities.can_edit_basic && (isNormalCaseBasicType(viewingCounselCase.data.case_type) || viewingCounselCase.data.case_type === "仲裁") && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
     {counselDetailCapabilities.can_archive && <div className="case-detail-legacy-submenu">
       <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-archive-submenu">
@@ -3849,7 +4046,8 @@ export default function CaseCenterPage({
 <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={getCaseArchivePagination(initialView)} />
         <div className="case-bottom-actions"><Space wrap>
           <Button onClick={exportCases}>导出全部（CSV）</Button>
-          <Button onClick={exportArchiveManifest}>导出选中归档清单（Excel）</Button>
+          <Button onClick={()=>exportArchiveManifest(true)}>导出选中归档清单（Excel）</Button>
+          <Button onClick={()=>exportArchiveManifest(false)}>导出当前筛选归档清单（Excel）</Button>
           <Dropdown
             menu={{
               items: selectedArchiveCase ? [
@@ -3938,7 +4136,7 @@ export default function CaseCenterPage({
                 onClick: ({ key }) => {
                   if (key === "selected-excel") counselListMode ? void exportCounselCases(true) : exportSelectedCasesExcel(true);
                   if (key === "current-excel") counselListMode ? void exportCounselCases(false) : exportSelectedCasesExcel(false);
-                  if (key === "selected-manifest") exportArchiveManifest();
+                  if (key === "selected-manifest") exportArchiveManifest(true);
                   if (key === "selected-qr-word") exportCaseQrWord();
                 },
               }}
@@ -3947,7 +4145,7 @@ export default function CaseCenterPage({
               icon={<UploadOutlined />}
               disabled={selectedCaseKeys.length !== 1 || !selectedCaseCapability.can_upload_attachment}
               title={selectedCaseKeys.length !== 1 ? "请先选择一条案件" : "当前案件没有上传附件权限"}
-              onClick={()=>caseUploadRef.current?.click()}
+              onClick={openCaseFileUpload}
             >上传文件</Button>
             {isCompanyCaseListRoute(initialView)&&<Button
               aria-label="删除案件"
@@ -3960,7 +4158,7 @@ export default function CaseCenterPage({
             {counselListMode&&<>
               <Button onClick={()=>selectedCase?void openCounselDetail(selectedCase):message.warning("请先选择案件")}>查看详情</Button>
               {(["admin","manager"].includes(profile.role||""))&&<Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要修改的案件");batchUpdateForm.resetFields();setBatchUpdateOpen(true);}}>批量修改</Button>}
-              {canCreateSelectedCaseFees&&<Button onClick={()=>{batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",expense_subtype:"官费",handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>}
+              {canCreateSelectedCaseFees&&<Button onClick={()=>{batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>}
             </>}
             <Dropdown
               trigger={["click"]}
@@ -3994,7 +4192,7 @@ export default function CaseCenterPage({
                 ] : [{ key: "select", label: "请先选择案件", disabled: true }],
                 onClick: ({ key }) => {
                   if (!selectedCase) return message.warning("请先选择案件");
-                  if (key === "upload-document") caseUploadRef.current?.click();
+                  if (key === "upload-document") openCaseFileUpload();
                   if (key.startsWith("firm-")) openCaseFee(selectedCase, "律所", key.slice("firm-".length));
                   if (key.startsWith("platform-")) openCaseFee(selectedCase, "平台", key.slice("platform-".length));
                   if (key === "internal-fee") openCaseFee(selectedCase, "内部", "内部费用");
@@ -4006,6 +4204,7 @@ export default function CaseCenterPage({
                 },
               }}
             ><Button aria-label="更多案件操作">更多操作 ▾</Button></Dropdown>
+            {!counselListMode && initialView.includes("civil") && <Button onClick={() => setLegacyLsHistoryOpen(true)}>历史诉讼案件</Button>}
           </Space></div>}
         </Card>
       </div>}
@@ -4348,6 +4547,20 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
+        open={caseUploadOpen}
+        title="上传案件材料"
+        okText="选择文件"
+        cancelText="取消"
+        onOk={confirmCaseFileUpload}
+        onCancel={() => setCaseUploadOpen(false)}
+      >
+        <Form layout="vertical">
+          <Form.Item label="材料类型">
+            <Select value={caseUploadCategory} options={selectedCase ? fileTypeOptionsForCase(selectedCase.data.case_type) : []} onChange={setCaseUploadCategory} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
         open={Boolean(editingFeeRow)}
         title={`修改案件费用：${editingFeeRow?.data.case_no || ""}`}
         okText="保存费用草稿"
@@ -4360,8 +4573,9 @@ export default function CaseCenterPage({
             <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
             <div className="form-grid">
               <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={feeContractOptions} /></Form.Item>
-              <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldsValue({ expense_subtype: value === "内部" ? "内部费用" : "官费", fee_type: value === "内部" ? "内部费用" : "官方费用" })} /></Form.Item>
-              <Form.Item label="费用类别" name="expense_subtype" rules={[{ required: true }]}><Select options={(feeExpenseScope === "内部" ? ["内部费用"] : ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"]).map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue("fee_type", ({ "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用", "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用" } as Record<string, string>)[value])} /></Form.Item>
+              <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{ required: true, message: "请选择关联材料类型" }] : []}><Select allowClear options={feeSourceFileTypeOptions} onChange={() => feeForm.setFieldsValue({ expense_subtype: undefined, fee_type: undefined })} /></Form.Item>
+              <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={() => feeForm.setFieldsValue({ expense_subtype: undefined, fee_type: undefined })} /></Form.Item>
+              <Form.Item label="费用类别" name="expense_subtype" rules={[{ required: true }]}><Select options={feeSubtypeOptions.map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue("fee_type", FEE_SUBTYPE_TO_TYPE[value] || value)} /></Form.Item>
               <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
             </div>
               <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
@@ -4384,12 +4598,15 @@ export default function CaseCenterPage({
         {caseFeeCreateStep === 0 ? <>
           <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>点击表格头部（费用类型、金额、备注、截止日期）可将第一行数据同步到各行。</li><li>截止日期默认为申请之日第5天，如有特殊情况，可在申请时修改。</li></ol>} />
           <Form form={feeForm} component={false}>
+            <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{ required: true, message: "请选择关联材料类型" }] : []}>
+              <Select allowClear options={feeSourceFileTypeOptions} onChange={() => feeForm.setFieldValue("items", (feeForm.getFieldValue("items") || []).map((item: Record<string, unknown>) => ({ ...item, expense_subtype: undefined, fee_type: undefined })))} />
+            </Form.Item>
             <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => <div className="case-fee-entry-table">
               <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
                 <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" options={feeContractOptions} /></Form.Item>
-                <Form.Item name={[field.name, "expense_subtype"]} rules={[{ required: true, message: "请选择费用类型" }]}><Select options={(["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用", "内部费用"]).map(value => ({ value, label: value }))} onChange={(value) => { const feeType=(value==="内部费用"?"内部费用":["官费","诉讼费","保全费","鉴定费","公证费","公告费","执行费"].includes(value)?"官方费用":value==="代理费"?"代理费":"其他费用"); feeForm.setFieldValue(["items",field.name,"fee_type"],feeType); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${value}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "expense_subtype"]} rules={[{ required: true, message: "请选择费用类型" }]}><Select options={feeSubtypeOptions.map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items",field.name,"fee_type"],FEE_SUBTYPE_TO_TYPE[value] || value); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${value}`); }} /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
@@ -4514,6 +4731,7 @@ export default function CaseCenterPage({
                 <tbody>
                   <tr><th>我方案号</th><td>{viewingCounselCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCounselCase.data.cause_or_charge||viewingCounselCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCounselCase.status||"—"}</td><th>原告</th><td>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</td></tr>
                   <tr><th>案件名称</th><td colSpan={3}>{viewingCounselCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayName(viewingCounselCase.data.hearing_lawyer||viewingCounselCase.data.handling_lawyers?.[0],viewingCounselCase.data.hearing_lawyer_display_name)}</td><th>被告</th><td>{viewingCounselCase.data.defendant||viewingCounselCase.data.opponent||caseDetailNames(viewingCounselCase.data.defendants)}</td></tr>
+                  <tr><th>案件参与人</th><td colSpan={7}>{legacyCaseParticipantDisplayNames(viewingCounselCase.data)}</td></tr>
                   <tr><th>客户</th><td colSpan={3}><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCounselCase.data.customer_id) || undefined, serial_no: viewingCounselCase.data.customer_no, title: viewingCounselCase.customer })}>{viewingCounselCase.customer||"—"}</Button></td><th>经办律师</th><td>{casePersonDisplayNames(viewingCounselCase.data.handling_lawyers)}</td><th>第三人</th><td>{viewingCounselCase.data.third_party||caseDetailNames(viewingCounselCase.data.third_parties)}</td></tr>
                   <tr><th>合同号</th><td>{viewingCounselCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCounselCase.data.contract_record_id) || undefined, serial_no: viewingCounselCase.data.contract_no })}>{viewingCounselCase.data.contract_no}</Button>:"—"}</td><th>调查员</th><td>{casePersonDisplayName(viewingCounselCase.data.investigator,viewingCounselCase.data.investigator_display_name)}</td><th>律师助理</th><td>{casePersonDisplayName(viewingCounselCase.data.assistant,viewingCounselCase.data.assistant_display_name)}</td><th>公证书号</th><td>{viewingCounselCase.data.notarial_no||viewingCounselCase.data.notary_no||viewingCounselCase.data.certificate_no||"—"}</td></tr>
                   <tr><th>线索号</th><td colSpan={3}>{String(viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no||viewingCounselCase.data.investigation_clue_nos||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCounselCase.data.clue_record_id || viewingCounselCase.data.investigation_clue_id) || undefined, serial_no: viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no || viewingCounselCase.data.investigation_clue_nos })}>{caseDetailNames(viewingCounselCase.data.investigation_clue_nos||viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no)}</Button>:"—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCounselCase.data.case_register_date||viewingCounselCase.data.filing_date||viewingCounselCase.data.first_court_filing_date)}</td><th>仓库位置</th><td>{viewingCounselCase.data.warehouse||viewingCounselCase.data.warehouse_location||viewingCounselCase.data.storage_location||viewingCounselCase.data.location||viewingCounselCase.data.deposit_address||"—"}</td></tr>
@@ -4527,8 +4745,8 @@ export default function CaseCenterPage({
             <div className="case-court-summary-title">法院信息</div>
             <div className="case-court-summary-grid">
               <p><strong>一审法院</strong><span>{viewingCounselCase.data.first_court_name||viewingCounselCase.data.first_instance_court||viewingCounselCase.data.court||"—"}</span></p>
-              <p><strong>法庭</strong><span>{viewingCounselCase.data.first_court_courtroom||"—"}</span></p>
-              <p><strong>一审案号</strong><span>{viewingCounselCase.data.first_court_case_no||viewingCounselCase.data.court_case_no||"—"}</span></p>
+              <p><strong>法庭</strong><span>{viewingCounselCase.data.first_court_courtroom||viewingCounselCase.data.courtroom||"—"}</span></p>
+              <p><strong>一审案号</strong><span>{viewingCounselCase.data.first_court_case_no||viewingCounselCase.data.first_instance_case_no||viewingCounselCase.data.court_case_no||"—"}</span></p>
               <p><strong>立案时间</strong><span>{viewingCounselCase.data.first_court_filing_date||viewingCounselCase.data.filing_date||"—"}</span></p>
               <p><strong>开庭时间</strong><span>{viewingCounselCase.data.first_court_hearing_date||viewingCounselCase.data.hearing_date||"—"}</span></p>
               <p><strong>判决日期</strong><span>{viewingCounselCase.data.first_court_judgment_date||viewingCounselCase.data.judgment_date||"—"}</span></p>
@@ -4554,7 +4772,7 @@ export default function CaseCenterPage({
               <p><strong>提交备注</strong><span>{viewingCounselCase.data.archive_submit_comment || "—"}</span></p>
               <p><strong>审核状态</strong><span>{viewingCounselCase.data.archive_status || "—"}</span></p>
               {viewingCounselCase.data.archive_type === "deficit" && <>
-                <p><strong>内部审核人</strong><span>{viewingCounselCase.data.archive_internal_reviewer ? casePersonDisplayName(viewingCounselCase.data.archive_internal_reviewer) : "—"}</span></p>
+                <p><strong>内部审核人</strong><span>{viewingCounselCase.data.archive_internal_reviewer ? casePersonDisplayName(viewingCounselCase.data.archive_internal_reviewer, viewingCounselCase.data.archive_internal_reviewer_display_name) : "—"}</span></p>
                 <p><strong>内部审核时间</strong><span>{viewingCounselCase.data.archive_internal_reviewed_at || "—"}</span></p>
                 <p><strong>内部审核意见</strong><span>{viewingCounselCase.data.archive_internal_review_comment || "—"}</span></p>
               </>}
@@ -4578,6 +4796,8 @@ export default function CaseCenterPage({
               }
             }}
             items={[
+              ...(legacyLsHistoryCaseIds[viewingCounselCase.id] ? [{ key: "legacy-ls-history", label: "历史诉讼", children: <LegacyLsHistoryPanel initialCaseId={legacyLsHistoryCaseIds[viewingCounselCase.id]} currentCaseRecordId={viewingCounselCase.id} /> }] : []),
+              { key: "legacy-contract-history", label: "历史合同", children: <LegacyContractHistoryPanel contractNo={String(viewingCounselCase.data.contract_no || "")} customerNo={String(viewingCounselCase.data.customer_no || "")} /> },
               {key:"documents",label:"文档信息",children:<div className="case-documents-layout">
                 <aside className="case-detail-doc-tree" aria-label="案件文档目录">
                   {counselDocTree.map((item,index)=>(
@@ -4714,6 +4934,15 @@ export default function CaseCenterPage({
         </div>}
       </Drawer>
       <Drawer
+        width="min(1280px, 96vw)"
+        open={legacyLsHistoryOpen}
+        title="历史诉讼案件（只读）"
+        onClose={() => setLegacyLsHistoryOpen(false)}
+        destroyOnHidden
+      >
+        <LegacyLsHistoryPanel />
+      </Drawer>
+      <Drawer
         className="case-agent-drawer"
         width={agentDrawerWidth}
         open={agentOpen}
@@ -4823,7 +5052,16 @@ export default function CaseCenterPage({
         destroyOnHidden
       >
         {attachmentPreview?.kind === "image" && <img src={attachmentPreview.url} alt={attachmentPreview.name} style={{ display: "block", maxWidth: "100%", maxHeight: "72vh", margin: "0 auto" }} />}
-        {attachmentPreview?.kind === "pdf" && <iframe title={attachmentPreview.name} src={attachmentPreview.url} style={{ width: "100%", height: "72vh", border: 0 }} />}
+        {attachmentPreview?.kind === "pdf" && <div>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <Button disabled={attachmentPreviewLoading || (attachmentPreview.page || 1) <= 1} onClick={() => void loadAttachmentPdfPage((attachmentPreview.page || 1) - 1)}>上一页</Button>
+            <span>第 {attachmentPreview.page || 1} / {attachmentPreview.pageCount || 1} 页</span>
+            <Button disabled={attachmentPreviewLoading || (attachmentPreview.page || 1) >= (attachmentPreview.pageCount || 1)} onClick={() => void loadAttachmentPdfPage((attachmentPreview.page || 1) + 1)}>下一页</Button>
+          </div>
+          <div style={{ height: "66vh", overflow: "auto", background: "#f0f2f5", padding: 12, textAlign: "center" }}>
+            <img src={attachmentPreview.url} alt={`${attachmentPreview.name} 第 ${attachmentPreview.page || 1} 页`} style={{ display: "inline-block", maxWidth: "100%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.18)" }} />
+          </div>
+        </div>}
         {(attachmentPreview?.kind === "text" || attachmentPreview?.kind === "docx") && <pre style={{ maxHeight: "70vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7 }}>{attachmentPreview.text}</pre>}
       </Modal>
       <Modal open={Boolean(caseDocumentFolderEditor)} title={caseDocumentFolderEditor?.mode==="rename"?"重命名案件文档目录":"新增案件文档目录"} okText="保存" cancelText="取消" onOk={saveCaseDocumentFolder} onCancel={()=>{setCaseDocumentFolderEditor(null);caseDocumentFolderForm.resetFields();}}>
@@ -4869,8 +5107,9 @@ export default function CaseCenterPage({
         <Alert type="info" showIcon title="系统会为每个案件分别创建一条费用草稿，并分别写入案件与费用审计记录。" style={{marginBottom:12}}/>
         <Form form={batchFeeForm} layout="vertical">
           <div className="form-grid">
-            <Form.Item label="费用归属" name="expense_scope" rules={[{required:true}]}><Select options={["律所","平台","内部"].map(value=>({value,label:value}))} onChange={(value)=>batchFeeForm.setFieldValue("expense_subtype",value==="内部"?"内部费用":"官费")}/></Form.Item>
-            <Form.Item label="费用类型" name="expense_subtype" rules={[{required:true}]}><Select options={(batchExpenseScope==="内部"?["内部费用"]:["官费","第三方费用","代理费","其他费用"]).map(value=>({value,label:value}))}/></Form.Item>
+            <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{required:true,message:"请选择关联材料类型"}] : []}><Select allowClear options={batchFeeSourceFileTypeOptions} onChange={()=>batchFeeForm.setFieldValue("expense_subtype",undefined)}/></Form.Item>
+            <Form.Item label="费用归属" name="expense_scope" rules={[{required:true}]}><Select options={["律所","平台","内部"].map(value=>({value,label:value}))} onChange={()=>batchFeeForm.setFieldValue("expense_subtype",undefined)}/></Form.Item>
+            <Form.Item label="费用类型" name="expense_subtype" rules={[{required:true}]}><Select options={batchFeeSubtypeOptions.map(value=>({value,label:value}))}/></Form.Item>
             <Form.Item label="单案金额" name="amount" rules={[{required:true,message:"请输入单案金额"}]}><InputNumber min={0.01} max={100000000} precision={2} style={{width:"100%"}}/></Form.Item>
             <Form.Item label="经办人账号" name="handler" rules={[{required:true,message:"请输入经办人账号"}]}><Input/></Form.Item>
           </div>
@@ -4909,7 +5148,7 @@ export default function CaseCenterPage({
         <Alert type="info" showIcon title="此表单对应旧系统民事、刑事、行政及国家赔偿案件的基本信息修改；归档案件和无办理权限账号不能保存。" style={{marginBottom:12}}/>
         <Form form={normalCaseEditForm} layout="vertical">
           <Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}>
-            <Select showSearch optionFilterProp="label" options={phaseCatalog.map((option) => ({
+            <Select showSearch optionFilterProp="label" options={normalEditPhaseOptions.map((option) => ({
               value: option.canonical_name || option.name,
               label: option.name,
             }))} />
@@ -4921,7 +5160,7 @@ export default function CaseCenterPage({
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
             <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
             <Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
-            {editingNormalCase?.data.case_type === "民事案件" && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
+            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
@@ -5026,12 +5265,15 @@ export default function CaseCenterPage({
             { title: "任务编号", dataIndex: "serial_no", width: 175, render: (value: string, row: TaskRow) => <Button type="link" className="case-cell-link" onClick={() => openRelatedTask(row)}>{value || "—"}</Button> },
             { title: "任务名称", dataIndex: "title", width: 230, ellipsis: true, render: (value: string, row: TaskRow) => <Button type="link" className="case-cell-link" onClick={() => openRelatedTask(row)}>{value || "—"}</Button> },
             {
-              title: "来源",
-              dataIndex: "source",
+              title: "类型",
+              dataIndex: "creation_mode",
               width: 90,
-              render: (v: string) => (
-                <Tag color={v === "自动任务" ? "purple" : "blue"}>{v}</Tag>
-              ),
+              render: (_: string, row: TaskRow) => {
+                const mode = caseTaskTypeLabel(row);
+                return (
+                <Tag color={mode === "自动" ? "purple" : "blue"}>{mode}</Tag>
+                );
+              },
             },
             { title: "发起/验收人", dataIndex: "initiator", width: 105 },
             { title: "负责人", width: 90, render: (_:unknown,row:TaskRow) => casePersonDisplayName(row.owner,row.owner_display_name) },

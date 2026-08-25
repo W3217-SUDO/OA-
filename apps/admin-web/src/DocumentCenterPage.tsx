@@ -50,6 +50,7 @@ import { rememberInvestigationDetailTarget } from "./investigationDetailNavigati
 import { consumeBusinessRecordDetailTarget, rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { consumeDocumentSearchDetailTarget } from "./documentSearchDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
+import { legacyAttachmentQuarantineLabel, legacyAttachmentRecoveryLabel, legacyAttachmentSourceLabel } from "./legacyHistoricalAttachmentPresentation";
 import RecordImportButton from "./RecordImportButton";
 import "./document-center.css";
 
@@ -77,6 +78,24 @@ type Attachment = {
   uploader_display_name?: string;
   remark: string;
   created_at: string;
+};
+type LegacyHistoricalAttachment = {
+  id: number;
+  source_system: string;
+  legacy_entity_type: string;
+  legacy_file_id: number;
+  legacy_file_guid: string;
+  legacy_parent_no: string;
+  file_name: string;
+  legacy_declared_size_bytes: number | null;
+  legacy_file_path: string;
+  legacy_is_active: boolean;
+  physical_exists: boolean;
+  recovery_status: string;
+  quarantine_reasons: string[];
+  download_available: false;
+  preview_available: false;
+  download_reason: string;
 };
 type SealAsset = { id: number; name: string; seal_type: string; status: string };
 type Template = {
@@ -160,8 +179,10 @@ export default function DocumentCenterPage({
       ? "templates"
       : initialView === "documents-archive"
         ? "archive"
-        : initialView === "documents-files"
+          : initialView === "documents-files"
           ? "files"
+          : initialView === "documents-legacy-history"
+            ? "legacy-history"
           : initialView === "documents-official"
             ? "official"
             : initialView === "documents-outgoing"
@@ -185,6 +206,9 @@ export default function DocumentCenterPage({
   const [outgoingQuery, setOutgoingQuery] = useState<Record<string, string>>({});
   const [cases, setCases] = useState<RecordRow[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [legacyHistoricalAttachments, setLegacyHistoricalAttachments] = useState<LegacyHistoricalAttachment[]>([]);
+  const [legacyHistoricalAttachmentLoading, setLegacyHistoricalAttachmentLoading] = useState(false);
+  const [legacyHistoricalAttachmentError, setLegacyHistoricalAttachmentError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [summary, setSummary] = useState({
     documents: 0,
@@ -333,6 +357,9 @@ export default function DocumentCenterPage({
   const [receiptDate, setReceiptDate] = useState<ReturnType<typeof dayjs> | null>(
     null,
   );
+  const [caseLinkOpen, setCaseLinkOpen] = useState(false);
+  const [linkingCases, setLinkingCases] = useState(false);
+  const [caseLinkForm] = Form.useForm<{ case_ids: number[] }>();
   const load = async (outgoingQueryOverride = outgoingQuery) => {
     setLoading(true);
     try {
@@ -363,6 +390,22 @@ export default function DocumentCenterPage({
       setLoading(false);
     }
   };
+  const loadLegacyHistoricalAttachments = async () => {
+    setLegacyHistoricalAttachmentLoading(true);
+    setLegacyHistoricalAttachmentError(null);
+    try {
+      const { data } = await api.get("/legacy-history/attachments", { params: { page_size: 200, include_inactive: true } });
+      setLegacyHistoricalAttachments(data.items || []);
+    } catch (error: any) {
+      setLegacyHistoricalAttachments([]);
+      setLegacyHistoricalAttachmentError(error?.response?.data?.detail || "历史附件元数据加载失败");
+    } finally {
+      setLegacyHistoricalAttachmentLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (tab === "legacy-history") void loadLegacyHistoricalAttachments();
+  }, [tab]);
   const searchOfficialOutgoing = async () => {
     const values = outgoingQueryForm.getFieldsValue();
     const applicationDates = values.application_dates || [];
@@ -1404,6 +1447,46 @@ export default function DocumentCenterPage({
       message.error(error?.response?.data?.detail || "更新官文业务处理状态失败");
     }
   };
+  const openOfficialCaseLinker = () => {
+    if (!selectedFormalReceipts.length) {
+      message.warning("请选择至少一条官文收文记录");
+      return;
+    }
+    const existingCaseIds = Array.from(new Set(selectedFormalReceipts.flatMap((row) => {
+      const linked = Array.isArray(row.data.case_ids) ? row.data.case_ids : [row.data.case_id];
+      return linked.map(Number).filter((id) => id > 0);
+    })));
+    caseLinkForm.setFieldsValue({ case_ids: existingCaseIds });
+    setCaseLinkOpen(true);
+  };
+  const linkSelectedOfficialReceiptsToCases = async () => {
+    if (!selectedFormalReceipts.length) {
+      message.warning("请选择至少一条官文收文记录");
+      return;
+    }
+    try {
+      const values = await caseLinkForm.validateFields();
+      const caseIds = Array.from(new Set((values.case_ids || []).map(Number).filter((id) => id > 0)));
+      if (!caseIds.length) {
+        message.warning("请选择至少一个案件");
+        return;
+      }
+      setLinkingCases(true);
+      const { data } = await api.post("/documents/official/batch-case-ids", {
+        record_ids: selectedFormalReceipts.map((row) => row.id),
+        case_ids: caseIds,
+      });
+      message.success(data.updated ? `已关联 ${data.updated} 条官文收文至 ${caseIds.length} 个案件` : "所选官文收文已关联至所选案件");
+      setCaseLinkOpen(false);
+      caseLinkForm.resetFields();
+      setSelectedReceiptKeys([]);
+      await load();
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "批量关联案件失败");
+    } finally {
+      setLinkingCases(false);
+    }
+  };
   const receiptMoreActionItems = [
     { key: "upload-case-files", label: "上传案件文档" },
     {
@@ -1600,6 +1683,13 @@ export default function DocumentCenterPage({
             <Button
               size="small"
               disabled={!selectedFormalReceipts.length}
+              onClick={openOfficialCaseLinker}
+            >
+              批量关联案件
+            </Button>
+            <Button
+              size="small"
+              disabled={!selectedFormalReceipts.length}
               onClick={() => void updateOfficialProcessStatus(true)}
             >
               标记已处理
@@ -1731,6 +1821,7 @@ export default function DocumentCenterPage({
                 { key: "documents", label: "收发文登记" },
                 { key: "outgoing", label: "正式发文" },
                 { key: "files", label: "文件附件" },
+                { key: "legacy-history", label: "历史附件元数据" },
                 { key: "templates", label: "文书模板" },
                 { key: "archive", label: "案件归档材料" },
               ]}
@@ -1806,6 +1897,35 @@ export default function DocumentCenterPage({
                 }}
                 scroll={{ x: 1450 }}
               />
+            ) : tab === "legacy-history" ? (
+              <>
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="仅元数据：旧系统源文件不可恢复"
+                  description="合同和公文历史附件只保留可审计元数据。旧路径不用于下载或预览，实时附件也不会被写入。"
+                />
+                {legacyHistoricalAttachmentError ? <Alert type="error" showIcon message={legacyHistoricalAttachmentError} /> : <Table<LegacyHistoricalAttachment>
+                  rowKey="id"
+                  loading={legacyHistoricalAttachmentLoading}
+                  size="small"
+                  dataSource={legacyHistoricalAttachments}
+                  locale={{ emptyText: "暂无已导入的历史附件元数据" }}
+                  columns={[
+                    { title: "来源", dataIndex: "legacy_entity_type", width: 190, render: (value: string) => legacyAttachmentSourceLabel(value) },
+                    { title: "历史文件ID", dataIndex: "legacy_file_id", width: 130 },
+                    { title: "文件名称", dataIndex: "file_name", width: 300, ellipsis: true },
+                    { title: "父编号", dataIndex: "legacy_parent_no", width: 150 },
+                    { title: "声明大小", dataIndex: "legacy_declared_size_bytes", width: 110, render: (value: number | null) => value == null ? "—" : `${value} B` },
+                    { title: "恢复状态", dataIndex: "recovery_status", width: 220, render: (value: string) => <Tag color="orange">{legacyAttachmentRecoveryLabel(value)}</Tag> },
+                    { title: "隔离原因", dataIndex: "quarantine_reasons", width: 210, render: (values: string[]) => legacyAttachmentQuarantineLabel(values) },
+                    { title: "物理文件", width: 150, render: () => <Tag color="default">源文件不可恢复</Tag> },
+                  ]}
+                  pagination={{ pageSize: 30, showSizeChanger: true }}
+                  scroll={{ x: 1250 }}
+                />}
+              </>
             ) : tab === "templates" ? (
               <Table
                 rowKey="id"
@@ -1927,6 +2047,36 @@ export default function DocumentCenterPage({
           format="YYYY-MM-DD"
           style={{ width: "100%" }}
         />
+      </Modal>
+      <Modal
+        open={caseLinkOpen}
+        title={`批量关联案件（已选 ${selectedFormalReceipts.length} 条官文收文）`}
+        okText="确认关联"
+        cancelText="取消"
+        confirmLoading={linkingCases}
+        onOk={() => void linkSelectedOfficialReceiptsToCases()}
+        onCancel={() => {
+          setCaseLinkOpen(false);
+          caseLinkForm.resetFields();
+        }}
+        destroyOnHidden
+      >
+        <Form form={caseLinkForm} layout="vertical">
+          <Form.Item
+            label="关联普通案件"
+            name="case_ids"
+            rules={[{ required: true, type: "array", min: 1, message: "请选择至少一个案件" }]}
+          >
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="选择案件"
+              options={cases.map((item) => ({ value: item.id, label: `${item.serial_no}｜${item.title}` }))}
+              notFoundContent="暂无可关联的普通案件"
+            />
+          </Form.Item>
+        </Form>
       </Modal>
       <Modal
         open={documentOpen}
