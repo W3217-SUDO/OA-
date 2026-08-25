@@ -69,6 +69,7 @@ import {
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import {
   buildLegacyCasePhaseTree,
+  buildCasePhasePickerTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
   LEGACY_CASE_PHASE_GROUPS,
@@ -190,15 +191,6 @@ type CaseRelationCatalog = {
 type CasePhaseListItem = { label: string; value: string; count: number };
 type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
 const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
-const renderCasePhaseTree = (options: CasePhaseOption[], parentCode = ""): ReactNode => options
-  .filter((option) => (option.parent_code || "") === parentCode)
-  .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
-  .map((option) => (
-    <div key={option.id} className="case-phase-tree-node">
-      <Radio value={option.id}>{option.name}</Radio>
-      <div className="case-phase-tree-children">{renderCasePhaseTree(options, option.code)}</div>
-    </div>
-  ));
 export const scopeCasesByListRoute = (rows: CaseRow[], initialView: string) => {
   const routeCaseType = initialView.includes("civil") ? "民事案件"
     : initialView.includes("criminal") ? "刑事案件"
@@ -690,6 +682,9 @@ export default function CaseCenterPage({
   const [progressEditing, setProgressEditing] = useState<CaseRow | null>(null);
   const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
+  const [expandedPhaseChangeGroups, setExpandedPhaseChangeGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(LEGACY_CASE_PHASE_GROUPS.map((group) => [group, true])),
+  );
   const [phaseCatalog, setPhaseCatalog] = useState<CasePhaseOption[]>([]);
   const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>(() => ({
     "一审阶段": true,
@@ -3014,6 +3009,7 @@ export default function CaseCenterPage({
       const options = (Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[];
       if (!options.length) return message.error("案件阶段加载失败");
       setPhaseOptions(options);
+      setExpandedPhaseChangeGroups(Object.fromEntries(LEGACY_CASE_PHASE_GROUPS.map((group) => [group, true])));
       const current = selected[0];
       const currentOption = options.find((option) => Number(current.data.case_phase_id) === option.id || option.canonical_name === current.status || option.name === current.status);
       phaseForm.resetFields();
@@ -3640,6 +3636,7 @@ export default function CaseCenterPage({
     ? buildCasePhaseItems(scopedCases,initialView,phaseDefinitions)
     : buildCasePhaseItemsFromCounts(ordinaryPhaseCounts,phaseDefinitions);
   const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts) as CasePhaseTreeItem[];
+  const phaseChangeTree = useMemo(() => buildCasePhasePickerTree(phaseOptions, phaseDefinitions), [phaseOptions, phaseDefinitions]);
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows=cases.filter(row=>archiveDone?ARCHIVE_FINAL_STATUSES.includes(row.status):archiveRefused?row.status==="亏损归档拒绝"||Boolean(row.data.archive_reject_reason):ARCHIVE_REVIEW_STATUSES.includes(row.status)).filter(row=>{
@@ -4196,7 +4193,8 @@ export default function CaseCenterPage({
                   if (key.startsWith("firm-")) openCaseFee(selectedCase, "律所", key.slice("firm-".length));
                   if (key.startsWith("platform-")) openCaseFee(selectedCase, "平台", key.slice("platform-".length));
                   if (key === "internal-fee") openCaseFee(selectedCase, "内部", "内部费用");
-                  if (key.startsWith("batch-")) { batchUpdateForm.resetFields(); setBatchUpdateOpen(true); }
+                  if (key === "batch-stage") void openPhaseChange(selectedCases);
+                  else if (key.startsWith("batch-")) { batchUpdateForm.resetFields(); setBatchUpdateOpen(true); }
                   if (key.startsWith("document-")) void generateSelectedCaseDocuments(key.slice("document-".length));
                   if (key === "case-tasks") openCaseTasks(selectedCase);
                   if (key === "case-logs") void openCounselDetail(selectedCase, "case-logs");
@@ -4408,7 +4406,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={400}
+        width={520}
         open={Boolean(phaseEditing)}
         title={`变更阶段：${phaseEditing?.map((row) => row.serial_no).join("、") || ""}`}
         okText="确定"
@@ -4420,7 +4418,37 @@ export default function CaseCenterPage({
         <Form form={phaseForm}>
           <Form.Item name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
             <Radio.Group className="case-phase-change-options">
-              {renderCasePhaseTree(phaseOptions)}
+              <div className="case-phase-change-tree">
+                {phaseChangeTree.ungrouped.map((option: CasePhaseOption) => (
+                  <div key={option.id} className="case-phase-change-leaf case-phase-change-root-leaf">
+                    <span className="case-phase-toggle-placeholder" />
+                    <Radio value={option.id}>{option.name}</Radio>
+                  </div>
+                ))}
+                {phaseChangeTree.groups.map((group: { label: string; options: CasePhaseOption[] }) => {
+                  const expanded = expandedPhaseChangeGroups[group.label] !== false;
+                  return <div key={group.label} className="case-phase-change-group">
+                    <div className="case-phase-row">
+                      <button
+                        type="button"
+                        className="case-phase-toggle"
+                        aria-label={`${expanded ? "收起" : "展开"}${group.label}`}
+                        onClick={() => setExpandedPhaseChangeGroups((current) => ({ ...current, [group.label]: !expanded }))}
+                      >{expanded ? "▾" : "▸"}</button>
+                      <button
+                        type="button"
+                        className="case-phase-change-group-label"
+                        onClick={() => setExpandedPhaseChangeGroups((current) => ({ ...current, [group.label]: !expanded }))}
+                      >📁 {group.label}</button>
+                    </div>
+                    {expanded && <div className="case-phase-children">
+                      {group.options.map((option) => <div key={option.id} className="case-phase-change-leaf">
+                        <Radio value={option.id}>{option.name}</Radio>
+                      </div>)}
+                    </div>}
+                  </div>;
+                })}
+              </div>
             </Radio.Group>
           </Form.Item>
         </Form>

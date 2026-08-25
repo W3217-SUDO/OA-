@@ -82,11 +82,20 @@ export type OrdinarySearchResult = {
 
 export type CasePhaseListItem = { label: string; value: string; count: number };
 export type CasePhaseOption = {
+  id?: number;
+  code?: string;
   name?: string;
   canonical_name?: string;
+  case_type?: string;
+  parent_code?: string;
   sort_order?: number;
 };
 export type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
+export type CasePhasePickerGroup<T extends CasePhaseOption = CasePhaseOption> = { label: string; options: T[] };
+export type CasePhasePickerTree<T extends CasePhaseOption = CasePhaseOption> = {
+  ungrouped: T[];
+  groups: CasePhasePickerGroup<T>[];
+};
 
 export const LEGACY_CASE_PHASE_GROUPS: string[];
 
@@ -95,6 +104,13 @@ export function buildLegacyCasePhaseTree(
   catalog?: CasePhaseOption[],
   phaseCounts?: Record<string, number>,
 ): CasePhaseTreeItem[];
+
+export function legacyCasePhaseGroupFor(value?: unknown): string;
+
+export function buildCasePhasePickerTree<T extends CasePhaseOption = CasePhaseOption>(
+  options?: T[],
+  rootDefinitions?: Array<{ label: string; value: string }>,
+): CasePhasePickerTree<T>;
 
 export function createLatestRequestGuard(): LatestRequestGuard;
 

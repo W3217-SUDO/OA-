@@ -64,7 +64,7 @@ const LEGACY_PHASE_DISPLAY_ALIASES = new Map([
   ["再审", "再审立案受理"],
 ]);
 
-const legacyCasePhaseGroupFor = (value) => {
+export const legacyCasePhaseGroupFor = (value) => {
   const name = normalizeText(value);
   if (name.includes("一审")) return "一审阶段";
   if (name.includes("二审")) return "二审阶段";
@@ -72,6 +72,40 @@ const legacyCasePhaseGroupFor = (value) => {
   if (name.includes("执行")) return "执行阶段";
   if (name.includes("归档") || ["亏损内审", "亏损审核", "亏损归档", "已归档"].includes(name)) return "归档阶段";
   return "";
+};
+
+export const buildCasePhasePickerTree = (options = [], rootDefinitions = []) => {
+  const catalog = Array.isArray(options) ? options : [];
+  const allowedRootNames = new Set(
+    (Array.isArray(rootDefinitions) ? rootDefinitions : [])
+      .filter((definition) => !LEGACY_CASE_PHASE_GROUPS.includes(normalizeText(definition?.label)))
+      .flatMap((definition) => [normalizeText(definition?.label), normalizeText(definition?.value)])
+      .filter(Boolean),
+  );
+  const groups = LEGACY_CASE_PHASE_GROUPS.map((label) => ({ label, options: [] }));
+  const groupMap = new Map(groups.map((group) => [group.label, group]));
+  const ungrouped = [];
+  const seenPhaseNames = new Set();
+  const seenPhaseLabels = new Set();
+
+  catalog
+    .slice()
+    .sort((left, right) => Number(left?.sort_order || 0) - Number(right?.sort_order || 0))
+    .forEach((option) => {
+      const phaseName = normalizeText(option?.canonical_name || option?.name);
+      const phaseLabel = normalizeText(option?.name || option?.canonical_name);
+      if (!phaseName || seenPhaseNames.has(phaseName) || seenPhaseLabels.has(phaseLabel)) return;
+      seenPhaseNames.add(phaseName);
+      seenPhaseLabels.add(phaseLabel);
+      const group = groupMap.get(legacyCasePhaseGroupFor(phaseName));
+      if (group) group.options.push(option);
+      else if (!allowedRootNames.size || allowedRootNames.has(phaseName) || allowedRootNames.has(phaseLabel)) ungrouped.push(option);
+    });
+
+  return {
+    ungrouped,
+    groups: groups.filter((group) => group.options.length > 0),
+  };
 };
 
 export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
