@@ -121,7 +121,10 @@ type InvestigationBootstrapData = {
   assignmentSupervisor: string;
   notaryOfficeOptions: { value: string }[];
   casePeopleOptions: PersonOption[];
+  warehouseCatalog: WarehouseCatalogItem[];
 };
+type WarehouseStorageLocation = { id: number; name: string; is_active: boolean };
+type WarehouseCatalogItem = { id: number; name: string; is_active: boolean; locations: WarehouseStorageLocation[] };
 
 type InvestigationRegionGroup = {
   province: string;
@@ -237,8 +240,11 @@ const loadInvestigationBootstrap = () => {
       api.get("/people/options")
         .then(({ data }) => data.items || [])
         .catch(() => [] as PersonOption[]),
-    ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions]) => ({
-      profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions,
+      api.get("/warehouse/catalog")
+        .then(({ data }) => data.items || [])
+        .catch(() => [] as WarehouseCatalogItem[]),
+    ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog]) => ({
+      profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog,
     })).catch((error) => {
       investigationBootstrapPromise = null;
       throw error;
@@ -338,6 +344,7 @@ export default function InvestigationCenterPage({
     { value: string }[]
   >([]);
   const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
+  const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseCatalogItem[]>([]);
   const [investigationActions, setInvestigationActions] = useState<
     Record<string, InvestigationActions>
   >({});
@@ -416,6 +423,12 @@ export default function InvestigationCenterPage({
   const [editForm] = Form.useForm();
   const [assignForm] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const collectionWarehouseId = Form.useWatch("warehouse_id", collectionForm) as number | undefined;
+  const certificateWarehouseId = Form.useWatch("warehouse_id", certificateForm) as number | undefined;
+  const storageLocationOptions = (warehouseId: number | undefined) =>
+    (warehouseCatalog.find((warehouse) => warehouse.id === Number(warehouseId))?.locations || [])
+      .filter((location) => location.is_active)
+      .map((location) => ({ value: location.id, label: location.name }));
   const personDisplayName = (value: unknown) => {
     const raw = String(value || "").trim();
     if (!raw) return "—";
@@ -571,8 +584,9 @@ export default function InvestigationCenterPage({
         loadInvestigationBootstrap().then((bootstrapData) => {
           setProfile(bootstrapData.profile);
           setAssignmentSupervisor(bootstrapData.assignmentSupervisor);
-          setNotaryOfficeOptions(bootstrapData.notaryOfficeOptions);
-          setCasePeopleOptions(bootstrapData.casePeopleOptions);
+            setNotaryOfficeOptions(bootstrapData.notaryOfficeOptions);
+            setCasePeopleOptions(bootstrapData.casePeopleOptions);
+            setWarehouseCatalog(bootstrapData.warehouseCatalog);
         }).catch(() =>
           message.error("调查辅助数据加载失败，业务列表仍可正常使用"),
         ),
@@ -973,7 +987,6 @@ export default function InvestigationCenterPage({
       });
       message.success("取证信息已登记，线索进入已取证");
       setCollectionTarget(null);
-      collectionForm.resetFields();
       setCollectionFiles([]);
       load("clue");
     } catch (error: any) {
@@ -2331,6 +2344,10 @@ export default function InvestigationCenterPage({
                   type="link"
                   onClick={() => {
                     collectionForm.resetFields();
+                    collectionForm.setFieldsValue({
+                      warehouse_id: Number(r.data.warehouse_id) || undefined,
+                      storage_location_id: Number(r.data.storage_location_id) || undefined,
+                    });
                     setCollectionFiles([]);
                     setCollectionTarget(r);
                   }}
@@ -2461,6 +2478,8 @@ export default function InvestigationCenterPage({
                         certificate_no: r.data.certificate_no || "",
                         storage_location:
                           r.data.certificate_storage_location || "",
+                        warehouse_id: Number(r.data.warehouse_id) || undefined,
+                        storage_location_id: Number(r.data.storage_location_id) || undefined,
                         physical_received: Boolean(r.data.physical_received),
                       });
                       setCertificateTarget(r);
@@ -2723,6 +2742,10 @@ export default function InvestigationCenterPage({
     取证: () =>
       requireSingleRow("取证", (row) => {
         collectionForm.resetFields();
+        collectionForm.setFieldsValue({
+          warehouse_id: Number(row.data.warehouse_id) || undefined,
+          storage_location_id: Number(row.data.storage_location_id) || undefined,
+        });
         setCollectionTarget(row);
       }),
     建立公证: () =>
@@ -4086,8 +4109,16 @@ export default function InvestigationCenterPage({
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
           <div className="form-grid">
-            <Form.Item label="证物存放处" name="storage_location">
-              <Input placeholder="例如：档案室 A-01" />
+            <Form.Item label="仓库" name="warehouse_id" rules={[{ required: true, message: "请选择仓库" }]}>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={warehouseCatalog.filter((warehouse) => warehouse.is_active).map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
+                onChange={() => collectionForm.setFieldValue("storage_location_id", undefined)}
+              />
+            </Form.Item>
+            <Form.Item label="库位" name="storage_location_id" rules={[{ required: true, message: "请选择库位" }]}>
+              <Select showSearch optionFilterProp="label" options={storageLocationOptions(collectionWarehouseId)} />
             </Form.Item>
             <Form.Item label="证物状态" name="evidence_status" initialValue="未入库">
               <Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} />
@@ -4196,13 +4227,19 @@ export default function InvestigationCenterPage({
           >
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item
-            label="实物/扫描件存放位置"
-            name="storage_location"
-            rules={[{ required: true }]}
-          >
-            <Input placeholder="例如：上海档案室 A-01" />
-          </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="仓库" name="warehouse_id" rules={[{ required: true, message: "请选择仓库" }]}>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={warehouseCatalog.filter((warehouse) => warehouse.is_active).map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
+                onChange={() => certificateForm.setFieldValue("storage_location_id", undefined)}
+              />
+            </Form.Item>
+            <Form.Item label="库位" name="storage_location_id" rules={[{ required: true, message: "请选择库位" }]}>
+              <Select showSearch optionFilterProp="label" options={storageLocationOptions(certificateWarehouseId)} />
+            </Form.Item>
+          </div>
           <Form.Item name="physical_received" valuePropName="checked">
             <Checkbox>纸质公证书实物已收到</Checkbox>
           </Form.Item>
