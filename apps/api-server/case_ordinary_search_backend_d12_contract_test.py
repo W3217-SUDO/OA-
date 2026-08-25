@@ -103,6 +103,8 @@ class CaseOrdinarySearchD12Contract(unittest.IsolatedAsyncioTestCase):
                 "defendants": ["Defendant-201", "Defendant-201-B"],
                 "evidence_org": "Evidence-201",
                 "notary_nos": ["Notary-201", "Notary-201-B"],
+                "clue_no": "CLUE-ROW4-201",
+                "first_court_case_no": "COURT-ROW4-201",
                 "hearing_lawyers": ["HearingLawyer-201", "HearingLawyer-201-B"],
                 "investigators": ["Investigator-201", "Investigator-201-B"],
                 "handling_lawyers": ["Handling-201", "Handling-201-B"],
@@ -199,6 +201,13 @@ class CaseOrdinarySearchD12Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["items"][0]["serial_no"], "CASE-D12-201")
         bad_dates = await self._search({"source_from": "2026-03-01", "source_to": "2026-02-01"}, status.HTTP_422_UNPROCESSABLE_ENTITY)
         self.assertIn("source", bad_dates.text)
+
+    async def test_partial_keyword_matches_case_clue_notary_and_court_numbers(self):
+        for keyword in ("D12-201", "ROW4-201", "Notary-201-B"):
+            with self.subTest(keyword=keyword):
+                result = await self._search({"keyword": keyword})
+                self.assertEqual(result["total"], 1)
+                self.assertEqual(result["items"][0]["serial_no"], "CASE-D12-201")
 
     async def test_server_sort_and_invalid_page_or_sort(self):
         result = await self._search({"page": 1, "page_size": 3, "sort_order": "case_no_desc"})

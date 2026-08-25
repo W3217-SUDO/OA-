@@ -56,6 +56,7 @@ import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { readStoredGlobalCaseSearchContext } from "./globalCaseSearchParity.mjs";
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
@@ -688,14 +689,9 @@ export default function CaseCenterPage({
           ? "archive"
           : "cases";
   const [caseListReturnContext] = useState<{route?:string;page?:number;pageSize?:number;query?:Record<string,any>} | null>(() => {
-    try {
-      const raw = sessionStorage.getItem("sunhold:case-list-return");
-      sessionStorage.removeItem("sunhold:case-list-return");
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    return readStoredGlobalCaseSearchContext(sessionStorage) as {route?:string;page?:number;pageSize?:number;query?:Record<string,any>} | null;
   });
+  const pendingListReturnContext = useRef(caseListReturnContext);
   const [tab, setTab] = useState(first);
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [ordinaryCases, setOrdinaryCases] = useState<CaseRow[]>([]);
@@ -1168,7 +1164,8 @@ export default function CaseCenterPage({
     const requestId = ordinaryRequestGuard.begin();
     setLoading(true);
     try {
-      const { data } = await api.post("/cases/search", buildCaseOrdinarySearchPayload(values, ordinaryScope, ordinaryCaseTypes, page, pageSize));
+      const searchPayload = buildCaseOrdinarySearchPayload(values, ordinaryScope, ordinaryCaseTypes, page, pageSize);
+      const { data } = await api.post("/cases/search", searchPayload);
       if (!ordinaryRequestGuard.isLatest(requestId)) return;
       const result = parseOrdinarySearchResult(data, page, pageSize);
       setOrdinaryCases(result.items as CaseRow[]);
@@ -1244,6 +1241,13 @@ export default function CaseCenterPage({
   useEffect(() => {
     setTab(first);
     if (isCreateView) startCreate();
+    let activeListReturnContext = pendingListReturnContext.current;
+    if (!isCreateView && !isCaseDetailView) {
+      const storedListReturnContext = readStoredGlobalCaseSearchContext(sessionStorage) as typeof activeListReturnContext;
+      if (storedListReturnContext) pendingListReturnContext.current = storedListReturnContext;
+      activeListReturnContext = storedListReturnContext || pendingListReturnContext.current;
+      sessionStorage.removeItem("sunhold:case-list-return");
+    }
     const relationTarget = consumeCustomerRelationTarget("civil-cases");
     const routeCustomerId = ordinaryCustomerIdForView(initialView);
     const relationQuery = routeCustomerId || relationTarget?.target === "civil-cases" ? {
@@ -1256,26 +1260,24 @@ export default function CaseCenterPage({
       caseQueryForm.setFieldsValue(relationQuery);
       setCaseQuery(relationQuery);
     }
-    if (!relationQuery.customer_id && !relationQuery.customer_no && !relationQuery.customer && !isCreateView && !isCaseDetailView && caseListReturnContext?.query) {
-      caseQueryForm.setFieldsValue(caseListReturnContext.query);
-      setCaseQuery(caseListReturnContext.query);
-      initialListQuery = caseListReturnContext.query;
+    if (!relationQuery.customer_id && !relationQuery.customer_no && !relationQuery.customer && !isCreateView && !isCaseDetailView && activeListReturnContext?.query) {
+      caseQueryForm.setFieldsValue(activeListReturnContext.query);
+      setCaseQuery(activeListReturnContext.query);
+      initialListQuery = activeListReturnContext.query;
       sessionStorage.removeItem("sunhold:case-list-return");
     }
     void (async () => {
-      try {
-        const { data } = await api.get("/cases/phases");
-        setPhaseCatalog((Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[]);
-      } catch {
-        setPhaseCatalog([]);
-      }
-      await load();
-      if (isCreateView || isCaseDetailView) return;
-      if (initialView.includes("counsel")) {
-        await loadCounselCases(initialListQuery, 1, 10);
-      } else if (initialView.startsWith("case-mine") || initialView.startsWith("case-dept") || initialView.startsWith("case-company")) {
-        await loadOrdinaryCases(initialListQuery, 1, originalPageSize);
-      }
+      const phaseLoad = api.get("/cases/phases")
+        .then(({ data }) => setPhaseCatalog((Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[]))
+        .catch(() => setPhaseCatalog([]));
+      const listLoad = isCreateView || isCaseDetailView
+        ? Promise.resolve()
+        : initialView.includes("counsel")
+          ? loadCounselCases(initialListQuery, 1, 10)
+          : initialView.startsWith("case-mine") || initialView.startsWith("case-dept") || initialView.startsWith("case-company")
+            ? loadOrdinaryCases(initialListQuery, 1, originalPageSize)
+            : Promise.resolve();
+      await Promise.all([phaseLoad, load(), listLoad]);
     })();
   }, [initialView]);
   const returnToCaseList = () => {

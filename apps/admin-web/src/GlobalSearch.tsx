@@ -9,6 +9,10 @@ import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { rememberDocumentSearchDetailTarget } from "./documentSearchDetailNavigation";
+import {
+  GLOBAL_CASE_SEARCH_CONTEXT_KEY,
+  buildGlobalCaseSearchContext,
+} from "./globalCaseSearchParity.mjs";
 
 type Result = {
   type: string;
@@ -99,7 +103,7 @@ export default function GlobalSearch({
   const handleQueryChange = (value: string) => {
     setQuery(value);
     setItems([]);
-    setOpen(Boolean(value.trim()));
+    setOpen(false);
   };
 
   const search = async (value = query) => {
@@ -109,16 +113,18 @@ export default function GlobalSearch({
       setOpen(false);
       return;
     }
-    setOpen(true);
-    setLoading(true);
-    try {
-      const { data } = await api.get("/search", { params: { q } });
-      setItems(data.items);
-    } catch {
-      message.error("全局检索失败");
-    } finally {
-      setLoading(false);
+    const exactMenuMatches = searchAuthorizedMenuItems(menuItems, q).filter(({ item }) =>
+      [item.label, item.key].some((candidate) => candidate.trim().toLocaleLowerCase() === q.toLocaleLowerCase()),
+    );
+    if (exactMenuMatches.length === 1) {
+      openMenuResult(exactMenuMatches[0]);
+      return;
     }
+    const context = buildGlobalCaseSearchContext(q);
+    if (!context) return;
+    sessionStorage.setItem(GLOBAL_CASE_SEARCH_CONTEXT_KEY, JSON.stringify(context));
+    onNavigate(context.route);
+    setOpen(false);
   };
 
   const openResult = (item: Result) => {

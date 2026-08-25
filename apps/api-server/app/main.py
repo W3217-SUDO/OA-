@@ -19549,6 +19549,15 @@ async def _query_counsel_cases(
     record_conditions = [BusinessRecord.module == "case"]
     if relation_customer is None:
         record_conditions.extend(await _record_scope_conditions(identity, db))
+    keyword = body.keyword.strip()
+    if keyword:
+        keyword_pattern = f"%{keyword}%"
+        record_conditions.append(or_(
+            BusinessRecord.serial_no.ilike(keyword_pattern),
+            BusinessRecord.title.ilike(keyword_pattern),
+            BusinessRecord.customer.ilike(keyword_pattern),
+            BusinessRecord.data.cast(String).ilike(keyword_pattern),
+        ))
     records = list((await db.scalars(select(BusinessRecord).where(*record_conditions))).all())
     requested_types = {str(item).strip() for item in body.case_types if str(item).strip()}
     if body.case_type.strip():
@@ -19671,7 +19680,20 @@ async def _query_counsel_cases(
             if str(data.get("customer_no") or "").strip() != body.customer_no.strip(): continue
         elif not contains(record.customer, body.customer): continue
         if not contains(record.serial_no, body.serial_no): continue
-        if body.keyword and not contains(f"{record.serial_no} {record.title} {record.customer}", body.keyword): continue
+        keyword_fields = (
+            record.serial_no,
+            record.title,
+            record.customer,
+            value(data, "plaintiff", "plaintiffs"),
+            value(data, "defendant", "defendants", "opponent"),
+            value(data, "court", "court_name", "first_court_name"),
+            value(data, "court_case_no", "first_court_case_no", "first_instance_no"),
+            value(data, "second_court_case_no", "second_instance_no"),
+            value(data, "execution_case_no", "retrial_case_no"),
+            value(data, "notary_no", "notary_nos", "certificate_no"),
+            value(data, "clue_no", "clue_nos", "investigation_clue", "investigation_clue_nos", "source_clue_no"),
+        )
+        if body.keyword and not contains(" ".join(searchable_text(item) for item in keyword_fields), body.keyword): continue
         if not contains(value(data, "plaintiff", "plaintiffs") or record.customer, body.plaintiff): continue
         if not contains(value(data, "prosecutor", "procuratorate", "first_procuratorate_name"), body.prosecutor): continue
         if not contains(value(data, "defendant", "defendants", "opponent"), body.defendant): continue
