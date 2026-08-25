@@ -1692,7 +1692,7 @@ class CaseMergeInput(BaseModel):
 
 class CaseNotaryInfoInput(BaseModel):
     notary_nos: str = Field(min_length=1, max_length=1000)
-    deposit_address: str = Field(default="", max_length=500)
+    warehouse_location_ids: list[int] = Field(min_length=1, max_length=50)
     comment: str = Field(default="", max_length=1000)
 
 
@@ -20482,14 +20482,42 @@ async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, ident
         raise HTTPException(status_code=409, detail="当前案件状态不能维护公证信息")
     previous_notary = str(data.get("notary_nos") or data.get("notary_no") or "")
     previous_address = str(data.get("deposit_address") or "")
+    location_ids = list(dict.fromkeys(body.warehouse_location_ids))
+    locations = list((await db.scalars(
+        select(WarehouseStorageLocation).where(WarehouseStorageLocation.id.in_(location_ids))
+    )).all())
+    locations_by_id = {location.id: location for location in locations}
+    if len(locations_by_id) != len(location_ids):
+        raise HTTPException(status_code=422, detail="仓库库位不存在")
+    warehouse_ids = {location.warehouse_id for location in locations}
+    warehouses = list((await db.scalars(select(Warehouse).where(Warehouse.id.in_(warehouse_ids)))).all())
+    warehouses_by_id = {warehouse.id: warehouse for warehouse in warehouses}
+    resolved_locations = []
+    for location_id in location_ids:
+        location = locations_by_id[location_id]
+        warehouse = warehouses_by_id.get(location.warehouse_id)
+        if not warehouse or not warehouse.is_active or not location.is_active:
+            raise HTTPException(status_code=422, detail="仓库库位已停用")
+        resolved_locations.append({
+            "warehouse_id": warehouse.id,
+            "warehouse_no": warehouse.warehouse_no,
+            "warehouse_name": warehouse.name,
+            "storage_location_id": location.id,
+            "storage_location_no": location.storage_location_no,
+            "storage_location_name": location.name,
+            "display_name": f"{warehouse.name}（{location.name}）",
+        })
+    deposit_address = "，".join(item["display_name"] for item in resolved_locations)
     case_record.data = {
         **data, "notary_nos": body.notary_nos.strip(), "notary_no": body.notary_nos.strip(),
-        "deposit_address": body.deposit_address.strip(),
+        "deposit_address": deposit_address,
+        "warehouse_location_ids": location_ids,
+        "warehouse_locations": resolved_locations,
     }
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改案件公证信息", from_status=case_record.status, to_status=case_record.status,
         operator=identity["username"],
-        comment=f"公证书号：{previous_notary or '空'} → {body.notary_nos.strip()}；存放位置：{previous_address or '空'} → {body.deposit_address.strip() or '空'}。{body.comment.strip()}",
+        comment=f"公证书号：{previous_notary or '空'} → {body.notary_nos.strip()}；存放位置：{previous_address or '空'} → {deposit_address}。{body.comment.strip()}",
     ))
     await db.commit(); await db.refresh(case_record)
     return await _record_dict_for_identity(case_record, identity, db)

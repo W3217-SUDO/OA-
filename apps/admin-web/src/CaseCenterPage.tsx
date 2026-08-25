@@ -67,6 +67,7 @@ import {
   filterFeeSubtypesForFileType,
 } from "./caseRelationConsumption.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
+import { buildWarehouseLocationOptions, resolveCaseWarehouseLocationIds } from "./caseWarehouseLocationParity.mjs";
 import {
   buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
@@ -511,6 +512,8 @@ const normalizeCaseTaskPageState = (
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string};
 type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;options?:CaseFileTypeOption[]};
+type WarehouseStorageLocationOption = {id:number;name:string;is_active:boolean};
+type WarehouseCatalogOption = {id:number;name:string;is_active:boolean;locations:WarehouseStorageLocationOption[]};
 type AttachmentPreview = {
   name: string;
   kind: "image" | "pdf" | "text" | "docx";
@@ -893,6 +896,8 @@ export default function CaseCenterPage({
   const [caseRelations, setCaseRelations] = useState<CaseRelationCatalog | null>(null);
   const [courtOptions, setCourtOptions] = useState<{value:string;label:string;code?:string}[]>([]);
   const [courtOfficerOptions, setCourtOfficerOptions] = useState<{value:string;label:string;court_code?:string;role?:string;phone?:string}[]>([]);
+  const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseCatalogOption[]>([]);
+  const warehouseLocationOptions = useMemo(() => buildWarehouseLocationOptions(warehouseCatalog), [warehouseCatalog]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const [createForm] = Form.useForm();
@@ -1106,7 +1111,7 @@ export default function CaseCenterPage({
         if (linkedCase) void openCounselDetail(linkedCase);
         else message.warning("未找到关联案件或当前账号无权查看");
       }
-      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes] =
+      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes,warehouseRes] =
         await Promise.all([
           api.get("/cases/eligible-contracts"),
           api.get("/hearings"),
@@ -1118,6 +1123,7 @@ export default function CaseCenterPage({
           api.get("/cases/reference-options"),
           api.get("/records", { params: { module: "customer", page_size: 100 } }),
           api.get("/records", { params: { module: "clue", page_size: 100 } }),
+          api.get("/warehouse/catalog"),
         ]);
       setContracts(contractRes.data.items);
       setHearings(hearingRes.data.items);
@@ -1141,6 +1147,7 @@ export default function CaseCenterPage({
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
       setCaseCustomers(customerRes.data.items || []);
       setCaseClues(clueRes.data.items || []);
+      setWarehouseCatalog(warehouseRes.data.items || []);
       void loadCaseRelations();
       if (isCreateView && contractPrefill?.id) {
         const selected = contractRes.data.items.find((row:ContractRow) => row.id === contractPrefill.id);
@@ -3909,7 +3916,7 @@ export default function CaseCenterPage({
     if (!viewingCounselCase) return;
     notaryInfoForm.setFieldsValue({
       notary_nos: viewingCounselCase.data.notary_nos || viewingCounselCase.data.notary_no || "",
-      deposit_address: viewingCounselCase.data.deposit_address || "",
+      warehouse_location_ids: resolveCaseWarehouseLocationIds(viewingCounselCase.data, warehouseLocationOptions),
       comment: "",
     });
     setNotaryInfoCase(viewingCounselCase);
@@ -4374,7 +4381,20 @@ export default function CaseCenterPage({
       <Modal open={Boolean(notaryInfoCase)} title="修改公证信息" okText="保存" cancelText="取消" onCancel={() => { setNotaryInfoCase(null); notaryInfoForm.resetFields(); }} onOk={() => void submitNotaryInfo()}>
         <Form form={notaryInfoForm} layout="vertical">
           <Form.Item label="公证书号" name="notary_nos" rules={[{ required: true, message: "请输入公证书号" }]}><Input placeholder="多个编号请用逗号分隔" /></Form.Item>
-          <Form.Item label="仓库位置" name="deposit_address"><Input /></Form.Item>
+          <Form.Item
+            label="仓库位置"
+            name="warehouse_location_ids"
+            rules={[{ required: true, message: "请从仓库库位中选择位置" }]}
+            extra={notaryInfoCase?.data.deposit_address && !resolveCaseWarehouseLocationIds(notaryInfoCase.data, warehouseLocationOptions).length ? `历史位置：${notaryInfoCase.data.deposit_address}` : "多个库位可连续选择"}
+          >
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择仓库库位"
+              options={warehouseLocationOptions}
+            />
+          </Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={2} maxLength={1000} /></Form.Item>
         </Form>
       </Modal>
