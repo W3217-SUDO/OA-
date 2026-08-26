@@ -1324,8 +1324,8 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   if (!data) return <div className="loading">正在加载...</div>;
   return (
     <div className="reference-dashboard">
-      <div className="dashboard-top-grid">
-        <div className="metrics reference-metrics">
+      <div className="dashboard-legacy-grid">
+        <div className="metrics reference-metrics dashboard-metrics-panel">
           {data.metrics.map((m, i) => (
             <div
               className={`metric target-${i}`}
@@ -1345,8 +1345,6 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
             </div>
           ))}
         </div>
-      </div>
-      <div className="dashboard-split-row dashboard-todo-trend-row">
         <Card title="➤ 待办事项" className="dashboard-card compact-todo-card">
           <table className="todo-table">
             <tbody>
@@ -1399,21 +1397,19 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
             )}
           </div>
         </Card>
+        <Card title="▥ 开庭排期" className="dashboard-card target-hearing-card">
+          <Table
+            rowKey={(r) => `${r.case_no}-${r.time}`}
+            size="small"
+            pagination={false}
+            columns={hearingCols}
+            dataSource={data.hearings}
+            scroll={{ x: 1050 }}
+          />
+        </Card>
         <Card title="◩ 案件趋势" className="dashboard-card target-trend-card">
           <CaseTrendChart items={data.case_trend} />
         </Card>
-      </div>
-      <Card title="▥ 开庭排期" className="dashboard-card target-hearing-card dashboard-full-row-card">
-        <Table
-          rowKey={(r) => `${r.case_no}-${r.time}`}
-          size="small"
-          pagination={false}
-          columns={hearingCols}
-          dataSource={data.hearings}
-          scroll={{ x: 1050 }}
-        />
-      </Card>
-      <div className="dashboard-split-row latest-row">
         <Card title="◉ 最新案件" className="dashboard-card latest-cases-card">
           <Table
             rowKey="case_no"
