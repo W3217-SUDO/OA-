@@ -1107,7 +1107,15 @@ export default function CaseCenterPage({
         if (linkedCase) void openCounselDetail(linkedCase);
         else message.warning("未找到关联案件或当前账号无权查看");
       }
-      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes,warehouseRes] =
+      // The notary editor must keep its master warehouse locations available even
+      // when an unrelated optional case-center feed is temporarily unavailable.
+      try {
+        const warehouseResponse = await api.get("/warehouse/catalog");
+        setWarehouseCatalog(warehouseResponse.data.items || []);
+      } catch {
+        setWarehouseCatalog([]);
+      }
+      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes] =
         await Promise.all([
           api.get("/cases/eligible-contracts"),
           api.get("/hearings"),
@@ -1119,7 +1127,6 @@ export default function CaseCenterPage({
           api.get("/cases/reference-options"),
           api.get("/records", { params: { module: "customer", page_size: 100 } }),
           api.get("/records", { params: { module: "clue", page_size: 100 } }),
-          api.get("/warehouse/catalog"),
         ]);
       setContracts(contractRes.data.items);
       setHearings(hearingRes.data.items);
@@ -1143,7 +1150,6 @@ export default function CaseCenterPage({
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
       setCaseCustomers(customerRes.data.items || []);
       setCaseClues(clueRes.data.items || []);
-      setWarehouseCatalog(warehouseRes.data.items || []);
       void loadCaseRelations();
       if (isCreateView && contractPrefill?.id) {
         const selected = contractRes.data.items.find((row:ContractRow) => row.id === contractPrefill.id);

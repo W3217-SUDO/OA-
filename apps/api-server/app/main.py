@@ -20536,6 +20536,13 @@ async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, ident
         "warehouse_location_ids": location_ids,
         "warehouse_locations": resolved_locations,
     }
+    await _sync_case_notary_warehouse_evidence(
+        case_record,
+        [(warehouses_by_id[locations_by_id[location_id].warehouse_id], locations_by_id[location_id]) for location_id in location_ids],
+        body.notary_nos.strip(),
+        identity["username"],
+        db,
+    )
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改案件公证信息", from_status=case_record.status, to_status=case_record.status,
         operator=identity["username"],
@@ -26185,6 +26192,90 @@ async def _set_warehouse_evidence_location(
     binding.assigned_by = username
     binding.assigned_at = datetime.now(timezone.utc)
     return binding
+
+
+async def _sync_case_notary_warehouse_evidence(
+    case_record: BusinessRecord,
+    locations: list[tuple[Warehouse, WarehouseStorageLocation]],
+    notary_nos: str,
+    username: str,
+    db: AsyncSession,
+) -> None:
+    """Keep the case's physical notary evidence visible in the warehouse tree.
+
+    Case details store the human-readable location summary, while warehouse
+    counts and filtered rows are driven by ``warehouse_evidence_locations``.
+    The two records therefore have to be updated in one transaction.
+    """
+    related = list((await db.scalars(
+        select(BusinessRecord)
+        .where(
+            BusinessRecord.module == "warehouse",
+            or_(
+                BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+                BusinessRecord.data["case_id"].as_integer() == case_record.id,
+                BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+            ),
+        )
+        .order_by(BusinessRecord.id)
+    )).all())
+    case_data = dict(case_record.data or {})
+    for index, (warehouse, location) in enumerate(locations):
+        if index < len(related):
+            evidence = related[index]
+        else:
+            evidence = BusinessRecord(
+                module="warehouse",
+                serial_no=f"CKZ-{case_record.id}-{index + 1}",
+                title=f"{case_record.title}—公证证物",
+                customer=case_record.customer,
+                status="在库",
+                owner=str(case_data.get("investigator") or case_record.owner or username),
+                department=case_record.department,
+                description="由案件公证信息维护的实体证物",
+            )
+            db.add(evidence)
+            await db.flush()
+            related.append(evidence)
+        evidence_data = dict(evidence.data or {})
+        evidence.title = case_record.title or evidence.title
+        evidence.customer = case_record.customer
+        evidence.owner = str(case_data.get("investigator") or evidence.owner or case_record.owner or username)
+        evidence.department = case_record.department
+        evidence.status = "在库"
+        evidence.data = {
+            **evidence_data,
+            "source": "案件公证信息",
+            "case_record_id": case_record.id,
+            "case_id": case_record.id,
+            "case_no": case_record.serial_no,
+            "notary_no": notary_nos,
+            "shop_name": case_record.title,
+            "rights_holder": case_record.customer,
+            "investigator": str(case_data.get("investigator") or case_record.owner or username),
+            "evidence_status": "已入库",
+            "case_notary_evidence": True,
+            **_warehouse_location_data(warehouse, location),
+        }
+        await _set_warehouse_evidence_location(evidence.id, warehouse, location, username, db)
+
+    # A case can have more pre-existing warehouse rows than selected locations.
+    # Move every related physical record into the currently selected locations so
+    # the former location never keeps an obsolete count after a successful edit.
+    for index, evidence in enumerate(related[len(locations):], start=len(locations)):
+        warehouse, location = locations[index % len(locations)]
+        evidence.data = {
+            **dict(evidence.data or {}),
+            "source": "案件公证信息",
+            "case_record_id": case_record.id,
+            "case_id": case_record.id,
+            "case_no": case_record.serial_no,
+            "notary_no": notary_nos,
+            "evidence_status": "已入库",
+            "case_notary_evidence": True,
+            **_warehouse_location_data(warehouse, location),
+        }
+        await _set_warehouse_evidence_location(evidence.id, warehouse, location, username, db)
 
 
 def _warehouse_evidence_location_statement(identity_conditions: list):

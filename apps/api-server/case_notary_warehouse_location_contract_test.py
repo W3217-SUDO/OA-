@@ -13,7 +13,7 @@ os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_DB_PATH.as_posix()}"
 
 from app.database import Base
 from app.main import CaseNotaryInfoInput, update_case_notary_info
-from app.models import BusinessRecord, Warehouse, WarehouseStorageLocation, WorkflowEvent
+from app.models import BusinessRecord, Warehouse, WarehouseEvidenceLocation, WarehouseStorageLocation, WorkflowEvent
 
 
 class CaseNotaryWarehouseLocationContractTest(unittest.IsolatedAsyncioTestCase):
@@ -70,6 +70,46 @@ class CaseNotaryWarehouseLocationContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["data"]["warehouse_locations"][0]["storage_location_no"], "SH-9-4")
             event = await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == case_id))
             self.assertIn("上海一仓（9-4）", event.comment)
+            evidence = await db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == "warehouse",
+                BusinessRecord.data["case_record_id"].as_integer() == case_id,
+            ))
+            self.assertIsNotNone(evidence)
+            self.assertEqual(evidence.data["case_no"], "CODEX-825-R2-CASE")
+            self.assertEqual(evidence.data["notary_no"], "NOTARY-825-R2")
+            binding = await db.scalar(select(WarehouseEvidenceLocation).where(WarehouseEvidenceLocation.record_id == evidence.id))
+            self.assertIsNotNone(binding)
+            self.assertEqual(binding.storage_location_id, location_id)
+
+    async def test_updating_case_location_moves_warehouse_evidence_without_stale_binding(self):
+        case_id, first_location_id = await self._fixture()
+        identity = {"username": "admin", "role": "admin", "role_ids": ["admin"]}
+        async with self.sessions() as db:
+            first = await db.get(WarehouseStorageLocation, first_location_id)
+            second = WarehouseStorageLocation(
+                warehouse_id=first.warehouse_id,
+                storage_location_no="SH-9-5",
+                name="9-5",
+                is_active=True,
+            )
+            db.add(second)
+            await db.commit()
+            await update_case_notary_info(case_id, CaseNotaryInfoInput(
+                notary_nos="NOTARY-825-R2", warehouse_location_ids=[first_location_id],
+            ), identity, db)
+            await update_case_notary_info(case_id, CaseNotaryInfoInput(
+                notary_nos="NOTARY-825-R2", warehouse_location_ids=[second.id],
+            ), identity, db)
+            evidence = await db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == "warehouse",
+                BusinessRecord.data["case_record_id"].as_integer() == case_id,
+            ))
+            binding = await db.scalar(select(WarehouseEvidenceLocation).where(WarehouseEvidenceLocation.record_id == evidence.id))
+            self.assertEqual(binding.storage_location_id, second.id)
+            self.assertEqual(await db.scalar(select(WarehouseEvidenceLocation.id).where(
+                WarehouseEvidenceLocation.storage_location_id == first_location_id,
+                WarehouseEvidenceLocation.record_id == evidence.id,
+            )), None)
 
     async def test_unknown_location_is_rejected_without_writing(self):
         case_id, _ = await self._fixture()

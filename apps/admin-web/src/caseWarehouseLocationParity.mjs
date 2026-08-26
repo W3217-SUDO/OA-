@@ -1,7 +1,5 @@
 const normalizeLocationText = (value) => String(value || "")
   .trim()
-  .replace(/[（]/g, "(")
-  .replace(/[）]/g, ")")
   .replace(/\s+/g, "")
   .replace(/[\/\\]/g, "-")
   .toLocaleLowerCase();
@@ -12,7 +10,7 @@ export const buildWarehouseLocationOptions = (catalog) => (Array.isArray(catalog
     .filter((location) => location?.is_active)
     .map((location) => ({
       value: Number(location.id),
-      label: `${warehouse.name}（${location.name}）`,
+      label: `${warehouse.name} (${location.name})`,
       warehouseId: Number(warehouse.id),
       warehouseName: String(warehouse.name || ""),
       locationName: String(location.name || ""),
@@ -27,12 +25,12 @@ export const resolveCaseWarehouseLocationIds = (data, options) => {
 
   const legacyText = String(data?.deposit_address || data?.warehouse_location || "").trim();
   if (!legacyText) return [];
-  const parts = legacyText.split(/[,，;；]+/).map(normalizeLocationText).filter(Boolean);
+  const parts = legacyText.split(/[,;]+/).map(normalizeLocationText).filter(Boolean);
   return [...new Set((Array.isArray(options) ? options : [])
     .filter((option) => {
       const labels = [
         option.label,
-        `${option.warehouseName}(${option.locationName})`,
+        `${option.warehouseName} (${option.locationName})`,
         `${option.warehouseName}-${option.locationName}`,
         `${option.warehouseName}${option.locationName}`,
       ].map(normalizeLocationText);
