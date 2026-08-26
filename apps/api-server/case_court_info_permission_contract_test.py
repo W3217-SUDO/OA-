@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date, timedelta
 
 import httpx
 from sqlalchemy import func, select
@@ -85,6 +86,7 @@ class CaseCourtInfoPermissionContractTest(unittest.IsolatedAsyncioTestCase):
             "execution_court_case_no": "(2026)沪01执824号",
             "retrial_court_name": "CODEX-824-再审法院",
             "retrial_court_case_no": "(2026)沪再824号",
+            "first_court_hearing_date": f"{date.today() + timedelta(days=3)} 09:45:00",
             "comment": "CODEX-824-直接修改法院信息",
         }
 
@@ -104,6 +106,14 @@ class CaseCourtInfoPermissionContractTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(body["data"][key], value)
         self.assertEqual(body["data"]["first_court_name"], self.payload()["first_instance_court"])
         self.assertEqual(body["data"]["second_instance_court"], self.payload()["second_court_name"])
+
+        dashboard = await self.client.get(f"{API}/dashboard")
+        self.assertEqual(dashboard.status_code, 200, dashboard.text)
+        matching = [item for item in dashboard.json()["hearings"] if item["case_no"] == "CODEX-824-COURT-001"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["date"], str(date.today() + timedelta(days=3)))
+        self.assertEqual(matching[0]["time"], "09:45")
+        self.assertEqual(matching[0]["court"], "CODEX-824-一审法院")
 
         async with self.sessions() as db:
             event = await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == self.case_id))

@@ -3939,6 +3939,86 @@ def _hearing_dict(item: HearingSchedule, case_record: BusinessRecord) -> dict:
     }
 
 
+_CASE_HEARING_LEVELS = (
+    ("retrial", "再审开庭"),
+    ("execution", "执行开庭"),
+    ("second", "二审开庭"),
+    ("first", "一审开庭"),
+)
+
+
+def _case_hearing_datetime(value: object, fallback_time: object = "") -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.combine(date.fromisoformat(text[:10]), datetime.min.time())
+        except ValueError:
+            return None
+    if parsed.time() == datetime.min.time():
+        time_text = str(fallback_time or "").strip()
+        if time_text:
+            try:
+                parsed = datetime.combine(parsed.date(), datetime.strptime(time_text[:8], "%H:%M:%S").time())
+            except ValueError:
+                try:
+                    parsed = datetime.combine(parsed.date(), datetime.strptime(time_text[:5], "%H:%M").time())
+                except ValueError:
+                    pass
+    return parsed
+
+
+def _dashboard_case_hearing(case_record: BusinessRecord, today: date, cutoff: date) -> dict | None:
+    """Project the legacy case court fields into the dashboard schedule."""
+    data = case_record.data or {}
+    candidates: list[tuple[str, str, object, object]] = [
+        (prefix, hearing_type, data.get(f"{prefix}_court_hearing_date"), "")
+        for prefix, hearing_type in _CASE_HEARING_LEVELS
+    ]
+    candidates.extend((
+        ("generic", "开庭", data.get("hearing_date"), data.get("hearing_time")),
+        ("generic", "开庭", data.get("next_hearing_date"), data.get("next_hearing_time")),
+    ))
+    for prefix, hearing_type, raw_date, fallback_time in candidates:
+        hearing_at = _case_hearing_datetime(raw_date, fallback_time)
+        if hearing_at is None or not today <= hearing_at.date() <= cutoff:
+            continue
+        if prefix == "first":
+            court = data.get("first_court_name") or data.get("first_instance_court") or data.get("court")
+            courtroom = data.get("first_court_courtroom") or data.get("courtroom")
+        elif prefix == "second":
+            court = data.get("second_court_name") or data.get("second_instance_court")
+            courtroom = data.get("second_court_courtroom")
+        elif prefix in {"execution", "retrial"}:
+            court = data.get(f"{prefix}_court_name")
+            courtroom = data.get(f"{prefix}_court_courtroom")
+        else:
+            court = data.get("court") or data.get("first_court_name") or data.get("first_instance_court")
+            courtroom = data.get("courtroom") or data.get("first_court_courtroom")
+        return {
+            "case_record_id": case_record.id,
+            "case_no": case_record.serial_no,
+            "client": case_record.customer,
+            "weekday": "星期" + "一二三四五六日"[hearing_at.weekday()],
+            "date": str(hearing_at.date()),
+            "time": hearing_at.strftime("%H:%M"),
+            "court": str(court or ""),
+            "lawyer": str(data.get("hearing_lawyer") or ""),
+            "agent": ",".join(data.get("handling_lawyers", [])),
+            "assistant": str(data.get("assistant") or ""),
+            "hearing_type": hearing_type,
+            "courtroom": str(courtroom or ""),
+        }
+    return None
+
+
 def _task_creation_mode(data: dict) -> str:
     """Return the user-facing creation mode without conflating it with task origin."""
     explicit_mode = str(data.get("creation_mode") or "").strip()
@@ -6928,12 +7008,26 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
     civil_distribution = [{"label": label, "value": stage_counts[label], "color": color} for label, _, color in stage_groups]
     if other_count: civil_distribution.append({"label": "其他", "value": other_count, "color": "#c5cbd3"})
     case_map = {item.id: item for item in cases}; visible_case_ids = set(case_map)
-    hearing_rows = (await db.scalars(select(HearingSchedule).where(HearingSchedule.case_record_id.in_(visible_case_ids), HearingSchedule.hearing_date >= date.today()).order_by(HearingSchedule.hearing_date, HearingSchedule.hearing_time).limit(15))).all() if visible_case_ids else []
-    weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-    hearings = []
+    today = date.today()
+    cutoff = today + timedelta(days=100)
+    projected_hearings = {
+        item.id: projected
+        for item in cases
+        if (projected := _dashboard_case_hearing(item, today, cutoff)) is not None
+    }
+    hearing_rows = (await db.scalars(select(HearingSchedule).where(
+        HearingSchedule.case_record_id.in_(visible_case_ids),
+        HearingSchedule.hearing_date >= today,
+        HearingSchedule.hearing_date <= cutoff,
+    ).order_by(HearingSchedule.hearing_date, HearingSchedule.hearing_time))).all() if visible_case_ids else []
+    hearings = list(projected_hearings.values())
     for item in hearing_rows:
+        if item.case_record_id in projected_hearings:
+            continue
         case = case_map[item.case_record_id]; data = case.data or {}
-        hearings.append({"weekday": weekdays[item.hearing_date.weekday()], "date": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "case_no": case.serial_no, "client": case.customer, "lawyer": item.hearing_lawyer or data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", "")})
+        hearings.append({"case_record_id": case.id, "weekday": "星期" + "一二三四五六日"[item.hearing_date.weekday()], "date": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "case_no": case.serial_no, "client": case.customer, "lawyer": item.hearing_lawyer or data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", ""), "hearing_type": item.hearing_type, "courtroom": item.courtroom})
+    hearings.sort(key=lambda item: (item["date"], item["time"], item["case_no"]))
+    hearings = hearings[:13]
     latest_cases = []
     for item in sorted(cases, key=lambda value: (value.created_at, value.id), reverse=True)[:15]:
         data = item.data or {}
