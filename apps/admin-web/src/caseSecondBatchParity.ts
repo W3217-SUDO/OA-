@@ -8,10 +8,8 @@ export const CASE_CREATE_REQUIRED_FIELDS = {
 
 export const CASE_MUTATION_BLOCKED_STATUSES = ["待归档审核", "已归档", "已合并"] as const;
 export const CASE_EXECUTION_STATUSES = [
-  "一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理",
-  "执行中止", "执行结案", "执行终本", "执行终结",
-  // Preserve the local values that were already exposed by the Case page.
-  "未开始", "执行中", "已执行",
+  "执行立案", "执行受理", "执行中止", "执行结案", "执行终本",
+  "终结执行", "执行和解中",
 ] as const;
 export const CASE_CLUE_CONVERSION_ENDPOINT = "/investigations/clues/batch-cases";
 

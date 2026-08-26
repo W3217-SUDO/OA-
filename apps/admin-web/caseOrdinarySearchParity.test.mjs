@@ -5,10 +5,36 @@ import {
   buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
+  LEGACY_PHASE_CHILDREN,
   ordinaryCaseTypesForView,
   ordinaryCustomerIdForView,
   parseOrdinarySearchResult,
 } from "./src/caseOrdinarySearchParity.mjs";
+
+test("legacy civil phase catalog matches every target group exactly", () => {
+  assert.deepEqual(LEGACY_PHASE_CHILDREN, {
+    "一审阶段": [
+      "一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判",
+      "一审等待上诉", "一审待执行", "一审上诉准备", "一审补充代理意见", "一审和解中",
+      "一审和解结案", "一审判决结案", "一审待客户回款",
+    ],
+    "二审阶段": [
+      "二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判",
+      "二审待执行", "二审补充代理意见", "二审和解中", "二审和解结案", "二审判决结案",
+      "二审待客户回款",
+    ],
+    "再审阶段": [
+      "再审立案受理", "再审补充证据", "再审通知开庭", "再审庭后待判", "再审待执行",
+      "再审和解中", "再审和解结案", "再审判决结案", "再审待客户回款",
+    ],
+    "执行阶段": [
+      "执行立案", "执行受理", "执行中止", "执行结案", "执行终本", "终结执行", "执行和解中",
+    ],
+    "归档阶段": [
+      "归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝",
+    ],
+  });
+});
 
 test("civil routes include both legacy and current civil case labels", () => {
   assert.deepEqual(ordinaryCaseTypesForView("case-company-civil"), ["民事争议", "民事案件"]);
@@ -25,6 +51,7 @@ test("customer-scoped case routes preserve the stable customer id across remount
 
 test("buildLegacyCasePhaseTree follows the exact legacy civil hierarchy and aggregates groups", () => {
   const items = [
+    { label: "审核公证书", value: "审核公证书", count: 0 },
     { label: "一审阶段", value: "一审阶段", count: 0 },
     { label: "二审阶段", value: "二审阶段", count: 0 },
     { label: "执行阶段", value: "执行阶段", count: 0 },
@@ -33,20 +60,40 @@ test("buildLegacyCasePhaseTree follows the exact legacy civil hierarchy and aggr
   const tree = buildLegacyCasePhaseTree(items, [], {
     二审: 1,
     二审通知开庭: 2,
+    等待审核公证书: 4,
+    一审通知开庭: 1,
     一审待执行: 3,
+    提交法院: 1,
+    执行终结: 1,
     亏损内审: 1,
   });
 
-  assert.ok(tree[0].children.some((child) => child.label === "一审补充代理意见"));
-  assert.ok(!tree[0].children.some((child) => child.label === "一审待执行"));
-  assert.equal(tree[1].count, 3);
-  assert.ok(tree[1].children.some((child) => child.label === "二审通知开庭" && child.count === 2));
-  assert.ok(!tree[1].children.some((child) => child.label === "二审准备开庭"));
-  assert.ok(tree[2].children.some((child) => child.label === "一审待执行" && child.count === 3));
+  assert.equal(tree[0].count, 4);
+  assert.ok(tree[1].children.some((child) => child.label === "一审补充代理意见"));
+  assert.deepEqual(tree[1].children.map((child) => child.label), [
+    "一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判",
+    "一审等待上诉", "一审待执行", "一审上诉准备", "一审补充代理意见", "一审和解中",
+    "一审和解结案", "一审判决结案", "一审待客户回款",
+  ]);
+  assert.equal(tree[2].count, 3);
+  assert.ok(tree[2].children.some((child) => child.label === "二审通知开庭" && child.count === 2));
+  assert.ok(!tree[2].children.some((child) => child.label === "二审准备开庭"));
+  assert.ok(tree[1].children.some((child) => child.label === "一审待执行" && child.count === 3));
+  assert.ok(tree[1].children.some((child) => child.label === "一审准备开庭" && child.count === 1));
+  assert.deepEqual(tree[2].children.map((child) => child.label), [
+    "二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判",
+    "二审待执行", "二审补充代理意见", "二审和解中", "二审和解结案", "二审判决结案",
+    "二审待客户回款",
+  ]);
   assert.deepEqual(tree[3].children.map((child) => child.label), [
+    "执行立案", "执行受理", "执行中止", "执行结案", "执行终本", "终结执行", "执行和解中",
+  ]);
+  assert.equal(tree[3].children.find((child) => child.label === "执行立案")?.count, 1);
+  assert.equal(tree[3].children.find((child) => child.label === "终结执行")?.count, 1);
+  assert.deepEqual(tree[4].children.map((child) => child.label), [
     "归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝",
   ]);
-  assert.equal(tree[3].count, 1);
+  assert.equal(tree[4].count, 1);
 });
 
 test("buildCaseOrdinarySearchPayload maps ordinary filters to the server contract", () => {
@@ -168,8 +215,12 @@ test("phase group filter submits all exact legacy descendants", async () => {
   const first = legacyCasePhaseFilterValues("一审阶段");
   assert.ok(first.includes("一审"));
   assert.ok(first.includes("一审补充代理意见"));
-  assert.ok(!first.includes("一审待执行"));
+  assert.ok(first.includes("一审待执行"));
   assert.deepEqual(legacyCasePhaseFilterValues("一审待执行"), ["一审待执行"]);
+  assert.deepEqual(legacyCasePhaseFilterValues("审核公证书"), ["审核公证书", "等待审核公证书"]);
+  assert.deepEqual(legacyCasePhaseFilterValues("一审准备开庭"), ["一审准备开庭", "一审通知开庭"]);
+  assert.deepEqual(legacyCasePhaseFilterValues("执行立案"), ["执行立案", "提交法院"]);
+  assert.deepEqual(legacyCasePhaseFilterValues("终结执行"), ["终结执行", "执行终结"]);
 });
 
 test("普通案件服务端搜索默认使用旧分页 15 条", () => {

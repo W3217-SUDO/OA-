@@ -51,19 +51,22 @@ export const normalizePhaseCounts = (value) => {
 export const LEGACY_CASE_PHASE_GROUPS = ["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"];
 
 export const LEGACY_PHASE_CHILDREN = {
-  "一审阶段": ["一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判", "一审等待上诉", "一审上诉准备", "一审补充代理意见", "一审和解中", "一审和解结案", "一审判决结案", "一审待客户回款"],
-  "二审阶段": ["二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判", "二审补充代理意见", "二审和解中", "二审和解结案", "二审判决结案", "二审待客户回款"],
+  "一审阶段": ["一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判", "一审等待上诉", "一审待执行", "一审上诉准备", "一审补充代理意见", "一审和解中", "一审和解结案", "一审判决结案", "一审待客户回款"],
+  "二审阶段": ["二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判", "二审待执行", "二审补充代理意见", "二审和解中", "二审和解结案", "二审判决结案", "二审待客户回款"],
   "再审阶段": ["再审立案受理", "再审补充证据", "再审通知开庭", "再审庭后待判", "再审待执行", "再审和解中", "再审和解结案", "再审判决结案", "再审待客户回款"],
-  "执行阶段": ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案", "执行终本", "执行终结", "执行亏损", "执行异议", "执行和解中"],
+  "执行阶段": ["执行立案", "执行受理", "执行中止", "执行结案", "执行终本", "终结执行", "执行和解中"],
   "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
 };
 
 const LEGACY_PHASE_COUNT_ALIASES = {
   "审核公证书": ["等待审核公证书"],
+  "一审准备开庭": ["一审通知开庭"],
   "一审阶段": ["一审"],
   "二审阶段": ["二审"],
   "再审阶段": ["再审"],
   "执行阶段": ["执行"],
+  "执行立案": ["提交法院"],
+  "终结执行": ["执行终结"],
   "归档阶段": ["归档"],
 };
 
@@ -82,10 +85,15 @@ export const legacyCasePhaseFilterValues = (phase) => {
 
 export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
   const counts = normalizePhaseCounts(phaseCounts);
+  const hasAuthoritativeCounts = Object.keys(counts).length > 0;
   const groupNames = new Set(LEGACY_CASE_PHASE_GROUPS);
 
   return items.map((item) => {
-    if (!groupNames.has(item.label)) return { ...item, children: [] };
+    if (!groupNames.has(item.label)) return {
+      ...item,
+      count: hasAuthoritativeCounts ? phaseCount(counts, item.value) : Number(item.count || 0),
+      children: [],
+    };
     const children = LEGACY_PHASE_CHILDREN[item.label].map((phase) => ({
       label: phase,
       value: phase,

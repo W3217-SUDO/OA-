@@ -12,6 +12,20 @@ SOURCE = (pathlib.Path(__file__).with_name("app") / "main.py").read_text(encodin
 
 
 class CasePhaseChangeContractTest(unittest.TestCase):
+    @staticmethod
+    def phase_defaults():
+        module = ast.parse(SOURCE)
+        assignment = next(
+            node for node in module.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "DEFAULT_SYSTEM_PARAMETERS" for target in node.targets)
+        )
+        return {
+            code: (name, extra)
+            for category, code, name, extra in ast.literal_eval(assignment.value)
+            if category == "case_phase"
+        }
+
     def test_phase_input_and_option_mapping_are_explicit(self):
         self.assertIn("class CasePhaseChangeInput(BaseModel):", SOURCE)
         self.assertIn("case_phase_id", SOURCE)
@@ -37,6 +51,28 @@ class CasePhaseChangeContractTest(unittest.TestCase):
         self.assertIn("阶段名称不能为空", SOURCE)
         self.assertIn("案件阶段不存在或已停用", SOURCE)
         ast.parse(SOURCE)
+
+    def test_picker_catalog_matches_legacy_first_second_and_execution_groups(self):
+        phases = self.phase_defaults()
+        self.assertEqual(phases["FIRST_PENDING_EXECUTION"], (
+            "一审待执行", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 207},
+        ))
+        self.assertEqual(phases["SECOND_PENDING_EXECUTION"], (
+            "二审待执行", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 306},
+        ))
+        execution = [
+            (name, extra["sort_order"])
+            for name, extra in phases.values()
+            if extra.get("parent_code") == "EXECUTION"
+        ]
+        self.assertEqual(sorted(execution, key=lambda item: item[1]), [
+            ("执行立案", 501), ("执行受理", 502), ("执行中止", 503),
+            ("执行结案", 504), ("执行终本", 505), ("终结执行", 506),
+            ("执行和解中", 507),
+        ])
+        self.assertEqual(phases["EXECUTION_SUBMIT_COURT"][0], "执行立案")
+        for removed_code in ("EXECUTION_PREP_MATERIALS", "EXECUTION_DEFICIT", "EXECUTION_OBJECTION"):
+            self.assertNotIn(removed_code, phases)
 
 
 if __name__ == "__main__":

@@ -47,6 +47,12 @@ test("phase picker exposes one selectable leaf stage and a clear confirmation ac
   assert.doesNotMatch(phaseModal, /name="case_phase"/);
 });
 
+test("case list and phase picker share the complete legacy root catalog", () => {
+  assert.match(page, /const CASE_PHASE_ROOT_LABELS = \[\s*"等待公证书",\s*"审核公证书",\s*"待主体披露",\s*"新案待分配",\s*"文书准备",\s*"客户盖章",\s*"等待立案",\s*"补充取证",\s*"提交立案",\s*"一审阶段",\s*"二审阶段",\s*"再审阶段",\s*"执行阶段",\s*"归档阶段",\s*\];/);
+  assert.match(page, /const normalEditPhaseOptions = useMemo\(\s*\(\) => phaseOptionsForCaseType\(editingNormalCase\?\.data\.case_type, phaseCatalog\),/);
+  assert.match(page, /buildLegacyCasePhaseTree\(\s*CASE_PHASE_ROOT_LABELS\.map/);
+});
+
 test("ordinary-case batch phase menu opens the constrained phase picker", () => {
   assert.match(page, /if \(key === "batch-stage"\) void openPhaseChange\(selectedCases\);/);
   assert.match(page, /else if \(key\.startsWith\("batch-"\)\)/);
