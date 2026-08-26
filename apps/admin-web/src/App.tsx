@@ -796,7 +796,7 @@ const supportTools = [
   },
   {
     label: "国家知识产权局专利局",
-    href: "http://pss-system.cnipa.gov.cn/sipopublicsearch/portal/uiIndex.shtml",
+    href: "https://pss-system.cponline.cnipa.gov.cn/conventionalSearch",
   },
   { label: "全国组织机构查询平台", href: "https://www.cods.org.cn" },
   { label: "法律法规查询", href: "https://flk.npc.gov.cn/" },
