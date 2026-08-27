@@ -65,6 +65,7 @@ import {
   clearContractCustomerContext,
   CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY,
 } from "./contractCreateContext";
+import { clearDashboardFeeQuery, rememberDashboardFeeQuery } from "./dashboardFeeNavigation.mjs";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -804,7 +805,14 @@ const supportTools = [
 ];
 
 type DashboardData = {
-  metrics: { key: string; label: string; value: string; tone: string; route: string }[];
+  metrics: {
+    key: string;
+    label: string;
+    value: string;
+    tone: string;
+    route: string;
+    query?: { scope?: "mine" | "company"; unpaid_official?: boolean };
+  }[];
   todos: (string | number)[][];
   hearings: Record<string, string>[];
   latest_cases: Record<string, string>[];
@@ -1260,10 +1268,17 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
     }
     onNavigate(route);
   };
-  const keyboardNavigate = (event: React.KeyboardEvent, route: string) => {
+  const navigateMetric = (metric: DashboardData["metrics"][number]) => {
+    rememberDashboardFeeQuery(metric.query);
+    onNavigate(metric.route);
+  };
+  const keyboardNavigate = (
+    event: React.KeyboardEvent,
+    metric: DashboardData["metrics"][number],
+  ) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      onNavigate(route);
+      navigateMetric(metric);
     }
   };
   const openDashboardCase = (caseNo: string) => {
@@ -1343,8 +1358,8 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
               key={m.key}
               role="button"
               tabIndex={0}
-              onClick={() => onNavigate(m.route)}
-              onKeyDown={(event) => keyboardNavigate(event, m.route)}
+              onClick={() => navigateMetric(m)}
+              onKeyDown={(event) => keyboardNavigate(event, m)}
             >
               <div className="metric-icon">
                 {["◷", "✉", "♟", "⚖", "⚑", "▤", "☕", "¥"][i]}
@@ -1488,6 +1503,9 @@ export default function App() {
     if (!loggedIn) return;
     localStorage.setItem("sunhold:last-page", active);
   }, [active, loggedIn]);
+  useEffect(() => {
+    if (active !== "finance-fee-query") clearDashboardFeeQuery();
+  }, [active]);
   useEffect(() => {
     const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", syncFullscreenState);

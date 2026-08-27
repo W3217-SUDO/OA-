@@ -50,6 +50,10 @@ import { createFinanceActionGate } from "./financeActionGate.mjs";
 import { buildInvoiceApplicationPayload } from "./financeInvoiceHelpers.mjs";
 import { internalFeeExportRequestParams } from "./financeInternalFeeHelpers.mjs";
 import {
+  consumeDashboardFeeQuery,
+  preserveDashboardFeeQueryContext,
+} from "./dashboardFeeNavigation.mjs";
+import {
   normalizeRefundResponse,
   caseFeeRefundStatusLabel,
   createLatestRequestGuard,
@@ -1077,18 +1081,25 @@ export default function FinanceCenterPage({
     const explicitName = String(displayName || "").trim();
     if (explicitName) return explicitName;
     const key = String(identity || "").trim();
-    return financePersonNameMap.get(key) || "姓名待维护";
+    if (!key) return "—";
+    return financePersonNameMap.get(key) || (/[㐀-鿿]/.test(key) ? key : "—");
   };
   const financePersonDisplayNames = (identities: unknown, displayNames?: unknown) => {
     const values = Array.isArray(identities) ? identities : [identities];
     const names = Array.isArray(displayNames) ? displayNames : [];
     const rendered = values.filter(Boolean).map((value, index) => financePersonDisplayName(value, names[index]));
-    return rendered.length ? rendered.join("、") : "姓名待维护";
+    return rendered.length ? rendered.join("、") : "—";
   };
+  const dashboardFeeQuerySeed = useMemo(
+    () => consumeDashboardFeeQuery(initialView),
+    [initialView],
+  );
   const [originalQueryDraft, setOriginalQueryDraft] = useState<
     Record<string, any>
-  >({});
-  const [originalQuery, setOriginalQuery] = useState<Record<string, any>>({});
+  >(dashboardFeeQuerySeed);
+  const [originalQuery, setOriginalQuery] = useState<Record<string, any>>(
+    dashboardFeeQuerySeed,
+  );
   const [paymentAuditPageSize, setPaymentAuditPageSize] = useState(15);
   const [paymentQueryQuickPage, setPaymentQueryQuickPage] = useState("1");
   const [paymentQueryPageSize, setPaymentQueryPageSize] = useState(
@@ -1649,6 +1660,8 @@ export default function FinanceCenterPage({
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
     return {
+      scope: query.dashboardScope || "company",
+      unpaid_official: query.dashboardUnpaidOfficial || undefined,
       case_no: query.routeField0 || "",
       court_case_no: query.routeField1 || "",
       notary_no: query.routeField2 || "",
@@ -2199,7 +2212,7 @@ export default function FinanceCenterPage({
             }),
         isFeeQueryRoute
           ? api.get("/finance/fees/query", {
-              params: feeQueryParams({}, 1, 15),
+              params: feeQueryParams(dashboardFeeQuerySeed, 1, 15),
             })
           : Promise.resolve({
               data: { items: [], total: 0, totals: {}, page: 1, page_size: 15 },
@@ -2444,7 +2457,9 @@ export default function FinanceCenterPage({
                         }
                     : isArchiveSettlementActiveRoute
                       ? { routeField0: "请选择" }
-                : {};
+                      : isFeeQueryRoute
+                        ? dashboardFeeQuerySeed
+                        : {};
     setOriginalQueryDraft(defaults);
     setOriginalQuery(defaults);
     setSelectedOriginalRows([]);
@@ -7574,10 +7589,11 @@ export default function FinanceCenterPage({
       return;
     }
     if (isFeeQueryRoute) {
-      setOriginalQueryDraft({});
-      setOriginalQuery({});
+      const next = preserveDashboardFeeQueryContext(originalQuery);
+      setOriginalQueryDraft(next);
+      setOriginalQuery(next);
       setSelectedOriginalRows([]);
-      void loadFeeQuery({}, 1, feeQueryMeta.pageSize).catch((error: any) =>
+      void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: any) =>
         message.error(error?.response?.data?.detail || "费用查询清空失败"),
       );
       return;

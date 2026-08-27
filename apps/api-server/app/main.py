@@ -6951,13 +6951,22 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         return sum(item.status in statuses and (not owner_only or item.owner == username) and (predicate is None or predicate(item.data or {})) for item in rows)
     def fee_match(word): return lambda data: word in str(data.get("fee_type") or data.get("expense_scope") or "")
     official = lambda data: any(word in str(data.get("fee_type") or data.get("expense_scope") or "") for word in ("官方", "官费", "律所"))
-    unpaid_official = [item for item in finances if official(item.data or {}) and item.status not in {"已付款", "已完成", "已驳回", "已拒绝"}]
     def amount(value: object) -> float:
         try:
             return float(value or 0)
         except (TypeError, ValueError):
             return 0.0
-    unpaid_amount = sum(max(amount((item.data or {}).get("amount")) - amount((item.data or {}).get("paid_amount")), 0) for item in unpaid_official)
+    unpaid_official = await _fee_query_rows(
+        identity, db, scope="mine", unpaid_official=True,
+    )
+    unpaid_amount = sum(
+        max(
+            amount((item.get("data") or {}).get("amount"))
+            - amount((item.get("data") or {}).get("paid_amount")),
+            0,
+        )
+        for item in unpaid_official
+    )
     pending_refunds = [
         item for item in finances
         if item.status not in {"已完成", "已付款", "已驳回", "已拒绝", "已作废"}
@@ -6985,7 +6994,12 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         or "紧急" in item.status
     ]
     metrics = [
-        {"key": "official-fee-unpaid", "label": "待缴官费", "value": f"{len(unpaid_official)}件", "tone": "amber", "route": "finance-fee-query"},
+        {
+            "key": "official-fee-unpaid", "label": "待缴官费",
+            "value": f"{len(unpaid_official)}件", "tone": "amber",
+            "route": "finance-fee-query",
+            "query": {"scope": "mine", "unpaid_official": True},
+        },
         {"key": "refund-pending", "label": "待退费", "value": f"{len(pending_refunds)}件", "tone": "cyan", "route": "finance-refund"},
         {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company-supplement-evidence"},
         {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company"},
@@ -14658,7 +14672,8 @@ async def _invoice_case_fee_rows(
         latest_invoice_data = (latest_invoice.data or {}) if latest_invoice else {}
         invoice_date = _case_fee_date(latest_invoice_data.get("invoice_date"))
         payments = payments_by_fee.get(item.id, [])
-        paid_amount = round(sum(float(tx.amount or 0) for tx in payments), 2)
+        transaction_paid_amount = round(sum(float(tx.amount or 0) for tx in payments), 2)
+        paid_amount = max(transaction_paid_amount, round(float(data.get("paid_amount") or 0), 2))
         paid_date = payments[0].transaction_date if payments else _case_fee_date(data.get("paid_date") or data.get("payment_date"))
         receipts = receipts_by_fee.get(item.id, [])
         cashed_amount = round(sum(amount for _, amount in receipts), 2)
@@ -14860,6 +14875,7 @@ async def export_invoice_case_fees(
 
 async def _fee_query_rows(
     identity: dict, db: AsyncSession, *,
+    scope: str = "company", unpaid_official: bool = False,
     case_no: str = "", court_case_no: str = "", notary_no: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     customer: str = "", paid_organization: str = "", payment_status: str = "",
@@ -14868,7 +14884,7 @@ async def _fee_query_rows(
     fee_types: str = "", ids: set[int] | None = None,
 ) -> list[dict]:
     rows = await _invoice_case_fee_rows(
-        identity, db, scope="company", case_no=case_no,
+        identity, db, scope=scope, case_no=case_no,
         court_case_no=court_case_no, notary_no=notary_no,
         invoice_amount_from=None, invoice_amount_to=None, customer=customer,
         paid_organization=paid_organization, invoice_status="",
@@ -14887,12 +14903,27 @@ async def _fee_query_rows(
             continue
         if payment_status and str(data.get("payment_status") or "") != payment_status:
             continue
+        if unpaid_official:
+            base_type = str(data.get("base_fee_type") or "")
+            display_type = str(data.get("fee_type") or "")
+            amount_due = float(data.get("amount") or 0) - float(data.get("paid_amount") or 0)
+            if (
+                base_type != "官方费用"
+                and "官费" not in display_type
+                and "诉讼费" not in display_type
+                and display_type not in {"保全费", "执行费"}
+            ):
+                continue
+            if str(data.get("payment_status") or "") in {"已付款", "已驳回", "已作废"} or amount_due <= 0:
+                continue
         filtered.append(row)
     return filtered
 
 
 @app.get(f"{settings.api_prefix}/finance/fees/query")
 async def query_finance_fees(
+    scope: str = Query("company", pattern="^(mine|company)$"),
+    unpaid_official: bool = False,
     case_no: str = "", court_case_no: str = "", notary_no: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     customer: str = "", paid_organization: str = "",
@@ -14907,7 +14938,8 @@ async def query_finance_fees(
     if paid_from and paid_to and paid_from > paid_to:
         raise HTTPException(status_code=422, detail="付款开始日期不能晚于结束日期")
     rows = await _fee_query_rows(
-        identity, db, case_no=case_no, court_case_no=court_case_no,
+        identity, db, scope=scope, unpaid_official=unpaid_official,
+        case_no=case_no, court_case_no=court_case_no,
         notary_no=notary_no, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, customer=customer,
         paid_organization=paid_organization, payment_status=payment_status,
@@ -14926,6 +14958,8 @@ async def query_finance_fees(
 @app.get(f"{settings.api_prefix}/finance/fees/query/export")
 async def export_finance_fee_query(
     ids: str = "", selected_only: bool = False,
+    scope: str = Query("company", pattern="^(mine|company)$"),
+    unpaid_official: bool = False,
     case_no: str = "", court_case_no: str = "", notary_no: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     customer: str = "", paid_organization: str = "", payment_status: str = "",
@@ -14943,7 +14977,8 @@ async def export_finance_fee_query(
     if selected_only and not selected_ids:
         raise HTTPException(status_code=422, detail="请选择需要导出的费用.")
     rows = await _fee_query_rows(
-        identity, db, case_no=case_no, court_case_no=court_case_no,
+        identity, db, scope=scope, unpaid_official=unpaid_official,
+        case_no=case_no, court_case_no=court_case_no,
         notary_no=notary_no, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, customer=customer,
         paid_organization=paid_organization, payment_status=payment_status,

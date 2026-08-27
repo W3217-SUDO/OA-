@@ -7,9 +7,10 @@ const source = (await readFile(new URL('./src/App.tsx', import.meta.url), 'utf8'
   .replace(/"/g, "'")
 
 test('dashboard cards use backend-provided business routes', () => {
-  assert.match(source, /metrics:\{key:string;label:string;value:string;tone:string;route:string\}\[\]/)
+  assert.match(source, /metrics:\{key:string;label:string;value:string;tone:string;route:string;query\?:\{scope\?:'mine'\|'company';unpaid_official\?:boolean\};\}\[\]/)
   assert.match(source, /key=\{m\.key\}/)
-  assert.match(source, /onClick=\{\(\)=>onNavigate\(m\.route\)\}/)
+  assert.match(source, /rememberDashboardFeeQuery\(metric\.query\)/)
+  assert.match(source, /onClick=\{\(\)=>navigateMetric\(m\)\}/)
   assert.doesNotMatch(source, /constmetricRoutes=/)
 })
 

@@ -8,9 +8,15 @@ const source = fs.readFileSync(
 );
 
 test("finance person resolver accepts any explicit display name and never falls back to username", () => {
-  assert.match(source, /if \(explicitName\) return explicitName/);
-  assert.match(source, /financePersonNameMap\.get\(key\) \|\| "姓名待维护"/);
-  assert.doesNotMatch(source, /currentUser\.displayName \|\| currentUser\.username/);
+  const resolver = source.slice(
+    source.indexOf("const financePersonDisplayName"),
+    source.indexOf("const [originalQueryDraft"),
+  );
+  assert.match(resolver, /if \(explicitName\) return explicitName/);
+  assert.match(resolver, /if \(!key\) return "—"/);
+  assert.match(resolver, /financePersonNameMap\.get\(key\) \|\| \(\/\[㐀-鿿\]\/.test\(key\) \? key : "—"\)/);
+  assert.doesNotMatch(resolver, /姓名待维护/);
+  assert.doesNotMatch(resolver, /currentUser\.displayName \|\| currentUser\.username/);
 });
 
 test("payment print preview resolves every visible person", () => {
