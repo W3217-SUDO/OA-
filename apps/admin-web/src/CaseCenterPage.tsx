@@ -696,6 +696,10 @@ export default function CaseCenterPage({
   const pendingListReturnContext = useRef(caseListReturnContext);
   const [tab, setTab] = useState(first);
   const [cases, setCases] = useState<CaseRow[]>([]);
+  const [pendingExecutionCases, setPendingExecutionCases] = useState<CaseRow[]>([]);
+  const [pendingExecutionTotal, setPendingExecutionTotal] = useState(0);
+  const [pendingExecutionPage, setPendingExecutionPage] = useState(1);
+  const [pendingExecutionPageSize, setPendingExecutionPageSize] = useState(20);
   const [ordinaryCases, setOrdinaryCases] = useState<CaseRow[]>([]);
   const [ordinaryTotal, setOrdinaryTotal] = useState(0);
   const [ordinaryPhaseCounts, setOrdinaryPhaseCounts] = useState<Record<string, number>>({});
@@ -1208,6 +1212,24 @@ export default function CaseCenterPage({
       if (ordinaryRequestGuard.isLatest(requestId)) setLoading(false);
     }
   };
+  const loadPendingExecutionCases = async (page=1, pageSize=pendingExecutionPageSize) => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/cases/pending-execution", { params: { page, page_size: pageSize } });
+      setPendingExecutionCases(data.items || []);
+      setPendingExecutionTotal(Number(data.total || 0));
+      setPendingExecutionPage(Number(data.page || page));
+      setPendingExecutionPageSize(Number(data.page_size || pageSize));
+      setSelectedCaseKeys([]);
+      void loadCaseCapabilities(data.items || []);
+    } catch (error:any) {
+      setPendingExecutionCases([]);
+      setPendingExecutionTotal(0);
+      message.error(error?.response?.data?.detail || "待执行案件加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
   const loadCounselCases = async (values:Record<string,any>=caseQuery, page=1, pageSize=counselPageSize) => {
     setLoading(true);
     try {
@@ -1299,6 +1321,8 @@ export default function CaseCenterPage({
         .catch(() => setPhaseCatalog([]));
       const listLoad = isCreateView || isCaseDetailView
         ? Promise.resolve()
+        : initialView === "case-company-execution"
+          ? loadPendingExecutionCases(1, pendingExecutionPageSize)
         : initialView.includes("counsel")
           ? loadCounselCases(initialListQuery, 1, 10)
           : initialView.startsWith("case-mine") || initialView.startsWith("case-dept") || initialView.startsWith("case-company")
@@ -3776,7 +3800,7 @@ export default function CaseCenterPage({
     receipt:[["serial_no","案件编号"],["customer","客户名称"],["contract_no","合同编号"],["fee_group","费用大类"],["case_type","案件类型"],["status","案件阶段"],["fee_type","费用类型"],["receipt_status","票据状态"],["notary_no","公证书号"],["package_no","打包号"]],
   };
   const caseMatches=(row:CaseRow)=>Object.entries(caseQuery).every(([key,value])=>{if(!value||Array.isArray(value))return true;const map:Record<string,unknown>={serial_no:row.serial_no,customer:row.customer,status:row.status,plaintiff:row.data.plaintiff||row.customer,defendant:row.data.opponent,keyword:`${row.serial_no}${row.title}${row.customer}${row.data.opponent||""}`,handling_lawyer:(row.data.handling_lawyers||[]).join(","),...row.data};return String(map[key]||"").toLowerCase().includes(String(value).toLowerCase())});
-  const specialCases=scopedCases.filter(caseMatches);
+  const specialCases=(specialMode==="execution"?pendingExecutionCases:scopedCases).filter(caseMatches);
   const phaseRows:any[]=Object.values(specialCases.reduce((acc:Record<string,any>,row)=>{const name=row.owner||"未分配";if(!acc[name])acc[name]={id:name,name,date:dayjs().format("YYYY-MM-DD"),filing:0,refund:0,execution:0,clue:0};if(String(row.status).includes("立案"))acc[name].filing++;if(String(row.status).includes("退费"))acc[name].refund++;if(String(row.status).includes("执行"))acc[name].execution++;if(row.data.investigation_clue)acc[name].clue++;return acc},{}));
   const relatedCase=(id:number)=>cases.find(row=>row.id===id);
   const relatedFinance=(id:number)=>financeRows.find(row=>row.id===id);
@@ -3784,7 +3808,7 @@ export default function CaseCenterPage({
   const scheduleRows=hearings.filter(row=>{const c=relatedCase(row.case_record_id);return c?caseMatches(c):true}).map(row=>({...row,case:relatedCase(row.case_record_id)}));
   const receiptRows=specialCases;
   const invoiceRows=attachments.filter(row=>row.category.includes("发票")||row.category.includes("票据"));
-  const specialRows:any[]=specialMode==="schedule"?scheduleRows:specialMode==="execution"?specialCases.filter(row=>row.status==="执行"):specialMode==="unclaimed"?specialCases.filter(row=>!row.data.commission_applied):specialMode==="stage"?phaseRows:specialMode==="refund"?financeRows.filter(row=>String(row.data.fee_type||row.title).includes("退费")&&caseMatches(row)):specialMode==="receipt"?receiptRows:specialMode==="invoice"?invoiceRows:[];
+  const specialRows:any[]=specialMode==="schedule"?scheduleRows:specialMode==="execution"?specialCases:specialMode==="unclaimed"?specialCases.filter(row=>!row.data.commission_applied):specialMode==="stage"?phaseRows:specialMode==="refund"?financeRows.filter(row=>String(row.data.fee_type||row.title).includes("退费")&&caseMatches(row)):specialMode==="receipt"?receiptRows:specialMode==="invoice"?invoiceRows:[];
   const selectedSpecialRow:any=specialRows.find(row=>selectedCaseKeySet.has(String(row.id)));
   const openSelectedScheduleHearing = async () => {
     if (!selectedSpecialRow) return message.warning("请先选择案件");
@@ -4122,7 +4146,7 @@ export default function CaseCenterPage({
         </Form>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode!=="invoice"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>} 
-        <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={{...(shouldUseCompanySchedulePagination(initialView)?{defaultPageSize:20,showSizeChanger:true,pageSizeOptions:getCompanySchedulePageSizeOptions(),showQuickJumper:{goButton:<Button size="small">GO</Button>}}:{pageSize:20}),...(shouldUseCompanySchedulePagination(initialView)?{current:companySchedulePage,pageSize:companySchedulePageSize,onChange:(page:number,pageSize:number)=>{setCompanySchedulePage(page);setCompanySchedulePageSize(pageSize);}}:{}),showTotal:total=>`共有${total}条`}} />
+        <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialMode==="execution"?{current:pendingExecutionPage,pageSize:pendingExecutionPageSize,total:pendingExecutionTotal,showSizeChanger:true,pageSizeOptions:[10,20,50,100],showTotal:total=>`共有${total}条`,onChange:(page:number,pageSize:number)=>void loadPendingExecutionCases(page,pageSize)}:{...(shouldUseCompanySchedulePagination(initialView)?{defaultPageSize:20,showSizeChanger:true,pageSizeOptions:getCompanySchedulePageSizeOptions(),showQuickJumper:{goButton:<Button size="small">GO</Button>}}:{pageSize:20}),...(shouldUseCompanySchedulePagination(initialView)?{current:companySchedulePage,pageSize:companySchedulePageSize,onChange:(page:number,pageSize:number)=>{setCompanySchedulePage(page);setCompanySchedulePageSize(pageSize);}}:{}),showTotal:total=>`共有${total}条`}} />
         {shouldShowCompanyScheduleSinglePageJumper(initialView,specialRows.length,companySchedulePageSize)&&<Space style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={()=>setCompanySchedulePage(1)}>GO</Button></Space>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}

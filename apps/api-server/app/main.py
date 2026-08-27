@@ -1805,6 +1805,18 @@ CASE_EXECUTION_STATUSES = (
     "终结执行", "执行和解中",
 )
 
+CASE_PENDING_EXECUTION_PHASES = frozenset({
+    "一审待执行", "二审待执行", "再审待执行",
+})
+
+
+def _is_pending_execution_case(record: BusinessRecord) -> bool:
+    data = record.data or {}
+    return any(
+        str(value or "").strip() in CASE_PENDING_EXECUTION_PHASES
+        for value in (record.status, data.get("case_phase"))
+    )
+
 
 CASE_PHASE_STATUS_BY_CODE = {
     "WAIT_NOTARY_REVIEW": "等待审核公证书",
@@ -6995,7 +7007,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         item for item in personal_cases
         if str(item.status or "").strip() in appeal_phases
     ]
-    pending_execution = [item for item in cases if case_signal(item, "一审待执行", "二审待执行", "待执行")]
+    pending_execution = [item for item in cases if _is_pending_execution_case(item)]
     urgent_cases = [
         item for item in cases
         if bool((item.data or {}).get("urgent"))
@@ -19755,6 +19767,35 @@ async def case_summary(identity: dict = Depends(current_identity), db: AsyncSess
         "in_progress": sum(1 for item in cases if item.status not in {"新案待分配", "已归档"}),
         "execution": sum(1 for item in cases if item.status == "执行"),
         "archived": sum(1 for item in cases if item.status == "已归档"),
+    }
+
+
+@app.get(f"{settings.api_prefix}/cases/pending-execution")
+async def list_pending_execution_cases(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("case", identity, db, action="查看")
+    records = list((await db.scalars(
+        select(BusinessRecord).where(
+            BusinessRecord.module == "case",
+            *(await _record_scope_conditions(identity, db)),
+        ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
+    )).all())
+    pending = [record for record in records if _is_pending_execution_case(record)]
+    total = len(pending)
+    start = (page - 1) * page_size
+    allowed_fields = await _allowed_field_keys(identity, db)
+    return {
+        "items": await _contract_customer_record_dicts(
+            pending[start:start + page_size], allowed_fields, db, identity=identity,
+        ),
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
     }
 
 

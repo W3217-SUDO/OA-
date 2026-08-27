@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.main import dashboard
-from app.models import BusinessRecord, HearingSchedule
+from app.main import dashboard, list_pending_execution_cases
+from app.models import BusinessRecord, HearingSchedule, User
 
 
 IDENTITY = {"username": "admin", "role": "admin"}
@@ -48,8 +48,8 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                 ),
                 BusinessRecord(
                     module="case", serial_no="AJ-DASH-EXECUTION", title="待执行案件",
-                    customer="客户", status="一审准备开庭", owner="admin", department="上海",
-                    data={"execution_status": "一审待执行"},
+                    customer="客户", status="一审待执行", owner="admin", department="上海",
+                    data={"case_phase": "一审待执行"},
                 ),
                 BusinessRecord(
                     module="case", serial_no="AJ-DASH-APPEAL", title="待上诉案件",
@@ -81,6 +81,65 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics["evidence-supplement"]["route"], "case-company-supplement-evidence")
         self.assertEqual(metrics["execution-pending"]["route"], "case-company-execution")
         self.assertEqual(result["source"], "realtime")
+
+    async def test_pending_execution_list_uses_dashboard_phases_and_role_scope(self):
+        async with self.sessions() as db:
+            db.add(User(
+                username="limited", display_name="受限用户", department="测试部",
+                password_hash="unused", role="user", is_active=True,
+            ))
+            db.add_all([
+                BusinessRecord(
+                    module="case", serial_no="CODEX-827-R6-FIRST", title="一审待执行",
+                    customer="客户", status="一审待执行", owner="limited", department="测试部",
+                    data={"case_phase": "一审待执行"},
+                ),
+                BusinessRecord(
+                    module="case", serial_no="CODEX-827-R6-SECOND", title="二审待执行",
+                    customer="客户", status="二审待执行", owner="other", department="其他部",
+                    data={"case_phase": "二审待执行"},
+                ),
+                BusinessRecord(
+                    module="case", serial_no="CODEX-827-R6-RETRIAL", title="再审待执行",
+                    customer="客户", status="再审待执行", owner="other", department="其他部",
+                    data={"case_phase": "再审待执行"},
+                ),
+                BusinessRecord(
+                    module="case", serial_no="CODEX-827-R6-ACTIVE", title="已经执行",
+                    customer="客户", status="执行受理", owner="limited", department="测试部",
+                    data={"case_phase": "执行受理", "execution_status": "执行受理"},
+                ),
+                BusinessRecord(
+                    module="case", serial_no="CODEX-827-R6-STALE-SIGNAL", title="历史执行字段残留",
+                    customer="客户", status="一审准备开庭", owner="limited", department="测试部",
+                    data={"case_phase": "一审准备开庭", "execution_status": "一审待执行"},
+                ),
+            ])
+            await db.commit()
+
+            admin_dashboard = await dashboard(IDENTITY, db)
+            admin_list = await list_pending_execution_cases(1, 20, IDENTITY, db)
+            admin_page_one = await list_pending_execution_cases(1, 2, IDENTITY, db)
+            admin_page_two = await list_pending_execution_cases(2, 2, IDENTITY, db)
+            limited_list = await list_pending_execution_cases(
+                1, 20, {"username": "limited", "role": "user"}, db,
+            )
+
+        admin_metric = next(item for item in admin_dashboard["metrics"] if item["key"] == "execution-pending")
+        self.assertEqual(admin_metric["value"], "3件")
+        self.assertEqual(admin_list["total"], 3)
+        self.assertEqual(
+            {item["serial_no"] for item in admin_list["items"]},
+            {"CODEX-827-R6-FIRST", "CODEX-827-R6-SECOND", "CODEX-827-R6-RETRIAL"},
+        )
+        self.assertEqual(admin_page_one["total"], 3)
+        self.assertEqual(admin_page_two["total"], 3)
+        self.assertEqual(
+            {item["serial_no"] for item in admin_page_one["items"] + admin_page_two["items"]},
+            {"CODEX-827-R6-FIRST", "CODEX-827-R6-SECOND", "CODEX-827-R6-RETRIAL"},
+        )
+        self.assertEqual(limited_list["total"], 1)
+        self.assertEqual(limited_list["items"][0]["serial_no"], "CODEX-827-R6-FIRST")
 
     async def test_dashboard_hearings_follow_case_court_fields_with_legacy_priority(self):
         first_hearing = datetime.combine(date.today() + timedelta(days=5), time(9, 30))
