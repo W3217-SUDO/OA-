@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, JobRole, User, WorkflowEvent
+from app.models import BusinessRecord, JobRole, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -46,6 +46,13 @@ class CaseLitigantDetailRow16Test(unittest.IsolatedAsyncioTestCase):
             await connection.run_sync(Base.metadata.create_all)
         async with self.sessions() as db:
             db.add_all([
+                SystemParameter(
+                    category="customer_type",
+                    code="PARTY",
+                    name="当事人",
+                    sort_order=2,
+                    is_active=True,
+                ),
                 JobRole(
                     code="ROW16-EDITOR",
                     name="案件承办",

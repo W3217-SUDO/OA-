@@ -26,7 +26,10 @@ from app.models import (
     LegacyCaseFile,
     LegacyCaseLog,
     LegacyCaseParticipant,
+    LegacyCustomer,
+    LegacyCustomerContact,
     RolePermission,
+    SystemParameter,
     User,
     WorkflowEvent,
 )
@@ -66,6 +69,9 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             LegacyCaseFile.__table__,
             LegacyCaseLog.__table__,
             LegacyCaseParticipant.__table__,
+            LegacyCustomer.__table__,
+            LegacyCustomerContact.__table__,
+            SystemParameter.__table__,
         ]
         async with engine.begin() as connection:
             await connection.run_sync(
@@ -78,6 +84,8 @@ class CaseCreateRouteContractTest(unittest.TestCase):
         contract_id: int | None = None
         customer_id: int | None = None
         created_admin = False
+        created_party_parameter = False
+        previous_party_parameter_active: bool | None = None
         async with SessionLocal() as db:
             db.add(Department(code=department_code, name=department_name, is_active=True))
             if not await db.scalar(select(User.id).where(User.username == "admin")):
@@ -87,6 +95,20 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                     is_active=True, must_change_password=False,
                 ))
                 created_admin = True
+            party_parameter = await db.scalar(select(SystemParameter).where(
+                SystemParameter.category == "customer_type",
+                SystemParameter.name == "当事人",
+            ))
+            if party_parameter is None:
+                party_parameter = SystemParameter(
+                    category="customer_type", code=f"{prefix}-PARTY", name="当事人",
+                    sort_order=2, is_active=True,
+                )
+                db.add(party_parameter)
+                created_party_parameter = True
+            else:
+                previous_party_parameter_active = party_parameter.is_active
+                party_parameter.is_active = True
             lawyer = User(
                 username=lawyer_username, display_name="\u7f16\u7801\u6d4b\u8bd5\u5f8b\u5e08",
                 department=department_name, role="user", profile={"position": "\u5f8b\u5e08"},
@@ -178,6 +200,19 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                 rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no.like(prefix + "%")))).all()
                 self.assertEqual({row.id for row in rows}, set(case_ids[:-1]))
             finally:
+                party_rows = list((await db.scalars(select(BusinessRecord).where(
+                    BusinessRecord.module == "customer",
+                    BusinessRecord.title.like(prefix + "%"),
+                    BusinessRecord.id != customer_id,
+                ))).all())
+                party_ids = [row.id for row in party_rows]
+                party_numbers = [row.serial_no for row in party_rows]
+                if party_ids:
+                    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_(party_ids)))
+                    await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(party_ids)))
+                if party_numbers:
+                    await db.execute(delete(LegacyCustomerContact).where(LegacyCustomerContact.CustomerNo.in_(party_numbers)))
+                    await db.execute(delete(LegacyCustomer).where(LegacyCustomer.CustomerNo.in_(party_numbers)))
                 if "legacy_case_no" in locals():
                     await db.execute(delete(LegacyCaseParticipant).where(LegacyCaseParticipant.CaseNo == legacy_case_no))
                     await db.execute(delete(LegacyCaseLog).where(LegacyCaseLog.CaseNo == legacy_case_no))
@@ -193,10 +228,15 @@ class CaseCreateRouteContractTest(unittest.TestCase):
                 await db.execute(delete(User).where(User.username.in_([lawyer_username, denied_username])))
                 if created_admin:
                     await db.execute(delete(User).where(User.username == "admin"))
+                if created_party_parameter:
+                    await db.delete(party_parameter)
+                elif previous_party_parameter_active is not None:
+                    party_parameter.is_active = previous_party_parameter_active
                 await db.execute(delete(Department).where(Department.code == department_code))
                 await db.commit()
         conn = sqlite3.connect(DB)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM business_records WHERE serial_no LIKE ?", (prefix + "%",)).fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM business_records WHERE title LIKE ?", (prefix + "%",)).fetchone()[0], 0)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM workflow_events WHERE comment LIKE ?", (prefix + "%",)).fetchone()[0], 0)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM users WHERE username IN (?, ?)", (lawyer_username, denied_username)).fetchone()[0], 0)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM role_permissions WHERE role = ?", (denied_role,)).fetchone()[0], 0)

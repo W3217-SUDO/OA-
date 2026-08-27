@@ -9169,6 +9169,27 @@ async def _ensure_unique_customer_name(title: str, db: AsyncSession, *, exclude_
         raise HTTPException(status_code=409, detail="客户名称已存在，不能创建或改为同名客户")
 
 
+async def _next_customer_serial_no(db: AsyncSession) -> str:
+    """Allocate the next visible customer number using the legacy SHKH rule."""
+    serial_prefix = f"SHKH{datetime.now():%y}"
+    serial_candidates = (await db.scalars(
+        select(BusinessRecord.serial_no).where(
+            BusinessRecord.module == "customer",
+            BusinessRecord.serial_no.like(f"{serial_prefix}%"),
+        )
+    )).all()
+    serial_sequence = max(
+        (
+            int(item[len(serial_prefix):])
+            for item in serial_candidates
+            if item[len(serial_prefix):].isdigit()
+            and len(item[len(serial_prefix):]) == 5
+        ),
+        default=0,
+    ) + 1
+    return f"{serial_prefix}{serial_sequence:05d}"
+
+
 @app.post(f"{settings.api_prefix}/customers", status_code=status.HTTP_201_CREATED)
 async def create_customer(body: CustomerCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     title = body.title.strip()
@@ -9234,25 +9255,7 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     data["customer_managers"] = [owner, *[manager for manager in managers if manager != owner]]
     serial_no = body.serial_no.strip()
     if not serial_no:
-        # Keep the customer coding convention visible in the original-system
-        # screenshots: SHKH + two-digit year + a five-digit running sequence.
-        serial_prefix = f"SHKH{datetime.now():%y}"
-        serial_candidates = (await db.scalars(
-            select(BusinessRecord.serial_no).where(
-                BusinessRecord.module == "customer",
-                BusinessRecord.serial_no.like(f"{serial_prefix}%"),
-            )
-        )).all()
-        serial_sequence = max(
-            (
-                int(item[len(serial_prefix):])
-                for item in serial_candidates
-                if item[len(serial_prefix):].isdigit()
-                and len(item[len(serial_prefix):]) == 5
-            ),
-            default=0,
-        ) + 1
-        serial_no = f"{serial_prefix}{serial_sequence:05d}"
+        serial_no = await _next_customer_serial_no(db)
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial_no)):
         raise HTTPException(status_code=409, detail="业务编号已存在")
     record = BusinessRecord(
@@ -13189,7 +13192,14 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
         case_title = "".join(filter(None, [case_customer, cause_or_charge, clue.title]))
         case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "handling_lawyers": handling_lawyers, "assistant": body.assistant.strip(), "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
-        db.add(case_record); await db.flush(); previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
+        db.add(case_record); await db.flush()
+        await _persist_case_litigant_customers(
+            case_record,
+            {"对方当事人": [str(clue_data.get("opponent") or "").strip()] if str(clue_data.get("opponent") or "").strip() else []},
+            identity,
+            db,
+        )
+        previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
         notary = await db.get(BusinessRecord, int(clue_data.get("notary_record_id") or 0)) if clue_data.get("notary_record_id") else None
         if notary: notary.data = {**(notary.data or {}), "case_id": case_record.id, "case_no": serial_no}
         db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"来源任务合同 {contract_reference}，生成案件 {serial_no}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status=case_record.status, operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 来源任务合同 {contract_reference}")])
@@ -21104,6 +21114,12 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="业务编号已存在") from exc
+    await _persist_case_litigant_customers(
+        record,
+        {"对方当事人": [opponent] if opponent else []},
+        identity,
+        db,
+    )
     db.add(WorkflowEvent(
         record_id=record.id, action="从合同新建案件", to_status=record.status,
         operator=identity["username"], comment=f"关联合同：{contract.serial_no}｜{contract.title}",
@@ -21449,6 +21465,104 @@ def _clean_case_litigant_values(values: list[str]) -> list[str]:
     return result
 
 
+async def _persist_case_litigant_customers(
+    case_record: BusinessRecord,
+    parties_by_role: dict[str, list[str]],
+    identity: dict,
+    db: AsyncSession,
+) -> list[BusinessRecord]:
+    """Materialize newly typed case parties in the customer register.
+
+    The legacy case editor creates a CRM customer with the party/applicant
+    type before it links the person to the case.  Keep that invariant in one
+    backend transaction so every case entry point feeds customer conflict
+    searches and both personal and company party lists.
+    """
+    requested: dict[str, dict[str, object]] = {}
+    for role, values in parties_by_role.items():
+        for title in values:
+            normalized = _normalize_customer_name(title)
+            entry = requested.setdefault(normalized, {"title": title, "roles": []})
+            roles = entry["roles"]
+            if isinstance(roles, list) and role not in roles:
+                roles.append(role)
+    if not requested:
+        return []
+
+    current_user = await db.scalar(select(User).where(
+        User.username == identity["username"], User.is_active.is_(True),
+    ))
+    if not current_user:
+        raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
+    active_party_type = await db.scalar(select(SystemParameter.id).where(
+        SystemParameter.category == "customer_type",
+        SystemParameter.name == "当事人",
+        SystemParameter.is_active.is_(True),
+    ))
+    if not active_party_type:
+        raise HTTPException(status_code=422, detail="客户类型“当事人”不存在或已停用")
+
+    existing_customers = list((await db.scalars(
+        select(BusinessRecord).where(BusinessRecord.module == "customer")
+    )).all())
+    existing_by_name = {
+        _normalize_customer_name(item.title): item
+        for item in existing_customers
+        if _normalize_customer_name(item.title)
+    }
+    created: list[BusinessRecord] = []
+    for normalized, entry in requested.items():
+        if normalized in existing_by_name:
+            continue
+        title = str(entry["title"])
+        roles = list(entry["roles"]) if isinstance(entry["roles"], list) else []
+        serial_no = await _next_customer_serial_no(db)
+        data = {
+            "customer_type": "当事人",
+            "level": "潜在客户",
+            "customer_managers": [current_user.username],
+            "shared_with": [],
+            "is_shared": "否",
+            "is_assisted": "否",
+            "fee_reduction": "否",
+            "customer_guid": str(uuid4()),
+            "customer_source": "案件当事人",
+            "file_date": date.today().isoformat(),
+            "contact_accounts": [],
+            "contact": "",
+            "case_litigant_origin": {
+                "case_id": case_record.id,
+                "case_no": case_record.serial_no,
+                "roles": roles,
+            },
+        }
+        party = BusinessRecord(
+            module="customer",
+            serial_no=serial_no,
+            title=title,
+            customer=title,
+            status="潜在",
+            owner=current_user.username,
+            department=current_user.department,
+            description=f"由案件 {case_record.serial_no} 当事人信息自动建档",
+            data=data,
+        )
+        _mark_customer_modified(party, identity)
+        db.add(party)
+        await db.flush()
+        db.add(WorkflowEvent(
+            record_id=party.id,
+            action="创建当事人",
+            to_status=party.status,
+            operator=identity["username"],
+            comment=f"由案件 {case_record.serial_no} 自动同步：{'、'.join(roles)}",
+        ))
+        await _sync_legacy_projection(party, identity, db)
+        existing_by_name[normalized] = party
+        created.append(party)
+    return created
+
+
 async def _persist_case_litigants(
     case_record: BusinessRecord,
     body: CaseLitigantsInput,
@@ -21475,6 +21589,12 @@ async def _persist_case_litigants(
             raise HTTPException(status_code=403, detail="当前角色没有该案件类型的新建权限")
     if case_type in {"行政案件及国家赔偿", "仲裁"} and (not plaintiffs or not defendants):
         raise HTTPException(status_code=422, detail="请录入原告/申请人与被告/被申请人")
+    await _persist_case_litigant_customers(
+        case_record,
+        {"原告": plaintiffs, "被告": defendants, "第三人": third_parties},
+        identity,
+        db,
+    )
     current_data = dict(case_record.data or {})
     next_creation_step = current_data.get("case_creation_step")
     if advance_creation and str(next_creation_step or "") in {"basic", "litigants"}:
@@ -21766,6 +21886,7 @@ async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: As
 async def _save_criminal_detail(record: BusinessRecord, payload: dict, action: str, comment: str, identity: dict, db: AsyncSession):
     record.data = {**(record.data or {}), **payload}
     db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=comment.strip()))
+    await _sync_legacy_projection(record, identity, db)
     await db.commit(); await db.refresh(record); return _record_dict(record)
 
 
@@ -21787,6 +21908,12 @@ async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, id
     record = await _criminal_detail_maintenance_case(case_id, identity, db)
     def clean(items: list[str]): return list(dict.fromkeys(str(x or "").strip() for x in items if str(x or "").strip()))
     payload = {key: clean(getattr(body, key)) for key in ("plaintiffs","plaintiff_agents","defendants","defendant_agents","third_parties","third_party_agents")}
+    await _persist_case_litigant_customers(
+        record,
+        {"原告": payload["plaintiffs"], "被告": payload["defendants"], "第三人": payload["third_parties"]},
+        identity,
+        db,
+    )
     return await _save_criminal_detail(record, payload, "修改刑事案件当事人", body.comment, identity, db)
 
 
