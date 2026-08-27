@@ -2402,8 +2402,9 @@ export default function CaseCenterPage({
     if (!viewingCounselCase) return;
     try {
       const { data } = await api.post(`/cases/${viewingCounselCase.id}/documents/${documentType}`);
-      message.success("案件文书已生成并归入案件附件");
+      message.success(`${data.original_name || "案件文书"}已生成并归入案件附件`);
       setAttachments((current) => [data, ...current.filter((item) => item.id !== data.id)]);
+      setActiveCounselDocCategory(String(data.category || "案件文档全部"));
       await openCounselDetail(viewingCounselCase);
     } catch (error: any) { message.error(error?.response?.data?.detail || "案件文书生成失败"); }
   };

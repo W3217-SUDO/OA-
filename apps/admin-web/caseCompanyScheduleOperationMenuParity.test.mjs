@@ -42,3 +42,19 @@ test("legacy more-operation submenu opens to the left", () => {
   assert.match(css, /\.case-detail-legacy-submenu-panel\{[^}]*right:calc\(100% - 1px\)/);
   assert.match(css, /\.case-detail-legacy-submenu:hover>\.case-detail-legacy-submenu-panel/);
 });
+
+test("every row-13 document entry calls its distinct backend type and reveals the persisted folder", () => {
+  for (const documentType of [
+    "authorization-letter",
+    "first-instance-appellant-lawyer-letter",
+    "first-instance-appellee-lawyer-letter",
+    "second-instance-appellant-lawyer-letter",
+    "second-instance-appellee-lawyer-letter",
+    "execution-lawyer-letter",
+    "identity-certificate",
+  ]) {
+    assert.match(source, new RegExp(`generateCaseDocument\\("${documentType}"\\)`));
+  }
+  assert.match(source, /message\.success\(`\$\{data\.original_name \|\| "案件文书"\}已生成并归入案件附件`\)/);
+  assert.match(source, /setActiveCounselDocCategory\(String\(data\.category \|\| "案件文档全部"\)\)/);
+});
