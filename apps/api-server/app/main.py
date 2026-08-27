@@ -21607,9 +21607,10 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     title = body.title.strip()
     phase = body.case_phase.strip()
     cause_or_charge = body.cause_or_charge.strip()
-    active_phase_values = await _active_case_phase_values(db)
-    if phase not in active_phase_values:
-        raise HTTPException(status_code=422, detail="案件阶段不是允许的办理阶段")
+    if phase != case_record.status:
+        active_phase_values = await _active_case_phase_values(db)
+        if phase not in active_phase_values:
+            raise HTTPException(status_code=422, detail="案件阶段不是允许的办理阶段")
     if not title or not cause_or_charge:
         raise HTTPException(status_code=422, detail="案件名称、案由或罪名不能为空")
     customer = await _customer_or_404(body.customer_record_id, identity, db)
