@@ -7183,6 +7183,136 @@ def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
         str(data.get("case_type") or "").strip() in {"民事争议", "民事案件"}
         and str(item.status or "").strip() in DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES
     )
+def _dashboard_case_date(record: BusinessRecord) -> datetime:
+    data = record.data or {}
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    raw = data.get("case_register_date") or legacy.get("CaseRegisterDate")
+    if isinstance(raw, datetime):
+        return raw.replace(tzinfo=None)
+    if isinstance(raw, date):
+        return datetime.combine(raw, time.min)
+    text = str(raw or "").strip()
+    if text:
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            pass
+    return record.created_at or datetime.min
+
+
+def _dashboard_text(value: object) -> str:
+    values = _contract_person_values(value)
+    return "、".join(dict.fromkeys(values))
+
+
+def _dashboard_people(
+    users_by_username: dict[str, User],
+    *candidate_groups: object,
+) -> str:
+    for candidate in candidate_groups:
+        values = _contract_person_values(candidate)
+        if not values:
+            continue
+        labels: list[str] = []
+        for value in values:
+            if value.lower() == "system":
+                continue
+            else:
+                user = users_by_username.get(value.lower())
+                label = (
+                    _valid_contract_chinese_person_name(user.display_name)
+                    if user
+                    else _valid_contract_chinese_person_name(value)
+                )
+            if label and label not in labels:
+                labels.append(label)
+        if labels:
+            return "、".join(labels)
+    return ""
+
+
+def _dashboard_customer_for_case(
+    record: BusinessRecord,
+    customers_by_id: dict[int, BusinessRecord],
+    customers_by_no: dict[str, list[BusinessRecord]],
+    customers_by_name: dict[str, list[BusinessRecord]],
+) -> BusinessRecord | None:
+    data = record.data or {}
+    customer, _ = _customer_reference_from_maps(
+        record.customer,
+        data,
+        customers_by_id,
+        customers_by_no,
+        customers_by_name,
+    )
+    return customer
+
+
+def _dashboard_latest_case_row(
+    record: BusinessRecord,
+    customer: BusinessRecord | None,
+    users_by_username: dict[str, User],
+) -> dict:
+    data = record.data or {}
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    customer_data = customer.data or {} if customer else {}
+    manager_values = (
+        customer_data.get("customer_managers")
+        or ([customer.owner] if customer and customer.owner else [])
+    )
+    registered_at = _dashboard_case_date(record)
+    return {
+        "case_no": record.serial_no,
+        "stage": str(data.get("case_phase_name") or legacy.get("CasePhaseName") or record.status or ""),
+        "plaintiff": _dashboard_text(
+            data.get("plaintiff") or data.get("plaintiffs") or legacy.get("AppellantNames") or record.customer
+        ),
+        "defendant": _dashboard_text(
+            data.get("opponent") or data.get("defendant") or data.get("defendants") or legacy.get("AppelleeNames")
+        ),
+        "date": registered_at.date().isoformat() if registered_at != datetime.min else "",
+        "manager": _dashboard_people(
+            users_by_username,
+            data.get("customer_manager_usernames"),
+            data.get("customer_manager_username"),
+            data.get("customer_managers"),
+            data.get("customer_manager"),
+            manager_values,
+            data.get("customer_manager_display_names"),
+            data.get("customer_manager_display_name"),
+            customer_data.get("customer_manager_display_names"),
+            customer_data.get("customer_manager_display_name"),
+            legacy.get("CoordinatorName"),
+        ),
+        "lawyer": _dashboard_people(
+            users_by_username,
+            data.get("hearing_lawyer_usernames"),
+            data.get("hearing_lawyer_username"),
+            data.get("hearing_lawyers"),
+            data.get("hearing_lawyer"),
+            data.get("hearing_lawyer_display_names"),
+            data.get("hearing_lawyer_display_name"),
+            legacy.get("CourtLawyerName"),
+        ),
+        "agent": _dashboard_people(
+            users_by_username,
+            data.get("handling_lawyer_usernames"),
+            data.get("handling_lawyers"),
+            data.get("handling_lawyer_display_names"),
+            data.get("handling_lawyer_display_name"),
+            legacy.get("CaseLawyerName"),
+        ),
+        "assistant": _dashboard_people(
+            users_by_username,
+            data.get("assistant_usernames"),
+            data.get("assistant_username"),
+            data.get("assistants"),
+            data.get("assistant"),
+            data.get("assistant_display_names"),
+            data.get("assistant_display_name"),
+            legacy.get("CaseAssistantName"),
+        ),
+    }
 
 
 @app.get(f"{settings.api_prefix}/dashboard")
@@ -7415,10 +7545,60 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         hearings.append({"case_record_id": case.id, "weekday": "星期" + "一二三四五六日"[item.hearing_date.weekday()], "date": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "case_no": case.serial_no, "client": case.customer, "lawyer": item.hearing_lawyer or data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", ""), "hearing_type": item.hearing_type, "courtroom": item.courtroom})
     hearings.sort(key=lambda item: (item["date"], item["time"], item["case_no"]))
     hearings = hearings[:13]
-    latest_cases = []
-    for item in sorted(cases, key=lambda value: (value.created_at, value.id), reverse=True)[:15]:
+    latest_case_records = sorted(cases, key=lambda value: (_dashboard_case_date(value), value.id), reverse=True)[:13]
+    customer_ids: set[int] = set()
+    customer_nos: set[str] = set()
+    customer_names: set[str] = set()
+    person_usernames: set[str] = set()
+    for item in latest_case_records:
         data = item.data or {}
-        latest_cases.append({"case_no": item.serial_no, "stage": item.status, "plaintiff": data.get("plaintiff") or item.customer, "defendant": data.get("opponent", ""), "date": str(item.created_at.date()), "manager": data.get("customer_manager", ""), "lawyer": data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", "")})
+        try:
+            customer_id = int(data.get("customer_record_id") or data.get("customer_id") or 0)
+        except (TypeError, ValueError):
+            customer_id = 0
+        if customer_id:
+            customer_ids.add(customer_id)
+        if customer_no := str(data.get("customer_no") or "").strip():
+            customer_nos.add(customer_no)
+        if item.customer:
+            customer_names.add(_normalized_customer_name(item.customer))
+        person_usernames.update(_record_person_usernames(item))
+        for person_key in (
+            "customer_manager", "customer_managers", "customer_manager_username", "customer_manager_usernames",
+            "hearing_lawyer", "hearing_lawyers",
+            "hearing_lawyer_username", "hearing_lawyer_usernames", "handling_lawyers",
+            "handling_lawyer_usernames", "assistant", "assistants", "assistant_username",
+            "assistant_usernames",
+        ):
+            person_usernames.update(_contract_person_values(data.get(person_key)))
+    customer_conditions = []
+    if customer_ids:
+        customer_conditions.append(BusinessRecord.id.in_(customer_ids))
+    if customer_nos:
+        customer_conditions.append(BusinessRecord.serial_no.in_(customer_nos))
+    if customer_names:
+        customer_conditions.append(BusinessRecord.title.in_({item.customer for item in latest_case_records if item.customer}))
+    related_customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "customer", or_(*customer_conditions),
+    ))).all()) if customer_conditions else []
+    customers_by_id = {item.id: item for item in related_customers}
+    customers_by_no: dict[str, list[BusinessRecord]] = {}
+    customers_by_name: dict[str, list[BusinessRecord]] = {}
+    for item in related_customers:
+        customers_by_no.setdefault(str(item.serial_no or "").strip(), []).append(item)
+        customers_by_name.setdefault(_normalized_customer_name(item.title), []).append(item)
+    for customer in related_customers:
+        person_usernames.add(customer.owner)
+        person_usernames.update(_contract_person_values((customer.data or {}).get("customer_managers")))
+    users_by_username = await _user_display_map(person_usernames, db)
+    latest_cases = [
+        _dashboard_latest_case_row(
+            item,
+            _dashboard_customer_for_case(item, customers_by_id, customers_by_no, customers_by_name),
+            users_by_username,
+        )
+        for item in latest_case_records
+    ]
     return {"metrics": metrics, "todos": todos, "case_trend": case_trend, "civil_distribution": civil_distribution, "hearings": hearings, "latest_cases": latest_cases, "source": "realtime"}
 
 
