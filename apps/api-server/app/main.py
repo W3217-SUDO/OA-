@@ -5493,6 +5493,31 @@ def _case_personal_scope_condition(username: str):
     )
 
 
+async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
+    """Limit the Mine list to concrete case participation, even for admins."""
+    username = str(identity["username"]).strip()
+    exact_username_token = f'"{username}"'
+    data = BusinessRecord.data
+    conditions = [
+        BusinessRecord.owner == username,
+        data["case_team_usernames"].as_string().contains(exact_username_token),
+        data["handling_lawyer_usernames"].as_string().contains(exact_username_token),
+        data["legacy_participants"].as_string().contains(f'"staff_name":"{username}"'),
+        func.lower(func.coalesce(data["source_person_username"].as_string(), "")) == username.lower(),
+        func.lower(func.coalesce(data["source_person"].as_string(), "")) == username.lower(),
+        func.lower(func.coalesce(data["business_owner"].as_string(), "")) == username.lower(),
+        func.lower(func.coalesce(data["assistant_username"].as_string(), "")) == username.lower(),
+        func.lower(func.coalesce(data["investigator"].as_string(), "")) == username.lower(),
+        func.lower(func.coalesce(data["court_lawyer_username"].as_string(), "")) == username.lower(),
+        select(FileAttachment.id).where(
+            FileAttachment.record_id == BusinessRecord.id,
+            func.lower(FileAttachment.uploader) == username.lower(),
+        ).exists(),
+    ]
+
+    return or_(*conditions)
+
+
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if identity.get("role") == "admin":
         return []
@@ -8921,6 +8946,8 @@ async def list_records(
                     func.trim(func.coalesce(BusinessRecord.data["archive_reject_reason"].as_string(), "")) != "",
                 ),
             ])
+    if module == "case" and scope == "mine":
+        conditions.append(await _case_mine_scope_condition(identity, db))
     if module in {"investigation", "task"} and investigation_view:
         publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
         legacy_publisher_missing = or_(
@@ -20340,7 +20367,7 @@ async def _query_counsel_cases(
     if relation_customer is None:
         record_conditions.extend(await _record_scope_conditions(identity, db))
         if body.scope == "mine":
-            record_conditions.append(_case_personal_scope_condition(identity["username"]))
+            record_conditions.append(await _case_mine_scope_condition(identity, db))
     keyword = body.keyword.strip()
     if keyword:
         keyword_pattern = f"%{keyword}%"
