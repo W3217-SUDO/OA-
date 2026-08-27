@@ -1237,17 +1237,27 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
       window.removeEventListener("focus", refreshOnFocus);
     };
   }, []);
-  const todoRoutes: Record<string, string> = {
-    待处理任务: "task-my",
-    待审批官方费用: "finance-payment-audit",
-    待审批线索: "clue",
-    待审批内部费用: "finance-internal-fee-audit",
-    待审批合同: "contract-audit-pending",
-    待审批结算费用: "finance-settlement-audit",
-    待审批用印: "seal-audit-pending",
-    待审批归档费用: "finance-archive-fee-pending",
-    待审核归档: "case-archive",
-    待审核预损费用: "finance-internal-fee-audit",
+  const todoRoutes: Record<string, { primary: string; secondary: string }> = {
+    待处理任务: { primary: "task-my-accepted", secondary: "task-my-created" },
+    待审批官方费用: { primary: "finance-payment-audit", secondary: "finance-payment-audit" },
+    待审批线索: { primary: "clue", secondary: "clue" },
+    待审批内部费用: { primary: "finance-internal-fee-audit", secondary: "finance-internal-fee-audit" },
+    待审批合同: { primary: "contract-audit-pending", secondary: "contract-audit-refused" },
+    待审批结算费用: { primary: "finance-settlement-audit", secondary: "finance-settlement-audit" },
+    待审批用印: { primary: "seal-audit-pending", secondary: "seal-my-refused" },
+    待审批归档费用: { primary: "finance-archive-fee-pending", secondary: "finance-archive-fee-pending" },
+    待审核归档: { primary: "case-archive-pending", secondary: "case-archive-refused" },
+    待审核预损费用: { primary: "finance-internal-fee-audit", secondary: "finance-internal-fee-audit" },
+  };
+  const navigateTodo = (label: string, kind: "primary" | "secondary") => {
+    const route = todoRoutes[label]?.[kind] || "dashboard";
+    if (label === "待处理任务") {
+      sessionStorage.setItem(
+        "sunhold:dashboard-task-tab",
+        kind === "secondary" ? "rejected" : "pending",
+      );
+    }
+    onNavigate(route);
   };
   const keyboardNavigate = (event: React.KeyboardEvent, route: string) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -1351,8 +1361,8 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
               {data.todos.map((row, i) => (
                 <tr key={i}>
                   {row.map((c, j) => {
-                    const route =
-                      todoRoutes[String(row[j < 3 ? 0 : 3])] || "dashboard";
+                    const label = String(row[j < 3 ? 0 : 3]);
+                    const kind = j % 3 === 2 ? "secondary" : "primary";
                     return (
                       <td
                         key={j}
@@ -1363,7 +1373,8 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
                         <button
                           type="button"
                           className="todo-link"
-                          onClick={() => onNavigate(route)}
+                          title={typeof c === "number" ? (kind === "primary" ? "查看待处理列表" : "查看已拒绝列表") : undefined}
+                          onClick={() => navigateTodo(label, kind)}
                         >
                           {c}
                         </button>
@@ -1380,18 +1391,15 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
                 { label: row[0], primary: row[1], secondary: row[2] },
                 { label: row[3], primary: row[4], secondary: row[5] },
               ].map((item, itemIndex) => {
-                const route = todoRoutes[String(item.label)] || "dashboard";
                 return (
-                  <button
-                    type="button"
+                  <div
                     className="mobile-todo-item"
                     key={`${rowIndex}-${itemIndex}`}
-                    onClick={() => onNavigate(route)}
                   >
-                    <span>{item.label}</span>
-                    <strong>{item.primary}</strong>
-                    <small>{item.secondary}</small>
-                  </button>
+                    <button type="button" className="mobile-todo-label" onClick={() => navigateTodo(String(item.label), "primary")}>{item.label}</button>
+                    <button type="button" className="mobile-todo-count primary" aria-label={`${item.label}待处理`} onClick={() => navigateTodo(String(item.label), "primary")}>{item.primary}</button>
+                    <button type="button" className="mobile-todo-count secondary" aria-label={`${item.label}已拒绝`} onClick={() => navigateTodo(String(item.label), "secondary")}>{item.secondary}</button>
+                  </div>
                 );
               }),
             )}

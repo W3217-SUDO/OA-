@@ -1077,7 +1077,14 @@ export default function CaseCenterPage({
     try {
       // 关联详情不能依赖合同、排期、附件等旁路数据全部成功；否则案号跳转会
       // 只进入案件列表而没有打开目标详情。
-      const caseRes = await api.get("/records", { params: { module: "case", page_size: 100 } });
+      const archiveView = initialView === "case-archive-pending"
+        ? "pending"
+        : initialView === "case-archive-refused"
+          ? "refused"
+          : undefined;
+      const caseRes = await api.get("/records", {
+        params: { module: "case", page_size: 100, archive_view: archiveView },
+      });
       setCases(caseRes.data.items);
       void loadCaseCapabilities(caseRes.data.items as CaseRow[]);
       const detailTarget = consumeCaseDetailTarget();

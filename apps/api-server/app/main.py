@@ -6983,16 +6983,109 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         ("待审核归档", cases, {"待归档审核", "亏损内审", "亏损审核"}, None, "待审核预损费用", finances, pending_statuses, fee_match("预损")),
     ]
     todos = [[left, count(left_rows, left_states, True, left_pred), count(left_rows, left_states, False, left_pred), right, count(right_rows, right_states, True, right_pred), count(right_rows, right_states, False, right_pred)] for left, left_rows, left_states, left_pred, right, right_rows, right_states, right_pred in todo_specs]
+
+    # The legacy dashboard's blue number is the signed-in user's actionable
+    # queue; the orange number is that user's rejected/returned queue.  Neither
+    # number is a company-wide total, even for administrators.
+    personal_tasks = [
+        item for item in tasks
+        if not _is_investigation_task(item)
+        and (
+            item.owner == username
+            or str((item.data or {}).get("initiator") or "").strip() == username
+        )
+    ]
+    def task_is_effectively_pending(item: BusinessRecord) -> bool:
+        # The task centre presents an overdue task in the processing tab even
+        # when the stored workflow state is still 待接收/待处理.
+        if _task_dict(item)["status"] not in {"待接收", "待处理"}:
+            return False
+        data = item.data or {}
+        if item.status != "待接收" or data.get("handoff_restarted"):
+            return True
+        auto_complete_at = str(data.get("handoff_auto_complete_at") or "").strip()
+        if not auto_complete_at:
+            return True
+        try:
+            return date.fromisoformat(auto_complete_at) > date.today()
+        except ValueError:
+            return True
+    personal_todo_counts = {
+        "待处理任务": (
+            sum(item.owner == username and task_is_effectively_pending(item) for item in personal_tasks),
+            sum(
+                str((item.data or {}).get("initiator") or "").strip() == username
+                and item.status == "已拒绝"
+                for item in personal_tasks
+            ),
+        ),
+        "待审批合同": (0, 0),
+        "待审批用印": (0, 0),
+        "待审核归档": (0, 0),
+    }
     pending_contract_ids = set((await db.scalars(select(ContractApprovalStep.contract_record_id).where(
         ContractApprovalStep.approver == username,
         ContractApprovalStep.status == "待审批",
     ))).all())
+    personal_todo_counts["待审批合同"] = (
+        int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "contract",
+            BusinessRecord.id.in_(pending_contract_ids),
+            BusinessRecord.status.in_(pending_statuses),
+        )) or 0) if pending_contract_ids else 0,
+        int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "contract",
+            BusinessRecord.owner == username,
+            BusinessRecord.status.in_({"已拒绝", "已驳回"}),
+        )) or 0),
+    )
+
+    seal_context = await _seal_authorization_context(identity, db)
+    seal_approver = func.trim(func.coalesce(BusinessRecord.data["approver"].as_string(), ""))
+    personal_todo_counts["待审批用印"] = (
+        int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "seal",
+            BusinessRecord.status == "待审批",
+            or_(seal_approver == "", seal_approver == username),
+        )) or 0) if seal_context["approve"] or seal_context["reject"] else 0,
+        int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "seal",
+            BusinessRecord.owner == username,
+            BusinessRecord.status == "已拒绝",
+        )) or 0),
+    )
+
+    archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
+    archive_scope = await _record_scope_conditions(identity, db)
+    archive_submitter = func.trim(func.coalesce(BusinessRecord.data["archive_submitter"].as_string(), ""))
+    archive_reviewer = func.trim(func.coalesce(BusinessRecord.data["archive_reviewer"].as_string(), ""))
+    archive_internal_reviewer = func.trim(func.coalesce(BusinessRecord.data["archive_internal_reviewer"].as_string(), ""))
+    archive_assigned_to_user = or_(
+        archive_reviewer == username,
+        archive_internal_reviewer == username,
+        and_(archive_reviewer == "", archive_internal_reviewer == "", BusinessRecord.owner == username),
+    )
+    personal_todo_counts["待审核归档"] = (
+        int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "case",
+            BusinessRecord.status.in_({"待归档审核", "亏损内审", "亏损审核"}),
+            archive_assigned_to_user,
+            archive_submitter != username,
+            *archive_scope,
+        )) or 0) if archive_action_allowed else 0,
+        int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.module == "case",
+            archive_submitter == username,
+            or_(
+                BusinessRecord.status == "亏损归档拒绝",
+                func.trim(func.coalesce(BusinessRecord.data["archive_reject_reason"].as_string(), "")) != "",
+            ),
+            *archive_scope,
+        )) or 0),
+    )
     for todo in todos:
-        if todo[0] == "待审批合同":
-            # A contract approver's personal queue is defined by the active
-            # approval step, not by who originally created the contract.
-            todo[1] = sum(item.id in pending_contract_ids and item.status in pending_statuses for item in by_module["contract"])
-            break
+        if todo[0] in personal_todo_counts:
+            todo[1], todo[2] = personal_todo_counts[todo[0]]
     current_month = date.today().replace(day=1); month_keys = []
     for offset in range(9, -1, -1):
         year, month = current_month.year, current_month.month - offset
@@ -8272,6 +8365,7 @@ async def list_records(
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
     investigation_view: str = Query("", pattern="^(|published|assigned|unassigned)$"),
+    archive_view: str = Query("", pattern="^(|pending|refused)$"),
     pending_approver_only: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
@@ -8297,6 +8391,34 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
+    if module == "case" and archive_view:
+        archive_submitter = func.trim(func.coalesce(BusinessRecord.data["archive_submitter"].as_string(), ""))
+        if archive_view == "pending":
+            if not await _case_action_granted(identity, db, "case.archive.review"):
+                return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
+            archive_reviewer = func.trim(func.coalesce(BusinessRecord.data["archive_reviewer"].as_string(), ""))
+            archive_internal_reviewer = func.trim(func.coalesce(BusinessRecord.data["archive_internal_reviewer"].as_string(), ""))
+            conditions.extend([
+                BusinessRecord.status.in_({"待归档审核", "亏损内审", "亏损审核"}),
+                or_(
+                    archive_reviewer == identity["username"],
+                    archive_internal_reviewer == identity["username"],
+                    and_(
+                        archive_reviewer == "",
+                        archive_internal_reviewer == "",
+                        BusinessRecord.owner == identity["username"],
+                    ),
+                ),
+                archive_submitter != identity["username"],
+            ])
+        else:
+            conditions.extend([
+                archive_submitter == identity["username"],
+                or_(
+                    BusinessRecord.status == "亏损归档拒绝",
+                    func.trim(func.coalesce(BusinessRecord.data["archive_reject_reason"].as_string(), "")) != "",
+                ),
+            ])
     if module in {"investigation", "task"} and investigation_view:
         publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
         legacy_publisher_missing = or_(

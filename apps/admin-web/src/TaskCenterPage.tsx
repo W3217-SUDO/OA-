@@ -301,6 +301,10 @@ export default function TaskCenterPage({
   });
   const [loading, setLoading] = useState(false);
   const loadRequestRef = useRef(0);
+  const dashboardTaskTabRef = useRef({
+    tab: sessionStorage.getItem("sunhold:dashboard-task-tab") || "",
+    appliedView: "",
+  });
   const [statusTab, setStatusTab] = useState("");
   const [queryForm] = Form.useForm<TaskQuery>();
   const [query, setQuery] = useState<TaskQuery>({});
@@ -520,7 +524,15 @@ export default function TaskCenterPage({
   };
 
   useEffect(() => {
-    const firstTab = (isCreated ? createdTabs : isCollaborating ? collaboratingTabs : receivedTabs)[0].key;
+    const routeTabs = isCreated ? createdTabs : isCollaborating ? collaboratingTabs : receivedTabs;
+    if (dashboardTaskTabRef.current.appliedView === initialView) return;
+    const requestedTab = dashboardTaskTabRef.current.tab;
+    const firstTab = routeTabs.some((item) => item.key === requestedTab)
+      ? requestedTab
+      : routeTabs[0].key;
+    dashboardTaskTabRef.current.appliedView = initialView;
+    dashboardTaskTabRef.current.tab = "";
+    sessionStorage.removeItem("sunhold:dashboard-task-tab");
     setStatusTab(firstTab);
     setSelectedKeys([]);
     queryForm.resetFields();

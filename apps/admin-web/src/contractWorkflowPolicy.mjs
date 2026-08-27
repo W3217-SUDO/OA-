@@ -18,7 +18,7 @@ export const contractMenuEntries = () => [
   { key: "contract-dept", label: "部门合同", scope: "department", legacyPath: "CMS/Contract/ContractList" },
   { key: "contract-company", label: "公司合同", scope: "company", legacyPath: "CMS/Contract/GeneralLedgerList" },
   { key: "contract-audit-pending", label: "待审批合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/2" },
-  { key: "contract-audit-refused", label: "已驳回合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/4" },
+  { key: "contract-audit-refused", label: "已驳回合同", scope: "mine", legacyPath: "CMS/Contract/ContractList/4" },
   { key: "contract-audit-approved", label: "已审批合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/3" },
 ];
 export const contractListViewConfig = (view) => {
