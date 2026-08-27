@@ -5499,7 +5499,18 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
     exact_username_token = f'"{username}"'
     data = BusinessRecord.data
     conditions = [
-        BusinessRecord.owner == username,
+        and_(
+            BusinessRecord.owner == username,
+            func.coalesce(data["source_person_username"].as_string(), "") == "",
+            func.coalesce(data["source_person"].as_string(), "") == "",
+            func.coalesce(data["business_owner"].as_string(), "") == "",
+            func.coalesce(data["assistant_username"].as_string(), "") == "",
+            func.coalesce(data["investigator"].as_string(), "") == "",
+            func.coalesce(data["court_lawyer_username"].as_string(), "") == "",
+            func.coalesce(data["case_team_usernames"].as_string(), "").in_({"", "[]"}),
+            func.coalesce(data["handling_lawyer_usernames"].as_string(), "").in_({"", "[]"}),
+            func.coalesce(data["legacy_participants"].as_string(), "").in_({"", "[]"}),
+        ),
         data["case_team_usernames"].as_string().contains(exact_username_token),
         data["handling_lawyer_usernames"].as_string().contains(exact_username_token),
         data["legacy_participants"].as_string().contains(f'"staff_name":"{username}"'),
