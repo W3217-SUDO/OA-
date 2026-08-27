@@ -21506,7 +21506,10 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     case_type = str(case_data.get("case_type") or "")
     if case_type not in NORMAL_CASE_BASIC_TYPES:
         raise HTTPException(status_code=409, detail="该接口仅用于民事、刑事、行政及国家赔偿案件")
-    _require_case_creation_completed(case_record, require_approval=False)
+    # This is the detail-page maintenance endpoint, not a creation-wizard step.
+    # Historical and duplicated cases may retain ``basic``/``litigants`` in the
+    # JSON marker even though they are already active.  Keep authorization and
+    # archive locks below, but do not let that stale wizard marker block edits.
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改基本信息")
     title = body.title.strip()
