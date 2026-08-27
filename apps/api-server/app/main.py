@@ -319,24 +319,22 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("case_phase", "FIRST_REHEARING", "一审再次开庭", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 204}),
     ("case_phase", "FIRST_POST_HEARING", "一审庭后待判", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 205}),
     ("case_phase", "FIRST_WAIT_APPEAL", "一审等待上诉", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 206}),
-    ("case_phase", "FIRST_PENDING_EXECUTION", "一审待执行", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 207}),
-    ("case_phase", "FIRST_APPEAL_PREP", "一审上诉准备", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 208}),
-    ("case_phase", "FIRST_AGENT_OPINION", "一审补充代理意见", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 209}),
-    ("case_phase", "FIRST_MEDIATION", "一审和解中", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 210}),
-    ("case_phase", "FIRST_MEDIATION_CLOSED", "一审和解结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 211}),
-    ("case_phase", "FIRST_JUDGMENT_CLOSED", "一审判决结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 212}),
-    ("case_phase", "FIRST_CUSTOMER_PAYMENT", "一审待客户回款", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 213}),
+    ("case_phase", "FIRST_APPEAL_PREP", "一审上诉准备", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 207}),
+    ("case_phase", "FIRST_AGENT_OPINION", "一审补充代理意见", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 208}),
+    ("case_phase", "FIRST_MEDIATION", "一审和解中", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 209}),
+    ("case_phase", "FIRST_MEDIATION_CLOSED", "一审和解结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 210}),
+    ("case_phase", "FIRST_JUDGMENT_CLOSED", "一审判决结案", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 211}),
+    ("case_phase", "FIRST_CUSTOMER_PAYMENT", "一审待客户回款", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 212}),
     ("case_phase", "SECOND_ACCEPTED", "二审立案受理", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 301}),
     ("case_phase", "SECOND_EVIDENCE", "二审补充证据", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 302}),
     ("case_phase", "SECOND_HEARING_PREP", "二审通知开庭", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 303}),
     ("case_phase", "SECOND_REHEARING", "二审再次开庭", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 304}),
     ("case_phase", "SECOND_POST_HEARING", "二审庭后待判", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 305}),
-    ("case_phase", "SECOND_PENDING_EXECUTION", "二审待执行", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 306}),
-    ("case_phase", "SECOND_AGENT_OPINION", "二审补充代理意见", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 307}),
-    ("case_phase", "SECOND_MEDIATION", "二审和解中", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 308}),
-    ("case_phase", "SECOND_MEDIATION_CLOSED", "二审和解结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 309}),
-    ("case_phase", "SECOND_JUDGMENT_CLOSED", "二审判决结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 310}),
-    ("case_phase", "SECOND_CUSTOMER_PAYMENT", "二审待客户回款", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 311}),
+    ("case_phase", "SECOND_AGENT_OPINION", "二审补充代理意见", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 306}),
+    ("case_phase", "SECOND_MEDIATION", "二审和解中", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 307}),
+    ("case_phase", "SECOND_MEDIATION_CLOSED", "二审和解结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 308}),
+    ("case_phase", "SECOND_JUDGMENT_CLOSED", "二审判决结案", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 309}),
+    ("case_phase", "SECOND_CUSTOMER_PAYMENT", "二审待客户回款", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 310}),
     ("case_phase", "RETRIAL_ACCEPTED", "再审立案受理", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 401}),
     ("case_phase", "RETRIAL_EVIDENCE", "再审补充证据", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 402}),
     ("case_phase", "RETRIAL_HEARING_PREP", "再审通知开庭", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 403}),
@@ -346,13 +344,18 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("case_phase", "RETRIAL_MEDIATION_CLOSED", "再审和解结案", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 407}),
     ("case_phase", "RETRIAL_JUDGMENT_CLOSED", "再审判决结案", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 408}),
     ("case_phase", "RETRIAL_CUSTOMER_PAYMENT", "再审待客户回款", {"case_type": "民事争议", "parent_code": "RETRIAL", "sort_order": 409}),
-    ("case_phase", "EXECUTION_SUBMIT_COURT", "执行立案", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 501}),
-    ("case_phase", "EXECUTION_ACCEPTED", "执行受理", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 502}),
-    ("case_phase", "EXECUTION_SUSPENDED", "执行中止", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 503}),
-    ("case_phase", "EXECUTION_CLOSED_CASE", "执行结案", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 504}),
-    ("case_phase", "EXECUTION_TERMINATED_CURRENT", "执行终本", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 505}),
-    ("case_phase", "EXECUTION_TERMINATED", "终结执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 506}),
-    ("case_phase", "EXECUTION_MEDIATING", "执行和解中", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 507}),
+    ("case_phase", "FIRST_PENDING_EXECUTION", "一审待执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 501}),
+    ("case_phase", "SECOND_PENDING_EXECUTION", "二审待执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 502}),
+    ("case_phase", "EXECUTION_PREP_MATERIALS", "准备材料", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 503}),
+    ("case_phase", "EXECUTION_SUBMIT_COURT", "提交法院", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 504}),
+    ("case_phase", "EXECUTION_ACCEPTED", "执行受理", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 505}),
+    ("case_phase", "EXECUTION_SUSPENDED", "执行中止", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 506}),
+    ("case_phase", "EXECUTION_CLOSED_CASE", "执行结案", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 507}),
+    ("case_phase", "EXECUTION_TERMINATED_CURRENT", "执行终本", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 508}),
+    ("case_phase", "EXECUTION_TERMINATED", "执行终结", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 509}),
+    ("case_phase", "EXECUTION_DEFICIT", "执行亏损", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 510}),
+    ("case_phase", "EXECUTION_OBJECTION", "执行异议", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 511}),
+    ("case_phase", "EXECUTION_MEDIATING", "执行和解中", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 512}),
     ("case_phase", "ARCHIVE_REVIEW", "归档审核", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 601}),
     ("case_phase", "ARCHIVE_COMPLETED", "已归档", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 602}),
     ("case_phase", "ARCHIVE_REJECTED", "归档拒绝", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 603}),
@@ -1803,9 +1806,15 @@ class CaseCourtInfoInput(CaseProgressInput):
 
 
 CASE_EXECUTION_STATUSES = (
-    "执行立案", "执行受理", "执行中止", "执行结案", "执行终本",
-    "终结执行", "执行和解中",
+    "一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理",
+    "执行中止", "执行结案", "执行终本", "执行终结", "执行亏损",
+    "执行异议", "执行和解中", "未开始", "执行中", "已执行",
 )
+
+CASE_EXECUTION_STATUS_ALIASES = {
+    "执行立案": "提交法院",
+    "终结执行": "执行终结",
+}
 
 CASE_PENDING_EXECUTION_PHASES = frozenset({
     "一审待执行", "二审待执行", "再审待执行",
@@ -21916,6 +21925,7 @@ def _normalize_case_numbers(values: str | list[str]) -> list[str]:
 
 def _validate_case_execution_status(value: str) -> str:
     normalized = str(value or "").strip()
+    normalized = CASE_EXECUTION_STATUS_ALIASES.get(normalized, normalized)
     if not normalized:
         raise HTTPException(status_code=422, detail="执行状态不能为空")
     if normalized not in CASE_EXECUTION_STATUSES:

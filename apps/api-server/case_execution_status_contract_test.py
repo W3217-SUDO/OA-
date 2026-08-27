@@ -19,6 +19,10 @@ class CaseExecutionStatusContractTest(unittest.TestCase):
         self.assertIn("CASE_EXECUTION_STATUSES", SOURCE)
         self.assertIn('"一审待执行"', SOURCE)
         self.assertIn('"执行结案"', SOURCE)
+        for status in ("一审待执行", "二审待执行", "准备材料", "提交法院", "执行亏损", "执行异议", "执行和解中"):
+            self.assertIn(f'"{status}"', SOURCE)
+        self.assertIn('"执行立案": "提交法院"', SOURCE)
+        self.assertIn('"终结执行": "执行终结"', SOURCE)
         self.assertIn("case_nos: str | list[str]", SOURCE)
         self.assertIn("execution_status: str", SOURCE)
 

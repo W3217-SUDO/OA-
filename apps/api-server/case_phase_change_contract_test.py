@@ -55,10 +55,10 @@ class CasePhaseChangeContractTest(unittest.TestCase):
     def test_picker_catalog_matches_legacy_first_second_and_execution_groups(self):
         phases = self.phase_defaults()
         self.assertEqual(phases["FIRST_PENDING_EXECUTION"], (
-            "一审待执行", {"case_type": "民事争议", "parent_code": "FIRST", "sort_order": 207},
+            "一审待执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 501},
         ))
         self.assertEqual(phases["SECOND_PENDING_EXECUTION"], (
-            "二审待执行", {"case_type": "民事争议", "parent_code": "SECOND", "sort_order": 306},
+            "二审待执行", {"case_type": "民事争议", "parent_code": "EXECUTION", "sort_order": 502},
         ))
         execution = [
             (name, extra["sort_order"])
@@ -66,13 +66,21 @@ class CasePhaseChangeContractTest(unittest.TestCase):
             if extra.get("parent_code") == "EXECUTION"
         ]
         self.assertEqual(sorted(execution, key=lambda item: item[1]), [
-            ("执行立案", 501), ("执行受理", 502), ("执行中止", 503),
-            ("执行结案", 504), ("执行终本", 505), ("终结执行", 506),
-            ("执行和解中", 507),
+            ("一审待执行", 501), ("二审待执行", 502), ("准备材料", 503),
+            ("提交法院", 504), ("执行受理", 505), ("执行中止", 506),
+            ("执行结案", 507), ("执行终本", 508), ("执行终结", 509),
+            ("执行亏损", 510), ("执行异议", 511), ("执行和解中", 512),
         ])
-        self.assertEqual(phases["EXECUTION_SUBMIT_COURT"][0], "执行立案")
-        for removed_code in ("EXECUTION_PREP_MATERIALS", "EXECUTION_DEFICIT", "EXECUTION_OBJECTION"):
-            self.assertNotIn(removed_code, phases)
+        self.assertEqual(phases["EXECUTION_SUBMIT_COURT"][0], "提交法院")
+        for restored_code in ("EXECUTION_PREP_MATERIALS", "EXECUTION_DEFICIT", "EXECUTION_OBJECTION"):
+            self.assertIn(restored_code, phases)
+
+    def test_startup_reconciles_existing_civil_phase_rows_idempotently(self):
+        self.assertIn("civil_phase_defaults", SOURCE)
+        self.assertIn("phase.name = name", SOURCE)
+        self.assertIn("phase.extra = dict(extra)", SOURCE)
+        self.assertIn("phase.sort_order = int(extra.get(\"sort_order\") or 0)", SOURCE)
+        self.assertIn("phase.is_active = True", SOURCE)
 
 
 if __name__ == "__main__":
