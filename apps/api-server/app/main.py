@@ -1677,6 +1677,11 @@ class CaseAssignmentInput(BaseModel):
     comment: str = ""
 
 
+class CaseHearingLawyerInput(BaseModel):
+    hearing_lawyer: str = Field(min_length=1, max_length=128)
+    comment: str = Field(default="", max_length=500)
+
+
 class CaseBatchUpdateInput(BaseModel):
     case_ids: list[int] = Field(default_factory=list, max_length=100)
     case_nos: list[str] = Field(default_factory=list, max_length=100)
@@ -3692,6 +3697,10 @@ def _record_person_usernames(record: BusinessRecord) -> set[str]:
             usernames.add(value)
     for key in RECORD_PERSON_LIST_FIELDS_BY_MODULE.get(record.module, ()):
         usernames.update(_contract_person_values(data.get(key)))
+    if record.module == "case":
+        hearing_username = str(data.get("hearing_lawyer_username") or "").strip()
+        if hearing_username:
+            usernames.add(hearing_username)
     # `Legal_Case_Participant` is a real case membership relation from the
     # legacy database.  It is separate from the case's role fields and must
     # participate in both display-name resolution and case visibility.
@@ -3716,7 +3725,10 @@ def _apply_record_person_displays(
     for key in RECORD_PERSON_FIELDS_BY_MODULE[record.module]:
         if key not in data:
             continue
-        display_name, missing = _person_reference_display(data.get(key), users_by_username)
+        reference = data.get(key)
+        if record.module == "case" and key == "hearing_lawyer":
+            reference = data.get("hearing_lawyer_username") or reference
+        display_name, missing = _person_reference_display(reference, users_by_username)
         data[f"{key}_display_name"] = display_name
         data[f"{key}_display_name_missing"] = missing
     for key in RECORD_PERSON_LIST_FIELDS_BY_MODULE.get(record.module, ()):
@@ -22928,6 +22940,50 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
             db.add(task); await db.flush(); case_record.data = {**case_record.data, "notary_handoff_task_id": task.id}; notary.data = {**notary_data, "handoff_task_id": task.id, "handoff_recipient": recipient}
             await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="系统生成原件交接任务", to_status="待接收", operator="system", comment=f"扫描文员 {scanner} 向 {recipient} 交接；来源案件 {case_record.serial_no}"), db, content="任务已分派.")
             db.add(WorkflowEvent(record_id=case_record.id, action="生成公证原件交接任务", from_status=case_record.status, to_status=case_record.status, operator="system", comment=f"任务 {task.serial_no}；负责人 {scanner}；接收人 {recipient}"))
+    await db.commit()
+    await db.refresh(case_record)
+    return _record_dict(case_record)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/hearing-lawyer")
+async def update_case_hearing_lawyer(
+    case_id: int,
+    body: CaseHearingLawyerInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the hearing lawyer independently from the creation wizard.
+
+    The legacy action writes only the hearing-lawyer fields. Historical cases
+    may retain an incomplete creation-step marker, which must not block this
+    detail-page maintenance operation.
+    """
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    if await _case_team_role(case_record, identity, db) != "manager":
+        raise HTTPException(status_code=403, detail="只有案件负责人或部门负责人可以修改开庭律师")
+    await _require_case_action(identity, db, "case.team.assign")
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
+        raise HTTPException(status_code=409, detail="归档中的案件不能修改开庭律师")
+
+    hearing_values, hearing_usernames = await _resolve_active_case_people(
+        [body.hearing_lawyer], db, field_name="开庭律师",
+    )
+    case_data = dict(case_record.data or {})
+    previous_hearing_lawyer = str(case_data.get("hearing_lawyer") or "")
+    case_data["hearing_lawyer"] = hearing_values[0]
+    case_data["hearing_lawyer_username"] = hearing_usernames[0]
+    case_record.data = case_data
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="修改开庭律师",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator=identity["username"],
+        comment=(
+            f"开庭律师：{previous_hearing_lawyer or '未设置'} → {hearing_values[0]}"
+            + (f"；说明：{body.comment.strip()}" if body.comment.strip() else "")
+        ),
+    ))
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)

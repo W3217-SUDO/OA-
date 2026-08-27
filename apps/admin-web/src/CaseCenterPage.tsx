@@ -2790,13 +2790,9 @@ export default function CaseCenterPage({
   const saveCaseHearingLawyer = async () => {
     if (!editingCaseHearingLawyer) return;
     const values = await caseHearingLawyerForm.validateFields();
-    const handling = Array.isArray(editingCaseHearingLawyer.data.handling_lawyers) ? editingCaseHearingLawyer.data.handling_lawyers : [];
     try {
-      const { data } = await api.post(`/cases/${editingCaseHearingLawyer.id}/assign`, {
-        customer_manager: editingCaseHearingLawyer.data.customer_manager || "",
+      const { data } = await api.put(`/cases/${editingCaseHearingLawyer.id}/hearing-lawyer`, {
         hearing_lawyer: values.hearing_lawyer || "",
-        handling_lawyers: handling,
-        assistant: editingCaseHearingLawyer.data.assistant || "",
         comment: values.comment || "",
       });
       message.success("开庭律师已保存");
