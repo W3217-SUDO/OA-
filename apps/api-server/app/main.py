@@ -21368,44 +21368,81 @@ async def update_case_settlement_amount(case_id: int, body: CaseSettlementAmount
     return await _record_dict_for_identity(case_record, identity, db)
 
 
-@app.put(f"{settings.api_prefix}/cases/{{case_id}}/litigants")
-async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    case_record = await _ensure_record_module(case_id, "case", identity, db)
-    creation_step = str((case_record.data or {}).get("case_creation_step") or "")
-    if creation_step:
-        await _require_record_owner_or_manager(case_record, identity, db)
-    else:
-        await _require_case_action(identity, db, "case.detail.update")
+@app.get(f"{settings.api_prefix}/case-litigant-candidates")
+async def list_case_litigant_candidates(
+    keyword: str = Query(default="", max_length=100),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search visible customer/party records for the legacy litigant tag editor."""
+    await _require_case_action(identity, db, "case.detail.update")
+    conditions = [
+        BusinessRecord.module == "customer",
+        BusinessRecord.status != "已回收",
+        *(await _record_scope_conditions(identity, db)),
+    ]
+    normalized_keyword = keyword.strip()
+    if normalized_keyword:
+        like = f"%{normalized_keyword}%"
+        conditions.append(or_(BusinessRecord.title.ilike(like), BusinessRecord.serial_no.ilike(like)))
+    candidates = list((await db.scalars(
+        select(BusinessRecord)
+        .where(*conditions)
+        .order_by(BusinessRecord.title, BusinessRecord.id)
+        .limit(50)
+    )).all())
+    return {
+        "items": [
+            {
+                "id": item.id,
+                "serial_no": item.serial_no,
+                "title": item.title,
+                "customer_type": str((item.data or {}).get("customer_type") or "客户"),
+            }
+            for item in candidates
+        ]
+    }
+
+
+def _clean_case_litigant_values(values: list[str]) -> list[str]:
+    result = list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
+    if any(len(value) > 256 for value in result):
+        raise HTTPException(status_code=422, detail="当事人名称过长")
+    return result
+
+
+async def _persist_case_litigants(
+    case_record: BusinessRecord,
+    body: CaseLitigantsInput,
+    identity: dict,
+    db: AsyncSession,
+    *,
+    advance_creation: bool,
+    enforce_create_permission: bool,
+    action: str,
+):
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改当事人")
-    # New-case wizard records still advance from basic -> litigants. Existing
-    # ordinary cases have no wizard step and must be editable from the detail
-    # action; applying the same payload/permission/state contract keeps both
-    # paths consistent without weakening the archive guard above.
-    is_creation_wizard = creation_step in {"basic", "litigants"}
-
-    def clean_parties(values: list[str]) -> list[str]:
-        result = list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
-        if any(len(value) > 256 for value in result):
-            raise HTTPException(status_code=422, detail="当事人名称过长")
-        return result
-
-    plaintiffs = clean_parties(body.plaintiffs)
-    plaintiff_agents = clean_parties(body.plaintiff_agents)
-    defendants = clean_parties(body.defendants)
-    defendant_agents = clean_parties(body.defendant_agents)
-    third_parties = clean_parties(body.third_parties)
-    third_party_agents = clean_parties(body.third_party_agents)
+    plaintiffs = _clean_case_litigant_values(body.plaintiffs)
+    plaintiff_agents = _clean_case_litigant_values(body.plaintiff_agents)
+    defendants = _clean_case_litigant_values(body.defendants)
+    defendant_agents = _clean_case_litigant_values(body.defendant_agents)
+    third_parties = _clean_case_litigant_values(body.third_parties)
+    third_party_agents = _clean_case_litigant_values(body.third_party_agents)
     case_type = str((case_record.data or {}).get("case_type") or "")
     permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
-    if permission_key and identity.get("role") != "admin":
+    if enforce_create_permission and permission_key and identity.get("role") != "admin":
         permission = await _permission_payload_for_identity(identity, db)
         if permission_key not in set(permission.get("menu_keys", [])):
             raise HTTPException(status_code=403, detail="当前角色没有该案件类型的新建权限")
     if case_type in {"行政案件及国家赔偿", "仲裁"} and (not plaintiffs or not defendants):
         raise HTTPException(status_code=422, detail="请录入原告/申请人与被告/被申请人")
-    case_record.data = {
-        **(case_record.data or {}),
+    current_data = dict(case_record.data or {})
+    next_creation_step = current_data.get("case_creation_step")
+    if advance_creation and str(next_creation_step or "") in {"basic", "litigants"}:
+        next_creation_step = "litigants"
+    updated_data = {
+        **current_data,
         "plaintiffs": plaintiffs,
         "plaintiff_agents": plaintiff_agents,
         "defendants": defendants,
@@ -21414,11 +21451,13 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
         "third_party_agents": third_party_agents,
         "plaintiff": "、".join(plaintiffs),
         "opponent": "、".join(defendants),
-        "case_creation_step": "litigants" if is_creation_wizard else creation_step,
     }
+    if "case_creation_step" in current_data or advance_creation:
+        updated_data["case_creation_step"] = next_creation_step
+    case_record.data = updated_data
     db.add(WorkflowEvent(
         record_id=case_record.id,
-        action="维护当事人信息",
+        action=action,
         from_status=case_record.status,
         to_status=case_record.status,
         operator=identity["username"],
@@ -21428,6 +21467,36 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/litigants")
+async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Creation-wizard endpoint; it may advance the wizard to the litigants step."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    creation_step = str((case_record.data or {}).get("case_creation_step") or "")
+    if creation_step:
+        await _require_record_owner_or_manager(case_record, identity, db)
+    else:
+        await _require_case_action(identity, db, "case.detail.update")
+    return await _persist_case_litigants(
+        case_record, body, identity, db,
+        advance_creation=True,
+        enforce_create_permission=True,
+        action="维护当事人信息",
+    )
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/litigants-detail")
+async def update_case_litigants_from_detail(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Legacy detail editor: update only parties, regardless of stale wizard markers."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_action(identity, db, "case.detail.update")
+    return await _persist_case_litigants(
+        case_record, body, identity, db,
+        advance_creation=False,
+        enforce_create_permission=False,
+        action="修改案件当事人",
+    )
 
 
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/complete-creation")

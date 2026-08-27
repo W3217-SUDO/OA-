@@ -141,6 +141,18 @@ type CaseRow = {
   created_at?: string;
   data: Record<string, any>;
 };
+type CaseLitigantPartyField = "plaintiffs" | "defendants" | "third_parties";
+type CaseLitigantCandidate = {
+  id: number;
+  serial_no: string;
+  title: string;
+  customer_type?: string;
+};
+const CASE_LITIGANT_PARTY_LABELS: Record<CaseLitigantPartyField, string> = {
+  plaintiffs: "原告",
+  defendants: "被告",
+  third_parties: "第三人",
+};
 type CaseAgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
 type CaseAgentDocument = { id: number; original_name: string; category?: string; source_module?: string; size?: number };
 type CaseAgentDocumentTreeNode = { key: string; title: string; selectable?: boolean; disabled?: boolean; children?: CaseAgentDocumentTreeNode[] };
@@ -863,6 +875,10 @@ export default function CaseCenterPage({
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
   const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
   const [editingCaseLitigants, setEditingCaseLitigants] = useState<CaseRow | null>(null);
+  const [caseLitigantCandidates, setCaseLitigantCandidates] = useState<CaseLitigantCandidate[]>([]);
+  const [caseLitigantCandidatesLoading, setCaseLitigantCandidatesLoading] = useState(false);
+  const [creatingCasePartyRole, setCreatingCasePartyRole] = useState<CaseLitigantPartyField | null>(null);
+  const [creatingCasePartySubmitting, setCreatingCasePartySubmitting] = useState(false);
   const [createDefendantEditorOpen, setCreateDefendantEditorOpen] = useState(false);
   const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
@@ -902,6 +918,8 @@ export default function CaseCenterPage({
   const warehouseLocationOptions = useMemo(() => buildWarehouseLocationOptions(warehouseCatalog), [warehouseCatalog]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
+  const caseLitigantSearchTimerRef = useRef<number | undefined>(undefined);
+  const caseLitigantSearchRequestRef = useRef(0);
   const [createForm] = Form.useForm();
   const [createDefendantEditorForm] = Form.useForm();
   const [clueConversionForm] = Form.useForm();
@@ -985,6 +1003,7 @@ export default function CaseCenterPage({
   const [arbitrationBasicForm] = Form.useForm();
   const [criminalMaintenanceForm] = Form.useForm();
   const [caseLitigantsForm] = Form.useForm();
+  const [casePartyCreateForm] = Form.useForm();
   const [caseHearingLawyerForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
@@ -2755,6 +2774,89 @@ export default function CaseCenterPage({
     const payload={...values,...Object.fromEntries(dateFields.map(key=>[key,values[key]?.format?.("YYYY-MM-DD")||null]))};
     try { const {data}=await api.put(`/cases/${criminalMaintenance.row.id}/criminal/${criminalMaintenance.kind}`,payload); message.success("刑事案件资料已保存"); setCriminalMaintenance(null);setViewingCounselCase(data);await load(); } catch(error:any){message.error(error?.response?.data?.detail||"刑事案件资料保存失败");}
   };
+  const loadCaseLitigantCandidates = async (keyword = "") => {
+    const requestId = ++caseLitigantSearchRequestRef.current;
+    setCaseLitigantCandidatesLoading(true);
+    try {
+      const { data } = await api.get("/case-litigant-candidates", { params: { keyword: keyword.trim() } });
+      if (requestId === caseLitigantSearchRequestRef.current) {
+        setCaseLitigantCandidates(Array.isArray(data.items) ? data.items : []);
+      }
+    } catch (error: any) {
+      if (requestId === caseLitigantSearchRequestRef.current) {
+        setCaseLitigantCandidates([]);
+        message.error(error?.response?.data?.detail || "当事人候选加载失败");
+      }
+    } finally {
+      if (requestId === caseLitigantSearchRequestRef.current) setCaseLitigantCandidatesLoading(false);
+    }
+  };
+  const searchCaseLitigantCandidates = (keyword: string) => {
+    window.clearTimeout(caseLitigantSearchTimerRef.current);
+    caseLitigantSearchTimerRef.current = window.setTimeout(() => void loadCaseLitigantCandidates(keyword), 350);
+  };
+  const openCasePartyCreator = (role: CaseLitigantPartyField) => {
+    casePartyCreateForm.resetFields();
+    casePartyCreateForm.setFieldsValue({ title: "", credit_code: "", phone: "", legal_representative: "", registered_address: "" });
+    setCreatingCasePartyRole(role);
+  };
+  const saveCaseParty = async () => {
+    if (!creatingCasePartyRole) return;
+    const values = await casePartyCreateForm.validateFields();
+    setCreatingCasePartySubmitting(true);
+    try {
+      const { data } = await api.post("/customers", {
+        title: String(values.title || "").trim(),
+        customer_type: "当事人",
+        status: "潜在",
+        credit_code: String(values.credit_code || "").trim(),
+        phone: String(values.phone || "").trim(),
+        legal_representative: String(values.legal_representative || "").trim(),
+        registered_address: String(values.registered_address || "").trim(),
+      });
+      const candidate: CaseLitigantCandidate = {
+        id: Number(data.id),
+        serial_no: String(data.serial_no || ""),
+        title: String(data.title || values.title).trim(),
+        customer_type: String(data.data?.customer_type || "当事人"),
+      };
+      setCaseLitigantCandidates((current) => [candidate, ...current.filter((item) => item.id !== candidate.id)]);
+      setCaseCustomers((current) => current.some((item) => item.id === data.id) ? current : [data, ...current]);
+      const currentValues = caseLitigantsForm.getFieldValue(creatingCasePartyRole) || [];
+      caseLitigantsForm.setFieldValue(creatingCasePartyRole, Array.from(new Set([...currentValues, candidate.title])));
+      message.success(`${CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole]}当事人已新增并选中`);
+      setCreatingCasePartyRole(null);
+      casePartyCreateForm.resetFields();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "新增当事人失败");
+    } finally {
+      setCreatingCasePartySubmitting(false);
+    }
+  };
+  const renderCasePartySelector = (role: CaseLitigantPartyField, required = false) => (
+    <Form.Item label={CASE_LITIGANT_PARTY_LABELS[role]} required={required}>
+      <Space.Compact block>
+        <Form.Item name={role} noStyle rules={required ? [{ required: true, message: `请至少选择一名${CASE_LITIGANT_PARTY_LABELS[role]}` }] : undefined}>
+          <Select
+            mode="multiple"
+            showSearch
+            filterOption={false}
+            onSearch={searchCaseLitigantCandidates}
+            onOpenChange={(open) => { if (open) void loadCaseLitigantCandidates(""); }}
+            loading={caseLitigantCandidatesLoading}
+            placeholder={`输入关键字搜索${CASE_LITIGANT_PARTY_LABELS[role]}`}
+            notFoundContent={caseLitigantCandidatesLoading ? "正在搜索..." : "未找到系统当事人，可点击右侧新增"}
+            options={caseLitigantCandidates.map((item) => ({
+              value: item.title,
+              label: item.serial_no ? `${item.title}（${item.serial_no}）` : item.title,
+            }))}
+            style={{ flex: 1 }}
+          />
+        </Form.Item>
+        <Button icon={<PlusOutlined />} aria-label={`新增${CASE_LITIGANT_PARTY_LABELS[role]}当事人`} title={`新增${CASE_LITIGANT_PARTY_LABELS[role]}当事人`} onClick={() => openCasePartyCreator(role)} />
+      </Space.Compact>
+    </Form.Item>
+  );
   const openCaseLitigants = (row: CaseRow) => {
     if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改当事人");
     caseLitigantsForm.setFieldsValue({
@@ -2767,12 +2869,13 @@ export default function CaseCenterPage({
       comment: "",
     });
     setEditingCaseLitigants(row);
+    void loadCaseLitigantCandidates("");
   };
   const saveCaseLitigants = async () => {
     if (!editingCaseLitigants) return;
     const values = await caseLitigantsForm.validateFields();
     try {
-      const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants`, values);
+      const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants-detail`, values);
       message.success("当事人信息已保存");
       setEditingCaseLitigants(null);
       setViewingCounselCase(data);
@@ -5333,18 +5436,40 @@ export default function CaseCenterPage({
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={760} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} destroyOnHidden>
-        <Alert type="info" showIcon title="可维护原告、原告代理人、被告、被告代理人及第三人；保存后会记录案件日志，归档中的案件不可修改。" style={{marginBottom:12}} />
+      <Modal width={760} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden>
+        <Alert type="info" showIcon title="输入关键字可搜索系统已有当事人；点击字段右侧加号可新增并立即选中。代理人单独维护，保存后仅更新本案当事人。" style={{marginBottom:12}} />
         <Form form={caseLitigantsForm} layout="vertical">
           <div className="form-grid">
-            <Form.Item label="原告" name="plaintiffs" rules={[{required:true,message:"请至少填写一名原告"}]}><Select mode="tags" tokenSeparators={[",","，"]} showSearch placeholder="输入客户或当事人后回车" /></Form.Item>
+            {renderCasePartySelector("plaintiffs", true)}
             <Form.Item label="原告代理人" name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
-            <Form.Item label="被告" name="defendants" rules={[{required:true,message:"请至少填写一名被告"}]}><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+            {renderCasePartySelector("defendants", true)}
             <Form.Item label="被告代理人" name="defendant_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
-            <Form.Item label="第三人" name="third_parties"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
+            {renderCasePartySelector("third_parties")}
             <Form.Item label="第三人代理人" name="third_party_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
           </div>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        width={620}
+        open={Boolean(creatingCasePartyRole)}
+        title={`新增${creatingCasePartyRole ? CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole] : ""}当事人`}
+        okText="保存并选中"
+        cancelText="取消"
+        confirmLoading={creatingCasePartySubmitting}
+        onOk={() => void saveCaseParty()}
+        onCancel={() => { setCreatingCasePartyRole(null); casePartyCreateForm.resetFields(); }}
+        forceRender
+        destroyOnHidden
+      >
+        <Form form={casePartyCreateForm} layout="vertical">
+          <Form.Item label="当事人名称" name="title" rules={[{ required: true, whitespace: true, message: "请输入当事人名称" }]}><Input maxLength={256} /></Form.Item>
+          <div className="form-grid">
+            <Form.Item label="统一社会信用代码/证件号" name="credit_code"><Input maxLength={128} /></Form.Item>
+            <Form.Item label="联系电话" name="phone"><Input maxLength={64} /></Form.Item>
+            <Form.Item label="法定代表人" name="legal_representative"><Input maxLength={128} /></Form.Item>
+            <Form.Item label="注册地址" name="registered_address"><Input maxLength={256} /></Form.Item>
+          </div>
         </Form>
       </Modal>
       <Modal
