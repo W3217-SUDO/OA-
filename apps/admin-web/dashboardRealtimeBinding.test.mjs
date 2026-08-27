@@ -7,10 +7,12 @@ const source = (await readFile(new URL('./src/App.tsx', import.meta.url), 'utf8'
   .replace(/"/g, "'")
 
 test('dashboard cards use backend-provided business routes', () => {
-  assert.match(source, /metrics:\{key:string;label:string;value:string;tone:string;route:string;query\?:\{scope\?:'mine'\|'company';unpaid_official\?:boolean\};\}\[\]/)
+  assert.match(source, /query\?:\{scope\?:'mine'\|'company';unpaid_official\?:boolean\}/)
   assert.match(source, /key=\{m\.key\}/)
   assert.match(source, /rememberDashboardFeeQuery\(metric\.query\)/)
   assert.match(source, /onClick=\{\(\)=>navigateMetric\(m\)\}/)
+  assert.match(source, /detail_context\?:\{contract_no:string;return_view:string;amount_filter\?:string;owner\?:string\}/)
+  assert.match(source, /sessionStorage\.setItem\('sunhold:receivable-detail-context',JSON\.stringify\(metric\.detail_context\)\)/)
   assert.doesNotMatch(source, /constmetricRoutes=/)
 })
 

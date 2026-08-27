@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.main import dashboard, list_pending_execution_cases
-from app.models import BusinessRecord, HearingSchedule, User
+from app.models import BusinessRecord, ContractObject, HearingSchedule, User
 
 
 IDENTITY = {"username": "admin", "role": "admin"}
@@ -30,11 +30,32 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_dashboard_metrics_follow_real_business_fields_and_routes(self):
         async with self.sessions() as db:
+            contract = BusinessRecord(
+                module="contract", serial_no="HT-DASH-OFFICIAL", title="官费应收合同",
+                customer="客户", status="审批通过", owner="admin", department="上海", data={},
+            )
+            db.add(contract)
+            await db.flush()
+            case = BusinessRecord(
+                module="case", serial_no="AJ-DASH-OFFICIAL", title="官费应收案件",
+                customer="客户", status="一审", owner="admin", department="上海",
+                data={"contract_id": contract.id, "contract_no": contract.serial_no},
+            )
+            db.add(case)
+            await db.flush()
+            db.add(ContractObject(
+                contract_record_id=contract.id, case_record_id=case.id,
+                fee_type="官费", amount=100, created_by="admin", updated_by="admin",
+            ))
             db.add_all([
                 BusinessRecord(
                     module="finance", serial_no="FY-DASH-OFFICIAL", title="官费",
                     customer="客户", status="草稿", owner="admin", department="上海",
-                    data={"fee_type": "官方费用", "amount": 100, "paid_amount": 20},
+                    data={
+                        "fee_type": "官方费用", "amount": 100, "paid_amount": 70,
+                        "received_amount": 20, "contract_id": contract.id,
+                        "case_id": case.id, "case_no": case.serial_no,
+                    },
                 ),
                 BusinessRecord(
                     module="finance", serial_no="FY-DASH-REFUND", title="退费",

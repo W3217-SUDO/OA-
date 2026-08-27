@@ -812,6 +812,7 @@ type DashboardData = {
     tone: string;
     route: string;
     query?: { scope?: "mine" | "company"; unpaid_official?: boolean };
+    detail_context?: { contract_no: string; return_view: string; amount_filter?: string; owner?: string };
   }[];
   todos: (string | number)[][];
   hearings: Record<string, string>[];
@@ -1270,6 +1271,13 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   };
   const navigateMetric = (metric: DashboardData["metrics"][number]) => {
     rememberDashboardFeeQuery(metric.query);
+    if (metric.detail_context) {
+      try {
+        sessionStorage.setItem("sunhold:receivable-detail-context", JSON.stringify(metric.detail_context));
+      } catch {
+        // Navigation still works when the browser blocks session storage.
+      }
+    }
     onNavigate(metric.route);
   };
   const keyboardNavigate = (

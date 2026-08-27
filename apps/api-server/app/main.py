@@ -3940,6 +3940,240 @@ def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_us
     }
 
 
+_OFFICIAL_RECEIVABLE_FEE_WORDS = (
+    "官方", "官费", "差旅费", "诉讼费", "公证费", "调解金额", "判决金额",
+    "保全费", "公告费", "担保费", "鉴定费", "执行费", "公证服务费",
+)
+_INVALID_RECEIVABLE_FEE_STATUSES = {"已驳回", "已拒绝", "已作废"}
+
+
+def _receivable_number(value: object) -> float:
+    try:
+        return round(float(value or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _receivable_relation_id(data: dict, *keys: str) -> int:
+    for key in keys:
+        try:
+            value = int(data.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value:
+            return value
+    return 0
+
+
+def _receivable_fee_category(value: object) -> str:
+    label = str(value or "").strip()
+    return "official" if any(word in label for word in _OFFICIAL_RECEIVABLE_FEE_WORDS) else "agency"
+
+
+async def _receivable_detail_projection(
+    identity: dict, db: AsyncSession, records: list[BusinessRecord] | None = None,
+) -> list[dict]:
+    """Project the legacy contract-object receivable detail from visible data."""
+    if records is None:
+        records = list((await db.scalars(select(BusinessRecord).where(
+            *(await _record_scope_conditions(identity, db)),
+        ))).all())
+
+    contracts = [item for item in records if item.module == "contract"]
+    cases = [item for item in records if item.module == "case"]
+    finances = [item for item in records if item.module == "finance"]
+    contracts_by_id = {item.id: item for item in contracts}
+    contracts_by_no = {item.serial_no: item for item in contracts if item.serial_no}
+    cases_by_id = {item.id: item for item in cases}
+    cases_by_no = {item.serial_no: item for item in cases if item.serial_no}
+
+    objects = list((await db.scalars(select(ContractObject).where(
+        ContractObject.contract_record_id.in_(set(contracts_by_id)),
+        ContractObject.case_record_id.in_(set(cases_by_id)),
+    ).order_by(ContractObject.contract_record_id, ContractObject.case_record_id, ContractObject.id))).all()) if contracts_by_id and cases_by_id else []
+
+    # A case/contract owner is allowed to see the receivable even when the
+    # linked finance record is operated by a cashier.  The ordinary record
+    # scope filters that finance row out, so resolve only finance records that
+    # are explicitly linked to the already-visible contract/case/object set.
+    relation_conditions = []
+    contract_ids = set(contracts_by_id)
+    case_ids = set(cases_by_id)
+    object_ids = {item.id for item in objects}
+    contract_nos = set(contracts_by_no)
+    case_nos = set(cases_by_no)
+    for key, values in (
+        ("contract_object_id", object_ids),
+        ("contract_id", contract_ids),
+        ("contract_record_id", contract_ids),
+        ("case_id", case_ids),
+        ("case_record_id", case_ids),
+    ):
+        if values:
+            relation_conditions.append(BusinessRecord.data[key].as_integer().in_(values))
+            relation_conditions.append(BusinessRecord.data[key].as_string().in_({str(value) for value in values}))
+    if contract_nos:
+        relation_conditions.append(BusinessRecord.data["contract_no"].as_string().in_(contract_nos))
+    if case_nos:
+        relation_conditions.append(BusinessRecord.data["case_no"].as_string().in_(case_nos))
+    if relation_conditions:
+        related_finances = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance", or_(*relation_conditions),
+        ))).all())
+        finances = list({item.id: item for item in [*finances, *related_finances]}.values())
+
+    finance_ids = {item.id for item in finances}
+    finance_rows = await _invoice_case_fee_rows(
+        identity, db, scope="company", ids=finance_ids, include_all_fee_types=True,
+        scope_authorized_fee_ids=finance_ids,
+        force_amount_projection=True,
+    ) if finance_ids else []
+    finance_data_by_id = {
+        int(item["id"]): dict(item.get("data") or {}) for item in finance_rows
+    }
+    rows: list[dict] = []
+
+    def relation(fee_data: dict) -> tuple[BusinessRecord | None, BusinessRecord | None]:
+        case_record = cases_by_id.get(_receivable_relation_id(fee_data, "case_id", "case_record_id"))
+        if case_record is None:
+            case_record = cases_by_no.get(str(fee_data.get("case_no") or "").strip())
+        contract = contracts_by_id.get(_receivable_relation_id(fee_data, "contract_id", "contract_record_id"))
+        if contract is None:
+            contract = contracts_by_no.get(str(fee_data.get("contract_no") or "").strip())
+        if contract is None and case_record is not None:
+            case_data = case_record.data or {}
+            contract = contracts_by_id.get(_receivable_relation_id(case_data, "contract_id", "contract_record_id"))
+            if contract is None:
+                contract = contracts_by_no.get(str(case_data.get("contract_no") or "").strip())
+        return contract, case_record
+
+    matched_fee_ids: set[int] = set()
+    for item in objects:
+        contract = contracts_by_id[item.contract_record_id]
+        case_record = cases_by_id[item.case_record_id]
+        amount = _receivable_number(item.amount)
+        if amount <= 0:
+            continue
+        linked_fees = [
+            fee for fee in finances if _fee_matches_contract_object(fee, item, case_record)
+        ]
+        matched_fee_ids.update(fee.id for fee in linked_fees)
+        paid = 0.0
+        received = 0.0
+        for fee in linked_fees:
+            raw = fee.data or {}
+            projected = finance_data_by_id.get(fee.id, {})
+            paid += max(
+                _receivable_number(projected.get("paid_amount")),
+                _receivable_number(raw.get("paid_amount")),
+            )
+            received += max(
+                _receivable_number(projected.get("cashed_amount")),
+                _receivable_number(raw.get("cashed_amount")),
+                _receivable_number(raw.get("received_amount")),
+            )
+        paid = min(_receivable_number(paid), amount)
+        received = min(_receivable_number(received), amount)
+        remaining = max(round(amount - received, 2), 0)
+        case_data = case_record.data or {}
+        contract_data = contract.data or {}
+        rows.append({
+            "id": f"object:{item.id}", "source_type": "contract_object",
+            "contract_object_id": item.id, "fee_record_id": None,
+            "contract_record_id": contract.id, "contract_no": contract.serial_no,
+            "contract_title": contract.title,
+            "contract_body": str(contract_data.get("contract_body") or "律所"),
+            "contract_date": str(contract_data.get("signed_at") or "")[:10],
+            "customer": contract.customer, "owner": contract.owner,
+            "source_person": str(contract_data.get("source_person") or contract.owner),
+            "case_record_id": case_record.id, "case_no": case_record.serial_no,
+            "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or case_record.status),
+            "case_type": str(case_data.get("case_type") or ""),
+            "phase": str(case_data.get("case_stage") or case_data.get("business_stage") or case_record.status),
+            "fee_type": item.fee_type, "fee_category": _receivable_fee_category(item.fee_type),
+            "due_date": "", "amount": amount, "paid_amount": paid,
+            "received_amount": received, "remaining_amount": remaining,
+            "status": case_record.status, "payer": contract.customer,
+            "remark": item.remark, "updated_at": item.updated_at,
+        })
+
+    # Historical rows may predate contract-object migration. Keep only
+    # unmatched, contract-resolvable fees so the contract-centric page remains
+    # usable without duplicating modern object-backed rows.
+    for fee in finances:
+        if fee.id in matched_fee_ids:
+            continue
+        data = fee.data or {}
+        if fee.status in _INVALID_RECEIVABLE_FEE_STATUSES:
+            continue
+        projected = finance_data_by_id.get(fee.id, {})
+        fee_type = str(projected.get("fee_type") or data.get("fee_type") or fee.title or "案件费用").strip()
+        fee_category = _receivable_fee_category(fee_type)
+        contract, case_record = relation(data)
+        if contract is None:
+            continue
+        amount = _receivable_number(data.get("amount"))
+        paid = max(
+            _receivable_number(projected.get("paid_amount")),
+            _receivable_number(data.get("paid_amount")),
+        )
+        received = max(
+            _receivable_number(projected.get("cashed_amount")),
+            _receivable_number(data.get("cashed_amount")),
+            _receivable_number(data.get("received_amount")),
+        )
+        paid = min(paid, amount)
+        received = min(received, amount)
+        remaining = max(round(amount - received, 2), 0)
+        if amount <= 0:
+            continue
+        case_data = case_record.data or {} if case_record else {}
+        contract_data = contract.data or {} if contract else {}
+        rows.append({
+            "id": f"fee:{fee.id}", "source_type": "case_fee",
+            "contract_object_id": None, "fee_record_id": fee.id,
+            "contract_record_id": contract.id,
+            "contract_no": contract.serial_no,
+            "contract_title": contract.title,
+            "contract_body": str(contract_data.get("contract_body") or "律所"),
+            "contract_date": str(contract_data.get("signed_at") or "")[:10],
+            "customer": contract.customer,
+            "owner": contract.owner,
+            "source_person": str(contract_data.get("source_person") or contract.owner),
+            "case_record_id": case_record.id if case_record else None,
+            "case_no": case_record.serial_no if case_record else str(data.get("case_no") or ""),
+            "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or (case_record.status if case_record else "案件费用")),
+            "case_type": str(case_data.get("case_type") or ""),
+            "phase": str(case_data.get("case_stage") or case_data.get("business_stage") or (case_record.status if case_record else "案件费用")),
+            "fee_type": fee_type, "fee_category": fee_category,
+            "due_date": str(data.get("deadline") or ""), "amount": amount,
+            "paid_amount": paid,
+            "received_amount": received, "remaining_amount": remaining,
+            "status": fee.status, "payer": fee.customer, "remark": fee.description,
+            "updated_at": fee.updated_at,
+        })
+
+    aggregates: dict[int, dict[str, float]] = {}
+    for row in rows:
+        totals = aggregates.setdefault(row["contract_record_id"], {
+            "official_paid": 0.0, "official_received": 0.0, "official_unreceived": 0.0,
+            "official_loss": 0.0, "agency_total": 0.0, "agency_received": 0.0, "agency_due": 0.0,
+        })
+        if row["fee_category"] == "official":
+            totals["official_paid"] += row["paid_amount"]
+            totals["official_received"] += row["received_amount"]
+            totals["official_unreceived"] += row["remaining_amount"]
+            if "亏损" in row["phase"]:
+                totals["official_loss"] += row["remaining_amount"]
+        else:
+            totals["agency_total"] += row["amount"]
+            totals["agency_received"] += row["received_amount"]
+            totals["agency_due"] += row["remaining_amount"]
+    for row in rows:
+        row["contract_totals"] = {key: round(value, 2) for key, value in aggregates[row["contract_record_id"]].items()}
+    return sorted(rows, key=lambda row: (row["contract_no"] or "~", row["case_no"] or "~", str(row["id"])))
+
+
 def _hearing_dict(item: HearingSchedule, case_record: BusinessRecord) -> dict:
     return {
         "id": item.id, "case_record_id": item.case_record_id,
@@ -6972,14 +7206,12 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
     unpaid_official = await _fee_query_rows(
         identity, db, scope="mine", unpaid_official=True,
     )
-    unpaid_amount = sum(
-        max(
-            amount((item.get("data") or {}).get("amount"))
-            - amount((item.get("data") or {}).get("paid_amount")),
-            0,
-        )
-        for item in unpaid_official
-    )
+    receivable_details = await _receivable_detail_projection(identity, db, list(records))
+    personal_official_receivables = [
+        item for item in receivable_details
+        if item["fee_category"] == "official" and item["owner"] == username
+    ]
+    unpaid_amount = sum(item["remaining_amount"] for item in personal_official_receivables)
     pending_refunds = [
         item for item in finances
         if item.status not in {"已完成", "已付款", "已驳回", "已拒绝", "已作废"}
@@ -7027,7 +7259,15 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-mine-appeal"},
         {"key": "execution-pending", "label": "待执行", "value": f"{len(pending_execution)}件", "tone": "purple", "route": "case-company-execution"},
         {"key": "urgent-cases", "label": "紧急案件", "value": f"{len(urgent_cases)}件", "tone": "orange", "route": "case-company"},
-        {"key": "official-fee-unreceived", "label": "未到官费金额", "value": f"{unpaid_amount:.2f}元", "tone": "navy", "route": "finance-fee-query"},
+        {
+            "key": "official-fee-unreceived", "label": "未到官费金额",
+            "value": f"{unpaid_amount:.2f}元", "tone": "navy",
+            "route": "contract-receivable-detail",
+            "detail_context": {
+                "contract_no": "", "return_view": "contract-receivable-mine",
+                "amount_filter": "official-unreceived", "owner": username,
+            },
+        },
     ]
     todo_specs = [
         ("待处理任务", tasks, {"待接收", "待处理", "处理中"}, None, "待审批官方费用", finances, pending_statuses, official),
@@ -11445,6 +11685,20 @@ async def list_receivables(
     return {"items": items, "total": len(items), "summary": {"amount": all_amount, "received": received, "remaining": all_amount - received, "overdue": overdue}}
 
 
+@app.get(f"{settings.api_prefix}/receivables/detail")
+async def list_receivable_details(
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    items = await _receivable_detail_projection(identity, db)
+    return {
+        "items": items,
+        "total": len(items),
+        "official_unreceived": round(sum(
+            item["remaining_amount"] for item in items if item["fee_category"] == "official"
+        ), 2),
+    }
+
+
 INVESTIGATION_MATERIAL_CATEGORIES = {
     "investigation": ["调查授权书", "权利证明", "调查资料", "客户指示"],
     "clue": ["现场照片", "网页截图", "购买记录", "调查报告"],
@@ -14504,11 +14758,17 @@ async def _invoice_case_fee_rows(
     cashed_to: date | None = None,
     ids: set[int] | None = None,
     include_all_fee_types: bool = False,
+    scope_authorized_fee_ids: set[int] | None = None,
+    force_amount_projection: bool = False,
 ) -> list[dict]:
     scope_conditions = await _record_scope_conditions(identity, db)
     fee_conditions = list(scope_conditions)
     if scope == "mine":
         fee_conditions.append(BusinessRecord.owner == identity["username"])
+    if scope_authorized_fee_ids is not None:
+        # Callers may bypass the finance-record owner scope only after deriving
+        # these exact ids from records the current identity can already see.
+        fee_conditions = [BusinessRecord.id.in_(scope_authorized_fee_ids)]
     fees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance", *fee_conditions
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
@@ -14671,7 +14931,11 @@ async def _invoice_case_fee_rows(
             refunds_by_fee.setdefault(linked_fee.id, []).append(refund)
 
     allowed_fields = await _allowed_field_keys(identity, db)
-    show_amount = "finance.amount" in allowed_fields
+    # The receivable projection exposes only contract-level aggregates that
+    # the caller is already authorized to view, not the underlying finance
+    # record.  It therefore needs the linked transaction totals even when the
+    # finance module's raw amount field is hidden for that role.
+    show_amount = force_amount_projection or "finance.amount" in allowed_fields
     selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
     selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
     normalized_types = {"代理费" if value == "律师代理费" else "官方费用" if value == "官费" else value for value in selected_types}
