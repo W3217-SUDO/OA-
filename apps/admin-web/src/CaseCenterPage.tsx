@@ -3258,11 +3258,19 @@ export default function CaseCenterPage({
     const option = phaseOptions.find((item) => item.id === Number(values.case_phase_id));
     if (!option) return message.error("案件阶段不存在或已停用");
     try {
-      await api.post("/cases/phase-change", buildCasePhaseChangePayload(phaseEditing.map((row) => row.serial_no), option.id, option.name, values.comment));
+      const changedCases = phaseEditing;
+      const { data } = await api.post("/cases/phase-change", buildCasePhaseChangePayload(changedCases.map((row) => row.serial_no), option.id, option.name, values.comment));
       message.success("修改成功！");
       setPhaseEditing(null);
       phaseForm.resetFields();
       setSelectedCaseKeys([]);
+      const currentDetailChanged = isCaseDetailView && viewingCounselCase
+        && changedCases.some((row) => row.id === viewingCounselCase.id);
+      if (currentDetailChanged) {
+        const updatedDetail = (Array.isArray(data?.items) ? data.items : [])
+          .find((row: CaseRow) => row.id === viewingCounselCase.id) || viewingCounselCase;
+        await openCounselDetail(updatedDetail);
+      }
       await load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "修改失败！");
