@@ -909,8 +909,8 @@ export default function CaseCenterPage({
   const createContractId = Form.useWatch("contract_record_id", createForm);
   const selectedCreateContract = useMemo(() => contracts.find((row) => row.id === createContractId), [contracts, createContractId]);
   const createContractOptions = useMemo(
-    () => buildCaseContractOptions(contracts, contractPrefill),
-    [contracts, contractPrefill],
+    () => buildCaseContractOptions(contracts, contractPrefill, createCustomer),
+    [contracts, contractPrefill, createCustomer],
   );
   const resolveCasePersonValue = (source: string) => {
     const normalized = String(source || "").trim();
@@ -4068,13 +4068,13 @@ export default function CaseCenterPage({
                     />
                   </Form.Item>
                   <Form.Item label="客户" name="customer" rules={[{ required: true, message: "请选择客户" }]}>
-                    <Select disabled={Boolean(contractPrefill?.id)} showSearch optionFilterProp="label" placeholder="请选择客户" options={[...new Set(contracts.map((row) => row.customer))].map((value) => ({ value, label: value }))} />
+                    <Select disabled={Boolean(contractPrefill?.id)} showSearch optionFilterProp="label" placeholder="请选择客户" options={[...new Set(contracts.map((row) => row.customer))].map((value) => ({ value, label: value }))} onChange={()=>createForm.setFieldsValue({contract_record_id:undefined,source_person:undefined,title:undefined})} />
                   </Form.Item>
                   {!isCounselCreate && <Form.Item label="客户诉讼地位" name="client_position" rules={[{ required: true }]}>
                     <Select options={clientPositionOptions.map((value) => ({ value, label: value }))} />
                   </Form.Item>}
                   <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择已审批合同" }]}>
-                    <Select disabled={initialView !== "case-new" || Boolean(contractPrefill?.id)} showSearch allowClear optionFilterProp="label" placeholder="请选择合同" options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCasePersonValue(resolveCaseSourcePerson(selected)),title:selected?`${selected.title}案件`:undefined})}} />
+                    <Select disabled={Boolean(contractPrefill?.id) || !String(createCustomer || "").trim()} showSearch allowClear optionFilterProp="label" placeholder="请选择合同" notFoundContent={createCustomer ? "该客户下暂无可用于新建案件的合同" : "请先选择客户"} options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCasePersonValue(resolveCaseSourcePerson(selected)),title:selected?`${selected.title}案件`:undefined})}} />
                   </Form.Item>
                   <Form.Item label="案源人" name="source_person"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="由关联合同自动带入，可按本案实际情况修改" /></Form.Item>
                   {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}

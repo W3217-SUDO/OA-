@@ -67,13 +67,17 @@ export function resolveCaseSourcePerson(contract: CaseContractOptionSource | nul
 export function buildCaseContractOptions(
   contracts: CaseContractOptionSource[],
   contractPrefill: CaseContractOptionSource | null,
+  selectedCustomer = "",
 ) {
   const rows = [...contracts];
   if (contractPrefill && !rows.some((row) => row.id === contractPrefill.id)) {
     rows.unshift(contractPrefill);
   }
-  return rows.map((row) => ({
+  const normalizedCustomer = selectedCustomer.trim();
+  return rows.filter((row) => (
+    !normalizedCustomer || row.customer.trim() === normalizedCustomer
+  )).map((row) => ({
     value: row.id,
-    label: `${row.serial_no}｜${row.customer}｜${row.title}`,
+    label: [row.serial_no, row.title].filter(Boolean).join("_"),
   }));
 }

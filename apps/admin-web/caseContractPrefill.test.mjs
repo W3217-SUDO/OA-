@@ -12,7 +12,7 @@ test("keeps a contract-originated case on its contract serial number before cont
 
   assert.deepEqual(options, [{
     value: 99,
-    label: "SHHT-2026-0099｜测试客户1｜测试客户合同",
+    label: "SHHT-2026-0099_测试客户合同",
   }]);
 });
 
@@ -31,7 +31,34 @@ test("uses the loaded contract label instead of a duplicate prefill option", () 
 
   assert.deepEqual(options, [{
     value: 99,
-    label: "SHHT-2026-0099｜测试客户1｜测试客户合同",
+    label: "SHHT-2026-0099_测试客户合同",
+  }]);
+});
+
+test("lists only the selected customer's contracts when creating a case", () => {
+  const options = buildCaseContractOptions([{
+    id: 99,
+    serial_no: "SHHT-2026-0099",
+    customer: "测试客户1",
+    title: "第一份合同",
+  }, {
+    id: 100,
+    serial_no: "SHHT-2026-0100",
+    customer: "测试客户2",
+    title: "第二份合同",
+  }, {
+    id: 101,
+    serial_no: "SHHT-2026-0101",
+    customer: "测试客户1",
+    title: "第三份合同",
+  }], null, "测试客户1");
+
+  assert.deepEqual(options, [{
+    value: 99,
+    label: "SHHT-2026-0099_第一份合同",
+  }, {
+    value: 101,
+    label: "SHHT-2026-0101_第三份合同",
   }]);
 });
 
