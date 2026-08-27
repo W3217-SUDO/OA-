@@ -5213,6 +5213,17 @@ async def _case_team_role(case_record: BusinessRecord, identity: dict, db: Async
     return "none"
 
 
+def _case_personal_scope_condition(username: str):
+    exact_username_token = f'"{username}"'
+    return or_(
+        BusinessRecord.owner == username,
+        BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token),
+        BusinessRecord.data["legacy_participants"].as_string().contains(
+            f'"staff_name":"{username}"'
+        ),
+    )
+
+
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if identity.get("role") == "admin":
         return []
@@ -5237,17 +5248,7 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     # ordinary role has only "own data" scope.  This is deliberately limited to
     # case records and stable username projections; it does not widen financial,
     # archive or team-management authority.
-    case_team = and_(BusinessRecord.module == "case", BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token))
-    # Historical ordinary cases retain the authoritative legacy membership rows
-    # in `legacy_participants`.  Match the structured `staff_name` member,
-    # rather than a bare username token, so metadata such as CreateUser cannot
-    # accidentally grant a user access to a case they did not participate in.
-    legacy_case_participant = and_(
-        BusinessRecord.module == "case",
-        BusinessRecord.data["legacy_participants"].as_string().contains(
-            f'"staff_name":"{user.username}"'
-        ),
-    )
+    personal_case = and_(BusinessRecord.module == "case", _case_personal_scope_condition(user.username))
     published_investigation = and_(
         BusinessRecord.module == "investigation",
         func.lower(BusinessRecord.data["publisher"].as_string()) == user.username.lower(),
@@ -5270,14 +5271,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         ).exists(),
     )
     if scope == "本部门数据":
-        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, legacy_case_participant, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
+        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, legacy_case_participant, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
-    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, case_team, legacy_case_participant, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
+        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
+    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:
@@ -6985,7 +6986,15 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         return any(word in str(value or "") for word in words for value in values)
     supplement_evidence = [item for item in cases if _matches_dashboard_case_queue(item, "supplement_evidence")]
     supplement_opinion = [item for item in cases if case_signal(item, "补充意见")]
-    pending_appeal = [item for item in cases if case_signal(item, "待上诉")]
+    personal_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        _case_personal_scope_condition(username),
+    ))).all())
+    appeal_phases = {"一审等待上诉", "待上诉"}
+    pending_appeal = [
+        item for item in personal_cases
+        if str(item.status or "").strip() in appeal_phases
+    ]
     pending_execution = [item for item in cases if case_signal(item, "一审待执行", "二审待执行", "待执行")]
     urgent_cases = [
         item for item in cases
@@ -7003,7 +7012,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         {"key": "refund-pending", "label": "待退费", "value": f"{len(pending_refunds)}件", "tone": "cyan", "route": "finance-refund"},
         {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company-supplement-evidence"},
         {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company"},
-        {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-company"},
+        {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-mine-appeal"},
         {"key": "execution-pending", "label": "待执行", "value": f"{len(pending_execution)}件", "tone": "purple", "route": "case-company-execution"},
         {"key": "urgent-cases", "label": "紧急案件", "value": f"{len(urgent_cases)}件", "tone": "orange", "route": "case-company"},
         {"key": "official-fee-unreceived", "label": "未到官费金额", "value": f"{unpaid_amount:.2f}元", "tone": "navy", "route": "finance-fee-query"},
@@ -19817,6 +19826,8 @@ async def _query_counsel_cases(
     record_conditions = [BusinessRecord.module == "case"]
     if relation_customer is None:
         record_conditions.extend(await _record_scope_conditions(identity, db))
+        if body.scope == "mine":
+            record_conditions.append(_case_personal_scope_condition(identity["username"]))
     keyword = body.keyword.strip()
     if keyword:
         keyword_pattern = f"%{keyword}%"
@@ -19838,12 +19849,10 @@ async def _query_counsel_cases(
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
     if body.case_queue:
         records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
-    # ``record_conditions`` already applies the caller's complete personal
-    # visibility contract: ownership, sharing, migrated case participants and
-    # role-based case fields.  Re-filtering ``mine`` to ``record.owner`` here
-    # silently removed migrated participant cases and also made an admin's
-    # legacy case list empty.  Only the explicitly broader department view
-    # needs an additional department boundary.
+    # ``mine`` is applied in SQL above with stable owner/team/legacy-participant
+    # identities.  This keeps administrator personal lists personal without
+    # dropping migrated participant cases.  Department is the only additional
+    # in-memory boundary.
     if body.scope == "department" and relation_customer is None:
         department = str(identity.get("department") or "").strip()
         records = [record for record in records if department and record.department == department]

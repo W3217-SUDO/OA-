@@ -95,6 +95,7 @@ export type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListIte
 export const LEGACY_CASE_PHASE_GROUPS: string[];
 export const LEGACY_PHASE_CHILDREN: Record<string, string[]>;
 export function legacyCasePhaseFilterValues(phase?: unknown): string[];
+export function dashboardCaseQueryForView(view?: unknown): CaseOrdinarySearchValues;
 
 export function buildLegacyCasePhaseTree(
   items?: CasePhaseListItem[],

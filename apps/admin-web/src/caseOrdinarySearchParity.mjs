@@ -83,6 +83,14 @@ export const legacyCasePhaseFilterValues = (phase) => {
   ].filter(Boolean))];
 };
 
+export const dashboardCaseQueryForView = (view) => String(view || "") === "case-mine-appeal"
+  ? {
+      status: "一审等待上诉",
+      case_statuses: ["一审等待上诉", "待上诉"],
+      sort_order: "updated_desc",
+    }
+  : {};
+
 export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
   const counts = normalizePhaseCounts(phaseCounts);
   const hasAuthoritativeCounts = Object.keys(counts).length > 0;

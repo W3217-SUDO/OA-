@@ -73,6 +73,7 @@ import {
   buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
+  dashboardCaseQueryForView,
   LEGACY_CASE_PHASE_GROUPS,
   legacyCasePhaseFilterValues,
   ordinaryCaseQueueForView,
@@ -1269,6 +1270,8 @@ export default function CaseCenterPage({
       activeListReturnContext = storedListReturnContext || pendingListReturnContext.current;
       sessionStorage.removeItem("sunhold:case-list-return");
     }
+    const dashboardQuery = dashboardCaseQueryForView(initialView);
+    const hasDashboardQuery = Object.keys(dashboardQuery).length > 0;
     const relationTarget = consumeCustomerRelationTarget("civil-cases");
     const routeCustomerId = ordinaryCustomerIdForView(initialView);
     const relationQuery = routeCustomerId || relationTarget?.target === "civil-cases" ? {
@@ -1276,12 +1279,15 @@ export default function CaseCenterPage({
       customer_no: relationTarget?.serial_no,
       customer: relationTarget?.title,
     } : {};
-    let initialListQuery: Record<string, any> = relationQuery;
-    if (relationQuery.customer_id || relationQuery.customer_no || relationQuery.customer) {
+    let initialListQuery: Record<string, any> = hasDashboardQuery ? dashboardQuery : relationQuery;
+    if (hasDashboardQuery) {
+      caseQueryForm.setFieldsValue(dashboardQuery);
+      setCaseQuery(dashboardQuery);
+    } else if (relationQuery.customer_id || relationQuery.customer_no || relationQuery.customer) {
       caseQueryForm.setFieldsValue(relationQuery);
       setCaseQuery(relationQuery);
     }
-    if (!relationQuery.customer_id && !relationQuery.customer_no && !relationQuery.customer && !isCreateView && !isCaseDetailView && activeListReturnContext?.query) {
+    if (!hasDashboardQuery && !relationQuery.customer_id && !relationQuery.customer_no && !relationQuery.customer && !isCreateView && !isCaseDetailView && activeListReturnContext?.query) {
       caseQueryForm.setFieldsValue(activeListReturnContext.query);
       setCaseQuery(activeListReturnContext.query);
       initialListQuery = activeListReturnContext.query;
