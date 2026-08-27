@@ -19,6 +19,7 @@ from app.main import (
 )
 from app.models import (
     BusinessRecord,
+    ContractApprovalStep,
     Department,
     FileAttachment,
     LegacyCase,
@@ -58,6 +59,7 @@ class CaseCreateRouteContractTest(unittest.TestCase):
             Department.__table__,
             RolePermission.__table__,
             BusinessRecord.__table__,
+            ContractApprovalStep.__table__,
             WorkflowEvent.__table__,
             FileAttachment.__table__,
             LegacyCase.__table__,
