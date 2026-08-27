@@ -75,6 +75,7 @@ import {
   createLatestRequestGuard,
   LEGACY_CASE_PHASE_GROUPS,
   legacyCasePhaseFilterValues,
+  ordinaryCaseQueueForView,
   ordinaryCustomerIdForView,
   ordinaryCaseTypesForView,
   parseOrdinarySearchResult,
@@ -1172,12 +1173,19 @@ export default function CaseCenterPage({
   const counselSearchPayload = (values:Record<string,any>, page:number, pageSize:number, extra:Record<string,any>={}) =>
     buildCaseCounselSearchPayload(values, counselScope, page, pageSize, extra);
   const ordinaryScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
+  const ordinaryCaseQueue = ordinaryCaseQueueForView(initialView);
   const ordinaryCaseTypes = ordinaryCaseTypesForView(initialView);
   const loadOrdinaryCases = async (values:Record<string,any>=caseQuery, page=1, pageSize=originalPageSize) => {
     const requestId = ordinaryRequestGuard.begin();
     setLoading(true);
     try {
-      const searchPayload = buildCaseOrdinarySearchPayload(values, ordinaryScope, ordinaryCaseTypes, page, pageSize);
+      const searchPayload = buildCaseOrdinarySearchPayload(
+        { ...values, case_queue: ordinaryCaseQueue },
+        ordinaryScope,
+        ordinaryCaseTypes,
+        page,
+        pageSize,
+      );
       const { data } = await api.post("/cases/search", searchPayload);
       if (!ordinaryRequestGuard.isLatest(requestId)) return;
       const result = parseOrdinarySearchResult(data, page, pageSize);

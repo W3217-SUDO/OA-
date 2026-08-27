@@ -1,6 +1,7 @@
 export type CaseOrdinarySearchScope = "mine" | "department" | "company";
 
 export type CaseOrdinarySearchValues = Record<string, unknown> & {
+  case_queue?: unknown;
   customer?: unknown;
   serial_no?: unknown;
   keyword?: unknown;
@@ -34,6 +35,7 @@ export type CaseOrdinarySearchValues = Record<string, unknown> & {
 
 export type CaseOrdinarySearchPayload = {
   scope: CaseOrdinarySearchScope;
+  case_queue: string;
   case_types: string[];
   customer: string;
   serial_no: string;
@@ -119,4 +121,5 @@ export function buildCaseOrdinarySearchPayload(
 ): CaseOrdinarySearchPayload;
 
 export function ordinaryCaseTypesForView(view?: unknown): string[];
+export function ordinaryCaseQueueForView(view?: unknown): string;
 export function ordinaryCustomerIdForView(view?: unknown): number;

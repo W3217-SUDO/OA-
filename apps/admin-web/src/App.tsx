@@ -855,6 +855,7 @@ function replaceWithRootRoute() {
   window.history.replaceState(null, "", window.location.pathname);
 }
 const routePageLabels: Record<string, string> = {
+  "case-company-supplement-evidence": "补充证据",
   "system-audit": "操作日志",
   "contract-approver-settings": "审批关系",
   "documents-agent": "AI 智能文档",

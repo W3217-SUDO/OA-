@@ -2254,6 +2254,7 @@ class CriminalCourtMaintenanceInput(BaseModel):
 
 class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
+    case_queue: str = Field(default="", max_length=64)
     case_types: list[str] = Field(default_factory=list, max_length=20)
     case_type: str = Field(default="", max_length=128)
     customer_id: int | None = Field(default=None, gt=0)
@@ -6919,6 +6920,24 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     return _role_permission_dict(item)
 
 
+DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES = {
+    "一审补充证据",
+    "二审补充证据",
+    "再审补充证据",
+}
+DASHBOARD_CASE_QUEUES = {"supplement_evidence"}
+
+
+def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
+    if queue != "supplement_evidence":
+        return False
+    data = item.data or {}
+    return (
+        str(data.get("case_type") or "").strip() in {"民事争议", "民事案件"}
+        and str(item.status or "").strip() in DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES
+    )
+
+
 @app.get(f"{settings.api_prefix}/dashboard")
 async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     scope = await _record_scope_conditions(identity, db)
@@ -6955,7 +6974,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
             data.get("required_action"), data.get("review_action"), data.get("supplement_type"),
         ]
         return any(word in str(value or "") for word in words for value in values)
-    supplement_evidence = [item for item in cases if case_signal(item, "补充证据")]
+    supplement_evidence = [item for item in cases if _matches_dashboard_case_queue(item, "supplement_evidence")]
     supplement_opinion = [item for item in cases if case_signal(item, "补充意见")]
     pending_appeal = [item for item in cases if case_signal(item, "待上诉")]
     pending_execution = [item for item in cases if case_signal(item, "一审待执行", "二审待执行", "待执行")]
@@ -6968,7 +6987,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
     metrics = [
         {"key": "official-fee-unpaid", "label": "待缴官费", "value": f"{len(unpaid_official)}件", "tone": "amber", "route": "finance-fee-query"},
         {"key": "refund-pending", "label": "待退费", "value": f"{len(pending_refunds)}件", "tone": "cyan", "route": "finance-refund"},
-        {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company"},
+        {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company-supplement-evidence"},
         {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company"},
         {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-company"},
         {"key": "execution-pending", "label": "待执行", "value": f"{len(pending_execution)}件", "tone": "purple", "route": "case-company-execution"},
@@ -19738,6 +19757,8 @@ async def _query_counsel_cases(
 ) -> list[BusinessRecord]:
     if body.scope not in {"mine", "department", "company"}:
         raise HTTPException(status_code=422, detail="法律顾问案件查询范围无效")
+    if body.case_queue and body.case_queue not in DASHBOARD_CASE_QUEUES:
+        raise HTTPException(status_code=422, detail="案件工作队列无效")
     if body.sort_order not in {"updated_desc", "updated_asc", "created_desc", "created_asc", "status_asc", "case_no_asc", "case_no_desc"}:
         raise HTTPException(status_code=422, detail="法律顾问案件排序方式无效")
     logic_aliases = {"and": "and", "or": "or", "intersection": "and", "union": "or", "交集": "and", "并集": "or"}
@@ -19780,6 +19801,8 @@ async def _query_counsel_cases(
         records = [record for record in records if str((record.data or {}).get("case_type") or "") in requested_types]
     else:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
+    if body.case_queue:
+        records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
     # ``record_conditions`` already applies the caller's complete personal
     # visibility contract: ownership, sharing, migrated case participants and
     # role-based case fields.  Re-filtering ``mine`` to ``record.owner`` here

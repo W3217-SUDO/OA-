@@ -7,6 +7,7 @@ import {
   createLatestRequestGuard,
   LEGACY_PHASE_CHILDREN,
   ordinaryCaseTypesForView,
+  ordinaryCaseQueueForView,
   ordinaryCustomerIdForView,
   parseOrdinarySearchResult,
 } from "./src/caseOrdinarySearchParity.mjs";
@@ -41,6 +42,21 @@ test("civil routes include both legacy and current civil case labels", () => {
   assert.deepEqual(ordinaryCaseTypesForView("case-mine-criminal"), ["刑事案件"]);
   assert.deepEqual(ordinaryCaseTypesForView("case-dept-administrative"), ["行政案件及国家赔偿"]);
   assert.deepEqual(ordinaryCaseTypesForView("case-company-arbitration"), ["仲裁"]);
+});
+
+test("dashboard supplement evidence route preserves its dedicated server queue", () => {
+  assert.equal(ordinaryCaseQueueForView("case-company-supplement-evidence"), "supplement_evidence");
+  assert.equal(ordinaryCaseQueueForView("case-company"), "");
+  assert.equal(
+    buildCaseOrdinarySearchPayload(
+      { case_queue: ordinaryCaseQueueForView("case-company-supplement-evidence") },
+      "company",
+      [],
+      1,
+      15,
+    ).case_queue,
+    "supplement_evidence",
+  );
 });
 
 test("customer-scoped case routes preserve the stable customer id across remounts", () => {
@@ -120,6 +136,7 @@ test("buildCaseOrdinarySearchPayload maps ordinary filters to the server contrac
     ),
     {
       scope: "department",
+      case_queue: "",
       case_types: ["民事案件"],
       customer_id: null,
       customer_no: "",
@@ -201,6 +218,7 @@ test("buildCaseOrdinarySearchPayload applies safe scope, sort, paging, and date 
   );
 
   assert.equal(payload.scope, "company");
+  assert.equal(payload.case_queue, "");
   assert.deepEqual(payload.case_types, []);
   assert.equal(payload.sort_order, "updated_desc");
   assert.equal(payload.page, 1);

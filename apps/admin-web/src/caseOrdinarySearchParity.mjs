@@ -145,6 +145,7 @@ export const buildCaseOrdinarySearchPayload = (
 
   return {
     scope: ALLOWED_SCOPES.has(scope) ? scope : "company",
+    case_queue: normalizeText(input.case_queue),
     case_types: normalizeList(caseTypes),
     customer_id: normalizeInteger(input.customer_id, 0, 0, 2147483647) || null,
     customer_no: normalizeText(input.customer_no),
@@ -214,6 +215,9 @@ export const buildCaseOrdinarySearchPayload = (
     file_type_not: normalizeBoolean(input.file_type_not),
   };
 };
+
+export const ordinaryCaseQueueForView = (view = "") =>
+  String(view || "") === "case-company-supplement-evidence" ? "supplement_evidence" : "";
 
 export const ordinaryCaseTypesForView = (view = "") => {
   const route = String(view || "");
