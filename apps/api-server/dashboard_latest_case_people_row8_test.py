@@ -1,11 +1,11 @@
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.main import dashboard
+from app.main import _dashboard_case_date, dashboard
 from app.models import BusinessRecord, User
 
 
@@ -25,6 +25,23 @@ class DashboardLatestCasePeopleRow8Test(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.engine.dispose()
+
+    def test_latest_case_sort_key_normalizes_mixed_timezone_datetimes(self):
+        aware = BusinessRecord(
+            module="case", serial_no="CODEX-827-R8-AWARE", title="带时区案件",
+            customer="测试客户", status="待分配", owner="admin", department="诉讼部",
+            created_at=datetime(2026, 8, 27, 8, tzinfo=timezone.utc), data={},
+        )
+        naive = BusinessRecord(
+            module="case", serial_no="CODEX-827-R8-NAIVE", title="无时区案件",
+            customer="测试客户", status="待分配", owner="admin", department="诉讼部",
+            created_at=datetime(2026, 8, 27, 9), data={},
+        )
+
+        values = sorted([_dashboard_case_date(aware), _dashboard_case_date(naive)])
+
+        self.assertTrue(all(value.tzinfo is None for value in values))
+        self.assertEqual(values[0], datetime(2026, 8, 27, 8))
 
     async def test_latest_cases_project_legacy_equivalent_fields_and_people(self):
         async with self.sessions() as db:

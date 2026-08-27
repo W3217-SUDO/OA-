@@ -7184,20 +7184,25 @@ def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
         and str(item.status or "").strip() in DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES
     )
 def _dashboard_case_date(record: BusinessRecord) -> datetime:
+    def as_utc_naive(value: datetime) -> datetime:
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
     data = record.data or {}
     legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
     raw = data.get("case_register_date") or legacy.get("CaseRegisterDate")
     if isinstance(raw, datetime):
-        return raw.replace(tzinfo=None)
+        return as_utc_naive(raw)
     if isinstance(raw, date):
         return datetime.combine(raw, time.min)
     text = str(raw or "").strip()
     if text:
         try:
-            return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+            return as_utc_naive(datetime.fromisoformat(text.replace("Z", "+00:00")))
         except ValueError:
             pass
-    return record.created_at or datetime.min
+    return as_utc_naive(record.created_at) if record.created_at else datetime.min
 
 
 def _dashboard_text(value: object) -> str:
