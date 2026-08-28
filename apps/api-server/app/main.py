@@ -22368,7 +22368,10 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_assign_team": can_assign_team, "can_edit_hearing_lawyer": can_edit_hearing_lawyer,
         "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
         "can_close_case": can_close_case, "can_archive": can_archive_case,
-        "can_create_finance": role == "manager", "team_role": role, "reason": "",
+        # Capability endpoints are reached only after the case has passed the
+        # caller's data-scope check. Match the legacy rule: anyone who can see
+        # the case may add its fees; invisible cases remain inaccessible.
+        "can_create_finance": True, "team_role": role, "reason": "",
     }
     try:
         await _require_case_attachment_upload_access(case_record, identity, db)
