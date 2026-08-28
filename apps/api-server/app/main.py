@@ -27600,6 +27600,15 @@ def _warehouse_evidence_dict(
     location: WarehouseStorageLocation | None,
 ) -> dict[str, object]:
     data = dict(item.data or {})
+    canonical_notary_no = str(
+        data.get("notary_no")
+        or data.get("notary_nos")
+        or data.get("certificate_no")
+        or data.get("notarization_no")
+        or ""
+    ).strip()
+    if canonical_notary_no:
+        data["notary_no"] = canonical_notary_no
     if warehouse and location:
         data.update(_warehouse_location_data(warehouse, location))
     return {
@@ -27702,14 +27711,23 @@ async def list_warehouse_evidence(
         ))
     def data_like(key: str, value: str):
         return BusinessRecord.data[key].as_string().ilike(f"%{value.strip()}%") if value.strip() else None
-    conditions.extend(filter(None, [
+
+    filter_conditions = [
         data_like("rights_holder", rights_holder),
         data_like("evidence_status", evidence_status),
         data_like("case_no", case_no),
         data_like("shop_name", shop_name),
         data_like("investigator", investigator),
-        data_like("notary_no", notary_no),
-    ]))
+    ]
+    conditions.extend(condition for condition in filter_conditions if condition is not None)
+    if notary_no.strip():
+        term = f"%{notary_no.strip()}%"
+        conditions.append(or_(
+            BusinessRecord.data["notary_no"].as_string().ilike(term),
+            BusinessRecord.data["notary_nos"].as_string().ilike(term),
+            BusinessRecord.data["certificate_no"].as_string().ilike(term),
+            BusinessRecord.data["notarization_no"].as_string().ilike(term),
+        ))
     if evidence_date_from.strip():
         conditions.append(BusinessRecord.data["evidence_date"].as_string() >= evidence_date_from.strip())
     if evidence_date_to.strip():
