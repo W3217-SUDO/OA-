@@ -674,6 +674,10 @@ const statusColors: Record<string, string> = {
 const ARCHIVE_REVIEW_STATUSES = ["待归档审核", "亏损内审", "亏损审核"];
 const ARCHIVE_FINAL_STATUSES = ["已归档", "亏损归档"];
 const ARCHIVE_LOCKED_STATUSES = [...ARCHIVE_REVIEW_STATUSES, ...ARCHIVE_FINAL_STATUSES];
+const LEGACY_INTERNAL_FEE_SUBTYPES = [
+  "产品购买费", "翻译费", "投资提成", "调档费", "手续费", "任务调期扣款",
+  "服务费(调查)", "服务费(开庭)", "服务费(案源)", "服务费(文书)", "服务费(品管)",
+];
 export default function CaseCenterPage({
   initialView,
   onNavigate,
@@ -1082,12 +1086,13 @@ export default function CaseCenterPage({
     [caseFileTypeCatalog, caseRelations, feeSourceCase?.data.case_type],
   );
   const applicableFeeSubtypes = (scope: string, sourceFileType: unknown) => {
-    const scoped = scope === "内部"
-      ? ["内部费用"]
-      : ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"];
+    if (scope === "内部") return LEGACY_INTERNAL_FEE_SUBTYPES;
+    const scoped = ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"];
     return filterFeeSubtypesForFileType(String(sourceFileType || ""), scoped, caseRelations?.fileTypeFeeTypes);
   };
-  const feeSubtypeOptions = feeSubtypePreset === "official"
+  const feeSubtypeOptions = activeFeeContractScope === "内部"
+    ? LEGACY_INTERNAL_FEE_SUBTYPES
+    : feeSubtypePreset === "official"
     ? LEGACY_OFFICIAL_FEE_SUBTYPES
     : feeSubtypePreset === "third-party"
       ? LEGACY_THIRD_PARTY_FEE_SUBTYPES
@@ -3077,9 +3082,9 @@ export default function CaseCenterPage({
     const agencyPreset = expenseSubtype === "代理费";
     const otherPreset = expenseSubtype === "其他费用";
     setFeeSubtypePreset(officialPreset ? "official" : thirdPartyPreset ? "third-party" : agencyPreset ? "agency" : otherPreset ? "other" : "");
-    const preferredSubtype = officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
+    const preferredSubtype = expenseScope === "内部" || officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : expenseSubtype || "官费";
     const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
-    const initialSubtype = preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : allowedSubtypes[0];
+    const initialSubtype = expenseScope === "内部" ? undefined : preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : allowedSubtypes[0];
     const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
     const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
       ? linkedContractId
@@ -3091,7 +3096,7 @@ export default function CaseCenterPage({
       expense_scope: expenseScope, expense_subtype: initialSubtype,
       fee_type: initialSubtype ? FEE_SUBTYPE_TO_TYPE[initialSubtype] || initialSubtype : undefined,
       commission_details: [],
-      handler: profile.username || row.owner, court: row.data.court || "", payee: row.data.court || "",
+      handler: profile.username || row.owner, court: row.data.court || "", payee: expenseScope === "内部" ? undefined : row.data.court || "",
       deadline: undefined, description: "",
     }] });
     setCaseFeeCreateStep(0);
@@ -4959,9 +4964,22 @@ export default function CaseCenterPage({
       >
         <Steps size="small" current={caseFeeCreateStep} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
         {caseFeeCreateStep === 0 ? <>
-          <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>点击表格头部（费用类型、金额、备注、截止日期）可将第一行数据同步到各行。</li><li>截止日期默认为申请之日第5天，如有特殊情况，可在申请时修改。</li></ol>} />
+          <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={activeFeeContractScope === "内部" ? <ol><li>申请付款按照每个案号生成一个申请单。</li><li>点击表格头部可将第一行数据同步到各行。</li><li>基数用于计算提成参考值，实际金额可按业务调整。</li></ol> : <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>点击表格头部（费用类型、金额、备注、截止日期）可将第一行数据同步到各行。</li><li>截止日期默认为申请之日第5天，如有特殊情况，可在申请时修改。</li></ol>} />
           <Form form={feeForm} component={false}>
-            <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => <div className="case-fee-entry-table">
+            <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => activeFeeContractScope === "内部" ? <div className="case-fee-entry-table case-internal-fee-entry-table">
+              <div className="case-fee-entry-head"><span>案号</span><span>费用类型</span><span>支付对象</span><span>基数</span><span>参考提成</span><span>实际金额</span><span>备注</span><span>操作</span></div>
+              {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
+                <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
+                <Form.Item name={[field.name, "expense_subtype"]} rules={[{ required: true, message: "请选择费用类型" }]}><Select options={LEGACY_INTERNAL_FEE_SUBTYPES.map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items",field.name,"fee_type"],"内部费用"); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${value}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><Select showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} /></Form.Item>
+                <Form.Item name={[field.name, "base_amount"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
+                <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
+                <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} className="case-fee-amount-input" /></Form.Item>
+                <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
+                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
+                <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
+              </div>)}
+            </div> : <div className="case-fee-entry-table">
               <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
@@ -4976,7 +4994,7 @@ export default function CaseCenterPage({
             </div>}</Form.List>
           </Form>
         </> : <>
-          <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
+          <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={activeFeeContractScope === "内部" ? <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
           <div className="case-fee-payment-table">
             <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span></div>
             {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span><Input value={caseFeePaymentDrafts[index]?.payment_remark || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_remark: event.target.value } : item))} /><Input value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
@@ -5009,7 +5027,7 @@ export default function CaseCenterPage({
         footer={<Space className="case-fee-drawer-footer"><Button type="primary" onClick={submitPaymentRequest}>申请付款</Button><Button onClick={() => { setPaymentRequestFee(null); paymentRequestForm.resetFields(); }}>取消</Button></Space>}
       >
         <Steps size="small" current={1} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
-        <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
+        <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={paymentRequestFee?.data.expense_scope === "内部" ? <ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
         <Form form={paymentRequestForm} component={false}>
           <div className="case-fee-payment-table case-fee-payment-request-table">
             <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>申请付款金额</span><span>付款备注</span><span>收款单位</span><span>付款账号</span></div>

@@ -2561,12 +2561,14 @@ class FinanceFeeInput(BaseModel):
     amount: float
     fee_type: str
     expense_scope: str | None = Field(default=None, pattern="^(律所|平台|内部)$")
-    expense_subtype: str | None = Field(default=None, pattern="^(官费|一审诉讼费|二审诉讼费|再审诉讼费|诉讼费|保全费|鉴定费|公证费|公告费|调解金额|判决金额|执行费|核定成本|检索费|担保费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
+    expense_subtype: str | None = None
     case_no: str = ""
     handler: str
     court: str = ""
     document_no: str = ""
     payee: str = ""
+    base_amount: float = 0
+    reference_commission: float = 0
     description: str = ""
     contract_record_id: int | None = None
     case_record_id: int | None = None
@@ -10800,7 +10802,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
     contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
     commission_details = await _finance_fee_commission_details(body, amount, db)
-    data.update({"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "case_no": body.case_no, "case_id": body.case_record_id, "contract_id": body.contract_record_id, "contract_no": contract_record.serial_no if contract_record else str(data.get("contract_no") or ""), "deadline": str(body.deadline) if body.deadline else "", "commission_details": commission_details, "is_refund": body.fee_type == "内部费用" and amount < 0})
+    data.update({"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": body.case_no, "case_id": body.case_record_id, "contract_id": body.contract_record_id, "contract_no": contract_record.serial_no if contract_record else str(data.get("contract_no") or ""), "deadline": str(body.deadline) if body.deadline else "", "commission_details": commission_details, "is_refund": body.fee_type == "内部费用" and amount < 0})
     item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
     db.add(WorkflowEvent(record_id=item.id, action="修改费用草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
     await db.commit(); await db.refresh(item)
@@ -14789,6 +14791,9 @@ EXPENSE_SUBTYPE_FEE_TYPE = {
     "律师代理费": "代理费", "律师咨询费": "代理费", "律师培训费": "代理费", "律师见证费": "代理费",
     "案源介绍费": "其他费用", "权利人赔偿款": "其他费用", "投资人分成": "其他费用",
     "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用",
+    "产品购买费": "内部费用", "翻译费": "内部费用", "投资提成": "内部费用", "调档费": "内部费用",
+    "手续费": "内部费用", "任务调期扣款": "内部费用", "服务费(调查)": "内部费用", "服务费(开庭)": "内部费用",
+    "服务费(案源)": "内部费用", "服务费(文书)": "内部费用", "服务费(品管)": "内部费用",
 }
 EXPENSE_SCOPE_FEE_TYPES = {"律所": {"官方费用", "代理费", "其他费用"}, "平台": {"官方费用", "代理费", "其他费用"}, "内部": {"内部费用"}}
 FINANCE_TRANSACTION_TYPES = {"付款", "开票", "回款", "退费"}
@@ -17797,7 +17802,7 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
     amount = _round_fee_amount(body.amount)
     commission_details = await _finance_fee_commission_details(body, amount, db)
     serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}"
-    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "is_refund": body.fee_type == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "commission_details": commission_details})
+    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "is_refund": body.fee_type == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "commission_details": commission_details})
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建费用", to_status="草稿", operator=identity["username"], comment=f"{body.fee_type}：{amount:.2f} 元"))
     await db.commit(); await db.refresh(item)
