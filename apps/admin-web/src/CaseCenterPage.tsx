@@ -46,7 +46,6 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
-import { LegacyContractHistoryPanel } from "./LegacyContractHistoryPanel";
 import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -5052,7 +5051,6 @@ export default function CaseCenterPage({
             }}
             items={[
               ...(legacyLsHistoryCaseIds[viewingCounselCase.id] ? [{ key: "legacy-ls-history", label: "历史诉讼", children: <LegacyLsHistoryPanel initialCaseId={legacyLsHistoryCaseIds[viewingCounselCase.id]} currentCaseRecordId={viewingCounselCase.id} /> }] : []),
-              { key: "legacy-contract-history", label: "历史合同", children: <LegacyContractHistoryPanel contractNo={String(viewingCounselCase.data.contract_no || "")} customerNo={String(viewingCounselCase.data.customer_no || "")} /> },
               {key:"documents",label:"文档信息",children:<div className="case-documents-layout">
                 <aside className="case-detail-doc-tree" aria-label="案件文档目录">
                   {counselDocTree.map((item,index)=>(
