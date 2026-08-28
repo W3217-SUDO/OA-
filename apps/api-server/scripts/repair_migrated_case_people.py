@@ -369,6 +369,7 @@ async def audit_or_apply(*, apply: bool, backup_confirmed: bool, limit: int) -> 
                     if plan["owner"]:
                         case.owner = plan["owner"]
                 await db.flush()
+                historical_names = build_historical_name_map(employees, cases)
                 next_plans: list[tuple[BusinessRecord, dict[str, Any]]] = []
                 for case in cases:
                     next_plan = plan_case_repair(case, identities, display_groups, historical_names)
