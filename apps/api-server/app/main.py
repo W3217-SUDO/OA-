@@ -3728,6 +3728,12 @@ def _apply_record_person_displays(
         reference = data.get(key)
         if record.module == "case" and key == "hearing_lawyer":
             reference = data.get("hearing_lawyer_username") or reference
+        if record.module == "case" and key == "assistant":
+            # Legacy cases persist both CaseAssistant (stable account) and
+            # CaseAssistantName (display label). Resolve the label through the
+            # stable account so imported Chinese names are not treated as
+            # usernames and replaced with the missing-name placeholder.
+            reference = data.get("assistant_username") or reference
         display_name, missing = _person_reference_display(reference, users_by_username)
         data[f"{key}_display_name"] = display_name
         data[f"{key}_display_name_missing"] = missing
