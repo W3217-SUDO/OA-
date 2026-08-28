@@ -50,6 +50,16 @@ export const normalizePhaseCounts = (value) => {
 
 export const LEGACY_CASE_PHASE_GROUPS = ["一审阶段", "二审阶段", "再审阶段", "执行阶段", "归档阶段"];
 
+export const LEGACY_CIVIL_PHASE_ROOTS = [
+  "等待公证书", "审核公证书", "待主体披露", "新案待分配", "文书准备",
+  "客户盖章", "等待立案", "补充取证", "提交立案", "一审阶段",
+  "二审阶段", "再审阶段", "执行阶段", "归档阶段",
+];
+
+// The legacy tree opens at the archive group while keeping trial and execution
+// groups compact, so every top-level phase remains visible in its original order.
+export const LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS = ["归档阶段"];
+
 export const LEGACY_PHASE_CHILDREN = {
   "一审阶段": ["一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判", "一审等待上诉", "一审上诉准备", "一审补充代理意见", "一审和解中", "一审和解结案", "一审判决结案", "一审待客户回款"],
   "二审阶段": ["二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判", "二审补充代理意见", "二审和解中", "二审和解结案", "二审判决结案", "二审待客户回款"],

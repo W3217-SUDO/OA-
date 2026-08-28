@@ -5,12 +5,23 @@ import {
   buildLegacyCasePhaseTree,
   buildCaseOrdinarySearchPayload,
   createLatestRequestGuard,
+  LEGACY_CIVIL_PHASE_ROOTS,
+  LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS,
   LEGACY_PHASE_CHILDREN,
   ordinaryCaseTypesForView,
   ordinaryCaseQueueForView,
   ordinaryCustomerIdForView,
   parseOrdinarySearchResult,
 } from "./src/caseOrdinarySearchParity.mjs";
+
+test("legacy civil phase roots and initial expansion preserve the old-system positions", () => {
+  assert.deepEqual(LEGACY_CIVIL_PHASE_ROOTS, [
+    "等待公证书", "审核公证书", "待主体披露", "新案待分配", "文书准备",
+    "客户盖章", "等待立案", "补充取证", "提交立案", "一审阶段",
+    "二审阶段", "再审阶段", "执行阶段", "归档阶段",
+  ]);
+  assert.deepEqual(LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS, ["归档阶段"]);
+});
 
 test("legacy civil phase catalog matches every target group exactly", () => {
   assert.deepEqual(LEGACY_PHASE_CHILDREN, {

@@ -75,6 +75,8 @@ import {
   createLatestRequestGuard,
   dashboardCaseQueryForView,
   LEGACY_CASE_PHASE_GROUPS,
+  LEGACY_CIVIL_PHASE_ROOTS,
+  LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS,
   legacyCasePhaseFilterValues,
   ordinaryCaseQueueForView,
   ordinaryCustomerIdForView,
@@ -207,11 +209,7 @@ type CaseRelationCatalog = {
 type CasePhaseListItem = { label: string; value: string; count: number };
 type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListItem[] };
 const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
-const CASE_PHASE_ROOT_LABELS = [
-  "等待公证书", "审核公证书", "待主体披露", "新案待分配", "文书准备",
-  "客户盖章", "等待立案", "补充取证", "提交立案", "一审阶段",
-  "二审阶段", "再审阶段", "执行阶段", "归档阶段",
-];
+const CASE_PHASE_ROOT_LABELS = LEGACY_CIVIL_PHASE_ROOTS;
 const CasePhasePickerTree = ({
   options,
   value,
@@ -774,13 +772,9 @@ export default function CaseCenterPage({
   const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
   const [phaseCatalog, setPhaseCatalog] = useState<CasePhaseOption[]>([]);
-  const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>(() => ({
-    "一审阶段": true,
-    "二审阶段": true,
-    "再审阶段": true,
-    "执行阶段": true,
-    "归档阶段": true,
-  }));
+  const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS.map((label) => [label, true])),
+  );
   const [executionStatusEditing, setExecutionStatusEditing] = useState<CaseRow[] | null>(null);
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
