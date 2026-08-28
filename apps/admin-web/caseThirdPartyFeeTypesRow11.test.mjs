@@ -11,8 +11,8 @@ test("row 11 restores the exact legacy third-party fee choices", () => {
 });
 
 test("row 11 opens third-party creation without a preselected generic value", () => {
-  assert.match(page, /useState<"official" \| "third-party" \| "agency" \| "">/);
+  assert.match(page, /useState<"official" \| "third-party" \| "agency" \| "other" \| "">/);
   assert.match(page, /feeSubtypePreset === "third-party"[\s\S]*?LEGACY_THIRD_PARTY_FEE_SUBTYPES/);
   assert.match(page, /const thirdPartyPreset = expenseSubtype === "第三方费用"/);
-  assert.match(page, /officialPreset \|\| thirdPartyPreset \|\| agencyPreset \? undefined/);
+  assert.match(page, /officialPreset \|\| thirdPartyPreset \|\| agencyPreset \|\| otherPreset \? undefined/);
 });

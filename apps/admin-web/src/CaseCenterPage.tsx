@@ -65,6 +65,7 @@ import { getCaseDetailSectionVisibility } from "./caseDetailSectionVisibility";
 import {
   FEE_SUBTYPE_TO_TYPE,
   LEGACY_AGENCY_FEE_SUBTYPES,
+  LEGACY_OTHER_FEE_SUBTYPES,
   LEGACY_OFFICIAL_FEE_SUBTYPES,
   LEGACY_THIRD_PARTY_FEE_SUBTYPES,
   filterCaseFileTypesForCaseType,
@@ -901,7 +902,7 @@ export default function CaseCenterPage({
   const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
-  const [feeSubtypePreset, setFeeSubtypePreset] = useState<"official" | "third-party" | "agency" | "">("");
+  const [feeSubtypePreset, setFeeSubtypePreset] = useState<"official" | "third-party" | "agency" | "other" | "">("");
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
   const [caseFeeCreateStep, setCaseFeeCreateStep] = useState(0);
   const [createdCaseFees, setCreatedCaseFees] = useState<CaseRow[]>([]);
@@ -1092,7 +1093,9 @@ export default function CaseCenterPage({
       ? LEGACY_THIRD_PARTY_FEE_SUBTYPES
       : feeSubtypePreset === "agency"
         ? LEGACY_AGENCY_FEE_SUBTYPES
-    : applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
+        : feeSubtypePreset === "other"
+          ? LEGACY_OTHER_FEE_SUBTYPES
+          : applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
   const getCaseCapability = (row?: CaseRow | null) => {
     if (!row) return noCaseDetailWriteCapability;
     // A migrated case can be opened directly without first appearing in the
@@ -3059,10 +3062,11 @@ export default function CaseCenterPage({
     const officialPreset = expenseSubtype === "官费";
     const thirdPartyPreset = expenseSubtype === "第三方费用";
     const agencyPreset = expenseSubtype === "代理费";
-    setFeeSubtypePreset(officialPreset ? "official" : thirdPartyPreset ? "third-party" : agencyPreset ? "agency" : "");
-    const preferredSubtype = officialPreset || thirdPartyPreset || agencyPreset ? undefined : expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
+    const otherPreset = expenseSubtype === "其他费用";
+    setFeeSubtypePreset(officialPreset ? "official" : thirdPartyPreset ? "third-party" : agencyPreset ? "agency" : otherPreset ? "other" : "");
+    const preferredSubtype = officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
     const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
-    const initialSubtype = preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset ? undefined : allowedSubtypes[0];
+    const initialSubtype = preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : allowedSubtypes[0];
     const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
     const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
       ? linkedContractId

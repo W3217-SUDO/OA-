@@ -13,5 +13,5 @@ test("row 12 restores the exact legacy agency fee choices", () => {
 test("row 12 opens agency creation without a generic preselection", () => {
   assert.match(page, /feeSubtypePreset === "agency"[\s\S]*?LEGACY_AGENCY_FEE_SUBTYPES/);
   assert.match(page, /const agencyPreset = expenseSubtype === "代理费"/);
-  assert.match(page, /officialPreset \|\| thirdPartyPreset \|\| agencyPreset \? undefined/);
+  assert.match(page, /officialPreset \|\| thirdPartyPreset \|\| agencyPreset \|\| otherPreset \? undefined/);
 });

@@ -1723,7 +1723,7 @@ class CaseBatchFeeInput(BaseModel):
     case_ids: list[int] = Field(min_length=1, max_length=100)
     amount: float = Field(gt=0, le=100000000)
     expense_scope: str = Field(pattern="^(律所|平台|内部)$")
-    expense_subtype: str = Field(pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|其他费用|内部费用)$")
+    expense_subtype: str = Field(pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
     handler: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=1000)
 
@@ -1969,7 +1969,7 @@ class IprCaseFeeCreateInput(BaseModel):
     amount: float
     fee_type: str = Field(min_length=1, max_length=64)
     expense_scope: str | None = Field(default=None, pattern="^(律所|平台|内部)$")
-    expense_subtype: str | None = Field(default=None, pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|其他费用|内部费用)$")
+    expense_subtype: str | None = Field(default=None, pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
     handler: str = Field(default="", max_length=64)
     court: str = Field(default="", max_length=255)
     document_no: str = Field(default="", max_length=128)
@@ -2561,7 +2561,7 @@ class FinanceFeeInput(BaseModel):
     amount: float
     fee_type: str
     expense_scope: str | None = Field(default=None, pattern="^(律所|平台|内部)$")
-    expense_subtype: str | None = Field(default=None, pattern="^(官费|一审诉讼费|二审诉讼费|再审诉讼费|诉讼费|保全费|鉴定费|公证费|公告费|调解金额|判决金额|执行费|核定成本|检索费|担保费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|其他费用|内部费用)$")
+    expense_subtype: str | None = Field(default=None, pattern="^(官费|一审诉讼费|二审诉讼费|再审诉讼费|诉讼费|保全费|鉴定费|公证费|公告费|调解金额|判决金额|执行费|核定成本|检索费|担保费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
     case_no: str = ""
     handler: str
     court: str = ""
@@ -14788,6 +14788,7 @@ EXPENSE_SUBTYPE_FEE_TYPE = {
     "公告费": "官方费用", "调解金额": "官方费用", "判决金额": "官方费用", "执行费": "官方费用", "核定成本": "官方费用",
     "检索费": "其他费用", "公告费": "其他费用", "担保费": "其他费用", "鉴定费": "其他费用", "公证服务费": "其他费用",
     "律师代理费": "代理费", "律师咨询费": "代理费", "律师培训费": "代理费", "律师见证费": "代理费",
+    "案源介绍费": "其他费用", "权利人赔偿款": "其他费用", "投资人分成": "其他费用",
     "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用",
 }
 EXPENSE_SCOPE_FEE_TYPES = {"律所": {"官方费用", "代理费", "其他费用"}, "平台": {"官方费用", "代理费", "其他费用"}, "内部": {"内部费用"}}
