@@ -945,7 +945,7 @@ export default function CaseCenterPage({
   };
   const casePersonDisplayName = (source: unknown, displayName?: unknown) => {
     const explicitName = String(displayName || "").trim();
-    if (explicitName) return explicitName;
+    if (explicitName && !["姓名待维护", "【待补充中文姓名】"].includes(explicitName)) return explicitName;
     const normalized = String(source || "").trim();
     if (!normalized) return "—";
     const option = caseAssistantOptions.find((item) => {
