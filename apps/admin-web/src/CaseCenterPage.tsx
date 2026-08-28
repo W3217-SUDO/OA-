@@ -2887,7 +2887,8 @@ export default function CaseCenterPage({
     }
   };
   const openCaseHearingLawyer = (row: CaseRow) => {
-    if (!getCaseCapability(row).can_edit_hearing_lawyer) return message.warning("当前账号无权查看或修改该案件");
+    const capability = viewingCounselCase?.id === row.id ? counselDetailCapabilities : getCaseCapability(row);
+    if (!capability.can_edit_hearing_lawyer) return message.warning("当前账号无权查看或修改该案件");
     if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改开庭律师");
     caseHearingLawyerForm.setFieldsValue({ hearing_lawyer: row.data.hearing_lawyer || "", comment: "" });
     setEditingCaseHearingLawyer(row);

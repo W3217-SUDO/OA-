@@ -20,6 +20,11 @@ assert.match(handler[0], /setViewingCounselCase\(data\)[\s\S]*?await load\(\)/, 
 assert.ok(opener, "应保留修改开庭律师弹窗入口");
 assert.match(opener[0], /can_edit_hearing_lawyer/, "可见案件应使用独立的开庭律师修改能力");
 assert.doesNotMatch(opener[0], /can_assign_team/, "修改开庭律师不得再依赖案件人员分配权限");
+assert.match(
+  opener[0],
+  /viewingCounselCase\?\.id === row\.id \? counselDetailCapabilities : getCaseCapability\(row\)/,
+  "详情页点击必须读取已回传的详情能力，不能误用可能为空的列表缓存",
+);
 assert.match(source, /counselDetailCapabilities\.can_edit_hearing_lawyer[\s\S]{0,180}openCaseHearingLawyer/, "详情菜单应按专用能力展示修改开庭律师");
 
 console.log("CASE_HEARING_LAWYER_ROW15_OK");
