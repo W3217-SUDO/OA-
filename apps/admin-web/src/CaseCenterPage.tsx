@@ -1062,7 +1062,14 @@ export default function CaseCenterPage({
     return filterFeeSubtypesForFileType(String(sourceFileType || ""), scoped, caseRelations?.fileTypeFeeTypes);
   };
   const feeSubtypeOptions = applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
-  const getCaseCapability = (row?: CaseRow | null) => row ? caseActionCapabilities[row.id] || noCaseDetailWriteCapability : noCaseDetailWriteCapability;
+  const getCaseCapability = (row?: CaseRow | null) => {
+    if (!row) return noCaseDetailWriteCapability;
+    // A migrated case can be opened directly without first appearing in the
+    // current list page. In that flow the list capability cache has no entry,
+    // so detail actions must use the capability loaded with the detail itself.
+    if (viewingCounselCase?.id === row.id) return counselDetailCapabilities;
+    return caseActionCapabilities[row.id] || noCaseDetailWriteCapability;
+  };
   const loadCaseCapabilities = async (rows: CaseRow[]) => {
     const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
     if (!uniqueRows.length) return;
