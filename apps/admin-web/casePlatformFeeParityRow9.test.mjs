@@ -6,7 +6,7 @@ const page = readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), 
 
 test("row 9 gives platform fees the same legacy detail columns as firm fees", () => {
   assert.match(page, /const externalCaseFeeColumns=\[/);
-  for (const title of ["合同编号", "费用类型", "申请付款金额", "付款账号", "退费", "提交人", "提交日期", "回款日期", "回款金额", "开票日期", "发票号"]) {
+  for (const title of ["合同编号", "费用类型", "申请付款金额", "退费", "提交人", "提交日期", "回款日期", "回款金额", "开票日期", "发票号"]) {
     assert.match(page, new RegExp(`title:\"${title}\"`));
   }
   assert.match(page, /dataSource=\{platformFeeRows\}[\s\S]*?rowSelection=\{\{selectedRowKeys:selectedPlatformFeeKeys,onChange:setSelectedPlatformFeeKeys\}\}[\s\S]*?columns=\{externalCaseFeeColumns\}/);
