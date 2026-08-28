@@ -13286,7 +13286,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         handling_lawyers = list(dict.fromkeys(filter(None, [body.handling_lawyer.strip(), *(clue_data.get("handling_lawyers") or [])])))
         cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
         case_title = "".join(filter(None, [case_customer, cause_or_charge, clue.title]))
-        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_no": clue.serial_no, "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "handling_lawyers": handling_lawyers, "assistant": body.assistant.strip(), "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
+        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "handling_lawyers": handling_lawyers, "assistant": body.assistant.strip(), "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
         db.add(case_record); await db.flush()
         await _persist_case_litigant_customers(
             case_record,
@@ -20258,14 +20258,31 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
         clue_nos = [value.strip() for value in re.split(r"[,，;；、|]+", raw_clue_nos) if value.strip()]
     else:
         clue_nos = [str(value or "").strip() for value in raw_clue_nos if str(value or "").strip()]
+    for value in (case_data.get("clue_no"), case_data.get("investigation_clue"), case_data.get("source_clue_no")):
+        normalized = str(value or "").strip()
+        if normalized and normalized not in clue_nos:
+            clue_nos.append(normalized)
+    raw_clue_ids = case_data.get("investigation_clue_ids") if isinstance(case_data.get("investigation_clue_ids"), list) else []
+    clue_ids = {
+        int(value)
+        for value in (
+            case_data.get("clue_id"), case_data.get("clue_record_id"),
+            case_data.get("investigation_clue_id"), *raw_clue_ids,
+        )
+        if str(value or "").isdigit() and int(value) > 0
+    }
     link_condition = or_(
         BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["converted_case_id"].as_integer() == case_record.id,
         BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+        BusinessRecord.data["converted_case_no"].as_string() == case_record.serial_no,
     )
     fees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance", link_condition,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     clue_conditions = [link_condition]
+    if clue_ids:
+        clue_conditions.append(BusinessRecord.id.in_(clue_ids))
     if clue_nos:
         clue_conditions.append(BusinessRecord.serial_no.in_(list(dict.fromkeys(clue_nos))))
     clues = list((await db.scalars(select(BusinessRecord).where(
