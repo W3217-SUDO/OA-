@@ -1730,6 +1730,7 @@ class CaseBatchFeeInput(BaseModel):
 
 class AttachmentBatchInput(BaseModel):
     attachment_ids: list[int] = Field(min_length=1, max_length=100)
+    case_id: int | None = Field(default=None, gt=0)
 
 
 class ContractAttachmentBatchDeleteInput(BaseModel):
@@ -22169,6 +22170,25 @@ async def _require_case_attachment_upload_access(case_record: BusinessRecord, id
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能上传案件文档")
 
 
+async def _require_case_related_attachment_target(
+    case_record: BusinessRecord,
+    target_record: BusinessRecord,
+) -> None:
+    """Keep case-workbench writes limited to the case's own customer or contract."""
+    case_data = case_record.data or {}
+    if target_record.module == "contract":
+        linked_id = _positive_record_id(case_data.get("contract_record_id") or case_data.get("contract_id"))
+        linked_by_legacy_no = not linked_id and str(case_data.get("contract_no") or "").strip() == target_record.serial_no
+        if linked_id == target_record.id or linked_by_legacy_no:
+            return
+    elif target_record.module == "customer":
+        linked_id = _positive_record_id(case_data.get("customer_record_id") or case_data.get("customer_id"))
+        linked_by_legacy_name = not linked_id and str(case_record.customer or "").strip() == target_record.title
+        if linked_id == target_record.id or linked_by_legacy_name:
+            return
+    raise HTTPException(status_code=409, detail="所选文档目录不属于当前案件关联的客户或合同")
+
+
 async def _require_case_progress_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Only a responsible/manager user or assigned handling lawyer may advance a case."""
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
@@ -24644,12 +24664,21 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
     if len(attachments) != len(attachment_ids):
         raise HTTPException(status_code=404, detail="存在已删除或不存在的案件文件")
+    context_case = await _ensure_record_module(body.case_id, "case", identity, db) if body.case_id else None
+    if context_case:
+        await _require_case_detail_write_access(context_case, identity, db)
     prepared: list[tuple[FileAttachment, BusinessRecord, Path]] = []
     for item in attachments:
         if not item.record_id:
             raise HTTPException(status_code=422, detail="所选文件不是案件文件")
-        record = await _ensure_record_module(item.record_id, "case", identity, db)
-        await _require_case_detail_write_access(record, identity, db)
+        record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if context_case:
+            await _require_case_related_attachment_target(context_case, record)
+            record = context_case
+        else:
+            if record.module != "case":
+                raise HTTPException(status_code=422, detail="所选文件不是案件文件")
+            await _require_case_detail_write_access(record, identity, db)
         prepared.append((item, record, Path(item.path)))
     affected_cases: dict[int, BusinessRecord] = {}
     for item, record, path in prepared:
@@ -24763,14 +24792,18 @@ async def upload_official_document(
 async def upload_attachment(
     file: UploadFile = File(...), record_id: int | None = Form(None),
     finance_transaction_id: int | None = Form(None),
+    source_case_id: int | None = Form(None),
     customer_guid: str | None = Form(None), is_license: bool | None = Form(None), document_date: date | None = Form(None),
     category: str = Form("普通附件"), remark: str = Form(""),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     record = None
+    source_case = None
     transaction = None
     resolved_case_file_type = None
     customer_metadata_provided = customer_guid is not None or is_license is not None or document_date is not None
+    if source_case_id is not None and record_id is None:
+        raise HTTPException(status_code=422, detail="案件关联文档必须指定客户或合同记录")
     if customer_metadata_provided and record_id is None:
         raise HTTPException(status_code=422, detail="客户专属附件字段只能用于客户记录")
     if finance_transaction_id is not None:
@@ -24786,6 +24819,13 @@ async def upload_attachment(
             category = expected_category
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if source_case_id is not None:
+            source_case = await _ensure_record_module(source_case_id, "case", identity, db)
+            await _require_case_attachment_upload_access(source_case, identity, db)
+            await _require_case_related_attachment_target(source_case, record)
+            expected_related_category = "合同文档" if record.module == "contract" else "客户文档"
+            if category != expected_related_category:
+                raise HTTPException(status_code=422, detail=f"案件关联文档类型必须为{expected_related_category}")
         if customer_metadata_provided:
             if record.module != "customer":
                 raise HTTPException(status_code=422, detail="客户专属附件字段只能用于客户记录")
@@ -24802,7 +24842,7 @@ async def upload_attachment(
         await _require_hr_attachment_write_access(record, category, identity, db)
         if record.module == "ipr_case":
             raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口上传")
-        if record.module == "contract":
+        if record.module == "contract" and not source_case:
             await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
             await _require_case_attachment_upload_access(record, identity, db)
@@ -24832,7 +24872,7 @@ async def upload_attachment(
                 raise HTTPException(status_code=403, detail="只有任务参与人可以上传任务反馈附件")
             if category not in {"任务反馈附件", "任务资料附件"}:
                 category = "任务资料附件"
-        if record.module == "customer":
+        if record.module == "customer" and not source_case:
             await _require_record_owner_or_manager(record, identity, db)
         if record.module == "seal":
             await _require_record_owner_or_manager(record, identity, db)
@@ -24873,7 +24913,9 @@ async def upload_attachment(
         item = FileAttachment(record_id=record_id, finance_transaction_id=finance_transaction_id, category=category, file_type_code=resolved_case_file_type.code if resolved_case_file_type else "", original_name=Path(file.filename or stored_name).name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=remark, is_license=bool(is_license), document_date=document_date)
         db.add(item)
         await db.flush()
-        if record and record.module == "case":
+        if source_case:
+            db.add(WorkflowEvent(record_id=source_case.id, action="上传案件关联文档", from_status=source_case.status, to_status=source_case.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
+        elif record and record.module == "case":
             await _sync_case_document_readiness(record, db)
             db.add(WorkflowEvent(record_id=record.id, action="上传归档材料", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
         elif record and record.module in INVESTIGATION_MATERIAL_CATEGORIES:

@@ -2488,6 +2488,9 @@ export default function CaseCenterPage({
     data.append("record_id", String(targetRecordId));
     data.append("category", uploadCategory);
     data.append("remark", `案件详情关联文档：${uploadCategory}`);
+    if (activeCounselDocCategory === "客户文档" || activeCounselDocCategory === "合同文档") {
+      data.append("source_case_id", String(viewingCounselCase.id));
+    }
     try {
       await api.post("/attachments", data);
       message.success("案件文件已上传");
@@ -2573,7 +2576,7 @@ export default function CaseCenterPage({
     if(!viewingCounselCase)return message.warning("请先打开案件详情");
     Modal.confirm({title:"批量删除案件文件",content:`确认删除选中的 ${selectedCounselAttachmentKeys.length} 个文件吗？该操作会记录审计日志。`,okText:"删除",okButtonProps:{danger:true},onOk:async()=>{
       try{
-        const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number)});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
+        const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number),case_id:isRelatedDocumentFolder?viewingCounselCase.id:undefined});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
       }catch(error:any){message.error(error?.response?.data?.detail||"案件文件删除失败");}
     }});
   };
@@ -5085,7 +5088,7 @@ export default function CaseCenterPage({
                   <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={counselUploadCategoryOptions}/>
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
-                  {counselDetailCapabilities.can_delete_attachment && !isRelatedDocumentFolder && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
+                  {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
                 </div>
