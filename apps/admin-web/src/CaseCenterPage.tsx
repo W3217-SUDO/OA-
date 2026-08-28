@@ -5041,10 +5041,10 @@ export default function CaseCenterPage({
         <Form form={taskForm} layout="vertical">
           <Form.Item label="任务名称" name="title" rules={[{ required: true, message: "请输入任务名称" }]}><Input /></Form.Item>
           <div className="form-grid">
-            <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请输入负责人账号" }]}><Input /></Form.Item>
+            <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请选择负责人" }]}><Select showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
             <Form.Item label="截止日期" name="deadline" rules={[{ required: true, message: "请选择截止日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
             <Form.Item label="优先级" name="priority"><Select options={["普通", "紧急", "特急"].map(value => ({ value, label: value }))} /></Form.Item>
-            <Form.Item label="协作人" name="collaborators"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入账号后回车" /></Form.Item>
+            <Form.Item label="协作人" name="collaborators"><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
           </div>
           <Form.Item label="任务说明" name="description"><Input.TextArea rows={3} /></Form.Item>
         </Form>
