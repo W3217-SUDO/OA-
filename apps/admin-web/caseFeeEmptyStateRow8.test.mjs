@@ -14,5 +14,5 @@ test("row 8 uses the legacy fee empty state for both fee scopes", () => {
 
 test("row 8 keeps bottom actions only when fee rows exist", () => {
   assert.match(page, /firmFeeRows\.length>0&&<Space className="case-legacy-bottom-actions">/);
-  assert.match(page, /platformFeeRows\.length>0&&counselDetailCapabilities\.can_create_finance/);
+  assert.match(page, /platformFeeRows\.length>0&&<Space className="case-legacy-bottom-actions">/);
 });

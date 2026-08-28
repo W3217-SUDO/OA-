@@ -871,6 +871,7 @@ export default function CaseCenterPage({
   const [caseActionCapabilities, setCaseActionCapabilities] = useState<Record<number, CaseDetailCapabilities>>({});
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
   const [selectedFirmFeeKeys, setSelectedFirmFeeKeys] = useState<Key[]>([]);
+  const [selectedPlatformFeeKeys, setSelectedPlatformFeeKeys] = useState<Key[]>([]);
   const [selectedInternalFeeKeys, setSelectedInternalFeeKeys] = useState<Key[]>([]);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
   const [expandedCounselDocGroups, setExpandedCounselDocGroups] = useState<Record<string, boolean>>({
@@ -4094,6 +4095,7 @@ export default function CaseCenterPage({
   const platformFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="平台");
   const internalFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部"));
   const selectedFirmFee=firmFeeRows.find(row=>selectedFirmFeeKeys.includes(row.id));
+  const selectedPlatformFee=platformFeeRows.find(row=>selectedPlatformFeeKeys.includes(row.id));
   const selectedInternalFee=internalFeeRows.find(row=>selectedInternalFeeKeys.includes(row.id));
   const openCaseFeeBySubtype=(scope:"律所"|"平台"|"内部",subtype:string)=>{
     if(!viewingCounselCase)return;
@@ -4110,16 +4112,16 @@ export default function CaseCenterPage({
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
     return true;
   };
-  const handleFirmFeeOperation=async(key:string)=>{
-    if(!requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":"标记不缴费"))return;
-    if(key==="payment")return openPaymentRequest(selectedFirmFee!);
-    if(key==="edit")return editCaseFee(selectedFirmFee!);
-    if(key==="delete")return deleteCaseFee(selectedFirmFee!);
-    if(key==="no-payment")return markCaseFeeNoPayment(selectedFirmFee!);
+  const handleExternalFeeOperation=async(keys:Key[],selectedFee:CaseRow|undefined,key:string)=>{
+    if(!requireSingleFee(keys,selectedFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":"标记不缴费"))return;
+    if(key==="payment")return openPaymentRequest(selectedFee!);
+    if(key==="edit")return editCaseFee(selectedFee!);
+    if(key==="delete")return deleteCaseFee(selectedFee!);
+    if(key==="no-payment")return markCaseFeeNoPayment(selectedFee!);
     if(key==="invoice"){
       try {
-        const {data}=await api.get("/finance/case-fees/invoice-status",{params:{scope:"company",invoice_status:"未开票",case_no:selectedFirmFee!.data.case_no||viewingCounselCase?.serial_no||"",fee_types:"",page:1,page_size:200}});
-        const eligibility=resolveCaseFeeInvoiceEligibility(selectedFirmFee!.id,Array.isArray(data?.items)?data.items:[]);
+        const {data}=await api.get("/finance/case-fees/invoice-status",{params:{scope:"company",invoice_status:"未开票",case_no:selectedFee!.data.case_no||viewingCounselCase?.serial_no||"",fee_types:"",page:1,page_size:200}});
+        const eligibility=resolveCaseFeeInvoiceEligibility(selectedFee!.id,Array.isArray(data?.items)?data.items:[]);
         if(!eligibility.ok){message.warning(eligibility.error);return;}
       }catch(error:any){
         message.error(error?.response?.data?.detail||"开票资格检查失败");
@@ -4127,12 +4129,26 @@ export default function CaseCenterPage({
       }
     }
     rememberBusinessRecordDetailTarget({
-      id:selectedFirmFee!.id,
+      id:selectedFee!.id,
       module:"finance",
       action:key==="invoice"?"create_invoice":"create_refund",
     });
     onNavigate?.(key==="invoice"?"finance-invoice-mine":"finance-refund");
   };
+  const externalCaseFeeColumns=[
+    {title:"合同编号",width:150,render:(_:unknown,row:CaseRow)=>row.data.contract_no||viewingCounselCase?.data.contract_no||"—"},
+    {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
+    {title:"金额",width:100,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.amount??0},
+    {title:"申请付款金额",width:130,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??0},
+    {title:"付款账号",width:180,render:(_:unknown,row:CaseRow)=>row.data.payment_account||"—"},
+    {title:"退费",width:90,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.refund_amount??row.data.refund_requested_amount??0},
+    {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
+    {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
+    {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
+    {title:"回款金额",width:110,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.received_amount??row.data.cashed_amount??"/"},
+    {title:"开票日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.invoice_date||"").slice(0,10)||"—"},
+    {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
+  ];
   const handleInternalFeeAction=(key:string)=>{
     if(key==="create")return openCaseFeeBySubtype("内部","内部费用");
     if(!requireSingleFee(selectedInternalFeeKeys,selectedInternalFee,key==="payment"?"申请付款":"删除"))return;
@@ -5164,26 +5180,19 @@ export default function CaseCenterPage({
                 </div>
               </div>},
               {key:"firm-fees",label:"律所费用",children:<div className="case-legacy-tab-panel">
-                <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={[
-                  {title:"合同编号",width:150,render:(_:unknown,row:CaseRow)=>row.data.contract_no||viewingCounselCase.data.contract_no||"—"},
-                  {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
-                  {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>row.data.amount??0},
-                  {title:"申请付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??0},
-                  {title:"付款账号",width:180,render:(_:unknown,row:CaseRow)=>row.data.payment_account||"—"},
-                  {title:"退费",width:90,align:"right",render:(_:unknown,row:CaseRow)=>row.data.refund_amount??row.data.refund_requested_amount??0},
-                  {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
-                  {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
-                  {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
-                  {title:"回款金额",width:110,align:"right",render:(_:unknown,row:CaseRow)=>row.data.received_amount??row.data.cashed_amount??"/"},
-                  {title:"开票日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.invoice_date||"").slice(0,10)||"—"},
-                  {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
-                ]}/>
+                <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={externalCaseFeeColumns}/>
                 {firmFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key==="commission"?handleInternalFeeAction("create"):openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
                 </Space>}
               </div>},
-              {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel"><Table rowKey="id" size="small" pagination={false} dataSource={platformFeeRows} locale={{emptyText:renderCaseFeeEmptyState("平台")}} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/>{platformFeeRows.length>0&&counselDetailCapabilities.can_create_finance&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button></div>}</div>},
+              {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel">
+                <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={platformFeeRows} locale={{emptyText:renderCaseFeeEmptyState("平台")}} rowSelection={{selectedRowKeys:selectedPlatformFeeKeys,onChange:setSelectedPlatformFeeKeys}} columns={externalCaseFeeColumns}/>
+                {platformFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
+                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"}],onClick:({key})=>openCaseFeeBySubtype("平台",key)}}><Button>新增案件费用</Button></Dropdown>}
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedPlatformFee ? openCourtRefund(selectedPlatformFee) : requireSingleFee(selectedPlatformFeeKeys,selectedPlatformFee,"办理法院退费")) : void handleExternalFeeOperation(selectedPlatformFeeKeys,selectedPlatformFee,key)}}><Button>其他操作</Button></Dropdown>
+                </Space>}
+              </div>},
               {key:"internal-fees",label:"内部结算",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1120}} dataSource={internalFeeRows} rowSelection={{selectedRowKeys:selectedInternalFeeKeys,onChange:setSelectedInternalFeeKeys}} columns={[
                   {title:"收款人",width:130,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.payee||row.data.handler||row.owner,row.data.payee_display_name||row.data.handler_display_name||row.owner_display_name)},
