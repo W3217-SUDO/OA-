@@ -1749,6 +1749,11 @@ class CaseAttachmentRenameInput(BaseModel):
     original_name: str = Field(min_length=1, max_length=255)
 
 
+class CaseAttachmentMoveInput(BaseModel):
+    attachment_ids: list[int] = Field(min_length=1, max_length=100)
+    category: str = Field(min_length=1, max_length=64)
+
+
 class CaseDocumentFolderInput(BaseModel):
     name: str = Field(min_length=1, max_length=64)
 
@@ -24671,6 +24676,8 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
     for item in attachments:
         if not item.record_id:
             raise HTTPException(status_code=422, detail="所选文件不是案件文件")
+        if item.uploader != identity["username"]:
+            raise HTTPException(status_code=403, detail=f"只能删除本人上传的文件：{item.original_name}")
         record = await _ensure_attachment_record_visible(item.record_id, identity, db)
         if context_case:
             await _require_case_related_attachment_target(context_case, record)
@@ -24697,6 +24704,39 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
             path.unlink()
     return {"deleted": len(prepared)}
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/move")
+async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(case_record, identity, db)
+    category = body.category.strip()
+    custom_folders = set(_case_custom_document_folders(case_record))
+    configured = await db.scalar(select(SystemParameter.id).where(
+        SystemParameter.category == "case_file_type",
+        SystemParameter.name == category,
+        SystemParameter.is_active.is_(True),
+    ))
+    if category not in custom_folders and not configured:
+        raise HTTPException(status_code=422, detail="目标案件文档目录不存在或已停用")
+    attachment_ids = list(dict.fromkeys(body.attachment_ids))
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
+    if len(attachments) != len(attachment_ids):
+        raise HTTPException(status_code=404, detail="存在已删除或不存在的案件文件")
+    for item in attachments:
+        if item.record_id != case_record.id:
+            raise HTTPException(status_code=409, detail="客户、合同或其他案件的文件不能移动到当前案件目录")
+    for item in attachments:
+        previous = item.category
+        item.category = category
+        db.add(WorkflowEvent(
+            record_id=case_record.id, action="更改案件文档目录", from_status=case_record.status,
+            to_status=case_record.status, operator=identity["username"],
+            comment=f"{item.original_name}：{previous} → {category}",
+        ))
+    await _sync_case_document_readiness(case_record, db)
+    await db.commit()
+    return {"moved": len(attachments), "category": category}
 
 
 @app.put(f"{settings.api_prefix}/cases/attachments/{{attachment_id}}/rename")
@@ -30261,12 +30301,14 @@ IPR_CASE_DOCUMENT_TYPES = {
 
 CASE_DOCUMENT_TYPES = {
     "authorization-letter": "授权委托书",
+    "archive-cover": "归档封面",
     "archive-letter": "归档函",
     "gd-authorization-letter": "广东版授权委托书",
     "compensation-letter": "赔偿函",
     "law-firm-letter": "律师事务所函",
     "identity-certificate": "法定代表人身份证明",
     "settlement-list": "结算提成表",
+    "compensation-payment-application": "代收代付赔偿款申请单",
     "first-instance-appellant-lawyer-letter": "一审（我方原告）律所函",
     "first-instance-appellee-lawyer-letter": "一审（我方被告）律所函",
     "second-instance-appellant-lawyer-letter": "二审（我方上诉）律所函",
@@ -30291,6 +30333,9 @@ CASE_LEGACY_LAW_FIRM_LETTER_TYPES = {
 CASE_DOCUMENT_CATEGORY = {
     "authorization-letter": "主体及委托资料",
     "identity-certificate": "主体及委托资料",
+    "archive-cover": "庭审及庭后文件",
+    "settlement-list": "庭审及庭后文件",
+    "compensation-payment-application": "庭审及庭后文件",
     **{key: "法院诉讼文书" for key in CASE_LEGACY_LAW_FIRM_LETTER_TYPES},
 }
 
@@ -30461,6 +30506,25 @@ def _case_document_bytes(record: BusinessRecord, document_type: str, context: di
         _case_document_paragraph(document, "")
         _case_document_paragraph(document, f"委托人：{record.customer}")
         _case_document_paragraph(document, f"日期：{today_cn}")
+    elif document_type == "archive-cover":
+        _case_document_paragraph(document, "案件卷宗", center=True, bold=True, size=28)
+        _case_document_paragraph(document, f"案号：{record.serial_no}", center=True, size=18)
+        _case_document_paragraph(document, f"案件名称：{record.title}", center=True, size=18)
+        _case_document_paragraph(document, f"客户：{record.customer}", center=True, size=16)
+        _case_document_paragraph(document, f"案件类型：{_case_document_value(data, 'case_type') or '（未填写）'}", center=True, size=16)
+        _case_document_paragraph(document, f"经办律师：{case_lawyer}", center=True, size=16)
+        _case_document_paragraph(document, f"归档日期：{_case_document_value(data, 'archive_date', 'archived_at') or today_cn}", center=True, size=16)
+    elif document_type == "compensation-payment-application":
+        _case_document_paragraph(document, "代收代付赔偿款申请单", center=True, bold=True, size=22)
+        _case_document_paragraph(document, f"案件编号：{record.serial_no}")
+        _case_document_paragraph(document, f"案件名称：{record.title}")
+        _case_document_paragraph(document, f"客户名称：{record.customer}")
+        _case_document_paragraph(document, f"收款/付款对象：{_case_document_value(data, 'compensation_counterparty', 'opponent', 'defendant') or '（未填写）'}")
+        _case_document_paragraph(document, f"赔偿款金额：{_case_document_value(data, 'compensation_amount', 'settlement_amount') or '（未填写）'}")
+        _case_document_paragraph(document, f"收款账户：{_case_document_value(data, 'compensation_account', 'payment_account') or '（未填写）'}")
+        _case_document_paragraph(document, f"经办律师：{case_lawyer}")
+        _case_document_paragraph(document, f"申请日期：{today_cn}")
+        _case_document_paragraph(document, "申请说明：本申请依据案件已保存的赔偿、和解或执行回款信息生成，请财务审核后办理代收代付。")
     elif document_type in CASE_LEGACY_LAW_FIRM_LETTER_TYPES:
         if document_type.startswith("first-instance"):
             court = _case_document_value(data, "first_court_name", "first_instance_court", "court")

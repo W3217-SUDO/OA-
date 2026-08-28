@@ -444,6 +444,22 @@ const caseDocumentTypes = [
   ["gd-first-instance-appellant-lawyer-letter", "广东版一审上诉人律师函"], ["gd-first-instance-appellee-lawyer-letter", "广东版一审被上诉人律师函"],
   ["gd-second-instance-appellant-lawyer-letter", "广东版二审上诉人律师函"], ["gd-second-instance-appellee-lawyer-letter", "广东版二审被上诉人律师函"], ["gd-execution-lawyer-letter", "广东版执行律师函"],
 ] as const;
+export const getLegacyCaseDocumentGenerationItems = () => [
+  ["archive-cover", "生成归档封面"],
+  ["authorization-letter", "生成授权委托书"],
+  ["first-instance-appellant-lawyer-letter", "生成一审所函(我方原告)"],
+  ["first-instance-appellee-lawyer-letter", "生成一审所函(我方被告)"],
+  ["second-instance-appellant-lawyer-letter", "生成二审所函(我方上诉)"],
+  ["second-instance-appellee-lawyer-letter", "生成二审所函(对方上诉)"],
+  ["execution-lawyer-letter", "生成执行所函"],
+  ["identity-certificate", "生成身份证明"],
+  ["settlement-list", "生成结算提成表"],
+  ["compensation-payment-application", "生成代收代付赔偿款申请单"],
+] as const;
+export const getCaseDocumentMoveCategoryOptions = (customFolders: string[] = []) =>
+  ["主体及委托资料", "起诉材料及证据", "答辩材料及证据", "法院诉讼文书", "庭审及庭后文件", ...customFolders]
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .map((value) => ({ value, label: value }));
 type ContractRow = {
   id: number;
   serial_no: string;
@@ -845,6 +861,7 @@ export default function CaseCenterPage({
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
+  const [movingCounselAttachmentIds, setMovingCounselAttachmentIds] = useState<number[] | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
@@ -1008,6 +1025,7 @@ export default function CaseCenterPage({
   const [caseLogForm] = Form.useForm();
   const [attachmentRenameForm] = Form.useForm();
   const [caseDocumentFolderForm] = Form.useForm();
+  const [caseAttachmentMoveForm] = Form.useForm();
   const [caseFileSealForm] = Form.useForm();
   const [batchUpdateForm] = Form.useForm();
   const [batchFeeForm] = Form.useForm();
@@ -2580,6 +2598,35 @@ export default function CaseCenterPage({
       }catch(error:any){message.error(error?.response?.data?.detail||"案件文件删除失败");}
     }});
   };
+  const selectedCounselAttachments = () => {
+    const selected = new Set(selectedCounselAttachmentKeys.map(Number));
+    return [...counselDetailAttachments, ...counselDetailCustomerAttachments, ...counselDetailContractAttachments]
+      .filter((item, index, all) => selected.has(item.id) && all.findIndex((candidate) => candidate.id === item.id) === index);
+  };
+  const handleCounselDocumentMoreAction = (key: string) => {
+    if (key === "delete") return deleteCounselAttachments();
+    const selected = selectedCounselAttachments();
+    if (key === "seal") {
+      if (selected.length !== 1) return message.warning("请先选择一个文件再申请用印");
+      return void openCounselAttachmentSeal(selected[0]);
+    }
+    if (key === "move") {
+      if (!selected.length) return message.warning("请先选择需要更改目录的文件");
+      if (selected.some((item) => item.record_id !== viewingCounselCase?.id)) return message.warning("客户文档和合同文档不能移动到案件文档目录");
+      caseAttachmentMoveForm.setFieldsValue({ category: activeCounselDocCategory === "案件文档全部" ? undefined : activeCounselDocCategory });
+      setMovingCounselAttachmentIds(selected.map((item) => item.id));
+    }
+  };
+  const moveCounselAttachments = async () => {
+    if (!viewingCounselCase || !movingCounselAttachmentIds?.length) return;
+    const values = await caseAttachmentMoveForm.validateFields();
+    try {
+      const { data } = await api.post(`/cases/${viewingCounselCase.id}/attachments/move`, { attachment_ids: movingCounselAttachmentIds, category: values.category });
+      message.success(`已将 ${data.moved} 个文件移至${data.category}`);
+      setMovingCounselAttachmentIds(null); caseAttachmentMoveForm.resetFields(); setSelectedCounselAttachmentKeys([]);
+      await openCounselDetail(viewingCounselCase);
+    } catch (error: any) { message.error(error?.response?.data?.detail || "更改文档目录失败"); }
+  };
   const openCounselAttachmentRename = (item: AttachmentRow) => {
     attachmentRenameForm.setFieldsValue({ original_name: item.original_name });
     setRenamingCounselAttachment(item);
@@ -3993,6 +4040,7 @@ export default function CaseCenterPage({
   const customCaseDocumentFolders=getCustomCaseDocumentFolders(viewingCounselCase);
   const counselCaseFileTypeOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
   const counselUploadCategoryOptions=[...counselCaseFileTypeOptions,...customCaseDocumentFolders.filter(name=>!hasCaseFileTypeOption(name,counselCaseFileTypeOptions)).map(name=>({value:name,label:name}))];
+  const counselMoveCategoryOptions = getCaseDocumentMoveCategoryOptions(customCaseDocumentFolders);
   const counselDocTree:Array<{label:string;category:string;type:string;parent?:string;custom?:boolean}>=[
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
@@ -5087,8 +5135,9 @@ export default function CaseCenterPage({
                 <Space wrap className="case-document-toolbar">
                   <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={counselUploadCategoryOptions}/>
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
+                  {counselDetailCapabilities.can_generate_document && <Dropdown trigger={["click"]} menu={{items:getLegacyCaseDocumentGenerationItems().map(([key,label])=>({key,label})),onClick:({key})=>void generateCaseDocument(key)}}><Button>生成操作</Button></Dropdown>}
+                  {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
                   <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
-                  {counselDetailCapabilities.can_delete_attachment && <Button danger onClick={deleteCounselAttachments}>删除选中</Button>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
                 </div>
@@ -5322,6 +5371,12 @@ export default function CaseCenterPage({
       </Modal>
       <Modal open={Boolean(caseDocumentFolderEditor)} title={caseDocumentFolderEditor?.mode==="rename"?"重命名案件文档目录":"新增案件文档目录"} okText="保存" cancelText="取消" onOk={saveCaseDocumentFolder} onCancel={()=>{setCaseDocumentFolderEditor(null);caseDocumentFolderForm.resetFields();}}>
         <Form form={caseDocumentFolderForm} layout="vertical"><Form.Item label="目录名称" name="name" rules={[{required:true,message:"请输入目录名称"},{max:64,message:"目录名称不能超过 64 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\/]/.test(name))throw new Error("目录名称不能为空且不能包含路径字符");}}]}><Input autoFocus placeholder="请输入当前案件的自定义目录名称" /></Form.Item></Form>
+      </Modal>
+      <Modal open={Boolean(movingCounselAttachmentIds)} title={`更改文档目录（已选 ${movingCounselAttachmentIds?.length || 0} 个文件）`} okText="移动" cancelText="取消" onOk={moveCounselAttachments} onCancel={()=>{setMovingCounselAttachmentIds(null);caseAttachmentMoveForm.resetFields();}}>
+        <Form form={caseAttachmentMoveForm} layout="vertical">
+          <Form.Item label="目标目录" name="category" rules={[{required:true,message:"请选择目标目录"}]}><Select placeholder="请选择案件文档目录" options={counselMoveCategoryOptions}/></Form.Item>
+          <Alert type="info" showIcon title="只更改当前案件内文件的所属目录，不修改文件内容。" />
+        </Form>
       </Modal>
       <Modal open={Boolean(renamingCounselAttachment)} title={`重命名案件文件：${renamingCounselAttachment?.original_name || ""}`} okText="保存" cancelText="取消" onOk={renameCounselAttachment} onCancel={()=>{setRenamingCounselAttachment(null);attachmentRenameForm.resetFields();}}>
         <Form form={attachmentRenameForm} layout="vertical">

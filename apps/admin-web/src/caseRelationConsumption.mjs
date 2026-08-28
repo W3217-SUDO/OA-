@@ -22,9 +22,14 @@ const sharesKey = (left, right) => [...keysFor(left)].some((key) => keysFor(righ
 
 const relatedTargets = (sourceValue, relation) => {
   if (!relation) return null;
+  const configuredRelations = relation.relations || {};
+  const hasConfiguredRelation = Object.values(configuredRelations).some((targetIds) =>
+    Array.isArray(targetIds) && targetIds.length > 0,
+  );
+  if (!hasConfiguredRelation) return null;
   const source = (relation.sources || []).find((item) => sharesKey(item, { value: sourceValue }));
   if (!source) return [];
-  const targetIds = new Set((relation.relations || {})[String(source.id)] || []);
+  const targetIds = new Set(configuredRelations[String(source.id)] || []);
   return (relation.targets || []).filter((item) => targetIds.has(Number(item.id)));
 };
 

@@ -9,7 +9,8 @@ test("case related folders send the case authorization context", () => {
   assert.match(source, /case_id:isRelatedDocumentFolder\?viewingCounselCase\.id:undefined/);
 });
 
-test("related customer and contract folders expose the case delete action", () => {
+test("related customer and contract folders retain deletion through more operations", () => {
   assert.doesNotMatch(source, /can_delete_attachment && !isRelatedDocumentFolder/);
-  assert.match(source, /can_delete_attachment && <Button danger onClick=\{deleteCounselAttachments\}>删除选中<\/Button>/);
+  assert.match(source, /key:"delete",label:"删除"/);
+  assert.match(source, /if \(key === "delete"\) return deleteCounselAttachments\(\)/);
 });
