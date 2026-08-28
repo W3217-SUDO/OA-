@@ -33,6 +33,7 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
+  InfoCircleOutlined,
   MinusCircleOutlined,
   PaperClipOutlined,
   PlusCircleFilled,
@@ -4094,10 +4095,17 @@ export default function CaseCenterPage({
   const internalFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部"));
   const selectedFirmFee=firmFeeRows.find(row=>selectedFirmFeeKeys.includes(row.id));
   const selectedInternalFee=internalFeeRows.find(row=>selectedInternalFeeKeys.includes(row.id));
-  const openCaseFeeBySubtype=(scope:"律所"|"内部",subtype:string)=>{
+  const openCaseFeeBySubtype=(scope:"律所"|"平台"|"内部",subtype:string)=>{
     if(!viewingCounselCase)return;
     openCaseFee(viewingCounselCase,scope,subtype);
   };
+  const renderCaseFeeEmptyState=(scope:"律所"|"平台")=><div className="case-fee-empty-state">
+    <InfoCircleOutlined aria-hidden="true"/>
+    <span>没有查询到费用信息。</span>
+    {counselDetailCapabilities.can_create_finance&&<Space size={0} wrap>
+      {["官费","第三方费用","代理费","其他费用"].map(subtype=><Button key={subtype} type="link" onClick={()=>openCaseFeeBySubtype(scope,subtype)}>新增{subtype}</Button>)}
+    </Space>}
+  </div>;
   const requireSingleFee=(keys:Key[],row:CaseRow|undefined,action:string)=>{
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
     return true;
@@ -5156,7 +5164,7 @@ export default function CaseCenterPage({
                 </div>
               </div>},
               {key:"firm-fees",label:"律所费用",children:<div className="case-legacy-tab-panel">
-                <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={[
+                <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={[
                   {title:"合同编号",width:150,render:(_:unknown,row:CaseRow)=>row.data.contract_no||viewingCounselCase.data.contract_no||"—"},
                   {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
                   {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>row.data.amount??0},
@@ -5170,12 +5178,12 @@ export default function CaseCenterPage({
                   {title:"开票日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.invoice_date||"").slice(0,10)||"—"},
                   {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
                 ]}/>
-                <Space className="case-legacy-bottom-actions">
+                {firmFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key==="commission"?handleInternalFeeAction("create"):openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
                   <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleFirmFeeOperation(key)}}><Button>其他操作</Button></Dropdown>
-                </Space>
+                </Space>}
               </div>},
-              {key:"platform-fees",label:"平台费用",children:<><Space style={{marginBottom:10}}>{counselDetailCapabilities.can_create_finance&&<Button type="primary" onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button>}</Space><Table rowKey="id" size="small" pagination={false} dataSource={platformFeeRows} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/></>},
+              {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel"><Table rowKey="id" size="small" pagination={false} dataSource={platformFeeRows} locale={{emptyText:renderCaseFeeEmptyState("平台")}} columns={[{title:"费用编号",dataIndex:"serial_no",render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value||"—"}</Button>},{title:"费用名称",dataIndex:"title"},{title:"金额",render:(_:unknown,row:CaseRow)=>row.data.amount??""},{title:"状态",dataIndex:"status"},{title:"操作",render:(_:unknown,row:CaseRow)=>row.status==="草稿"&&counselDetailCapabilities.can_create_finance?<Dropdown trigger={["click"]} menu={{items:[{key:"edit",label:"修改"},{key:"delete",label:"删除"}],onClick:({key})=>key==="edit"?editCaseFee(row):void deleteCaseFee(row)}}><Button type="link">更多</Button></Dropdown>:null}]}/>{platformFeeRows.length>0&&counselDetailCapabilities.can_create_finance&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseFee(viewingCounselCase,"平台")}>新增平台费用</Button></div>}</div>},
               {key:"internal-fees",label:"内部结算",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1120}} dataSource={internalFeeRows} rowSelection={{selectedRowKeys:selectedInternalFeeKeys,onChange:setSelectedInternalFeeKeys}} columns={[
                   {title:"收款人",width:130,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.payee||row.data.handler||row.owner,row.data.payee_display_name||row.data.handler_display_name||row.owner_display_name)},
