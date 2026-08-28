@@ -24,7 +24,9 @@ import {
   Tag,
   TimePicker,
   Tree,
+  Upload,
 } from "antd";
+import type { UploadFile } from "antd";
 import {
   CalendarOutlined,
   CheckSquareOutlined,
@@ -45,7 +47,7 @@ import {
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import { api } from "./api";
 import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
@@ -916,6 +918,7 @@ export default function CaseCenterPage({
   const [paymentPackagePreview, setPaymentPackagePreview] = useState<any | null>(null);
   const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
+  const [caseTaskMaterialFiles, setCaseTaskMaterialFiles] = useState<UploadFile[]>([]);
   const [caseTaskKind, setCaseTaskKind] = useState<CaseTaskKind>("案件任务");
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
@@ -1885,12 +1888,15 @@ export default function CaseCenterPage({
     try {
       await loadCaseTasksPage(row, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
       taskForm.resetFields();
+      const startAt = dayjs().second(0);
       taskForm.setFieldsValue({
         owner: profile.username || row.owner,
-        deadline: undefined,
+        start_at: startAt,
+        end_at: startAt.add(7, "day"),
         priority: "普通",
         collaborators: [],
       });
+      setCaseTaskMaterialFiles([]);
       setTaskCase(row);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件任务加载失败");
@@ -2984,7 +2990,9 @@ export default function CaseCenterPage({
   const openCaseTaskCreator = (row: CaseRow) => {
     if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
     taskForm.resetFields();
-    taskForm.setFieldsValue({ owner: profile.username || row.owner, deadline: undefined, priority: "普通", collaborators: [] });
+    const startAt = dayjs().second(0);
+    taskForm.setFieldsValue({ owner: profile.username || row.owner, start_at: startAt, end_at: startAt.add(7, "day"), priority: "普通", collaborators: [] });
+    setCaseTaskMaterialFiles([]);
     setCaseTaskKind("案件任务");
     setCaseTaskCreateCase(row);
   };
@@ -2995,21 +3003,44 @@ export default function CaseCenterPage({
     const taskKind: CaseTaskKind = taskCase ? "案件任务" : caseTaskKind;
     const v = await taskForm.validateFields();
     try {
-      await api.post("/tasks", {
+      const startAt = v.start_at as Dayjs;
+      const endAt = v.end_at as Dayjs;
+      const { data: createdTask } = await api.post("/tasks", {
         title: v.title,
         customer: targetCase.customer,
         owner: v.owner,
         collaborators: v.collaborators || [],
         case_no: targetCase.serial_no,
-        deadline: formatRequiredDate(v.deadline, "截止日期"),
+        start_at: startAt.format("YYYY-MM-DDTHH:mm:ss"),
+        end_at: endAt.format("YYYY-MM-DDTHH:mm:ss"),
+        deadline: formatRequiredDate(endAt, "结束时间"),
         priority: v.priority || "普通",
         source: taskKind,
         task_type: "手动任务",
         description: v.description || "",
       });
-      message.success(`${taskKind}已创建`);
+      if (caseTaskMaterialFiles.length) {
+        const materialBody = new FormData();
+        for (const file of caseTaskMaterialFiles) {
+          const source = file.originFileObj || (file as unknown as File);
+          if (source && typeof (source as Blob).arrayBuffer === "function") materialBody.append("files", source);
+        }
+        try {
+          await api.post(`/tasks/${createdTask.id}/materials`, materialBody);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || `${taskKind}已创建，但任务附件上传失败`);
+          setCaseTaskCreateCase(null);
+          taskForm.resetFields();
+          setCaseTaskMaterialFiles([]);
+          if (taskCase) await openCaseTasks(targetCase);
+          else if (viewingCounselCase) await openCounselDetail(targetCase);
+          return;
+        }
+      }
+      message.success(caseTaskMaterialFiles.length ? `${taskKind}及附件已创建` : `${taskKind}已创建`);
       setCaseTaskCreateCase(null);
       taskForm.resetFields();
+      setCaseTaskMaterialFiles([]);
       if (taskCase) await openCaseTasks(targetCase);
       else if (viewingCounselCase) await openCounselDetail(targetCase);
     } catch (error: any) {
@@ -5036,19 +5067,22 @@ export default function CaseCenterPage({
           </div>
         </Form>
       </Drawer>
-      <Modal open={Boolean(caseTaskCreateCase)} title={`发布${caseTaskKind}：${caseTaskCreateCase?.serial_no || ""}`} okText={`发布${caseTaskKind}`} cancelText="取消" onOk={createCaseTask} onCancel={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); }} destroyOnHidden>
-        <Alert type="info" showIcon title={`任务创建后会自动关联当前案件并即时回填到“${caseTaskKind}”页签。`} style={{ marginBottom: 16 }} />
+      <Drawer open={Boolean(caseTaskCreateCase)} width={620} title="案件任务" onClose={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }} destroyOnHidden footer={<Space><Button type="primary" onClick={createCaseTask}>确定</Button><Button onClick={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }}>取消</Button></Space>}>
+        <Steps size="small" current={0} items={[{title:"任务填写"},{title:"任务分派"},{title:"任务处理"},{title:"任务完成"}]} style={{ marginBottom: 20 }} />
         <Form form={taskForm} layout="vertical">
-          <Form.Item label="任务名称" name="title" rules={[{ required: true, message: "请输入任务名称" }]}><Input /></Form.Item>
+          <Form.Item label="案件编号"><Input value={caseTaskCreateCase?.serial_no || ""} disabled /></Form.Item>
+          <Form.Item label="任务主标题" name="title" rules={[{ required: true, message: "请输入任务主标题" }]}><Input placeholder="请输入任务主标题" /></Form.Item>
+          <Form.Item label="优先级" name="priority"><Radio.Group options={[{value:"重要",label:"重要"},{value:"普通",label:"一般"}]} /></Form.Item>
           <div className="form-grid">
             <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请选择负责人" }]}><Select showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
-            <Form.Item label="截止日期" name="deadline" rules={[{ required: true, message: "请选择截止日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item label="优先级" name="priority"><Select options={["普通", "紧急", "特急"].map(value => ({ value, label: value }))} /></Form.Item>
             <Form.Item label="协作人" name="collaborators"><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
+            <Form.Item label="任务开始时间" name="start_at" rules={[{ required: true, message: "请选择开始时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="结束时间" name="end_at" rules={[{ required: true, message: "请选择结束时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
           </div>
-          <Form.Item label="任务说明" name="description"><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item label="任务描述" name="description"><Input.TextArea rows={4} /></Form.Item>
+          <Form.Item label="任务附件（可多选，单个不超过20MB）"><Upload multiple fileList={caseTaskMaterialFiles} beforeUpload={(file) => { setCaseTaskMaterialFiles((items) => [...items, file]); return false; }} onRemove={(file) => setCaseTaskMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}><Button icon={<UploadOutlined />}>上传附件</Button></Upload></Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
       <Modal
         open={Boolean(mergingCase)}
         title={`合并案件至：${mergingCase?.serial_no || ""}`}
@@ -5643,7 +5677,7 @@ export default function CaseCenterPage({
         rootStyle={{position:"absolute",inset:0,height:"calc(100vh - 150px)"}}
         open={Boolean(taskCase)}
         title={`案件任务：${taskCase?.serial_no || ""}`}
-        onClose={() => setTaskCase(null)}
+        onClose={() => { setTaskCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }}
       >
         <Alert
           type="info"
@@ -5699,18 +5733,25 @@ export default function CaseCenterPage({
                 name="owner"
                 rules={[{ required: true }]}
               >
-                <Input />
+                <Select showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" />
               </Form.Item>
               <Form.Item
-                label="截止日期"
-                name="deadline"
-                rules={[{ required: true }]}
+                label="开始时间"
+                name="start_at"
+                rules={[{ required: true, message: "请选择开始时间" }]}
               >
-                <DatePicker style={{ width: "100%" }} />
+                <DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
+              </Form.Item>
+              <Form.Item
+                label="结束时间"
+                name="end_at"
+                rules={[{ required: true, message: "请选择结束时间" }]}
+              >
+                <DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
               </Form.Item>
               <Form.Item label="优先级" name="priority">
                 <Select
-                  options={["普通", "紧急", "特急"].map((v) => ({
+                  options={["普通", "重要"].map((v) => ({
                     value: v,
                     label: v,
                   }))}
@@ -5718,15 +5759,18 @@ export default function CaseCenterPage({
               </Form.Item>
               <Form.Item label="协作人" name="collaborators">
                 <Select
-                  mode="tags"
-                  tokenSeparators={[",", "，"]}
-                  placeholder="输入账号后回车"
+                  mode="multiple"
+                  showSearch
+                  optionFilterProp="label"
+                  options={caseAssistantOptions}
+                  placeholder="输入中文姓名检索"
                 />
               </Form.Item>
             </div>
             <Form.Item label="任务说明" name="description">
               <Input.TextArea rows={3} />
             </Form.Item>
+            <Form.Item label="任务附件（可多选，单个不超过20MB）"><Upload multiple fileList={caseTaskMaterialFiles} beforeUpload={(file) => { setCaseTaskMaterialFiles((items) => [...items, file]); return false; }} onRemove={(file) => setCaseTaskMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}><Button icon={<UploadOutlined />}>上传附件</Button></Upload></Form.Item>
             <Button type="primary" onClick={createCaseTask}>
               创建案件任务
             </Button>

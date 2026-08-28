@@ -21,8 +21,8 @@ assert.match(
 );
 assert.match(
   source,
-  /title=\{`发布\$\{caseTaskKind\}：\$\{caseTaskCreateCase\?\.serial_no \|\| ""\}`\}[\s\S]*?okText=\{`发布\$\{caseTaskKind\}`\}[\s\S]*?onOk=\{createCaseTask\}/,
-  "发布入口必须复用案件任务创建弹窗",
+  /<Drawer open=\{Boolean\(caseTaskCreateCase\)\}[\s\S]*?title="案件任务"[\s\S]*?<Button type="primary" onClick=\{createCaseTask\}>确定<\/Button>/,
+  "发布入口必须复用案件任务创建抽屉",
 );
 assert.match(
   source,
