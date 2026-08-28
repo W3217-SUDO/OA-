@@ -8958,6 +8958,9 @@ async def list_records(
     module: str = Query(min_length=1, max_length=32),
     keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
+    title: str = "", serial_no: str = "", record_type: str = Query("", alias="type"),
+    case_no: str = "", fee_type: str = "", contract_body: str = "", source_person: str = "",
+    signed_at_start: str = "", signed_at_end: str = "",
     investigation_view: str = Query("", pattern="^(|published|assigned|unassigned)$"),
     archive_view: str = Query("", pattern="^(|pending|refused)$"),
     pending_approver_only: bool = False,
@@ -9069,6 +9072,30 @@ async def list_records(
     if module == "contract":
         # Contract views pass scope/statuses from the frontend parity round; apply
         # them server-side so mine/dept/company/audit/recycle stay isolated.
+        if title.strip():
+            conditions.append(BusinessRecord.title.ilike(f"%{title.strip()}%"))
+        if serial_no.strip():
+            conditions.append(BusinessRecord.serial_no.ilike(f"%{serial_no.strip()}%"))
+        if record_type.strip():
+            conditions.append(BusinessRecord.data["type"].as_string() == record_type.strip())
+        if case_no.strip():
+            conditions.append(BusinessRecord.data["case_no"].as_string().ilike(f"%{case_no.strip()}%"))
+        if fee_type.strip():
+            conditions.append(BusinessRecord.data["fee_type"].as_string() == fee_type.strip())
+        if contract_body.strip():
+            conditions.append(BusinessRecord.data["contract_body"].as_string() == contract_body.strip())
+        if source_person.strip():
+            source_like = f"%{source_person.strip()}%"
+            conditions.append(or_(
+                BusinessRecord.data["source_person"].as_string().ilike(source_like),
+                BusinessRecord.data["source_person_display_name"].as_string().ilike(source_like),
+                BusinessRecord.owner.ilike(source_like),
+            ))
+        signed_at = func.substr(BusinessRecord.data["signed_at"].as_string(), 1, 10)
+        if signed_at_start.strip():
+            conditions.append(signed_at >= signed_at_start.strip())
+        if signed_at_end.strip():
+            conditions.append(signed_at <= signed_at_end.strip())
         if scope == "audit" and pending_approver_only:
             conditions.append(select(ContractApprovalStep.id).where(
                 ContractApprovalStep.contract_record_id == BusinessRecord.id,
