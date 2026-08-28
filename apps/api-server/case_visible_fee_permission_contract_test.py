@@ -50,6 +50,13 @@ class CaseVisibleFeePermissionContractTest(unittest.IsolatedAsyncioTestCase):
             await db.commit()
             await db.refresh(case)
             self.case_id = case.id
+            contract = BusinessRecord(
+                module="contract", serial_no="CODEX-VISIBLE-FEE-CONTRACT",
+                title="可见案件律所合同", customer=case.customer, status="审批通过",
+                owner=VIEWER["username"], department=VIEWER["department"], data={"contract_body": "律所"},
+            )
+            db.add(contract); await db.commit(); await db.refresh(contract)
+            self.contract_id = contract.id
 
         async def override_db():
             async with self.sessions() as db:
@@ -77,6 +84,7 @@ class CaseVisibleFeePermissionContractTest(unittest.IsolatedAsyncioTestCase):
             "expense_subtype": "诉讼费",
             "case_no": "CODEX-VISIBLE-FEE-CASE",
             "case_record_id": self.case_id,
+            "contract_record_id": self.contract_id,
             "handler": self.identity["username"],
         }
 

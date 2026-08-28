@@ -1,7 +1,12 @@
-export const buildCaseFeeContractOptions = (contracts, sourceCase, editingFee) => {
+const contractBody = (contract) => String(contract?.data?.contract_body || "律所").trim();
+
+export const buildCaseFeeContractOptions = (contracts, sourceCase, editingFee, expenseScope = "") => {
   const customer = String(editingFee?.customer || sourceCase?.customer || "").trim();
+  const scopedBody = ["律所", "平台"].includes(String(expenseScope).trim())
+    ? String(expenseScope).trim()
+    : "";
   const options = contracts
-    .filter((contract) => !customer || contract.customer === customer)
+    .filter((contract) => (!customer || contract.customer === customer) && (!scopedBody || contractBody(contract) === scopedBody))
     .map((contract) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }));
 
   const linkedId = Number(
@@ -13,6 +18,7 @@ export const buildCaseFeeContractOptions = (contracts, sourceCase, editingFee) =
   if (!linkedId || options.some((option) => option.value === linkedId)) return options;
 
   const linkedContract = contracts.find((contract) => contract.id === linkedId);
+  if (scopedBody && contractBody(linkedContract) !== scopedBody) return options;
   const contractNo = String(
     editingFee?.data?.contract_no
       || sourceCase?.data?.contract_no

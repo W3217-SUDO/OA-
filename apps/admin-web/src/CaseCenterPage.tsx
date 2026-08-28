@@ -1048,9 +1048,10 @@ export default function CaseCenterPage({
   const feeExpenseSubtype = Form.useWatch("expense_subtype", feeForm);
   const feeItems = Form.useWatch("items", feeForm) || [];
   const feeEmployeeOptions = caseAssistantOptions;
+  const activeFeeContractScope = editingFeeRow ? feeExpenseScope : String(feeItems[0]?.expense_scope || "");
   const feeContractOptions = useMemo(
-    () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow),
-    [contracts, editingFeeRow, feeCase, viewingCounselCase],
+    () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow, activeFeeContractScope),
+    [activeFeeContractScope, contracts, editingFeeRow, feeCase, viewingCounselCase],
   );
   const fileTypeOptionsForCase = (caseType: unknown) => buildCaseFileTypeTreeOptions(
     filterCaseFileTypesForCaseType(String(caseType || ""), caseFileTypeCatalog, caseRelations?.caseTypeFileTypes),
@@ -3038,14 +3039,22 @@ export default function CaseCenterPage({
   };
   const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所", expenseSubtype?: string) => {
     if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
+    const eligibleContracts = buildCaseFeeContractOptions(contracts, row, null, expenseScope);
+    if ((expenseScope === "律所" || expenseScope === "平台") && !eligibleContracts.length) {
+      return message.warning(`当前案件客户名下没有${expenseScope}合同，无法新增${expenseScope}费用`);
+    }
     const sourceFileType = resolveCaseFileTypeSelection("", fileTypeOptionsForCase(row.data.case_type));
     const preferredSubtype = expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
     const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
     const initialSubtype = allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : allowedSubtypes[0];
+    const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
+    const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
+      ? linkedContractId
+      : eligibleContracts[0]?.value;
     feeForm.resetFields();
     feeForm.setFieldsValue({ source_file_type: sourceFileType, items: [{
       title: `${row.title}案件费用`, amount: row.data.amount || undefined,
-      contract_record_id: Number(row.data.contract_record_id || row.data.contract_id) || undefined,
+      contract_record_id: initialContractId,
       expense_scope: expenseScope, expense_subtype: initialSubtype,
       fee_type: FEE_SUBTYPE_TO_TYPE[initialSubtype] || initialSubtype,
       commission_details: [],

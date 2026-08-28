@@ -3,6 +3,7 @@ type ContractOptionSource = {
   serial_no: string;
   title: string;
   customer: string;
+  data?: Record<string, unknown>;
 };
 
 type CaseFeeSource = {
@@ -14,4 +15,5 @@ export function buildCaseFeeContractOptions(
   contracts: ContractOptionSource[],
   sourceCase?: CaseFeeSource | null,
   editingFee?: CaseFeeSource | null,
+  expenseScope?: string,
 ): Array<{ value: number; label: string }>;

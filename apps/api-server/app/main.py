@@ -10744,6 +10744,40 @@ async def _finance_fee_commission_details(
     return normalized
 
 
+def _case_fee_contract_body(contract: BusinessRecord) -> str:
+    return str((contract.data or {}).get("contract_body") or "律所").strip()
+
+
+async def _resolve_case_fee_contract(
+    case_record: BusinessRecord | None,
+    contract_record: BusinessRecord | None,
+    expense_scope: str | None,
+    identity: dict,
+    db: AsyncSession,
+) -> BusinessRecord | None:
+    scope = str(expense_scope or "").strip()
+    if not case_record or scope not in {"律所", "平台"}:
+        return contract_record
+    if contract_record:
+        if contract_record.customer != case_record.customer:
+            raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
+        if contract_record.status not in CASE_SOURCE_CONTRACT_STATUSES:
+            raise HTTPException(status_code=409, detail="关联合同当前状态不可用于新增案件费用")
+        if _case_fee_contract_body(contract_record) != scope:
+            raise HTTPException(status_code=409, detail=f"新增{scope}费用必须选择合同主体为{scope}的合同")
+        return contract_record
+    candidates = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract",
+        BusinessRecord.customer == case_record.customer,
+        BusinessRecord.status.in_(CASE_SOURCE_CONTRACT_STATUSES),
+        *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    matched = next((item for item in candidates if _case_fee_contract_body(item) == scope), None)
+    if not matched:
+        raise HTTPException(status_code=409, detail=f"当前案件客户名下没有{scope}合同，无法新增{scope}费用")
+    return matched
+
+
 @app.put(f"{settings.api_prefix}/finance/fees/{{fee_id}}")
 async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _editable_finance_fee(fee_id, identity, db)
@@ -10765,6 +10799,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
         if case_record.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
         if contract_record and contract_record.customer != case_record.customer:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
+    contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
     commission_details = await _finance_fee_commission_details(body, amount, db)
     data.update({"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "case_no": body.case_no, "case_id": body.case_record_id, "contract_id": body.contract_record_id, "contract_no": contract_record.serial_no if contract_record else str(data.get("contract_no") or ""), "deadline": str(body.deadline) if body.deadline else "", "commission_details": commission_details, "is_refund": body.fee_type == "内部费用" and amount < 0})
     item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
@@ -17749,6 +17784,7 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
         if contract_record.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
         if case_record and contract_record.customer != case_record.customer:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
+    contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     handler = identity["username"] if identity.get("role") == "user" else body.handler
@@ -20303,12 +20339,17 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     if not handler_user:
         raise HTTPException(status_code=422, detail="费用经办人不存在或已停用")
     ordered_cases = sorted(cases, key=lambda item: case_ids.index(item.id))
+    contracts_by_case: dict[int, BusinessRecord | None] = {}
     for case_record in ordered_cases:
         if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
+        contracts_by_case[case_record.id] = await _resolve_case_fee_contract(
+            case_record, None, body.expense_scope, identity, db,
+        )
     created: list[BusinessRecord] = []
     amount = _round_fee_amount(body.amount)
     for case_record in ordered_cases:
+        contract_record = contracts_by_case[case_record.id]
         serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:6]}"
         item = BusinessRecord(
             module="finance", serial_no=serial, title=f"{case_record.title}{body.expense_subtype}",
@@ -20317,8 +20358,8 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
             data={"amount": amount, "fee_type": expected_fee_type,
                   "expense_scope": body.expense_scope, "expense_subtype": body.expense_subtype,
                   "is_refund": False, "case_no": case_record.serial_no, "case_id": case_record.id,
-                  "contract_id": (case_record.data or {}).get("contract_record_id"),
-                  "contract_no": (case_record.data or {}).get("contract_no", ""),
+                  "contract_id": contract_record.id if contract_record else (case_record.data or {}).get("contract_record_id"),
+                  "contract_no": contract_record.serial_no if contract_record else (case_record.data or {}).get("contract_no", ""),
                   "handler": handler, "court": (case_record.data or {}).get("court", ""),
                   "document_no": "", "payee": (case_record.data or {}).get("court", "")},
         )
