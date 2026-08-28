@@ -3694,7 +3694,10 @@ def _record_person_usernames(record: BusinessRecord) -> set[str]:
     for key in RECORD_PERSON_FIELDS_BY_MODULE.get(record.module, ()):
         value = str(data.get(key) or "").strip()
         if value:
-            usernames.add(value)
+            if record.module == "case" and key == "assistant_username":
+                usernames.update(_contract_person_values(value))
+            else:
+                usernames.add(value)
     for key in RECORD_PERSON_LIST_FIELDS_BY_MODULE.get(record.module, ()):
         usernames.update(_contract_person_values(data.get(key)))
     if record.module == "case":
@@ -3713,6 +3716,37 @@ def _record_person_usernames(record: BusinessRecord) -> set[str]:
     return {value for value in usernames if value}
 
 
+def _case_assistant_display(data: dict, users_by_username: dict[str, User]) -> tuple[str, bool]:
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    usernames = _contract_person_values(
+        data.get("assistant_username") or legacy.get("CaseAssistant")
+    )
+    stored_names = _contract_person_values(
+        data.get("assistant") or legacy.get("CaseAssistantName")
+    )
+    labels: list[str] = []
+    missing = False
+    for index in range(max(len(usernames), len(stored_names))):
+        username = usernames[index] if index < len(usernames) else ""
+        stored_name = stored_names[index] if index < len(stored_names) else ""
+        label = ""
+        unresolved = False
+        if username:
+            label, unresolved = _person_reference_display(username, users_by_username)
+        elif stored_name:
+            label, unresolved = _person_reference_display(stored_name, users_by_username)
+        if (not label or unresolved) and stored_name and stored_name != PERSON_NAME_PLACEHOLDER:
+            label = stored_name
+            unresolved = False
+        if not label or label == PERSON_NAME_PLACEHOLDER:
+            label = CONTRACT_PERSON_NAME_PLACEHOLDER
+            unresolved = True
+        if label not in labels:
+            labels.append(label)
+        missing = missing or unresolved
+    return ("、".join(labels), missing) if labels else ("—", False)
+
+
 def _apply_record_person_displays(
     result: dict,
     record: BusinessRecord,
@@ -3728,13 +3762,10 @@ def _apply_record_person_displays(
         reference = data.get(key)
         if record.module == "case" and key == "hearing_lawyer":
             reference = data.get("hearing_lawyer_username") or reference
-        if record.module == "case" and key == "assistant":
-            # Legacy cases persist both CaseAssistant (stable account) and
-            # CaseAssistantName (display label). Resolve the label through the
-            # stable account so imported Chinese names are not treated as
-            # usernames and replaced with the missing-name placeholder.
-            reference = data.get("assistant_username") or reference
-        display_name, missing = _person_reference_display(reference, users_by_username)
+        if record.module == "case" and key in {"assistant", "assistant_username"}:
+            display_name, missing = _case_assistant_display(data, users_by_username)
+        else:
+            display_name, missing = _person_reference_display(reference, users_by_username)
         data[f"{key}_display_name"] = display_name
         data[f"{key}_display_name_missing"] = missing
     for key in RECORD_PERSON_LIST_FIELDS_BY_MODULE.get(record.module, ()):

@@ -1,6 +1,11 @@
 import unittest
 
-from app.main import _apply_record_person_displays, _record_dict
+from app.main import (
+    PERSON_NAME_PLACEHOLDER,
+    _apply_record_person_displays,
+    _record_dict,
+    _record_person_usernames,
+)
 from app.models import BusinessRecord, User
 
 
@@ -69,6 +74,84 @@ class CaseAssistantDisplayMappingTest(unittest.TestCase):
         )
 
         self.assertEqual(result["data"]["assistant_display_name"], "英文姓名也可见 Alice")
+        self.assertFalse(result["data"]["assistant_display_name_missing"])
+
+    def test_legacy_chinese_name_without_username_is_preserved(self):
+        record = BusinessRecord(
+            id=40454,
+            module="case",
+            serial_no="SHMS2600371",
+            title="历史民事案件",
+            customer="历史客户",
+            status="二审",
+            owner="admin",
+            department="诉讼部",
+            data={"assistant": "朱淑旖", "assistant_username": ""},
+        )
+
+        result = _apply_record_person_displays(_record_dict(record), record, {})
+
+        self.assertEqual(result["data"]["assistant_display_name"], "朱淑旖")
+        self.assertNotEqual(result["data"]["assistant_display_name"], PERSON_NAME_PLACEHOLDER)
+        self.assertFalse(result["data"]["assistant_display_name_missing"])
+
+    def test_unresolvable_legacy_accounts_fall_back_to_parallel_name_list(self):
+        record = BusinessRecord(
+            id=2,
+            module="case",
+            serial_no="CODEX-828-MULTI-ASSISTANT",
+            title="历史多人助理案件",
+            customer="历史客户",
+            status="文书准备",
+            owner="admin",
+            department="诉讼部",
+            data={
+                "assistant": "赵雪,吴立跃",
+                "assistant_username": "zhaoxue,wuliyue",
+            },
+        )
+
+        result = _apply_record_person_displays(_record_dict(record), record, {})
+
+        self.assertEqual(result["data"]["assistant_display_name"], "赵雪、吴立跃")
+        self.assertEqual(result["data"]["assistant_username_display_name"], "赵雪、吴立跃")
+        self.assertFalse(result["data"]["assistant_display_name_missing"])
+        self.assertNotIn(PERSON_NAME_PLACEHOLDER, str(result["data"]))
+
+    def test_multi_assistant_usernames_are_loaded_individually(self):
+        record = BusinessRecord(
+            id=3,
+            module="case",
+            serial_no="CODEX-828-MULTI-LOOKUP",
+            title="当前多人助理案件",
+            customer="测试客户",
+            status="文书准备",
+            owner="admin",
+            department="诉讼部",
+            data={
+                "assistant": "赵雪,吴立跃",
+                "assistant_username": "zhaoxue,wuliyue",
+            },
+        )
+
+        self.assertTrue({"zhaoxue", "wuliyue"}.issubset(_record_person_usernames(record)))
+
+    def test_case_without_assistant_uses_dash_without_missing_placeholder(self):
+        record = BusinessRecord(
+            id=4,
+            module="case",
+            serial_no="CODEX-828-NO-ASSISTANT",
+            title="无助理案件",
+            customer="测试客户",
+            status="文书准备",
+            owner="admin",
+            department="诉讼部",
+            data={"assistant": "", "assistant_username": ""},
+        )
+
+        result = _apply_record_person_displays(_record_dict(record), record, {})
+
+        self.assertEqual(result["data"]["assistant_display_name"], "—")
         self.assertFalse(result["data"]["assistant_display_name_missing"])
 
 
