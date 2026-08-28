@@ -61,6 +61,7 @@ import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
+import { getCaseDetailSectionVisibility } from "./caseDetailSectionVisibility";
 import {
   FEE_SUBTYPE_TO_TYPE,
   filterCaseFileTypesForCaseType,
@@ -4989,29 +4990,35 @@ export default function CaseCenterPage({
               </table>
             </div>
           </Card>
-          {viewingCounselCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
+          {viewingCounselCase.data.case_type !== "法律顾问" && getCaseDetailSectionVisibility(viewingCounselCase.data, viewingCounselCase.status).court && <section className="case-court-summary" aria-label="法院信息">
             <div className="case-court-summary-title">法院信息</div>
             <div className="case-court-summary-grid">
-              <p><strong>一审法院</strong><span>{viewingCounselCase.data.first_court_name||viewingCounselCase.data.first_instance_court||viewingCounselCase.data.court||"—"}</span></p>
-              <p><strong>法庭</strong><span>{viewingCounselCase.data.first_court_courtroom||viewingCounselCase.data.courtroom||"—"}</span></p>
-              <p><strong>一审案号</strong><span>{viewingCounselCase.data.first_court_case_no||viewingCounselCase.data.first_instance_case_no||viewingCounselCase.data.court_case_no||"—"}</span></p>
-              <p><strong>立案时间</strong><span>{viewingCounselCase.data.first_court_filing_date||viewingCounselCase.data.filing_date||"—"}</span></p>
-              <p><strong>开庭时间</strong><span>{viewingCounselCase.data.first_court_hearing_date||viewingCounselCase.data.hearing_date||"—"}</span></p>
-              <p><strong>判决日期</strong><span>{viewingCounselCase.data.first_court_judgment_date||viewingCounselCase.data.judgment_date||"—"}</span></p>
-              <p><strong>二审法院</strong><span>{viewingCounselCase.data.second_court_name||viewingCounselCase.data.second_instance_court||"—"}</span></p>
-              <p><strong>二审法庭</strong><span>{viewingCounselCase.data.second_court_courtroom||"—"}</span></p>
-              <p><strong>二审案号</strong><span>{viewingCounselCase.data.second_court_case_no||viewingCounselCase.data.second_instance_case_no||"—"}</span></p>
-              <p><strong>二审立案日期</strong><span>{viewingCounselCase.data.second_court_filing_date||"—"}</span></p>
-              <p><strong>二审开庭日期</strong><span>{viewingCounselCase.data.second_court_hearing_date||"—"}</span></p>
-              <p><strong>执行法院</strong><span>{viewingCounselCase.data.execution_court_name||"—"}</span></p>
-              <p><strong>法庭</strong><span>{viewingCounselCase.data.execution_court_courtroom||"—"}</span></p>
-              <p><strong>执行案号</strong><span>{viewingCounselCase.data.execution_court_case_no||"—"}</span></p>
-              <p><strong>立案时间</strong><span>{viewingCounselCase.data.execution_court_filing_date||"—"}</span></p>
-              <p><strong>开庭时间</strong><span>{viewingCounselCase.data.execution_court_hearing_date||"—"}</span></p>
-              <p><strong>生效日期</strong><span>{viewingCounselCase.data.effective_date||"—"}</span></p>
+              {getCaseDetailSectionVisibility(viewingCounselCase.data, viewingCounselCase.status).firstCourt && <>
+                <p><strong>一审法院</strong><span>{viewingCounselCase.data.first_court_name||viewingCounselCase.data.first_instance_court||viewingCounselCase.data.court||"—"}</span></p>
+                <p><strong>法庭</strong><span>{viewingCounselCase.data.first_court_courtroom||viewingCounselCase.data.courtroom||"—"}</span></p>
+                <p><strong>一审案号</strong><span>{viewingCounselCase.data.first_court_case_no||viewingCounselCase.data.first_instance_case_no||viewingCounselCase.data.court_case_no||"—"}</span></p>
+                <p><strong>立案时间</strong><span>{viewingCounselCase.data.first_court_filing_date||viewingCounselCase.data.filing_date||"—"}</span></p>
+                <p><strong>开庭时间</strong><span>{viewingCounselCase.data.first_court_hearing_date||viewingCounselCase.data.hearing_date||"—"}</span></p>
+                <p><strong>判决日期</strong><span>{viewingCounselCase.data.first_court_judgment_date||viewingCounselCase.data.judgment_date||"—"}</span></p>
+              </>}
+              {getCaseDetailSectionVisibility(viewingCounselCase.data, viewingCounselCase.status).secondCourt && <>
+                <p><strong>二审法院</strong><span>{viewingCounselCase.data.second_court_name||viewingCounselCase.data.second_instance_court||"—"}</span></p>
+                <p><strong>二审法庭</strong><span>{viewingCounselCase.data.second_court_courtroom||"—"}</span></p>
+                <p><strong>二审案号</strong><span>{viewingCounselCase.data.second_court_case_no||viewingCounselCase.data.second_instance_case_no||"—"}</span></p>
+                <p><strong>二审立案日期</strong><span>{viewingCounselCase.data.second_court_filing_date||"—"}</span></p>
+                <p><strong>二审开庭日期</strong><span>{viewingCounselCase.data.second_court_hearing_date||"—"}</span></p>
+              </>}
+              {getCaseDetailSectionVisibility(viewingCounselCase.data, viewingCounselCase.status).executionCourt && <>
+                <p><strong>执行法院</strong><span>{viewingCounselCase.data.execution_court_name||"—"}</span></p>
+                <p><strong>法庭</strong><span>{viewingCounselCase.data.execution_court_courtroom||"—"}</span></p>
+                <p><strong>执行案号</strong><span>{viewingCounselCase.data.execution_court_case_no||"—"}</span></p>
+                <p><strong>立案时间</strong><span>{viewingCounselCase.data.execution_court_filing_date||"—"}</span></p>
+                <p><strong>开庭时间</strong><span>{viewingCounselCase.data.execution_court_hearing_date||"—"}</span></p>
+                <p><strong>生效日期</strong><span>{viewingCounselCase.data.effective_date||"—"}</span></p>
+              </>}
             </div>
           </section>}
-          <section className="case-archive-summary" aria-label="归档信息">
+          {getCaseDetailSectionVisibility(viewingCounselCase.data, viewingCounselCase.status).archive && <section className="case-archive-summary" aria-label="归档信息">
             <div className="case-court-summary-title">归档信息</div>
             <div className="case-court-summary-grid case-archive-summary-grid">
               <p><strong>归档类型</strong><span>{viewingCounselCase.data.archive_type === "deficit" ? "亏损归档" : viewingCounselCase.data.archive_type === "normal" ? "正常归档" : "—"}</span></p>
@@ -5029,7 +5036,7 @@ export default function CaseCenterPage({
               <p><strong>审核备注</strong><span>{viewingCounselCase.data.archive_review_comment || viewingCounselCase.data.archive_reject_reason || "—"}</span></p>
               <p><strong>归档号</strong><span>{viewingCounselCase.data.archive_no || "—"}</span></p>
             </div>
-          </section>
+          </section>}
           <div className="case-detail-body-grid">
             <div className="case-detail-tab-area">
           <Tabs
