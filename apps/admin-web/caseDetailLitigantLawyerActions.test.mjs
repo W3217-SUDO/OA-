@@ -10,7 +10,7 @@ test("case detail exposes independent litigant and hearing-lawyer actions", () =
   assert.match(source, /openCaseLitigants\(viewingCounselCase\)/);
   assert.match(source, /openCaseHearingLawyer\(viewingCounselCase\)/);
   assert.match(source, /\/cases\/\$\{editingCaseLitigants\.id\}\/litigants/);
-  assert.match(source, /\/cases\/\$\{editingCaseHearingLawyer\.id\}\/assign/);
+  assert.match(source, /\/cases\/\$\{editingCaseHearingLawyer\.id\}\/hearing-lawyer/);
 });
 
 test("litigant and lawyer actions guard archived cases and preserve cancel paths", () => {

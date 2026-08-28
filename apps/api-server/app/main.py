@@ -22352,6 +22352,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         permission = await _permission_payload_for_identity(identity, db)
         can_create_same_type = CASE_CREATE_PERMISSION_BY_TYPE[case_type] in set(permission.get("menu_keys", []))
     can_assign_team = role == "manager" and await _case_action_granted(identity, db, "case.team.assign")
+    can_edit_hearing_lawyer = case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     can_edit_basic = await _case_action_granted(identity, db, "case.detail.update")
     can_edit_court_info = await _case_action_granted(identity, db, "case.court.update") and case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     can_close_case = role == "manager" and await _case_action_granted(identity, db, "case.close")
@@ -22364,7 +22365,8 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_create_case_task": False, "can_duplicate_case": role == "manager" and can_create_same_type,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
         "can_merge_case": role == "manager",
-        "can_assign_team": can_assign_team, "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
+        "can_assign_team": can_assign_team, "can_edit_hearing_lawyer": can_edit_hearing_lawyer,
+        "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
         "can_close_case": can_close_case, "can_archive": can_archive_case,
         "can_create_finance": role == "manager", "team_role": role, "reason": "",
     }
@@ -23256,9 +23258,6 @@ async def update_case_hearing_lawyer(
     detail-page maintenance operation.
     """
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    if await _case_team_role(case_record, identity, db) != "manager":
-        raise HTTPException(status_code=403, detail="只有案件负责人或部门负责人可以修改开庭律师")
-    await _require_case_action(identity, db, "case.team.assign")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改开庭律师")
 

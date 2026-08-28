@@ -31,6 +31,13 @@ VIEWER = {
     "display_name": "第15行只读人员",
     "department": "诉讼部",
 }
+ADMIN = {
+    "username": "row15-admin",
+    "role": "admin",
+    "role_ids": ["admin"],
+    "display_name": "第15行系统管理员",
+    "department": "管理部",
+}
 
 
 class CaseHearingLawyerCreationStepIndependenceRow15Test(unittest.IsolatedAsyncioTestCase):
@@ -105,11 +112,13 @@ class CaseHearingLawyerCreationStepIndependenceRow15Test(unittest.IsolatedAsynci
                 ),
                 self._case("CODEX-827-15-EDIT", MANAGER["username"], "文书准备"),
                 self._case("CODEX-827-15-VIEWER", VIEWER["username"], "文书准备"),
+                self._case("CODEX-827-15-HIDDEN", "unrelated-owner", "文书准备", department="其他部门"),
                 self._case("CODEX-827-15-ARCHIVED", MANAGER["username"], "已归档"),
             ])
             await db.flush()
             self.edit_case_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "CODEX-827-15-EDIT"))
             self.viewer_case_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "CODEX-827-15-VIEWER"))
+            self.hidden_case_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "CODEX-827-15-HIDDEN"))
             self.archived_case_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "CODEX-827-15-ARCHIVED"))
             await db.commit()
 
@@ -119,7 +128,7 @@ class CaseHearingLawyerCreationStepIndependenceRow15Test(unittest.IsolatedAsynci
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://row15.test")
 
     @staticmethod
-    def _case(serial_no: str, owner: str, status: str) -> BusinessRecord:
+    def _case(serial_no: str, owner: str, status: str, *, department: str = "诉讼部") -> BusinessRecord:
         return BusinessRecord(
             module="case",
             serial_no=serial_no,
@@ -127,7 +136,7 @@ class CaseHearingLawyerCreationStepIndependenceRow15Test(unittest.IsolatedAsynci
             customer="第15行客户",
             status=status,
             owner=owner,
-            department="诉讼部",
+            department=department,
             data={
                 "case_type": "民事案件",
                 "case_creation_step": "basic",
@@ -178,14 +187,37 @@ class CaseHearingLawyerCreationStepIndependenceRow15Test(unittest.IsolatedAsynci
             self.assertEqual([event.action for event in events], ["修改开庭律师"])
             self.assertIn("第15行原开庭律师 → 第15行新开庭律师", events[0].comment)
 
-    async def test_non_manager_is_rejected_without_writes(self) -> None:
+    async def test_visible_non_manager_can_update_hearing_lawyer(self) -> None:
         self.identity = VIEWER
+        capability = await self.client.get(f"{API}/cases/{self.viewer_case_id}/action-capabilities")
+        self.assertEqual(capability.status_code, 200, capability.text)
+        self.assertTrue(capability.json()["can_edit_hearing_lawyer"])
         response = await self.client.put(
             f"{API}/cases/{self.viewer_case_id}/hearing-lawyer",
             json={"hearing_lawyer": "row15-hearing-new"},
         )
-        self.assertEqual(response.status_code, 403, response.text)
-        await self._assert_unchanged(self.viewer_case_id)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["hearing_lawyer_username"], "row15-hearing-new")
+
+    async def test_admin_can_update_any_visible_case_without_team_assignment_permission(self) -> None:
+        self.identity = ADMIN
+        capability = await self.client.get(f"{API}/cases/{self.edit_case_id}/action-capabilities")
+        self.assertEqual(capability.status_code, 200, capability.text)
+        self.assertTrue(capability.json()["can_edit_hearing_lawyer"])
+        response = await self.client.put(
+            f"{API}/cases/{self.edit_case_id}/hearing-lawyer",
+            json={"hearing_lawyer": "row15-hearing-new", "comment": "管理员可见即修改"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def test_non_visible_case_stays_inaccessible_without_writes(self) -> None:
+        self.identity = VIEWER
+        response = await self.client.put(
+            f"{API}/cases/{self.hidden_case_id}/hearing-lawyer",
+            json={"hearing_lawyer": "row15-hearing-new"},
+        )
+        self.assertEqual(response.status_code, 404, response.text)
+        await self._assert_unchanged(self.hidden_case_id)
 
     async def test_disabled_person_is_rejected_without_writes(self) -> None:
         response = await self.client.put(
