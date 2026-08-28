@@ -4961,9 +4961,6 @@ export default function CaseCenterPage({
         {caseFeeCreateStep === 0 ? <>
           <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={<ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>点击表格头部（费用类型、金额、备注、截止日期）可将第一行数据同步到各行。</li><li>截止日期默认为申请之日第5天，如有特殊情况，可在申请时修改。</li></ol>} />
           <Form form={feeForm} component={false}>
-            <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{ required: true, message: "请选择关联材料类型" }] : []}>
-              <Select allowClear options={feeSourceFileTypeOptions} onChange={() => feeForm.setFieldValue("items", (feeForm.getFieldValue("items") || []).map((item: Record<string, unknown>) => ({ ...item, expense_subtype: undefined, fee_type: undefined })))} />
-            </Form.Item>
             <Form.List name="items" rules={[{ validator: async (_, items) => { if (!items?.length) throw new Error("请至少新增一条费用"); } }]}>{(fields, { add, remove }) => <div className="case-fee-entry-table">
               <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
