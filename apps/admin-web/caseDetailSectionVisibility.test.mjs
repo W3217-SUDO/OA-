@@ -41,6 +41,9 @@ test("court stages become visible independently", () => {
 
 test("archive appears after archive data or an archive workflow status exists", () => {
   assert.equal(getCaseDetailSectionVisibility({ archive_submitted_at: "2026-08-28" }).archive, true);
+  assert.equal(getCaseDetailSectionVisibility({ archive_status: "未提交" }).archive, false);
+  assert.equal(getCaseDetailSectionVisibility({ archive_status: "not_submitted" }).archive, false);
+  assert.equal(getCaseDetailSectionVisibility({ archive_status: "待审核" }).archive, true);
   assert.equal(getCaseDetailSectionVisibility({}, "已归档").archive, true);
   assert.equal(getCaseDetailSectionVisibility({}, "文书准备").archive, false);
 });

@@ -42,7 +42,6 @@ const ARCHIVE_FIELDS = [
   "archive_submitter_display_name",
   "archive_submitted_at",
   "archive_submit_comment",
-  "archive_status",
   "archive_internal_reviewer",
   "archive_internal_reviewer_display_name",
   "archive_internal_reviewed_at",
@@ -55,6 +54,8 @@ const ARCHIVE_FIELDS = [
   "archive_reject_reason",
   "archive_no",
 ];
+
+const INACTIVE_ARCHIVE_STATUSES = new Set(["未提交", "not_submitted", "not-submitted", "draft"]);
 
 type CaseDetailData = Record<string, unknown>;
 
@@ -69,11 +70,19 @@ function hasAnyCaseDetailField(data: CaseDetailData, fields: string[]) {
   return fields.some((field) => hasMeaningfulCaseDetailValue(data[field]));
 }
 
+function hasSubmittedArchiveStatus(value: unknown): boolean {
+  if (!hasMeaningfulCaseDetailValue(value)) return false;
+  return !INACTIVE_ARCHIVE_STATUSES.has(String(value).trim().toLowerCase());
+}
+
 export function getCaseDetailSectionVisibility(data: CaseDetailData = {}, status = "") {
   const firstCourt = hasAnyCaseDetailField(data, FIRST_COURT_FIELDS);
   const secondCourt = hasAnyCaseDetailField(data, SECOND_COURT_FIELDS);
   const executionCourt = hasAnyCaseDetailField(data, EXECUTION_COURT_FIELDS);
-  const archive = hasAnyCaseDetailField(data, ARCHIVE_FIELDS) || status.includes("归档");
+  const archive =
+    hasAnyCaseDetailField(data, ARCHIVE_FIELDS) ||
+    hasSubmittedArchiveStatus(data.archive_status) ||
+    status.includes("归档");
 
   return {
     firstCourt,
@@ -83,4 +92,3 @@ export function getCaseDetailSectionVisibility(data: CaseDetailData = {}, status
     archive,
   };
 }
-

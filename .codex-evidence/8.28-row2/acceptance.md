@@ -30,3 +30,11 @@
 - `C:/Users/Administrator/Desktop/OA系统/问题/_返工验收/8.28_第2行/local-archive.png`
 
 本地测试数据前缀：`CODEX828R2*`。验收结束后隔离数据库、上传目录和临时服务均删除，不影响共享或线上数据。
+
+## v1.1.28 线上返工复验
+
+- 线上迁移案件 `GDMS2401121` 暴露兼容问题：`archive_status=未提交` 仍被识别为有效归档数据。
+- 已将 `未提交`、`not_submitted`、`not-submitted`、`draft` 明确视为未发起归档；待审核及后续状态仍正常展示。
+- 本地隔离案件 `CODEX828R2FIX` 使用 `archive_status=not_submitted`，内置浏览器确认 `法院信息=0`、`归档信息=0`。
+- 返工后专项测试 3/3、正式构建 5637 modules 均通过。
+- 截图：`C:/Users/Administrator/Desktop/OA系统/问题/_返工验收/8.28_release_v1.1.29/row2-local-unsubmitted-hidden.png`。
