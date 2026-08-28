@@ -299,6 +299,14 @@ def plan_case_repair(
         if normalized_names and data.get("legacy_participant_display_names") != normalized_names:
             updates["legacy_participant_display_names"] = normalized_names
 
+    effective_source = updates.get("source_person") or data.get("source_person")
+    effective_business_owner = updates.get("business_owner") or data.get("business_owner")
+    if not effective_source and effective_business_owner:
+        updates["source_person"] = effective_business_owner
+        business_owner_username = updates.get("business_owner_username") or data.get("business_owner_username")
+        if business_owner_username:
+            updates["source_person_username"] = business_owner_username
+
     owner_status, owner_identity = resolve_identity(str(record.owner or ""), "", identities, display_groups)
     owner_update = owner_identity.username if owner_status == "matched" and owner_identity and record.owner != owner_identity.username else ""
     normalized_team = list(dict.fromkeys(value.lower() for value in team_usernames if value))

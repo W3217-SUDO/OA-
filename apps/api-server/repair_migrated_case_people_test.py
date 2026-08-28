@@ -109,6 +109,16 @@ class MigratedCasePeopleRepairTests(unittest.TestCase):
         plan = self.catalog(employees=[employee(10, "resigned-user", "离职员工", status="离职", active=True)])
         self.assertTrue(plan["creates"][0]["identity"].is_active)
 
+    def test_migrated_business_owner_backfills_case_source_person(self):
+        plan = self.catalog(users=[user(1, "lixue", "李雪")])
+        repaired = MODULE.plan_case_repair(
+            case({"business_owner": "李雪", "business_owner_username": "lixue"}, owner="lixue"),
+            plan["identities"],
+            plan["display_groups"],
+        )
+        self.assertEqual(repaired["updates"]["source_person"], "李雪")
+        self.assertEqual(repaired["updates"]["source_person_username"], "lixue")
+
     def test_legacy_participants_get_chinese_names_and_team_accounts(self):
         plan = self.catalog(users=[user(1, "lixue", "李雪"), user(2, "tgn", "陶国南")])
         repaired = MODULE.plan_case_repair(

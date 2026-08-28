@@ -3819,7 +3819,7 @@ export default function CaseCenterPage({
       case "hearing_at": return row.data.hearing_date||row.data.first_court_hearing_date||"";
       case "handling_lawyer": return casePersonDisplayNames(row.data.handling_lawyers);
       case "assistant": return casePersonDisplayName(row.data.assistant, row.data.assistant_display_name);
-      case "source_person": return casePersonDisplayName(row.data.source_person||row.owner, row.data.source_person_display_name||row.owner_display_name);
+      case "source_person": return casePersonDisplayName(row.data.source_person||row.data.business_owner||row.owner, row.data.source_person_display_name||row.data.business_owner_display_name||row.owner_display_name);
       case "remaining_days": return row.data.remaining_days??0;
       default: return "";
     }
@@ -3862,7 +3862,7 @@ export default function CaseCenterPage({
     {title:"顾问期限",key:"counsel_range",width:225,render:(_:unknown,row:CaseRow)=>row.data.counsel_start&&row.data.counsel_end?`${row.data.counsel_start} 至 ${row.data.counsel_end}`:"—"},
     {title:"经办律师",key:"handling_lawyers",width:150,render:(_:unknown,row:CaseRow)=>casePersonDisplayNames(row.data.handling_lawyers)},
     {title:"律师助理",key:"assistant",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.assistant,row.data.assistant_display_name)},
-    {title:"案源人",key:"source_person",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.source_person||row.owner,row.data.source_person_display_name||row.owner_display_name)},
+    {title:"案源人",key:"source_person",width:120,render:(_:unknown,row:CaseRow)=>casePersonDisplayName(row.data.source_person||row.data.business_owner||row.owner,row.data.source_person_display_name||row.data.business_owner_display_name||row.owner_display_name)},
     {title:"剩余时间",key:"remaining_days",width:105,render:(_:unknown,row:CaseRow)=>{const end=dayjs(String(row.data.counsel_end||""));const days=end.isValid()?Math.max(0,end.startOf("day").diff(dayjs().startOf("day"),"day")):0;return <span style={{color:days<10?"red":"green"}}>{days} 天</span>;}},
     {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={ARCHIVE_LOCKED_STATUSES.includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
   ];
