@@ -2988,13 +2988,6 @@ export default function CaseCenterPage({
     setCaseTaskKind("案件任务");
     setCaseTaskCreateCase(row);
   };
-  const openCustomerTaskCreator = (row: CaseRow) => {
-    if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
-    taskForm.resetFields();
-    taskForm.setFieldsValue({ owner: profile.username || row.owner, deadline: undefined, priority: "普通", collaborators: [] });
-    setCaseTaskKind("客户任务");
-    setCaseTaskCreateCase(row);
-  };
   const createCaseTask = async () => {
     const targetCase = taskCase || caseTaskCreateCase;
     if (!targetCase) return;
@@ -5274,7 +5267,6 @@ export default function CaseCenterPage({
                 {counselDetailCapabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button></div>}
               </div>},
               {key:"customer-tasks",label:"客户任务",children:<div className="case-legacy-tab-panel">
-                {counselDetailCapabilities.can_create_case_task&&<Button type="primary" icon={<PlusOutlined/>} style={{marginBottom:10}} onClick={()=>openCustomerTaskCreator(viewingCounselCase)}>发布客户任务</Button>}
                 <Table rowKey="id" size="small" pagination={counselDetailCustomerTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailCustomerTasks} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",width:100,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
               </div>},
               {key:"clues",label:"线索信息",children:<div className="case-legacy-tab-panel">

@@ -13911,6 +13911,8 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
     case_nos = list(dict.fromkeys(value for value in requested_case_nos if value))
     case_no = case_nos[0] if case_nos else ""
     source = body.source.strip() or "日常任务"
+    if source == "客户任务":
+        raise HTTPException(status_code=403, detail="客户任务只能由客户通过客户端发布")
     if body.case_record_id and case_nos:
         raise HTTPException(status_code=422, detail="案件 ID 与案号列表不能同时提交")
     if source == "案件任务" and not case_nos and not body.case_record_id:
