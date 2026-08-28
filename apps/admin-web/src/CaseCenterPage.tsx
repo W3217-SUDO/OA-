@@ -3052,9 +3052,22 @@ export default function CaseCenterPage({
       if (viewingCounselCase) void loadCounselDetailCustomerTasksPage(viewingCounselCase, nextPage, nextPageSize);
     },
   };
-  const openCaseFee = (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所", expenseSubtype?: string) => {
+  const openCaseFee = async (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所", expenseSubtype?: string) => {
     if (!getCaseCapability(row).can_create_finance) return message.warning("当前账号没有新增案件费用权限");
-    const eligibleContracts = buildCaseFeeContractOptions(contracts, row, null, expenseScope);
+    let availableContracts = contracts;
+    if (expenseScope === "律所" || expenseScope === "平台") {
+      try {
+        const response = await api.get(`/cases/${row.id}/fee-contracts`, { params: { expense_scope: expenseScope } });
+        availableContracts = Array.from(new Map([
+          ...contracts,
+          ...(response.data.items || []),
+        ].map((contract: CaseRow) => [contract.id, contract])).values());
+        setContracts(availableContracts);
+      } catch (error: any) {
+        return message.error(error?.response?.data?.detail || `加载${expenseScope}合同失败`);
+      }
+    }
+    const eligibleContracts = buildCaseFeeContractOptions(availableContracts, row, null, expenseScope);
     if ((expenseScope === "律所" || expenseScope === "平台") && !eligibleContracts.length) {
       return message.warning(`当前案件客户名下没有${expenseScope}合同，无法新增${expenseScope}费用`);
     }

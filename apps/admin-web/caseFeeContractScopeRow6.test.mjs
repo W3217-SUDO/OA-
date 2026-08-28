@@ -19,7 +19,7 @@ test("row 6 filters selectable contracts by case customer and contract body", ()
 
 test("row 6 blocks the fee drawer when the customer has no matching contract body", () => {
   assert.match(page, /当前案件客户名下没有\$\{expenseScope\}合同，无法新增\$\{expenseScope\}费用/);
-  assert.match(page, /buildCaseFeeContractOptions\(contracts, row, null, expenseScope\)/);
+  assert.match(page, /buildCaseFeeContractOptions\(availableContracts, row, null, expenseScope\)/);
   assert.match(page, /feeItems\[0\]\?\.expense_scope/);
   assert.match(page, /initialContractId = eligibleContracts\.some/);
 });

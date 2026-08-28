@@ -10761,16 +10761,12 @@ async def _resolve_case_fee_contract(
     if contract_record:
         if contract_record.customer != case_record.customer:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
-        if contract_record.status not in CASE_SOURCE_CONTRACT_STATUSES:
-            raise HTTPException(status_code=409, detail="关联合同当前状态不可用于新增案件费用")
         if _case_fee_contract_body(contract_record) != scope:
             raise HTTPException(status_code=409, detail=f"新增{scope}费用必须选择合同主体为{scope}的合同")
         return contract_record
     candidates = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "contract",
         BusinessRecord.customer == case_record.customer,
-        BusinessRecord.status.in_(CASE_SOURCE_CONTRACT_STATUSES),
-        *(await _record_scope_conditions(identity, db)),
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     matched = next((item for item in candidates if _case_fee_contract_body(item) == scope), None)
     if not matched:
@@ -10789,15 +10785,18 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
         raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
     amount = _round_fee_amount(body.amount)
     data = dict(item.data or {})
-    contract_record = None
-    if body.contract_record_id:
-        contract_record = await _ensure_record_visible(body.contract_record_id, identity, db)
-        if contract_record.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
     case_record = None
     if body.case_record_id:
         case_record = await _ensure_record_visible(body.case_record_id, identity, db)
         if case_record.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
-        if contract_record and contract_record.customer != case_record.customer:
+        if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
+            raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
+    contract_record = None
+    if body.contract_record_id:
+        contract_record = await db.get(BusinessRecord, body.contract_record_id) if case_record else await _ensure_record_visible(body.contract_record_id, identity, db)
+        if not contract_record: raise HTTPException(status_code=404, detail="关联合同不存在")
+        if contract_record.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
+        if case_record and contract_record.customer != case_record.customer:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
     contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
     commission_details = await _finance_fee_commission_details(body, amount, db)
@@ -17782,9 +17781,12 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
         if linked_case.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
         if case_record and case_record.id != linked_case.id: raise HTTPException(status_code=409, detail="案件编号与案件记录不一致")
         case_record = linked_case
+    if case_record and not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
+        raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
     contract_record = None
     if body.contract_record_id:
-        contract_record = await _ensure_record_visible(body.contract_record_id, identity, db)
+        contract_record = await db.get(BusinessRecord, body.contract_record_id) if case_record else await _ensure_record_visible(body.contract_record_id, identity, db)
+        if not contract_record: raise HTTPException(status_code=404, detail="关联合同不存在")
         if contract_record.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
         if case_record and contract_record.customer != case_record.customer:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
@@ -20829,6 +20831,26 @@ async def list_case_eligible_contracts(identity: dict = Depends(current_identity
     contracts = (await db.scalars(
         select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
     )).all()
+    return {"items": [await _record_dict_for_identity(item, identity, db) for item in contracts], "total": len(contracts)}
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/fee-contracts")
+async def list_case_fee_contracts(
+    case_id: int,
+    expense_scope: str = Query(pattern="^(律所|平台)$"),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return every customer contract for a visible case and fee scope."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    if not capabilities["can_create_finance"]:
+        raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
+    contracts = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract",
+        BusinessRecord.customer == case_record.customer,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    contracts = [item for item in contracts if _case_fee_contract_body(item) == expense_scope]
     return {"items": [await _record_dict_for_identity(item, identity, db) for item in contracts], "total": len(contracts)}
 
 
