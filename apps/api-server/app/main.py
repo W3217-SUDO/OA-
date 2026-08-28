@@ -9141,13 +9141,15 @@ async def list_records(
                 conditions.append(or_(*customer_links) if customer_links else false())
         if relation_customer is not None:
             relation_no = str(relation_customer.serial_no or "").strip()
+            relation_name = str(relation_customer.title or "").strip()
             conditions.append(or_(
                 BusinessRecord.data["customer_id"].as_integer() == relation_customer.id,
                 BusinessRecord.data["customer_no"].as_string() == relation_no,
+                func.lower(func.trim(BusinessRecord.customer)) == relation_name.casefold(),
             ))
         elif customer.strip():
             conditions.append(BusinessRecord.customer.ilike(f"%{customer.strip()}%"))
-        if customer_no.strip():
+        if relation_customer is None and customer_no.strip():
             conditions.append(BusinessRecord.data["customer_no"].as_string() == customer_no.strip())
         if exclude_archived:
             conditions.append(BusinessRecord.status.notin_(["已归档", "Archived", "archived"]))
@@ -15999,7 +16001,6 @@ async def list_customers(
     related_records = list((await db.scalars(
         select(BusinessRecord).where(
             BusinessRecord.module.in_(["contract", "case"]),
-            *(await _record_scope_conditions(identity, db)),
         )
     )).all())
     customers_by_id = {item.id: item for item in page_items}
@@ -16027,6 +16028,8 @@ async def list_customers(
         if linked_customer is None:
             continue
         if related.module == "contract":
+            if related.status in {"已归档", "Archived", "archived"}:
+                continue
             relationship_counts[linked_customer.id]["contract_count"] += 1
         elif _is_civil_case_type(related_data.get("case_type")):
             relationship_counts[linked_customer.id]["civil_case_count"] += 1
@@ -20669,9 +20672,7 @@ async def _query_counsel_cases(
     for record in records:
         data = record.data or {}
         if relation_customer is not None:
-            linked_id = int(data.get("customer_id") or data.get("customer_record_id") or 0)
-            linked_no = str(data.get("customer_no") or "").strip()
-            if linked_id != relation_customer.id and linked_no != str(relation_customer.serial_no or "").strip(): continue
+            if not _record_belongs_to_customer(record, relation_customer, relation_customer.title): continue
         elif body.customer_no.strip():
             if str(data.get("customer_no") or "").strip() != body.customer_no.strip(): continue
         elif not contains(record.customer, body.customer): continue

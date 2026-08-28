@@ -729,16 +729,17 @@ export default function ContractCenterPage({
     const consumedRelationQuery = buildContractCustomerQueryFromRelation(consumeCustomerRelationTarget("contracts"));
     const relationQuery = consumedRelationQuery || customerRelationQueryRef.current;
     // Relationship navigation carries the immutable customer identity and must
-    // replace stale customer filters restored from a previous list visit.
+    // replace every stale filter restored from a previous list visit.
     const baseQuery = queryOverride ?? query;
     const effectiveQuery = relationQuery
-      ? { ...baseQuery, customer_id: undefined, customer_no: "", customer: "", ...relationQuery }
+      ? { ...relationQuery }
       : baseQuery;
     if (relationQuery) {
       customerRelationQueryRef.current = effectiveQuery;
       customerRelationQueryViewRef.current = initialView;
     }
     if (relationQuery) {
+      queryForm.resetFields();
       queryForm.setFieldsValue(relationQuery);
       setQuery(effectiveQuery);
     }
