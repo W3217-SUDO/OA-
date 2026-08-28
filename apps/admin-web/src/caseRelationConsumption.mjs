@@ -63,6 +63,11 @@ export const FEE_SUBTYPE_TO_TYPE = {
   "\u5224\u51b3\u91d1\u989d": "\u5b98\u65b9\u8d39\u7528",
   "\u6267\u884c\u8d39": "\u5b98\u65b9\u8d39\u7528",
   "\u6838\u5b9a\u6210\u672c": "\u5b98\u65b9\u8d39\u7528",
+  "\u68c0\u7d22\u8d39": "\u5176\u4ed6\u8d39\u7528",
+  "\u516c\u544a\u8d39": "\u5176\u4ed6\u8d39\u7528",
+  "\u62c5\u4fdd\u8d39": "\u5176\u4ed6\u8d39\u7528",
+  "\u9274\u5b9a\u8d39": "\u5176\u4ed6\u8d39\u7528",
+  "\u516c\u8bc1\u670d\u52a1\u8d39": "\u5176\u4ed6\u8d39\u7528",
   "\u7b2c\u4e09\u65b9\u8d39\u7528": "\u5176\u4ed6\u8d39\u7528",
   "\u4ee3\u7406\u8d39": "\u4ee3\u7406\u8d39",
   "\u5176\u4ed6\u8d39\u7528": "\u5176\u4ed6\u8d39\u7528",
@@ -79,6 +84,14 @@ export const LEGACY_OFFICIAL_FEE_SUBTYPES = [
   "\u4fdd\u5168\u8d39",
   "\u6267\u884c\u8d39",
   "\u6838\u5b9a\u6210\u672c",
+];
+
+export const LEGACY_THIRD_PARTY_FEE_SUBTYPES = [
+  "\u68c0\u7d22\u8d39",
+  "\u516c\u544a\u8d39",
+  "\u62c5\u4fdd\u8d39",
+  "\u9274\u5b9a\u8d39",
+  "\u516c\u8bc1\u670d\u52a1\u8d39",
 ];
 
 export const filterFeeSubtypesForFileType = (fileType, subtypes, relation) => {
