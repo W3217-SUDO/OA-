@@ -340,6 +340,7 @@ async def audit_or_apply(*, apply: bool, backup_confirmed: bool, limit: int) -> 
                 samples.append({"case_no": case.serial_no, **plan})
 
         created_users = 0
+        repair_pass_counts: list[int] = [len(case_plans)]
         if apply:
             for item in identity_plan["creates"]:
                 identity: PersonIdentity = item["identity"]
@@ -360,11 +361,25 @@ async def audit_or_apply(*, apply: bool, backup_confirmed: bool, limit: int) -> 
                 await db.flush()
                 employee.data = {**(employee.data or {}), "system_user_id": user.id, "is_active": user.is_active, "role": user.role}
                 created_users += 1
-            for case, plan in case_plans:
-                if plan["updates"]:
-                    case.data = {**(case.data or {}), **plan["updates"]}
-                if plan["owner"]:
-                    case.owner = plan["owner"]
+            pending_plans = case_plans
+            for pass_index in range(3):
+                for case, plan in pending_plans:
+                    if plan["updates"]:
+                        case.data = {**(case.data or {}), **plan["updates"]}
+                    if plan["owner"]:
+                        case.owner = plan["owner"]
+                await db.flush()
+                next_plans: list[tuple[BusinessRecord, dict[str, Any]]] = []
+                for case in cases:
+                    next_plan = plan_case_repair(case, identities, display_groups, historical_names)
+                    if next_plan["updates"] or next_plan["owner"]:
+                        next_plans.append((case, next_plan))
+                if not next_plans:
+                    break
+                repair_pass_counts.append(len(next_plans))
+                pending_plans = next_plans
+            else:
+                raise RuntimeError(f"case repair did not converge after 3 passes: {len(next_plans)} remaining")
             await db.commit()
         else:
             await db.rollback()
@@ -379,6 +394,7 @@ async def audit_or_apply(*, apply: bool, backup_confirmed: bool, limit: int) -> 
         "identity_issues": identity_plan["issues"],
         "historical_name_aliases": historical_names,
         "cases_with_repairs": len(case_plans),
+        "repair_pass_counts": repair_pass_counts,
         "case_issue_counts": dict(issue_counts),
         "case_issue_field_counts": dict(issue_field_counts),
         "unresolved_accounts": dict(unresolved_accounts.most_common()),
