@@ -22130,6 +22130,13 @@ async def _require_case_detail_write_access(case_record: BusinessRecord, identit
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
 
 
+async def _require_case_document_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Authorize legacy document generation independently of the creation wizard."""
+    await _require_case_action(identity, db, "case.detail.update")
+    if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
+        raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能生成办理文书")
+
+
 async def _case_action_granted(identity: dict, db: AsyncSession, action_code: str) -> bool:
     if "admin" in _identity_role_ids(identity):
         return True
@@ -22350,7 +22357,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     can_close_case = role == "manager" and await _case_action_granted(identity, db, "case.close")
     can_archive_case = role == "manager" and await _case_action_granted(identity, db, "case.archive.apply")
     base = {
-        "can_write": False, "can_upload_attachment": False,
+        "can_write": False, "can_generate_document": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_change_phase": False, "can_manage_hearing": False,
@@ -22385,6 +22392,11 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     try:
         await _require_case_task_write_access(case_record, identity, db)
         base["can_create_case_task"] = True
+    except HTTPException:
+        pass
+    try:
+        await _require_case_document_write_access(case_record, identity, db)
+        base["can_generate_document"] = True
     except HTTPException:
         pass
     try:
@@ -30568,7 +30580,7 @@ async def generate_case_document(case_id: int, document_type: str, identity: dic
     if document_type not in CASE_DOCUMENT_TYPES:
         raise HTTPException(status_code=404, detail="不支持的案件文书类型")
     record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_detail_write_access(record, identity, db)
+    await _require_case_document_write_access(record, identity, db)
     if record.status in {"已合并", "已归档"}:
         raise HTTPException(status_code=409, detail="已合并或已归档案件不能再生成办理文书")
     context = await _case_document_context(record, db)

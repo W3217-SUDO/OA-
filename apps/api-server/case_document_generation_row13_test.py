@@ -82,7 +82,7 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
                 module="case", serial_no="CODEX-827-13-INCOMPLETE", title="第十三行字段缺失案件", customer=customer.title,
                 status="一审准备开庭", owner="another-owner", department="诉讼部",
                 data={
-                    "customer_id": customer.id, "case_type": "民事案件", "case_creation_step": "completed",
+                    "customer_id": customer.id, "case_type": "民事案件", "case_creation_step": "basic",
                     "case_creation_approval_status": "已通过", "handling_lawyers": [EDITOR["display_name"]],
                     "handling_lawyer_usernames": [EDITOR["username"]], "case_team_usernames": [EDITOR["username"]],
                 },
@@ -154,10 +154,16 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
         capability = await self.client.get(f"{API}/cases/{self.complete_id}/action-capabilities")
         self.assertEqual(capability.status_code, 200, capability.text)
         self.assertTrue(capability.json()["can_write"])
+        self.assertTrue(capability.json()["can_generate_document"])
+        incomplete_capability = await self.client.get(f"{API}/cases/{self.incomplete_id}/action-capabilities")
+        self.assertEqual(incomplete_capability.status_code, 200, incomplete_capability.text)
+        self.assertFalse(incomplete_capability.json()["can_write"])
+        self.assertTrue(incomplete_capability.json()["can_generate_document"])
         self.identity = VIEWER
         denied_capability = await self.client.get(f"{API}/cases/{self.complete_id}/action-capabilities")
         self.assertEqual(denied_capability.status_code, 200, denied_capability.text)
         self.assertFalse(denied_capability.json()["can_write"])
+        self.assertFalse(denied_capability.json()["can_generate_document"])
         denied = await self.client.post(f"{API}/cases/{self.complete_id}/documents/authorization-letter")
         self.assertEqual(denied.status_code, 403, denied.text)
 

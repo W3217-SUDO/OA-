@@ -44,6 +44,8 @@ test("legacy more-operation submenu opens to the left", () => {
 });
 
 test("every row-13 document entry calls its distinct backend type and reveals the persisted folder", () => {
+  assert.match(source, /counselDetailCapabilities\.can_generate_document && !detailEditLocked/);
+  assert.doesNotMatch(source, /counselDetailCapabilities\.can_write && !detailEditLocked && <>\s*<Button type="text" block onClick=\{\(\) => void generateCaseDocument/);
   for (const documentType of [
     "authorization-letter",
     "first-instance-appellant-lawyer-letter",

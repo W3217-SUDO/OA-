@@ -545,6 +545,7 @@ type CaseTaskKind = "案件任务" | "客户任务";
 type CaseDocumentFolderEditor = {mode:"create"|"rename";originalName?:string};
 type CaseDetailCapabilities = {
   can_write: boolean;
+  can_generate_document: boolean;
   can_upload_attachment: boolean;
   can_delete_attachment: boolean;
   can_create_reminder: boolean;
@@ -567,7 +568,7 @@ type CaseDetailCapabilities = {
   reason: string;
 };
 const noCaseDetailWriteCapability: CaseDetailCapabilities = {
-  can_write: false, can_upload_attachment: false, can_delete_attachment: false,
+  can_write: false, can_generate_document: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
   can_update_progress: false, can_change_phase: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_basic: false, can_edit_court_info: false, can_close_case: false, can_archive: false,
@@ -4102,7 +4103,7 @@ export default function CaseCenterPage({
     });
   };
   const caseDetailMoreActionButtons = viewingCounselCase ? <>
-    {counselDetailCapabilities.can_write && !detailEditLocked && <>
+    {counselDetailCapabilities.can_generate_document && !detailEditLocked && <>
       <Button type="text" block onClick={() => void generateCaseDocument("authorization-letter")}>{moreOperationLabels[0]}</Button>
       <Button type="text" block onClick={() => void generateCaseDocument("first-instance-appellant-lawyer-letter")}>{moreOperationLabels[1]}</Button>
       <Button type="text" block onClick={() => void generateCaseDocument("first-instance-appellee-lawyer-letter")}>{moreOperationLabels[2]}</Button>
