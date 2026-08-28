@@ -268,6 +268,25 @@ const investigationListView = (route: string) => {
   if (route === "investigation-task-mine") return "assigned";
   return "";
 };
+
+const clueStatusesByRoute: Record<string, string[]> = {
+  "clue-my-draft": ["草稿"],
+  "clue-my-pending": ["待审批"],
+  "clue-my-customer": ["待客户审核"],
+  "clue-my-collect": ["待取证"],
+  "clue-my-collected": ["已取证"],
+  "clue-my-refused": ["已驳回", "已拒绝"],
+  "clue-audit-pending": ["待审批"],
+  "clue-audit-customer": ["待客户审核"],
+  "clue-audit-refused": ["已驳回", "已拒绝"],
+  "clue-audit-collect": ["待取证"],
+  "clue-audit-collected": ["已取证"],
+  "clue-company-draft": ["草稿"],
+  "clue-company-pending": ["待审批"],
+  "clue-company-collect": ["待取证"],
+  "clue-company-collected": ["已取证"],
+  "clue-company-refused": ["已驳回", "已拒绝"],
+};
 const moduleMeta = {
   investigation: {
     title: "调查任务",
@@ -517,6 +536,7 @@ export default function InvestigationCenterPage({
                     ? "mine"
                     : "all",
                 investigation_view: investigationListView(initialTab),
+                statuses: (clueStatusesByRoute[initialTab] || []).join(","),
               },
             });
       const loadedRows = data.items as Row[];
@@ -596,25 +616,7 @@ export default function InvestigationCenterPage({
   }, [initialTab]);
   const visibleRows = useMemo(() => {
     let result = rows;
-    const routeStatuses: Record<string, string[]> = {
-      "clue-my-draft": ["草稿"],
-      "clue-my-pending": ["待审批"],
-      "clue-my-customer": ["待客户审核"],
-      "clue-my-collect": ["待取证"],
-      "clue-my-collected": ["已取证"],
-      "clue-my-refused": ["已驳回"],
-      "clue-audit-pending": ["待审批"],
-      "clue-audit-customer": ["待客户审核"],
-      "clue-audit-refused": ["已驳回"],
-      "clue-audit-collect": ["待取证"],
-      "clue-audit-collected": ["已取证"],
-      "clue-company-draft": ["草稿"],
-      "clue-company-pending": ["待审批"],
-      "clue-company-collect": ["待取证"],
-      "clue-company-collected": ["已取证"],
-      "clue-company-refused": ["已驳回"],
-    };
-    const statuses = routeStatuses[initialTab] || [];
+    const statuses = clueStatusesByRoute[initialTab] || [];
     if (statuses.length)
       result = result.filter((row) => statuses.includes(row.status));
     if (initialTab === "investigation-task-published" && profile.role !== "admin") {

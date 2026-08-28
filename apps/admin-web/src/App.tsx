@@ -1250,7 +1250,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   const todoRoutes: Record<string, { primary: string; secondary: string }> = {
     待处理任务: { primary: "task-my-accepted", secondary: "task-my-created" },
     待审批官方费用: { primary: "finance-payment-audit", secondary: "finance-payment-audit" },
-    待审批线索: { primary: "clue", secondary: "clue" },
+    待审批线索: { primary: "clue-audit-pending", secondary: "clue-audit-refused" },
     待审批内部费用: { primary: "finance-internal-fee-audit", secondary: "finance-internal-fee-audit" },
     待审批合同: { primary: "contract-audit-pending", secondary: "contract-audit-refused" },
     待审批结算费用: { primary: "finance-settlement-audit", secondary: "finance-settlement-audit" },

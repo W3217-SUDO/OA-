@@ -7418,6 +7418,11 @@ def _dashboard_latest_case_row(
 
 @app.get(f"{settings.api_prefix}/dashboard")
 async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    # Keep dashboard task counts on the same lifecycle snapshot as /tasks.
+    # Otherwise an auto-completed handoff can remain in the dashboard after it
+    # has already disappeared from the user's accepted-task queue.
+    await _apply_task_auto_completion(db)
+    await _apply_task_overdue_performance(db)
     scope = await _record_scope_conditions(identity, db)
     records = (await db.scalars(select(BusinessRecord).where(*scope))).all()
     by_module = {module: [item for item in records if item.module == module] for module in {"case", "task", "finance", "refund", "contract", "clue", "seal"}}
@@ -7545,6 +7550,10 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
             ),
         ),
         "待审批合同": (0, 0),
+        "待审批线索": (
+            sum(item.status == "待审批" for item in by_module["clue"]),
+            sum(item.status in {"已驳回", "已拒绝"} for item in by_module["clue"]),
+        ),
         "待审批用印": (0, 0),
         "待审核归档": (0, 0),
     }
@@ -8996,6 +9005,10 @@ async def list_records(
             ])
     if module == "case" and scope == "mine":
         conditions.append(await _case_mine_scope_condition(identity, db))
+    if module == "clue" and statuses:
+        requested_statuses = [value.strip() for value in statuses.split(",") if value.strip()]
+        if requested_statuses:
+            conditions.append(BusinessRecord.status.in_(requested_statuses))
     if module in {"investigation", "task"} and investigation_view:
         publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
         legacy_publisher_missing = or_(

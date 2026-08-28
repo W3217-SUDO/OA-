@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.main import dashboard
+from app.main import dashboard, list_tasks
 from app.models import BusinessRecord, ContractApprovalStep
 
 
@@ -40,6 +40,17 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
             data=data or {},
         )
 
+    @staticmethod
+    async def task_queue(db, relation: str, statuses: str):
+        return await list_tasks(
+            keyword="", status_filter="", reminder_only=False, scope="mine",
+            relation=relation, statuses=statuses, page_id=None, priority="",
+            serial_no="", title="", description="", initiator="", case_no="",
+            source="", owner="", plaintiff="", defendant="", created_from=None,
+            created_to=None, deadline_from=None, deadline_to=None, sort_by="deadline",
+            sort_order="desc", page=1, page_size=15, identity=IDENTITY, db=db,
+        )
+
     async def test_admin_dashboard_uses_personal_pending_and_rejected_queues(self):
         async with self.sessions() as db:
             pending_task = self.record("task", "CODEX-827-R2-TASK-PENDING", "待处理", "admin")
@@ -49,6 +60,10 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
                 "task", "CODEX-827-R2-TASK-REJECTED", "已拒绝", "other",
                 {"initiator": "admin"},
             )
+            pending_clue = self.record("clue", "CODEX-827-R2-CLUE-PENDING", "待审批", "other")
+            rejected_clue = self.record("clue", "CODEX-827-R2-CLUE-REJECTED", "已驳回", "other")
+            refused_clue = self.record("clue", "CODEX-827-R2-CLUE-REFUSED", "已拒绝", "other")
+            unrelated_clue = self.record("clue", "CODEX-827-R2-CLUE-OTHER", "待取证", "admin")
             investigation_task = self.record(
                 "task", "CODEX-827-R2-TASK-INVESTIGATION", "待处理", "admin",
                 {"source": "调查任务"},
@@ -91,6 +106,7 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
             )
             db.add_all([
                 pending_task, processing_task, other_task, rejected_task, investigation_task, auto_completed_task, overdue_task,
+                pending_clue, rejected_clue, refused_clue, unrelated_clue,
                 pending_contract, rejected_contract, other_rejected_contract,
                 pending_seal, other_seal, rejected_seal,
                 pending_archive, other_pending_archive, own_pending_archive, rejected_archive,
@@ -105,12 +121,17 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
             await db.commit()
 
             result = await dashboard(IDENTITY, db)
+            pending_queue = await self.task_queue(db, "owned", "待接收,待处理")
+            rejected_queue = await self.task_queue(db, "initiated", "已拒绝")
 
         todos = {row[0]: (row[1], row[2]) for row in result["todos"]}
         self.assertEqual(todos["待处理任务"], (1, 1))
+        self.assertEqual(todos["待处理任务"], (pending_queue["total"], rejected_queue["total"]))
+        self.assertEqual(todos["待审批线索"], (1, 2))
         self.assertEqual(todos["待审批合同"], (1, 1))
         self.assertEqual(todos["待审批用印"], (1, 1))
         self.assertEqual(todos["待审核归档"], (1, 1))
+        self.assertEqual(auto_completed_task.status, "已完成")
 
 
 if __name__ == "__main__":
