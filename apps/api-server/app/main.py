@@ -4374,6 +4374,8 @@ def _task_dict(record: BusinessRecord) -> dict:
     workflow_status = record.status
     # 兼容早期本地数据：旧“待确认”等同于原系统“进行中-已完成”。
     effective_status = "已完成" if record.status == "待确认" else record.status
+    if record.status == "处理中" and str(data.get("source") or "").strip() == "案件任务":
+        effective_status = "进行中"
     if days_remaining is not None and days_remaining < 0 and record.status in {"待接收", "待处理", "处理中"}:
         effective_status = "已逾期"
     reminder_due = days_remaining in {1, 3} or (days_remaining is not None and days_remaining < 0 and abs(days_remaining) % 3 == 0)
@@ -13946,10 +13948,11 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
         collaborator = await _active_task_username(value, db, field_name="协作人")
         if collaborator != owner and collaborator not in collaborators:
             collaborators.append(collaborator)
-    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status="待接收", owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "start_at": body.start_at.isoformat() if body.start_at else "", "end_at": body.end_at.isoformat() if body.end_at else "", "priority": body.priority, "source": source, "creation_mode": "人工", "task_type": "手动任务", "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_nos": [item.serial_no for item in case_records], "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None, "case_ids": [item.id for item in case_records], "case_module": body.case_module if case_record else ""})
+    initial_status = "处理中" if source == "案件任务" else "待接收"
+    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status=initial_status, owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "start_at": body.start_at.isoformat() if body.start_at else "", "end_at": body.end_at.isoformat() if body.end_at else "", "priority": body.priority, "source": source, "creation_mode": "人工", "task_type": "手动任务", "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_nos": [item.serial_no for item in case_records], "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None, "case_ids": [item.id for item in case_records], "case_module": body.case_module if case_record else ""})
     db.add(task)
     await db.flush()
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="发起任务", to_status="待接收", operator=identity["username"], comment=f"负责人：{owner}；截止日期：{body.deadline}"), db, content="任务已分派.")
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="发起任务", to_status=initial_status, operator=identity["username"], comment=f"负责人：{owner}；截止日期：{body.deadline}"), db, content="任务已分派.")
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)

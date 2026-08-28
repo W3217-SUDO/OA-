@@ -200,6 +200,7 @@ const EMPTY_SUMMARY: Summary = {
   reminders: 0,
 };
 const statusColors: Record<string, string> = {
+  进行中: "blue",
   待接收: "orange",
   待处理: "orange",
   处理中: "blue",
@@ -389,7 +390,7 @@ export default function TaskCenterPage({
     Boolean(
       row &&
         (profile.role === "admin" || row.initiator === profile.username) &&
-        ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status),
+        ["待接收", "待处理", "处理中", "进行中"].includes(row.workflow_status || row.status),
     );
   const canReviewTaskException = (row?: TaskRow | null) =>
     Boolean(

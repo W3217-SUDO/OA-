@@ -12,6 +12,7 @@ import {
   Image,
   Input,
   InputNumber,
+  List,
   message,
   Modal,
   Radio,
@@ -31,6 +32,8 @@ import {
   CalendarOutlined,
   CheckSquareOutlined,
   CloseOutlined,
+  CommentOutlined,
+  DownloadOutlined,
   EditOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
@@ -56,7 +59,6 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
-import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { readStoredGlobalCaseSearchContext } from "./globalCaseSearchParity.mjs";
 import { formatRequiredDate } from "./formSafety";
@@ -119,6 +121,7 @@ import {
   getCaseUnarchiveRequestValidationError,
   resolveCaseFileTypeSelection,
 } from "./caseFifthBatchParity.mjs";
+import "./task-center.css";
 import {
   getCaseAttachmentSelectionValidationError,
   getCaseAttachmentUploadValidationError,
@@ -516,6 +519,31 @@ type TaskRow = {
   case_no: string;
   days_remaining?: number | null;
   collaborators?: string[];
+  collaborator_display_names?: string[];
+  workflow_status?: string;
+  start_at?: string;
+  end_at?: string;
+  created_at?: string;
+  description?: string;
+  department?: string;
+};
+type CaseTaskHistoryItem = {
+  id: number;
+  action: string;
+  operator: string;
+  operator_display_name?: string;
+  comment: string;
+  from_status: string;
+  to_status: string;
+  created_at: string;
+};
+type CaseTaskAttachment = {
+  id: number;
+  original_name: string;
+  category: string;
+  uploader: string;
+  uploader_display_name?: string;
+  created_at: string;
 };
 type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 const CASE_TASK_DEFAULT_PAGE = 1;
@@ -656,6 +684,7 @@ const caseStatuses = [
   "执行",
 ];
 const statusColors: Record<string, string> = {
+  进行中: "blue",
   等待公证书: "gold",
   等待审核公证书: "purple",
   待立案审批: "gold",
@@ -920,6 +949,13 @@ export default function CaseCenterPage({
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
   const [caseTaskMaterialFiles, setCaseTaskMaterialFiles] = useState<UploadFile[]>([]);
   const [caseTaskKind, setCaseTaskKind] = useState<CaseTaskKind>("案件任务");
+  const [viewingCaseTask, setViewingCaseTask] = useState<TaskRow | null>(null);
+  const [caseTaskHistory, setCaseTaskHistory] = useState<CaseTaskHistoryItem[]>([]);
+  const [caseTaskDetailMaterials, setCaseTaskDetailMaterials] = useState<CaseTaskAttachment[]>([]);
+  const [caseTaskDetailFeedbacks, setCaseTaskDetailFeedbacks] = useState<CaseTaskAttachment[]>([]);
+  const [caseTaskFeedbackText, setCaseTaskFeedbackText] = useState("");
+  const [caseTaskFeedbackFiles, setCaseTaskFeedbackFiles] = useState<UploadFile[]>([]);
+  const [caseTaskDetailLoading, setCaseTaskDetailLoading] = useState(false);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
   const [caseTaskPage, setCaseTaskPage] = useState(CASE_TASK_DEFAULT_PAGE);
@@ -2268,21 +2304,114 @@ export default function CaseCenterPage({
     rememberContractDetailTarget({ id: contractId, serial_no: serialNo || undefined });
     onNavigate?.("contract-company");
   };
-  const openRelatedTask = (task: TaskRow) => {
-    if (!rememberTaskDetailTarget({ id: task.id, serial_no: task.serial_no })) {
-      message.warning("当前案件任务未生成可查看编号");
-      return;
+  const loadCaseTaskDetail = async (task: TaskRow) => {
+    setCaseTaskDetailLoading(true);
+    try {
+      const [recordResult, historyResult, materialResult, feedbackResult] = await Promise.all([
+        api.get(`/records/${task.id}`),
+        api.get(`/tasks/${task.id}/history`),
+        api.get("/attachments", { params: { record_id: task.id, category: "任务资料附件", page_size: 200 } }),
+        api.get("/attachments", { params: { record_id: task.id, category: "任务反馈附件", page_size: 200 } }),
+      ]);
+      const record = recordResult.data as TaskRow & { data?: Record<string, any> };
+      const taskData = record.data || {};
+      setViewingCaseTask({
+        ...task,
+        ...record,
+        status: task.status || record.status,
+        workflow_status: task.workflow_status || record.status,
+        initiator: String(taskData.initiator || task.initiator || ""),
+        initiator_display_name: task.initiator_display_name || record.initiator_display_name,
+        collaborators: Array.isArray(taskData.collaborators) ? taskData.collaborators : task.collaborators,
+        collaborator_display_names: task.collaborator_display_names,
+        case_no: String(taskData.case_no || task.case_no || ""),
+        start_at: String(taskData.start_at || task.start_at || ""),
+        end_at: String(taskData.end_at || task.end_at || ""),
+        deadline: String(taskData.deadline || task.deadline || ""),
+      });
+      setCaseTaskHistory(historyResult.data.items || []);
+      setCaseTaskDetailMaterials(materialResult.data.items || []);
+      setCaseTaskDetailFeedbacks(feedbackResult.data.items || []);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件任务详情加载失败");
+    } finally {
+      setCaseTaskDetailLoading(false);
     }
-    const route = task.initiator === profile.username
-      ? "task-my-created"
-      : task.owner === profile.username
-        ? "task-my-accepted"
-        : task.collaborators?.includes(profile.username)
-          ? "task-my-collaborating"
-          : profile.role === "admin"
-            ? "task-company-accepted"
-            : "task-my-accepted";
-    onNavigate?.(route);
+  };
+  const openRelatedTask = (task: TaskRow) => {
+    if (!task.id) return message.warning("当前案件任务未生成可查看编号");
+    setCaseTaskFeedbackText("");
+    setCaseTaskFeedbackFiles([]);
+    void loadCaseTaskDetail(task);
+  };
+  const closeCaseTaskDetail = () => {
+    setViewingCaseTask(null);
+    setCaseTaskHistory([]);
+    setCaseTaskDetailMaterials([]);
+    setCaseTaskDetailFeedbacks([]);
+    setCaseTaskFeedbackText("");
+    setCaseTaskFeedbackFiles([]);
+  };
+  const canWithdrawCaseTask = (task: TaskRow | null) => Boolean(
+    task &&
+    (profile.role === "admin" || task.initiator === profile.username) &&
+    ["待接收", "待处理", "处理中", "进行中"].includes(task.workflow_status || task.status),
+  );
+  const withdrawCaseTask = (task: TaskRow) => {
+    let reason = "";
+    Modal.confirm({
+      title: `撤回任务：${task.serial_no}`,
+      content: <Input.TextArea rows={4} placeholder="请填写撤回原因" onChange={(event) => { reason = event.target.value; }} />,
+      okText: "确认撤回",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        if (!reason.trim()) {
+          message.warning("请填写撤回原因");
+          throw new Error("撤回原因不能为空");
+        }
+        await api.post(`/tasks/${task.id}/withdraw`, { comment: reason.trim() });
+        message.success("任务已撤回");
+        setCaseTasks((items) => items.map((item) => item.id === task.id ? { ...item, status: "已撤回", workflow_status: "已撤回" } : item));
+        setCounselDetailTasks((items) => items.map((item) => item.id === task.id ? { ...item, status: "已撤回", workflow_status: "已撤回" } : item));
+        await loadCaseTaskDetail({ ...task, status: "已撤回", workflow_status: "已撤回" });
+      },
+    });
+  };
+  const submitCaseTaskFeedback = async () => {
+    if (!viewingCaseTask) return;
+    if (!caseTaskFeedbackText.trim()) return message.warning("请输入留言内容");
+    setCaseTaskDetailLoading(true);
+    try {
+      const body = new FormData();
+      body.append("comment", caseTaskFeedbackText.trim());
+      for (const file of caseTaskFeedbackFiles) {
+        const source = file.originFileObj || (file as unknown as File);
+        if (source && typeof (source as Blob).arrayBuffer === "function") body.append("files", source);
+      }
+      await api.post(`/tasks/${viewingCaseTask.id}/feedback`, body);
+      message.success("留言及附件已保存");
+      setCaseTaskFeedbackText("");
+      setCaseTaskFeedbackFiles([]);
+      await loadCaseTaskDetail(viewingCaseTask);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "留言保存失败");
+    } finally {
+      setCaseTaskDetailLoading(false);
+    }
+  };
+  const downloadCaseTaskAttachment = async (item: CaseTaskAttachment) => {
+    try {
+      const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = item.original_name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "附件下载失败");
+    }
   };
   const openRelatedFee = async (fee: CaseRow) => {
     if (!fee.id) {
@@ -5066,6 +5195,52 @@ export default function CaseCenterPage({
             </div>
           </div>
         </Form>
+      </Drawer>
+      <Drawer
+        open={Boolean(viewingCaseTask)}
+        width={620}
+        title="任务详情"
+        onClose={closeCaseTaskDetail}
+        destroyOnHidden
+        footer={<Space>{viewingCaseTask && canWithdrawCaseTask(viewingCaseTask) && <Button danger onClick={() => withdrawCaseTask(viewingCaseTask)}>撤回任务</Button>}<Button onClick={closeCaseTaskDetail}>关闭</Button></Space>}
+      >
+        <div className="task-detail-flow" aria-label="任务流程">
+          {["任务已分派", "任务处理中", "任务完成", "任务验收"].map((label, index) => {
+            const statusIndex: Record<string, number> = { 待接收: 0, 待处理: 0, 进行中: 1, 处理中: 1, 已逾期: 1, 待确认: 2, 已完成: 2, 已验收: 3, 已撤回: 0, 已停止: 0, 已拒绝: 0 };
+            const current = statusIndex[viewingCaseTask?.workflow_status || viewingCaseTask?.status || ""] ?? 0;
+            return <span key={label} className={index <= current ? "active" : ""}>{label}</span>;
+          })}
+        </div>
+        <div className="task-detail-meta">
+          <span><b>任务标题：</b>{viewingCaseTask?.title || "—"}</span>
+          <span><b>任务编号：</b>{viewingCaseTask?.serial_no || "—"}</span>
+          <span><b>当前负责人：</b>{casePersonDisplayName(viewingCaseTask?.owner, viewingCaseTask?.owner_display_name)}</span>
+          <span><b>发布人：</b>{casePersonDisplayName(viewingCaseTask?.initiator, viewingCaseTask?.initiator_display_name)}</span>
+          <span><b>关联案号：</b>{viewingCaseTask?.case_no || "—"}</span>
+          <span><b>开始时间：</b>{viewingCaseTask?.start_at ? new Date(viewingCaseTask.start_at).toLocaleString("zh-CN") : "—"}</span>
+          <span><b>结束时间：</b>{viewingCaseTask?.end_at ? new Date(viewingCaseTask.end_at).toLocaleString("zh-CN") : viewingCaseTask?.deadline || "—"}</span>
+          <span><b>状态：</b><Tag color={statusColors[viewingCaseTask?.status || ""] || "blue"}>{viewingCaseTask?.status || "—"}</Tag></span>
+          <span><b>协作人：</b>{viewingCaseTask?.collaborator_display_names?.join("、") || casePersonDisplayNames(viewingCaseTask?.collaborators) || "—"}</span>
+          <span><b>任务描述：</b>{viewingCaseTask?.description || "—"}</span>
+        </div>
+        <div className="task-detail-section-title">过程记录</div>
+        <List
+          className="task-history"
+          loading={caseTaskDetailLoading}
+          dataSource={[...caseTaskHistory].reverse()}
+          locale={{ emptyText: "暂无过程记录" }}
+          renderItem={(item) => <List.Item><List.Item.Meta title={<Space><Tag>{item.action}</Tag><b>{casePersonDisplayName(item.operator, item.operator_display_name)}</b><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></Space>} description={<><div>{item.from_status && item.to_status ? `${item.from_status} → ${item.to_status}` : item.to_status || ""}</div><p>{item.comment || "—"}</p></>} /></List.Item>}
+        />
+        <div className="task-detail-section-title">任务资料附件</div>
+        <Table size="small" rowKey="id" pagination={false} dataSource={caseTaskDetailMaterials} locale={{ emptyText: "暂无任务资料附件" }} columns={[{ title: "文件名", dataIndex: "original_name", ellipsis: true }, { title: "上传人", width: 110, render: (_: unknown, item: CaseTaskAttachment) => casePersonDisplayName(item.uploader, item.uploader_display_name) }, { title: "操作", width: 80, render: (_: unknown, item: CaseTaskAttachment) => <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadCaseTaskAttachment(item)}>下载</Button> }]} />
+        <div className="task-detail-section-title" style={{ marginTop: 12 }}>留言附件</div>
+        <Table size="small" rowKey="id" pagination={false} dataSource={caseTaskDetailFeedbacks} locale={{ emptyText: "暂无留言附件" }} columns={[{ title: "文件名", dataIndex: "original_name", ellipsis: true }, { title: "上传人", width: 110, render: (_: unknown, item: CaseTaskAttachment) => casePersonDisplayName(item.uploader, item.uploader_display_name) }, { title: "操作", width: 80, render: (_: unknown, item: CaseTaskAttachment) => <Button type="link" icon={<DownloadOutlined />} onClick={() => void downloadCaseTaskAttachment(item)}>下载</Button> }]} />
+        <div className="task-detail-section-title" style={{ marginTop: 12 }}>留言</div>
+        <Input.TextArea rows={3} value={caseTaskFeedbackText} placeholder="请输入留言内容" onChange={(event) => setCaseTaskFeedbackText(event.target.value)} style={{ marginBottom: 8 }} />
+        <Upload multiple fileList={caseTaskFeedbackFiles} beforeUpload={(file) => { setCaseTaskFeedbackFiles((items) => [...items, file]); return false; }} onRemove={(file) => setCaseTaskFeedbackFiles((items) => items.filter((item) => item.uid !== file.uid))}>
+          <Button icon={<UploadOutlined />}>上传附件</Button>
+        </Upload>
+        <Button type="primary" icon={<CommentOutlined />} loading={caseTaskDetailLoading} onClick={() => void submitCaseTaskFeedback()} style={{ marginTop: 8 }}>提交留言</Button>
       </Drawer>
       <Drawer open={Boolean(caseTaskCreateCase)} width={620} title="案件任务" onClose={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }} destroyOnHidden footer={<Space><Button type="primary" onClick={createCaseTask}>确定</Button><Button onClick={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }}>取消</Button></Space>}>
         <Steps size="small" current={0} items={[{title:"任务填写"},{title:"任务分派"},{title:"任务处理"},{title:"任务完成"}]} style={{ marginBottom: 20 }} />
