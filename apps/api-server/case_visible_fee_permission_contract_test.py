@@ -43,9 +43,7 @@ class CaseVisibleFeePermissionContractTest(unittest.IsolatedAsyncioTestCase):
                 data={
                     "case_type": "民事争议",
                     "case_creation_step": "completed",
-                    "assistant": VIEWER["display_name"],
-                    "assistant_username": VIEWER["username"],
-                    "case_team_usernames": [VIEWER["username"]],
+                    "shared_to": [VIEWER["username"]],
                 },
             )
             db.add(case)
@@ -85,7 +83,17 @@ class CaseVisibleFeePermissionContractTest(unittest.IsolatedAsyncioTestCase):
     async def test_visible_non_manager_gets_capability_and_can_create_fee(self) -> None:
         capability = await self.client.get(f"{API}/cases/{self.case_id}/action-capabilities")
         self.assertEqual(capability.status_code, 200, capability.text)
-        self.assertTrue(capability.json()["can_create_finance"])
+        enabled = capability.json()
+        for key in (
+            "can_write", "can_generate_document", "can_upload_attachment",
+            "can_delete_attachment", "can_create_reminder", "can_delete_reminder",
+            "can_create_log", "can_update_progress", "can_change_phase",
+            "can_manage_hearing", "can_create_case_task", "can_duplicate_case",
+            "can_merge_case", "can_assign_team", "can_edit_hearing_lawyer",
+            "can_edit_basic", "can_edit_court_info", "can_close_case",
+            "can_archive", "can_create_finance",
+        ):
+            self.assertTrue(enabled[key], key)
 
         response = await self.client.post(f"{API}/finance/fees", json=self.fee_payload())
         self.assertEqual(response.status_code, 201, response.text)

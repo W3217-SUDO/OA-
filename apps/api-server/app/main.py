@@ -10683,14 +10683,15 @@ async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession) -
     item = await db.get(BusinessRecord, fee_id)
     if not item or item.module != "finance":
         raise HTTPException(status_code=404, detail="费用记录不存在")
-    await _require_record_owner_or_manager(item, identity, db)
-    if item.status != "草稿":
-        raise HTTPException(status_code=409, detail="仅草稿费用可以修改或删除")
     case_id = int((item.data or {}).get("case_id") or 0)
     if case_id:
         case = await _ensure_record_visible(case_id, identity, db)
         if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail="归档中的案件费用不可修改或删除")
+    else:
+        await _require_record_owner_or_manager(item, identity, db)
+    if item.status != "草稿":
+        raise HTTPException(status_code=409, detail="仅草稿费用可以修改或删除")
     return item
 
 
@@ -20297,8 +20298,6 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
         raise HTTPException(status_code=422, detail="费用经办人不存在或已停用")
     ordered_cases = sorted(cases, key=lambda item: case_ids.index(item.id))
     for case_record in ordered_cases:
-        await _require_record_owner_or_manager(case_record, identity, db)
-        _require_case_creation_completed(case_record)
         if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
     created: list[BusinessRecord] = []
@@ -21221,16 +21220,10 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
     not be silently recreated under the new case.
     """
     source = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(source, identity, db)
     source_data = dict(source.data or {})
     case_type = str(source_data.get("case_type") or "").strip()
-    if case_type not in CASE_CREATABLE_TYPES:
+    if case_type not in CASE_CREATABLE_TYPES and case_type not in CIVIL_CASE_TYPES:
         raise HTTPException(status_code=409, detail="原案件类型不支持复制新建")
-    permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
-    if identity.get("role") != "admin" and permission_key:
-        permission = await _permission_payload_for_identity(identity, db)
-        if permission_key not in set(permission.get("menu_keys", [])):
-            raise HTTPException(status_code=403, detail="当前角色没有该案件类型的新建权限")
     contract_id = int(source_data.get("contract_id") or source_data.get("contract_record_id") or 0)
     contract: BusinessRecord | None = None
     if contract_id:
@@ -21314,7 +21307,6 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     original matter.
     """
     target = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(target, identity, db)
     source_no = body.source_case_no.strip()
     if source_no == target.serial_no:
         raise HTTPException(status_code=422, detail="待合并案件不能与当前案件相同")
@@ -21324,7 +21316,6 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     ))
     if not source:
         raise HTTPException(status_code=404, detail="未找到待合并案件，或当前账号无权查看")
-    await _require_record_owner_or_manager(source, identity, db)
     blocked_statuses = {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     if target.status in blocked_statuses or source.status in blocked_statuses:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能参与合并")
@@ -22124,20 +22115,19 @@ def _require_case_creation_completed(case_record: BusinessRecord, *, require_app
 
 async def _require_case_detail_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Apply one non-bypassable gate to every mutable case-detail feature."""
-    await _require_case_action(identity, db, "case.detail.update")
-    _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能新增、删除或修改案件详情资料")
 
 
 async def _require_case_document_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Authorize legacy document generation independently of the creation wizard."""
-    await _require_case_action(identity, db, "case.detail.update")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能生成办理文书")
 
 
 async def _case_action_granted(identity: dict, db: AsyncSession, action_code: str) -> bool:
+    if action_code.startswith("case."):
+        return True
     if "admin" in _identity_role_ids(identity):
         return True
     permission = await _permission_payload_for_identity(identity, db)
@@ -22163,39 +22153,24 @@ async def _require_case_note_write_access(
     belong to the case itself, so their write gate must not depend on that
     wizard-only marker.
     """
-    if await _case_team_role(case_record, identity, db) == "none":
-        raise HTTPException(status_code=403, detail="只有案件团队成员或系统管理员可以维护案件提醒和日志")
-    await _require_case_action(identity, db, action_code)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
 
 
 async def _require_case_task_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Allow responsible case members to publish tasks for every active case."""
-    role = await _case_team_role(case_record, identity, db)
-    if role not in {"manager", "handling_lawyer"}:
-        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以发布案件任务")
-    await _require_case_action(identity, db, "case.task.create")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能发布案件任务")
 
 
 async def _require_case_attachment_upload_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Allow case materials before creation approval without widening other writes."""
-    if await _case_team_role(case_record, identity, db) == "none":
-        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师、律师助理或系统管理员可以上传案件文档")
-    await _require_case_action(identity, db, "case.attachment.write")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能上传案件文档")
 
 
 async def _require_case_progress_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Only a responsible/manager user or assigned handling lawyer may advance a case."""
-    role = await _case_team_role(case_record, identity, db)
-    if role not in {"manager", "handling_lawyer"}:
-        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以维护案件进展和开庭排期")
-    await _require_case_action(identity, db, "case.progress.update")
-    _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
     if case_record.status == "已合并":
@@ -22204,18 +22179,12 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
 
 async def _require_case_court_info_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Authorize the independent court-info dialog without workflow side effects."""
-    await _require_case_action(identity, db, "case.court.update")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能修改法院信息")
 
 
 async def _require_case_phase_change_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Keep phase maintenance independent from creation approval while preserving write guards."""
-    role = await _case_team_role(case_record, identity, db)
-    if role not in {"admin", "manager", "handling_lawyer"}:
-        raise HTTPException(status_code=403, detail="只有案件负责人、部门负责人、受派经办律师或系统管理员可以修改案件阶段")
-    await _require_case_action(identity, db, "case.phase.update")
-    _require_case_creation_completed(case_record, require_approval=False)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能修改案件阶段")
     if case_record.status == "已合并":
@@ -22347,24 +22316,23 @@ async def _resolve_case_phase(body: CasePhaseChangeInput, db: AsyncSession) -> d
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
     role = await _case_team_role(case_record, identity, db)
     case_type = str((case_record.data or {}).get("case_type") or "").strip()
-    can_create_same_type = identity.get("role") == "admin"
-    if not can_create_same_type and case_type in CASE_CREATE_PERMISSION_BY_TYPE:
-        permission = await _permission_payload_for_identity(identity, db)
-        can_create_same_type = CASE_CREATE_PERMISSION_BY_TYPE[case_type] in set(permission.get("menu_keys", []))
-    can_assign_team = role == "manager" and await _case_action_granted(identity, db, "case.team.assign")
-    can_edit_hearing_lawyer = case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
-    can_edit_basic = await _case_action_granted(identity, db, "case.detail.update")
-    can_edit_court_info = await _case_action_granted(identity, db, "case.court.update") and case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
-    can_close_case = role == "manager" and await _case_action_granted(identity, db, "case.close")
-    can_archive_case = role == "manager" and await _case_action_granted(identity, db, "case.archive.apply")
+    immutable = case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
+    active = not immutable
+    can_create_same_type = active and (case_type in CASE_CREATABLE_TYPES or case_type in CIVIL_CASE_TYPES)
+    can_assign_team = active
+    can_edit_hearing_lawyer = active
+    can_edit_basic = active
+    can_edit_court_info = active
+    can_close_case = active
+    can_archive_case = case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     base = {
         "can_write": False, "can_generate_document": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_change_phase": False, "can_manage_hearing": False,
-        "can_create_case_task": False, "can_duplicate_case": role == "manager" and can_create_same_type,
+        "can_create_case_task": False, "can_duplicate_case": can_create_same_type,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
-        "can_merge_case": role == "manager",
+        "can_merge_case": active,
         "can_assign_team": can_assign_team, "can_edit_hearing_lawyer": can_edit_hearing_lawyer,
         "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
         "can_close_case": can_close_case, "can_archive": can_archive_case,
@@ -22408,7 +22376,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         await _require_case_detail_write_access(case_record, identity, db)
     except HTTPException as exc:
         return {**base, "reason": str(exc.detail)}
-    can_progress = role in {"manager", "handling_lawyer"} and await _case_action_granted(identity, db, "case.progress.update")
+    can_progress = active
     return {
         **base,
         "can_write": True,
@@ -23214,8 +23182,6 @@ async def decide_case_agent_action(
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")
 async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
     previous = case_record.status
     handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
     if not handling_lawyers and not body.hearing_lawyer.strip():
@@ -23708,8 +23674,6 @@ async def archive_readiness(case_id: int, identity: dict = Depends(current_ident
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/close")
 async def close_case_for_archive(case_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}: raise HTTPException(status_code=409, detail="归档审核中或已归档案件不能重复办结")
     if (case_record.data or {}).get("case_closed_at"): raise HTTPException(status_code=409, detail="案件已经办理办结确认")
     tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all()
@@ -23729,8 +23693,6 @@ async def close_case_for_archive(case_id: int, body: TaskActionInput, identity: 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/archive")
 async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    _require_case_creation_completed(case_record)
     if case_record.status == "已归档": raise HTTPException(status_code=409, detail="案件已经归档")
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核"} and body.submit: raise HTTPException(status_code=409, detail="案件已提交归档审核，请等待审核")
     checks = await _case_archive_checks(case_record, db)
@@ -23881,7 +23843,6 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/unarchive/request")
 async def request_case_unarchive(case_id: int, body: CaseUnarchiveRequestInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
     if case_record.status != "已归档":
         raise HTTPException(status_code=409, detail="只有已归档案件可以申请解档")
     data = case_record.data or {}; pending = data.get("unarchive_request") or {}

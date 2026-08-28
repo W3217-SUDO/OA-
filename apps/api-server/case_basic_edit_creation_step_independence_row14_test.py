@@ -81,7 +81,7 @@ class CaseBasicEditCreationStepIndependenceRow14Test(unittest.IsolatedAsyncioTes
                     status="正常",
                     owner=DOCUMENT_USER["username"],
                     department=DOCUMENT_USER["department"],
-                    data={},
+                    data={"shared_to": [NO_PERMISSION_USER["username"]]},
                 ),
                 BusinessRecord(
                     module="case",
@@ -184,14 +184,14 @@ class CaseBasicEditCreationStepIndependenceRow14Test(unittest.IsolatedAsyncioTes
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.document_case_id))).all())
             self.assertEqual([event.action for event in events], ["修改普通案件基本信息"])
 
-    async def test_missing_action_permission_is_still_rejected_without_writes(self) -> None:
+    async def test_visible_user_without_action_role_can_edit(self) -> None:
         self.identity = NO_PERMISSION_USER
-        response = await self.client.put(f"{API}/cases/{self.no_permission_case_id}/normal-basic", json=self._payload("不应写入"))
-        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.client.put(f"{API}/cases/{self.no_permission_case_id}/normal-basic", json=self._payload("可见用户已修改"))
+        self.assertEqual(response.status_code, 200, response.text)
         async with self.sessions() as db:
             persisted = await db.get(BusinessRecord, self.no_permission_case_id)
-            self.assertEqual(persisted.title, "第14行无权限案件")
-            self.assertEqual(await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == self.no_permission_case_id)), None)
+            self.assertEqual(persisted.title, "可见用户已修改")
+            self.assertIsNotNone(await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == self.no_permission_case_id)))
 
     async def test_archive_lock_still_rejects_without_writes(self) -> None:
         response = await self.client.put(f"{API}/cases/{self.archived_case_id}/normal-basic", json=self._payload("不应写入"))

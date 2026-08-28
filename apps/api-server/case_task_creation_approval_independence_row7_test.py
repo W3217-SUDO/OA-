@@ -77,7 +77,7 @@ class CaseTaskCreationApprovalIndependenceRow7Test(unittest.IsolatedAsyncioTestC
     async def test_pending_approval_exposes_and_persists_case_task(self) -> None:
         capabilities = await self.client.get(f"{API}/cases/{self.pending_id}/action-capabilities")
         self.assertEqual(capabilities.status_code, 200, capabilities.text)
-        self.assertFalse(capabilities.json()["can_write"])
+        self.assertTrue(capabilities.json()["can_write"])
         self.assertTrue(capabilities.json()["can_create_case_task"])
 
         created = await self.client.post(f"{API}/tasks", json={

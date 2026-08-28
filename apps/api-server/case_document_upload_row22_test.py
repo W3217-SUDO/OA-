@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment
+from app.models import BusinessRecord, FileAttachment, SystemParameter
 from app.security import current_identity
 
 
@@ -46,7 +46,10 @@ class CaseDocumentUploadRow22Test(unittest.IsolatedAsyncioTestCase):
                     "case_creation_approval_status": "待审批",
                 },
             )
-            db.add(case)
+            db.add_all([
+                case,
+                SystemParameter(category="case_file_type", code="ROW22-EVIDENCE", name="起诉材料及证据", sort_order=1, is_active=True),
+            ])
             await db.commit()
             await db.refresh(case)
             self.case_id = case.id
@@ -76,7 +79,7 @@ class CaseDocumentUploadRow22Test(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(capability_response.status_code, 200, capability_response.text)
         capabilities = capability_response.json()
-        self.assertFalse(capabilities["can_write"])
+        self.assertTrue(capabilities["can_write"])
         self.assertTrue(capabilities["can_upload_attachment"])
 
         upload_response = await self.client.post(
