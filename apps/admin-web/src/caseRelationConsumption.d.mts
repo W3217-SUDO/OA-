@@ -27,6 +27,7 @@ export function filterCasePhasesForCaseType<T extends RelationCandidate>(
 ): T[];
 
 export const FEE_SUBTYPE_TO_TYPE: Record<string, string>;
+export const LEGACY_OFFICIAL_FEE_SUBTYPES: string[];
 
 export function filterFeeSubtypesForFileType(
   fileType: string,

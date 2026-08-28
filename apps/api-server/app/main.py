@@ -2561,7 +2561,7 @@ class FinanceFeeInput(BaseModel):
     amount: float
     fee_type: str
     expense_scope: str | None = Field(default=None, pattern="^(律所|平台|内部)$")
-    expense_subtype: str | None = Field(default=None, pattern="^(官费|诉讼费|保全费|鉴定费|公证费|公告费|执行费|第三方费用|代理费|其他费用|内部费用)$")
+    expense_subtype: str | None = Field(default=None, pattern="^(官费|一审诉讼费|二审诉讼费|再审诉讼费|诉讼费|保全费|鉴定费|公证费|公告费|调解金额|判决金额|执行费|核定成本|第三方费用|代理费|其他费用|内部费用)$")
     case_no: str = ""
     handler: str
     court: str = ""
@@ -14783,8 +14783,9 @@ async def _advance_case_from_fixed_task(task: BusinessRecord, db: AsyncSession, 
 
 FINANCE_FEE_TYPES = {"官方费用", "代理费", "其他费用", "内部费用", "结算费用", "预损费用", "归档费用"}
 EXPENSE_SUBTYPE_FEE_TYPE = {
-    "官费": "官方费用", "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用",
-    "公证费": "官方费用", "公告费": "官方费用", "执行费": "官方费用",
+    "官费": "官方费用", "一审诉讼费": "官方费用", "二审诉讼费": "官方费用", "再审诉讼费": "官方费用",
+    "诉讼费": "官方费用", "保全费": "官方费用", "鉴定费": "官方费用", "公证费": "官方费用",
+    "公告费": "官方费用", "调解金额": "官方费用", "判决金额": "官方费用", "执行费": "官方费用", "核定成本": "官方费用",
     "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用",
 }
 EXPENSE_SCOPE_FEE_TYPES = {"律所": {"官方费用", "代理费", "其他费用"}, "平台": {"官方费用", "代理费", "其他费用"}, "内部": {"内部费用"}}

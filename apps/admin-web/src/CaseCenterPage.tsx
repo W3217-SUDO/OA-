@@ -63,6 +63,7 @@ import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mj
 import { getCaseDetailSectionVisibility } from "./caseDetailSectionVisibility";
 import {
   FEE_SUBTYPE_TO_TYPE,
+  LEGACY_OFFICIAL_FEE_SUBTYPES,
   filterCaseFileTypesForCaseType,
   filterCasePhasesForCaseType,
   filterFeeSubtypesForFileType,
@@ -896,6 +897,7 @@ export default function CaseCenterPage({
   const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
+  const [feeSubtypePreset, setFeeSubtypePreset] = useState<"official" | "">("");
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
   const [caseFeeCreateStep, setCaseFeeCreateStep] = useState(0);
   const [createdCaseFees, setCreatedCaseFees] = useState<CaseRow[]>([]);
@@ -1080,7 +1082,9 @@ export default function CaseCenterPage({
       : ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"];
     return filterFeeSubtypesForFileType(String(sourceFileType || ""), scoped, caseRelations?.fileTypeFeeTypes);
   };
-  const feeSubtypeOptions = applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
+  const feeSubtypeOptions = feeSubtypePreset === "official"
+    ? LEGACY_OFFICIAL_FEE_SUBTYPES
+    : applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
   const getCaseCapability = (row?: CaseRow | null) => {
     if (!row) return noCaseDetailWriteCapability;
     // A migrated case can be opened directly without first appearing in the
@@ -3044,9 +3048,11 @@ export default function CaseCenterPage({
       return message.warning(`当前案件客户名下没有${expenseScope}合同，无法新增${expenseScope}费用`);
     }
     const sourceFileType = resolveCaseFileTypeSelection("", fileTypeOptionsForCase(row.data.case_type));
-    const preferredSubtype = expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
+    const officialPreset = expenseSubtype === "官费";
+    setFeeSubtypePreset(officialPreset ? "official" : "");
+    const preferredSubtype = officialPreset ? undefined : expenseSubtype || (expenseScope === "内部" ? "内部费用" : "官费");
     const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
-    const initialSubtype = allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : allowedSubtypes[0];
+    const initialSubtype = preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset ? undefined : allowedSubtypes[0];
     const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
     const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
       ? linkedContractId
@@ -3056,7 +3062,7 @@ export default function CaseCenterPage({
       title: `${row.title}案件费用`, amount: row.data.amount || undefined,
       contract_record_id: initialContractId,
       expense_scope: expenseScope, expense_subtype: initialSubtype,
-      fee_type: FEE_SUBTYPE_TO_TYPE[initialSubtype] || initialSubtype,
+      fee_type: initialSubtype ? FEE_SUBTYPE_TO_TYPE[initialSubtype] || initialSubtype : undefined,
       commission_details: [],
       handler: profile.username || row.owner, court: row.data.court || "", payee: row.data.court || "",
       deadline: undefined, description: "",
@@ -3102,6 +3108,7 @@ export default function CaseCenterPage({
   };
   const closeCaseFeeCreator = () => {
     setFeeCase(null);
+    setFeeSubtypePreset("");
     setCaseFeeCreateStep(0);
     setCreatedCaseFees([]);
     setCaseFeePaymentDrafts([]);
@@ -3189,6 +3196,7 @@ export default function CaseCenterPage({
   };
   const editCaseFee = (row: CaseRow) => {
     if (row.status !== "草稿") return message.warning("仅草稿费用可以修改");
+    setFeeSubtypePreset("");
     feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
     feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: row.data.expense_scope || "律所", expense_subtype: row.data.expense_subtype || "官费", fee_type: row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
     setEditingFeeRow(row);
@@ -4088,11 +4096,7 @@ export default function CaseCenterPage({
   const selectedInternalFee=internalFeeRows.find(row=>selectedInternalFeeKeys.includes(row.id));
   const openCaseFeeBySubtype=(scope:"律所"|"内部",subtype:string)=>{
     if(!viewingCounselCase)return;
-    openCaseFee(viewingCounselCase,scope);
-    const feeType=subtype==="内部费用"?"内部费用":subtype==="代理费"?"代理费":["官费","诉讼费","保全费","鉴定费","公证费","公告费","执行费"].includes(subtype)?"官方费用":"其他费用";
-    feeForm.setFieldValue(["items", 0, "expense_subtype"], subtype);
-    feeForm.setFieldValue(["items", 0, "fee_type"], feeType);
-    feeForm.setFieldValue(["items", 0, "title"], `${viewingCounselCase.title}${subtype}`);
+    openCaseFee(viewingCounselCase,scope,subtype);
   };
   const requireSingleFee=(keys:Key[],row:CaseRow|undefined,action:string)=>{
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
