@@ -41,6 +41,23 @@ GENERAL_SKILL = AgentSkill(
 AGENT_SKILLS: tuple[AgentSkill, ...] = (
     GENERAL_SKILL,
     AgentSkill(
+        id="legal-document-drafting",
+        name="法律文书起草",
+        category="文书",
+        description="依据当前案件事实生成可编辑的 Word 法律文书草稿",
+        source="system:legal-document-drafting",
+        available=True,
+        unavailable_reason="",
+        instruction=(
+            "你正在起草法律文书。先识别用户要求的文书类型和标题，再依据当前案件空间及本轮选定材料写出完整正文；"
+            "不得虚构当事人、案号、法院、日期、金额、证据或法律程序，缺失信息统一写为【待补充：具体字段】。"
+            "输出应直接作为 Word 文档正文，不要解释生成过程，不要说无法创建 Word，不要输出 Markdown 标记。"
+            "使用正式、克制、可审核的法律语言；保留标题、当事人信息、事实与理由、请求或意见、落款和日期等"
+            "与该文书类型相关的结构。AI空间中的文书始终是草稿，转入正式系统前仍需人工复核。"
+        ),
+        quick_prompts=("起草民事起诉状 Word", "起草答辩状 Word", "起草律师函 Word"),
+    ),
+    AgentSkill(
         id="plain-legal-brief",
         name="清晰法律简报",
         category="写作",

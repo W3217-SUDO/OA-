@@ -36,6 +36,7 @@ import {
   DownloadOutlined,
   EditOutlined,
   FileTextOutlined,
+  FileWordOutlined,
   FolderOpenOutlined,
   FolderOutlined,
   InfoCircleOutlined,
@@ -574,8 +575,23 @@ const normalizeCaseTaskPageState = (
       : 0;
   return { items, total, page, pageSize, pages };
 };
-type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string};
-type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;options?:CaseFileTypeOption[]};
+type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean};
+
+const isAiWordGenerationRequest = (value: string) =>
+  /(?:生成|起草|新建|制作|编写|撰写|整理).{0,24}(?:word|docx|文档|起诉状|答辩状|代理词|法律意见书|律师函|申请书|合同|函件)/i.test(value);
+
+const aiWordDocumentName = (request: string) => {
+  const explicitTitle = request.match(/标题(?:为|是)?[“\"]([^”\"]{1,80})[”\"]/i)?.[1]?.trim();
+  const cleaned = request
+    .replace(/(?:请|帮我|给我|需要|可以|能否)/g, "")
+    .replace(/(?:生成|起草|新建|制作|编写|撰写|整理)/g, "")
+    .replace(/(?:word|docx|格式|文档)/gi, "")
+    .replace(/[\\/:*?"<>|\r\n]+/g, " ")
+    .trim()
+    .slice(0, 60);
+  return `${explicitTitle || cleaned || "AI生成文书"}-${dayjs().format("YYYYMMDD-HHmmss")}.docx`;
+};
+type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;disabled?:boolean;options?:CaseFileTypeOption[]};
 type WarehouseStorageLocationOption = {id:number;name:string;is_active:boolean};
 type WarehouseCatalogOption = {id:number;name:string;is_active:boolean;locations:WarehouseStorageLocationOption[]};
 type AttachmentPreview = {
@@ -592,6 +608,7 @@ type CaseLogRow = {id:number;content:string;operator:string;operator_display_nam
 type CaseLogKind = "case" | "refund";
 type CaseTaskKind = "案件任务" | "客户任务";
 type CaseDocumentFolderEditor = {mode:"create"|"rename";originalName?:string};
+type CaseAiDraftEditor = {mode:"create"|"edit";item?:AttachmentRow};
 type CaseDetailCapabilities = {
   can_write: boolean;
   can_generate_document: boolean;
@@ -900,6 +917,8 @@ export default function CaseCenterPage({
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
+  const [aiDraftEditor, setAiDraftEditor] = useState<CaseAiDraftEditor | null>(null);
+  const [promotingAiDraft, setPromotingAiDraft] = useState<AttachmentRow | null>(null);
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [movingCounselAttachmentIds, setMovingCounselAttachmentIds] = useState<number[] | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
@@ -1074,6 +1093,11 @@ export default function CaseCenterPage({
   const [reminderForm] = Form.useForm();
   const [caseLogForm] = Form.useForm();
   const [attachmentRenameForm] = Form.useForm();
+  const [aiDraftForm] = Form.useForm();
+  const [aiDraftPromoteForm] = Form.useForm();
+  const [aiDraftPromoteOptions, setAiDraftPromoteOptions] = useState<CaseFileTypeOption[]>([]);
+  const [aiDraftPromoteOptionsLoading, setAiDraftPromoteOptionsLoading] = useState(false);
+  const [counselDocumentFolderTree, setCounselDocumentFolderTree] = useState<CaseFileTypeOption[]>([]);
   const [caseDocumentFolderForm] = Form.useForm();
   const [caseAttachmentMoveForm] = Form.useForm();
   const [caseFileSealForm] = Form.useForm();
@@ -1938,6 +1962,15 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件任务加载失败");
     }
   };
+  const applyCounselDocumentFolderPayload = (payload: any): CaseFileTypeOption[] => {
+    const tree = Array.isArray(payload?.tree) ? payload.tree : [];
+    setCounselDocumentFolderTree(tree);
+    return tree;
+  };
+  const refreshCounselDocumentFolderTree = async (caseId: number): Promise<CaseFileTypeOption[]> => {
+    const {data}=await api.get(`/cases/${caseId}/document-folders`);
+    return applyCounselDocumentFolderPayload(data);
+  };
   const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
     if (!isCaseDetailView) {
       sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
@@ -1973,7 +2006,7 @@ export default function CaseCenterPage({
       const customerRecordId = Number(detailRecord.data.customer_record_id || detailRecord.data.customer_id)
         || caseCustomers.find((item) => item.title === detailRecord.customer)?.id;
       const emptyAttachmentResponse = { data: { items: [] } };
-      const [historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes] = await Promise.allSettled([
+      const [historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
         api.get(`/records/${row.id}/history`),
         api.get(`/cases/${row.id}/tasks`, {
           params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case" },
@@ -1988,6 +2021,7 @@ export default function CaseCenterPage({
         api.get(`/cases/${row.id}/relations`),
         customerRecordId ? api.get("/attachments", { params: { record_id: customerRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
         contractRecordId ? api.get("/attachments", { params: { record_id: contractRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
+        api.get(`/cases/${row.id}/document-folders`),
       ]);
       setCounselDetailHistory(historyRes.status === "fulfilled" ? historyRes.value.data.items || [] : []);
       if (taskRes.status === "fulfilled") {
@@ -2003,12 +2037,13 @@ export default function CaseCenterPage({
       setCounselDetailAttachments(attachmentRes.status === "fulfilled" ? attachmentRes.value.data.items || [] : []);
       setCounselDetailCustomerAttachments(customerAttachmentRes.status === "fulfilled" ? customerAttachmentRes.value.data.items || [] : []);
       setCounselDetailContractAttachments(contractAttachmentRes.status === "fulfilled" ? contractAttachmentRes.value.data.items || [] : []);
+      setCounselDocumentFolderTree(folderRes.status === "fulfilled" && Array.isArray(folderRes.value.data?.tree) ? folderRes.value.data.tree : []);
       setCounselReminders(reminderRes.status === "fulfilled" ? reminderRes.value.data.items || [] : []);
       setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
       setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
       setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
       setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
-      if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes].some((result) => result.status === "rejected")) {
+      if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
         message.warning("部分案件附加信息加载失败，已打开基础详情");
       }
     } catch (error: any) {
@@ -2067,6 +2102,8 @@ export default function CaseCenterPage({
     if (!agentCase) return;
     const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的案件问题");
+    const effectiveSkillId = isAiWordGenerationRequest(content) ? "legal-document-drafting" : agentSkillId;
+    if (effectiveSkillId !== agentSkillId) setAgentSkillId(effectiveSkillId);
     if (agentSending) activeCaseAgentRequestRef.current?.abort();
     const outgoingScreenshots = [...agentScreenshots];
     const outgoingDocumentIds = [...agentDocumentIds];
@@ -2096,8 +2133,8 @@ export default function CaseCenterPage({
           ...(localStorage.getItem("access_token") ? { Authorization: `Bearer ${localStorage.getItem("access_token")}` } : {}),
         },
         body: JSON.stringify({
-          message: encodeAgentSkillMessage(agentSkillId, content),
-          skill_id: agentSkillId,
+          message: encodeAgentSkillMessage(effectiveSkillId, content),
+          skill_id: effectiveSkillId,
           attachment_ids: outgoingScreenshots.map((item) => item.id),
           document_ids: outgoingDocumentIds,
           stream: true,
@@ -2136,6 +2173,15 @@ export default function CaseCenterPage({
           }
         }
         if (done) break;
+      }
+      if (streamedContent.trim() && isAiWordGenerationRequest(content)) {
+        const name = aiWordDocumentName(content);
+        await api.post(`/cases/${agentCase.id}/ai-space/files`, { name, content: streamedContent });
+        message.success(`Word 文档已生成到 AI 空间：${name}`);
+        if (viewingCounselCase?.id === agentCase.id) {
+          await openCounselDetail(agentCase);
+          selectCounselDocCategory("AI空间");
+        }
       }
     } catch (error: any) {
       if (!controller.signal.aborted) {
@@ -2802,10 +2848,112 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "案件文件重命名失败");
     }
   };
+  const openCreateAiDraft = () => {
+    aiDraftForm.setFieldsValue({ name: `AI文档-${dayjs().format("YYYYMMDD-HHmm")}.docx`, content: "" });
+    setAiDraftEditor({ mode: "create" });
+  };
+  const openEditAiDraft = async (item: AttachmentRow) => {
+    if (!viewingCounselCase) return;
+    try {
+      const { data } = await api.get(`/cases/${viewingCounselCase.id}/ai-space/files/${item.id}/content`);
+      aiDraftForm.setFieldsValue({ name: data.name || item.original_name, content: data.content || "" });
+      setAiDraftEditor({ mode: "edit", item });
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "AI 草稿读取失败");
+    }
+  };
+  const saveAiDraft = async () => {
+    if (!viewingCounselCase || !aiDraftEditor) return;
+    const values = await aiDraftForm.validateFields();
+    try {
+      if (aiDraftEditor.mode === "create") {
+        await api.post(`/cases/${viewingCounselCase.id}/ai-space/files`, {
+          name: String(values.name || "").trim(),
+          content: values.content || "",
+        });
+        message.success("AI Word 文档已保存");
+      } else if (aiDraftEditor.item) {
+        if (String(values.name || "").trim() !== aiDraftEditor.item.original_name) {
+          await api.put(`/cases/attachments/${aiDraftEditor.item.id}/rename`, { original_name: String(values.name || "").trim() });
+        }
+        await api.put(`/cases/${viewingCounselCase.id}/ai-space/files/${aiDraftEditor.item.id}/content`, { content: values.content || "" });
+        message.success("AI Word 文档已更新");
+      }
+      setAiDraftEditor(null);
+      aiDraftForm.resetFields();
+      await openCounselDetail(viewingCounselCase);
+      selectCounselDocCategory("AI空间");
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "AI 草稿保存失败");
+    }
+  };
+  const deleteAiDraft = (item: AttachmentRow) => {
+    if (!viewingCounselCase) return;
+    Modal.confirm({
+      title: `删除 AI 草稿：${item.original_name}`,
+      content: "删除后无法恢复，且不会影响已经转入正式系统的文件。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.post("/cases/attachments/delete", { attachment_ids: [item.id] });
+          message.success("AI 草稿已删除");
+          await openCounselDetail(viewingCounselCase);
+          selectCounselDocCategory("AI空间");
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "AI 草稿删除失败");
+          throw error;
+        }
+      },
+    });
+  };
+  const openPromoteAiDraft = async (item: AttachmentRow) => {
+    if (!viewingCounselCase) return;
+    setPromotingAiDraft(item);
+    setAiDraftPromoteOptionsLoading(true);
+    try {
+      const {data}=await api.get(`/cases/${viewingCounselCase.id}/document-folders`);
+      const options=applyCounselDocumentFolderPayload(data);
+      const selectableOptions=(items:CaseFileTypeOption[]):CaseFileTypeOption[]=>items.flatMap(option=>option.options?.length?selectableOptions(option.options):option.disabled?[]:[option]);
+      setAiDraftPromoteOptions(options);
+      aiDraftPromoteForm.setFieldsValue({category:selectableOptions(options)[0]?.value});
+    } catch(error:any) {
+      setAiDraftPromoteOptions(counselUploadCategoryOptions);
+      aiDraftPromoteForm.setFieldsValue({category:counselUploadCategoryOptions[0]?.value});
+      message.error(error?.response?.data?.detail||"读取正式案件文档目录失败");
+    } finally {
+      setAiDraftPromoteOptionsLoading(false);
+    }
+  };
+  const promoteAiDraft = async () => {
+    if (!viewingCounselCase || !promotingAiDraft) return;
+    const { category } = await aiDraftPromoteForm.validateFields();
+    try {
+      await api.post(`/cases/${viewingCounselCase.id}/ai-space/files/${promotingAiDraft.id}/promote`, { category });
+      message.success(`已转入正式目录：${category}`);
+      setPromotingAiDraft(null);
+      aiDraftPromoteForm.resetFields();
+      await openCounselDetail(viewingCounselCase);
+      selectCounselDocCategory(String(category));
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "AI 草稿转入正式系统失败");
+    }
+  };
   const selectCounselDocCategory = (category: string) => {
     const applicableOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
     setActiveCounselDocCategory(category);
-    if (hasCaseFileTypeOption(category, applicableOptions) || getCustomCaseDocumentFolders(viewingCounselCase).includes(category)) {
+    if (category === "AI空间") {
+      setCounselUploadCategory("AI空间");
+      setSelectedCounselAttachmentKeys([]);
+      return;
+    }
+    if (
+      ["客户文档","合同文档",...AGENT_INVESTIGATION_DOCUMENT_FOLDERS].includes(category)
+      || AGENT_CASE_DOCUMENT_FOLDERS.includes(category)
+      || hasCaseFileTypeOption(category, applicableOptions)
+      || getCustomCaseDocumentFolders(viewingCounselCase).includes(category)
+    ) {
       setCounselUploadCategory(category);
       setSelectedCounselAttachmentKeys([]);
       return;
@@ -2832,6 +2980,7 @@ export default function CaseCenterPage({
       const folders = Array.isArray(response.data?.folders) ? response.data.folders : [];
       const originalName = caseDocumentFolderEditor.originalName || "";
       setViewingCounselCase((current)=>current ? ({...current,data:{...current.data,custom_case_document_folders:folders}}) : current);
+      await refreshCounselDocumentFolderTree(viewingCounselCase.id);
       if (caseDocumentFolderEditor.mode === "rename") setCounselDetailAttachments((current)=>current.map((item)=>item.category===originalName?{...item,category:normalizedName}:item));
       setExpandedCounselDocGroups((current)=>({...current,"案件文档全部":true}));
       setActiveCounselDocCategory(normalizedName); setCounselUploadCategory(normalizedName); setSelectedCounselAttachmentKeys([]);
@@ -2846,6 +2995,7 @@ export default function CaseCenterPage({
         const {data}=await api.delete(`/cases/${viewingCounselCase.id}/document-folders`,{data:{name}});
         const folders=Array.isArray(data?.folders)?data.folders:[];
         setViewingCounselCase((current)=>current?({...current,data:{...current.data,custom_case_document_folders:folders}}):current);
+        await refreshCounselDocumentFolderTree(viewingCounselCase.id);
         if(activeCounselDocCategory===name)selectCounselDocCategory("案件文档全部");
         message.success("案件文档目录已删除");
       } catch(error:any) { message.error(error?.response?.data?.detail||"案件文档目录删除失败"); throw error; }
@@ -4241,9 +4391,23 @@ export default function CaseCenterPage({
   };
   const customCaseDocumentFolders=getCustomCaseDocumentFolders(viewingCounselCase);
   const counselCaseFileTypeOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
-  const counselUploadCategoryOptions=[...counselCaseFileTypeOptions,...customCaseDocumentFolders.filter(name=>!hasCaseFileTypeOption(name,counselCaseFileTypeOptions)).map(name=>({value:name,label:name}))];
+  const fixedFormalCaseDocumentOptions=AGENT_CASE_DOCUMENT_FOLDERS.map(name=>({value:name,label:name}));
+  const counselUploadCategoryOptions=[
+    ...fixedFormalCaseDocumentOptions,
+    ...counselCaseFileTypeOptions.filter(option=>!AGENT_CASE_DOCUMENT_FOLDERS.includes(option.value)),
+    ...customCaseDocumentFolders.filter(name=>!AGENT_CASE_DOCUMENT_FOLDERS.includes(name)&&!hasCaseFileTypeOption(name,counselCaseFileTypeOptions)).map(name=>({value:name,label:name})),
+    {value:"普通附件",label:"普通附件"},
+  ];
+  const activeCounselUploadCategoryOptions=activeCounselDocCategory==="AI空间"?[{value:"AI空间",label:"AI空间（草稿）"}]:counselUploadCategoryOptions;
+  const caseDocumentTreeGroup=counselDocumentFolderTree.find(option=>option.value==="案件文档全部");
+  const visibleFormalCaseDocumentFolders=Array.from(new Set([
+    ...AGENT_CASE_DOCUMENT_FOLDERS,
+    ...(caseDocumentTreeGroup?.options||[]).map(option=>option.value).filter(name=>name&&name!=="普通附件"),
+    ...customCaseDocumentFolders,
+  ]));
   const counselMoveCategoryOptions = getCaseDocumentMoveCategoryOptions(customCaseDocumentFolders);
   const counselDocTree:Array<{label:string;category:string;type:string;parent?:string;custom?:boolean}>=[
+    {label:"AI空间",category:"AI空间",type:"folder"},
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
     {label:"调查文档",category:"调查文档全部",type:"group"},
@@ -4251,18 +4415,16 @@ export default function CaseCenterPage({
     {label:"调查文档",category:"调查文档",type:"child",parent:"调查文档全部"},
     {label:"取证文档",category:"取证文档",type:"child",parent:"调查文档全部"},
     {label:"案件文档",category:"案件文档全部",type:"group"},
-    {label:"主体及委托资料",category:"主体及委托资料",type:"child",parent:"案件文档全部"},
-    {label:"起诉材料及证据",category:"起诉材料及证据",type:"child",parent:"案件文档全部"},
-    {label:"答辩材料及证据",category:"答辩材料及证据",type:"child",parent:"案件文档全部"},
-    {label:"法院诉讼文书",category:"法院诉讼文书",type:"child",parent:"案件文档全部"},
-    {label:"庭审及庭后文件",category:"庭审及庭后文件",type:"child",parent:"案件文档全部"},
-    ...customCaseDocumentFolders.map(label=>({label,category:label,type:"child",parent:"案件文档全部",custom:true})),
+    ...visibleFormalCaseDocumentFolders.map(label=>({
+      label,category:label,type:"child",parent:"案件文档全部",
+      custom:customCaseDocumentFolders.includes(label),
+    })),
   ].filter(item=>!item.parent||expandedCounselDocGroups[item.parent]);
   const counselDocCategoryGroups:Record<string,string[]>={
     调查文档全部:["调查文档","鉴别资料","取证文档"],
   };
   const activeCounselDocCategories=counselDocCategoryGroups[activeCounselDocCategory]||[activeCounselDocCategory];
-  const nonCaseDocumentCategories=["客户文档","合同文档",...counselDocCategoryGroups.调查文档全部];
+  const nonCaseDocumentCategories=["AI空间","客户文档","合同文档",...counselDocCategoryGroups.调查文档全部];
   const filteredCounselDetailAttachments=activeCounselDocCategory
     ? activeCounselDocCategory==="客户文档"
       ? counselDetailCustomerAttachments
@@ -4273,6 +4435,7 @@ export default function CaseCenterPage({
           : activeCounselDocCategories.some(category=>String(row.category||"")===category))
     : counselDetailAttachments;
   const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档";
+  const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
   const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
   const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));
   const platformFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="平台");
@@ -5388,13 +5551,13 @@ export default function CaseCenterPage({
                   {counselDocTree.map((item,index)=>(
                     <div className="case-doc-tree-row" key={`${item.category}-${item.type}-${index}`}>
                     <button
-                      className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.type==="group"&&expandedCounselDocGroups[item.category]?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
+                      className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.category==="AI空间"?"case-doc-ai-space":""} ${item.type==="group"&&expandedCounselDocGroups[item.category]?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
                       onClick={()=>item.type==="group"?toggleCounselDocGroup(item.category):selectCounselDocCategory(item.category)}
                       title={`查看${item.label}`}
                       aria-expanded={item.type==="group"?expandedCounselDocGroups[item.category]:undefined}
                     >
                       <span className="case-doc-caret" aria-hidden="true">{item.type==="group"?(expandedCounselDocGroups[item.category]?"▾":"▸"):""}</span>
-                      {item.type==="group"&&expandedCounselDocGroups[item.category]?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
+                      {item.category==="AI空间"?<RobotOutlined className="case-doc-icon"/>:item.type==="group"&&expandedCounselDocGroups[item.category]?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
                       <span>{item.label}</span>
                     </button>
                     {counselDetailCapabilities.can_write&&item.category==="案件文档全部"&&(
@@ -5411,10 +5574,11 @@ export default function CaseCenterPage({
                   {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
                   {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
                   {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
-                  {title:"操作",key:"actions",width:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
+                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
                 ]}/>
                 <Space wrap className="case-document-toolbar">
-                  <Select value={counselUploadCategory} style={{width:180}} onChange={setCounselUploadCategory} options={counselUploadCategoryOptions}/>
+                  <Select value={counselUploadCategory} disabled={isAiSpaceFolder} style={{width:180}} onChange={setCounselUploadCategory} options={activeCounselUploadCategoryOptions}/>
+                  {counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button icon={<FileWordOutlined/>} onClick={openCreateAiDraft}>新建 Word 文档</Button>}
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   {counselDetailCapabilities.can_generate_document && <Dropdown trigger={["click"]} menu={{items:getLegacyCaseDocumentGenerationItems().map(([key,label])=>({key,label})),onClick:({key})=>void generateCaseDocument(key)}}><Button>生成操作</Button></Dropdown>}
                   {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
@@ -5655,6 +5819,19 @@ export default function CaseCenterPage({
         <Form form={attachmentRenameForm} layout="vertical">
           <Form.Item label="文件名称" name="original_name" rules={[{required:true,message:"请输入文件名称"},{max:255,message:"文件名称不能超过 255 个字符"},{validator:async(_rule,value)=>{const name=String(value||"").trim();if(!name||/[\\\\/]/.test(name))throw new Error("文件名不能为空且不能包含路径");}}]}><Input autoFocus /></Form.Item>
           <Alert type="info" showIcon title="仅修改展示和下载文件名，不会移动或改写原文件内容；保存后会写入案件审计日志。"/>
+        </Form>
+      </Modal>
+      <Modal width={820} open={Boolean(aiDraftEditor)} title={aiDraftEditor?.mode==="create"?"新建 AI 空间 Word 文档":"编辑 AI 空间 Word 文档"} okText="保存 Word 文档" cancelText="取消" onOk={saveAiDraft} onCancel={()=>{setAiDraftEditor(null);aiDraftForm.resetFields();}}>
+        <Alert style={{marginBottom:12}} type="info" showIcon title="AI空间是案件草稿箱" description="AI生成文件默认保存在这里；只有点击“转入正式系统”后，文件才进入正式案件文档目录。"/>
+        <Form form={aiDraftForm} layout="vertical">
+          <Form.Item label="Word 文件名" name="name" rules={[{required:true,message:"请输入文件名"},{pattern:/\.(docx|md|txt)$/i,message:"新建 Word 文档请使用 .docx 格式"}]}><Input maxLength={255} disabled={aiDraftEditor?.mode==="edit"}/></Form.Item>
+          <Form.Item label="文档正文" name="content"><Input.TextArea autoSize={{minRows:16,maxRows:28}} placeholder="在这里编辑 Word 文档正文；保存后可查看、下载或转入正式系统"/></Form.Item>
+        </Form>
+      </Modal>
+      <Modal open={Boolean(promotingAiDraft)} title={`转入正式系统：${promotingAiDraft?.original_name || ""}`} okText="确认转入" cancelText="取消" onOk={promoteAiDraft} onCancel={()=>{setPromotingAiDraft(null);aiDraftPromoteForm.resetFields();}}>
+        <Alert style={{marginBottom:12}} type="warning" showIcon title="转入后将成为正式案件文件" description="该文件会从 AI 空间移出，并进入所选正式目录；操作将写入案件日志。"/>
+        <Form form={aiDraftPromoteForm} layout="vertical">
+          <Form.Item label="正式案件文档目录" name="category" rules={[{required:true,message:"请选择正式目录"}]}><Select showSearch optionFilterProp="label" loading={aiDraftPromoteOptionsLoading} options={aiDraftPromoteOptions}/></Form.Item>
         </Form>
       </Modal>
       <Modal open={Boolean(sealingCounselAttachment)} title={`案件文件提交用印：${sealingCounselAttachment?.original_name || ""}`} okText="创建正式发文草稿" cancelText="取消" onOk={submitCounselAttachmentSeal} onCancel={()=>{setSealingCounselAttachment(null);caseFileSealForm.resetFields();}} destroyOnHidden>

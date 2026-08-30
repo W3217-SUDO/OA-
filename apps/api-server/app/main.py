@@ -33,7 +33,7 @@ from sqlalchemy import String, and_, delete, false, func, inspect, or_, select, 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .case_agent import CaseAgentRuntime
+from .deepseek_harness import create_case_agent_runtime
 from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, public_skill_catalog
 from .agent_attachment_reader import read_attachment
 from .case_workflow_rules import build_case_workflow_guide
@@ -52,7 +52,8 @@ from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, cust
 
 logger = logging.getLogger(__name__)
 
-case_agent_runtime = CaseAgentRuntime(
+case_agent_runtime = create_case_agent_runtime(
+    runtime_backend=settings.agent_runtime_backend,
     enabled=settings.langgraph_enabled,
     database_url=settings.database_url,
     checkpoint_url=settings.langgraph_checkpoint_url,
@@ -61,6 +62,11 @@ case_agent_runtime = CaseAgentRuntime(
     model_provider=settings.langgraph_model_provider,
     model=settings.langgraph_model,
     max_concurrency=settings.langgraph_max_concurrency,
+    harness_base_url=settings.deepseek_harness_base_url,
+    harness_provider=settings.deepseek_harness_provider,
+    harness_agent_preset=settings.deepseek_harness_agent_preset,
+    harness_workspace=settings.deepseek_harness_workspace,
+    harness_timeout_seconds=settings.deepseek_harness_timeout_seconds,
 )
 
 PERSON_NAME_PLACEHOLDER = "【待补充中文姓名】"
@@ -1751,6 +1757,18 @@ class CaseAttachmentRenameInput(BaseModel):
 
 class CaseAttachmentMoveInput(BaseModel):
     attachment_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class CaseAiDraftCreateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    content: str = Field(default="", max_length=2_000_000)
+
+
+class CaseAiDraftUpdateInput(BaseModel):
+    content: str = Field(max_length=2_000_000)
+
+
+class CaseAiDraftPromoteInput(BaseModel):
     category: str = Field(min_length=1, max_length=64)
 
 
@@ -4633,11 +4651,17 @@ def _template_dict(item: DocumentTemplate) -> dict:
     return {"id": item.id, "name": item.name, "category": item.category, "version": item.version, "description": item.description, "fields": item.fields or [], "is_active": item.is_active, "created_at": item.created_at, "updated_at": item.updated_at}
 
 
+AI_SPACE_CATEGORY = "AI空间"
+AI_SPACE_EDITABLE_SUFFIXES = {".docx", ".md", ".txt"}
+WORD_DOCUMENT_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ARCHIVE_REQUIRED_CATEGORIES = {"委托材料", "证据材料", "诉讼文书", "裁判文书"}
 
 
 async def _sync_case_document_readiness(case_record: BusinessRecord, db: AsyncSession) -> bool:
-    categories = set((await db.scalars(select(FileAttachment.category).where(FileAttachment.record_id == case_record.id))).all())
+    categories = set((await db.scalars(select(FileAttachment.category).where(
+        FileAttachment.record_id == case_record.id,
+        FileAttachment.category != AI_SPACE_CATEGORY,
+    ))).all())
     complete = ARCHIVE_REQUIRED_CATEGORIES.issubset(categories)
     case_record.data = {**(case_record.data or {}), "documents_complete": complete, "archive_material_categories": sorted(categories)}
     return complete
@@ -24663,7 +24687,16 @@ async def _sync_seal_document_names(record: BusinessRecord, db: AsyncSession) ->
 
 
 CASE_CUSTOM_DOCUMENT_FOLDERS_KEY = "custom_case_document_folders"
-CASE_DOCUMENT_FOLDER_HEADERS = {"客户文档", "合同文档", "调查文档", "案件文档", "调查文档全部", "案件文档全部"}
+CASE_DOCUMENT_FOLDER_HEADERS = {"AI空间", "客户文档", "合同文档", "调查文档", "案件文档", "调查文档全部", "案件文档全部"}
+CASE_FORMAL_DOCUMENT_FOLDER_ORDER = (
+    "主体及委托资料",
+    "起诉材料及证据",
+    "答辩材料及证据",
+    "法院诉讼文书",
+    "庭审及庭后文件",
+)
+CASE_FORMAL_DOCUMENT_FOLDERS = set(CASE_FORMAL_DOCUMENT_FOLDER_ORDER)
+CASE_INVESTIGATION_DOCUMENT_FOLDERS = ("鉴别资料", "调查文档", "取证文档")
 
 
 def _case_custom_document_folders(record: BusinessRecord) -> list[str]:
@@ -24695,6 +24728,82 @@ async def _ensure_case_document_folder_name_available(
     ))
     if system_name:
         raise HTTPException(status_code=409, detail="该名称已是系统案件文档目录")
+
+
+async def _case_related_document_record(record: BusinessRecord, module: str, db: AsyncSession) -> BusinessRecord | None:
+    data = record.data or {}
+    id_keys = ("customer_record_id", "customer_id") if module == "customer" else ("contract_record_id", "contract_id")
+    for key in id_keys:
+        related_id = int(data.get(key) or 0)
+        if related_id:
+            related = await db.get(BusinessRecord, related_id)
+            if related and related.module == module:
+                return related
+    if module == "customer" and str(record.customer or "").strip():
+        return await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == "customer", BusinessRecord.title == str(record.customer).strip(),
+        ).order_by(BusinessRecord.id.desc()))
+    contract_no = str(data.get("contract_no") or "").strip()
+    if module == "contract" and contract_no:
+        return await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == "contract", BusinessRecord.serial_no == contract_no,
+        ).order_by(BusinessRecord.id.desc()))
+    return None
+
+
+async def _case_formal_document_folder_payload(record: BusinessRecord, db: AsyncSession) -> dict:
+    file_types = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "case_file_type",
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.id))).all())
+    case_type = await _case_type_parameter_for_value(str((record.data or {}).get("case_type") or ""), db)
+    if case_type:
+        configured_count = int(await db.scalar(select(func.count()).select_from(CaseTypeFileTypeRelation).where(
+            CaseTypeFileTypeRelation.case_type_id == case_type.id,
+        )) or 0)
+        if configured_count:
+            allowed_ids = set((await db.scalars(select(CaseTypeFileTypeRelation.file_type_id).where(
+                CaseTypeFileTypeRelation.case_type_id == case_type.id,
+            ))).all())
+            file_types = [item for item in file_types if item.id in allowed_ids]
+    case_candidates = [
+        *CASE_FORMAL_DOCUMENT_FOLDER_ORDER,
+        *(str(item.name or "").strip() for item in file_types),
+        *_case_custom_document_folders(record),
+        "普通附件",
+    ]
+    case_folders = list(dict.fromkeys(
+        name for name in case_candidates
+        if name and name != AI_SPACE_CATEGORY and name not in CASE_DOCUMENT_FOLDER_HEADERS
+        and name not in CASE_INVESTIGATION_DOCUMENT_FOLDERS
+    ))
+    customer_record = await _case_related_document_record(record, "customer", db)
+    contract_record = await _case_related_document_record(record, "contract", db)
+    tree = [
+        {"label": "客户文档", "value": "客户文档", "disabled": customer_record is None},
+        {"label": "合同文档", "value": "合同文档", "disabled": contract_record is None},
+        {"label": "调查文档", "value": "调查文档全部", "options": [
+            {"label": name, "value": name} for name in CASE_INVESTIGATION_DOCUMENT_FOLDERS
+        ]},
+        {"label": "案件文档", "value": "案件文档全部", "options": [
+            {"label": name, "value": name} for name in case_folders
+        ]},
+    ]
+    folders = [
+        *(["客户文档"] if customer_record else []),
+        *(["合同文档"] if contract_record else []),
+        *CASE_INVESTIGATION_DOCUMENT_FOLDERS,
+        *case_folders,
+    ]
+    return {"folders": folders, "tree": tree}
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/document-folders")
+async def list_case_document_folders(
+    case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    return {"case_id": record.id, **(await _case_formal_document_folder_payload(record, db))}
 
 
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/document-folders", status_code=status.HTTP_201_CREATED)
@@ -24751,6 +24860,208 @@ async def delete_case_document_folder(case_id: int, body: CaseDocumentFolderInpu
     db.add(WorkflowEvent(record_id=record.id, action="删除案件文档目录", from_status=record.status, to_status=record.status, operator=identity["username"], comment=name))
     await db.commit()
     return {"case_id": record.id, "folders": folders}
+
+
+def _case_ai_draft_name(value: str) -> str:
+    name = str(value or "").strip()
+    if not name or Path(name).name != name or name in {".", ".."}:
+        raise HTTPException(status_code=422, detail="AI 草稿文件名不能为空，且不能包含路径")
+    suffix = Path(name).suffix.lower()
+    if suffix not in AI_SPACE_EDITABLE_SUFFIXES:
+        raise HTTPException(status_code=422, detail="AI 空间文档支持 .docx、.md 和 .txt 格式")
+    return name
+
+
+def _case_ai_draft_bytes(name: str, content: str) -> tuple[bytes, str]:
+    suffix = Path(name).suffix.lower()
+    if suffix == ".docx":
+        return _docx_bytes(Path(name).stem, content), WORD_DOCUMENT_CONTENT_TYPE
+    return content.encode("utf-8"), "text/markdown" if suffix == ".md" else "text/plain"
+
+
+def _case_ai_draft_text(item: FileAttachment, path: Path) -> str:
+    if Path(item.original_name).suffix.lower() != ".docx":
+        return path.read_text(encoding="utf-8")
+    document = Document(path)
+    lines = [paragraph.text for paragraph in document.paragraphs]
+    for table in document.tables:
+        lines.extend("\t".join(cell.text for cell in row.cells) for row in table.rows)
+    return "\n".join(lines).strip()
+
+
+async def _case_ai_draft(
+    case_record: BusinessRecord, attachment_id: int, db: AsyncSession,
+) -> FileAttachment:
+    item = await db.get(FileAttachment, attachment_id)
+    if not item or item.record_id != case_record.id or item.category != AI_SPACE_CATEGORY:
+        raise HTTPException(status_code=404, detail="AI 空间草稿不存在")
+    return item
+
+
+async def _validate_case_formal_document_category(
+    case_record: BusinessRecord, category: str, db: AsyncSession,
+) -> str:
+    target = str(category or "").strip()
+    if not target or target == AI_SPACE_CATEGORY or (
+        target in CASE_DOCUMENT_FOLDER_HEADERS and target not in {"客户文档", "合同文档", "调查文档"}
+    ):
+        raise HTTPException(status_code=422, detail="请选择具体的正式案件文档目录")
+    if target in {"客户文档", "合同文档"}:
+        module = "customer" if target == "客户文档" else "contract"
+        if not await _case_related_document_record(case_record, module, db):
+            raise HTTPException(status_code=422, detail=f"当前案件未关联可用的{target}")
+        return target
+    if target in CASE_INVESTIGATION_DOCUMENT_FOLDERS:
+        return target
+    if target == "普通附件" or target in CASE_FORMAL_DOCUMENT_FOLDERS or target in _case_custom_document_folders(case_record):
+        return target
+    file_types = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "case_file_type",
+        SystemParameter.name == target,
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.id))).all())
+    if not file_types:
+        raise HTTPException(status_code=422, detail="正式案件文档目录不存在或已停用")
+    case_type = await _case_type_parameter_for_value(str((case_record.data or {}).get("case_type") or ""), db)
+    if not case_type:
+        return target
+    configured_count = int(await db.scalar(select(func.count()).select_from(CaseTypeFileTypeRelation).where(
+        CaseTypeFileTypeRelation.case_type_id == case_type.id,
+    )) or 0)
+    if not configured_count:
+        return target
+    allowed_ids = set((await db.scalars(select(CaseTypeFileTypeRelation.file_type_id).where(
+        CaseTypeFileTypeRelation.case_type_id == case_type.id,
+    ))).all())
+    if not any(item.id in allowed_ids for item in file_types):
+        raise HTTPException(status_code=422, detail="该案件类型不允许使用所选正式文档目录")
+    return target
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/ai-space")
+async def get_case_ai_space(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    items = list((await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id == record.id,
+        FileAttachment.category == AI_SPACE_CATEGORY,
+    ).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all())
+    uploader_users = await _user_display_map({item.uploader for item in items}, db)
+    uploader_names = {username: _person_display_name(user.display_name, user.username)[0] for username, user in uploader_users.items()}
+    return {
+        "case_id": record.id,
+        "folder": AI_SPACE_CATEGORY,
+        "items": [
+            {**_attachment_dict(item, record, uploader_names), "content_editable": Path(item.original_name).suffix.lower() in AI_SPACE_EDITABLE_SUFFIXES}
+            for item in items
+        ],
+    }
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files", status_code=status.HTTP_201_CREATED)
+async def create_case_ai_draft(
+    case_id: int, body: CaseAiDraftCreateInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_attachment_upload_access(record, identity, db)
+    name = _case_ai_draft_name(body.name)
+    content, content_type = _case_ai_draft_bytes(name, body.content)
+    stored_name = f"{uuid4().hex}{Path(name).suffix.lower()}"
+    target = UPLOAD_ROOT / stored_name
+    target.write_bytes(content)
+    try:
+        item = FileAttachment(
+            record_id=record.id,
+            category=AI_SPACE_CATEGORY,
+            original_name=name,
+            stored_name=stored_name,
+            content_type=content_type,
+            size=len(content),
+            path=str(target),
+            uploader=identity["username"],
+            remark="AI 生成草稿，尚未转入正式案件文档",
+        )
+        db.add(item)
+        db.add(WorkflowEvent(
+            record_id=record.id, action="新增 AI 空间草稿", from_status=record.status,
+            to_status=record.status, operator=identity["username"], comment=name,
+        ))
+        await db.commit()
+        await db.refresh(item)
+    except Exception:
+        await db.rollback()
+        target.unlink(missing_ok=True)
+        raise
+    return {**_attachment_dict(item, record), "content_editable": True}
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/{{attachment_id}}/content")
+async def get_case_ai_draft_content(
+    case_id: int, attachment_id: int,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    item = await _case_ai_draft(record, attachment_id, db)
+    if Path(item.original_name).suffix.lower() not in AI_SPACE_EDITABLE_SUFFIXES:
+        raise HTTPException(status_code=422, detail="当前草稿格式不支持在线编辑")
+    path = Path(item.path)
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+        raise HTTPException(status_code=404, detail="AI 空间草稿实体不存在")
+    return {"id": item.id, "name": item.original_name, "content": _case_ai_draft_text(item, path)}
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/{{attachment_id}}/content")
+async def update_case_ai_draft_content(
+    case_id: int, attachment_id: int, body: CaseAiDraftUpdateInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(record, identity, db)
+    item = await _case_ai_draft(record, attachment_id, db)
+    if Path(item.original_name).suffix.lower() not in AI_SPACE_EDITABLE_SUFFIXES:
+        raise HTTPException(status_code=422, detail="当前草稿格式不支持在线编辑")
+    path = Path(item.path)
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+        raise HTTPException(status_code=404, detail="AI 空间草稿实体不存在")
+    content, content_type = _case_ai_draft_bytes(item.original_name, body.content)
+    temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+    temporary.write_bytes(content)
+    temporary.replace(path)
+    item.size = len(content)
+    item.content_type = content_type
+    db.add(WorkflowEvent(
+        record_id=record.id, action="编辑 AI 空间草稿", from_status=record.status,
+        to_status=record.status, operator=identity["username"], comment=item.original_name,
+    ))
+    await db.commit()
+    return {**_attachment_dict(item, record), "content_editable": True}
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/{{attachment_id}}/promote")
+async def promote_case_ai_draft(
+    case_id: int, attachment_id: int, body: CaseAiDraftPromoteInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_attachment_upload_access(record, identity, db)
+    item = await _case_ai_draft(record, attachment_id, db)
+    target_category = await _validate_case_formal_document_category(record, body.category, db)
+    destination_record = record
+    if target_category in {"客户文档", "合同文档"}:
+        destination_module = "customer" if target_category == "客户文档" else "contract"
+        destination_record = await _case_related_document_record(record, destination_module, db) or record
+    item.record_id = destination_record.id
+    item.category = target_category
+    item.remark = f"由 AI 空间转入正式案件文档；原草稿创建人：{item.uploader}"
+    db.add(WorkflowEvent(
+        record_id=record.id, action="AI 草稿转入正式系统", from_status=record.status,
+        to_status=record.status, operator=identity["username"],
+        comment=f"{item.original_name} → {target_category}",
+    ))
+    await _sync_case_document_readiness(record, db)
+    await db.commit()
+    await db.refresh(item)
+    return _attachment_dict(item, destination_record)
 
 
 @app.post(f"{settings.api_prefix}/cases/attachments/download")
@@ -25008,7 +25319,12 @@ async def upload_attachment(
             await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
             await _require_case_attachment_upload_access(record, identity, db)
-            if category not in {"普通附件", *_case_custom_document_folders(record)}:
+            if category not in {
+                "普通附件",
+                AI_SPACE_CATEGORY,
+                *CASE_FORMAL_DOCUMENT_FOLDERS,
+                *_case_custom_document_folders(record),
+            }:
                 file_types = list((await db.scalars(select(SystemParameter).where(
                     SystemParameter.category == "case_file_type",
                     SystemParameter.name == category,
@@ -31861,6 +32177,57 @@ async def _run_document_agent(item: AgentDocument) -> None:
         item.status = "生成失败"; item.error = str(exc)[:1000]
 
 
+async def _sync_agent_document_to_case_ai_space(
+    item: AgentDocument, record: BusinessRecord | None, db: AsyncSession,
+) -> FileAttachment | None:
+    """Keep every case-bound AI document in the case AI draft workspace."""
+    if not record or record.module != "case":
+        return None
+    marker = f"智能文档草稿:{item.job_no}"
+    attachment = await db.scalar(select(FileAttachment).where(
+        FileAttachment.record_id == record.id,
+        FileAttachment.category == AI_SPACE_CATEGORY,
+        FileAttachment.remark == marker,
+    ))
+    safe_title = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", item.title.strip()).strip(" .") or item.job_no
+    name = f"{safe_title}.docx"
+    content = _docx_bytes(item.title, item.content)
+    if attachment:
+        path = Path(attachment.path)
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+            temporary.write_bytes(content)
+            temporary.replace(path)
+        else:
+            attachment.stored_name = f"{uuid4().hex}.docx"
+            attachment.path = str(UPLOAD_ROOT / attachment.stored_name)
+            Path(attachment.path).write_bytes(content)
+        attachment.original_name = name
+        attachment.content_type = WORD_DOCUMENT_CONTENT_TYPE
+        attachment.size = len(content)
+        return attachment
+    stored_name = f"{uuid4().hex}.docx"
+    target = UPLOAD_ROOT / stored_name
+    target.write_bytes(content)
+    attachment = FileAttachment(
+        record_id=record.id,
+        category=AI_SPACE_CATEGORY,
+        original_name=name,
+        stored_name=stored_name,
+        content_type=WORD_DOCUMENT_CONTENT_TYPE,
+        size=len(content),
+        path=str(target),
+        uploader=item.creator,
+        remark=marker,
+    )
+    db.add(attachment)
+    db.add(WorkflowEvent(
+        record_id=record.id, action="智能文档写入 AI 空间", from_status=record.status,
+        to_status=record.status, operator=item.creator, comment=f"{item.job_no}｜{name}",
+    ))
+    return attachment
+
+
 @app.get(f"{settings.api_prefix}/agent/documents")
 async def list_agent_documents(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     items = (await db.scalars(select(AgentDocument).order_by(AgentDocument.created_at.desc()).limit(100))).all()
@@ -31897,29 +32264,30 @@ async def create_agent_document(body: AgentDocumentInput, identity: dict = Depen
     prompt = "请根据以下结构化信息生成正式、严谨、可直接审核的中文法律文书。不得虚构未提供的事实，对缺失信息使用【待补充】标记。\n" + json.dumps(context, ensure_ascii=False, indent=2)
     outline = "\n".join([f"## {field}\n【待补充】" for field in template.fields]) or "## 正文\n【待补充】"
     item = AgentDocument(job_no=f"AI{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid4().hex[:4].upper()}", template_id=template.id, record_id=record.id if record else None, title=body.title.strip(), instruction=body.instruction.strip(), prompt=prompt, content=outline, status="等待生成", creator=identity["username"])
-    db.add(item); await db.flush(); await _run_document_agent(item); await db.commit(); await db.refresh(item)
+    db.add(item); await db.flush(); await _run_document_agent(item); await _sync_agent_document_to_case_ai_space(item, record, db); await db.commit(); await db.refresh(item)
     if record: db.add(WorkflowEvent(record_id=record.id, action="创建智能文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{item.job_no}｜{template.name}")); await db.commit()
     return _agent_document_operation_result(item, template, record)
 
 
 @app.post(f"{settings.api_prefix}/agent/documents/{{document_id}}/retry")
 async def retry_agent_document(document_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item, _ = await _ensure_agent_document_access(document_id, identity, db, write=True)
+    item, record = await _ensure_agent_document_access(document_id, identity, db, write=True)
     if item.status == "生成中": raise HTTPException(status_code=409, detail="文档正在生成中")
     item.confirmed_by = ""; item.confirmed_at = None; item.confirmed_content_hash = ""
     item.content_version = int(item.content_version or 1) + 1
-    await _run_document_agent(item); await db.commit(); await db.refresh(item)
+    await _run_document_agent(item); await _sync_agent_document_to_case_ai_space(item, record, db); await db.commit(); await db.refresh(item)
     return _agent_document_operation_result(item)
 
 
 @app.patch(f"{settings.api_prefix}/agent/documents/{{document_id}}")
 async def update_agent_document(document_id: int, body: AgentDocumentUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    item, _ = await _ensure_agent_document_access(document_id, identity, db, write=True)
+    item, record = await _ensure_agent_document_access(document_id, identity, db, write=True)
     if body.title is not None: item.title = body.title.strip()
     if body.content is not None:
         item.content = body.content; item.status = "已编辑"
         item.content_version = int(item.content_version or 1) + 1
         item.confirmed_by = ""; item.confirmed_at = None; item.confirmed_content_hash = ""
+    await _sync_agent_document_to_case_ai_space(item, record, db)
     await db.commit(); await db.refresh(item); return _agent_document_dict(item)
 
 

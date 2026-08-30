@@ -206,6 +206,65 @@ def _checkpoint_url(database_url: str, explicit_url: str) -> str:
     return value
 
 
+def build_case_model_messages(
+    snapshot: dict[str, Any],
+    messages: list[dict[str, Any]],
+    skill: AgentSkill = GENERAL_SKILL,
+    request_images: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    prioritized_snapshot = {
+        "document_readings": snapshot.get("document_readings") or [],
+        **{key: value for key, value in snapshot.items() if key != "document_readings"},
+    }
+    context = json.dumps(prioritized_snapshot, ensure_ascii=False, default=str)
+    if len(context) > 80_000:
+        context = context[:80_000] + "\n[案件空间内容过长，已截断]"
+    prompt_messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                "你是法律服务机构管理系统中的案件智能体。"
+                "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
+                "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
+                "用户明确要求生成 Word、DOCX 或法律文书时，应直接输出可作为文档正文的完整内容，"
+                "不要回答不能创建 Word；系统会把本轮完整回答自动生成 .docx 并保存到当前案件的 AI空间。"
+                "AI空间是草稿箱，生成草稿不等于修改正式业务数据，也不需要 proposed_action；"
+                "从 AI空间转入正式案件目录仍必须由用户主动确认。"
+                f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}"
+                "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
+                "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
+                "但不得在缺少起算依据时自行推算法定期限。"
+                "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
+                "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
+                "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update。"
+                "客户或合同修改必须在 payload 中提供 target_id 和 changes；target_id 只能是当前案件空间已关联记录。"
+                "案件任务 payload 使用 title、owner、deadline、priority、description；"
+                "案件提醒 payload 使用 content、reminder_date、deadline。"
+                "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。"
+                "任何写操作都必须服从当前案件空间 capabilities；对应能力为 false 时，"
+                "只能说明无权限，不能输出 proposed_action，也不能建议绕过权限。\n\n"
+                f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
+                f"当前案件空间数据：\n{context}"
+            ),
+        }
+    ]
+    recent_messages = messages[-10:]
+    for index, message in enumerate(recent_messages):
+        role = str(message.get("role") or "").strip()
+        content = str(message.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        if role == "user" and index == len(recent_messages) - 1 and request_images:
+            multimodal_content: list[dict[str, Any]] = [{"type": "text", "text": content[:8_000]}]
+            for image in request_images:
+                multimodal_content.append({"type": "text", "text": f"[附件视觉页：{image.get('name') or '未命名附件'}]"})
+                multimodal_content.append({"type": "image_url", "image_url": {"url": image["data_url"]}})
+            prompt_messages.append({"role": role, "content": multimodal_content})
+        else:
+            prompt_messages.append({"role": role, "content": content[:8_000]})
+    return prompt_messages
+
+
 class CaseAgentRuntime:
     def __init__(
         self,
@@ -265,6 +324,7 @@ class CaseAgentRuntime:
         return {
             "enabled": self.enabled,
             "ready": self.graph is not None,
+            "agent_runtime_backend": "langgraph",
             "checkpoint_backend": self.backend,
             "model_provider": self.model_provider,
             "model": self.model,
@@ -337,51 +397,7 @@ class CaseAgentRuntime:
         skill: AgentSkill = GENERAL_SKILL,
         request_images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
-        prioritized_snapshot = {
-            "document_readings": snapshot.get("document_readings") or [],
-            **{key: value for key, value in snapshot.items() if key != "document_readings"},
-        }
-        context = json.dumps(prioritized_snapshot, ensure_ascii=False, default=str)
-        if len(context) > 80_000:
-            context = context[:80_000] + "\n[案件空间内容过长，已截断]"
-        prompt_messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": (
-                    "你是法律服务机构管理系统中的案件智能体。"
-                    "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
-                    "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
-                    f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}"
-                    "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
-                    "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
-                    "但不得在缺少起算依据时自行推算法定期限。"
-                    "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
-                    "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
-                    "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update。"
-                    "客户或合同修改必须在 payload 中提供 target_id 和 changes；target_id 只能是当前案件空间已关联记录。"
-                    "案件任务 payload 使用 title、owner、deadline、priority、description；"
-                    "案件提醒 payload 使用 content、reminder_date、deadline。"
-                    "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。"
-                    "任何写操作都必须服从当前案件空间 capabilities；对应能力为 false 时，"
-                    "只能说明无权限，不能输出 proposed_action，也不能建议绕过权限。\n\n"
-                    f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
-                    f"当前案件空间数据：\n{context}"
-                ),
-            }
-        ]
-        recent_messages = messages[-10:]
-        for index, message in enumerate(recent_messages):
-            role = str(message.get("role") or "").strip()
-            content = str(message.get("content") or "").strip()
-            if role in {"user", "assistant"} and content:
-                if role == "user" and index == len(recent_messages) - 1 and request_images:
-                    multimodal_content: list[dict[str, Any]] = [{"type": "text", "text": content[:8_000]}]
-                    for image in request_images:
-                        multimodal_content.append({"type": "text", "text": f"[附件视觉页：{image.get('name') or '未命名附件'}]"})
-                        multimodal_content.append({"type": "image_url", "image_url": {"url": image["data_url"]}})
-                    prompt_messages.append({"role": role, "content": multimodal_content})
-                else:
-                    prompt_messages.append({"role": role, "content": content[:8_000]})
+        prompt_messages = build_case_model_messages(snapshot, messages, skill, request_images)
         try:
             async with httpx.AsyncClient(timeout=90) as client:
                 chunk_callback = _MODEL_CHUNK_CALLBACK.get()

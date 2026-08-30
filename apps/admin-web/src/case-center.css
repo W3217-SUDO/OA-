@@ -155,6 +155,7 @@
 .case-doc-child .case-doc-caret{display:none}
 .case-doc-icon{flex:0 0 16px;color:#e8b834;font-size:16px}
 .case-doc-folder-open .case-doc-icon{color:#e2aa20}
+.case-doc-ai-space{font-weight:600;color:#087f5b;background:#f0faf6}.case-doc-ai-space .case-doc-icon{color:#08a56d}
 .case-doc-folder>span:last-child,.case-doc-child>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .case-doc-tree-row{display:flex;align-items:center;min-width:0;height:22px}.case-doc-tree-row>.case-doc-folder,.case-doc-tree-row>.case-doc-child{flex:1 1 auto;min-width:0}.case-doc-tree-action.ant-btn{flex:0 0 20px;width:20px;min-width:20px;height:20px;padding:0;font-size:13px}.case-doc-tree-add.ant-btn{color:#52a83b}.case-doc-tree-add.ant-btn:hover{color:#3d8c29;background:#edf8e9}
 

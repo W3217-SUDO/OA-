@@ -1,0 +1,12 @@
+{
+  "name": "sunhold-deepseek-harness-host",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "start": "dsh web --port 3081 --no-open"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.1-rc.2"
+  }
+}

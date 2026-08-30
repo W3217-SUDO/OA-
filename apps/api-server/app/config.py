@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     langgraph_model_provider: str = ""
     langgraph_model: str = ""
     langgraph_max_concurrency: int = 4
+    agent_runtime_backend: str = "langgraph"
+    deepseek_harness_base_url: str = "http://127.0.0.1:3081"
+    deepseek_harness_provider: str = "sunhold-oa"
+    deepseek_harness_agent_preset: str = "standard"
+    deepseek_harness_workspace: str = ""
+    deepseek_harness_timeout_seconds: float = 120
     sms_webhook_url: str = ""
     sms_webhook_token: str = ""
     dingtalk_corp_id: str = ""
