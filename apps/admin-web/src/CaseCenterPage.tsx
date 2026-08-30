@@ -578,18 +578,21 @@ const normalizeCaseTaskPageState = (
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean};
 
 const isAiWordGenerationRequest = (value: string) =>
-  /(?:生成|起草|新建|制作|编写|撰写|整理).{0,24}(?:word|docx|文档|起诉状|答辩状|代理词|法律意见书|律师函|申请书|合同|函件)/i.test(value);
+  /(?:生成|起草|新建|制作|编写|撰写|整理).{0,24}(?:word|docx|文档|起诉状|答辩状|代理词|法律意见书|律师函|申请书|合同|函件)/i.test(value)
+  || /(?:我要(?:的)?(?:是)?|我需要|给我|改成|保存为|转成|导出为).{0,16}(?:word|docx|文档|文书|材料|文件)/i.test(value);
 
-const aiWordDocumentName = (request: string) => {
+const aiWordDocumentName = (request: string, generatedContent = "") => {
   const explicitTitle = request.match(/标题(?:为|是)?[“\"]([^”\"]{1,80})[”\"]/i)?.[1]?.trim();
+  const generatedTitle = generatedContent.split(/\r?\n/).map((line) => line.replace(/^[#*\s]+/, "").trim()).find(Boolean)?.slice(0, 60);
   const cleaned = request
     .replace(/(?:请|帮我|给我|需要|可以|能否)/g, "")
+    .replace(/(?:我要(?:的)?(?:是)?|不是这个|改成|保存为|转成|导出为)/g, "")
     .replace(/(?:生成|起草|新建|制作|编写|撰写|整理)/g, "")
     .replace(/(?:word|docx|格式|文档)/gi, "")
     .replace(/[\\/:*?"<>|\r\n]+/g, " ")
     .trim()
     .slice(0, 60);
-  return `${explicitTitle || cleaned || "AI生成文书"}-${dayjs().format("YYYYMMDD-HHmmss")}.docx`;
+  return `${explicitTitle || cleaned || generatedTitle || "AI生成文书"}-${dayjs().format("YYYYMMDD-HHmmss")}.docx`;
 };
 type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;disabled?:boolean;options?:CaseFileTypeOption[]};
 type WarehouseStorageLocationOption = {id:number;name:string;is_active:boolean};
@@ -1971,6 +1974,12 @@ export default function CaseCenterPage({
     const {data}=await api.get(`/cases/${caseId}/document-folders`);
     return applyCounselDocumentFolderPayload(data);
   };
+  const refreshCounselDetailAttachments = async (caseId: number) => {
+    const { data } = await api.get("/attachments", { params: { record_id: caseId, page_size: 200 } });
+    const items = Array.isArray(data?.items) ? data.items : [];
+    setCounselDetailAttachments(items);
+    return items;
+  };
   const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
     if (!isCaseDetailView) {
       sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
@@ -2175,11 +2184,11 @@ export default function CaseCenterPage({
         if (done) break;
       }
       if (streamedContent.trim() && isAiWordGenerationRequest(content)) {
-        const name = aiWordDocumentName(content);
+        const name = aiWordDocumentName(content, streamedContent);
         await api.post(`/cases/${agentCase.id}/ai-space/files`, { name, content: streamedContent });
         message.success(`Word 文档已生成到 AI 空间：${name}`);
         if (viewingCounselCase?.id === agentCase.id) {
-          await openCounselDetail(agentCase);
+          await refreshCounselDetailAttachments(agentCase.id);
           selectCounselDocCategory("AI空间");
         }
       }
@@ -2953,6 +2962,9 @@ export default function CaseCenterPage({
     if (category === "AI空间") {
       setCounselUploadCategory("AI空间");
       setSelectedCounselAttachmentKeys([]);
+      if (viewingCounselCase) {
+        void refreshCounselDetailAttachments(viewingCounselCase.id).catch(() => message.error("AI 空间材料刷新失败"));
+      }
       return;
     }
     if (
