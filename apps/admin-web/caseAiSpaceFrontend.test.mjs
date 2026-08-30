@@ -33,6 +33,15 @@ test("AI chat can generate a Word document directly into the case AI workspace",
   assert.match(source, /refreshCounselDetailAttachments\(viewingCounselCase\.id\)/);
 });
 
+test("Word conversion falls back to the previous generated answer when the model retry fails", () => {
+  assert.match(source, /isExistingAnswerWordConversionRequest/);
+  assert.match(source, /previousAssistantDocument/);
+  assert.match(source, /isUsableAiDocumentContent/);
+  assert.match(source, /if \(previousAssistantDocument\)/);
+  assert.match(source, /content: previousAssistantDocument/);
+  assert.match(source, /Word 文档已生成到 AI 空间/);
+});
+
 test("AI drafts are excluded from the formal case document aggregate", () => {
   assert.match(source, /nonCaseDocumentCategories=\["AI空间","客户文档","合同文档"/);
   assert.match(source, /activeCounselDocCategory==="AI空间"/);

@@ -581,6 +581,14 @@ const isAiWordGenerationRequest = (value: string) =>
   /(?:生成|起草|新建|制作|编写|撰写|整理).{0,24}(?:word|docx|文档|起诉状|答辩状|代理词|法律意见书|律师函|申请书|合同|函件)/i.test(value)
   || /(?:我要(?:的)?(?:是)?|我需要|给我|改成|保存为|转成|导出为).{0,16}(?:word|docx|文档|文书|材料|文件)/i.test(value);
 
+const isExistingAnswerWordConversionRequest = (value: string) =>
+  /(?:我要(?:的)?(?:是)?|改成|保存为|转成|导出为).{0,16}(?:word|docx|文档|文书|材料|文件)/i.test(value);
+
+const isUsableAiDocumentContent = (value: string) => {
+  const content = String(value || "").trim();
+  return content.length >= 80 && !/模型本轮生成失败|正在分析案件空间/.test(content);
+};
+
 const aiWordDocumentName = (request: string, generatedContent = "") => {
   const explicitTitle = request.match(/标题(?:为|是)?[“\"]([^”\"]{1,80})[”\"]/i)?.[1]?.trim();
   const generatedTitle = generatedContent.split(/\r?\n/).map((line) => line.replace(/^[#*\s]+/, "").trim()).find(Boolean)?.slice(0, 60);
@@ -2112,6 +2120,9 @@ export default function CaseCenterPage({
     const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的案件问题");
     const effectiveSkillId = isAiWordGenerationRequest(content) ? "legal-document-drafting" : agentSkillId;
+    const previousAssistantDocument = isExistingAnswerWordConversionRequest(content)
+      ? [...(agentState?.messages || [])].reverse().find((item) => item.role === "assistant" && isUsableAiDocumentContent(item.content))?.content || ""
+      : "";
     if (effectiveSkillId !== agentSkillId) setAgentSkillId(effectiveSkillId);
     if (agentSending) activeCaseAgentRequestRef.current?.abort();
     const outgoingScreenshots = [...agentScreenshots];
@@ -2194,6 +2205,23 @@ export default function CaseCenterPage({
       }
     } catch (error: any) {
       if (!controller.signal.aborted) {
+        if (previousAssistantDocument) {
+          const name = aiWordDocumentName(content, previousAssistantDocument);
+          await api.post(`/cases/${agentCase.id}/ai-space/files`, { name, content: previousAssistantDocument });
+          setAgentState((current) => current ? {
+            ...current,
+            messages: [
+              ...current.messages.filter((item) => !String(item.id || "").startsWith("stream-")),
+              { id: `document-${Date.now()}`, role: "assistant", content: `Word 文档已生成到 AI 空间：${name}` },
+            ],
+          } : current);
+          if (viewingCounselCase?.id === agentCase.id) {
+            await refreshCounselDetailAttachments(agentCase.id);
+            selectCounselDocCategory("AI空间");
+          }
+          message.success(`Word 文档已生成到 AI 空间：${name}`);
+          return;
+        }
         const rawDetail = error?.response?.data?.detail || error?.message || "案件智能体响应失败";
         const visibleDetail = /model_(?:http|request|empty)|upstream/i.test(String(rawDetail))
           ? "模型本轮生成失败，请点击重新发送；案件材料和已发送问题不会丢失。"
