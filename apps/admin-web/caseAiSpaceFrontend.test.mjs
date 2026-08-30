@@ -26,6 +26,8 @@ test("AI chat can generate a Word document directly into the case AI workspace",
   assert.match(source, /新建 AI 空间 Word 文档/);
   assert.match(source, /isAiWordGenerationRequest\(content\) \? "legal-document-drafting" : agentSkillId/);
   assert.match(source, /encodeAgentSkillMessage\(effectiveSkillId, content\)/);
+  assert.match(source, /起诉状/);
+  assert.match(source, /模型本轮生成失败，请点击重新发送；案件材料和已发送问题不会丢失/);
 });
 
 test("AI drafts are excluded from the formal case document aggregate", () => {

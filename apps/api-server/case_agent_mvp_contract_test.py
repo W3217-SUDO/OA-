@@ -2,7 +2,7 @@
 
 import unittest
 from datetime import date, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.main as main_module
-from app.case_agent import RESPONSE_STYLE_RULES, CaseAgentRuntime, _checkpoint_url, _extract_proposed_action
+from app.case_agent import RESPONSE_STYLE_RULES, CaseAgentRuntime, _MODEL_CHUNK_CALLBACK, _checkpoint_url, _extract_proposed_action
 from app.agent_skills import AgentSkill
 from app.database import Base
 from app.main import (
@@ -163,6 +163,65 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
         self.assertEqual(skill.id, "general-office")
         self.assertEqual(images, [])
+
+    async def test_streaming_http_400_falls_back_to_non_stream_and_emits_content(self):
+        class FakeResponse:
+            def __init__(self, status_code, payload=None):
+                self.status_code = status_code
+                self.is_error = status_code >= 400
+                self._payload = payload or {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def aiter_lines(self):
+                if False:
+                    yield ""
+
+            def json(self):
+                return self._payload
+
+        class FakeClient:
+            post_payloads = []
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            def stream(self, *_args, **_kwargs):
+                return FakeResponse(400)
+
+            async def post(self, *_args, **kwargs):
+                self.post_payloads.append(kwargs["json"])
+                return FakeResponse(200, {"choices": [{"message": {"content": "民事起诉状完整正文"}}]})
+
+        self.runtime.api_base_url = "https://model.example/v1"
+        self.runtime.api_key = "test-only"
+        self.runtime.model = "gpt-test"
+        chunks = []
+        token = _MODEL_CHUNK_CALLBACK.set(chunks.append)
+        try:
+            with patch("app.case_agent.httpx.AsyncClient", FakeClient):
+                content, action = await self.runtime._request_model(
+                    {"case": {"id": 9}},
+                    [{"role": "user", "content": "帮我生成一个起诉状模板"}],
+                )
+        finally:
+            _MODEL_CHUNK_CALLBACK.reset(token)
+
+        self.assertEqual(content, "民事起诉状完整正文")
+        self.assertIsNone(action)
+        self.assertEqual("".join(chunks), content)
+        self.assertFalse(FakeClient.post_payloads[0]["stream"])
+        self.assertFalse(self.runtime._model_stream_supported)
 
     async def test_user_skill_override_reaches_model_without_changing_case_scope(self):
         self.runtime.api_base_url = "https://model.example/v1"

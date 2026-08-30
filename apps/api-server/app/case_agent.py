@@ -291,6 +291,7 @@ class CaseAgentRuntime:
         self.error = ""
         self._checkpoint_context: AbstractAsyncContextManager[Any] | None = None
         self._semaphore = asyncio.Semaphore(self.max_concurrency)
+        self._model_stream_supported: bool | None = None
 
     async def start(self) -> None:
         if not self.enabled or self.graph is not None:
@@ -407,8 +408,9 @@ class CaseAgentRuntime:
                     "temperature": 0.2,
                     "stream": bool(chunk_callback),
                 }
-                if chunk_callback:
+                if chunk_callback and self._model_stream_supported is not False:
                     parts: list[str] = []
+                    fallback_to_non_stream = False
                     async with client.stream(
                         "POST",
                         f"{self.api_base_url}/chat/completions",
@@ -416,37 +418,55 @@ class CaseAgentRuntime:
                         json=request_payload,
                     ) as response:
                         if response.is_error:
-                            raise RuntimeError(f"model_http_{response.status_code}")
-                        async for line in response.aiter_lines():
-                            if not line.startswith("data:"):
-                                continue
-                            payload_text = line[5:].strip()
-                            if not payload_text or payload_text == "[DONE]":
-                                continue
-                            payload = json.loads(payload_text)
-                            choices = payload.get("choices") or []
-                            if not choices:
-                                continue
-                            delta = str(choices[0].get("delta", {}).get("content") or "")
-                            if delta:
-                                parts.append(delta)
-                                chunk_callback(delta)
+                            if response.status_code in {400, 404, 405, 415, 422, 501}:
+                                self._model_stream_supported = False
+                                fallback_to_non_stream = True
+                            else:
+                                raise RuntimeError(f"model_http_{response.status_code}")
+                        else:
+                            async for line in response.aiter_lines():
+                                if not line.startswith("data:"):
+                                    continue
+                                payload_text = line[5:].strip()
+                                if not payload_text or payload_text == "[DONE]":
+                                    continue
+                                payload = json.loads(payload_text)
+                                choices = payload.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta = str(choices[0].get("delta", {}).get("content") or "")
+                                if delta:
+                                    parts.append(delta)
+                                    chunk_callback(delta)
+                            self._model_stream_supported = True
                     content = "".join(parts).strip()
+                    if fallback_to_non_stream:
+                        content = await self._request_model_non_stream(client, request_payload)
+                        for start in range(0, len(content), 24):
+                            chunk_callback(content[start:start + 24])
+                            await asyncio.sleep(0)
                 else:
-                    response = await client.post(
-                        f"{self.api_base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json=request_payload,
-                    )
-                    if response.is_error:
-                        raise RuntimeError(f"model_http_{response.status_code}")
-                    payload = response.json()
-                    content = str(payload["choices"][0]["message"]["content"]).strip()
+                    content = await self._request_model_non_stream(client, request_payload)
+                    if chunk_callback:
+                        for start in range(0, len(content), 24):
+                            chunk_callback(content[start:start + 24])
+                            await asyncio.sleep(0)
             if not content:
                 raise RuntimeError("model_empty_response")
             return _extract_proposed_action(content)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise RuntimeError("model_request_failed") from exc
+
+    async def _request_model_non_stream(self, client: httpx.AsyncClient, request_payload: dict[str, Any]) -> str:
+        response = await client.post(
+            f"{self.api_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            json={**request_payload, "stream": False},
+        )
+        if response.is_error:
+            raise RuntimeError(f"model_http_{response.status_code}")
+        payload = response.json()
+        return str(payload["choices"][0]["message"]["content"]).strip()
 
     @staticmethod
     def thread_id(case_id: int, operator: str) -> str:

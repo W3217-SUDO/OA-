@@ -2185,11 +2185,18 @@ export default function CaseCenterPage({
       }
     } catch (error: any) {
       if (!controller.signal.aborted) {
-        setAgentState((current) => current ? { ...current, messages: current.messages.filter((item) => item.id !== optimisticId && !String(item.id || "").startsWith("stream-")) } : current);
-        setAgentInput(content);
-        setAgentScreenshots(outgoingScreenshots);
-        setAgentDocumentIds(outgoingDocumentIds);
-        message.error(error?.response?.data?.detail || error?.message || "案件智能体响应失败");
+        const rawDetail = error?.response?.data?.detail || error?.message || "案件智能体响应失败";
+        const visibleDetail = /model_(?:http|request|empty)|upstream/i.test(String(rawDetail))
+          ? "模型本轮生成失败，请点击重新发送；案件材料和已发送问题不会丢失。"
+          : String(rawDetail);
+        setAgentState((current) => current ? {
+          ...current,
+          messages: [
+            ...current.messages.filter((item) => !String(item.id || "").startsWith("stream-")),
+            { id: `error-${Date.now()}`, role: "assistant", content: visibleDetail },
+          ],
+        } : current);
+        message.error(visibleDetail);
       }
     } finally {
       if (activeCaseAgentRequestRef.current === controller) {
