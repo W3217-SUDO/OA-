@@ -39,6 +39,7 @@ test("Word conversion falls back to the previous generated answer when the model
   assert.match(source, /isUsableAiDocumentContent/);
   assert.match(source, /if \(previousAssistantDocument\)/);
   assert.match(source, /content: previousAssistantDocument/);
+  assert.match(source, /isExistingAnswerWordConversionRequest\(request\) \? generatedTitle : meaningfulRequestTitle/);
   assert.match(source, /Word 文档已生成到 AI 空间/);
 });
 

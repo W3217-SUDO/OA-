@@ -600,7 +600,9 @@ const aiWordDocumentName = (request: string, generatedContent = "") => {
     .replace(/[\\/:*?"<>|\r\n]+/g, " ")
     .trim()
     .slice(0, 60);
-  return `${explicitTitle || cleaned || generatedTitle || "AI生成文书"}-${dayjs().format("YYYYMMDD-HHmmss")}.docx`;
+  const meaningfulRequestTitle = /[\p{L}\p{N}]/u.test(cleaned) ? cleaned : "";
+  const title = explicitTitle || (isExistingAnswerWordConversionRequest(request) ? generatedTitle : meaningfulRequestTitle) || generatedTitle || "AI生成文书";
+  return `${title}-${dayjs().format("YYYYMMDD-HHmmss")}.docx`;
 };
 type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;disabled?:boolean;options?:CaseFileTypeOption[]};
 type WarehouseStorageLocationOption = {id:number;name:string;is_active:boolean};
