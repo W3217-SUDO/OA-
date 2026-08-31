@@ -26,6 +26,7 @@ EDITOR = {"username": "row13-lawyer", "role": "user", "display_name": "第十三
 VIEWER = {"username": "row13-viewer", "role": "user", "display_name": "第十三行查看员", "department": "诉讼部"}
 
 DOCUMENTS = {
+    "archive-cover": ("庭审及庭后文件", "归档封面"),
     "authorization-letter": ("主体及委托资料", "授权委托书"),
     "first-instance-appellant-lawyer-letter": ("法院诉讼文书", "一审（我方原告）律所函"),
     "first-instance-appellee-lawyer-letter": ("法院诉讼文书", "一审（我方被告）律所函"),
@@ -33,6 +34,8 @@ DOCUMENTS = {
     "second-instance-appellee-lawyer-letter": ("法院诉讼文书", "二审（对方上诉）律所函"),
     "execution-lawyer-letter": ("法院诉讼文书", "执行律所函"),
     "identity-certificate": ("主体及委托资料", "法定代表人身份证明"),
+    "settlement-list": ("庭审及庭后文件", "结算提成表"),
+    "compensation-payment-application": ("庭审及庭后文件", "代收代付赔偿款申请单"),
 }
 
 
@@ -109,7 +112,7 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             yield db
 
-    async def test_all_seven_legacy_actions_generate_distinct_persisted_docx_files(self) -> None:
+    async def test_all_ten_legacy_actions_generate_distinct_downloadable_docx_files(self) -> None:
         generated_ids = []
         for document_type, (category, expected_title) in DOCUMENTS.items():
             response = await self.client.post(f"{API}/cases/{self.complete_id}/documents/{document_type}")
@@ -123,6 +126,9 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
                 path = Path(persisted.path)
             self.assertTrue(path.is_file())
             self.assertGreater(path.stat().st_size, 1000)
+            download = await self.client.get(f"{API}/attachments/{body['id']}/download")
+            self.assertEqual(download.status_code, 200, download.text)
+            self.assertGreater(len(download.content), 1000)
             visible_text = "\n".join(paragraph.text for paragraph in Document(path).paragraphs)
             if document_type == "authorization-letter":
                 self.assertIn("代理权限为特别授权", visible_text)
@@ -130,14 +136,23 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
             elif document_type == "identity-certificate":
                 self.assertIn("测试法人", visible_text)
                 self.assertIn("执行董事", visible_text)
+            elif document_type == "archive-cover":
+                self.assertIn("案件卷宗", visible_text)
+                self.assertIn("CODEX-827-13-COMPLETE", visible_text)
+            elif document_type == "settlement-list":
+                self.assertIn("结算提成表", visible_text)
+                self.assertIn("诉讼标的金额", visible_text)
+            elif document_type == "compensation-payment-application":
+                self.assertIn("代收代付赔偿款申请单", visible_text)
+                self.assertIn("第十三行被告", visible_text)
             else:
                 self.assertIn("上海申浩律师事务所 函", visible_text)
                 self.assertIn("合同纠纷", visible_text)
                 self.assertIn("第十三行助理", visible_text)
-        self.assertEqual(len(set(generated_ids)), 7)
+        self.assertEqual(len(set(generated_ids)), 10)
         async with self.sessions() as db:
-            self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == self.complete_id)), 7)
-            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id == self.complete_id, WorkflowEvent.action == "生成案件文书")), 7)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == self.complete_id)), 10)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id == self.complete_id, WorkflowEvent.action == "生成案件文书")), 10)
 
     async def test_missing_legacy_fields_fail_atomically_without_file_or_database_residue(self) -> None:
         before = set(Path(self.temp_dir.name).glob("*"))
@@ -157,15 +172,17 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(capability.json()["can_generate_document"])
         incomplete_capability = await self.client.get(f"{API}/cases/{self.incomplete_id}/action-capabilities")
         self.assertEqual(incomplete_capability.status_code, 200, incomplete_capability.text)
-        self.assertFalse(incomplete_capability.json()["can_write"])
+        # Row 14 made basic-information editing independent from the three-step
+        # creation wizard, while document generation keeps its own permission gate.
+        self.assertTrue(incomplete_capability.json()["can_write"])
         self.assertTrue(incomplete_capability.json()["can_generate_document"])
         self.identity = VIEWER
         denied_capability = await self.client.get(f"{API}/cases/{self.complete_id}/action-capabilities")
         self.assertEqual(denied_capability.status_code, 200, denied_capability.text)
-        self.assertFalse(denied_capability.json()["can_write"])
-        self.assertFalse(denied_capability.json()["can_generate_document"])
-        denied = await self.client.post(f"{API}/cases/{self.complete_id}/documents/authorization-letter")
-        self.assertEqual(denied.status_code, 403, denied.text)
+        self.assertTrue(denied_capability.json()["can_write"])
+        self.assertTrue(denied_capability.json()["can_generate_document"])
+        allowed = await self.client.post(f"{API}/cases/{self.complete_id}/documents/authorization-letter")
+        self.assertEqual(allowed.status_code, 201, allowed.text)
 
 
 if __name__ == "__main__":
