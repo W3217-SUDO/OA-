@@ -45,6 +45,7 @@ import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { consumeIncomingPaymentDetailTarget } from "./incomingPaymentDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import { createFinanceActionGate } from "./financeActionGate.mjs";
 import { buildInvoiceApplicationPayload } from "./financeInvoiceHelpers.mjs";
@@ -1415,6 +1416,13 @@ export default function FinanceCenterPage({
     useState<IncomingPayment | null>(null);
   const [incomingDetailTarget, setIncomingDetailTarget] =
     useState<IncomingPayment | null>(null);
+  useEffect(() => {
+    const paymentId = consumeIncomingPaymentDetailTarget();
+    if (!paymentId) return;
+    void api.get(`/finance/incoming-payments/${paymentId}`)
+      .then(({ data }) => setIncomingDetailTarget(data))
+      .catch((error: any) => message.error(error?.response?.data?.detail || "回款详情加载失败"));
+  }, []);
   const [issueTarget, setIssueTarget] = useState<FinanceFlow | null>(null);
   const [voidTarget, setVoidTarget] = useState<FinanceFlow | null>(null);
   const [refundCompleteTarget, setRefundCompleteTarget] =

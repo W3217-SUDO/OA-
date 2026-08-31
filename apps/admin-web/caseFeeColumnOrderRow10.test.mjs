@@ -14,8 +14,8 @@ test("row 10 follows the exact legacy external fee column order", () => {
   assert.doesNotMatch(columns, /title:\"付款账号\"/);
 });
 
-test("row 10 makes non-zero received amounts open the fee detail", () => {
+test("row 10 makes non-zero received amounts open the incoming payment detail", () => {
   const columns = page.match(/const externalCaseFeeColumns=\[([\s\S]*?)\n  \];/)?.[1] || "";
   assert.match(columns, /title:\"回款金额\"[\s\S]*?Number\(value\|\|0\)!==0/);
-  assert.match(columns, /<Button type=\"link\" className=\"case-cell-link\" onClick=\{\(\)=>void openRelatedFee\(row\)\}>\{value\}<\/Button>/);
+  assert.match(columns, /<Button type=\"link\" className=\"case-cell-link\" onClick=\{\(\)=>openRelatedIncomingPayment\(row\)\}>\{value\}<\/Button>/);
 });

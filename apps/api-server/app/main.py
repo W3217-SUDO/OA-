@@ -18123,6 +18123,10 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
         if fee_record:
             fee_data = dict(fee_record.data or {})
             fee_data["received_amount"] = _round_fee_amount(float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0) + amount)
+            fee_data["received_at"] = item.received_date.isoformat()
+            fee_data["cashed_date"] = item.received_date.isoformat()
+            fee_data["incoming_payment_id"] = item.id
+            fee_data["receipt_no"] = item.receipt_no
             fee_record.data = fee_data
         tx = FinanceTransaction(finance_record_id=contract.id, transaction_type="回款", amount=amount, transaction_date=item.received_date, voucher_no=item.bank_reference, counterparty=item.payer_name, operator=identity["username"], remark=f"银行到账 {item.receipt_no} 分配至 {contract.serial_no}｜{plan.phase}" + (f"｜案件 {case_record.serial_no}" if case_record else ""))
         db.add(tx); await db.flush(); row = {"receivable_plan_id": plan.id, "fee_record_id": fee_record.id if fee_record else None, "contract_id": contract.id, "contract_no": contract.serial_no, "phase": plan.phase, "case_id": case_record.id if case_record else None, "case_no": case_record.serial_no if case_record else "", "amount": amount, "payment_method": entry.payment_method.strip(), "settlement_items": [settlement.model_dump() for settlement in entry.settlement_items], "transaction_id": tx.id, "allocated_by": identity["username"], "allocated_at": datetime.now().isoformat(timespec="seconds")}; allocation_rows.append(row)
@@ -21237,6 +21241,42 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
             for fee_id in _invoice_linked_fee_ids(invoice.data or {}):
                 if fee_id in fee_ids:
                     active_invoices_by_fee.setdefault(fee_id, invoice)
+    incoming_by_fee: dict[int, dict] = {}
+    if fee_ids:
+        incoming_payments = list((await db.scalars(select(IncomingPayment).where(
+            IncomingPayment.claimed_customer == case_record.customer,
+        ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
+        for payment in incoming_payments:
+            for allocation in payment.allocations or []:
+                direct_fee_id = int(allocation.get("fee_record_id") or 0)
+                settlement_rows = allocation.get("settlement_items") if isinstance(allocation.get("settlement_items"), list) else []
+                matched_amounts: dict[int, float] = {}
+                if direct_fee_id in fee_ids:
+                    matched_amounts[direct_fee_id] = float(allocation.get("amount") or 0)
+                for settlement in settlement_rows:
+                    if not isinstance(settlement, dict):
+                        continue
+                    settlement_fee_id = int(settlement.get("fee_record_id") or settlement.get("fee_id") or 0)
+                    if settlement_fee_id in fee_ids and settlement_fee_id not in matched_amounts:
+                        matched_amounts[settlement_fee_id] = float(settlement.get("amount") or 0)
+                for fee_id, matched_amount in matched_amounts.items():
+                    summary = incoming_by_fee.setdefault(fee_id, {
+                        "incoming_payment_id": payment.id,
+                        "receipt_no": payment.receipt_no,
+                        "received_at": payment.received_date.isoformat(),
+                        "received_amount": 0.0,
+                        "incoming_payments": [],
+                    })
+                    summary["received_amount"] = _round_fee_amount(summary["received_amount"] + matched_amount)
+                    summary["incoming_payments"].append({
+                        "id": payment.id,
+                        "receipt_no": payment.receipt_no,
+                        "received_date": payment.received_date.isoformat(),
+                        "allocated_amount": _round_fee_amount(matched_amount),
+                        "payer_name": payment.payer_name,
+                        "bank_reference": payment.bank_reference,
+                        "status": payment.status,
+                    })
     users_by_username = await _user_display_map({item.owner for item in [*fees, *clues]}, db)
 
     def related_dict(item: BusinessRecord) -> dict:
@@ -21245,8 +21285,16 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
         result_data = dict(result.get("data") or {})
         linked_invoice = active_invoices_by_fee.get(item.id)
         if linked_invoice:
+            invoice_data = linked_invoice.data or {}
             result_data["invoice_status"] = "已开票" if linked_invoice.status == "已开票" else "已申请"
             result_data["invoice_application_no"] = linked_invoice.serial_no
+            result_data["invoice_record_id"] = linked_invoice.id
+            result_data["invoice_no"] = invoice_data.get("invoice_no") or result_data.get("invoice_no") or ""
+            result_data["invoice_date"] = invoice_data.get("invoice_date") or result_data.get("invoice_date") or ""
+        linked_incoming = incoming_by_fee.get(item.id)
+        if linked_incoming:
+            result_data.update(linked_incoming)
+            result_data["cashed_date"] = linked_incoming["received_at"]
         if str((item.data or {}).get("fee_type") or "") == "官方费用":
             linked = refunds_by_fee.get(item.id, [])
             total_refund = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked if refund.status not in {"已驳回", "已作废"}), 2)

@@ -62,6 +62,7 @@ import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./cus
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { rememberIncomingPaymentDetailTarget } from "./incomingPaymentDetailNavigation";
 import { readStoredGlobalCaseSearchContext } from "./globalCaseSearchParity.mjs";
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
@@ -157,6 +158,15 @@ type CaseRow = {
   description: string;
   created_at?: string;
   data: Record<string, any>;
+};
+type CaseFeeIncomingPaymentLink = {
+  id: number;
+  receipt_no: string;
+  received_date: string;
+  allocated_amount: number;
+  payer_name: string;
+  bank_reference: string;
+  status: string;
 };
 type CasePaymentTypeOption = {
   id: number;
@@ -896,6 +906,7 @@ export default function CaseCenterPage({
   const [companyScheduleCourtInfo, setCompanyScheduleCourtInfo] = useState<{ row: CaseRow; level: CompanyScheduleCourtLevel } | null>(null);
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
+  const [viewingFeeIncomingPayments, setViewingFeeIncomingPayments] = useState<CaseFeeIncomingPaymentLink[] | null>(null);
   const [legacyLsHistoryCaseIds, setLegacyLsHistoryCaseIds] = useState<Record<number, number>>({});
   const [legacyLsHistoryOpen, setLegacyLsHistoryOpen] = useState(false);
   const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
@@ -2558,6 +2569,30 @@ export default function CaseCenterPage({
     } catch (error: any) {
       message.error(error?.response?.data?.detail || error?.message || "费用记录不存在或无权查看");
     }
+  };
+  const openRelatedIncomingPayment = (fee: CaseRow) => {
+    const payments = Array.isArray(fee.data.incoming_payments) ? fee.data.incoming_payments : [];
+    if (!payments.length) {
+      message.warning("当前费用未关联可查看的回款记录");
+      return;
+    }
+    setViewingFeeIncomingPayments(payments);
+  };
+  const openIncomingPaymentDetail = (paymentId: number) => {
+    if (!rememberIncomingPaymentDetailTarget(paymentId)) {
+      message.warning("当前回款记录不存在或无权查看");
+      return;
+    }
+    setViewingFeeIncomingPayments(null);
+    onNavigate?.("finance-incoming-company");
+  };
+  const openRelatedInvoice = (fee: CaseRow) => {
+    const invoiceId = Number(fee.data.invoice_record_id || 0);
+    if (!rememberBusinessRecordDetailTarget({ id: invoiceId, module: "invoice" })) {
+      message.warning("当前费用未关联可查看的发票记录");
+      return;
+    }
+    onNavigate?.("finance-invoice-company");
   };
   const openRelatedClue = (target: { id?: number; serial_no?: unknown }) => {
     const id = Number(target.id || 0) || undefined;
@@ -4620,7 +4655,11 @@ export default function CaseCenterPage({
     onNavigate?.(key==="invoice"?"finance-invoice-mine":"finance-refund");
   };
   const externalCaseFeeColumns=[
-    {title:"合同编号",width:150,render:(_:unknown,row:CaseRow)=>row.data.contract_no||viewingCounselCase?.data.contract_no||"—"},
+    {title:"合同编号",width:150,render:(_:unknown,row:CaseRow)=>{
+      const contractNo=row.data.contract_no||viewingCounselCase?.data.contract_no;
+      const contractId=Number(row.data.contract_id||row.data.contract_record_id||viewingCounselCase?.data.contract_id||viewingCounselCase?.data.contract_record_id||0)||undefined;
+      return contractNo?<Button type="link" className="case-cell-link" onClick={()=>openRelatedContract({id:contractId,serial_no:contractNo})}>{contractNo}</Button>:"—";
+    }},
     {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
     {title:"金额",width:100,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.amount??0},
     {title:"退费",width:90,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.refund_amount??row.data.refund_requested_amount??0},
@@ -4629,10 +4668,10 @@ export default function CaseCenterPage({
     {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
     {title:"回款金额",width:110,align:"right" as const,render:(_:unknown,row:CaseRow)=>{
       const value=row.data.received_amount??row.data.cashed_amount;
-      return Number(value||0)!==0?<Button type="link" className="case-cell-link" onClick={()=>void openRelatedFee(row)}>{value}</Button>:value??"/";
+      return Number(value||0)!==0?<Button type="link" className="case-cell-link" onClick={()=>openRelatedIncomingPayment(row)}>{value}</Button>:value??"/";
     }},
     {title:"开票日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.invoice_date||"").slice(0,10)||"—"},
-    {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
+    {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no?<Button type="link" className="case-cell-link" onClick={()=>openRelatedInvoice(row)}>{row.data.invoice_no}</Button>:"—"},
     {title:"申请付款金额",width:130,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??0},
   ];
   const closeCaseCommission = () => {
@@ -6466,6 +6505,28 @@ export default function CaseCenterPage({
           />
         </Form>
       </Drawer>
+      <Modal
+        width={900}
+        open={Boolean(viewingFeeIncomingPayments)}
+        title="费用回款记录"
+        footer={<Button onClick={() => setViewingFeeIncomingPayments(null)}>关闭</Button>}
+        onCancel={() => setViewingFeeIncomingPayments(null)}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={viewingFeeIncomingPayments || []}
+          columns={[
+            {title:"回款单号",dataIndex:"receipt_no",width:190,render:(value:string,row:CaseFeeIncomingPaymentLink)=><Button type="link" className="case-cell-link" onClick={()=>openIncomingPaymentDetail(row.id)}>{value}</Button>},
+            {title:"回款日期",dataIndex:"received_date",width:120},
+            {title:"本次分配金额",dataIndex:"allocated_amount",width:130,align:"right" as const},
+            {title:"付款人",dataIndex:"payer_name",width:150},
+            {title:"银行流水号",dataIndex:"bank_reference",width:180},
+            {title:"状态",dataIndex:"status",width:100},
+          ]}
+        />
+      </Modal>
       <Modal
         open={Boolean(courtRefundFee)}
         title={`法院退费：${courtRefundFee?.serial_no || ""}`}
