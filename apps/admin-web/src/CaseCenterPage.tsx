@@ -154,6 +154,27 @@ type CaseRow = {
   created_at?: string;
   data: Record<string, any>;
 };
+type CaseCommissionPreviewRow = {
+  preview_key: string;
+  client_key: string;
+  case_no: string;
+  commission_role: string;
+  commission_type: string;
+  expense_subtype: string;
+  employee_username: string;
+  employee_display_name: string;
+  base_amount: number;
+  reference_commission: number;
+  actual_amount: number;
+  remark: string;
+};
+type CaseCommissionPreview = {
+  case: { id: number; serial_no: string; title: string };
+  source_fee: { id: number; serial_no: string; amount: number; fee_type: string };
+  personnel: Array<{ role: string; username: string; display_name: string }>;
+  items: Omit<CaseCommissionPreviewRow, "client_key">[];
+  missing_messages: string[];
+};
 type CaseLitigantPartyField = "plaintiffs" | "defendants" | "third_parties";
 type CaseLitigantCandidate = {
   id: number;
@@ -943,6 +964,10 @@ export default function CaseCenterPage({
   const [selectedFirmFeeKeys, setSelectedFirmFeeKeys] = useState<Key[]>([]);
   const [selectedPlatformFeeKeys, setSelectedPlatformFeeKeys] = useState<Key[]>([]);
   const [selectedInternalFeeKeys, setSelectedInternalFeeKeys] = useState<Key[]>([]);
+  const [caseCommissionPreview, setCaseCommissionPreview] = useState<CaseCommissionPreview | null>(null);
+  const [caseCommissionRows, setCaseCommissionRows] = useState<CaseCommissionPreviewRow[]>([]);
+  const [caseCommissionLoading, setCaseCommissionLoading] = useState(false);
+  const [caseCommissionSubmitting, setCaseCommissionSubmitting] = useState(false);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
   const [expandedCounselDocGroups, setExpandedCounselDocGroups] = useState<Record<string, boolean>>({
     "调查文档全部": true,
@@ -4538,6 +4563,69 @@ export default function CaseCenterPage({
     {title:"发票号",width:180,render:(_:unknown,row:CaseRow)=>row.data.invoice_no||"—"},
     {title:"申请付款金额",width:130,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??0},
   ];
+  const closeCaseCommission = () => {
+    setCaseCommissionPreview(null);
+    setCaseCommissionRows([]);
+  };
+  const openCaseCommission = async () => {
+    if (!viewingCounselCase || !requireSingleFee(selectedFirmFeeKeys, selectedFirmFee, "新建提成")) return;
+    const feeType = String(selectedFirmFee!.data.fee_type || selectedFirmFee!.data.expense_subtype || "");
+    if (feeType !== "代理费" && !feeType.includes("代理费")) {
+      message.warning("新建提成必须选择一条代理费");
+      return;
+    }
+    setCaseCommissionLoading(true);
+    try {
+      const { data } = await api.get(`/cases/${viewingCounselCase.id}/commission-preview`, {
+        params: { source_fee_id: selectedFirmFee!.id },
+      });
+      const preview = data as CaseCommissionPreview;
+      setCaseCommissionPreview(preview);
+      setCaseCommissionRows((preview.items || []).map((item, index) => ({ ...item, client_key: `${item.preview_key}:${index}` })));
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "提成预览加载失败");
+    } finally {
+      setCaseCommissionLoading(false);
+    }
+  };
+  const cloneCaseCommissionRow = (source: CaseCommissionPreviewRow) => {
+    setCaseCommissionRows((rows) => [
+      ...rows,
+      { ...source, client_key: `${source.preview_key}:${Date.now()}:${rows.length}`, remark: "" },
+    ]);
+  };
+  const updateCaseCommissionRow = (clientKey: string, patch: Partial<CaseCommissionPreviewRow>) => {
+    setCaseCommissionRows((rows) => rows.map((row) => row.client_key === clientKey ? { ...row, ...patch } : row));
+  };
+  const submitCaseCommissions = async () => {
+    if (!caseCommissionPreview || !viewingCounselCase) return;
+    if (!caseCommissionRows.length) {
+      message.warning("没有可提交的提成项目");
+      return;
+    }
+    if (caseCommissionRows.some((row) => Number(row.actual_amount || 0) <= 0)) {
+      message.warning("实际金额必须大于 0");
+      return;
+    }
+    setCaseCommissionSubmitting(true);
+    try {
+      const { data } = await api.post(`/cases/${viewingCounselCase.id}/commissions`, {
+        source_fee_id: caseCommissionPreview.source_fee.id,
+        items: caseCommissionRows.map((row) => ({
+          preview_key: row.preview_key,
+          actual_amount: row.actual_amount,
+          remark: row.remark || "",
+        })),
+      });
+      message.success(`已新建 ${data.total || caseCommissionRows.length} 条提成`);
+      closeCaseCommission();
+      await openCounselDetail(viewingCounselCase, "internal-fees");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "新建提成失败");
+    } finally {
+      setCaseCommissionSubmitting(false);
+    }
+  };
   const handleInternalFeeAction=(key:string)=>{
     if(key==="create")return openCaseFeeBySubtype("内部","内部费用");
     if(!requireSingleFee(selectedInternalFeeKeys,selectedInternalFee,key==="payment"?"申请付款":"删除"))return;
@@ -5359,6 +5447,64 @@ export default function CaseCenterPage({
         </>}
       </Drawer>
       <Modal
+        open={Boolean(caseCommissionPreview)}
+        title="新增提成"
+        width={1120}
+        okText="申请付款"
+        cancelText="取消"
+        confirmLoading={caseCommissionSubmitting}
+        onOk={() => void submitCaseCommissions()}
+        onCancel={closeCaseCommission}
+        className="case-commission-modal"
+      >
+        <Alert
+          className="case-fee-legacy-tip"
+          type="info"
+          title="温馨提示"
+          description={<ol>
+            <li>提成基数取当前选中的代理费金额：{caseCommissionPreview?.source_fee.amount ?? 0} 元。</li>
+            <li>人员及参考提成按案件日期有效的员工提成设置自动生成，实际金额可按业务调整。</li>
+            <li>点击操作栏的加号可复制当前提成行；每一行单独生成一条内部提成记录。</li>
+          </ol>}
+        />
+        {!!caseCommissionPreview?.missing_messages.length && <Alert
+          type="warning"
+          showIcon
+          title="以下案件人员未配置对应提成"
+          description={caseCommissionPreview.missing_messages.join("，")}
+          style={{ marginBottom: 10 }}
+        />}
+        <Table<CaseCommissionPreviewRow>
+          rowKey="client_key"
+          size="small"
+          pagination={false}
+          scroll={{ x: 1030 }}
+          locale={{ emptyText: caseCommissionLoading ? "正在读取案件人员提成设置..." : "没有可生成的提成项目" }}
+          dataSource={caseCommissionRows}
+          columns={[
+            { title: "案号", dataIndex: "case_no", width: 145 },
+            { title: "费用类型", dataIndex: "commission_type", width: 140 },
+            { title: "支付对象", dataIndex: "employee_display_name", width: 120 },
+            { title: "基数", dataIndex: "base_amount", width: 100, align: "right" },
+            { title: "参考提成", dataIndex: "reference_commission", width: 110, align: "right" },
+            { title: "实际金额", width: 120, render: (_, row) => <InputNumber
+              min={0.01}
+              precision={2}
+              value={row.actual_amount}
+              onChange={(value) => updateCaseCommissionRow(row.client_key, { actual_amount: Number(value || 0) })}
+            /> },
+            { title: "备注", width: 220, render: (_, row) => <Input
+              value={row.remark}
+              onChange={(event) => updateCaseCommissionRow(row.client_key, { remark: event.target.value })}
+            /> },
+            { title: "操作", width: 90, fixed: "right", render: (_, row) => <Space size={0}>
+              <Button type="text" aria-label="新增提成行" icon={<PlusOutlined />} onClick={() => cloneCaseCommissionRow(row)} />
+              <Button type="text" danger aria-label="删除提成行" icon={<CloseOutlined />} onClick={() => setCaseCommissionRows((rows) => rows.filter((item) => item.client_key !== row.client_key))} />
+            </Space> },
+          ]}
+        />
+      </Modal>
+      <Modal
         open={Boolean(paymentPackagePreview)}
         title={`申请付款：${paymentPackagePreview?.source?.request_no || ""}`}
         okText="提交付款申请"
@@ -5630,7 +5776,7 @@ export default function CaseCenterPage({
               {key:"firm-fees",label:"律所费用",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={externalCaseFeeColumns}/>
                 {firmFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
-                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key==="commission"?handleInternalFeeAction("create"):openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
+                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key==="commission"?void openCaseCommission():openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
                   <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
                 </Space>}
               </div>},

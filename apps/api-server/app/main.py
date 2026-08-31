@@ -2613,6 +2613,17 @@ class FinanceFeeUpdateInput(FinanceFeeInput):
     pass
 
 
+class CaseCommissionCreateItemInput(BaseModel):
+    preview_key: str = Field(min_length=1, max_length=256)
+    actual_amount: float = Field(gt=0)
+    remark: str = Field(default="", max_length=1000)
+
+
+class CaseCommissionBatchInput(BaseModel):
+    source_fee_id: int = Field(gt=0)
+    items: list[CaseCommissionCreateItemInput] = Field(min_length=1, max_length=100)
+
+
 class FinanceActionInput(BaseModel):
     comment: str = ""
     amount: float | None = Field(default=None, gt=0)
@@ -18023,6 +18034,232 @@ async def finance_contract_ledger(contract_id: int, identity: dict = Depends(cur
         "transactions": [_finance_transaction_dict(transaction, None, show_amount=show_amount) for transaction in transactions],
         "summary": summary,
     }
+
+
+CASE_COMMISSION_ROLES = (
+    {
+        "key": "hearing", "label": "开庭", "subtype": "服务费(开庭)",
+        "rate_field": "hearing_rate", "fixed_field": "hearing_fixed",
+        "rate_name": "开庭比例提成", "fixed_name": "开庭固定提成",
+        "fields": ("hearing_lawyer_usernames", "hearing_lawyer_username", "court_lawyer_username", "hearing_lawyers", "hearing_lawyer", "court_lawyer"),
+    },
+    {
+        "key": "document", "label": "文书", "subtype": "服务费(文书)",
+        "rate_field": "document_rate", "fixed_field": "document_fixed",
+        "rate_name": "文书比例提成", "fixed_name": "文书固定提成",
+        "fields": ("assistant_usernames", "assistant_username", "assistants", "assistant", "case_assistant"),
+    },
+    {
+        "key": "source", "label": "案源", "subtype": "服务费(案源)",
+        "rate_field": "source_rate", "fixed_field": "source_fixed",
+        "rate_name": "案源比例提成", "fixed_name": "案源固定提成",
+        "fields": ("business_owner_usernames", "business_owner_username", "source_person_usernames", "source_person_username", "business_owner", "source_person"),
+    },
+    {
+        "key": "investigation", "label": "调查", "subtype": "服务费(调查)",
+        "rate_field": "investigation_rate", "fixed_field": "investigation_fixed",
+        "rate_name": "调查比例提成", "fixed_name": "调查固定提成",
+        "fields": ("investigator_usernames", "investigator_username", "investigators", "investigator"),
+    },
+    {
+        "key": "quality", "label": "品管", "subtype": "服务费(品管)",
+        "rate_field": "quality_rate", "fixed_field": "quality_fixed",
+        "rate_name": "品管比例提成", "fixed_name": "品管固定提成",
+        "fields": ("coordinator_usernames", "coordinator_username", "quality_manager_username", "coordinators", "coordinator", "quality_manager"),
+    },
+)
+
+
+def _case_commission_person_tokens(data: dict, fields: tuple[str, ...]) -> list[str]:
+    tokens: list[str] = []
+    for field in fields:
+        raw = data.get(field)
+        values = raw if isinstance(raw, list) else [raw]
+        for value in values:
+            for token in re.split(r"[,，、;/；\n]+", str(value or "")):
+                normalized = token.strip()
+                if normalized and normalized not in {"—", "-", "无", "未分配", PERSON_NAME_PLACEHOLDER}:
+                    tokens.append(normalized)
+    return list(dict.fromkeys(tokens))
+
+
+async def _commission_employee_index(db: AsyncSession) -> dict[str, BusinessRecord]:
+    employees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all())
+    users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    users_by_username = {user.username.lower(): user for user in users}
+    index: dict[str, BusinessRecord] = {}
+    for employee in employees:
+        data = employee.data or {}
+        if data.get("is_active") is False or employee.status in {"离职", "停用"}:
+            continue
+        username = str(data.get("username") or employee.owner or "").strip()
+        user = users_by_username.get(username.lower()) if username else None
+        for value in (username, employee.owner, employee.title, user.display_name if user else ""):
+            key = str(value or "").strip().lower()
+            if key:
+                index.setdefault(key, employee)
+    return index
+
+
+async def _commission_scheme_for_case(employee_id: int, case_date: date, db: AsyncSession) -> dict | None:
+    records = list((await db.scalars(select(HrSubrecord).where(
+        HrSubrecord.employee_id == employee_id,
+        HrSubrecord.kind == "commission",
+    ).order_by(HrSubrecord.created_at.desc(), HrSubrecord.id.desc()))).all())
+    for record in records:
+        data = record.data or {}
+        try:
+            start = date.fromisoformat(str(data.get("start_date") or ""))
+            end = date.fromisoformat(str(data.get("end_date") or "")) if data.get("end_date") else None
+        except ValueError:
+            continue
+        if start <= case_date and (end is None or case_date <= end):
+            return data
+    return None
+
+
+async def _case_commission_preview(
+    case_id: int,
+    source_fee_id: int,
+    identity: dict,
+    db: AsyncSession,
+) -> dict:
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
+        raise HTTPException(status_code=403, detail="当前账号没有新增案件提成权限")
+    source_fee = await db.get(BusinessRecord, source_fee_id)
+    source_data = source_fee.data if source_fee else {}
+    if not source_fee or source_fee.module != "finance":
+        raise HTTPException(status_code=404, detail="所选案件费用不存在")
+    if int(source_data.get("case_id") or 0) != case_record.id and str(source_data.get("case_no") or "") != case_record.serial_no:
+        raise HTTPException(status_code=409, detail="所选费用不属于当前案件")
+    if str(source_data.get("fee_type") or "") != "代理费":
+        raise HTTPException(status_code=422, detail="新建提成必须选择一条代理费")
+    base_amount = _round_fee_amount(float(source_data.get("amount") or 0))
+    if base_amount <= 0:
+        raise HTTPException(status_code=422, detail="所选代理费金额必须大于 0")
+
+    employee_index = await _commission_employee_index(db)
+    case_data = case_record.data or {}
+    case_date = case_record.created_at.date() if case_record.created_at else date.today()
+    rows: list[dict] = []
+    missing: list[str] = []
+    personnel: list[dict] = []
+    seen_role_employees: set[tuple[str, int]] = set()
+    for role in CASE_COMMISSION_ROLES:
+        for token in _case_commission_person_tokens(case_data, role["fields"]):
+            employee = employee_index.get(token.lower())
+            if not employee:
+                missing.append(f"{token}未关联员工档案，无法读取{role['label']}提成")
+                continue
+            pair = (str(role["key"]), employee.id)
+            if pair in seen_role_employees:
+                continue
+            seen_role_employees.add(pair)
+            employee_data = employee.data or {}
+            username = str(employee_data.get("username") or employee.owner or "").strip()
+            display_name = str(employee.title or token).strip()
+            personnel.append({"role": role["label"], "username": username, "display_name": display_name})
+            scheme = await _commission_scheme_for_case(employee.id, case_date, db)
+            rate = float((scheme or {}).get(role["rate_field"]) or 0)
+            fixed = float((scheme or {}).get(role["fixed_field"]) or 0)
+            if rate <= 0 and fixed <= 0:
+                missing.append(f"{display_name}未设{role['label']}提成")
+                continue
+            if rate > 0:
+                amount = _round_fee_amount(base_amount * rate)
+                rows.append({
+                    "preview_key": f"{role['key']}:{employee.id}:rate",
+                    "case_no": case_record.serial_no, "commission_role": role["label"],
+                    "commission_type": role["rate_name"], "expense_subtype": role["subtype"],
+                    "employee_username": username, "employee_display_name": display_name,
+                    "base_amount": base_amount, "rate": rate, "fixed_amount": 0,
+                    "reference_commission": amount, "actual_amount": amount, "remark": "",
+                })
+            if fixed > 0:
+                amount = _round_fee_amount(fixed)
+                rows.append({
+                    "preview_key": f"{role['key']}:{employee.id}:fixed",
+                    "case_no": case_record.serial_no, "commission_role": role["label"],
+                    "commission_type": role["fixed_name"], "expense_subtype": role["subtype"],
+                    "employee_username": username, "employee_display_name": display_name,
+                    "base_amount": base_amount, "rate": 0, "fixed_amount": amount,
+                    "reference_commission": amount, "actual_amount": amount, "remark": "",
+                })
+    return {
+        "case": {"id": case_record.id, "serial_no": case_record.serial_no, "title": case_record.title},
+        "source_fee": {"id": source_fee.id, "serial_no": source_fee.serial_no, "amount": base_amount, "fee_type": "代理费"},
+        "case_date": str(case_date), "personnel": personnel, "items": rows,
+        "missing_messages": list(dict.fromkeys(missing)),
+    }
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/commission-preview")
+async def preview_case_commissions(
+    case_id: int,
+    source_fee_id: int = Query(gt=0),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _case_commission_preview(case_id, source_fee_id, identity, db)
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/commissions", status_code=status.HTTP_201_CREATED)
+async def create_case_commissions(
+    case_id: int,
+    body: CaseCommissionBatchInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    preview = await _case_commission_preview(case_id, body.source_fee_id, identity, db)
+    templates = {item["preview_key"]: item for item in preview["items"]}
+    normalized: list[tuple[dict, float, str]] = []
+    for index, item in enumerate(body.items, start=1):
+        template = templates.get(item.preview_key)
+        if not template:
+            raise HTTPException(status_code=422, detail=f"第{index}行提成项目已失效，请重新打开新增提成窗口")
+        normalized.append((template, _round_fee_amount(item.actual_amount), item.remark.strip()))
+    actor = await db.scalar(select(User).where(User.username == identity["username"]));
+    if not actor:
+        raise HTTPException(status_code=401, detail="当前用户不存在")
+    case_record = await db.get(BusinessRecord, case_id)
+    source_fee = await db.get(BusinessRecord, body.source_fee_id)
+    created: list[BusinessRecord] = []
+    for template, amount, remark in normalized:
+        serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{len(created):02d}"
+        record = BusinessRecord(
+            module="finance", serial_no=serial,
+            title=f"{case_record.serial_no} {template['commission_type']}",
+            customer=case_record.customer, status="草稿",
+            owner=template["employee_username"] or identity["username"],
+            department=actor.department, description=remark,
+            data={
+                "amount": amount, "fee_type": "内部费用", "expense_scope": "内部",
+                "expense_subtype": template["expense_subtype"],
+                "case_no": case_record.serial_no, "case_id": case_record.id,
+                "contract_id": (case_record.data or {}).get("contract_id"),
+                "contract_no": (case_record.data or {}).get("contract_no", ""),
+                "handler": identity["username"], "payee": template["employee_username"],
+                "payee_display_name": template["employee_display_name"],
+                "base_amount": template["base_amount"],
+                "reference_commission": template["reference_commission"],
+                "commission_type": template["commission_type"],
+                "commission_role": template["commission_role"],
+                "source_fee_id": source_fee.id, "source_fee_no": source_fee.serial_no,
+                "source_fee_amount": preview["source_fee"]["amount"],
+            },
+        )
+        db.add(record); await db.flush()
+        db.add(WorkflowEvent(
+            record_id=record.id, action="根据代理费新建提成", to_status="草稿",
+            operator=identity["username"],
+            comment=f"{template['employee_display_name']}｜{template['commission_type']}｜{amount:.2f} 元｜来源 {source_fee.serial_no}",
+        ))
+        created.append(record)
+    await db.commit()
+    for record in created:
+        await db.refresh(record)
+    return {"items": [await _record_dict_for_identity(record, identity, db) for record in created], "total": len(created)}
 
 
 @app.post(f"{settings.api_prefix}/finance/fees", status_code=status.HTTP_201_CREATED)
