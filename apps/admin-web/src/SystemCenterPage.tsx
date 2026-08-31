@@ -180,7 +180,8 @@ const extraFields: Record<string, { key: string; label: string }[]> = {
   payment_type: [
     { key: "nature", label: "付款性质" },
     { key: "payee", label: "收款单位" },
-    { key: "account", label: "账号" },
+    { key: "account_bank", label: "开户行" },
+    { key: "account", label: "账号信息" },
   ],
   case_file_type: [{ key: "parent_code", label: "上级文件类型代码" }],
   district: [{ key: "parent_code", label: "上级地区代码" }],
@@ -1146,9 +1147,15 @@ export default function SystemCenterPage({
         render: (_, r) => r.extra.payee || "—",
       },
       {
-        title: "账号",
+        title: "开户行",
+        key: "account_bank",
+        width: 180,
+        render: (_, r) => r.extra.account_bank || r.extra.bank || "—",
+      },
+      {
+        title: "账号信息",
         key: "account",
-        width: 170,
+        width: 190,
         render: (_, r) => r.extra.account || "—",
       },
       actionColumn,
@@ -2231,7 +2238,9 @@ export default function SystemCenterPage({
                             },
                           },
                         ]
-                      : undefined
+                      : category === "payment_type"
+                        ? [{ required: true, message: `请输入${item.label}` }]
+                        : undefined
                   }
                 >
                   {isCaseFileTypeParent ? (

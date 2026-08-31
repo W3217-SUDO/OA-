@@ -66,6 +66,7 @@ import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
+import { buildCasePaymentTypeSelectOptions, buildExternalPaymentRequestPayload } from "./casePaymentUnitParity.mjs";
 import { getCaseDetailSectionVisibility } from "./caseDetailSectionVisibility";
 import {
   FEE_SUBTYPE_TO_TYPE,
@@ -157,6 +158,16 @@ type CaseRow = {
   created_at?: string;
   data: Record<string, any>;
 };
+type CasePaymentTypeOption = {
+  id: number;
+  code: string;
+  name: string;
+  nature: string;
+  payee: string;
+  account_bank: string;
+  account: string;
+};
+type PaymentTypeCreateTarget = { feeId: number; draftIndex?: number };
 type CaseCommissionPreviewRow = {
   preview_key: string;
   client_key: string;
@@ -1001,9 +1012,14 @@ export default function CaseCenterPage({
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
   const [caseFeeCreateStep, setCaseFeeCreateStep] = useState(0);
   const [createdCaseFees, setCreatedCaseFees] = useState<CaseRow[]>([]);
-  const [caseFeePaymentDrafts, setCaseFeePaymentDrafts] = useState<Array<{ payment_remark: string; payment_account: string }>>([]);
+  const [caseFeePaymentDrafts, setCaseFeePaymentDrafts] = useState<Array<{ payment_remark: string; payment_type_id?: number; payment_payee?: string; payment_account?: string }>>([]);
   const [caseFeeSubmitting, setCaseFeeSubmitting] = useState(false);
   const [paymentRequestFee, setPaymentRequestFee] = useState<CaseRow | null>(null);
+  const [casePaymentTypes, setCasePaymentTypes] = useState<CasePaymentTypeOption[]>([]);
+  const [casePaymentTypesLoading, setCasePaymentTypesLoading] = useState(false);
+  const [paymentTypeSearch, setPaymentTypeSearch] = useState("");
+  const [paymentTypeCreateTarget, setPaymentTypeCreateTarget] = useState<PaymentTypeCreateTarget | null>(null);
+  const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [paymentPackagePreview, setPaymentPackagePreview] = useState<any | null>(null);
   const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
@@ -1116,6 +1132,7 @@ export default function CaseCenterPage({
   const [taskForm] = Form.useForm();
   const [feeForm] = Form.useForm();
   const [paymentRequestForm] = Form.useForm();
+  const [paymentTypeCreateForm] = Form.useForm();
   const [courtRefundForm] = Form.useForm();
   const [progressForm] = Form.useForm();
   const [phaseForm] = Form.useForm();
@@ -1161,8 +1178,11 @@ export default function CaseCenterPage({
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
   const feeSourceFileType = Form.useWatch("source_file_type", feeForm);
   const feeExpenseSubtype = Form.useWatch("expense_subtype", feeForm);
+  const selectedPaymentTypeId = Form.useWatch("payment_type_id", paymentRequestForm);
   const feeItems = Form.useWatch("items", feeForm) || [];
   const feeEmployeeOptions = caseAssistantOptions;
+  const casePaymentTypeSelectOptions = buildCasePaymentTypeSelectOptions(casePaymentTypes);
+  const selectedCasePaymentType = casePaymentTypes.find((item) => item.id === selectedPaymentTypeId);
   const activeFeeContractScope = editingFeeRow ? feeExpenseScope : String(feeItems[0]?.expense_scope || "");
   const feeContractOptions = useMemo(
     () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow, activeFeeContractScope),
@@ -3478,6 +3498,49 @@ export default function CaseCenterPage({
     setCaseFeePaymentDrafts([]);
     setFeeCase(row);
   };
+  const loadCasePaymentTypes = async (feeId: number) => {
+    setCasePaymentTypesLoading(true);
+    try {
+      const { data } = await api.get(`/finance/fees/${feeId}/payment-types`);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setCasePaymentTypes(items);
+      return items as CasePaymentTypeOption[];
+    } catch (error: any) {
+      setCasePaymentTypes([]);
+      message.error(error?.response?.data?.detail || "付款单位加载失败");
+      return [];
+    } finally {
+      setCasePaymentTypesLoading(false);
+    }
+  };
+  const openPaymentTypeCreator = (feeId: number, draftIndex?: number) => {
+    paymentTypeCreateForm.resetFields();
+    paymentTypeCreateForm.setFieldsValue({ nature: "对公", payee: paymentTypeSearch.trim() });
+    setPaymentTypeCreateTarget({ feeId, draftIndex });
+  };
+  const createCasePaymentType = async () => {
+    if (!paymentTypeCreateTarget) return;
+    const values = await paymentTypeCreateForm.validateFields();
+    setPaymentTypeCreating(true);
+    try {
+      const { data } = await api.post(`/finance/fees/${paymentTypeCreateTarget.feeId}/payment-types`, values);
+      const created = data as CasePaymentTypeOption;
+      setCasePaymentTypes((items) => [...items.filter((item) => item.id !== created.id), created]);
+      if (paymentTypeCreateTarget.draftIndex !== undefined) {
+        setCaseFeePaymentDrafts((items) => items.map((item, index) => index === paymentTypeCreateTarget.draftIndex ? { ...item, payment_type_id: created.id } : item));
+      } else {
+        paymentRequestForm.setFieldValue("payment_type_id", created.id);
+      }
+      message.success("付款单位已新增并保存到系统参数-付款类型");
+      setPaymentTypeCreateTarget(null);
+      setPaymentTypeSearch("");
+      paymentTypeCreateForm.resetFields();
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "付款单位新增失败");
+    } finally {
+      setPaymentTypeCreating(false);
+    }
+  };
   const createCaseFee = async () => {
     const caseSource = feeCase || (editingFeeRow ? viewingCounselCase : null);
     if (!caseSource) return;
@@ -3504,8 +3567,10 @@ export default function CaseCenterPage({
         setCreatedCaseFees(created);
         setCaseFeePaymentDrafts(created.map((row) => ({
           payment_remark: "",
-          payment_account: row.data.payee || row.data.court || "",
+          payment_payee: row.data.expense_scope === "内部" ? String(row.data.payee || row.owner || "") : undefined,
+          payment_account: row.data.expense_scope === "内部" ? String(row.data.payee || row.owner || "") : undefined,
         })));
+        if (created[0] && created[0].data.expense_scope !== "内部") await loadCasePaymentTypes(created[0].id);
         setCaseFeeCreateStep(1);
         await load();
         if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
@@ -3518,11 +3583,18 @@ export default function CaseCenterPage({
     setCaseFeeCreateStep(0);
     setCreatedCaseFees([]);
     setCaseFeePaymentDrafts([]);
+    setCasePaymentTypes([]);
+    setPaymentTypeSearch("");
+    setPaymentTypeCreateTarget(null);
     feeForm.resetFields();
   };
   const submitCreatedCaseFeePayments = async () => {
-    if (caseFeePaymentDrafts.some((item) => !item.payment_account.trim())) {
-      message.warning("请输入收款单位");
+    if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.expense_scope !== "内部" && !item.payment_type_id)) {
+      message.warning("请选择系统付款单位");
+      return;
+    }
+    if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.expense_scope === "内部" && (!item.payment_payee?.trim() || !item.payment_account?.trim()))) {
+      message.warning("请输入内部费用收款人和付款账号");
       return;
     }
     setCaseFeeSubmitting(true);
@@ -3531,7 +3603,11 @@ export default function CaseCenterPage({
         const item = caseFeePaymentDrafts[index];
         await api.post(`/finance/fees/${row.id}/submit`, {
           amount: Number(row.data.amount || 0),
-          payment_account: String(item.payment_account || "").trim(),
+          ...(row.data.expense_scope === "内部" ? {
+            payment_payee: String(item.payment_payee || "").trim(),
+            payment_account: String(item.payment_account || "").trim(),
+          } : { payment_type_id: item.payment_type_id }),
+          payment_remark: String(item.payment_remark || "").trim(),
           comment: String(item.payment_remark || `案件 ${feeCase?.serial_no || ""} 申请付款`).trim(),
         });
       }
@@ -3609,7 +3685,7 @@ export default function CaseCenterPage({
     feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, expense_subtype: expenseSubtype, fee_type: FEE_SUBTYPE_TO_TYPE[expenseSubtype] || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
     setEditingFeeRow(row);
   };
-  const openPaymentRequest = (row: CaseRow) => {
+  const openPaymentRequest = async (row: CaseRow) => {
     if (!counselDetailCapabilities.can_create_finance) return message.warning("当前账号没有申请付款权限");
     if (!["草稿", "已退回", "已审批", "部分付款"].includes(row.status)) {
       return message.warning(`当前费用状态“${row.status}”不能申请付款`);
@@ -3617,26 +3693,25 @@ export default function CaseCenterPage({
     const paid = Number(row.data.paid_amount || 0);
     const requested = Number(row.data.payment_requested_amount || 0);
     const remaining = Math.max(Number(row.data.amount || 0) - paid - requested, 0);
+    const options = await loadCasePaymentTypes(row.id);
+    const storedPaymentTypeId = Number(row.data.payment_type_id) || undefined;
     paymentRequestForm.resetFields();
     paymentRequestForm.setFieldsValue({
       amount: remaining || Number(row.data.amount || 0),
       payment_remark: row.data.payment_remark || row.description || "",
-      payment_payee: row.data.payment_payee || row.data.payee || row.data.court || "",
-      payment_account: row.data.payment_account || "",
+      payment_type_id: options.some((item) => item.id === storedPaymentTypeId) ? storedPaymentTypeId : undefined,
     });
+    setPaymentTypeSearch("");
     setPaymentRequestFee(row);
   };
   const submitPaymentRequest = async () => {
     if (!paymentRequestFee) return;
     try {
       const values = await paymentRequestForm.validateFields();
-      await api.post(`/finance/fees/${paymentRequestFee.id}/submit`, {
-        amount: Number(values.amount),
-        payment_remark: String(values.payment_remark || "").trim(),
-        payment_payee: String(values.payment_payee || "").trim(),
-        payment_account: String(values.payment_account || "").trim(),
-        comment: String(values.payment_remark || `案件 ${paymentRequestFee.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款`).trim(),
-      });
+      await api.post(`/finance/fees/${paymentRequestFee.id}/submit`, buildExternalPaymentRequestPayload(
+        values,
+        `案件 ${paymentRequestFee.data.case_no || viewingCounselCase?.serial_no || ""} 申请付款`,
+      ));
       message.success("付款申请已提交审批");
       setPaymentRequestFee(null);
       paymentRequestForm.resetFields();
@@ -5447,10 +5522,18 @@ export default function CaseCenterPage({
           </Form>
         </> : <>
           <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={activeFeeContractScope === "内部" ? <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
-          <div className="case-fee-payment-table">
-            <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span></div>
-            {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span><Input value={caseFeePaymentDrafts[index]?.payment_remark || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_remark: event.target.value } : item))} /><Input value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
-          </div>
+          {activeFeeContractScope === "内部" ? <div className="case-fee-payment-table">
+            <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>收款人</span><span>付款账号</span></div>
+            {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span><Input value={caseFeePaymentDrafts[index]?.payment_payee || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_payee: event.target.value } : item))} /><Input value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
+          </div> : <div className="case-fee-payment-table case-fee-payment-unit-table">
+            <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span><span>操作</span></div>
+            {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}>
+              <span>{row.data.contract_no || "—"}</span><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span>
+              <Input value={caseFeePaymentDrafts[index]?.payment_remark || ""} placeholder="付款备注" onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_remark: event.target.value } : item))} />
+              <Select showSearch optionFilterProp="label" loading={casePaymentTypesLoading} placeholder="输入关键字选择收款单位" options={casePaymentTypeSelectOptions} value={caseFeePaymentDrafts[index]?.payment_type_id} onSearch={setPaymentTypeSearch} onChange={(value) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_type_id: value } : item))} notFoundContent={<Button type="link" icon={<PlusOutlined />} onClick={() => openPaymentTypeCreator(row.id, index)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} />
+              <Button type="text" title="新增付款单位" aria-label="新增付款单位" icon={<PlusOutlined />} onClick={() => openPaymentTypeCreator(row.id, index)} />
+            </div>)}
+          </div>}
         </>}
       </Drawer>
       <Modal
@@ -5539,20 +5622,38 @@ export default function CaseCenterPage({
         <Steps size="small" current={1} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
         <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={paymentRequestFee?.data.expense_scope === "内部" ? <ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
         <Form form={paymentRequestForm} component={false}>
-          <div className="case-fee-payment-table case-fee-payment-request-table">
-            <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>申请付款金额</span><span>付款备注</span><span>收款单位</span><span>付款账号</span></div>
+          <div className="case-fee-payment-table case-fee-payment-request-table case-fee-payment-unit-table">
+            <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span><span>操作</span></div>
             <div className="case-fee-payment-row">
+              <span>{paymentRequestFee?.data.contract_no || "—"}</span>
               <span>{paymentRequestFee?.data.case_no || viewingCounselCase?.serial_no || "—"}</span>
               <span>{paymentRequestFee?.data.expense_subtype || paymentRequestFee?.data.fee_type || paymentRequestFee?.title || "—"}</span>
-              <span>{paymentRequestFee?.data.amount ?? "—"}</span>
               <Form.Item name="amount" rules={[{ required: true, message: "请输入申请付款金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
               <Form.Item name="payment_remark"><Input placeholder="付款备注" /></Form.Item>
-              <Form.Item name="payment_payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input placeholder="收款单位" /></Form.Item>
-              <Form.Item name="payment_account" rules={[{ required: true, message: "请输入付款账号" }]}><Input placeholder="付款账号" /></Form.Item>
+              <Form.Item name="payment_type_id" rules={[{ required: true, message: "请选择系统付款单位" }]}><Select showSearch optionFilterProp="label" loading={casePaymentTypesLoading} placeholder="输入关键字选择收款单位" options={casePaymentTypeSelectOptions} onSearch={setPaymentTypeSearch} notFoundContent={<Button type="link" icon={<PlusOutlined />} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} /></Form.Item>
+              <Button type="text" title="新增付款单位" aria-label="新增付款单位" icon={<PlusOutlined />} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)} />
             </div>
           </div>
+          {selectedCasePaymentType && <div className="case-payment-unit-summary">开户行：{selectedCasePaymentType.account_bank}　账号信息：{selectedCasePaymentType.account}</div>}
         </Form>
       </Drawer>
+      <Modal
+        open={Boolean(paymentTypeCreateTarget)}
+        title="新增付款单位"
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={paymentTypeCreating}
+        onOk={() => void createCasePaymentType()}
+        onCancel={() => { setPaymentTypeCreateTarget(null); paymentTypeCreateForm.resetFields(); }}
+        forceRender
+      >
+        <Form form={paymentTypeCreateForm} layout="vertical">
+          <Form.Item label="性质" name="nature" rules={[{ required: true, message: "请选择付款性质" }]}><Select options={[{ value: "对公", label: "对公" }, { value: "个人", label: "个人" }]} /></Form.Item>
+          <Form.Item label="收款单位" name="payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input /></Form.Item>
+          <Form.Item label="开户行" name="account_bank" rules={[{ required: true, message: "请输入开户行" }]}><Input /></Form.Item>
+          <Form.Item label="账号信息" name="account" rules={[{ required: true, message: "请输入账号信息" }]}><Input.TextArea rows={4} maxLength={1000} showCount /></Form.Item>
+        </Form>
+      </Modal>
       <Drawer
         open={Boolean(viewingCaseTask)}
         width={620}

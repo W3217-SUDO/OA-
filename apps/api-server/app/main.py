@@ -2627,9 +2627,17 @@ class CaseCommissionBatchInput(BaseModel):
 class FinanceActionInput(BaseModel):
     comment: str = ""
     amount: float | None = Field(default=None, gt=0)
+    payment_type_id: int | None = Field(default=None, gt=0)
     payment_account: str = Field(default="", max_length=128)
     payment_payee: str = Field(default="", max_length=256)
     payment_remark: str = Field(default="", max_length=1000)
+
+
+class FinancePaymentTypeCreateInput(BaseModel):
+    nature: str = Field(min_length=1, max_length=64)
+    payee: str = Field(min_length=1, max_length=255)
+    account_bank: str = Field(min_length=1, max_length=255)
+    account: str = Field(min_length=1, max_length=1000)
 
 
 class FinancePaymentCancelInput(BaseModel):
@@ -6584,6 +6592,12 @@ async def _validate_parameter_references(category: str, extra: dict, db: AsyncSe
             if not isinstance(value, list) or any(not isinstance(code, str) or not code.strip() for code in value):
                 raise HTTPException(status_code=422, detail=f"知识产权案件文件类型的 {key} 必须为代码数组")
         return
+    if category == "payment_type":
+        required = {"nature": "付款性质", "payee": "收款单位", "account_bank": "开户行", "account": "账号信息"}
+        missing = [label for key, label in required.items() if not str((extra or {}).get(key) or "").strip()]
+        if missing:
+            raise HTTPException(status_code=422, detail="付款单位必须填写：" + "、".join(missing))
+        return
     if category != "court_officer":
         return
     court_code = str((extra or {}).get("court_code") or "").strip()
@@ -6686,7 +6700,12 @@ async def create_system_parameter(body: SystemParameterInput, identity: dict = D
     _require_admin(identity)
     if body.category not in SYSTEM_PARAMETER_CATEGORIES: raise HTTPException(status_code=422, detail="参数分类无效")
     code, name = body.code.strip(), body.name.strip()
-    duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == body.category, or_(SystemParameter.code == code, SystemParameter.name == name)))
+    if body.category == "payment_type":
+        candidates = list((await db.scalars(select(SystemParameter).where(SystemParameter.category == body.category))).all())
+        next_payee = str((body.extra or {}).get("payee") or "").strip().casefold()
+        duplicate = next((item for item in candidates if item.code == code or (next_payee and str((item.extra or {}).get("payee") or "").strip().casefold() == next_payee)), None)
+    else:
+        duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == body.category, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
     await _validate_parameter_parent(body.category, code, body.extra, db)
     await _validate_parameter_references(body.category, body.extra, db)
@@ -6704,9 +6723,14 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
     if not item: raise HTTPException(status_code=404, detail="系统参数不存在")
     code = body.code.strip() if body.code is not None else item.code
     name = body.name.strip() if body.name is not None else item.name
-    duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, or_(SystemParameter.code == code, SystemParameter.name == name)))
-    if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
     next_extra = body.extra if body.extra is not None else (item.extra or {})
+    if item.category == "payment_type":
+        candidates = list((await db.scalars(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id))).all())
+        next_payee = str(next_extra.get("payee") or "").strip().casefold()
+        duplicate = next((candidate for candidate in candidates if candidate.code == code or (next_payee and str((candidate.extra or {}).get("payee") or "").strip().casefold() == next_payee)), None)
+    else:
+        duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, or_(SystemParameter.code == code, SystemParameter.name == name)))
+    if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码、名称或收款单位已存在")
     await _validate_parameter_parent(item.category, code, next_extra, db, current_id=item.id)
     await _validate_parameter_references(item.category, next_extra, db)
     for key, value in body.model_dump(exclude_unset=True).items(): setattr(item, key, value.strip() if key in {"code", "name"} else value)
@@ -20242,6 +20266,92 @@ async def rollback_finance_payment(
     return await _record_dict_for_identity(item, identity, db)
 
 
+def _finance_payment_type_dict(item: SystemParameter) -> dict:
+    extra = item.extra or {}
+    return {
+        "id": item.id,
+        "code": item.code,
+        "name": item.name,
+        "nature": str(extra.get("nature") or item.name or "").strip(),
+        "payee": str(extra.get("payee") or "").strip(),
+        "account_bank": str(extra.get("account_bank") or extra.get("bank") or "").strip(),
+        "account": str(extra.get("account") or "").strip(),
+    }
+
+
+async def _finance_payment_type_for_fee(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    item = await _ensure_record_module(fee_id, "finance", identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    data = item.data or {}
+    if data.get("expense_scope") == "内部" or data.get("fee_type") == "内部费用":
+        raise HTTPException(status_code=422, detail="内部费用不使用案件付款单位")
+    return item
+
+
+@app.get(f"{settings.api_prefix}/finance/fees/{{fee_id}}/payment-types")
+async def list_finance_fee_payment_types(
+    fee_id: int,
+    keyword: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    await _finance_payment_type_for_fee(fee_id, identity, db)
+    items = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "payment_type",
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
+    term = keyword.strip().casefold()
+    result = [_finance_payment_type_dict(item) for item in items]
+    result = [item for item in result if item["payee"]]
+    if term:
+        result = [item for item in result if term in " ".join(
+            str(item.get(key) or "") for key in ("code", "name", "nature", "payee", "account_bank", "account")
+        ).casefold()]
+    return {"items": result}
+
+
+@app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/payment-types", status_code=status.HTTP_201_CREATED)
+async def create_finance_fee_payment_type(
+    fee_id: int,
+    body: FinancePaymentTypeCreateInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    fee = await _finance_payment_type_for_fee(fee_id, identity, db)
+    nature = body.nature.strip()
+    payee = body.payee.strip()
+    account_bank = body.account_bank.strip()
+    account = body.account.strip()
+    existing_items = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "payment_type",
+    ))).all())
+    duplicate = next((item for item in existing_items if str((item.extra or {}).get("payee") or "").strip().casefold() == payee.casefold()), None)
+    if duplicate:
+        raise HTTPException(status_code=409, detail="收款单位已存在，请从候选列表选择")
+    sort_order = int(await db.scalar(select(func.coalesce(func.max(SystemParameter.sort_order), 0)).where(
+        SystemParameter.category == "payment_type",
+    )) or 0) + 1
+    item = SystemParameter(
+        category="payment_type",
+        code=f"PAYEE-{datetime.now():%Y%m%d%H%M%S%f}",
+        name=nature,
+        extra={"nature": nature, "payee": payee, "account_bank": account_bank, "account": account},
+        sort_order=sort_order,
+        is_active=True,
+        created_by=identity["username"],
+        updated_by=identity["username"],
+    )
+    db.add(item)
+    await db.flush()
+    await _system_audit(db, identity, "创建付款单位", f"系统参数:payment_type/{item.code}", {
+        "id": item.id, "fee_id": fee.id, "fee_no": fee.serial_no, "payee": payee,
+    })
+    await db.commit()
+    await db.refresh(item)
+    _clear_parameter_cache("payment_type", identity["username"])
+    return _finance_payment_type_dict(item)
+
+
 @app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/submit")
 async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _ensure_record_module(fee_id, "finance", identity, db)
@@ -20263,12 +20373,29 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             readiness = await _finance_fee_readiness(item, identity, db)
             if not readiness["ready"]: raise HTTPException(status_code=422, detail="案件付款三要素不完整：" + "；".join(readiness["missing"]))
     if body.amount is not None:
-        account = body.payment_account.strip()
-        if not account:
-            raise HTTPException(status_code=422, detail="请输入付款账号")
-        payee = body.payment_payee.strip()
-        if not payee:
-            raise HTTPException(status_code=422, detail="请输入收款单位")
+        payment_type = None
+        if data.get("expense_scope") != "内部" and data.get("fee_type") != "内部费用":
+            if not body.payment_type_id:
+                raise HTTPException(status_code=422, detail="请选择系统付款单位")
+            payment_type = await db.scalar(select(SystemParameter).where(
+                SystemParameter.id == body.payment_type_id,
+                SystemParameter.category == "payment_type",
+                SystemParameter.is_active.is_(True),
+            ))
+            if not payment_type:
+                raise HTTPException(status_code=422, detail="付款单位不存在或已停用")
+            payment_type_data = _finance_payment_type_dict(payment_type)
+            payee = payment_type_data["payee"]
+            account = payment_type_data["account"]
+            if not payee or not account:
+                raise HTTPException(status_code=422, detail="付款单位的收款单位或账号信息不完整")
+        else:
+            account = body.payment_account.strip()
+            if not account:
+                raise HTTPException(status_code=422, detail="请输入付款账号")
+            payee = body.payment_payee.strip()
+            if not payee:
+                raise HTTPException(status_code=422, detail="请输入收款单位")
         payment_remark = body.payment_remark.strip()
         requested = _round_fee_amount(body.amount)
         paid = _round_fee_amount(float(await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(
@@ -20287,6 +20414,11 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             "payment_requested_amount": _round_fee_amount(previous_requested + requested),
             "payment_account": account,
             "payment_payee": payee,
+            "payment_type_id": payment_type.id if payment_type else None,
+            "payment_type_code": payment_type.code if payment_type else "",
+            "payment_type_name": payment_type.name if payment_type else "",
+            "payment_nature": str((payment_type.extra or {}).get("nature") or payment_type.name or "") if payment_type else "",
+            "payment_account_bank": str((payment_type.extra or {}).get("account_bank") or (payment_type.extra or {}).get("bank") or "") if payment_type else "",
             "payment_remark": payment_remark,
             "payee": payee,
             "payment_applied_at": applied_at,

@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, User
+from app.models import BusinessRecord, SystemParameter, User
 from app.security import current_identity
 
 
@@ -78,12 +78,18 @@ class CaseFinanceClosureContract(unittest.IsolatedAsyncioTestCase):
                 department=case.department,
                 data={"amount": 500.0, "fee_type": "官方费用", "expense_scope": "律所", "expense_subtype": "法院费用", "handler": IDENTITY["username"], "case_id": case.id, "case_no": case.serial_no, "payee": "上海市人民法院", "court": "上海市人民法院", "document_no": "PAY-OFFICIAL-001"},
             )
-            session.add_all([ordinary, payment_ready, internal, official])
+            payment_type = SystemParameter(
+                category="payment_type", code="ROW28-TEST-PAYEE", name="对公", sort_order=1,
+                extra={"nature": "对公", "payee": "第三方机构", "account_bank": "测试银行", "account": "ROW28-TEST-ACCOUNT"},
+                is_active=True, created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+            )
+            session.add_all([ordinary, payment_ready, internal, official, payment_type])
             await session.flush()
             self.ordinary_id = ordinary.id
             self.payment_ready_id = payment_ready.id
             self.internal_id = internal.id
             self.official_id = official.id
+            self.payment_type_id = payment_type.id
             await session.commit()
 
     async def asyncTearDown(self):
@@ -100,7 +106,7 @@ class CaseFinanceClosureContract(unittest.IsolatedAsyncioTestCase):
     async def test_payment_request_from_draft_persists_amount_and_payment_account(self):
         response = await self.client.post(
             f"{API}/finance/fees/{self.payment_ready_id}/submit",
-            json={"amount": 120, "payment_account": "ROW28-TEST-ACCOUNT", "payment_payee": "第三方机构", "comment": "第28行付款申请"},
+            json={"amount": 120, "payment_type_id": self.payment_type_id, "comment": "第28行付款申请"},
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["status"], "待审批")
