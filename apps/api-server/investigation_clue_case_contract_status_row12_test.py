@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.main import BatchClueCaseInput, batch_create_cases_from_clues
-from app.models import BusinessRecord
+from app.models import BusinessRecord, User
 
 
 IDENTITY = {"username": "admin", "role": "admin"}
@@ -55,9 +55,16 @@ class InvestigationClueCaseContractStatusRow12Test(unittest.IsolatedAsyncioTestC
 
     async def test_approval_in_progress_contract_creates_case_and_carries_contract_customer(self):
         async with self.sessions() as db:
+            db.add_all([
+                User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin", is_active=True),
+                User(username="fwl", display_name="范文林", department="上海", password_hash="x", role="user", is_active=True),
+            ])
             contract, clue = await self._source_clue(db, contract_status="审批中")
             result = await batch_create_cases_from_clues(
-                BatchClueCaseInput(clue_ids=[clue.id], case_type="民事案件"), IDENTITY, db,
+                BatchClueCaseInput(
+                    clue_ids=[clue.id], case_type="民事案件",
+                    handling_lawyer="admin", assistant="fwl",
+                ), IDENTITY, db,
             )
             case = await db.get(BusinessRecord, result["created_ids"][0])
 

@@ -739,6 +739,16 @@ def _upgrade_schema(connection) -> None:
     }.items():
         if column not in incoming_columns:
             connection.execute(text(f"ALTER TABLE incoming_payments ADD COLUMN {column} {definition}"))
+    incoming_bank_reference = next(
+        (item for item in inspect(connection).get_columns("incoming_payments") if item["name"] == "bank_reference"),
+        None,
+    )
+    if (
+        connection.dialect.name == "postgresql"
+        and incoming_bank_reference
+        and not incoming_bank_reference.get("nullable", True)
+    ):
+        connection.execute(text("ALTER TABLE incoming_payments ALTER COLUMN bank_reference DROP NOT NULL"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_contract_record_id ON incoming_payments (contract_record_id)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_contract_no ON incoming_payments (contract_no)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_case_no ON incoming_payments (case_no)"))
@@ -1405,7 +1415,7 @@ class JobRoleUpdate(BaseModel):
 
 
 class JobRolePermissionUpdate(BaseModel):
-    permissions: list[str] = Field(default_factory=list, max_length=200)
+    permissions: list[str] = Field(default_factory=list)
     field_keys: list[str] | None = Field(default=None, max_length=50)
     field_keys_configured: bool | None = None
     data_scope: str | None = Field(default=None, max_length=64)
@@ -2752,7 +2762,7 @@ class IncomingPaymentInput(BaseModel):
     received_date: date
     amount: float = Field(gt=0)
     payer_name: str = Field(min_length=2, max_length=255)
-    bank_reference: str = Field(min_length=2, max_length=128)
+    bank_reference: str = Field(default="", max_length=128)
     customer: str = Field(default="", max_length=255)
     contract_no: str = Field(default="", max_length=64)
     case_no: str = Field(default="", max_length=64)
@@ -2792,7 +2802,7 @@ class IncomingPaymentUpdateInput(BaseModel):
     received_date: date
     amount: float = Field(gt=0)
     payer_name: str = Field(min_length=2, max_length=255)
-    bank_reference: str = Field(min_length=2, max_length=128)
+    bank_reference: str = Field(default="", max_length=128)
     customer: str = Field(default="", max_length=255)
     contract_no: str = Field(default="", max_length=64)
     case_no: str = Field(default="", max_length=64)
@@ -13327,11 +13337,45 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         case_customer = contract.customer if contract else clue.customer
         case_department = contract.department if contract else clue.department
         contract_reference = contract.serial_no if contract else "未关联合同"
-        serial_no = await _next_case_serial(body.case_type, db)
-        handling_lawyers = list(dict.fromkeys(filter(None, [body.handling_lawyer.strip(), *(clue_data.get("handling_lawyers") or [])])))
+        requested_handling_lawyer = body.handling_lawyer.strip()
+        if requested_handling_lawyer:
+            handling_lawyers, handling_usernames = await _resolve_active_case_people(
+                [requested_handling_lawyer], db, field_name="经办律师",
+            )
+        else:
+            handling_lawyers = list(dict.fromkeys(filter(None, clue_data.get("handling_lawyers") or [])))
+            handling_usernames = list(dict.fromkeys(filter(None, clue_data.get("handling_lawyer_usernames") or [])))
+        requested_assistant = body.assistant.strip()
+        if requested_assistant:
+            assistant_values, assistant_usernames = await _resolve_active_case_people(
+                [requested_assistant], db, field_name="律师助理",
+            )
+            assistant = assistant_values[0]
+            assistant_username = assistant_usernames[0]
+        else:
+            assistant = str(clue_data.get("assistant") or "").strip()
+            assistant_username = str(clue_data.get("assistant_username") or "").strip()
         cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
+        missing_case_fields = [
+            label for label, value in (
+                ("案由", cause_or_charge),
+                ("经办律师", handling_lawyers),
+                ("律师助理", assistant),
+            ) if not value
+        ]
+        if missing_case_fields:
+            errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": f"生成案件前请填写{'、'.join(missing_case_fields)}"})
+            continue
+        serial_no = await _next_case_serial(body.case_type, db)
         case_title = "".join(filter(None, [case_customer, cause_or_charge, clue.title]))
-        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data={"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "handling_lawyers": handling_lawyers, "assistant": body.assistant.strip(), "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"})
+        case_data = _case_team_payload(
+            {"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"},
+            handling_lawyers,
+            handling_usernames,
+            assistant,
+            assistant_username,
+        )
+        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data=case_data)
         db.add(case_record); await db.flush()
         await _persist_case_litigant_customers(
             case_record,
@@ -13342,7 +13386,8 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
         notary = await db.get(BusinessRecord, int(clue_data.get("notary_record_id") or 0)) if clue_data.get("notary_record_id") else None
         if notary: notary.data = {**(notary.data or {}), "case_id": case_record.id, "case_no": serial_no}
-        db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"来源任务合同 {contract_reference}，生成案件 {serial_no}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status=case_record.status, operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 来源任务合同 {contract_reference}")])
+        case_fields_comment = f"案由 {cause_or_charge or '未填写'} / 经办律师 {'、'.join(handling_lawyers) or '未填写'} / 律师助理 {assistant or '未填写'}"
+        db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"来源任务合同 {contract_reference}，生成案件 {serial_no}；{case_fields_comment}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status=case_record.status, operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 来源任务合同 {contract_reference}；{case_fields_comment}")])
         await _ensure_case_fixed_tasks(case_record, db, operator="system")
         created_ids.append(case_record.id)
     await db.commit()
@@ -13748,16 +13793,20 @@ async def list_tasks(
 
     if keyword:
         key = keyword.lower()
-        items = [item for item in items if key in f"{item['serial_no']} {item['title']} {item['customer']} {item['owner']}".lower()]
+        items = [item for item in items if key in (
+            f"{item['serial_no']} {item['title']} {item['customer']} "
+            f"{item['owner']} {item.get('owner_display_name', '')} "
+            f"{item.get('initiator', '')} {item.get('initiator_display_name', '')}"
+        ).lower()]
     items = [item for item in items if
         contains(item.get("priority"), priority)
         and contains(item.get("serial_no"), serial_no)
         and contains(item.get("title"), title)
         and contains(item.get("description"), description)
-        and contains(item.get("initiator"), initiator)
+        and contains(f"{item.get('initiator', '')} {item.get('initiator_display_name', '')}", initiator)
         and contains(" ".join(item.get("case_nos") or [item.get("case_no", "")]), case_no)
         and contains(item.get("creation_mode") if source in {"自动", "人工"} else item.get("source"), source)
-        and contains(item.get("owner"), owner)
+        and contains(f"{item.get('owner', '')} {item.get('owner_display_name', '')}", owner)
         and contains(item.get("plaintiff"), plaintiff)
         and contains(item.get("defendant"), defendant)
     ]
@@ -13783,6 +13832,8 @@ async def list_tasks(
         status_name = str(item.get("status") or "")
         status_counts[status_name] = status_counts.get(status_name, 0) + 1
     selected_statuses = {value.strip() for value in statuses.split(",") if value.strip()}
+    if selected_statuses.intersection({"处理中", "进行中"}):
+        selected_statuses.update({"处理中", "进行中"})
     if selected_statuses:
         items = [item for item in items if item["status"] in selected_statuses]
     if status_filter:
@@ -13802,7 +13853,7 @@ async def list_tasks(
         "summary": {
             "total": len(all_items),
             "pending": sum(1 for item in all_items if item["status"] in {"待接收", "待处理"}),
-            "processing": sum(1 for item in all_items if item["status"] == "处理中"),
+            "processing": sum(1 for item in all_items if item["status"] in {"处理中", "进行中"}),
             "awaiting_confirmation": sum(1 for item in all_items if item["status"] == "已完成"),
             "due_soon": sum(1 for item in all_items if item["days_remaining"] in {0, 1} and item["status"] not in {"已完成", "已撤回"}),
             "overdue": sum(1 for item in all_items if item["status"] == "已逾期"),
@@ -17201,10 +17252,40 @@ async def list_incoming_payments(payment_status: str = "", keyword: str = "", id
     return {"items": rows, "total": len(items), "summary": {"total": len(items), "unclaimed": sum(1 for item in items if item.status == "待认领"), "unallocated": sum(1 for item in items if item.status in {"待分配", "部分分配"}), "completed": sum(1 for item in items if item.status == "已分配"), "amount": sum(item.amount for item in items) if can_view_amount else None, "remaining": sum(max(item.amount - item.allocated_amount, 0) for item in items) if can_view_amount else None}}
 
 
+@app.get(f"{settings.api_prefix}/finance/customer-options")
+async def list_finance_customer_options(
+    keyword: str = Query("", max_length=255),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search active system customers for receipt registration, never litigants."""
+    if identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记银行到账")
+    conditions = [
+        BusinessRecord.module == "customer",
+        BusinessRecord.status.not_in(["已回收"]),
+        func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == "客户",
+    ]
+    normalized_keyword = keyword.strip()
+    if normalized_keyword:
+        like = f"%{normalized_keyword}%"
+        conditions.append(or_(BusinessRecord.title.ilike(like), BusinessRecord.serial_no.ilike(like)))
+    rows = list((await db.scalars(
+        select(BusinessRecord).where(*conditions).order_by(BusinessRecord.title, BusinessRecord.id).limit(50)
+    )).all())
+    return {
+        "items": [
+            {"id": row.id, "title": row.title, "serial_no": row.serial_no}
+            for row in rows
+        ]
+    }
+
+
 @app.post(f"{settings.api_prefix}/finance/incoming-payments", status_code=status.HTTP_201_CREATED)
 async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记银行到账")
-    if await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == body.bank_reference.strip())): raise HTTPException(status_code=409, detail="银行流水号已经登记")
+    bank_reference = body.bank_reference.strip()
+    if bank_reference and await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == bank_reference)): raise HTTPException(status_code=409, detail="银行流水号已经登记")
     contract_no = body.contract_no.strip()
     case_no = body.case_no.strip()
     customer = body.customer.strip()
@@ -17228,7 +17309,7 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
                 raise HTTPException(status_code=422, detail="关联案件的合同不存在")
             contract_no = contract.serial_no
         customer = customer or case_record.customer
-    item = IncomingPayment(receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=body.bank_reference.strip(), status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", case_no=case_no, bank_source=body.bank_source.strip(), operator=identity["username"], remark=body.remark)
+    item = IncomingPayment(receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=bank_reference or None, status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", case_no=case_no, bank_source=body.bank_source.strip(), operator=identity["username"], remark=body.remark)
     db.add(item); await db.flush()
     if body.claim:
         if not customer: raise HTTPException(status_code=422, detail="自动认领需要填写客户名称")
@@ -17644,7 +17725,8 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
     item = await db.get(IncomingPayment, payment_id)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.allocations or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能编辑")
-    if await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == body.bank_reference.strip(), IncomingPayment.id != payment_id)): raise HTTPException(status_code=409, detail="银行流水号已经登记")
+    bank_reference = body.bank_reference.strip()
+    if bank_reference and await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == bank_reference, IncomingPayment.id != payment_id)): raise HTTPException(status_code=409, detail="银行流水号已经登记")
     contract_no = body.contract_no.strip(); case_no = body.case_no.strip(); customer = body.customer.strip(); contract = None
     if contract_no:
         contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "contract", BusinessRecord.serial_no == contract_no))
@@ -17664,7 +17746,7 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
                 raise HTTPException(status_code=422, detail="关联案件的合同不存在")
             contract_no = contract.serial_no
         customer = customer or case_record.customer
-    item.received_date = body.received_date; item.amount = _round_fee_amount(body.amount); item.payer_name = body.payer_name.strip(); item.bank_reference = body.bank_reference.strip(); item.contract_record_id = contract.id if contract else None; item.contract_no = contract.serial_no if contract else ""; item.case_no = case_no; item.bank_source = body.bank_source.strip(); item.remark = body.remark
+    item.received_date = body.received_date; item.amount = _round_fee_amount(body.amount); item.payer_name = body.payer_name.strip(); item.bank_reference = bank_reference or None; item.contract_record_id = contract.id if contract else None; item.contract_no = contract.serial_no if contract else ""; item.case_no = case_no; item.bank_source = body.bank_source.strip(); item.remark = body.remark
     if customer and not item.allocations:
         item.claimed_customer = customer
     await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))

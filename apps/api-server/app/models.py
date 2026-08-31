@@ -1206,7 +1206,7 @@ class IncomingPayment(Base):
     received_date: Mapped[date] = mapped_column(Date, index=True)
     amount: Mapped[float] = mapped_column(Float)
     payer_name: Mapped[str] = mapped_column(String(255), index=True)
-    bank_reference: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    bank_reference: Mapped[str | None] = mapped_column(String(128), unique=True, index=True, nullable=True)
     status: Mapped[str] = mapped_column(String(32), index=True, default="待认领")
     claimed_customer: Mapped[str] = mapped_column(String(255), default="", index=True)
     contract_record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)

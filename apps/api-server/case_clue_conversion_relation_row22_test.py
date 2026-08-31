@@ -65,7 +65,7 @@ class CaseClueConversionRelationRow22Test(unittest.IsolatedAsyncioTestCase):
         converted = await self.client.post(f"{API}/investigations/clues/batch-cases", json={
             "clue_ids": [self.clue_id], "case_type": "民事案件", "client_position": "原告",
             "cause_or_charge": "侵害商标权纠纷", "case_phase": "等待公证书",
-            "handling_lawyer": ADMIN["username"], "assistant": "",
+            "handling_lawyer": ADMIN["username"], "assistant": ADMIN["username"],
         })
         self.assertEqual(converted.status_code, 201, converted.text)
         self.assertEqual(converted.json()["created"], 1)
@@ -91,4 +91,3 @@ class CaseClueConversionRelationRow22Test(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

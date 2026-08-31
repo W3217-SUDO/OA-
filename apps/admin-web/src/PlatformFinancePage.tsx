@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AutoComplete,
   Button,
@@ -488,32 +488,46 @@ type ReceiptCreateValues = {
   remark?: string;
 };
 
+type ReceiptCustomerOption = {
+  id: number;
+  title: string;
+  serial_no: string;
+};
+
 function makeReceiptNo() {
   const suffix = String(Math.floor(Math.random() * 100000000)).padStart(8, "0");
   return `R${dayjs().format("YYMMDD")}-${suffix}`;
+}
+
+function makeBankReference() {
+  const suffix = String(Math.floor(Math.random() * 100000)).padStart(5, "0");
+  return `${dayjs().format("YYMMDD")}-${suffix}`;
 }
 
 export function ReceiptCreatePage() {
   const [form] = Form.useForm<ReceiptCreateValues>();
   const selectedCustomer = Form.useWatch("customer", form);
   const [receiptNo, setReceiptNo] = useState(makeReceiptNo);
-  const [customers, setCustomers] = useState<string[]>([]);
+  const [customers, setCustomers] = useState<ReceiptCustomerOption[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const customerSearchRequest = useRef(0);
   const [contracts, setContracts] = useState<{ serial_no: string; customer: string; title: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  const searchCustomers = async (keyword = "") => {
+    const requestId = ++customerSearchRequest.current;
+    setCustomersLoading(true);
+    try {
+      const { data } = await api.get("/finance/customer-options", { params: { keyword } });
+      if (requestId === customerSearchRequest.current) setCustomers(data.items || []);
+    } catch {
+      if (requestId === customerSearchRequest.current) setCustomers([]);
+    } finally {
+      if (requestId === customerSearchRequest.current) setCustomersLoading(false);
+    }
+  };
   useEffect(() => {
-    api
-      .get("/records?module=customer&page_size=100")
-      .then(({ data }) =>
-        setCustomers(
-          Array.from(
-            new Set<string>(
-              (data.items || []).map((item: { title: string }) => item.title).filter(Boolean),
-            ),
-          ),
-        ),
-      )
-      .catch(() => setCustomers([]));
+    void searchCustomers();
   }, []);
   useEffect(() => {
     api.get("/records?module=contract&page_size=100").then(({ data }) => setContracts(data.items || [])).catch(() => setContracts([]));
@@ -532,7 +546,7 @@ export function ReceiptCreatePage() {
         received_date: formatRequiredDate(values.receivedDate, "回款时间"),
         amount: values.amount,
         payer_name: values.payerName,
-        bank_reference: values.bankReference?.trim() || receiptNo,
+        bank_reference: values.bankReference?.trim() || "",
         customer: values.customer || "",
         contract_no: values.contractNo || "",
         remark: extra.join("；"),
@@ -576,24 +590,30 @@ export function ReceiptCreatePage() {
           <Input value={receiptNo} disabled />
         </Form.Item>
         <Form.Item label="回款单位" name="payerName" rules={[{ required: true, message: "请输入回款单位" }, { min: 2 }]}>
-          <AutoComplete
-            allowClear
-            placeholder="输入回款单位，或从系统客户中选择"
-            options={customers.map((value) => ({ value, label: value }))}
-            filterOption={(inputValue, option) =>
-              String(option?.label || "")
-                .toLowerCase()
-                .includes(inputValue.trim().toLowerCase())
-            }
-          />
+            <AutoComplete
+              allowClear
+              placeholder="输入回款单位，或从系统客户中选择"
+              options={customers.map((customer) => ({
+                value: customer.title,
+                label: customer.serial_no ? `${customer.title}｜${customer.serial_no}` : customer.title,
+              }))}
+              onSearch={(keyword) => void searchCustomers(keyword)}
+              onSelect={(customer) => form.setFieldValue("customer", customer)}
+              notFoundContent={customersLoading ? "正在查询系统客户..." : "没有匹配的系统客户"}
+              filterOption={false}
+            />
         </Form.Item>
         <Form.Item label="客户名称" name="customer">
           <Select
-            allowClear
-            showSearch
-            placeholder="请选择客户"
-            onChange={(customer) => {
-              const currentContract = form.getFieldValue("contractNo");
+              allowClear
+              showSearch
+              placeholder="请选择客户"
+              loading={customersLoading}
+              filterOption={false}
+              onSearch={(keyword) => void searchCustomers(keyword)}
+              onChange={(customer) => {
+                if (customer) form.setFieldValue("payerName", customer);
+                const currentContract = form.getFieldValue("contractNo");
               if (
                 currentContract &&
                 !contracts.some(
@@ -605,7 +625,11 @@ export function ReceiptCreatePage() {
                 form.setFieldValue("contractNo", undefined);
               }
             }}
-            options={customers.map((value) => ({ value, label: value }))}
+              options={customers.map((item) => ({
+                value: item.title,
+                label: item.serial_no ? `${item.title}｜${item.serial_no}` : item.title,
+              }))}
+              notFoundContent={customersLoading ? "正在查询系统客户..." : "没有匹配的系统客户"}
           />
         </Form.Item>
         <Form.Item label="回款时间" name="receivedDate" rules={[{ required: true, message: "请选择回款时间" }]}>
@@ -618,7 +642,13 @@ export function ReceiptCreatePage() {
           <Select options={paymentMethods.map((value) => ({ value, label: value }))} />
         </Form.Item>
         <Form.Item label="银行单号" name="bankReference" rules={[{ min: 2 }]}>
-          <Input />
+          <Input
+            placeholder="点击输入框自动生成"
+            onFocus={() => {
+              if (!form.getFieldValue("bankReference")) form.setFieldValue("bankReference", makeBankReference());
+            }}
+            suffix={<Button type="link" size="small" onClick={() => form.setFieldValue("bankReference", makeBankReference())}>生成</Button>}
+          />
         </Form.Item>
         <Form.Item label="合同编号" name="contractNo">
           <Select

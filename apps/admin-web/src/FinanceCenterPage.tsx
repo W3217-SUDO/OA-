@@ -1395,6 +1395,11 @@ export default function FinanceCenterPage({
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [incomingOpen, setIncomingOpen] = useState(false);
   const [claimTarget, setClaimTarget] = useState<IncomingPayment | null>(null);
+  const [claimCustomers, setClaimCustomers] = useState<
+    { id: number; title: string; serial_no: string }[]
+  >([]);
+  const [claimCustomersLoading, setClaimCustomersLoading] = useState(false);
+  const claimCustomerSearchRequest = useRef(0);
   const [allocateTarget, setAllocateTarget] = useState<IncomingPayment | null>(
     null,
   );
@@ -2523,6 +2528,26 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "到账认领失败");
     }
   };
+  const searchClaimCustomers = async (keyword = "") => {
+    const requestId = ++claimCustomerSearchRequest.current;
+    setClaimCustomersLoading(true);
+    try {
+      const { data } = await api.get("/finance/customer-options", {
+        params: { keyword },
+      });
+      if (requestId === claimCustomerSearchRequest.current) {
+        setClaimCustomers(data.items || []);
+      }
+    } catch {
+      if (requestId === claimCustomerSearchRequest.current) {
+        setClaimCustomers([]);
+      }
+    } finally {
+      if (requestId === claimCustomerSearchRequest.current) {
+        setClaimCustomersLoading(false);
+      }
+    }
+  };
   const openIncomingAllocation = async (payment: IncomingPayment) => {
     setAllocateTarget(payment);
     setAllocationLoading(true);
@@ -3504,6 +3529,7 @@ export default function FinanceCenterPage({
           type="link"
           onClick={() => {
             claimForm.resetFields();
+            void searchClaimCustomers();
             setClaimTarget(r);
           }}
         >
@@ -11718,12 +11744,15 @@ export default function FinanceCenterPage({
           >
             <Select
               showSearch
-              optionFilterProp="label"
+              filterOption={false}
+              loading={claimCustomersLoading}
+              onSearch={(keyword) => void searchClaimCustomers(keyword)}
               placeholder="请选择客户"
-              options={customers.map((x) => ({
+              options={claimCustomers.map((x) => ({
                 value: x.title,
-                label: x.title,
+                label: x.serial_no ? `${x.title}｜${x.serial_no}` : x.title,
               }))}
+              notFoundContent={claimCustomersLoading ? "正在查询系统客户..." : "没有匹配的系统客户"}
             />
           </Form.Item>
           <Form.Item label="回款时间">

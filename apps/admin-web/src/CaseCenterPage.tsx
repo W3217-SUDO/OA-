@@ -2678,14 +2678,6 @@ export default function CaseCenterPage({
       message.success(`已为 ${data.created} 个案件创建费用草稿`);setBatchFeeOpen(false);batchFeeForm.resetFields();await load();
     }catch(error:any){message.error(error?.response?.data?.detail||"批量新增费用失败");}
   };
-  const downloadCounselAttachments = async () => {
-    const selectionValidationError = getCaseAttachmentSelectionValidationError(selectedCounselAttachmentKeys, "下载");
-    if(selectionValidationError)return message.warning(selectionValidationError);
-    try{
-      const response=await api.post("/cases/attachments/download",{attachment_ids:selectedCounselAttachmentKeys.map(Number)},{responseType:"blob"});
-      const url=URL.createObjectURL(response.data),link=document.createElement("a");link.href=url;link.download="案件文件.zip";link.click();URL.revokeObjectURL(url);
-    }catch(error:any){message.error(error?.response?.data?.detail||"案件文件下载失败");}
-  };
   const generateCaseDocument = async (documentType: string) => {
     if (!viewingCounselCase) return;
     try {
@@ -5631,7 +5623,6 @@ export default function CaseCenterPage({
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   {counselDetailCapabilities.can_generate_document && <Dropdown trigger={["click"]} menu={{items:getLegacyCaseDocumentGenerationItems().map(([key,label])=>({key,label})),onClick:({key})=>void generateCaseDocument(key)}}><Button>生成操作</Button></Dropdown>}
                   {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
-                  <Button onClick={()=>void downloadCounselAttachments()}>下载选中（ZIP）</Button>
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
                 </div>

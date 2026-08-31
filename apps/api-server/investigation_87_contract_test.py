@@ -85,6 +85,10 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_case_uses_contract_from_source_task_and_enters_waiting_notary(self):
         async with self.sessions() as db:
+            db.add_all([
+                User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin", is_active=True),
+                User(username="fwl", display_name="范文林", department="上海", password_hash="x", role="user", is_active=True),
+            ])
             contract = BusinessRecord(
                 module="contract", serial_no="HT-CODEX-87", title="CODEX调查合同", customer="CODEX客户",
                 status="审批通过", owner="admin", department="上海", data={},
@@ -106,7 +110,10 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
             db.add(clue)
             await db.commit()
             result = await batch_create_cases_from_clues(
-                BatchClueCaseInput(clue_ids=[clue.id], case_type="民事案件", court="上海市浦东新区人民法院"),
+                BatchClueCaseInput(
+                    clue_ids=[clue.id], case_type="民事案件", court="上海市浦东新区人民法院",
+                    handling_lawyer="admin", assistant="fwl",
+                ),
                 IDENTITY, db,
             )
             case = await db.get(BusinessRecord, result["created_ids"][0])
@@ -121,6 +128,10 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_case_without_source_contract_can_still_be_created(self):
         async with self.sessions() as db:
+            db.add_all([
+                User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin", is_active=True),
+                User(username="fwl", display_name="范文林", department="上海", password_hash="x", role="user", is_active=True),
+            ])
             clue = BusinessRecord(
                 module="clue", serial_no="XS-CODEX-87-NO-CONTRACT", title="无合同已取证线索",
                 customer="CODEX客户", status="已取证", owner="admin", department="上海",
@@ -131,7 +142,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
             result = await batch_create_cases_from_clues(
                 BatchClueCaseInput(
                     clue_ids=[clue.id], case_type="民事案件", cause_or_charge="商标侵权",
-                    handling_lawyer="管理员",
+                    handling_lawyer="管理员", assistant="fwl",
                 ),
                 IDENTITY, db,
             )

@@ -216,7 +216,7 @@ const createdTabs: StatusTab[] = [
   {
     key: "active",
     label: "进行中",
-    statuses: ["待接收", "待处理", "处理中", "已逾期"],
+    statuses: ["待接收", "待处理", "处理中", "进行中", "已逾期"],
   },
   { key: "finished", label: "进行中-已完成", statuses: ["已完成", "待确认"] },
   { key: "rejected", label: "进行中-拒绝", statuses: ["已拒绝"] },
@@ -229,13 +229,13 @@ const receivedTabs: StatusTab[] = [
   {
     key: "processing",
     label: "进行中",
-    statuses: ["处理中", "已逾期"],
+    statuses: ["处理中", "进行中", "已逾期"],
   },
   { key: "finished", label: "完成", statuses: ["已完成", "待确认", "已验收"] },
   { key: "stopped", label: "停止", statuses: ["已停止", "已撤回", "已拒绝"] },
 ];
 const collaboratingTabs: StatusTab[] = [
-  { key: "active", label: "进行中", statuses: ["待接收", "待处理", "处理中", "已逾期"] },
+  { key: "active", label: "进行中", statuses: ["待接收", "待处理", "处理中", "进行中", "已逾期"] },
   { key: "finished", label: "完成", statuses: ["已完成", "待确认", "已验收"] },
 ];
 

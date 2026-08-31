@@ -402,6 +402,7 @@ export default function InvestigationCenterPage({
   >([]);
   const [contractOptions, setContractOptions] = useState<Contract[]>([]);
   const [batchStep, setBatchStep] = useState(0);
+  const [validatedBatchCaseValues, setValidatedBatchCaseValues] = useState<Record<string, any> | null>(null);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [materialTarget, setMaterialTarget] = useState<Row | null>(null);
   const [materials, setMaterials] = useState<Attachment[]>([]);
@@ -1216,6 +1217,7 @@ export default function InvestigationCenterPage({
       }
       setResolvedClueContracts(data.items || []);
       batchForm.resetFields();
+      setValidatedBatchCaseValues(null);
       const selectedRows = rows.filter((row) => selectedClues.includes(row.id));
       const firstClue = selectedRows[0];
       batchForm.setFieldsValue({
@@ -1223,7 +1225,7 @@ export default function InvestigationCenterPage({
         client_position: firstClue?.data.client_position || "原告",
         cause_or_charge: firstClue?.data.cause_or_charge || firstClue?.data.cause || "",
         case_phase: "等待公证书",
-        handling_lawyer: profile.display_name || profile.username || "",
+        handling_lawyer: profile.username || "",
         assistant: "",
       });
       setBatchStep(0);
@@ -1233,10 +1235,14 @@ export default function InvestigationCenterPage({
     }
   };
   const batchCases = async () => {
-    const v = await batchForm.validateFields();
+    if (!validatedBatchCaseValues) {
+      message.error("请返回基本信息并完成必填项");
+      setBatchStep(0);
+      return;
+    }
     try {
       const { data } = await api.post("/investigations/clues/batch-cases", {
-        ...v,
+        ...validatedBatchCaseValues,
         clue_ids: selectedClues,
       });
       if (data.failed)
@@ -1250,6 +1256,7 @@ export default function InvestigationCenterPage({
       setBatchOpen(false);
       setSelectedClues([]);
       setResolvedClueContracts([]);
+      setValidatedBatchCaseValues(null);
       setBatchStep(0);
       load("clue");
     } catch (error: any) {
@@ -4295,13 +4302,31 @@ export default function InvestigationCenterPage({
         title={`已取证线索生成案件（已选 ${selectedClues.length} 条）`}
         okText={batchStep === 0 ? "下一步" : "生成案件"}
         cancelText="取消"
-        onOk={() => {
-          if (batchStep === 0) setBatchStep(1);
-          else void batchCases();
+        onOk={async () => {
+          if (batchStep === 0) {
+            try {
+              const values = await batchForm.validateFields([
+                "client_position",
+                "cause_or_charge",
+                "case_phase",
+                "handling_lawyer",
+                "assistant",
+                "case_type",
+                "court",
+              ]);
+              setValidatedBatchCaseValues({ ...batchForm.getFieldsValue(true), ...values });
+              setBatchStep(1);
+            } catch {
+              return;
+            }
+          } else {
+            void batchCases();
+          }
         }}
         onCancel={() => {
           setBatchOpen(false);
           setBatchStep(0);
+          setValidatedBatchCaseValues(null);
           setResolvedClueContracts([]);
         }}
       >
@@ -4358,10 +4383,10 @@ export default function InvestigationCenterPage({
               <Select options={["等待公证书", "新案待分配", "文书准备"].map((v) => ({ value: v, label: v }))} />
             </Form.Item>
             <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请选择经办律师" }]}>
-              <Select showSearch optionFilterProp="label" options={casePeopleOptions} placeholder="请选择系统人员" />
+              <Select showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
             </Form.Item>
-            <Form.Item label="律师助理" name="assistant">
-              <Select allowClear showSearch optionFilterProp="label" options={casePeopleOptions} placeholder="请选择系统人员" />
+            <Form.Item label="律师助理" name="assistant" rules={[{ required: true, message: "请选择律师助理" }]}>
+              <Select allowClear showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
             </Form.Item>
             <Form.Item label="案件类型" name="case_type">
               <Select
