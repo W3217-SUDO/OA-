@@ -25,6 +25,7 @@ import {
   Tag,
   TimePicker,
   Tree,
+  TreeSelect,
   Upload,
 } from "antd";
 import type { UploadFile } from "antd";
@@ -67,18 +68,17 @@ import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContrac
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
 import { buildCasePaymentTypeSelectOptions, buildExternalPaymentRequestPayload } from "./casePaymentUnitParity.mjs";
+import {
+  feeTypeSelection,
+  feeTypeTreeData,
+  initialFeeTypeId,
+  type FeeTypeCatalogItem,
+} from "./feeTypeHierarchy.mjs";
 import { getCaseDetailSectionVisibility } from "./caseDetailSectionVisibility";
 import {
-  FEE_SUBTYPE_TO_TYPE,
-  LEGACY_AGENCY_FEE_SUBTYPES,
-  LEGACY_OTHER_FEE_SUBTYPES,
-  LEGACY_OFFICIAL_FEE_SUBTYPES,
-  LEGACY_THIRD_PARTY_FEE_SUBTYPES,
   PLATFORM_AGENCY_FEE_SUBTYPE,
-  agencyFeeSubtypesForScope,
   filterCaseFileTypesForCaseType,
   filterCasePhasesForCaseType,
-  filterFeeSubtypesForFileType,
   normalizeFeeSubtypeForScope,
 } from "./caseRelationConsumption.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
@@ -770,10 +770,6 @@ const statusColors: Record<string, string> = {
 const ARCHIVE_REVIEW_STATUSES = ["待归档审核", "亏损内审", "亏损审核"];
 const ARCHIVE_FINAL_STATUSES = ["已归档", "亏损归档"];
 const ARCHIVE_LOCKED_STATUSES = [...ARCHIVE_REVIEW_STATUSES, ...ARCHIVE_FINAL_STATUSES];
-const LEGACY_INTERNAL_FEE_SUBTYPES = [
-  "产品购买费", "翻译费", "投资提成", "调档费", "手续费", "任务调期扣款",
-  "服务费(调查)", "服务费(开庭)", "服务费(案源)", "服务费(文书)", "服务费(品管)",
-];
 export default function CaseCenterPage({
   initialView,
   onNavigate,
@@ -1051,6 +1047,7 @@ export default function CaseCenterPage({
   const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
   const [caseFileTypeCatalog, setCaseFileTypeCatalog] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
   const [caseRelations, setCaseRelations] = useState<CaseRelationCatalog | null>(null);
+  const [feeTypeCatalog, setFeeTypeCatalog] = useState<FeeTypeCatalogItem[]>([]);
   const [courtOptions, setCourtOptions] = useState<{value:string;label:string;code?:string}[]>([]);
   const [courtOfficerOptions, setCourtOfficerOptions] = useState<{value:string;label:string;court_code?:string;role?:string;phone?:string}[]>([]);
   const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseCatalogOption[]>([]);
@@ -1174,10 +1171,8 @@ export default function CaseCenterPage({
     setCreateDefendantEditorOpen(false);
   };
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
-  const batchFeeSourceFileType = Form.useWatch("source_file_type", batchFeeForm);
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
-  const feeSourceFileType = Form.useWatch("source_file_type", feeForm);
-  const feeExpenseSubtype = Form.useWatch("expense_subtype", feeForm);
+  const feeBaseType = Form.useWatch("fee_type", feeForm);
   const selectedPaymentTypeId = Form.useWatch("payment_type_id", paymentRequestForm);
   const feeItems = Form.useWatch("items", feeForm) || [];
   const feeEmployeeOptions = caseAssistantOptions;
@@ -1209,22 +1204,14 @@ export default function CaseCenterPage({
     () => fileTypeOptionsForCase(feeSourceCase?.data.case_type),
     [caseFileTypeCatalog, caseRelations, feeSourceCase?.data.case_type],
   );
-  const applicableFeeSubtypes = (scope: string, sourceFileType: unknown) => {
-    if (scope === "内部") return LEGACY_INTERNAL_FEE_SUBTYPES;
-    const scoped = ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", normalizeFeeSubtypeForScope(scope, "代理费"), "其他费用"];
-    return filterFeeSubtypesForFileType(String(sourceFileType || ""), scoped, caseRelations?.fileTypeFeeTypes);
-  };
-  const feeSubtypeOptions = activeFeeContractScope === "内部"
-    ? LEGACY_INTERNAL_FEE_SUBTYPES
-    : feeSubtypePreset === "official"
-    ? LEGACY_OFFICIAL_FEE_SUBTYPES
-    : feeSubtypePreset === "third-party"
-      ? LEGACY_THIRD_PARTY_FEE_SUBTYPES
-      : feeSubtypePreset === "agency"
-        ? agencyFeeSubtypesForScope(activeFeeContractScope)
-        : feeSubtypePreset === "other"
-          ? LEGACY_OTHER_FEE_SUBTYPES
-          : applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
+  const feeTypeTreeOptions = useMemo(
+    () => feeTypeTreeData(feeTypeCatalog, activeFeeContractScope, feeSubtypePreset),
+    [activeFeeContractScope, feeSubtypePreset, feeTypeCatalog],
+  );
+  const batchFeeTypeTreeOptions = useMemo(
+    () => feeTypeTreeData(feeTypeCatalog, String(batchExpenseScope || "")),
+    [batchExpenseScope, feeTypeCatalog],
+  );
   const getCaseCapability = (row?: CaseRow | null) => {
     if (!row) return noCaseDetailWriteCapability;
     // A migrated case can be opened directly without first appearing in the
@@ -1313,7 +1300,7 @@ export default function CaseCenterPage({
       } catch {
         setWarehouseCatalog([]);
       }
-      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes] =
+      const [contractRes, hearingRes, summaryRes, profileRes,financeRes,refundRes,attachmentRes,referenceRes,customerRes,clueRes,feeTypeRes] =
         await Promise.all([
           api.get("/cases/eligible-contracts"),
           api.get("/hearings"),
@@ -1325,6 +1312,7 @@ export default function CaseCenterPage({
           api.get("/cases/reference-options"),
           api.get("/records", { params: { module: "customer", page_size: 100 } }),
           api.get("/records", { params: { module: "clue", page_size: 100 } }),
+          api.get("/system/parameters/options", { params: { category: "fee_type" } }),
         ]);
       setContracts(contractRes.data.items);
       setHearings(hearingRes.data.items);
@@ -1348,6 +1336,7 @@ export default function CaseCenterPage({
       setRightTypeOptions((referenceRes.data.right_types || []).map((value:string)=>({value,label:value})));
       setCaseCustomers(customerRes.data.items || []);
       setCaseClues(clueRes.data.items || []);
+      setFeeTypeCatalog(feeTypeRes.data.items || []);
       void loadCaseRelations();
       if (isCreateView && contractPrefill?.id) {
         const selected = contractRes.data.items.find((row:ContractRow) => row.id === contractPrefill.id);
@@ -2722,7 +2711,7 @@ export default function CaseCenterPage({
     const caseIds=selectedCaseKeys.map(Number);
     if(!caseIds.length)return message.warning("请选择需要新增费用的法律顾问案件");
     try{
-      const {data}=await api.post("/cases/batch-fees",{case_ids:caseIds,amount:values.amount,expense_scope:values.expense_scope,expense_subtype:values.expense_subtype,handler:values.handler||profile.username,description:values.description||""});
+      const {data}=await api.post("/cases/batch-fees",{case_ids:caseIds,amount:values.amount,fee_type_id:values.fee_type_id,expense_scope:values.expense_scope,expense_subtype:values.expense_subtype,handler:values.handler||profile.username,description:values.description||""});
       message.success(`已为 ${data.created} 个案件创建费用草稿`);setBatchFeeOpen(false);batchFeeForm.resetFields();await load();
     }catch(error:any){message.error(error?.response?.data?.detail||"批量新增费用失败");}
   };
@@ -3474,11 +3463,10 @@ export default function CaseCenterPage({
     const agencyPreset = expenseSubtype === "代理费" || expenseSubtype === PLATFORM_AGENCY_FEE_SUBTYPE;
     const otherPreset = expenseSubtype === "其他费用";
     setFeeSubtypePreset(officialPreset ? "official" : thirdPartyPreset ? "third-party" : agencyPreset ? "agency" : otherPreset ? "other" : "");
-    const preferredSubtype = expenseScope === "内部" || officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : expenseSubtype || "官费";
-    const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
-    const initialSubtype = expenseScope === "平台" && agencyPreset
-      ? PLATFORM_AGENCY_FEE_SUBTYPE
-      : expenseScope === "内部" ? undefined : preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : allowedSubtypes[0];
+    const preset = officialPreset ? "official" : thirdPartyPreset ? "third-party" : agencyPreset ? "agency" : otherPreset ? "other" : "";
+    const preferredSubtype = expenseScope === "平台" && agencyPreset ? PLATFORM_AGENCY_FEE_SUBTYPE : expenseSubtype || "";
+    const initialTypeId = initialFeeTypeId(feeTypeCatalog, expenseScope, preset, preferredSubtype);
+    const initialType = feeTypeSelection(feeTypeCatalog, initialTypeId);
     const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
     const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
       ? linkedContractId
@@ -3487,8 +3475,9 @@ export default function CaseCenterPage({
     feeForm.setFieldsValue({ source_file_type: sourceFileType, items: [{
       title: `${row.title}案件费用`, amount: row.data.amount || undefined,
       contract_record_id: initialContractId,
-      expense_scope: expenseScope, expense_subtype: initialSubtype,
-      fee_type: initialSubtype ? FEE_SUBTYPE_TO_TYPE[initialSubtype] || initialSubtype : undefined,
+      expense_scope: expenseScope, fee_type_id: initialTypeId,
+      expense_subtype: initialType?.name,
+      fee_type: initialType?.base_fee_type,
       commission_details: [],
       handler: profile.username || row.owner, court: row.data.court || "", payee: expenseScope === "内部" ? undefined : row.data.court || "",
       deadline: undefined, description: "",
@@ -3682,7 +3671,9 @@ export default function CaseCenterPage({
     feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
     const expenseScope = row.data.expense_scope || "律所";
     const expenseSubtype = normalizeFeeSubtypeForScope(expenseScope, row.data.expense_subtype || "官费");
-    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, expense_subtype: expenseSubtype, fee_type: FEE_SUBTYPE_TO_TYPE[expenseSubtype] || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
+    const feeTypeId = Number(row.data.fee_type_id) || initialFeeTypeId(feeTypeCatalog, expenseScope, "", expenseSubtype);
+    const feeType = feeTypeSelection(feeTypeCatalog, feeTypeId);
+    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
     setEditingFeeRow(row);
   };
   const openPaymentRequest = async (row: CaseRow) => {
@@ -4217,7 +4208,6 @@ export default function CaseCenterPage({
       optionsByType.every((options) => hasCaseFileTypeOption(option.value, options)),
     ));
   }, [caseFileTypeCatalog, caseRelations, selectedBatchCases]);
-  const batchFeeSubtypeOptions = applicableFeeSubtypes(String(batchExpenseScope || ""), batchFeeSourceFileType);
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeySet.has(String(row.id)));
   const selectedCaseCapability = getCaseCapability(selectedCase);
   const canDeleteSelectedCompanyCase = isCompanyCaseListRoute(initialView)
@@ -5040,7 +5030,7 @@ export default function CaseCenterPage({
             {counselListMode&&<>
               <Button onClick={()=>selectedCase?void openCounselDetail(selectedCase):message.warning("请先选择案件")}>查看详情</Button>
               {(["admin","manager"].includes(profile.role||""))&&<Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要修改的案件");batchUpdateForm.resetFields();setBatchUpdateOpen(true);}}>批量修改</Button>}
-              {canCreateSelectedCaseFees&&<Button onClick={()=>{batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>}
+              {canCreateSelectedCaseFees&&<Button onClick={()=>{const feeTypeId=initialFeeTypeId(feeTypeCatalog,"律所");const feeType=feeTypeSelection(feeTypeCatalog,feeTypeId);batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",fee_type_id:feeTypeId,expense_subtype:feeType?.name,handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>}
             </>}
             <Dropdown
               trigger={["click"]}
@@ -5468,13 +5458,13 @@ export default function CaseCenterPage({
             <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
             <div className="form-grid">
               <Form.Item label="合同号" name="contract_record_id" rules={[{ required: true, message: "请选择关联合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" options={feeContractOptions} /></Form.Item>
-              <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{ required: true, message: "请选择关联材料类型" }] : []}><Select allowClear options={feeSourceFileTypeOptions} onChange={() => feeForm.setFieldsValue({ expense_subtype: undefined, fee_type: undefined })} /></Form.Item>
-              <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={() => feeForm.setFieldsValue({ expense_subtype: undefined, fee_type: undefined })} /></Form.Item>
-              <Form.Item label="费用类别" name="expense_subtype" rules={[{ required: true }]}><Select options={feeSubtypeOptions.map(value => ({ value, label: value }))} onChange={(value) => feeForm.setFieldValue("fee_type", FEE_SUBTYPE_TO_TYPE[value] || value)} /></Form.Item>
-              <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
+              <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{ required: true, message: "请选择关联材料类型" }] : []}><Select allowClear options={feeSourceFileTypeOptions} onChange={() => feeForm.setFieldsValue({ fee_type_id: undefined, expense_subtype: undefined, fee_type: undefined })} /></Form.Item>
+              <Form.Item label="费用归属" name="expense_scope" rules={[{ required: true }]}><Select options={["律所", "平台", "内部"].map(value => ({ value, label: value }))} onChange={() => feeForm.setFieldsValue({ fee_type_id: undefined, expense_subtype: undefined, fee_type: undefined })} /></Form.Item>
+              <Form.Item label="费用类别" name="fee_type_id" rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={feeTypeTreeOptions} placeholder="请选择系统费用类型" onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldsValue({ expense_subtype: option?.name, fee_type: option?.base_fee_type }); }} /></Form.Item>
+              <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="expense_subtype" hidden><Input /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
             </div>
               <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
-              {feeExpenseSubtype === "代理费" && <Form.List name="commission_details">{(fields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{fields.map((field) => <div className="case-fee-commission-row" key={field.key}><Form.Item {...field} name={[field.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...field} name={[field.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...field} name={[field.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...field} name={[field.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} /></div>)}</section>}</Form.List>}
+              {feeBaseType === "代理费" && <Form.List name="commission_details">{(fields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{fields.map((field) => <div className="case-fee-commission-row" key={field.key}><Form.Item {...field} name={[field.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...field} name={[field.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...field} name={[field.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...field} name={[field.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} /></div>)}</section>}</Form.List>}
           </>
         </Form>
       </Modal>
@@ -5497,26 +5487,26 @@ export default function CaseCenterPage({
               <div className="case-fee-entry-head"><span>案号</span><span>费用类型</span><span>支付对象</span><span>基数</span><span>参考提成</span><span>实际金额</span><span>备注</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
-                <Form.Item name={[field.name, "expense_subtype"]} rules={[{ required: true, message: "请选择费用类型" }]}><Select options={LEGACY_INTERNAL_FEE_SUBTYPES.map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items",field.name,"fee_type"],"内部费用"); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${value}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={feeTypeTreeOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
                 <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><Select showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} /></Form.Item>
                 <Form.Item name={[field.name, "base_amount"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
-                <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
+                <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
               </div>)}
             </div> : <div className="case-fee-entry-table">
               <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
                 <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" options={feeContractOptions} /></Form.Item>
-                <Form.Item name={[field.name, "expense_subtype"]} rules={[{ required: true, message: "请选择费用类型" }]}><Select options={feeSubtypeOptions.map(value => ({ value, label: value }))} onChange={(value) => { feeForm.setFieldValue(["items",field.name,"fee_type"],FEE_SUBTYPE_TO_TYPE[value] || value); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${value}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={feeTypeTreeOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
                 <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
-                <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
+                <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
               </div>)}
             </div>}</Form.List>
           </Form>
@@ -6162,9 +6152,10 @@ export default function CaseCenterPage({
         <Alert type="info" showIcon title="系统会为每个案件分别创建一条费用草稿，并分别写入案件与费用审计记录。" style={{marginBottom:12}}/>
         <Form form={batchFeeForm} layout="vertical">
           <div className="form-grid">
-            <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{required:true,message:"请选择关联材料类型"}] : []}><Select allowClear options={batchFeeSourceFileTypeOptions} onChange={()=>batchFeeForm.setFieldValue("expense_subtype",undefined)}/></Form.Item>
-            <Form.Item label="费用归属" name="expense_scope" rules={[{required:true}]}><Select options={["律所","平台","内部"].map(value=>({value,label:value}))} onChange={()=>batchFeeForm.setFieldValue("expense_subtype",undefined)}/></Form.Item>
-            <Form.Item label="费用类型" name="expense_subtype" rules={[{required:true}]}><Select options={batchFeeSubtypeOptions.map(value=>({value,label:value}))}/></Form.Item>
+            <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{required:true,message:"请选择关联材料类型"}] : []}><Select allowClear options={batchFeeSourceFileTypeOptions} onChange={()=>batchFeeForm.setFieldsValue({fee_type_id:undefined,expense_subtype:undefined})}/></Form.Item>
+            <Form.Item label="费用归属" name="expense_scope" rules={[{required:true}]}><Select options={["律所","平台","内部"].map(value=>({value,label:value}))} onChange={()=>batchFeeForm.setFieldsValue({fee_type_id:undefined,expense_subtype:undefined})}/></Form.Item>
+            <Form.Item label="费用类型" name="fee_type_id" rules={[{required:true,message:"请选择末级费用类型"}]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={batchFeeTypeTreeOptions} placeholder="请选择系统费用类型" onChange={(value)=>{const option=feeTypeSelection(feeTypeCatalog,value);batchFeeForm.setFieldValue("expense_subtype",option?.name);}}/></Form.Item>
+            <Form.Item name="expense_subtype" hidden><Input /></Form.Item>
             <Form.Item label="单案金额" name="amount" rules={[{required:true,message:"请输入单案金额"}]}><InputNumber min={0.01} max={100000000} precision={2} style={{width:"100%"}}/></Form.Item>
             <Form.Item label="经办人账号" name="handler" rules={[{required:true,message:"请输入经办人账号"}]}><Input/></Form.Item>
           </div>

@@ -41,6 +41,7 @@ type ParameterRow = {
   updated_by: string;
   created_at: string;
   updated_at: string;
+  children?: ParameterRow[];
 };
 type ParameterRelationKind =
   | "case-type-file-types"
@@ -170,7 +171,7 @@ categoryTitle.ipr_case_file_type = "知识产权案件文件类型";
 categoryPlaceholder.ipr_case_file_type = "知识产权案件文件类型名称";
 const extraFields: Record<string, { key: string; label: string }[]> = {
   case_type: [{ key: "letter_code", label: "类型字母名称" }],
-  fee_type: [{ key: "group", label: "类型大类" }],
+  fee_type: [{ key: "parent_code", label: "上级费用类型" }],
   case_phase: [
     { key: "parent_code", label: "上级阶段Id" },
     { key: "case_type", label: "案件类型" },
@@ -255,6 +256,64 @@ export function isCaseFileTypeParentValid(
       (option) => option.value === normalized,
     )
   );
+}
+
+export function feeTypeParentOptions(
+  rows: ParameterRow[],
+  editingParameterId?: number,
+): { value: string; label: string }[] {
+  const editing = rows.find((row) => row.id === editingParameterId);
+  const childCodes = new Map<string, string[]>();
+  rows.forEach((row) => {
+    const parentCode = String(row.extra.parent_code || "").trim();
+    if (parentCode) childCodes.set(parentCode, [...(childCodes.get(parentCode) || []), row.code]);
+  });
+  const excluded = new Set<string>(editing ? [editing.code] : []);
+  const visit = (code: string) => {
+    for (const childCode of childCodes.get(code) || []) {
+      if (excluded.has(childCode)) continue;
+      excluded.add(childCode);
+      visit(childCode);
+    }
+  };
+  if (editing) visit(editing.code);
+  return rows
+    .filter((row) => row.category === "fee_type" && row.is_active && !excluded.has(row.code))
+    .sort((left, right) => left.sort_order - right.sort_order || left.code.localeCompare(right.code))
+    .map((row) => ({ value: row.code, label: `${row.name}（${row.code}）` }));
+}
+
+export function feeTypeTreeRows(rows: ParameterRow[]): ParameterRow[] {
+  const nodes = new Map(rows.map((row) => [row.code, { ...row, children: [] as ParameterRow[] }]));
+  const roots: ParameterRow[] = [];
+  const sorted = [...nodes.values()].sort(
+    (left, right) => left.sort_order - right.sort_order || left.code.localeCompare(right.code),
+  );
+  sorted.forEach((node) => {
+    const parentCode = String(node.extra.parent_code || "").trim();
+    const parent = parentCode ? nodes.get(parentCode) : undefined;
+    if (parent && parent.id !== node.id) parent.children!.push(node);
+    else roots.push(node);
+  });
+  const clearEmpty = (row: ParameterRow): ParameterRow => ({
+    ...row,
+    children: row.children?.length ? row.children.map(clearEmpty) : undefined,
+  });
+  return roots.map(clearEmpty);
+}
+
+export function feeTypeRootName(row: ParameterRow, rows: ParameterRow[]): string {
+  const byCode = new Map(rows.map((item) => [item.code, item]));
+  const seen = new Set<string>();
+  let cursor = row;
+  while (cursor && !seen.has(cursor.code)) {
+    seen.add(cursor.code);
+    const parentCode = String(cursor.extra.parent_code || "").trim();
+    const parent = parentCode ? byCode.get(parentCode) : undefined;
+    if (!parent) return cursor.name;
+    cursor = parent;
+  }
+  return row.name;
 }
 
 const parameterRelationConfigs: Record<
@@ -557,6 +616,16 @@ export default function SystemCenterPage({
           errors: ["请选择有效的上级文件类型，且不能选择自身"],
         },
       ]);
+      return;
+    }
+    if (
+      category === "fee_type" &&
+      value.parent_code &&
+      !feeTypeParentOptions(parameters, editingParameter?.id).some(
+        (option) => option.value === value.parent_code,
+      )
+    ) {
+      parameterForm.setFields([{ name: "parent_code", errors: ["请选择有效的上级费用类型，且不能选择自身或下级"] }]);
       return;
     }
     const extra =
@@ -994,7 +1063,7 @@ export default function SystemCenterPage({
           title: "类型大类",
           key: "group",
           width: 140,
-          render: (_, r) => r.extra.group || "—",
+          render: (_, r) => feeTypeRootName(r, parameters),
         },
         ...auditColumns,
         actionColumn,
@@ -1168,7 +1237,7 @@ export default function SystemCenterPage({
       },
       actionColumn,
     ];
-  }, [category, parameters.length]);
+  }, [category, parameters]);
 
   const empty = (
     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
@@ -1195,7 +1264,7 @@ export default function SystemCenterPage({
   let content: React.ReactNode;
   if (category) {
     const title = `${categoryTitle[category]}列表`;
-    const usesParentCode = ["cause", "case_file_type", "district"].includes(
+    const usesParentCode = ["fee_type", "cause", "case_file_type", "district"].includes(
       category,
     );
     const visibleParameters = parameters.filter(
@@ -1205,6 +1274,9 @@ export default function SystemCenterPage({
           ? row.code.includes(secondaryKeyword)
           : String(row.extra.parent_code || "").includes(secondaryKeyword)),
     );
+    const parameterDataSource = category === "fee_type"
+      ? feeTypeTreeRows(visibleParameters)
+      : visibleParameters;
     content = (
       <Card className="panel system-focused" title={title}>
         <div className="system-query">
@@ -1261,7 +1333,7 @@ export default function SystemCenterPage({
           size="small"
           loading={loading}
           columns={parameterColumns}
-          dataSource={visibleParameters}
+          dataSource={parameterDataSource}
           locale={{
             emptyText: (
               <span>
@@ -2193,7 +2265,7 @@ export default function SystemCenterPage({
           ) : (
           <div className="system-modal-grid">
             <Form.Item
-              label={category === "case_type" ? "类型字母名称" : "代码"}
+              label={category === "case_type" ? "类型字母名称" : category === "fee_type" ? "类型ID" : "代码"}
               name="code"
               rules={[
                 {
@@ -2237,7 +2309,8 @@ export default function SystemCenterPage({
               <Input />
             </Form.Item>
             {(extraFields[category] || []).map((item) => {
-              const numericParent = item.key === "parent_code";
+              const isFeeTypeParent = category === "fee_type" && item.key === "parent_code";
+              const numericParent = item.key === "parent_code" && !isFeeTypeParent;
               const isCaseFileTypeParent =
                 category === "case_file_type" && item.key === "parent_code";
               return (
@@ -2246,21 +2319,17 @@ export default function SystemCenterPage({
                   label={item.label}
                   name={item.key}
                   rules={
-                    isCaseFileTypeParent
+                    isCaseFileTypeParent || isFeeTypeParent
                       ? [
                           {
                             validator: async (_, value) => {
-                              if (
-                                isCaseFileTypeParentValid(
-                                  value,
-                                  parameters,
-                                  editingParameter?.id,
-                                )
-                              )
-                                return;
-                              throw new Error(
-                                "请选择有效的上级文件类型，且不能选择自身",
-                              );
+                              const valid = isFeeTypeParent
+                                ? !value || feeTypeParentOptions(parameters, editingParameter?.id).some((option) => option.value === value)
+                                : isCaseFileTypeParentValid(value, parameters, editingParameter?.id);
+                              if (valid) return;
+                              throw new Error(isFeeTypeParent
+                                ? "请选择有效的上级费用类型，且不能选择自身或下级"
+                                : "请选择有效的上级文件类型，且不能选择自身");
                             },
                           },
                         ]
@@ -2269,14 +2338,15 @@ export default function SystemCenterPage({
                         : undefined
                   }
                 >
-                  {isCaseFileTypeParent ? (
+                  {isCaseFileTypeParent || isFeeTypeParent ? (
                     <Select
                       allowClear
-                      placeholder="请选择上级文件类型"
-                      options={caseFileTypeParentOptions(
-                        parameters,
-                        editingParameter?.id,
-                      )}
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder={isFeeTypeParent ? "不选择表示新增费用大类" : "请选择上级文件类型"}
+                      options={isFeeTypeParent
+                        ? feeTypeParentOptions(parameters, editingParameter?.id)
+                        : caseFileTypeParentOptions(parameters, editingParameter?.id)}
                     />
                   ) : (
                     <Input

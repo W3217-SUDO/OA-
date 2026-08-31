@@ -301,10 +301,47 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("ipr_fee_type", "IPR-SERVICE", "代理服务费", {"group": "知识产权费用"}),
     ("case_type", "140", "法律顾问", {"letter_code": "GW"}),
     ("case_type", "150", "仲裁", {"letter_code": "ZC"}),
-    ("fee_type", "OFFICIAL", "官方费用", {"group": "案件费用"}),
-    ("fee_type", "INTERNAL", "内部费用", {"group": "内部费用"}),
+    ("fee_type", "OFFICIAL", "官方费用", {"parent_code": ""}),
+    ("fee_type", "AGENCY", "代理费", {"parent_code": ""}),
+    ("fee_type", "OTHER", "其他费用", {"parent_code": ""}),
+    ("fee_type", "INTERNAL", "内部费用", {"parent_code": ""}),
     ("fee_type", "SETTLEMENT", "结算费用", {"group": "结算费用"}),
     ("fee_type", "ARCHIVE", "归档费用", {"group": "归档费用"}),
+    ("fee_type", "1101010", "一审诉讼费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101020", "二审诉讼费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101030", "再审诉讼费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101040", "公证费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101050", "调解金额", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101060", "判决金额", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101070", "保全费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101080", "执行费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101090", "官费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101100", "诉讼费", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1101110", "核定成本", {"parent_code": "OFFICIAL"}),
+    ("fee_type", "1102010", "律师代理费", {"parent_code": "AGENCY"}),
+    ("fee_type", "1102020", "律师咨询费", {"parent_code": "AGENCY"}),
+    ("fee_type", "1102030", "律师培训费", {"parent_code": "AGENCY"}),
+    ("fee_type", "1102040", "律师见证费", {"parent_code": "AGENCY"}),
+    ("fee_type", "1102050", "平台代理费", {"parent_code": "AGENCY"}),
+    ("fee_type", "1103010", "检索费", {"parent_code": "OTHER"}),
+    ("fee_type", "1103020", "公告费", {"parent_code": "OTHER"}),
+    ("fee_type", "1103030", "担保费", {"parent_code": "OTHER"}),
+    ("fee_type", "1103040", "鉴定费", {"parent_code": "OTHER"}),
+    ("fee_type", "1103050", "公证服务费", {"parent_code": "OTHER"}),
+    ("fee_type", "1103060", "案源介绍费", {"parent_code": "OTHER"}),
+    ("fee_type", "1103070", "权利人赔偿款", {"parent_code": "OTHER"}),
+    ("fee_type", "1103080", "投资人分成", {"parent_code": "OTHER"}),
+    ("fee_type", "1104010", "产品购买费", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104020", "翻译费", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104030", "调档费", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104040", "投资提成", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104050", "手续费", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104060", "任务调期扣款", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104070", "服务费(调查)", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104080", "服务费(开庭)", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104090", "服务费(案源)", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104100", "服务费(文书)", {"parent_code": "INTERNAL"}),
+    ("fee_type", "1104110", "服务费(品管)", {"parent_code": "INTERNAL"}),
     ("case_phase", "WAIT_NOTARY", "等待公证书", {"case_type": "民事争议", "parent_code": "", "sort_order": 10}),
     ("case_phase", "WAIT_NOTARY_REVIEW", "审核公证书", {"case_type": "民事争议", "parent_code": "", "sort_order": 20}),
     ("case_phase", "SUBJECT_DISCLOSURE", "待主体披露", {"case_type": "民事争议", "parent_code": "", "sort_order": 30}),
@@ -1742,8 +1779,9 @@ class CaseLogInput(BaseModel):
 class CaseBatchFeeInput(BaseModel):
     case_ids: list[int] = Field(min_length=1, max_length=100)
     amount: float = Field(gt=0, le=100000000)
+    fee_type_id: int | None = Field(default=None, gt=0)
     expense_scope: str = Field(pattern="^(律所|平台|内部)$")
-    expense_subtype: str = Field(pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|平台代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
+    expense_subtype: str = Field(min_length=1, max_length=128)
     handler: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=1000)
 
@@ -2589,6 +2627,7 @@ class FinanceFeeInput(BaseModel):
     title: str
     customer: str = ""
     amount: float
+    fee_type_id: int | None = Field(default=None, gt=0)
     fee_type: str
     expense_scope: str | None = Field(default=None, pattern="^(律所|平台|内部)$")
     expense_subtype: str | None = None
@@ -6429,6 +6468,81 @@ def _system_parameter_dict(item: SystemParameter) -> dict:
     }
 
 
+FEE_TYPE_ROOT_BASES = {
+    "OFFICIAL": "官方费用",
+    "AGENCY": "代理费",
+    "OTHER": "其他费用",
+    "INTERNAL": "内部费用",
+    "SETTLEMENT": "结算费用",
+    "ARCHIVE": "归档费用",
+}
+FEE_TYPE_BASE_SCOPES = {
+    "官方费用": ["律所", "平台"],
+    "代理费": ["律所", "平台"],
+    "其他费用": ["律所", "平台"],
+    "内部费用": ["内部"],
+    "结算费用": [],
+    "归档费用": [],
+}
+
+
+def _fee_type_base_from_root(root: SystemParameter) -> str:
+    configured = str((root.extra or {}).get("base_fee_type") or "").strip()
+    if configured in FINANCE_FEE_TYPES:
+        return configured
+    if root.code in FEE_TYPE_ROOT_BASES:
+        return FEE_TYPE_ROOT_BASES[root.code]
+    name = root.name.strip()
+    if "内部" in name:
+        return "内部费用"
+    if "代理" in name:
+        return "代理费"
+    if "官" in name or "诉讼" in name:
+        return "官方费用"
+    if "结算" in name:
+        return "结算费用"
+    if "归档" in name:
+        return "归档费用"
+    return "其他费用"
+
+
+def _fee_type_catalog(items: list[SystemParameter]) -> list[dict]:
+    by_code = {item.code: item for item in items}
+    child_codes: dict[str, list[str]] = {}
+    for item in items:
+        parent_code = str((item.extra or {}).get("parent_code") or "").strip()
+        if parent_code:
+            child_codes.setdefault(parent_code, []).append(item.code)
+
+    result: list[dict] = []
+    for item in items:
+        lineage: list[SystemParameter] = []
+        seen: set[str] = set()
+        cursor: SystemParameter | None = item
+        while cursor is not None and cursor.code not in seen:
+            lineage.append(cursor)
+            seen.add(cursor.code)
+            parent_code = str((cursor.extra or {}).get("parent_code") or "").strip()
+            cursor = by_code.get(parent_code) if parent_code else None
+        lineage.reverse()
+        root = lineage[0] if lineage else item
+        base_fee_type = _fee_type_base_from_root(root)
+        scopes = list(FEE_TYPE_BASE_SCOPES.get(base_fee_type, ["律所", "平台"]))
+        row = _system_parameter_dict(item)
+        row.update({
+            "parent_code": str((item.extra or {}).get("parent_code") or "").strip(),
+            "path": " / ".join(node.name for node in lineage),
+            "depth": max(len(lineage) - 1, 0),
+            "root_code": root.code,
+            "base_fee_type": base_fee_type,
+            "expense_scopes": scopes,
+            "has_children": bool(child_codes.get(item.code)),
+            "selectable": item.is_active and not any(by_code[code].is_active for code in child_codes.get(item.code, []) if code in by_code) and bool(scopes),
+        })
+        result.append(row)
+    return result
+
+
 def _clear_parameter_cache(category: str | None = None, operator: str = "system") -> None:
     if category:
         SYSTEM_PARAMETER_CACHE.pop(category, None)
@@ -6458,12 +6572,14 @@ async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, g
 @app.get(f"{settings.api_prefix}/system/parameters/options")
 async def list_system_parameter_options(category: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Expose active, form-safe parameter choices to authenticated users."""
-    if category != "notary_office":
+    if category not in {"notary_office", "fee_type"}:
         raise HTTPException(status_code=422, detail="当前参数分类不提供业务选项")
     items = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == category,
         SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    if category == "fee_type":
+        return {"items": _fee_type_catalog(list(items))}
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
 
 
@@ -6649,6 +6765,21 @@ async def _validate_parameter_parent(category: str, code: str, extra: dict, db: 
             raise HTTPException(status_code=422, detail="父级参数不存在")
 
 
+async def _normalized_fee_type_extra(code: str, extra: dict, db: AsyncSession) -> dict:
+    parent_code = str((extra or {}).get("parent_code") or "").strip()
+    normalized = {"parent_code": parent_code}
+    if not parent_code:
+        return normalized
+    parent = await db.scalar(select(SystemParameter).where(
+        SystemParameter.category == "fee_type",
+        SystemParameter.code == parent_code,
+        SystemParameter.is_active.is_(True),
+    ))
+    if not parent or parent.code == code:
+        raise HTTPException(status_code=422, detail="上级费用类型不存在或不可用")
+    return normalized
+
+
 PARAMETER_REFERENCE_FIELDS: dict[str, dict[str, set[str]]] = {
     "customer_type": {"customer": {"customer_type"}},
     "case_type": {"case": {"case_type"}},
@@ -6680,6 +6811,23 @@ async def _parameter_reference_examples(item: SystemParameter, db: AsyncSession)
     for model, field, label in relation_checks:
         if await db.scalar(select(model.id).where(field == item.id).limit(1)):
             return [label]
+    if item.category == "fee_type":
+        children = list((await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "fee_type",
+            SystemParameter.extra["parent_code"].as_string() == item.code,
+        ).limit(3))).all())
+        if children:
+            return [f"下级费用类型：{child.name}" for child in children]
+        records = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance",
+            or_(
+                BusinessRecord.data["fee_type_id"].as_integer() == item.id,
+                BusinessRecord.data["fee_type_code"].as_string() == item.code,
+                BusinessRecord.data["expense_subtype"].as_string() == item.name,
+            ),
+        ).limit(3))).all())
+        if records:
+            return [record.serial_no for record in records]
     if item.category == "case_file_type":
         attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.category == item.name).limit(3))).all())
         return [f"附件#{attachment.id}" for attachment in attachments]
@@ -6711,9 +6859,12 @@ async def create_system_parameter(body: SystemParameterInput, identity: dict = D
     else:
         duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == body.category, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
-    await _validate_parameter_parent(body.category, code, body.extra, db)
-    await _validate_parameter_references(body.category, body.extra, db)
-    item = SystemParameter(**body.model_dump(exclude={"code", "name"}), code=code, name=name, created_by=identity["username"], updated_by=identity["username"])
+    next_extra = body.extra
+    await _validate_parameter_parent(body.category, code, next_extra, db)
+    if body.category == "fee_type":
+        next_extra = await _normalized_fee_type_extra(code, next_extra, db)
+    await _validate_parameter_references(body.category, next_extra, db)
+    item = SystemParameter(**body.model_dump(exclude={"code", "name", "extra"}), code=code, name=name, extra=next_extra, created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     await _system_audit(db, identity, "创建系统参数", f"系统参数:{item.category}/{item.code}", {"id": item.id, "category": item.category, "code": item.code})
     await db.commit(); await db.refresh(item); _clear_parameter_cache(body.category, identity["username"])
@@ -6736,8 +6887,27 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
         duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码、名称或收款单位已存在")
     await _validate_parameter_parent(item.category, code, next_extra, db, current_id=item.id)
+    if item.category == "fee_type":
+        next_extra = await _normalized_fee_type_extra(code, next_extra, db)
+        active_children = list((await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "fee_type",
+            SystemParameter.extra["parent_code"].as_string() == item.code,
+            SystemParameter.is_active.is_(True),
+        ))).all())
+        if body.is_active is False and active_children:
+            raise HTTPException(status_code=409, detail="费用类型存在可用的下级类型，不能直接停用")
     await _validate_parameter_references(item.category, next_extra, db)
-    for key, value in body.model_dump(exclude_unset=True).items(): setattr(item, key, value.strip() if key in {"code", "name"} else value)
+    previous_code = item.code
+    for key, value in body.model_dump(exclude_unset=True, exclude={"extra"}).items(): setattr(item, key, value.strip() if key in {"code", "name"} else value)
+    item.extra = next_extra
+    if item.category == "fee_type" and previous_code != code:
+        children = list((await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "fee_type",
+            SystemParameter.extra["parent_code"].as_string() == previous_code,
+        ))).all())
+        for child in children:
+            child.extra = {**(child.extra or {}), "parent_code": code}
+            child.updated_by = identity["username"]
     item.updated_by = identity["username"]
     await _system_audit(db, identity, "更新系统参数", f"系统参数:{item.category}/{item.code}", {"id": item.id, "category": item.category, "code": item.code})
     await db.commit(); await db.refresh(item); _clear_parameter_cache(item.category, identity["username"])
@@ -10879,19 +11049,37 @@ async def _resolve_case_fee_contract(
 @app.put(f"{settings.api_prefix}/finance/fees/{{fee_id}}")
 async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _editable_finance_fee(fee_id, identity, db)
-    if body.fee_type not in FINANCE_FEE_TYPES:
-        raise HTTPException(status_code=422, detail="费用类型无效")
-    if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
-        raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     amount = _round_fee_amount(body.amount)
     data = dict(item.data or {})
     case_record = None
-    if body.case_record_id:
-        case_record = await _ensure_record_visible(body.case_record_id, identity, db)
+    case_record_id = body.case_record_id or int(data.get("case_id") or 0) or None
+    if case_record_id:
+        case_record = await _ensure_record_visible(case_record_id, identity, db)
         if case_record.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
         if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
             raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
+    fee_snapshot = {
+        "fee_type_id": None,
+        "fee_type_code": "",
+        "fee_type_name": body.expense_subtype or body.fee_type,
+        "fee_type_path": body.expense_subtype or body.fee_type,
+        "fee_type": body.fee_type,
+        "expense_subtype": body.expense_subtype or "",
+    }
+    if case_record:
+        fee_parameter, fee_option = await _resolve_case_fee_type_master(
+            body.fee_type_id, body.expense_scope, db,
+            legacy_name=body.expense_subtype or "", legacy_base=body.fee_type,
+        )
+        fee_snapshot = _case_fee_type_snapshot(fee_parameter, fee_option)
+        if body.fee_type != fee_snapshot["fee_type"] or (body.expense_subtype and body.expense_subtype != fee_parameter.name):
+            raise HTTPException(status_code=422, detail="费用类型与系统费用分类不一致")
+    else:
+        if body.fee_type not in FINANCE_FEE_TYPES:
+            raise HTTPException(status_code=422, detail="费用类型无效")
+        if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
+            raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
+        _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     contract_record = None
     if body.contract_record_id:
         contract_record = await db.get(BusinessRecord, body.contract_record_id) if case_record else await _ensure_record_visible(body.contract_record_id, identity, db)
@@ -10901,7 +11089,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
     contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
     commission_details = await _finance_fee_commission_details(body, amount, db)
-    data.update({"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": body.case_no, "case_id": body.case_record_id, "contract_id": body.contract_record_id, "contract_no": contract_record.serial_no if contract_record else str(data.get("contract_no") or ""), "deadline": str(body.deadline) if body.deadline else "", "commission_details": commission_details, "is_refund": body.fee_type == "内部费用" and amount < 0})
+    data.update({"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": body.case_no, "case_id": case_record.id if case_record else body.case_record_id, "contract_id": body.contract_record_id, "contract_no": contract_record.serial_no if contract_record else str(data.get("contract_no") or ""), "deadline": str(body.deadline) if body.deadline else "", "commission_details": commission_details, "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0})
     item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
     db.add(WorkflowEvent(record_id=item.id, action="修改费用草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
     await db.commit(); await db.refresh(item)
@@ -15076,6 +15264,60 @@ FINANCE_VOUCHER_CATEGORIES = {"付款凭证", "发票扫描件", "回款凭证",
 FINANCE_DEFAULT_VOUCHER_CATEGORY = {"付款": "付款凭证", "开票": "发票扫描件", "回款": "回款凭证", "退费": "退费凭证"}
 
 
+async def _resolve_case_fee_type_master(
+    fee_type_id: int | None,
+    expense_scope: str | None,
+    db: AsyncSession,
+    *,
+    legacy_name: str = "",
+    legacy_base: str = "",
+) -> tuple[SystemParameter, dict]:
+    items = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "fee_type",
+        SystemParameter.is_active.is_(True),
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
+    if not items:
+        expected_base = EXPENSE_SUBTYPE_FEE_TYPE.get(legacy_name)
+        if not legacy_name or not legacy_base or expected_base != legacy_base:
+            raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
+        if expense_scope and legacy_base not in EXPENSE_SCOPE_FEE_TYPES[expense_scope]:
+            raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
+        _validate_finance_fee_scope_subtype(expense_scope, legacy_name, legacy_base)
+        legacy = SystemParameter(
+            category="fee_type", code="", name=legacy_name,
+            extra={"parent_code": ""}, is_active=True,
+        )
+        return legacy, {
+            "path": legacy_name, "base_fee_type": legacy_base,
+            "expense_scopes": list(FEE_TYPE_BASE_SCOPES.get(legacy_base, [])),
+            "selectable": True,
+        }
+    if not fee_type_id:
+        raise HTTPException(status_code=422, detail="案件费用必须选择系统参数中的费用类型")
+    catalog = _fee_type_catalog(items)
+    option = next((row for row in catalog if row["id"] == fee_type_id), None)
+    item = next((row for row in items if row.id == fee_type_id), None)
+    if not item or not option:
+        raise HTTPException(status_code=422, detail="费用类型不存在或已停用")
+    if not option["selectable"]:
+        raise HTTPException(status_code=422, detail="请选择没有下级分类的末级费用类型")
+    scope = str(expense_scope or "").strip()
+    if scope and scope not in option["expense_scopes"]:
+        raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
+    return item, option
+
+
+def _case_fee_type_snapshot(item: SystemParameter, option: dict) -> dict:
+    return {
+        "fee_type_id": item.id,
+        "fee_type_code": item.code,
+        "fee_type_name": item.name,
+        "fee_type_path": option["path"],
+        "fee_type": option["base_fee_type"],
+        "expense_subtype": item.name,
+    }
+
+
 def _validate_finance_fee_scope_subtype(expense_scope: str | None, expense_subtype: str | None, fee_type: str) -> None:
     if expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE.get(expense_subtype) != fee_type:
         raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
@@ -18314,19 +18556,38 @@ async def create_case_commissions(
 
 @app.post(f"{settings.api_prefix}/finance/fees", status_code=status.HTTP_201_CREATED)
 async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if body.fee_type not in FINANCE_FEE_TYPES:
-        raise HTTPException(status_code=422, detail="费用类型无效")
-    if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
-        raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     if body.amount == 0: raise HTTPException(status_code=422, detail="费用金额不能为 0")
-    if body.amount < 0 and body.fee_type != "内部费用": raise HTTPException(status_code=422, detail="只有内部费用可以使用负数冲销")
     case_record = await _finance_linked_case(body.case_no, identity, db)
     if body.case_record_id:
         linked_case = await _ensure_record_visible(body.case_record_id, identity, db)
         if linked_case.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
         if case_record and case_record.id != linked_case.id: raise HTTPException(status_code=409, detail="案件编号与案件记录不一致")
         case_record = linked_case
+    fee_snapshot = {
+        "fee_type_id": None,
+        "fee_type_code": "",
+        "fee_type_name": body.expense_subtype or body.fee_type,
+        "fee_type_path": body.expense_subtype or body.fee_type,
+        "fee_type": body.fee_type,
+        "expense_subtype": body.expense_subtype or "",
+    }
+    if case_record:
+        fee_parameter, fee_option = await _resolve_case_fee_type_master(
+            body.fee_type_id, body.expense_scope, db,
+            legacy_name=body.expense_subtype or "", legacy_base=body.fee_type,
+        )
+        fee_snapshot = _case_fee_type_snapshot(fee_parameter, fee_option)
+        if body.fee_type != fee_snapshot["fee_type"]:
+            raise HTTPException(status_code=422, detail="费用类型与系统费用分类不一致")
+        if body.expense_subtype and body.expense_subtype != fee_parameter.name:
+            raise HTTPException(status_code=422, detail="费用子类型与系统费用分类不一致")
+    else:
+        if body.fee_type not in FINANCE_FEE_TYPES:
+            raise HTTPException(status_code=422, detail="费用类型无效")
+        if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
+            raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
+        _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
+    if body.amount < 0 and fee_snapshot["fee_type"] != "内部费用": raise HTTPException(status_code=422, detail="只有内部费用可以使用负数冲销")
     if case_record and not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
         raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
     contract_record = None
@@ -18343,9 +18604,9 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
     amount = _round_fee_amount(body.amount)
     commission_details = await _finance_fee_commission_details(body, amount, db)
     serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}"
-    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, "fee_type": body.fee_type, "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "", "is_refund": body.fee_type == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "commission_details": commission_details})
+    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "commission_details": commission_details})
     db.add(item); await db.flush()
-    db.add(WorkflowEvent(record_id=item.id, action="创建费用", to_status="草稿", operator=identity["username"], comment=f"{body.fee_type}：{amount:.2f} 元"))
+    db.add(WorkflowEvent(record_id=item.id, action="创建费用", to_status="草稿", operator=identity["username"], comment=f"{fee_snapshot['fee_type_path']}：{amount:.2f} 元"))
     await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
 
@@ -21029,10 +21290,14 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     ))).all())
     if len(cases) != len(case_ids):
         raise HTTPException(status_code=404, detail="存在无权访问或不存在的案件")
-    expected_fee_type = EXPENSE_SUBTYPE_FEE_TYPE[body.expense_subtype]
-    if expected_fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
-        raise HTTPException(status_code=422, detail="费用归属与费用子类型不一致")
-    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, expected_fee_type)
+    expected_fee_type = EXPENSE_SUBTYPE_FEE_TYPE.get(body.expense_subtype, "")
+    fee_parameter, fee_option = await _resolve_case_fee_type_master(
+        body.fee_type_id, body.expense_scope, db,
+        legacy_name=body.expense_subtype, legacy_base=expected_fee_type,
+    )
+    fee_snapshot = _case_fee_type_snapshot(fee_parameter, fee_option)
+    if body.expense_subtype != fee_parameter.name:
+        raise HTTPException(status_code=422, detail="费用子类型与系统费用分类不一致")
     handler = body.handler.strip() or identity["username"]
     if identity.get("role") == "user":
         handler = identity["username"]
@@ -21053,11 +21318,11 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
         contract_record = contracts_by_case[case_record.id]
         serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:6]}"
         item = BusinessRecord(
-            module="finance", serial_no=serial, title=f"{case_record.title}{body.expense_subtype}",
+            module="finance", serial_no=serial, title=f"{case_record.title}{fee_parameter.name}",
             customer=case_record.customer, status="草稿", owner=handler,
             department=case_record.department, description=body.description,
-            data={"amount": amount, "fee_type": expected_fee_type,
-                  "expense_scope": body.expense_scope, "expense_subtype": body.expense_subtype,
+            data={"amount": amount, **fee_snapshot,
+                  "expense_scope": body.expense_scope,
                   "is_refund": False, "case_no": case_record.serial_no, "case_id": case_record.id,
                   "contract_id": contract_record.id if contract_record else (case_record.data or {}).get("contract_record_id"),
                   "contract_no": contract_record.serial_no if contract_record else (case_record.data or {}).get("contract_no", ""),
@@ -21067,8 +21332,8 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
         db.add(item)
         await db.flush()
         created.append(item)
-        db.add(WorkflowEvent(record_id=item.id, action="批量创建案件费用", to_status="草稿", operator=identity["username"], comment=f"{case_record.serial_no}｜{body.expense_scope}{body.expense_subtype}：{amount:.2f} 元"))
-        db.add(WorkflowEvent(record_id=case_record.id, action="批量新增案件费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"{item.serial_no}｜{body.expense_scope}{body.expense_subtype}：{amount:.2f} 元"))
+        db.add(WorkflowEvent(record_id=item.id, action="批量创建案件费用", to_status="草稿", operator=identity["username"], comment=f"{case_record.serial_no}｜{fee_option['path']}：{amount:.2f} 元"))
+        db.add(WorkflowEvent(record_id=case_record.id, action="批量新增案件费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"{item.serial_no}｜{fee_option['path']}：{amount:.2f} 元"))
     await db.commit()
     for item in created:
         await db.refresh(item)
