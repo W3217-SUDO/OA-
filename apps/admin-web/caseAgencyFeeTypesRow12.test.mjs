@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { FEE_SUBTYPE_TO_TYPE, LEGACY_AGENCY_FEE_SUBTYPES } from "./src/caseRelationConsumption.mjs";
+import { FEE_SUBTYPE_TO_TYPE, LEGACY_AGENCY_FEE_SUBTYPES, agencyFeeSubtypesForScope } from "./src/caseRelationConsumption.mjs";
 
 const page = readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
 
@@ -11,7 +11,8 @@ test("row 12 restores the exact legacy agency fee choices", () => {
 });
 
 test("row 12 opens agency creation without a generic preselection", () => {
-  assert.match(page, /feeSubtypePreset === "agency"[\s\S]*?LEGACY_AGENCY_FEE_SUBTYPES/);
+  assert.deepEqual(agencyFeeSubtypesForScope("律所"), LEGACY_AGENCY_FEE_SUBTYPES);
+  assert.match(page, /feeSubtypePreset === "agency"[\s\S]*?agencyFeeSubtypesForScope\(activeFeeContractScope\)/);
   assert.match(page, /const agencyPreset = expenseSubtype === "代理费"/);
   assert.match(page, /officialPreset \|\| thirdPartyPreset \|\| agencyPreset \|\| otherPreset \? undefined/);
 });

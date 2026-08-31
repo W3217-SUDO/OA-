@@ -73,9 +73,12 @@ import {
   LEGACY_OTHER_FEE_SUBTYPES,
   LEGACY_OFFICIAL_FEE_SUBTYPES,
   LEGACY_THIRD_PARTY_FEE_SUBTYPES,
+  PLATFORM_AGENCY_FEE_SUBTYPE,
+  agencyFeeSubtypesForScope,
   filterCaseFileTypesForCaseType,
   filterCasePhasesForCaseType,
   filterFeeSubtypesForFileType,
+  normalizeFeeSubtypeForScope,
 } from "./caseRelationConsumption.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
 import { buildWarehouseLocationOptions, resolveCaseWarehouseLocationIds } from "./caseWarehouseLocationParity.mjs";
@@ -1188,7 +1191,7 @@ export default function CaseCenterPage({
   );
   const applicableFeeSubtypes = (scope: string, sourceFileType: unknown) => {
     if (scope === "内部") return LEGACY_INTERNAL_FEE_SUBTYPES;
-    const scoped = ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", "代理费", "其他费用"];
+    const scoped = ["官费", "诉讼费", "保全费", "鉴定费", "公证费", "公告费", "执行费", "第三方费用", normalizeFeeSubtypeForScope(scope, "代理费"), "其他费用"];
     return filterFeeSubtypesForFileType(String(sourceFileType || ""), scoped, caseRelations?.fileTypeFeeTypes);
   };
   const feeSubtypeOptions = activeFeeContractScope === "内部"
@@ -1198,7 +1201,7 @@ export default function CaseCenterPage({
     : feeSubtypePreset === "third-party"
       ? LEGACY_THIRD_PARTY_FEE_SUBTYPES
       : feeSubtypePreset === "agency"
-        ? LEGACY_AGENCY_FEE_SUBTYPES
+        ? agencyFeeSubtypesForScope(activeFeeContractScope)
         : feeSubtypePreset === "other"
           ? LEGACY_OTHER_FEE_SUBTYPES
           : applicableFeeSubtypes(String(feeExpenseScope || ""), feeSourceFileType);
@@ -3448,12 +3451,14 @@ export default function CaseCenterPage({
     const sourceFileType = resolveCaseFileTypeSelection("", fileTypeOptionsForCase(row.data.case_type));
     const officialPreset = expenseSubtype === "官费";
     const thirdPartyPreset = expenseSubtype === "第三方费用";
-    const agencyPreset = expenseSubtype === "代理费";
+    const agencyPreset = expenseSubtype === "代理费" || expenseSubtype === PLATFORM_AGENCY_FEE_SUBTYPE;
     const otherPreset = expenseSubtype === "其他费用";
     setFeeSubtypePreset(officialPreset ? "official" : thirdPartyPreset ? "third-party" : agencyPreset ? "agency" : otherPreset ? "other" : "");
     const preferredSubtype = expenseScope === "内部" || officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : expenseSubtype || "官费";
     const allowedSubtypes = applicableFeeSubtypes(expenseScope, sourceFileType);
-    const initialSubtype = expenseScope === "内部" ? undefined : preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : allowedSubtypes[0];
+    const initialSubtype = expenseScope === "平台" && agencyPreset
+      ? PLATFORM_AGENCY_FEE_SUBTYPE
+      : expenseScope === "内部" ? undefined : preferredSubtype && allowedSubtypes.includes(preferredSubtype) ? preferredSubtype : officialPreset || thirdPartyPreset || agencyPreset || otherPreset ? undefined : allowedSubtypes[0];
     const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
     const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
       ? linkedContractId
@@ -3599,7 +3604,9 @@ export default function CaseCenterPage({
     if (row.status !== "草稿") return message.warning("仅草稿费用可以修改");
     setFeeSubtypePreset("");
     feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
-    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: row.data.expense_scope || "律所", expense_subtype: row.data.expense_subtype || "官费", fee_type: row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
+    const expenseScope = row.data.expense_scope || "律所";
+    const expenseSubtype = normalizeFeeSubtypeForScope(expenseScope, row.data.expense_subtype || "官费");
+    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, expense_subtype: expenseSubtype, fee_type: FEE_SUBTYPE_TO_TYPE[expenseSubtype] || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
     setEditingFeeRow(row);
   };
   const openPaymentRequest = (row: CaseRow) => {

@@ -74,6 +74,7 @@ export const FEE_SUBTYPE_TO_TYPE = {
   "\u5f8b\u5e08\u57f9\u8bad\u8d39": "\u4ee3\u7406\u8d39",
   "\u5f8b\u5e08\u89c1\u8bc1\u8d39": "\u4ee3\u7406\u8d39",
   "\u4ee3\u7406\u8d39": "\u4ee3\u7406\u8d39",
+  "\u5e73\u53f0\u4ee3\u7406\u8d39": "\u4ee3\u7406\u8d39",
   "\u6848\u6e90\u4ecb\u7ecd\u8d39": "\u5176\u4ed6\u8d39\u7528",
   "\u6743\u5229\u4eba\u8d54\u507f\u6b3e": "\u5176\u4ed6\u8d39\u7528",
   "\u6295\u8d44\u4eba\u5206\u6210": "\u5176\u4ed6\u8d39\u7528",
@@ -107,6 +108,16 @@ export const LEGACY_AGENCY_FEE_SUBTYPES = [
   "\u5f8b\u5e08\u57f9\u8bad\u8d39",
   "\u5f8b\u5e08\u89c1\u8bc1\u8d39",
 ];
+
+export const PLATFORM_AGENCY_FEE_SUBTYPE = "\u5e73\u53f0\u4ee3\u7406\u8d39";
+
+export const agencyFeeSubtypesForScope = (scope) =>
+  text(scope) === "\u5e73\u53f0" ? [PLATFORM_AGENCY_FEE_SUBTYPE] : LEGACY_AGENCY_FEE_SUBTYPES;
+
+export const normalizeFeeSubtypeForScope = (scope, subtype) =>
+  text(scope) === "\u5e73\u53f0" && text(subtype) === "\u4ee3\u7406\u8d39"
+    ? PLATFORM_AGENCY_FEE_SUBTYPE
+    : text(subtype);
 
 export const LEGACY_OTHER_FEE_SUBTYPES = [
   "\u6848\u6e90\u4ecb\u7ecd\u8d39",

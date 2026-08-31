@@ -1743,7 +1743,7 @@ class CaseBatchFeeInput(BaseModel):
     case_ids: list[int] = Field(min_length=1, max_length=100)
     amount: float = Field(gt=0, le=100000000)
     expense_scope: str = Field(pattern="^(律所|平台|内部)$")
-    expense_subtype: str = Field(pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
+    expense_subtype: str = Field(pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|平台代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
     handler: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=1000)
 
@@ -2001,7 +2001,7 @@ class IprCaseFeeCreateInput(BaseModel):
     amount: float
     fee_type: str = Field(min_length=1, max_length=64)
     expense_scope: str | None = Field(default=None, pattern="^(律所|平台|内部)$")
-    expense_subtype: str | None = Field(default=None, pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
+    expense_subtype: str | None = Field(default=None, pattern="^(官费|检索费|公告费|担保费|鉴定费|公证服务费|第三方费用|律师代理费|律师咨询费|律师培训费|律师见证费|代理费|平台代理费|案源介绍费|权利人赔偿款|投资人分成|其他费用|内部费用)$")
     handler: str = Field(default="", max_length=64)
     court: str = Field(default="", max_length=255)
     document_no: str = Field(default="", max_length=128)
@@ -10855,8 +10855,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
         raise HTTPException(status_code=422, detail="费用类型无效")
     if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
         raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-    if body.expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE.get(body.expense_subtype) != body.fee_type:
-        raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
+    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     amount = _round_fee_amount(body.amount)
     data = dict(item.data or {})
     case_record = None
@@ -15023,6 +15022,7 @@ EXPENSE_SUBTYPE_FEE_TYPE = {
     "公告费": "官方费用", "调解金额": "官方费用", "判决金额": "官方费用", "执行费": "官方费用", "核定成本": "官方费用",
     "检索费": "其他费用", "公告费": "其他费用", "担保费": "其他费用", "鉴定费": "其他费用", "公证服务费": "其他费用",
     "律师代理费": "代理费", "律师咨询费": "代理费", "律师培训费": "代理费", "律师见证费": "代理费",
+    "平台代理费": "代理费",
     "案源介绍费": "其他费用", "权利人赔偿款": "其他费用", "投资人分成": "其他费用",
     "第三方费用": "其他费用", "代理费": "代理费", "其他费用": "其他费用", "内部费用": "内部费用",
     "产品购买费": "内部费用", "翻译费": "内部费用", "投资提成": "内部费用", "调档费": "内部费用",
@@ -15033,6 +15033,15 @@ EXPENSE_SCOPE_FEE_TYPES = {"律所": {"官方费用", "代理费", "其他费用
 FINANCE_TRANSACTION_TYPES = {"付款", "开票", "回款", "退费"}
 FINANCE_VOUCHER_CATEGORIES = {"付款凭证", "发票扫描件", "回款凭证", "退费凭证"}
 FINANCE_DEFAULT_VOUCHER_CATEGORY = {"付款": "付款凭证", "开票": "发票扫描件", "回款": "回款凭证", "退费": "退费凭证"}
+
+
+def _validate_finance_fee_scope_subtype(expense_scope: str | None, expense_subtype: str | None, fee_type: str) -> None:
+    if expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE.get(expense_subtype) != fee_type:
+        raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
+    if expense_scope == "平台" and fee_type == "代理费" and expense_subtype != "平台代理费":
+        raise HTTPException(status_code=422, detail="平台费用的代理费类型只能是平台代理费")
+    if expense_scope != "平台" and expense_subtype == "平台代理费":
+        raise HTTPException(status_code=422, detail="平台代理费只能归属于平台费用")
 
 
 def _round_fee_amount(value: float) -> float:
@@ -18268,8 +18277,7 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
         raise HTTPException(status_code=422, detail="费用类型无效")
     if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
         raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-    if body.expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE.get(body.expense_subtype) != body.fee_type:
-        raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
+    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     if body.amount == 0: raise HTTPException(status_code=422, detail="费用金额不能为 0")
     if body.amount < 0 and body.fee_type != "内部费用": raise HTTPException(status_code=422, detail="只有内部费用可以使用负数冲销")
     case_record = await _finance_linked_case(body.case_no, identity, db)
@@ -20852,6 +20860,7 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     expected_fee_type = EXPENSE_SUBTYPE_FEE_TYPE[body.expense_subtype]
     if expected_fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
         raise HTTPException(status_code=422, detail="费用归属与费用子类型不一致")
+    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, expected_fee_type)
     handler = body.handler.strip() or identity["username"]
     if identity.get("role") == "user":
         handler = identity["username"]
@@ -30242,8 +30251,7 @@ async def create_ipr_case_fee(case_id: int, body: IprCaseFeeCreateInput, identit
         raise HTTPException(status_code=422, detail="费用类型无效")
     if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
         raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-    if body.expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE[body.expense_subtype] != body.fee_type:
-        raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
+    _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     amount = _round_fee_amount(body.amount)
     if amount == 0:
         raise HTTPException(status_code=422, detail="费用金额不能为 0")
