@@ -21,9 +21,9 @@ test("8.31 row 13 keeps platform agency fee distinct from law-firm agency fee", 
 test("8.31 row 13 normalizes every platform agency entry and historical draft", () => {
   assert.equal(normalizeFeeSubtypeForScope("平台", "代理费"), "平台代理费");
   assert.equal(normalizeFeeSubtypeForScope("律所", "代理费"), "代理费");
-  assert.match(page, /normalizeFeeSubtypeForScope\(scope, "代理费"\)/);
-  assert.match(page, /agencyFeeSubtypesForScope\(activeFeeContractScope\)/);
-  assert.match(page, /expenseScope === "平台" && agencyPreset[\s\S]*?PLATFORM_AGENCY_FEE_SUBTYPE/);
+  assert.match(page, /const preferredSubtype = expenseScope === "平台" && agencyPreset \? PLATFORM_AGENCY_FEE_SUBTYPE/);
+  assert.match(page, /initialFeeTypeId\(feeTypeCatalog, expenseScope, preset, preferredSubtype\)/);
+  assert.match(page, /feeTypeTreeData\(feeTypeCatalog, activeFeeContractScope, feeSubtypePreset\)/);
   assert.match(page, /const expenseSubtype = normalizeFeeSubtypeForScope\(expenseScope, row\.data\.expense_subtype/);
 });
 

@@ -12,7 +12,9 @@ test("row 12 restores the exact legacy agency fee choices", () => {
 
 test("row 12 opens agency creation without a generic preselection", () => {
   assert.deepEqual(agencyFeeSubtypesForScope("律所"), LEGACY_AGENCY_FEE_SUBTYPES);
-  assert.match(page, /feeSubtypePreset === "agency"[\s\S]*?agencyFeeSubtypesForScope\(activeFeeContractScope\)/);
   assert.match(page, /const agencyPreset = expenseSubtype === "代理费"/);
-  assert.match(page, /officialPreset \|\| thirdPartyPreset \|\| agencyPreset \|\| otherPreset \? undefined/);
+  assert.match(page, /setFeeSubtypePreset\([\s\S]*?agencyPreset \? "agency"/);
+  assert.match(page, /feeTypeTreeData\(feeTypeCatalog, activeFeeContractScope, feeSubtypePreset\)/);
+  assert.match(page, /initialFeeTypeId\(feeTypeCatalog, expenseScope, preset, preferredSubtype\)/);
+  assert.doesNotMatch(page, /expense_subtype:\s*"代理费"/);
 });
