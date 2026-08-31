@@ -5202,8 +5202,6 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
     action_key = {
         ("customer", "新建"): "record.customer.create",
         ("customer", "编辑"): "record.customer.update",
-        ("contract", "新建"): "contract.application.create",
-        ("contract", "编辑"): "contract.application.update",
     }.get((module, action))
     if action_key and action_key not in permission.get("action_keys", []):
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的动作权限")
@@ -5221,14 +5219,8 @@ def _record_module_menu_allowed(module: str, identity: dict, permission: dict) -
 
 
 async def _require_contract_action(identity: dict, db: AsyncSession, action_key: str, action: str) -> None:
-    """Require both the contract menu family and an explicit business action."""
+    """Allow visible contract workbenches while preserving workflow/data guards."""
     await _require_record_module_menu("contract", identity, db, action=action)
-    if "admin" in _identity_role_ids(identity):
-        return
-    permission = await _permission_payload_for_identity(identity, db)
-    action_keys = set(permission.get("action_keys") or [])
-    if "*" not in action_keys and action_key not in action_keys:
-        raise HTTPException(status_code=403, detail=f"当前角色没有{action}合同的动作权限")
 
 
 async def _require_hr_employee_action(identity: dict, db: AsyncSession, action_key: str, action: str) -> None:

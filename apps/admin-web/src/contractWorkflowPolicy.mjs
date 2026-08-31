@@ -144,7 +144,7 @@ export const buildContractListRequestParams = (view, pagination, query = {}) => 
   if (config.statuses.length) params.statuses = config.statuses.join(",");
   return params;
 };
-const CONTRACT_WORKSPACE_MENUS = ["contract", "contract-mine", "contract-dept", "contract-company"];
+const CONTRACT_WORKSPACE_MENUS = ["contract", "contract-new", "contract-mine", "contract-dept", "contract-company"];
 const CONTRACT_AUDIT_MENUS = ["contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"];
 
 // The backend emits snake_case arrays today. Keep the camelCase and nested
@@ -241,12 +241,11 @@ export const contractWorkflowActionPolicy = (profile = {}, contract = {}, option
   const isCurrentApprover = currentApprover && currentApprover.toLowerCase() === currentUser.toLowerCase();
   const approvalAssignmentAllowed = isAdministrator(profile)
     || (typeof serverApprovalCapability === "boolean" ? serverApprovalCapability : isCurrentApprover);
-  const allowed = (action, stateAllowed, audit = false) => stateAllowed
-    && hasMenuAccess(profile, audit ? CONTRACT_AUDIT_MENUS : CONTRACT_WORKSPACE_MENUS)
-    && hasActionAccess(profile, action);
+  const allowed = (_action, stateAllowed, audit = false) => stateAllowed
+    && hasMenuAccess(profile, audit ? CONTRACT_AUDIT_MENUS : CONTRACT_WORKSPACE_MENUS);
 
   return {
-    canCreate: allowed("create", true),
+    canCreate: hasMenuAccess(profile, CONTRACT_WORKSPACE_MENUS),
     canEdit: allowed("update", editable),
     canSubmit: allowed("submit", editable),
     canChange: allowed("change", listPolicy.canPayment),
