@@ -160,7 +160,7 @@ const categoryPlaceholder: Record<string, string> = {
   court: "法院名称",
   notary_office: "公证处名称",
   cause: "案由名称",
-  payment_type: "付款类型名称",
+  payment_type: "付款单位名称",
   customer_type: "客户类型名称",
   case_file_type: "案件文件类型名称",
   district: "地区名称",
@@ -538,6 +538,7 @@ export default function SystemCenterPage({
         : {
             sort_order: parameters.length + 1,
             is_active: true,
+            nature: category === "payment_type" ? "官费" : undefined,
             case_kinds: ["专利", "商标"],
             allow_repeat: true,
           },
@@ -580,12 +581,19 @@ export default function SystemCenterPage({
               value[item.key] || "",
             ]),
           );
+    const paymentUnit = category === "payment_type";
     const payload = {
       category,
-      code: value.code,
-      name: value.name,
-      sort_order: value.sort_order,
-      is_active: value.is_active,
+      code: paymentUnit
+        ? editingParameter?.code || `PAYEE-${Date.now()}`
+        : value.code,
+      name: paymentUnit ? value.nature : value.name,
+      sort_order: paymentUnit
+        ? editingParameter?.sort_order || parameters.length + 1
+        : value.sort_order,
+      is_active: paymentUnit
+        ? editingParameter?.is_active !== false
+        : value.is_active,
       extra,
     };
     try {
@@ -1133,7 +1141,7 @@ export default function SystemCenterPage({
       ];
     return [
       { title: "序号", dataIndex: "sort_order", width: 70 },
-      { title: "付款类型名", dataIndex: "name", width: 160 },
+      { title: "付款单位名", dataIndex: "name", width: 160 },
       {
         title: "付款性质",
         key: "nature",
@@ -2157,7 +2165,9 @@ export default function SystemCenterPage({
       {content}
       <Modal
         open={parameterOpen}
-        title={`${editingParameter ? "修改" : "新增"}${categoryTitle[category] || "参数"}`}
+        title={category === "payment_type"
+          ? `${editingParameter ? "修改" : "新增"}付款单位`
+          : `${editingParameter ? "修改" : "新增"}${categoryTitle[category] || "参数"}`}
         okText="保存"
         cancelText="取消"
         onOk={saveParameter}
@@ -2165,6 +2175,22 @@ export default function SystemCenterPage({
         destroyOnHidden
       >
         <Form form={parameterForm} layout="vertical">
+          {category === "payment_type" ? (
+            <div className="system-modal-grid payment-unit-modal-grid">
+              <Form.Item label="性质" name="nature" rules={[{ required: true, message: "请选择性质" }]}>
+                <Select options={["官费", "其他费用", "代理费", "对公", "个人"].map((value) => ({ value, label: value }))} />
+              </Form.Item>
+              <Form.Item label="收款单位" name="payee" rules={[{ required: true, message: "请输入收款单位" }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="开户行" name="account_bank" rules={[{ required: true, message: "请输入开户行" }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="账号信息" name="account" rules={[{ required: true, message: "请输入账号信息" }]}>
+                <Input.TextArea rows={4} maxLength={1000} showCount />
+              </Form.Item>
+            </div>
+          ) : (
           <div className="system-modal-grid">
             <Form.Item
               label={category === "case_type" ? "类型字母名称" : "代码"}
@@ -2278,6 +2304,7 @@ export default function SystemCenterPage({
               <Switch checkedChildren="是" unCheckedChildren="否" />
             </Form.Item>
           </div>
+          )}
         </Form>
       </Modal>
       <Modal

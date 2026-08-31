@@ -22,7 +22,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, IncomingPayment, IprCaseReminder, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, IncomingPayment, IprCaseReminder, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -58,6 +58,14 @@ class IprConcreteCBackendContractTest(unittest.IsolatedAsyncioTestCase):
                 username=IDENTITY["username"], display_name=IDENTITY["display_name"],
                 department=IDENTITY["department"], role="admin", password_hash="test", is_active=True,
             ))
+            payment_type = SystemParameter(
+                category="payment_type", code="CODEX-IPR-C-PAYEE", name="官费",
+                extra={"nature": "官费", "payee": "专利局", "account_bank": "知识产权银行", "account": "IPR-C-ACCOUNT"},
+                sort_order=1, is_active=True, created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+            )
+            db.add(payment_type)
+            await db.flush()
+            self.payment_type_id = payment_type.id
             customer = BusinessRecord(
                 module="customer", serial_no="CODEX-IPR-C-CUSTOMER-001", title="IPR C 客户",
                 customer="", status="合作中", owner=IDENTITY["username"],
@@ -317,12 +325,14 @@ class IprConcreteCBackendContractTest(unittest.IsolatedAsyncioTestCase):
 
         payment = await self.client.post(
             f"{API}/ipr/cases/{self.case_a_id}/fees/{fee_id}/payment-application",
-            json={"payment_type": "官方费用", "payee": "专利局", "application_date": "2026-08-05", "remark": "test"},
+            json={"payment_type_id": self.payment_type_id, "application_date": "2026-08-05", "remark": "test"},
         )
         self.assertEqual(payment.status_code, 201, payment.text)
         payment_body = payment.json()
         self.assertEqual(payment_body["module"], "contract_payment")
         self.assertEqual(payment_body["data"]["fee_id"], fee_id)
+        self.assertEqual(payment_body["data"]["payment_type_id"], self.payment_type_id)
+        self.assertEqual(payment_body["data"]["payee"], "专利局")
         rows = (await self.client.get(f"{API}/ipr/cases/{self.case_a_id}/fees")).json()["items"]
         row = next(item for item in rows if item["id"] == fee_id)
         self.assertEqual(row["data"]["payment_status"], "待审批")

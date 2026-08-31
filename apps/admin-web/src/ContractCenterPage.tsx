@@ -25,7 +25,7 @@ import {
   Pagination,
   Radio,
 } from "antd";
-import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { CheckOutlined, CloseOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { LegacyContractHistoryPanel } from "./LegacyContractHistoryPanel";
@@ -219,7 +219,7 @@ type ContractEvent = { id: number; contract_record_id: number; content: string; 
 type SealAsset = { id: number; code: string; name: string; seal_type: string; status: string };
 type CustomerRef = { id: number; serial_no: string; title: string; owner: string; data: { customer_managers?: string[] } };
 type ContractPaymentCandidate = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; fee_type:string; contract_amount:number; reserved_amount:number; remaining_amount:number; remark:string };
-type PaymentTypeOption = { value:string; label:string; payee:string; account:string };
+type PaymentTypeOption = { value:number; label:string; id:number; code:string; name:string; nature:string; payee:string; account_bank:string; account:string };
 type ContractArchiveSubject = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; case_fee_ids:number[]; fee_type:string; contract_amount:number; paid_amount:number; invoiced_amount:number; fee_archived:boolean; materials_ready:boolean; archive_checks:Record<string,boolean> };
 type ContractArchiveSummary = { id:number; serial_no:string; title:string; customer:string; status:string };
 const archiveCheckLabels: Record<string,string> = { case_closed:"案件完结", fees_settled:"费用结清", documents_complete:"材料齐全", finance_complete:"财务完结" };
@@ -369,6 +369,9 @@ export default function ContractCenterPage({
   const [objectPageSize, setObjectPageSize] = useState<number>(CONTRACT_OBJECT_DEFAULT_PAGE_SIZE);
   const [paymentCandidates, setPaymentCandidates] = useState<ContractPaymentCandidate[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentTypeOption[]>([]);
+  const [paymentTypeSearch, setPaymentTypeSearch] = useState("");
+  const [paymentTypeCreateOpen, setPaymentTypeCreateOpen] = useState(false);
+  const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
   const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
@@ -413,12 +416,15 @@ export default function ContractCenterPage({
     [sealForm] = Form.useForm(),
     [investigationForm] = Form.useForm(),
     [paymentForm] = Form.useForm(),
+    [paymentTypeCreateForm] = Form.useForm(),
     [invoiceForm] = Form.useForm(),
     [changeForm] = Form.useForm(),
     [queryForm] = Form.useForm(),
     [eventForm] = Form.useForm(),
     [objectForm] = Form.useForm();
   const investigationRegion = Form.useWatch("region", investigationForm);
+  const selectedContractPaymentTypeId = Form.useWatch("payment_type_id", paymentForm);
+  const selectedContractPaymentType = paymentTypes.find((item) => item.value === Number(selectedContractPaymentTypeId));
   const listViewConfig = contractListViewConfig(initialView);
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
@@ -1710,9 +1716,33 @@ export default function ContractCenterPage({
       const types = data.payment_types || [];
       setPaymentCandidates(data.items || []);
       setPaymentTypes(types);
-      if (types.length) paymentForm.setFieldsValue({ payment_type: types[0].value, payee: types[0].payee, account: types[0].account, application_date: dayjs(), remark: "" });
+      if (types.length) paymentForm.setFieldsValue({ payment_type_id: types[0].value, application_date: dayjs(), remark: "" });
+      else paymentForm.setFieldsValue({ application_date: dayjs(), remark: "" });
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "合同付款候选加载失败");
+    }
+  };
+  const openContractPaymentTypeCreator = () => {
+    paymentTypeCreateForm.resetFields();
+    paymentTypeCreateForm.setFieldsValue({ nature: "官费", payee: paymentTypeSearch.trim() });
+    setPaymentTypeCreateOpen(true);
+  };
+  const createContractPaymentType = async () => {
+    if (!paymentTarget) return;
+    setPaymentTypeCreating(true);
+    try {
+      const values = await paymentTypeCreateForm.validateFields();
+      const { data } = await api.post(`/contracts/${paymentTarget.id}/payment-types`, values);
+      setPaymentTypes((items) => [...items.filter((item) => item.value !== data.value), data]);
+      paymentForm.setFieldValue("payment_type_id", data.value);
+      setPaymentTypeCreateOpen(false);
+      paymentTypeCreateForm.resetFields();
+      setPaymentTypeSearch("");
+      message.success("付款单位已新增并保存到系统参数-付款类型");
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "付款单位新增失败");
+    } finally {
+      setPaymentTypeCreating(false);
     }
   };
   const createContractPayment = async () => {
@@ -2478,11 +2508,13 @@ export default function ContractCenterPage({
       >
         <Form form={paymentForm} layout="vertical">
           <div className="form-grid">
-            <Form.Item label="付款类型" name="payment_type" rules={[{ required: true, message: "请选择付款类型" }]}><Select options={paymentTypes} onChange={(value) => { const current = paymentTypes.find(item => item.value === value); if (current) paymentForm.setFieldsValue({ payee: current.payee, account: current.account }); }} /></Form.Item>
-            <Form.Item label="收款单位" name="payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input /></Form.Item>
-            <Form.Item label="收款账号" name="account"><Input /></Form.Item>
+            <Form.Item label="收款单位" name="payment_type_id" rules={[{ required: true, message: "请选择系统付款单位" }]}>
+              <Select showSearch optionFilterProp="label" placeholder="输入关键字选择收款单位" options={paymentTypes} onSearch={setPaymentTypeSearch} notFoundContent={<Button type="link" icon={<PlusOutlined />} onClick={openContractPaymentTypeCreator}>新增“{paymentTypeSearch || "付款单位"}”</Button>} />
+            </Form.Item>
+            <Form.Item label="新增单位"><Button icon={<PlusOutlined />} onClick={openContractPaymentTypeCreator}>新增付款单位</Button></Form.Item>
             <Form.Item label="申请日期" name="application_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
           </div>
+          {selectedContractPaymentType && <Alert type="info" showIcon message={selectedContractPaymentType.payee} description={`性质：${selectedContractPaymentType.nature || "—"}　开户行：${selectedContractPaymentType.account_bank || "—"}　账号信息：${selectedContractPaymentType.account || "—"}`} style={{ marginBottom: 12 }} />}
           <Form.Item label="申请说明" name="remark"><Input.TextArea rows={2} /></Form.Item>
         </Form>
         <Alert showIcon type="info" message="按合同标的逐项申请" description="勾选需要付款的合同标的并填写本次支付金额；系统将保留已提交、待付款和已付款金额，阻止重复超额申请。" style={{ marginBottom: 12 }} />
@@ -2503,6 +2535,23 @@ export default function ContractCenterPage({
             { title: "本次支付", width: 130, render: (_, row) => <InputNumber disabled={!selectedPaymentObjectKeys.includes(row.contract_object_id)} min={0.01} max={row.remaining_amount} precision={2} value={paymentAmounts[row.contract_object_id]} style={{ width: "100%" }} onChange={(value) => setPaymentAmounts(previous => ({ ...previous, [row.contract_object_id]: Number(value || 0) }))} /> },
           ]}
         />
+      </Modal>
+      <Modal
+        open={paymentTypeCreateOpen}
+        title="新增付款单位"
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={paymentTypeCreating}
+        onOk={() => void createContractPaymentType()}
+        onCancel={() => { setPaymentTypeCreateOpen(false); paymentTypeCreateForm.resetFields(); }}
+        forceRender
+      >
+        <Form form={paymentTypeCreateForm} layout="vertical">
+          <Form.Item label="性质" name="nature" rules={[{ required: true, message: "请选择性质" }]}><Select options={["官费", "其他费用", "代理费", "对公", "个人"].map((value) => ({ value, label: value }))} /></Form.Item>
+          <Form.Item label="收款单位" name="payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input /></Form.Item>
+          <Form.Item label="开户行" name="account_bank" rules={[{ required: true, message: "请输入开户行" }]}><Input /></Form.Item>
+          <Form.Item label="账号信息" name="account" rules={[{ required: true, message: "请输入账号信息" }]}><Input.TextArea rows={4} maxLength={1000} showCount /></Form.Item>
+        </Form>
       </Modal>
       <Modal
         open={Boolean(invoiceTarget)}

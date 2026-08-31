@@ -56,7 +56,8 @@ class ContractPaymentTest(unittest.TestCase):
         self.assertEqual(status, 200, body.decode())
         token = json.loads(body)["access_token"]
         prefix = f"CODEX-CONTRACT-C-{datetime.datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:6]}"
-        customer_id = contract_id = rejected_contract_id = case_id = object_id = payment_id = lawyer_id = user_id = None
+        customer_id = contract_id = rejected_contract_id = case_id = object_id = payment_id = payment_type_id = lawyer_id = user_id = None
+        payment_type_code = ""
         attachment_ids = []; attachment_paths = []
         try:
             lawyer_name = f"{prefix}-律师"
@@ -106,10 +107,16 @@ class ContractPaymentTest(unittest.TestCase):
             self.assertEqual(status, 200); candidate = json.loads(body)["items"][0]
             self.assertEqual(candidate["contract_object_id"], object_id); self.assertEqual(candidate["remaining_amount"], 100)
 
-            payment_payload = {"payment_type": "法院费用", "payee": "人民法院", "account": "CODEX-ACCOUNT", "application_date": "2026-08-01", "remark": "付款正向链", "lines": [{"contract_object_id": object_id, "amount": 100}]}
+            status, body = call("POST", f"/contracts/{contract_id}/payment-types", token, {
+                "nature": "官费", "payee": f"{prefix}-收款单位", "account_bank": "CODEX测试银行", "account": "CODEX-ACCOUNT",
+            })
+            self.assertEqual(status, 201, body.decode()); payment_type_data = json.loads(body); payment_type_id = payment_type_data["id"]; payment_type_code = payment_type_data["code"]
+            payment_payload = {"payment_type_id": payment_type_id, "application_date": "2026-08-01", "remark": "付款正向链", "lines": [{"contract_object_id": object_id, "amount": 100}]}
             status, body = call("POST", f"/contracts/{contract_id}/payment-applications", token, payment_payload)
             self.assertEqual(status, 201, body.decode()); payment = json.loads(body); payment_id = payment["id"]
             self.assertEqual(payment["status"], "待审批"); self.assertEqual(payment["data"]["amount"], 100)
+            self.assertEqual(payment["data"]["payment_type_id"], payment_type_id)
+            self.assertEqual(payment["data"]["payee"], f"{prefix}-收款单位")
             status, body = call("GET", f"/contracts/{contract_id}/payment-applications", token)
             self.assertEqual(status, 200); listed = json.loads(body)["items"][0]
             self.assertEqual(listed["id"], payment_id); self.assertEqual(listed["lines"][0]["requested_amount"], 100)
@@ -148,6 +155,9 @@ class ContractPaymentTest(unittest.TestCase):
                 conn.execute("DELETE FROM business_records WHERE id = ?", (lawyer_id,))
             if user_id:
                 conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            if payment_type_id:
+                conn.execute("DELETE FROM business_records WHERE module = 'system_audit' AND title = ?", (f"系统参数:payment_type/{payment_type_code}",))
+                conn.execute("DELETE FROM system_parameters WHERE id = ?", (payment_type_id,))
             conn.commit()
             residue = conn.execute("SELECT COUNT(*) FROM business_records WHERE serial_no LIKE ? OR title LIKE ?", (prefix + "%", prefix + "%")).fetchone()[0]
             conn.close()

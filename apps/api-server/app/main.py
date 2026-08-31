@@ -2033,9 +2033,7 @@ class IprCaseFeeInvoiceInput(BaseModel):
 
 
 class IprCaseFeePaymentApplicationInput(BaseModel):
-    payment_type: str = Field(min_length=1, max_length=64)
-    payee: str = Field(default="", max_length=255)
-    account: str = Field(default="", max_length=128)
+    payment_type_id: int = Field(gt=0)
     application_date: date
     remark: str = Field(default="", max_length=1000)
 
@@ -3375,9 +3373,7 @@ class ContractPaymentLineInput(BaseModel):
 
 
 class ContractPaymentApplicationInput(BaseModel):
-    payment_type: str = Field(min_length=1, max_length=64)
-    payee: str = Field(min_length=1, max_length=255)
-    account: str = Field(default="", max_length=128)
+    payment_type_id: int = Field(gt=0)
     application_date: date
     remark: str = Field(default="", max_length=2000)
     lines: list[ContractPaymentLineInput] = Field(min_length=1, max_length=100)
@@ -6488,7 +6484,15 @@ async def list_system_parameters(category: str = "", keyword: str = "", page: in
     if category: statement = statement.where(SystemParameter.category == category)
     if keyword.strip():
         term = f"%{keyword.strip()}%"
-        statement = statement.where(or_(SystemParameter.code.ilike(term), SystemParameter.name.ilike(term)))
+        keyword_fields = [SystemParameter.code.ilike(term), SystemParameter.name.ilike(term)]
+        if category == "payment_type":
+            keyword_fields.extend([
+                SystemParameter.extra["nature"].as_string().ilike(term),
+                SystemParameter.extra["payee"].as_string().ilike(term),
+                SystemParameter.extra["account_bank"].as_string().ilike(term),
+                SystemParameter.extra["account"].as_string().ilike(term),
+            ])
+        statement = statement.where(or_(*keyword_fields))
     items = (await db.scalars(statement.order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     result = [_system_parameter_dict(item) for item in items]
     if not keyword.strip(): SYSTEM_PARAMETER_CACHE[cache_key] = result
@@ -11850,14 +11854,28 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-candidates")
 async def contract_payment_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
-    payment_types = (await db.scalars(select(SystemParameter).where(
-        SystemParameter.category == "payment_type", SystemParameter.is_active.is_(True)
-    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+    payment_types = await _active_payment_type_rows(db)
     return {
         "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer, "owner": contract.owner, "status": contract.status},
-        "payment_types": [{"value": item.name, "label": item.name, "payee": (item.extra or {}).get("payee", ""), "account": (item.extra or {}).get("account", "")} for item in payment_types],
+        "payment_types": [
+            {
+                **item,
+                "value": item["id"],
+                "label": "｜".join([item["payee"], item["account_bank"], item["account"]]),
+            }
+            for item in payment_types
+        ],
         "items": await _contract_payment_candidate_rows(contract, identity, db),
     }
+
+
+@app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-types", status_code=status.HTTP_201_CREATED)
+async def create_contract_payment_type(contract_id: int, body: FinancePaymentTypeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    await _require_contract_action(identity, db, "contract.payment.create", "新增合同付款单位")
+    await _require_record_owner_or_manager(contract, identity, db)
+    item = await _create_payment_type(body, identity, db, {"contract_id": contract.id, "contract_no": contract.serial_no})
+    return {**_finance_payment_type_dict(item), "value": item.id, "label": "｜".join([body.payee.strip(), body.account_bank.strip(), body.account.strip()])}
 
 
 @app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications")
@@ -11938,9 +11956,8 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
         raise HTTPException(status_code=409, detail="审批中或已归档合同不能发起合同付款")
     if contract.status not in {CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="仅审批通过或已完成的合同可以发起合同付款")
-    payment_type = await db.scalar(select(SystemParameter).where(SystemParameter.category == "payment_type", SystemParameter.name == body.payment_type.strip(), SystemParameter.is_active.is_(True)))
-    if not payment_type:
-        raise HTTPException(status_code=422, detail="付款类型不存在或已停用")
+    payment_type = await _active_payment_type(body.payment_type_id, db)
+    payment_type_data = _finance_payment_type_dict(payment_type)
     line_inputs = list({line.contract_object_id: line for line in body.lines}.values())
     if len(line_inputs) != len(body.lines):
         raise HTTPException(status_code=422, detail="同一合同标的只能提交一次")
@@ -11960,11 +11977,11 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     total = _round_fee_amount(sum(_round_fee_amount(line.amount) for line, _ in normalized_lines))
     serial = f"CP{datetime.now():%Y%m%d%H%M%S%f}"
     snapshot = [{"contract_object_id": item["contract_object_id"], "case_id": item["case_record_id"], "case_no": item["case_no"], "fee_type": item["fee_type"], "amount": _round_fee_amount(line.amount)} for line, item in normalized_lines]
-    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "payment_type": payment_type.name, "payee": body.payee.strip(), "account": body.account.strip(), "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
+    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "payment_type_id": payment_type.id, "payment_type_code": payment_type.code, "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"], "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"], "account": payment_type_data["account"], "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
     db.add(payment); await db.flush()
     for line, candidate in normalized_lines:
         db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=line.contract_object_id, case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))
-    db.add(WorkflowEvent(record_id=payment.id, action="提交合同付款申请", to_status="待审批", operator=identity["username"], comment=f"{body.payment_type}｜{total:.2f} 元"))
+    db.add(WorkflowEvent(record_id=payment.id, action="提交合同付款申请", to_status="待审批", operator=identity["username"], comment=f"{payment_type_data['payee']}｜{total:.2f} 元"))
     db.add(WorkflowEvent(record_id=contract.id, action="发起合同付款申请", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{serial}｜{total:.2f} 元"))
     await db.commit(); await db.refresh(payment)
     return await _record_dict_for_identity(payment, identity, db)
@@ -20279,45 +20296,44 @@ def _finance_payment_type_dict(item: SystemParameter) -> dict:
     }
 
 
-async def _finance_payment_type_for_fee(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
-    item = await _ensure_record_module(fee_id, "finance", identity, db)
-    await _require_record_owner_or_manager(item, identity, db)
-    data = item.data or {}
-    if data.get("expense_scope") == "内部" or data.get("fee_type") == "内部费用":
-        raise HTTPException(status_code=422, detail="内部费用不使用案件付款单位")
-    return item
-
-
-@app.get(f"{settings.api_prefix}/finance/fees/{{fee_id}}/payment-types")
-async def list_finance_fee_payment_types(
-    fee_id: int,
-    keyword: str = "",
-    identity: dict = Depends(current_identity),
-    db: AsyncSession = Depends(get_db),
-):
-    await _finance_payment_type_for_fee(fee_id, identity, db)
+async def _active_payment_type_rows(db: AsyncSession, keyword: str = "") -> list[dict]:
     items = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "payment_type",
         SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
     term = keyword.strip().casefold()
-    result = [_finance_payment_type_dict(item) for item in items]
+    result = [
+        data for data in (_finance_payment_type_dict(item) for item in items)
+        if data["payee"] and data["account_bank"] and data["account"]
+    ]
     result = [item for item in result if item["payee"]]
     if term:
         result = [item for item in result if term in " ".join(
             str(item.get(key) or "") for key in ("code", "name", "nature", "payee", "account_bank", "account")
         ).casefold()]
-    return {"items": result}
+    return result
 
 
-@app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/payment-types", status_code=status.HTTP_201_CREATED)
-async def create_finance_fee_payment_type(
-    fee_id: int,
+async def _active_payment_type(payment_type_id: int, db: AsyncSession) -> SystemParameter:
+    item = await db.scalar(select(SystemParameter).where(
+        SystemParameter.id == payment_type_id,
+        SystemParameter.category == "payment_type",
+        SystemParameter.is_active.is_(True),
+    ))
+    if not item:
+        raise HTTPException(status_code=422, detail="付款单位不存在或已停用")
+    data = _finance_payment_type_dict(item)
+    if not data["payee"] or not data["account_bank"] or not data["account"]:
+        raise HTTPException(status_code=422, detail="付款单位的收款单位、开户行或账号信息不完整")
+    return item
+
+
+async def _create_payment_type(
     body: FinancePaymentTypeCreateInput,
-    identity: dict = Depends(current_identity),
-    db: AsyncSession = Depends(get_db),
-):
-    fee = await _finance_payment_type_for_fee(fee_id, identity, db)
+    identity: dict,
+    db: AsyncSession,
+    audit_context: dict | None = None,
+) -> SystemParameter:
     nature = body.nature.strip()
     payee = body.payee.strip()
     account_bank = body.account_bank.strip()
@@ -20344,11 +20360,43 @@ async def create_finance_fee_payment_type(
     db.add(item)
     await db.flush()
     await _system_audit(db, identity, "创建付款单位", f"系统参数:payment_type/{item.code}", {
-        "id": item.id, "fee_id": fee.id, "fee_no": fee.serial_no, "payee": payee,
+        "id": item.id, "payee": payee, **(audit_context or {}),
     })
     await db.commit()
     await db.refresh(item)
     _clear_parameter_cache("payment_type", identity["username"])
+    return item
+
+
+async def _finance_payment_type_for_fee(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    item = await _ensure_record_module(fee_id, "finance", identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    data = item.data or {}
+    if data.get("expense_scope") == "内部" or data.get("fee_type") == "内部费用":
+        raise HTTPException(status_code=422, detail="内部费用不使用案件付款单位")
+    return item
+
+
+@app.get(f"{settings.api_prefix}/finance/fees/{{fee_id}}/payment-types")
+async def list_finance_fee_payment_types(
+    fee_id: int,
+    keyword: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    await _finance_payment_type_for_fee(fee_id, identity, db)
+    return {"items": await _active_payment_type_rows(db, keyword)}
+
+
+@app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/payment-types", status_code=status.HTTP_201_CREATED)
+async def create_finance_fee_payment_type(
+    fee_id: int,
+    body: FinancePaymentTypeCreateInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    fee = await _finance_payment_type_for_fee(fee_id, identity, db)
+    item = await _create_payment_type(body, identity, db, {"fee_id": fee.id, "fee_no": fee.serial_no})
     return _finance_payment_type_dict(item)
 
 
@@ -20377,18 +20425,10 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         if data.get("expense_scope") != "内部" and data.get("fee_type") != "内部费用":
             if not body.payment_type_id:
                 raise HTTPException(status_code=422, detail="请选择系统付款单位")
-            payment_type = await db.scalar(select(SystemParameter).where(
-                SystemParameter.id == body.payment_type_id,
-                SystemParameter.category == "payment_type",
-                SystemParameter.is_active.is_(True),
-            ))
-            if not payment_type:
-                raise HTTPException(status_code=422, detail="付款单位不存在或已停用")
+            payment_type = await _active_payment_type(body.payment_type_id, db)
             payment_type_data = _finance_payment_type_dict(payment_type)
             payee = payment_type_data["payee"]
             account = payment_type_data["account"]
-            if not payee or not account:
-                raise HTTPException(status_code=422, detail="付款单位的收款单位或账号信息不完整")
         else:
             account = body.payment_account.strip()
             if not account:
@@ -30451,6 +30491,21 @@ async def create_ipr_case_fee_invoice(case_id: int, fee_id: int, body: IprCaseFe
     return await _record_dict_for_identity(item, identity, db)
 
 
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/payment-types")
+async def list_ipr_case_fee_payment_types(case_id: int, fee_id: int, keyword: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_case_fee_write(case_id, identity, db)
+    await _ipr_case_fee(record, fee_id, identity, db)
+    return {"items": await _active_payment_type_rows(db, keyword)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/payment-types", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case_fee_payment_type(case_id: int, fee_id: int, body: FinancePaymentTypeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_case_fee_write(case_id, identity, db)
+    fee = await _ipr_case_fee(record, fee_id, identity, db)
+    item = await _create_payment_type(body, identity, db, {"case_id": record.id, "case_no": record.serial_no, "fee_id": fee.id, "fee_no": fee.serial_no})
+    return _finance_payment_type_dict(item)
+
+
 @app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/payment-application", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, body: IprCaseFeePaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_ipr_case_fee_write(case_id, identity, db)
@@ -30458,6 +30513,8 @@ async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, bod
     if fee.status == "已作废":
         raise HTTPException(status_code=409, detail="已作废费用不能提交付款申请")
     fee_data = dict(fee.data or {})
+    payment_type = await _active_payment_type(body.payment_type_id, db)
+    payment_type_data = _finance_payment_type_dict(payment_type)
     serial = f"QK{datetime.now():%Y%m%d%H%M%S%f}"
     payment = BusinessRecord(
         module="contract_payment", serial_no=serial, title=f"{record.serial_no}费用付款申请",
@@ -30467,15 +30524,17 @@ async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, bod
             "case_id": record.id, "case_no": record.serial_no,
             "fee_id": fee.id, "fee_no": fee.serial_no,
             "fee_type": fee_data.get("fee_type"), "amount": fee_data.get("amount"),
-            "payment_type": body.payment_type.strip(), "payee": body.payee.strip(),
-            "account": body.account.strip(), "application_date": str(body.application_date),
+            "payment_type_id": payment_type.id, "payment_type_code": payment_type.code,
+            "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"],
+            "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"],
+            "account": payment_type_data["account"], "application_date": str(body.application_date),
             "applicant": identity["username"],
             "contract_record_id": fee_data.get("contract_id"), "contract_no": fee_data.get("contract_no") or "",
         },
     )
     db.add(payment); await db.flush()
     fee.data = {**fee_data, "payment_status": "待审批", "payment_application_no": payment.serial_no, "payment_application_id": payment.id}
-    db.add(WorkflowEvent(record_id=payment.id, action="提交知识产权案件费用付款申请", to_status="待审批", operator=identity["username"], comment=f"{fee.serial_no}｜{body.payment_type}"))
+    db.add(WorkflowEvent(record_id=payment.id, action="提交知识产权案件费用付款申请", to_status="待审批", operator=identity["username"], comment=f"{fee.serial_no}｜{payment_type_data['payee']}"))
     db.add(WorkflowEvent(record_id=record.id, action="知识产权案件费用付款申请", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"费用 {fee.serial_no}｜付款申请 {payment.serial_no}"))
     await db.commit()
     return await _record_dict_for_identity(payment, identity, db)

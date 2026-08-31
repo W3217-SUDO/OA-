@@ -3515,7 +3515,7 @@ export default function CaseCenterPage({
   };
   const openPaymentTypeCreator = (feeId: number, draftIndex?: number) => {
     paymentTypeCreateForm.resetFields();
-    paymentTypeCreateForm.setFieldsValue({ nature: "对公", payee: paymentTypeSearch.trim() });
+    paymentTypeCreateForm.setFieldsValue({ nature: "官费", payee: paymentTypeSearch.trim() });
     setPaymentTypeCreateTarget({ feeId, draftIndex });
   };
   const createCasePaymentType = async () => {
@@ -5648,7 +5648,7 @@ export default function CaseCenterPage({
         forceRender
       >
         <Form form={paymentTypeCreateForm} layout="vertical">
-          <Form.Item label="性质" name="nature" rules={[{ required: true, message: "请选择付款性质" }]}><Select options={[{ value: "对公", label: "对公" }, { value: "个人", label: "个人" }]} /></Form.Item>
+          <Form.Item label="性质" name="nature" rules={[{ required: true, message: "请选择付款性质" }]}><Select options={["官费", "其他费用", "代理费", "对公", "个人"].map((value) => ({ value, label: value }))} /></Form.Item>
           <Form.Item label="收款单位" name="payee" rules={[{ required: true, message: "请输入收款单位" }]}><Input /></Form.Item>
           <Form.Item label="开户行" name="account_bank" rules={[{ required: true, message: "请输入开户行" }]}><Input /></Form.Item>
           <Form.Item label="账号信息" name="account" rules={[{ required: true, message: "请输入账号信息" }]}><Input.TextArea rows={4} maxLength={1000} showCount /></Form.Item>
