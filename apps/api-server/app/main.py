@@ -1584,6 +1584,10 @@ class EvidenceUpdateInput(BaseModel):
     invoice_no: str | None = Field(default=None, max_length=128)
     storage_location: str | None = Field(default=None, max_length=255)
     storage_state: str | None = Field(default=None, max_length=32)
+    notary_institution: str | None = Field(default=None, max_length=255)
+    collected_at: date | None = None
+    certificate_no: str | None = Field(default=None, max_length=128)
+    evidence_status: str | None = Field(default=None, max_length=32)
 
 
 class InvestigationPartyInput(BaseModel):
@@ -12876,6 +12880,14 @@ async def import_evidence_records(file: UploadFile = File(...), identity: dict =
     return {"created": created, "failed": len(errors), "errors": errors}
 
 
+def _optional_record_id(value: object) -> int:
+    try:
+        record_id = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return record_id if record_id > 0 else 0
+
+
 @app.put(f"{settings.api_prefix}/investigations/evidence/{{evidence_id}}")
 async def update_evidence_record(evidence_id: int, body: EvidenceUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _ensure_record_module(evidence_id, "evidence", identity, db)
@@ -12887,13 +12899,123 @@ async def update_evidence_record(evidence_id: int, body: EvidenceUpdateInput, id
             setattr(item, key, str(values[key]).strip())
     if "owner" in values:
         item.owner = str(values["owner"]).strip() or item.owner
-    for key in ("source", "notarization_no", "invoice_no", "storage_location", "storage_state"):
+    for key in ("source", "notarization_no", "invoice_no", "storage_location", "storage_state", "notary_institution"):
         if key in values:
             data[key] = str(values[key]).strip()
+    if "collected_at" in values:
+        data["collected_at"] = str(values["collected_at"])
+    if "certificate_no" in values:
+        data["notarization_no"] = str(values["certificate_no"]).strip()
+    if "evidence_status" in values:
+        evidence_status = str(values["evidence_status"]).strip()
+        if evidence_status not in {"未入库", "已入库", "已出库", "已重新入库", "已销毁"}:
+            raise HTTPException(status_code=422, detail="证物状态无效")
+        data["storage_state"] = evidence_status
     item.data = data
     db.add(WorkflowEvent(record_id=item.id, action="修改证据信息", from_status=item.status, to_status=item.status, operator=identity["username"], comment="、".join(values)))
     await _sync_investigation_relation_links(item, db)
+    clue_id = _optional_record_id(data.get("clue_id") or data.get("clue_record_id"))
+    clue = await db.get(BusinessRecord, clue_id) if clue_id else None
+    if clue and clue.module == "clue":
+        clue_data = dict(clue.data or {})
+        if _optional_record_id(clue_data.get("collection_evidence_record_id")) == item.id:
+            clue.data = {
+                **clue_data,
+                "collected_at": data.get("collected_at") or clue_data.get("collected_at") or "",
+                "notary_institution": data.get("notary_institution") or "",
+                "notarization_no": data.get("notarization_no") or "",
+                "certificate_no": data.get("notarization_no") or "",
+                "invoice_no": data.get("invoice_no") or "",
+                "storage_location": data.get("storage_location") or "",
+                "evidence_status": data.get("storage_state") or "未入库",
+            }
+            await _sync_legacy_projection(clue, identity, db)
+            await _sync_legacy_investigation_clue_evidence(
+                clue, identity, db, list(dict.fromkeys(clue_data.get("collection_file_ids") or [])),
+            )
     await db.commit(); await db.refresh(item); return _record_dict(item)
+
+
+@app.get(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/workspace")
+async def get_investigation_clue_workspace(clue_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    visible_evidence = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "evidence", *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.created_at.asc(), BusinessRecord.id.asc()))).all())
+    clue_data = clue.data or {}
+    linked_ids = {
+        record_id for value in (
+            list(clue_data.get("evidence_ids") or [])
+            + [clue_data.get("collection_evidence_record_id")]
+        ) if (record_id := _optional_record_id(value))
+    }
+    evidence = [
+        item for item in visible_evidence
+        if item.id in linked_ids
+        or _optional_record_id((item.data or {}).get("clue_id") or (item.data or {}).get("clue_record_id")) == clue.id
+        or str((item.data or {}).get("clue_no") or "").strip() == clue.serial_no
+    ]
+    record_ids = [clue.id, *[item.id for item in evidence]]
+    attachments = list((await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id.in_(record_ids),
+    ).order_by(FileAttachment.created_at.asc(), FileAttachment.id.asc()))).all())
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    def can_manage(item: BusinessRecord) -> bool:
+        return bool(
+            identity.get("role") == "admin"
+            or item.owner == identity["username"]
+            or (identity.get("role") == "manager" and user and item.department == user.department)
+        )
+    return {
+        "clue": _record_dict(clue),
+        "clue_files": [_attachment_dict(item, clue) for item in attachments if item.record_id == clue.id],
+        "evidence": [
+            {
+                **_record_dict(item),
+                "files": [_attachment_dict(file, item) for file in attachments if file.record_id == item.id],
+                "can_edit": can_manage(item),
+                "can_delete": can_manage(item) and item.status != "已入卷",
+            }
+            for item in evidence
+        ],
+    }
+
+
+@app.delete(f"{settings.api_prefix}/investigations/evidence/{{evidence_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_investigation_evidence(evidence_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _ensure_record_module(evidence_id, "evidence", identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status == "已入卷":
+        raise HTTPException(status_code=409, detail="已入卷证据不能删除")
+    data = item.data or {}
+    clue_id = _optional_record_id(data.get("clue_id") or data.get("clue_record_id"))
+    clue = await db.get(BusinessRecord, clue_id) if clue_id else None
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == item.id))).all())
+    paths = [Path(attachment.path) for attachment in attachments]
+    for attachment in attachments:
+        await db.delete(attachment)
+    canonical = await db.scalar(select(InvestigationEvidence).where(InvestigationEvidence.record_id == item.id))
+    if canonical:
+        await db.delete(canonical)
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id))
+    if clue and clue.module == "clue":
+        clue_data = dict(clue.data or {})
+        clue_data["evidence_ids"] = [
+            record_id
+            for value in clue_data.get("evidence_ids") or []
+            if (record_id := _optional_record_id(value)) and record_id != item.id
+        ]
+        clue_data["evidence_count"] = len(clue_data["evidence_ids"])
+        if _optional_record_id(clue_data.get("collection_evidence_record_id")) == item.id:
+            clue_data.pop("collection_evidence_record_id", None)
+        clue.data = clue_data
+        db.add(WorkflowEvent(record_id=clue.id, action="删除取证信息", from_status=clue.status, to_status=clue.status, operator=identity["username"], comment=f"删除证据记录 {item.serial_no}"))
+    await db.delete(item)
+    await db.commit()
+    for path in paths:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get(f"{settings.api_prefix}/investigations/{{record_id}}/parties")

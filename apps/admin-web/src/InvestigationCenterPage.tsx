@@ -45,6 +45,11 @@ import { consumeInvestigationDetailTarget } from "./investigationDetailNavigatio
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import { INVESTIGATION_REGION_GROUPS } from "./investigationRegionOptions.mjs";
+import {
+  COLLECTED_CLUE_STATUSES,
+  clueCaseNo,
+  clueInvestigatorSearchText,
+} from "./investigationCollectedClueParity.mjs";
 import "./investigation-center.css";
 
 type Row = {
@@ -68,6 +73,16 @@ type Attachment = {
   uploader: string;
   uploader_display_name?: string;
   created_at: string;
+};
+type ClueEvidenceRow = Row & {
+  files: Attachment[];
+  can_edit: boolean;
+  can_delete: boolean;
+};
+type ClueWorkspace = {
+  clue: Row;
+  clue_files: Attachment[];
+  evidence: ClueEvidenceRow[];
 };
 type Contract = {
   id: number;
@@ -274,17 +289,17 @@ const clueStatusesByRoute: Record<string, string[]> = {
   "clue-my-pending": ["待审批"],
   "clue-my-customer": ["待客户审核"],
   "clue-my-collect": ["待取证"],
-  "clue-my-collected": ["已取证"],
+  "clue-my-collected": [...COLLECTED_CLUE_STATUSES],
   "clue-my-refused": ["已驳回", "已拒绝"],
   "clue-audit-pending": ["待审批"],
   "clue-audit-customer": ["待客户审核"],
   "clue-audit-refused": ["已驳回", "已拒绝"],
   "clue-audit-collect": ["待取证"],
-  "clue-audit-collected": ["已取证"],
+  "clue-audit-collected": [...COLLECTED_CLUE_STATUSES],
   "clue-company-draft": ["草稿"],
   "clue-company-pending": ["待审批"],
   "clue-company-collect": ["待取证"],
-  "clue-company-collected": ["已取证"],
+  "clue-company-collected": [...COLLECTED_CLUE_STATUSES],
   "clue-company-refused": ["已驳回", "已拒绝"],
 };
 const moduleMeta = {
@@ -421,6 +436,10 @@ export default function InvestigationCenterPage({
   const [investigationDetail, setInvestigationDetail] = useState<Row | null>(
     null,
   );
+  const [clueWorkspace, setClueWorkspace] = useState<ClueWorkspace | null>(null);
+  const [clueWorkspaceLoading, setClueWorkspaceLoading] = useState(false);
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState<number | null>(null);
+  const [editingEvidence, setEditingEvidence] = useState<ClueEvidenceRow | null>(null);
   const [linkedCase, setLinkedCase] = useState<Row | null>(null);
   const [createContextTask, setCreateContextTask] = useState<Row | null>(null);
   const [createModule, setCreateModule] =
@@ -443,6 +462,7 @@ export default function InvestigationCenterPage({
   const [editForm] = Form.useForm();
   const [assignForm] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const [evidenceEditForm] = Form.useForm();
   const collectionWarehouseId = Form.useWatch("warehouse_id", collectionForm) as number | undefined;
   const certificateWarehouseId = Form.useWatch("warehouse_id", certificateForm) as number | undefined;
   const storageLocationOptions = (warehouseId: number | undefined) =>
@@ -722,7 +742,10 @@ export default function InvestigationCenterPage({
         "";
       return (
         contains(row.serial_no, "serial_no") &&
-        contains(row.owner, "investigator") &&
+        contains(
+          clueInvestigatorSearchText(row, personDisplayName(row.owner)),
+          "investigator",
+        ) &&
         contains(row.customer, "rights_holder") &&
         contains(data.region || data.address, "region") &&
         contains(row.title, "shop_name") &&
@@ -731,7 +754,7 @@ export default function InvestigationCenterPage({
           "warehouse",
         ) &&
         contains(data.certificate_no, "certificate_no") &&
-        contains(data.case_no || data.converted_case_no, "case_no") &&
+        contains(clueCaseNo(row), "case_no") &&
         contains(data.document_type, "document_type") &&
         contains(data.handler, "handler") &&
         contains(data.invoice_no, "invoice_no") &&
@@ -1529,6 +1552,81 @@ export default function InvestigationCenterPage({
       message.error(error?.response?.data?.detail || "调查详情加载失败");
     }
   };
+  useEffect(() => {
+    if (!investigationDetail || investigationDetail.module !== "clue") {
+      setClueWorkspace(null);
+      setSelectedEvidenceId(null);
+      return;
+    }
+    let cancelled = false;
+    setClueWorkspaceLoading(true);
+    api.get(`/investigations/clues/${investigationDetail.id}/workspace`)
+      .then(({ data }) => {
+        if (!cancelled) {
+          setClueWorkspace(data);
+          setSelectedEvidenceId(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) message.error(error?.response?.data?.detail || "线索取证信息加载失败");
+      })
+      .finally(() => {
+        if (!cancelled) setClueWorkspaceLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [investigationDetail?.id, investigationDetail?.module]);
+  const selectedEvidence = clueWorkspace?.evidence.find((item) => item.id === selectedEvidenceId) || null;
+  const openEvidenceEditor = () => {
+    if (!selectedEvidence) return message.warning("请先选择一条取证信息");
+    if (!selectedEvidence.can_edit) return message.warning("当前账号无权修改该取证信息");
+    evidenceEditForm.setFieldsValue({
+      notary_institution: selectedEvidence.data.notary_institution || "",
+      certificate_no: selectedEvidence.data.notarization_no || selectedEvidence.data.certificate_no || "",
+      collected_at: selectedEvidence.data.collected_at ? dayjs(selectedEvidence.data.collected_at) : undefined,
+      invoice_no: selectedEvidence.data.invoice_no || "",
+      storage_location: selectedEvidence.data.storage_location || "",
+      evidence_status: selectedEvidence.data.storage_state || selectedEvidence.data.evidence_status || "未入库",
+    });
+    setEditingEvidence(selectedEvidence);
+  };
+  const saveEvidenceEdit = async () => {
+    if (!editingEvidence) return;
+    try {
+      const values = await evidenceEditForm.validateFields();
+      await api.put(`/investigations/evidence/${editingEvidence.id}`, {
+        ...values,
+        collected_at: values.collected_at ? formatRequiredDate(values.collected_at, "取证日期") : null,
+      });
+      const { data } = await api.get(`/investigations/clues/${investigationDetail?.id}/workspace`);
+      setClueWorkspace(data);
+      setEditingEvidence(null);
+      message.success("取证信息已修改");
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "取证信息修改失败");
+    }
+  };
+  const deleteSelectedEvidence = async () => {
+    if (!selectedEvidence) return message.warning("请先选择一条取证信息");
+    if (!selectedEvidence.can_delete) return message.warning(selectedEvidence.status === "已入卷" ? "已入卷证据不能删除" : "当前账号无权删除该取证信息");
+    Modal.confirm({
+      title: "删除取证信息",
+      content: `确定删除 ${selectedEvidence.serial_no} 及其附件吗？`,
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.delete(`/investigations/evidence/${selectedEvidence.id}`);
+          const { data } = await api.get(`/investigations/clues/${investigationDetail?.id}/workspace`);
+          setClueWorkspace(data);
+          setSelectedEvidenceId(null);
+          message.success("取证信息已删除");
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "取证信息删除失败");
+        }
+      },
+    });
+  };
   const openTasks = async (row: Row, createSubtask = false) => {
     try {
       const [{ data }, { data: contractData }] = await Promise.all([
@@ -2078,17 +2176,19 @@ export default function InvestigationCenterPage({
         {
           title: "案件编号",
           width: 150,
-          render: (_: unknown, r: Row) =>
-            r.data.case_no ? (
+          render: (_: unknown, r: Row) => {
+            const caseNo = clueCaseNo(r);
+            return caseNo ? (
               <Button
                 type="link"
-                onClick={() => void openLinkedCase(r.data.case_no)}
+                onClick={() => void openLinkedCase(caseNo)}
               >
-                {r.data.case_no}
+                {caseNo}
               </Button>
             ) : (
               "—"
-            ),
+            );
+          },
         },
         { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
         {
@@ -4770,7 +4870,7 @@ export default function InvestigationCenterPage({
         </Card>
       </Drawer>
       <Modal
-        width={760}
+        width={1040}
         open={Boolean(investigationDetail)}
         title={`调查详情：${investigationDetail?.serial_no || ""}`}
         footer={
@@ -4784,6 +4884,68 @@ export default function InvestigationCenterPage({
           column={2}
           items={investigationDetailItems}
         />
+        {investigationDetail?.module === "clue" && <div className="clue-workspace">
+          <Typography.Title level={5}>线索文件</Typography.Title>
+          <Table<Attachment>
+            rowKey="id"
+            size="small"
+            loading={clueWorkspaceLoading}
+            pagination={false}
+            dataSource={clueWorkspace?.clue_files || []}
+            columns={[
+              { title: "上传人", width: 120, render: (_, row) => row.uploader_display_name || row.uploader || "—" },
+              { title: "文件名称", dataIndex: "original_name" },
+              { title: "文档日期", width: 150, render: (_, row) => String(row.created_at || "").replace("T", " ").slice(0, 19) || "—" },
+              { title: "操作", width: 80, render: (_, row) => <Button type="link" onClick={() => downloadMaterial(row)}>下载</Button> },
+            ]}
+          />
+          <Typography.Title level={5}>取证信息</Typography.Title>
+          <Table<ClueEvidenceRow>
+            rowKey="id"
+            size="small"
+            loading={clueWorkspaceLoading}
+            pagination={false}
+            rowSelection={{ type: "radio", selectedRowKeys: selectedEvidenceId ? [selectedEvidenceId] : [], onChange: (keys) => setSelectedEvidenceId(Number(keys[0]) || null) }}
+            dataSource={clueWorkspace?.evidence || []}
+            scroll={{ x: 1180 }}
+            columns={[
+              { title: "取证编号", dataIndex: "serial_no", width: 170 },
+              { title: "取证日期", width: 120, render: (_, row) => row.data.collected_at || "—" },
+              { title: "取证机构", width: 180, render: (_, row) => row.data.notary_institution || "—" },
+              { title: "公证书号", width: 180, render: (_, row) => row.data.notarization_no || row.data.certificate_no || "—" },
+              { title: "发票号", width: 140, render: (_, row) => row.data.invoice_no || "—" },
+              { title: "证物存放处", width: 180, render: (_, row) => row.data.storage_location || "—" },
+              { title: "证物状态", width: 110, render: (_, row) => row.data.storage_state || row.data.evidence_status || row.status || "—" },
+              { title: "文件", width: 80, render: (_, row) => row.files?.length || 0 },
+            ]}
+          />
+          <Space style={{ marginTop: 12 }}>
+            <Button danger disabled={!selectedEvidence?.can_delete} onClick={() => void deleteSelectedEvidence()}>删除</Button>
+            <Button disabled={!selectedEvidence?.can_edit} onClick={openEvidenceEditor}>修改</Button>
+          </Space>
+        </div>}
+      </Modal>
+      <Modal
+        open={Boolean(editingEvidence)}
+        title={`修改取证信息：${editingEvidence?.serial_no || ""}`}
+        okText="保存"
+        cancelText="取消"
+        onOk={() => void saveEvidenceEdit()}
+        onCancel={() => { setEditingEvidence(null); evidenceEditForm.resetFields(); }}
+      >
+        <Form form={evidenceEditForm} layout="vertical">
+          <Form.Item label="取证机构" name="notary_institution" rules={[{ required: true, message: "请输入取证机构" }]}>
+            <AutoComplete options={notaryOfficeOptions} placeholder="选择或填写取证机构" />
+          </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="公证书号" name="certificate_no"><Input /></Form.Item>
+            <Form.Item label="取证时间" name="collected_at" rules={[{ required: true, message: "请选择取证时间" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="发票号码" name="invoice_no"><Input /></Form.Item>
+            <Form.Item label="证物状态" name="evidence_status"><Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map(value => ({ value, label: value }))} /></Form.Item>
+          </div>
+          <Form.Item label="证物存放处" name="storage_location"><Input /></Form.Item>
+          <Form.Item label="证据文件"><Input disabled value={editingEvidence?.files?.map(file => file.original_name).join("、") || "无"} /></Form.Item>
+        </Form>
       </Modal>
       <Modal
         open={Boolean(editTarget)}
