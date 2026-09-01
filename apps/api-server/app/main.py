@@ -28081,17 +28081,28 @@ def _normalize_job_role_data_scope(value: str | None) -> str | None:
     return normalized
 
 
+def _hr_record_linked_username(record: BusinessRecord) -> str:
+    data = record.data or {}
+    return str(data.get("username") or record.owner or "").strip().lower()
+
+
 async def _require_unique_hr_display_name(display_name: str, db: AsyncSession, *, employee_id: int | None = None, linked_username: str = "") -> str:
     """Keep the personnel-facing Chinese name unique across HR files and login-only accounts."""
     normalized = display_name.strip()
     name_key = normalized.casefold()
-    employee_statement = select(BusinessRecord.id).where(
+    employee_statement = select(BusinessRecord).where(
         BusinessRecord.module == "hr",
         func.lower(func.trim(BusinessRecord.title)) == name_key,
     )
     if employee_id:
         employee_statement = employee_statement.where(BusinessRecord.id != employee_id)
-    if await db.scalar(employee_statement.limit(1)):
+    matching_employees = list((await db.scalars(employee_statement)).all())
+    normalized_linked_username = linked_username.strip().lower()
+    if any(
+        not normalized_linked_username
+        or _hr_record_linked_username(employee) != normalized_linked_username
+        for employee in matching_employees
+    ):
         raise HTTPException(status_code=409, detail="中文姓名已存在")
     user_statement = select(User.id).where(func.lower(func.trim(User.display_name)) == name_key)
     if linked_username:
