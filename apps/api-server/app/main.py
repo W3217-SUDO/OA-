@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import unicodedata
 import zipfile
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from xml.sax.saxutils import escape as xml_escape
@@ -825,6 +826,53 @@ def _upgrade_schema(connection) -> None:
         model.__table__.create(connection, checkfirst=True)
 
 
+async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:
+    """Fill only missing filing dates on historical clue-generated cases.
+
+    The conversion event is the authoritative business timestamp.  The case
+    creation timestamp is used only for legacy rows whose matching event was
+    lost; both are converted to the Shanghai business date.
+    """
+    cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+    ))).all())
+    candidates = []
+    for item in cases:
+        data = item.data or {}
+        if not bool(data.get("batch_converted")):
+            continue
+        case_register_date = str(data.get("case_register_date") or "").strip()
+        filing_date = str(data.get("filing_date") or "").strip()
+        if not case_register_date or not filing_date:
+            candidates.append(item)
+    if not candidates:
+        return 0
+    events = list((await db.scalars(select(WorkflowEvent).where(
+        WorkflowEvent.record_id.in_([item.id for item in candidates]),
+        WorkflowEvent.action == "线索生成案件",
+    ).order_by(WorkflowEvent.created_at.asc(), WorkflowEvent.id.asc()))).all())
+    generated_at_by_case: dict[int, datetime] = {}
+    for event in events:
+        generated_at_by_case.setdefault(event.record_id, event.created_at)
+    business_tz = ZoneInfo("Asia/Shanghai")
+    for item in candidates:
+        data = dict(item.data or {})
+        case_register_date = str(data.get("case_register_date") or "").strip()
+        filing_date = str(data.get("filing_date") or "").strip()
+        resolved_date = case_register_date or filing_date
+        if not resolved_date:
+            generated_at = generated_at_by_case.get(item.id) or item.created_at
+            if generated_at.tzinfo is None:
+                generated_at = generated_at.replace(tzinfo=timezone.utc)
+            resolved_date = str(generated_at.astimezone(business_tz).date())
+        if not case_register_date:
+            data["case_register_date"] = resolved_date
+        if not filing_date:
+            data["filing_date"] = resolved_date
+        item.data = data
+    return len(candidates)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if settings.app_env.strip().lower() == "production":
@@ -1165,6 +1213,7 @@ async def lifespan(_: FastAPI):
                 "archive_status_code": 7,
             }
             await _sync_legacy_case(record, {"username": "system"}, db)
+        await _backfill_clue_generated_case_register_dates(db)
         await db.commit()
     await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
