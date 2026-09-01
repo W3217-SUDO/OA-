@@ -16031,6 +16031,7 @@ async def _invoice_case_fee_rows(
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     invoice_by_fee: dict[int, list[tuple[BusinessRecord, float]]] = {}
     fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+    fees_by_id = {item.id: item for item in fees}
     for invoice in invoices:
         data = invoice.data or {}
         explicit_ids = []
@@ -16093,12 +16094,15 @@ async def _invoice_case_fee_rows(
         for allocation in payment.allocations or []:
             if not isinstance(allocation, dict):
                 continue
+            allocation_case_no = str(allocation.get("case_no") or "").strip()
             linked_nested = False
             for settlement_item in allocation.get("settlement_items") or []:
                 if not isinstance(settlement_item, dict):
                     continue
                 nested_fee_id = _resolve_case_fee_link_id(settlement_item, fee_ids, legacy_fee_ids)
-                if nested_fee_id in fee_ids:
+                linked_fee = fees_by_id.get(nested_fee_id)
+                linked_case_no = str(((linked_fee.data or {}) if linked_fee else {}).get("case_no") or "").strip()
+                if nested_fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
                     nested_amount = float(settlement_item.get("amount") or settlement_item.get("settlement_amount") or 0)
                     receipts_by_fee.setdefault(nested_fee_id, []).append((payment, nested_amount))
                     linked_nested = True
@@ -16115,7 +16119,9 @@ async def _invoice_case_fee_rows(
                 candidates = fees_by_case.get(str(allocation.get("case_no") or ""), []) if isinstance(allocation, dict) else []
                 if len(candidates) == 1:
                     fee_id = candidates[0].id
-            if fee_id in fee_ids:
+            linked_fee = fees_by_id.get(fee_id)
+            linked_case_no = str(((linked_fee.data or {}) if linked_fee else {}).get("case_no") or "").strip()
+            if fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
                 receipts_by_fee.setdefault(fee_id, []).append((payment, float(allocation.get("amount") or 0)))
 
     refunds = list((await db.scalars(select(BusinessRecord).where(
@@ -21629,6 +21635,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
         if fee_id:
             refunds_by_fee.setdefault(fee_id, []).append(refund)
     fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+    fees_by_id = {item.id: item for item in fees}
     active_invoices_by_fee: dict[int, BusinessRecord] = {}
     if fee_ids:
         invoices = list((await db.scalars(select(BusinessRecord).where(
@@ -21649,17 +21656,28 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
         ))).all())
         for payment in incoming_payments:
             for allocation in payment.allocations or []:
+                allocation_case_no = str(allocation.get("case_no") or "").strip()
                 direct_fee_id = _resolve_case_fee_link_id(allocation, fee_ids, legacy_fee_ids)
                 settlement_rows = allocation.get("settlement_items") if isinstance(allocation.get("settlement_items"), list) else []
                 matched_amounts: dict[int, float] = {}
-                if direct_fee_id in fee_ids:
+                direct_fee = fees_by_id.get(direct_fee_id)
+                direct_case_no = str(((direct_fee.data or {}) if direct_fee else {}).get("case_no") or "").strip()
+                if direct_fee_id in fee_ids and (not allocation_case_no or allocation_case_no == direct_case_no):
                     matched_amounts[direct_fee_id] = float(allocation.get("amount") or 0)
                 for settlement in settlement_rows:
                     if not isinstance(settlement, dict):
                         continue
                     settlement_fee_id = _resolve_case_fee_link_id(settlement, fee_ids, legacy_fee_ids)
-                    if settlement_fee_id in fee_ids and settlement_fee_id not in matched_amounts:
-                        matched_amounts[settlement_fee_id] = float(settlement.get("amount") or 0)
+                    settlement_fee = fees_by_id.get(settlement_fee_id)
+                    settlement_case_no = str(((settlement_fee.data or {}) if settlement_fee else {}).get("case_no") or "").strip()
+                    if (
+                        settlement_fee_id in fee_ids
+                        and settlement_fee_id not in matched_amounts
+                        and (not allocation_case_no or allocation_case_no == settlement_case_no)
+                    ):
+                        matched_amounts[settlement_fee_id] = float(
+                            settlement.get("amount") or settlement.get("settlement_amount") or 0
+                        )
                 for fee_id, matched_amount in matched_amounts.items():
                     summary = incoming_by_fee.setdefault(fee_id, {
                         "incoming_payment_id": payment.id,

@@ -88,10 +88,30 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
                 "settlement_items": [{
                     "legacy_case_fee_id": 42738,
                     "fee_type": "court fee",
-                    "amount": 8400,
+                    "amount": 0,
                     "settlement_amount": 8400,
                 }],
             }]
+            db.add(IncomingPayment(
+                receipt_no="ROW30-OTHER-CASE-RECEIPT",
+                received_date=date(2026, 8, 29),
+                amount=999,
+                payer_name="Other case payer",
+                bank_reference="ROW30-OTHER-BANK",
+                status="allocated",
+                claimed_customer="Other customer",
+                claimant=ADMIN["username"],
+                operator=ADMIN["username"],
+                allocations=[{
+                    "case_no": "ROW30-OTHER-CASE",
+                    "amount": 999,
+                    "settlement_items": [{
+                        "legacy_case_fee_id": 42738,
+                        "amount": 0,
+                        "settlement_amount": 999,
+                    }],
+                }],
+            ))
             await db.commit()
 
         response = await self.client.get(f"{API}/cases/{self.case_id}/relations")
