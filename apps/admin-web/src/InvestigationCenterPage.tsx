@@ -131,6 +131,14 @@ type InvestigationActions = {
   review_notary: boolean;
   register_notary_certificate: boolean;
 };
+const isLegacyInvestigationRecord = (row: Row | null) => {
+  const data = row?.data || {};
+  return Boolean(
+    data.migration_source ||
+      data.legacy_investigation_id ||
+      data.legacy_record,
+  );
+};
 type InvestigationBootstrapData = {
   profile: Profile;
   assignmentSupervisor: string;
@@ -4718,7 +4726,8 @@ export default function InvestigationCenterPage({
               </Form.Item>
             )}
             <div className="form-grid">
-              {!taskTarget?.data.contract_id &&
+              {!isLegacyInvestigationRecord(taskTarget) &&
+                !taskTarget?.data.contract_id &&
                 !taskTarget?.data.contract_record_id && (
                   <Form.Item
                     label="关联合同"
