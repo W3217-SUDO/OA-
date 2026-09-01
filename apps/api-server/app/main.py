@@ -21302,13 +21302,17 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
     fees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance", link_condition,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
-    clue_conditions = [link_condition]
+    # A converted case owns an explicit source-clue relation.  Do not union that
+    # relation with stale reverse links left on other clues during migration or
+    # an earlier conversion; doing so makes one selected clue look like many.
     if clue_ids:
-        clue_conditions.append(BusinessRecord.id.in_(clue_ids))
-    if clue_nos:
-        clue_conditions.append(BusinessRecord.serial_no.in_(list(dict.fromkeys(clue_nos))))
+        clue_condition = BusinessRecord.id.in_(clue_ids)
+    elif clue_nos:
+        clue_condition = BusinessRecord.serial_no.in_(list(dict.fromkeys(clue_nos)))
+    else:
+        clue_condition = link_condition
     clues = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "clue", or_(*clue_conditions),
+        BusinessRecord.module == "clue", clue_condition,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     refunds = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "refund"))).all())
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
