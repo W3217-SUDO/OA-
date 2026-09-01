@@ -13,6 +13,12 @@ test("row 12 opens the dedicated commission preview instead of the generic fee d
   assert.doesNotMatch(source, /key==="commission"\?handleInternalFeeAction\("create"\)/);
 });
 
+test("migrated lawyer agency fee subtype is accepted even when the base fee type is generic", () => {
+  assert.match(source, /selectedFirmFee!\.data\.expense_subtype/);
+  assert.match(source, /selectedFirmFee!\.data\.fee_type/);
+  assert.match(source, /feeTypes\.some\(\(feeType\) => feeType\.includes\("代理费"\)\)/);
+});
+
 test("row 12 dedicated modal restores all legacy commission columns", () => {
   for (const heading of ["案号", "费用类型", "支付对象", "基数", "参考提成", "实际金额", "备注", "操作"]) {
     assert.match(modal, new RegExp(heading));

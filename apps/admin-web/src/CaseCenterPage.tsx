@@ -4754,8 +4754,13 @@ export default function CaseCenterPage({
   };
   const openCaseCommission = async () => {
     if (!viewingCounselCase || !requireSingleFee(selectedFirmFeeKeys, selectedFirmFee, "新建提成")) return;
-    const feeType = String(selectedFirmFee!.data.fee_type || selectedFirmFee!.data.expense_subtype || "");
-    if (feeType !== "代理费" && !feeType.includes("代理费")) {
+    const feeTypes = [
+      selectedFirmFee!.data.expense_subtype,
+      selectedFirmFee!.data.fee_type,
+      selectedFirmFee!.data.base_fee_type,
+      selectedFirmFee!.title,
+    ].map((value) => String(value || "").trim()).filter(Boolean);
+    if (!feeTypes.some((feeType) => feeType.includes("代理费"))) {
       message.warning("新建提成必须选择一条代理费");
       return;
     }

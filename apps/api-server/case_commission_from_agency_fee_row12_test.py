@@ -181,6 +181,24 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 422, response.text)
         self.assertIn("必须选择一条代理费", response.text)
 
+    async def test_migrated_lawyer_agency_fee_subtype_is_accepted(self):
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.title = "律师代理费"
+            fee.data = {
+                **(fee.data or {}),
+                "fee_type": "其他费用",
+                "expense_subtype": "律师代理费",
+            }
+            await db.commit()
+
+        response = await self.client.get(
+            f"{API}/cases/{self.case_id}/commission-preview",
+            params={"source_fee_id": self.fee_id},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["source_fee"]["amount"], 8400)
+
 
 if __name__ == "__main__":
     unittest.main()

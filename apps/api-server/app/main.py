@@ -18787,7 +18787,15 @@ async def _case_commission_preview(
         raise HTTPException(status_code=404, detail="所选案件费用不存在")
     if int(source_data.get("case_id") or 0) != case_record.id and str(source_data.get("case_no") or "") != case_record.serial_no:
         raise HTTPException(status_code=409, detail="所选费用不属于当前案件")
-    if str(source_data.get("fee_type") or "") != "代理费":
+    source_fee_types = {
+        str(value or "").strip()
+        for value in (
+            source_data.get("expense_subtype"), source_data.get("fee_type"),
+            source_data.get("base_fee_type"), source_fee.title,
+        )
+        if str(value or "").strip()
+    }
+    if not any("代理费" in fee_type for fee_type in source_fee_types):
         raise HTTPException(status_code=422, detail="新建提成必须选择一条代理费")
     base_amount = _round_fee_amount(float(source_data.get("amount") or 0))
     if base_amount <= 0:
