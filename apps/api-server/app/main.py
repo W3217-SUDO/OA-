@@ -5912,6 +5912,37 @@ async def _require_record_owner_or_manager(record: BusinessRecord, identity: dic
     raise HTTPException(status_code=403, detail="只有负责人、部门负责人或系统管理员可以执行此操作")
 
 
+async def _require_contract_investigation_create_access(
+    contract: BusinessRecord, identity: dict, db: AsyncSession,
+) -> None:
+    """Recognize the contract's legacy business owner as its investigation publisher."""
+    if identity.get("role") == "admin":
+        return
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not user:
+        raise HTTPException(status_code=401, detail="当前用户不存在")
+    actor_tokens = {
+        str(user.username or "").strip().casefold(),
+        str(user.display_name or "").strip().casefold(),
+    } - {""}
+    data = contract.data or {}
+    responsible_tokens = {
+        str(value or "").strip().casefold()
+        for key in (
+            "source_person", "source_person_username", "business_owner",
+            "business_owner_username", "source_owner",
+        )
+        for value in _contract_person_values(data.get(key))
+        if str(value or "").strip()
+    }
+    responsible_tokens.add(str(contract.owner or "").strip().casefold())
+    if actor_tokens & responsible_tokens:
+        return
+    if identity.get("role") == "manager" and contract.department == user.department:
+        return
+    raise HTTPException(status_code=403, detail="只有负责人、部门负责人或系统管理员可以执行此操作")
+
+
 async def _require_contract_attachment_write_access(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Protect generic attachment writes for contract records.
 
@@ -11506,7 +11537,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
 @app.post(f"{settings.api_prefix}/contracts/{{contract_id}}/investigation", status_code=status.HTTP_201_CREATED)
 async def create_contract_investigation(contract_id: int, body: ContractInvestigationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
-    await _require_record_owner_or_manager(contract, identity, db)
+    await _require_contract_investigation_create_access(contract, identity, db)
     if contract.status not in {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="合同审批通过后才能新建调查任务")
     if body.authorized_to < body.authorized_from:
