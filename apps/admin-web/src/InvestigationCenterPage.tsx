@@ -118,6 +118,7 @@ type Profile = {
   username: string;
   display_name: string;
   role: string;
+  role_ids?: string[];
   department?: string;
 };
 type PersonOption = {
@@ -2768,15 +2769,17 @@ export default function InvestigationCenterPage({
     selectedClues.includes(row.id),
   );
   const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
+  const isAdminAccount = [profile.role, ...(profile.role_ids || [])].includes("admin");
   const actionLabels = [
     ...(originalButtons[initialTab] || ["查询"]),
     ...(isClue ? ["导出线索", "导出交接清单"] : []),
   ].filter(
     (label) =>
-      label !== "审批" ||
-      (initialTab === "clue-audit-customer"
-        ? canReviewCustomerClue
-        : canReviewClue),
+      (label !== "删除" || initialTab !== "investigation-task-unassigned" || isAdminAccount) &&
+      (label !== "审批" ||
+        (initialTab === "clue-audit-customer"
+          ? canReviewCustomerClue
+          : canReviewClue)),
   );
   const queryActionLabels = actionLabels.filter((label) => ["查询", "刷新"].includes(label));
   const businessActionLabels = actionLabels.filter((label) => !["查询", "刷新"].includes(label));
