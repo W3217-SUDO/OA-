@@ -276,6 +276,13 @@ const colors: Record<string, string> = {
   公海: "orange",
   已回收: "red",
 };
+const prioritizeNewCustomerManagers = (existing: string[], selected: string[]) => {
+  const previous = Array.from(new Set((existing || []).filter(Boolean)));
+  const requested = Array.from(new Set((selected || []).filter(Boolean)));
+  const added = requested.filter((manager) => !previous.includes(manager));
+  const retained = previous.filter((manager) => requested.includes(manager));
+  return [...added.reverse(), ...retained];
+};
 const initialProfile = (): Profile => {
   try {
     const stored = JSON.parse(localStorage.getItem("user") || "{}");
@@ -2292,7 +2299,16 @@ export default function CustomerCenterPage({
               <Form.Item label="是否共享" name="is_shared"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
               <Form.Item label="客户等级" name="level"><Select options={["签约客户", "立案客户", "高级客户", "中级客户", "低级客户"].map(value => ({ value, label: value }))} /></Form.Item>
               <Form.Item label="上海市资助信息" name="is_assisted"><Select options={["是", "否"].map(value => ({ value, label: value }))} /></Form.Item>
-              <Form.Item className="customer-person-multi-field" label="客户管理人" name="customer_managers" rules={[{ required: true, message: "至少设置一名客户管理人" }]}><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} /></Form.Item>
+              <Form.Item
+                className="customer-person-multi-field"
+                label="客户管理人"
+                name="customer_managers"
+                getValueFromEvent={(selected: string[]) => prioritizeNewCustomerManagers(
+                  editing?.data.customer_managers?.length ? editing.data.customer_managers : (editing ? [editing.owner] : []),
+                  selected,
+                )}
+                rules={[{ required: true, message: "至少设置一名客户管理人" }]}
+              ><Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} /></Form.Item>
               <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact"><Select mode="multiple" showSearch optionFilterProp="label" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" /></Form.Item>
             </div>
           </section>

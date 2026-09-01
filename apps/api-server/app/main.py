@@ -5527,6 +5527,15 @@ async def _resolve_active_customer_managers(values: list[object], db: AsyncSessi
     return resolved
 
 
+def _prioritize_new_customer_managers(existing: list[object], requested: list[str]) -> list[str]:
+    """Insert newly selected managers at the front, newest selection first."""
+    existing_names = list(dict.fromkeys(str(value or "").strip() for value in existing if str(value or "").strip()))
+    requested_names = list(dict.fromkeys(requested))
+    added = [manager for manager in requested_names if manager not in existing_names]
+    retained = [manager for manager in existing_names if manager in requested_names]
+    return [*reversed(added), *retained]
+
+
 async def _resolve_active_case_people(values: list[object], db: AsyncSession, *, field_name: str) -> tuple[list[str], list[str]]:
     """Resolve case-team inputs once and persist usernames alongside display values.
 
@@ -10346,8 +10355,10 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
         customer = await _customer_or_404(customer_id, identity, db)
         if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取后才能分配管理人")
         await _require_record_owner_or_manager(customer, identity, db)
-        managers = await _resolve_active_customer_managers(body.managers, db)
         data = dict(customer.data or {})
+        existing_managers = list(data.get("customer_managers") or [customer.owner])
+        requested_managers = await _resolve_active_customer_managers(body.managers, db)
+        managers = _prioritize_new_customer_managers(existing_managers, requested_managers)
         history = list(data.get("assignment_history") or [])
         history.append({
             "from_owner": customer.owner,
