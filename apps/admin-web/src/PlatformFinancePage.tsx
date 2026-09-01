@@ -598,7 +598,6 @@ export function ReceiptCreatePage() {
                 label: customer.serial_no ? `${customer.title}｜${customer.serial_no}` : customer.title,
               }))}
               onSearch={(keyword) => void searchCustomers(keyword)}
-              onSelect={(customer) => form.setFieldValue("customer", customer)}
               notFoundContent={customersLoading ? "正在查询系统客户..." : "没有匹配的系统客户"}
               filterOption={false}
             />
@@ -612,7 +611,6 @@ export function ReceiptCreatePage() {
               filterOption={false}
               onSearch={(keyword) => void searchCustomers(keyword)}
               onChange={(customer) => {
-                if (customer) form.setFieldValue("payerName", customer);
                 const currentContract = form.getFieldValue("contractNo");
               if (
                 currentContract &&
