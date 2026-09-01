@@ -13188,6 +13188,9 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
         "collected_by": identity["username"], "collection_registered_at": datetime.now().isoformat(timespec="seconds"),
     }
     collection_evidence = await _create_collection_evidence_record(clue, identity, db)
+    await _set_warehouse_evidence_location(
+        collection_evidence.id, warehouse, location, identity["username"], db
+    )
     clue.data = {**(clue.data or {}), "collection_evidence_record_id": collection_evidence.id}
     db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {body.notary_institution.strip()}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
     await _sync_legacy_projection(clue, identity, db)
@@ -29182,7 +29185,20 @@ def _warehouse_evidence_location_statement(identity_conditions: list):
         .outerjoin(WarehouseEvidenceLocation, WarehouseEvidenceLocation.record_id == BusinessRecord.id)
         .outerjoin(Warehouse, Warehouse.id == WarehouseEvidenceLocation.warehouse_id)
         .outerjoin(WarehouseStorageLocation, WarehouseStorageLocation.id == WarehouseEvidenceLocation.storage_location_id)
-        .where(BusinessRecord.module == "warehouse", *identity_conditions)
+        # Evidence created by the investigation collection flow keeps its
+        # canonical ``evidence`` module, but a warehouse binding makes it a
+        # warehouse-visible record.  Restricting this query to ``warehouse``
+        # hid those bound evidence records from the warehouse overview.
+        .where(
+            or_(
+                BusinessRecord.module == "warehouse",
+                and_(
+                    BusinessRecord.module == "evidence",
+                    WarehouseEvidenceLocation.id.is_not(None),
+                ),
+            ),
+            *identity_conditions,
+        )
     )
 
 
