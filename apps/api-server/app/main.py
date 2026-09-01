@@ -9443,7 +9443,26 @@ async def list_records(
                 func.lower(func.trim(BusinessRecord.customer)) == relation_name.casefold(),
             ))
         elif customer.strip():
-            conditions.append(BusinessRecord.customer.ilike(f"%{customer.strip()}%"))
+            customer_like = f"%{customer.strip()}%"
+            matching_customers = list((await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.module == "customer",
+                BusinessRecord.title.ilike(customer_like),
+            ))).all())
+            customer_ids = [item.id for item in matching_customers]
+            customer_nos = [
+                str(item.serial_no or "").strip()
+                for item in matching_customers
+                if str(item.serial_no or "").strip()
+            ]
+            customer_conditions = [BusinessRecord.customer.ilike(customer_like)]
+            if customer_ids:
+                customer_conditions.extend([
+                    BusinessRecord.data["customer_id"].as_integer().in_(customer_ids),
+                    BusinessRecord.data["customer_record_id"].as_integer().in_(customer_ids),
+                ])
+            if customer_nos:
+                customer_conditions.append(BusinessRecord.data["customer_no"].as_string().in_(customer_nos))
+            conditions.append(or_(*customer_conditions))
         if relation_customer is None and customer_no.strip():
             conditions.append(BusinessRecord.data["customer_no"].as_string() == customer_no.strip())
         if exclude_archived:
