@@ -108,6 +108,20 @@ class CaseReferencePeopleContractTests(unittest.IsolatedAsyncioTestCase):
                     ["inactive-lawyer"], session, field_name="经办律师"
                 )
 
+    async def test_conflicting_hr_archive_cannot_hide_account_display_name(self) -> None:
+        async with self.session_factory() as session:
+            session.add_all([
+                User(username="fwl", display_name="范文林", department="财务部", password_hash="x", role="user", is_active=True),
+                BusinessRecord(module="hr", serial_no="HR-FWL-1", title="范文林", customer="", status="在职", owner="fwl", department="财务部", description="", data={"username": "fwl"}),
+                BusinessRecord(module="hr", serial_no="HR-FWL-2", title="范文玲", customer="", status="在职", owner="fwl", department="财务部", description="", data={"username": "fwl"}),
+            ])
+            await session.commit()
+
+        options = await self.client.get("/api/v1/cases/reference-options")
+        self.assertEqual(options.status_code, 200, options.text)
+        fwl_options = [item for item in options.json()["case_assistants"] if item["value"] == "fwl"]
+        self.assertEqual(fwl_options, [{"value": "fwl", "label": "范文林（财务部）", "position": ""}])
+
 
 if __name__ == "__main__":
     unittest.main()

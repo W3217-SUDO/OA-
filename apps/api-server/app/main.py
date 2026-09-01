@@ -21958,21 +21958,11 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
     if not any(item["value"] == "普通附件" for item in serialized_case_file_types):
         serialized_case_file_types.append({"id": 0, "value": "普通附件", "label": "普通附件", "code": "COMMON", "parent_code": "", "case_type_ids": []})
     employee_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all()
-    employee_usernames = {
-        str((item.data or {}).get("username") or item.owner or "").strip().lower()
-        for item in employee_records
-        if item.status not in {"离职", "停用"} and not _is_smoke_test_username((item.data or {}).get("username") or item.owner)
-    }
     # users 是人员主数据；HR 业务记录仅保存员工扩展资料，不能限制已创建账号出现在人员选择器中。
     # 旧系统的人员选择器展示所有在职账号，因此兼容没有 HR 记录但已在系统创建的真实账号。
     active_users = (await db.scalars(select(User).where(
         User.is_active.is_(True),
     ).order_by(User.display_name, User.username))).all()
-    employee_display_names = {
-        str((item.data or {}).get("username") or item.owner or "").strip().lower(): str(item.title or "").strip()
-        for item in employee_records
-        if item.status not in {"离职", "停用"}
-    }
     people_options = []
     seen_usernames: set[str] = set()
     for item in active_users:
@@ -21982,7 +21972,12 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
         if username in seen_usernames:
             continue
         seen_usernames.add(username)
-        display_name = employee_display_names.get(username) or item.display_name
+        # A task is assigned to a login username, so its label must come from
+        # that same identity.  HR archives are extension records and legacy
+        # imports can contain conflicting rows for one username; allowing the
+        # last HR row to overwrite the account name hides the real employee
+        # from both owner and collaborator searches.
+        display_name = str(item.display_name or "").strip() or item.username
         people_options.append({
             "value": item.username,
             "label": f"{display_name}（{item.department}）",
