@@ -30,7 +30,7 @@ test('parent investigation routes request server-side scoped views', () => {
   assert.match(source, /route==='investigation-task-unassigned'[\s\S]*return'assigned'/)
   assert.match(source, /route==='investigation-task-mine'\)return'published'/)
   assert.match(source, /investigation_view:investigationListView\(initialTab\)/)
-  assert.match(source, /scope:initialTab\.startsWith\('investigation-task-'\)&&!initialTab\.startsWith\('investigation-task-sub-'\)\?'mine':'all'/)
+  assert.match(source, /scope:initialTab\.includes\('-my-'\)\|\|\(initialTab\.startsWith\('investigation-task-'\)&&!initialTab\.startsWith\('investigation-task-sub-'\)\)\?'mine':'all'/)
 })
 
 test('unassigned investigation tasks are scoped to the configured supervisor', () => {
@@ -102,8 +102,8 @@ test('case creation from collected clues keeps a missing source contract optiona
 
 test('case creation selects handling lawyers and assistants from active system people', () => {
   assert.match(source, /api\.get\('\/people\/options'\)/)
-  assert.match(source, /label='经办律师'[^]*<SelectshowSearchoptionFilterProp='label'options=\{casePeopleOptions\}/)
-  assert.match(source, /label='律师助理'[^]*<SelectallowClearshowSearchoptionFilterProp='label'options=\{casePeopleOptions\}/)
+  assert.match(source, /label='经办律师'[^]*<SelectshowSearchoptionFilterProp='label'options=\{systemPersonOptions\}/)
+  assert.match(source, /label='律师助理'[^]*<SelectallowClearshowSearchoptionFilterProp='label'options=\{systemPersonOptions\}/)
 })
 
 test('investigation supervisor creates a child directly under the contract investigation', () => {

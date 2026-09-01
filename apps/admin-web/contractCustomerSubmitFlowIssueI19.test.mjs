@@ -78,7 +78,7 @@ test("I19 submit success returns to contract detail, not approval or seal workbe
 test("I19 approval actions appear only for the current approver while status is pending approval", () => {
   assert.match(
     contractSource,
-    /const approvalTarget = reviewing \|\| wizardDraft;[\s\S]*approvalTarget\?\.status === "审批中"[\s\S]*approvalCapabilities\?\.can_approve_current[\s\S]*currentApprover[\s\S]*profile\.username/s,
+    /const approvalTarget = reviewing \|\| wizardDraft;[\s\S]*const approvalCapabilities = approvalTarget\?\.data\.approval_capabilities;[\s\S]*current_approver[\s\S]*currentApproval\?\.approver[\s\S]*contractCapabilities\(approvalTarget,[\s\S]*canApproveCurrent: approvalCapabilities\?\.can_approve_current[\s\S]*\.canApprove/s,
     "approval action gate must honor the server-provided current-node capability with an exact username fallback",
   );
   assert.match(

@@ -93,8 +93,8 @@ test("new contract wizard keeps the legacy four-step approval and seal flow", ()
   assert.match(contractPage, /wizardStep === 3 && Boolean\(wizardDraft\?\.data\.seal_application_id\)[\s\S]{0,160}>开始新建合同</);
   assert.match(contractPage, /CONTRACT_SEAL_READY_STATUSES = \["审批中", "审批通过"/);
   assert.doesNotMatch(contractPage, /wizardDraft\.status === "审批中"\) \{\s*message\.warning\("合同仍在审批中/);
-  assert.match(contractPage, /const load = async \(queryOverride\?\: Record<string, any>\)/);
-  assert.match(contractPage, /void load\(normalized\)/);
+  assert.match(contractPage, /const load = async \(\s*queryOverride\?: Record<string, any>,\s*paginationOverride\?: \{ current: number; pageSize: number \},\s*\) =>/);
+  assert.match(contractPage, /void load\(normalized, nextPagination\)/);
   assert.match(contractPage, /立即提交同步用印；合同审批与用印审批将分别流转/);
   assert.doesNotMatch(contractPage, /审批通过后再从合同用印入口办理/);
   assert.doesNotMatch(contractPage, /合同审批中，请在详情查看进度/);

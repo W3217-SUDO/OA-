@@ -144,6 +144,7 @@ type Contract = {
     customer_manager?: string;
     customer_id?: number;
     customer_no?: string;
+    customer_name?: string;
     submitted_at?: string;
     submitted_by?: string;
     submit_comment?: string;
