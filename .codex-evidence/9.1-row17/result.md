@@ -1,48 +1,11 @@
-# 9.1 第17行整改结果
+# 9.1 第17行验收记录
 
-## 根因
-
-- “待我分配的调查任务”的“新增子任务”动作直接进入 `openTasks(row, true)`，没有在打开表单前校验所选调查的授权结束日。
-- 后端 `POST /investigations/{record_id}/tasks` 也没有校验根调查事项是否已经超过授权结束日，因此仅做页面禁用仍可被接口绕过。
-
-## 修改
-
-- 前端读取所选调查的 `authorized_to`（兼容历史 `end_date`）；结束日早于当天时，立即提示“该任务已过期，不允许新建子任务”并停止加载/打开表单。
-- 后端增加统一的调查授权过期判定，并在解析到根调查事项后、创建任何子任务前返回 HTTP 409 和同一提示。
-- 当天到期仍允许创建；只有结束日早于当天才视为过期。缺失或非法日期不臆断为过期，交由既有数据校验/治理处理。
-
-## 文件
-
-- `apps/admin-web/src/InvestigationCenterPage.tsx`
-- `apps/api-server/app/main.py`
-- `apps/admin-web/investigationExpiredSubtaskRow17.test.mjs`
-- `apps/api-server/investigation_expired_subtask_row17_test.py`
-- `.codex-evidence/9.1-row17/reading-confirmation.md`
-- `.codex-evidence/9.1-row17/C_image23.png`
-
-## 聚焦测试
-
-- `python -m unittest investigation_expired_subtask_row17_test.py contract_downstream_draft_gate_row15_test.py investigation_admin_delete_role_ids_row16_test.py`：7 项通过。
-- `node investigationExpiredSubtaskRow17.test.mjs`：通过。
-- `node investigationSubtaskContractGateRow15.test.mjs`：通过。
-- `node investigationPublishedParentTaskRow13.test.mjs`：通过。
-- `python -m py_compile app/main.py`：通过。
-- 首次从 `apps/api-server` 目录调用三个前端 Node 测试时因路径错误均报 `MODULE_NOT_FOUND`；改到 `apps/admin-web` 后逐项通过，属于测试命令工作目录错误，不是产品失败。
-
-## 数据库补丁建议
-
-- 本行不需要结构或数据迁移。
-- 可另行排查 `authorized_to` 缺失或非 ISO 日期的历史调查数据并做数据治理，但不应在本批次无授权写库。
-
-## 主会话 Chrome 验收步骤
-
-1. 使用有调查分配权限的角色进入“调查大厅 → 待我分配的调查任务”。
-2. 选择授权结束日早于当天的调查（截图样例 `RW2411260046472`，授权结束日 `2024-11-23`），点击“新增子任务”。
-3. 确认页面提示“该任务已过期，不允许新建子任务”，且不打开新增表单、不产生子任务。
-4. 选择授权结束日为当天或未来的调查，确认仍可正常打开新增子任务表单。
-5. 通过开发者工具复核过期记录的直接 POST 调用返回 409 与相同提示，且数据库没有新增任务记录。
-
-## 状态
-
-- 代码与非浏览器聚焦测试完成。
-- 按本会话限制未启动浏览器、未构建、未部署、未改版本、未写数据库。
+- reading-confirmation：仅处理工作表“9.1”第17行；已读取本行完整单元格文字及全部锚定截图 `C_image23.png`，已区分新系统问题图与旧系统目标图，未读取未分配行。
+- 状态：本地新系统 Chrome 真实业务验收通过；未提交、未构建、未部署、未改版本、未写线上数据库。
+- 根因：前端“新增子任务”原先未在打开表单前校验父调查任务授权结束日；后端创建接口也缺少同一门禁，可被直接请求绕过。
+- 整改：前端读取 `authorized_to`（兼容历史 `end_date`），结束日早于当天时提示“该任务已过期，不允许新建子任务”并停止打开表单；后端解析根调查事项后、任何子任务写入前执行同一校验并返回 HTTP 409。当日到期仍允许，只有早于当天才判定过期。
+- Chrome 验收（隔离 Web 15317 / API 18317 / SQLite）：选择 `DC-R17-EXPIRED` 点击“新增子任务”，显示准确提示且未打开表单；使用同账号令牌直接 POST 返回 409 和相同提示，调用前后子任务数均为0。`DC-R17-TODAY` 与 `DC-R17-FUTURE` 均正常打开新增表单，选择“第十七行管理员”后各成功保存1条隔离子任务。最终数量为过期0、当天1、未来1。
+- owned files：`apps/api-server/app/main.py`、`apps/api-server/investigation_expired_subtask_row17_test.py`、`apps/admin-web/src/InvestigationCenterPage.tsx`、`apps/admin-web/investigationExpiredSubtaskRow17.test.mjs`、`.codex-evidence/9.1-row17/*`。
+- 聚焦测试：前端第17/16行测试均通过；后端 `python -m unittest investigation_expired_subtask_row17_test.py contract_downstream_draft_gate_row15_test.py investigation_admin_delete_role_ids_row16_test.py`，7/7通过。
+- 数据库补丁建议：本行无需结构或数据迁移。可另行只读审计 `authorized_to` 缺失或非 ISO 日期的历史调查数据，输出清单交业务治理，不应在本批次自动改写。
+- 清理：Chrome 本行标签已关闭；隔离 API、SQLite、三条父任务、两条子任务及临时凭据已在验收后清理；Web 15317 由主会话停止。
