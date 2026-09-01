@@ -84,6 +84,29 @@ def legacy_fee_subtype(row):
     raise RuntimeError(f"legacy case fee {row.get('CaseFeeId')} has no resolvable fee type")
 
 
+def legacy_case_fee_finance_data(row):
+    refund_amount = row.get("RefundAmount") or 0
+    refunded_amount = row.get("RefundedAmount") or 0
+    cashed_date = row.get("CashedDate") or ""
+    paid_amount = row.get("PaidAmount")
+    return {
+        "amount": row.get("Amount") or 0,
+        "payment_requested_amount": paid_amount if paid_amount is not None else row.get("PrePaidAmount") or 0,
+        "refund_amount": refund_amount,
+        "refund_requested_amount": refund_amount,
+        "refunded_amount": refunded_amount,
+        "received_at": cashed_date,
+        "cashed_date": cashed_date,
+        "received_amount": row.get("CashedAmount") or 0,
+        "cashed_amount": row.get("CashedAmount") or 0,
+        "submitted_at": row.get("InformDate") or row.get("CreateTime"),
+        "submitted_by": clean(row.get("RequestUser") or row.get("CreateUser")),
+        "invoice_date": row.get("InvoiceDate") or "",
+        "invoice_no": clean(row.get("InvoiceNo")),
+        "payment_deadline": row.get("PaymentDeadline"),
+    }
+
+
 def decode_dataset(path):
     payload = Path(path).read_bytes()
     encoding = "utf-16" if payload.startswith((b"\xff\xfe", b"\xfe\xff")) else "ascii"
@@ -430,7 +453,7 @@ async def run(bundle_dir, dry_run, investigation_bundle=None):
                 "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_title": contract.title,
                 "customer_id": customer.id, "customer_record_id": customer.id, "customer_no": customer.serial_no, "customer_title": customer.title,
             }
-            _, made = await upsert_record(db, index, module="finance", serial_no=serial, title=subtype, customer=customer.title, owner=owner_for(users, row.get("RequestUser") or row.get("CreateUser")), department=case.department, status="历史数据", description=clean(row.get("Remark")), data={"migration_source": SOURCE, "legacy_case_fee_id": row.get("CaseFeeId"), "legacy_case_fee_guid": row.get("CaseFeeGuid"), "legacy_record": row, **relation_data, "expense_scope": "律所", "expense_subtype": subtype, "fee_type": "官方费用", "amount": row.get("Amount") or 0, "payment_requested_amount": row.get("PaidAmount") or row.get("PrePaidAmount") or 0, "refund_amount": row.get("RefundedAmount") or row.get("RefundAmount") or 0, "received_amount": row.get("CashedAmount") or 0, "submitted_at": row.get("InformDate") or row.get("CreateTime"), "submitted_by": clean(row.get("RequestUser") or row.get("CreateUser")), "invoice_date": row.get("InvoiceDate") or "", "invoice_no": clean(row.get("InvoiceNo")), "payment_deadline": row.get("PaymentDeadline")}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
+            _, made = await upsert_record(db, index, module="finance", serial_no=serial, title=subtype, customer=customer.title, owner=owner_for(users, row.get("RequestUser") or row.get("CreateUser")), department=case.department, status="历史数据", description=clean(row.get("Remark")), data={"migration_source": SOURCE, "legacy_case_fee_id": row.get("CaseFeeId"), "legacy_case_fee_guid": row.get("CaseFeeGuid"), "legacy_record": row, **relation_data, "expense_scope": "律所", "expense_subtype": subtype, "fee_type": "官方费用", **legacy_case_fee_finance_data(row)}, created_at=parse_datetime(row.get("CreateTime")), updated_at=parse_datetime(row.get("ChangeTime")))
             result["records"].setdefault("case_fees", 0); result["records"]["case_fees"] += int(made)
         await db.commit()
         print(json.dumps(result, ensure_ascii=False))

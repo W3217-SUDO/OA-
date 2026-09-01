@@ -21181,6 +21181,43 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
     return {"items": items, "total": len(items)}
 
 
+def _legacy_case_fee_projection(data: dict) -> dict:
+    result = dict(data or {})
+    legacy = result.get("legacy_record")
+    if not isinstance(legacy, dict) or not result.get("legacy_case_fee_id"):
+        return result
+
+    # Early imports collapsed requested/refunded amounts and omitted the cash
+    # date. Only repair fields that still have that old shape so later OA
+    # transactions remain authoritative.
+    if "refund_requested_amount" not in result and "refunded_amount" not in result:
+        requested = legacy.get("RefundAmount")
+        refunded = legacy.get("RefundedAmount")
+        result["refund_amount"] = requested if requested is not None else 0
+        result["refund_requested_amount"] = requested if requested is not None else 0
+        result["refunded_amount"] = refunded if refunded is not None else 0
+    cashed_date = legacy.get("CashedDate")
+    if cashed_date and not (result.get("received_at") or result.get("cashed_date")):
+        result["received_at"] = cashed_date
+        result["cashed_date"] = cashed_date
+    if "received_amount" not in result and legacy.get("CashedAmount") is not None:
+        result["received_amount"] = legacy.get("CashedAmount")
+    if "cashed_amount" not in result and legacy.get("CashedAmount") is not None:
+        result["cashed_amount"] = legacy.get("CashedAmount")
+    if "payment_requested_amount" not in result:
+        paid_amount = legacy.get("PaidAmount")
+        result["payment_requested_amount"] = paid_amount if paid_amount is not None else legacy.get("PrePaidAmount") or 0
+    if not result.get("submitted_at"):
+        result["submitted_at"] = legacy.get("InformDate") or legacy.get("CreateTime") or ""
+    if not result.get("submitted_by"):
+        result["submitted_by"] = str(legacy.get("RequestUser") or legacy.get("CreateUser") or "").strip()
+    if not result.get("invoice_date"):
+        result["invoice_date"] = legacy.get("InvoiceDate") or ""
+    if not result.get("invoice_no"):
+        result["invoice_no"] = str(legacy.get("InvoiceNo") or "").strip()
+    return result
+
+
 @app.get(f"{settings.api_prefix}/cases/{{case_id}}/relations")
 async def list_case_relations(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return all records linked to one case without global-list pagination loss."""
@@ -21282,7 +21319,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
     def related_dict(item: BusinessRecord) -> dict:
         result = _record_dict(item)
         result["owner_display_name"] = _person_reference_display(item.owner, users_by_username)[0]
-        result_data = dict(result.get("data") or {})
+        result_data = _legacy_case_fee_projection(result.get("data") or {}) if item.module == "finance" else dict(result.get("data") or {})
         linked_invoice = active_invoices_by_fee.get(item.id)
         if linked_invoice:
             invoice_data = linked_invoice.data or {}
@@ -21297,9 +21334,13 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
             result_data["cashed_date"] = linked_incoming["received_at"]
         if str((item.data or {}).get("fee_type") or "") == "官方费用":
             linked = refunds_by_fee.get(item.id, [])
-            total_refund = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked if refund.status not in {"已驳回", "已作废"}), 2)
-            result_data["refund_amount"] = total_refund
-            result_data["refund_requested_amount"] = total_refund
+            if linked:
+                valid_refunds = [refund for refund in linked if refund.status not in {"已驳回", "已作废"}]
+                total_refund = round(sum(float((refund.data or {}).get("amount") or 0) for refund in valid_refunds), 2)
+                refunded_amount = round(sum(float((refund.data or {}).get("amount") or 0) for refund in valid_refunds if refund.status == "已退款"), 2)
+                result_data["refund_amount"] = total_refund
+                result_data["refund_requested_amount"] = total_refund
+                result_data["refunded_amount"] = refunded_amount
         result["data"] = result_data
         return result
 

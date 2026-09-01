@@ -68,6 +68,7 @@ import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
 import { buildCaseFeeContractOptions } from "./caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "./caseFeeInvoiceEligibility.mjs";
+import { caseFeeRefundLabel } from "./caseFeeLegacyProjection.mjs";
 import { buildCasePaymentTypeSelectOptions, buildExternalPaymentRequestPayload } from "./casePaymentUnitParity.mjs";
 import {
   feeTypeSelection,
@@ -4675,7 +4676,7 @@ export default function CaseCenterPage({
     }},
     {title:"费用类型",width:190,render:(_:unknown,row:CaseRow)=>row.data.expense_subtype||row.data.fee_type||row.title||"—"},
     {title:"金额",width:100,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.amount??0},
-    {title:"退费",width:90,align:"right" as const,render:(_:unknown,row:CaseRow)=>row.data.refund_amount??row.data.refund_requested_amount??0},
+    {title:"退费",width:110,align:"right" as const,render:(_:unknown,row:CaseRow)=>caseFeeRefundLabel(row.data)},
     {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
     {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
     {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
