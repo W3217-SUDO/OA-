@@ -2,15 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { filterCaseFileTypesForCaseType } from "./src/caseRelationConsumption.mjs";
+import { getLegacyCaseDocumentGenerationItems } from "./src/caseDocumentGenerationActions.mjs";
 
 const source = readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
 
 test("document toolbar exposes every legacy generation operation", () => {
-  for (const label of [
+  assert.deepEqual(getLegacyCaseDocumentGenerationItems().map(([, label]) => label), [
     "生成归档封面", "生成授权委托书", "生成一审所函(我方原告)", "生成一审所函(我方被告)",
     "生成二审所函(我方上诉)", "生成二审所函(对方上诉)", "生成执行所函", "生成身份证明",
     "生成结算提成表", "生成代收代付赔偿款申请单",
-  ]) assert.ok(source.includes(label), label);
+  ]);
   assert.match(source, />生成操作<\/Button>/);
 });
 

@@ -18,7 +18,10 @@ test("document generation refreshes attachment detail and reports failures", () 
   assert.match(source, /await refreshCounselDetailAttachments\(viewingCounselCase\.id\)/);
   assert.match(source, /setActiveCounselDocCategory\(targetCategory\)/);
   assert.doesNotMatch(source.slice(source.indexOf("const generateCaseDocument"), source.indexOf("const openCounselAttachmentSeal")), /openCounselDetail/);
-  assert.match(source, /message\.error\(error\?\.response\?\.data\?\.detail \|\|/);
+  assert.match(source, /const detail = error\?\.response\?\.data\?\.detail \|\|/);
+  assert.match(source, /message\.error\(detail\)/);
+  assert.match(source, /setCaseDocumentGenerationError\(detail\)/);
+  assert.match(source, /caseDocumentGenerationError && <Alert[\s\S]*message=\{caseDocumentGenerationError\}/);
 });
 
 test("document generation prevents duplicate clicks and exposes progress", () => {
@@ -29,6 +32,7 @@ test("document generation prevents duplicate clicks and exposes progress", () =>
 });
 
 test("document menu closes deliberately without leaking clicks into detail tabs", () => {
-  assert.match(source, /className="case-document-generation-menu-panel" role="menu"/);
-  assert.match(source, /role="menuitem"[\s\S]*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*setCaseDocumentGenerationMenuOpen\(false\);\s*void generateCaseDocument\(key\)/);
+  assert.match(source, /<Dropdown[\s\S]*open=\{caseDocumentGenerationMenuOpen\}[\s\S]*onOpenChange=\{setCaseDocumentGenerationMenuOpen\}/);
+  assert.match(source, /onClick: \(event\) => dispatchCaseDocumentGenerationMenuClick\(event, \(key\) => \{\s*setCaseDocumentGenerationMenuOpen\(false\);\s*void generateCaseDocument\(key\)/);
+  assert.doesNotMatch(source, /case-document-generation-menu-panel/);
 });

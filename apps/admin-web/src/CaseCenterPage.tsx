@@ -84,6 +84,10 @@ import {
   normalizeFeeSubtypeForScope,
 } from "./caseRelationConsumption.mjs";
 import { buildCaseCounselSearchPayload } from "./caseCounselSearchParity.mjs";
+import {
+  dispatchCaseDocumentGenerationMenuClick,
+  getLegacyCaseDocumentGenerationItems,
+} from "./caseDocumentGenerationActions.mjs";
 import { buildWarehouseLocationOptions, resolveCaseWarehouseLocationIds } from "./caseWarehouseLocationParity.mjs";
 import {
   buildLegacyCasePhaseTree,
@@ -509,18 +513,7 @@ const caseDocumentTypes = [
   ["gd-first-instance-appellant-lawyer-letter", "广东版一审上诉人律师函"], ["gd-first-instance-appellee-lawyer-letter", "广东版一审被上诉人律师函"],
   ["gd-second-instance-appellant-lawyer-letter", "广东版二审上诉人律师函"], ["gd-second-instance-appellee-lawyer-letter", "广东版二审被上诉人律师函"], ["gd-execution-lawyer-letter", "广东版执行律师函"],
 ] as const;
-export const getLegacyCaseDocumentGenerationItems = () => [
-  ["archive-cover", "生成归档封面"],
-  ["authorization-letter", "生成授权委托书"],
-  ["first-instance-appellant-lawyer-letter", "生成一审所函(我方原告)"],
-  ["first-instance-appellee-lawyer-letter", "生成一审所函(我方被告)"],
-  ["second-instance-appellant-lawyer-letter", "生成二审所函(我方上诉)"],
-  ["second-instance-appellee-lawyer-letter", "生成二审所函(对方上诉)"],
-  ["execution-lawyer-letter", "生成执行所函"],
-  ["identity-certificate", "生成身份证明"],
-  ["settlement-list", "生成结算提成表"],
-  ["compensation-payment-application", "生成代收代付赔偿款申请单"],
-] as const;
+export { getLegacyCaseDocumentGenerationItems };
 export const getCaseDocumentMoveCategoryOptions = (customFolders: string[] = []) =>
   ["主体及委托资料", "起诉材料及证据", "答辩材料及证据", "法院诉讼文书", "庭审及庭后文件", ...customFolders]
     .filter((value, index, values) => value && values.indexOf(value) === index)
@@ -991,6 +984,7 @@ export default function CaseCenterPage({
   const [counselDetailCustomerTaskPages, setCounselDetailCustomerTaskPages] = useState(0);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
   const [generatingCaseDocumentType, setGeneratingCaseDocumentType] = useState("");
+  const [caseDocumentGenerationError, setCaseDocumentGenerationError] = useState("");
   const [caseDocumentGenerationMenuOpen, setCaseDocumentGenerationMenuOpen] = useState(false);
   const [counselDetailCustomerAttachments, setCounselDetailCustomerAttachments] = useState<AttachmentRow[]>([]);
   const [counselDetailContractAttachments, setCounselDetailContractAttachments] = useState<AttachmentRow[]>([]);
@@ -2818,6 +2812,7 @@ export default function CaseCenterPage({
   };
   const generateCaseDocument = async (documentType: string) => {
     if (!viewingCounselCase || generatingCaseDocumentType) return;
+    setCaseDocumentGenerationError("");
     setGeneratingCaseDocumentType(documentType);
     try {
       const { data } = await api.post(`/cases/${viewingCounselCase.id}/documents/${documentType}`);
@@ -2832,7 +2827,9 @@ export default function CaseCenterPage({
         message.warning("文书已生成，但附件列表刷新失败，请稍后刷新页面");
       }
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "案件文书生成失败");
+      const detail = error?.response?.data?.detail || "案件文书生成失败";
+      setCaseDocumentGenerationError(detail);
+      message.error(detail);
     } finally {
       setGeneratingCaseDocumentType("");
     }
@@ -5980,35 +5977,34 @@ export default function CaseCenterPage({
                   {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
                   {title:"操作",key:"actions",width:isAiSpaceFolder?410:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
                 ]}/>
+                {caseDocumentGenerationError && <Alert
+                  type="error"
+                  showIcon
+                  closable
+                  message={caseDocumentGenerationError}
+                  onClose={() => setCaseDocumentGenerationError("")}
+                  className="case-document-generation-error"
+                />}
                 <Space wrap className="case-document-toolbar">
                   <Select value={counselUploadCategory} disabled={isAiSpaceFolder} style={{width:180}} onChange={setCounselUploadCategory} options={activeCounselUploadCategoryOptions}/>
                   {counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button icon={<FileWordOutlined/>} onClick={openCreateAiDraft}>新建 Word 文档</Button>}
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
-                  {counselDetailCapabilities.can_generate_document && <div className="case-document-generation-menu">
-                    <Button
-                      loading={Boolean(generatingCaseDocumentType)}
-                      aria-haspopup="menu"
-                      aria-expanded={caseDocumentGenerationMenuOpen}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setCaseDocumentGenerationMenuOpen((open) => !open);
-                      }}
-                    >生成操作</Button>
-                    {caseDocumentGenerationMenuOpen && <div className="case-document-generation-menu-panel" role="menu" onClick={(event) => event.stopPropagation()}>
-                      {getLegacyCaseDocumentGenerationItems().map(([key, label]) => <button
-                        key={key}
-                        type="button"
-                        role="menuitem"
-                        disabled={Boolean(generatingCaseDocumentType)}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setCaseDocumentGenerationMenuOpen(false);
-                          void generateCaseDocument(key);
-                        }}
-                      >{label}</button>)}
-                    </div>}
-                  </div>}
+                  {counselDetailCapabilities.can_generate_document && <Dropdown
+                    trigger={["click"]}
+                    open={caseDocumentGenerationMenuOpen}
+                    onOpenChange={setCaseDocumentGenerationMenuOpen}
+                    menu={{
+                      items: getLegacyCaseDocumentGenerationItems().map(([key, label]) => ({key, label, disabled:Boolean(generatingCaseDocumentType)})),
+                      onClick: (event) => dispatchCaseDocumentGenerationMenuClick(event, (key) => {
+                        setCaseDocumentGenerationMenuOpen(false);
+                        void generateCaseDocument(key);
+                      }),
+                    }}
+                  ><Button
+                    loading={Boolean(generatingCaseDocumentType)}
+                    aria-haspopup="menu"
+                    aria-expanded={caseDocumentGenerationMenuOpen}
+                  >生成操作</Button></Dropdown>}
                   {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
