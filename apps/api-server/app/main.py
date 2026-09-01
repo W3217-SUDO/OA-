@@ -13514,21 +13514,32 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         or source_data.get("legacy_investigation_id")
         or source_data.get("legacy_record")
     )
-    source_contract_id = source_data.get("contract_id") or source_data.get("contract_record_id") or parent_data.get("contract_id") or parent_data.get("contract_record_id")
-    if not source_contract_id:
-        source_contract_no = str(source_data.get("contract_no") or parent_data.get("contract_no") or "").strip()
-        if source_contract_no:
-            source_contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "contract", BusinessRecord.serial_no == source_contract_no, BusinessRecord.customer == source.customer))
-            source_contract_id = source_contract.id if source_contract else None
+    stored_source_contract_id = source_data.get("contract_id") or source_data.get("contract_record_id") or parent_data.get("contract_id") or parent_data.get("contract_record_id")
+    source_contract_no = str(source_data.get("contract_no") or parent_data.get("contract_no") or "").strip()
+    source_contract = None
+    if stored_source_contract_id:
+        candidate = await db.get(BusinessRecord, int(stored_source_contract_id))
+        if (
+            candidate
+            and candidate.module == "contract"
+            and candidate.customer.strip() == source.customer.strip()
+            and (not source_contract_no or candidate.serial_no == source_contract_no)
+        ):
+            source_contract = candidate
+    if not source_contract and source_contract_no:
+        source_contract = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == "contract",
+            BusinessRecord.serial_no == source_contract_no,
+            BusinessRecord.customer == source.customer,
+        ))
+    source_contract_id = source_contract.id if source_contract else None
     requested_contract_id = body.contract_record_id
     if source_contract_id and requested_contract_id and int(source_contract_id) != requested_contract_id:
         raise HTTPException(status_code=409, detail="调查事项已绑定合同，不能在创建子任务时更换合同")
     if not source_contract_id and not requested_contract_id and not is_legacy_investigation:
         raise HTTPException(status_code=422, detail="创建调查任务前必须绑定同客户合同")
     if source_contract_id:
-        contract = await db.get(BusinessRecord, int(source_contract_id))
-        if not contract:
-            raise HTTPException(status_code=404, detail="已绑定合同不存在")
+        contract = source_contract
     elif requested_contract_id:
         contract = await _ensure_record_visible(int(requested_contract_id), identity, db)
     else:
@@ -13537,10 +13548,19 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         raise HTTPException(status_code=409, detail="只能绑定审批中、审批通过或已完成的合同")
     if contract and source.customer.strip() != contract.customer.strip():
         raise HTTPException(status_code=422, detail="所选合同客户必须与调查事项客户一致")
-    if contract and not source_contract_id:
+    relation_needs_repair = bool(
+        contract
+        and (
+            not source_contract_id
+            or int(stored_source_contract_id or 0) != contract.id
+            or source_data.get("contract_record_id") != contract.id
+            or source_data.get("contract_no") != contract.serial_no
+        )
+    )
+    if contract and (not source_contract_id or relation_needs_repair):
         source.data = {**source_data, "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
         db.add(source)
-        db.add(WorkflowEvent(record_id=source.id, action="绑定调查事项合同", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}"))
+        db.add(WorkflowEvent(record_id=source.id, action="修复调查事项合同关联" if stored_source_contract_id else "绑定调查事项合同", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"绑定客户 {contract.customer} / 合同 {contract.serial_no}"))
     start_date = body.start_date or _investigation_task_date(parent_data.get("start_date") or parent_data.get("authorized_from")) or _investigation_task_date(source_data.get("authorized_from"))
     end_date = body.end_date or body.deadline or _investigation_task_date(parent_data.get("end_date") or parent_data.get("deadline") or parent_data.get("authorized_to")) or _investigation_task_date(source_data.get("authorized_to"))
     authorized_from = _investigation_task_date(parent_data.get("authorized_from")) or _investigation_task_date(source_data.get("authorized_from")) or start_date
