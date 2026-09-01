@@ -18559,31 +18559,31 @@ CASE_COMMISSION_ROLES = (
     {
         "key": "hearing", "label": "开庭", "subtype": "服务费(开庭)",
         "rate_field": "hearing_rate", "fixed_field": "hearing_fixed",
-        "rate_name": "开庭比例提成", "fixed_name": "开庭固定提成",
+        "rate_name": "开庭提成", "fixed_name": "开庭固定提成",
         "fields": ("hearing_lawyer_usernames", "hearing_lawyer_username", "court_lawyer_username", "hearing_lawyers", "hearing_lawyer", "court_lawyer"),
     },
     {
         "key": "document", "label": "文书", "subtype": "服务费(文书)",
         "rate_field": "document_rate", "fixed_field": "document_fixed",
-        "rate_name": "文书比例提成", "fixed_name": "文书固定提成",
+        "rate_name": "文书提成", "fixed_name": "文书固定提成",
         "fields": ("assistant_usernames", "assistant_username", "assistants", "assistant", "case_assistant"),
     },
     {
         "key": "source", "label": "案源", "subtype": "服务费(案源)",
         "rate_field": "source_rate", "fixed_field": "source_fixed",
-        "rate_name": "案源比例提成", "fixed_name": "案源固定提成",
+        "rate_name": "案源提成", "fixed_name": "案源固定提成",
         "fields": ("business_owner_usernames", "business_owner_username", "source_person_usernames", "source_person_username", "business_owner", "source_person"),
     },
     {
         "key": "investigation", "label": "调查", "subtype": "服务费(调查)",
         "rate_field": "investigation_rate", "fixed_field": "investigation_fixed",
-        "rate_name": "调查比例提成", "fixed_name": "调查固定提成",
+        "rate_name": "调查提成", "fixed_name": "调查固定提成",
         "fields": ("investigator_usernames", "investigator_username", "investigators", "investigator"),
     },
     {
         "key": "quality", "label": "品管", "subtype": "服务费(品管)",
         "rate_field": "quality_rate", "fixed_field": "quality_fixed",
-        "rate_name": "品管比例提成", "fixed_name": "品管固定提成",
+        "rate_name": "品牌管理费", "fixed_name": "品牌固定管理费",
         "fields": ("coordinator_usernames", "coordinator_username", "quality_manager_username", "coordinators", "coordinator", "quality_manager"),
     },
 )
@@ -18707,7 +18707,13 @@ async def _case_commission_preview(
                 })
     return {
         "case": {"id": case_record.id, "serial_no": case_record.serial_no, "title": case_record.title},
-        "source_fee": {"id": source_fee.id, "serial_no": source_fee.serial_no, "amount": base_amount, "fee_type": "代理费"},
+        "source_fee": {
+            "id": source_fee.id, "serial_no": source_fee.serial_no,
+            "amount": base_amount, "fee_type": "代理费",
+            "refund_amount": _round_fee_amount(float(source_data.get("refund_amount") or source_data.get("refund_requested_amount") or 0)),
+            "invoice_over_amount": _round_fee_amount(float(source_data.get("invoice_over_amount") or source_data.get("over_invoice_amount") or 0)),
+            "cost_over_amount": _round_fee_amount(float(source_data.get("cost_over_amount") or source_data.get("over_invoice_cost") or 0)),
+        },
         "case_date": str(case_date), "personnel": personnel, "items": rows,
         "missing_messages": list(dict.fromkeys(missing)),
     }

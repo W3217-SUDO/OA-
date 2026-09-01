@@ -131,11 +131,11 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         data = response.json()
         self.assertEqual(data["source_fee"]["amount"], 8400)
         rows = {item["commission_type"]: item for item in data["items"]}
-        self.assertEqual(rows["开庭比例提成"]["employee_display_name"], "开庭律师甲")
-        self.assertEqual(rows["开庭比例提成"]["base_amount"], 8400)
-        self.assertEqual(rows["开庭比例提成"]["reference_commission"], 420)
+        self.assertEqual(rows["开庭提成"]["employee_display_name"], "开庭律师甲")
+        self.assertEqual(rows["开庭提成"]["base_amount"], 8400)
+        self.assertEqual(rows["开庭提成"]["reference_commission"], 420)
         self.assertEqual(rows["案源固定提成"]["reference_commission"], 300)
-        self.assertEqual(rows["调查比例提成"]["reference_commission"], 840)
+        self.assertEqual(rows["调查提成"]["reference_commission"], 840)
         self.assertIn("律师助理乙未设文书提成", data["missing_messages"])
 
     async def test_batch_create_is_atomic_and_persists_source_relation(self):

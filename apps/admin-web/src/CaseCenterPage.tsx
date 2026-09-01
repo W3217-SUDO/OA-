@@ -195,7 +195,15 @@ type CaseCommissionPreviewRow = {
 };
 type CaseCommissionPreview = {
   case: { id: number; serial_no: string; title: string };
-  source_fee: { id: number; serial_no: string; amount: number; fee_type: string };
+  source_fee: {
+    id: number;
+    serial_no: string;
+    amount: number;
+    fee_type: string;
+    refund_amount: number;
+    invoice_over_amount: number;
+    cost_over_amount: number;
+  };
   personnel: Array<{ role: string; username: string; display_name: string }>;
   items: Omit<CaseCommissionPreviewRow, "client_key">[];
   missing_messages: string[];
@@ -5649,6 +5657,9 @@ export default function CaseCenterPage({
           type="info"
           title="温馨提示"
           description={<ol>
+            <li>申请付款按照每个案号生成一个申请单。</li>
+            <li>法院退费：{caseCommissionPreview?.source_fee.refund_amount ?? 0} 元。</li>
+            <li>高开金额：{caseCommissionPreview?.source_fee.invoice_over_amount ?? 0} 元；高开成本：{caseCommissionPreview?.source_fee.cost_over_amount ?? 0} 元。</li>
             <li>提成基数取当前选中的代理费金额：{caseCommissionPreview?.source_fee.amount ?? 0} 元。</li>
             <li>人员及参考提成按案件日期有效的员工提成设置自动生成，实际金额可按业务调整。</li>
             <li>点击操作栏的加号可复制当前提成行；每一行单独生成一条内部提成记录。</li>
