@@ -15909,6 +15909,49 @@ def _case_fee_date(value: object) -> date | None:
         return None
 
 
+def _case_fee_link_maps(fees: list[BusinessRecord]) -> tuple[set[int], dict[int, int]]:
+    fee_ids = {item.id for item in fees}
+    legacy_candidates: dict[int, set[int]] = {}
+    for item in fees:
+        data = item.data or {}
+        for key in ("legacy_case_fee_id", "legacy_fee_id"):
+            try:
+                legacy_id = int(data.get(key) or 0)
+            except (TypeError, ValueError):
+                legacy_id = 0
+            if legacy_id:
+                legacy_candidates.setdefault(legacy_id, set()).add(item.id)
+    return fee_ids, {
+        legacy_id: next(iter(candidate_ids))
+        for legacy_id, candidate_ids in legacy_candidates.items()
+        if len(candidate_ids) == 1
+    }
+
+
+def _resolve_case_fee_link_id(
+    link: dict,
+    fee_ids: set[int],
+    legacy_fee_ids: dict[int, int],
+) -> int:
+    for key in ("fee_record_id", "fee_id"):
+        try:
+            linked_id = int(link.get(key) or 0)
+        except (AttributeError, TypeError, ValueError):
+            linked_id = 0
+        if linked_id in fee_ids:
+            return linked_id
+        if linked_id in legacy_fee_ids:
+            return legacy_fee_ids[linked_id]
+    for key in ("legacy_case_fee_id", "legacy_fee_id"):
+        try:
+            legacy_id = int(link.get(key) or 0)
+        except (AttributeError, TypeError, ValueError):
+            legacy_id = 0
+        if legacy_id in legacy_fee_ids:
+            return legacy_fee_ids[legacy_id]
+    return 0
+
+
 async def _invoice_case_fee_rows(
     identity: dict,
     db: AsyncSession,
@@ -15987,7 +16030,7 @@ async def _invoice_case_fee_rows(
         BusinessRecord.module == "invoice", *scope_conditions
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     invoice_by_fee: dict[int, list[tuple[BusinessRecord, float]]] = {}
-    fee_ids = {item.id for item in fees}
+    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     for invoice in invoices:
         data = invoice.data or {}
         explicit_ids = []
@@ -16054,10 +16097,7 @@ async def _invoice_case_fee_rows(
             for settlement_item in allocation.get("settlement_items") or []:
                 if not isinstance(settlement_item, dict):
                     continue
-                try:
-                    nested_fee_id = int(settlement_item.get("fee_record_id") or settlement_item.get("fee_id") or 0)
-                except (TypeError, ValueError):
-                    nested_fee_id = 0
+                nested_fee_id = _resolve_case_fee_link_id(settlement_item, fee_ids, legacy_fee_ids)
                 if nested_fee_id in fee_ids:
                     nested_amount = float(settlement_item.get("amount") or settlement_item.get("settlement_amount") or 0)
                     receipts_by_fee.setdefault(nested_fee_id, []).append((payment, nested_amount))
@@ -16065,10 +16105,12 @@ async def _invoice_case_fee_rows(
             if linked_nested:
                 continue
             fee_id = 0
-            try:
-                fee_id = int(allocation.get("fee_id") or allocation.get("finance_record_id") or 0)
-            except (AttributeError, TypeError, ValueError):
-                pass
+            fee_id = _resolve_case_fee_link_id(allocation, fee_ids, legacy_fee_ids)
+            if not fee_id:
+                try:
+                    fee_id = int(allocation.get("finance_record_id") or 0)
+                except (AttributeError, TypeError, ValueError):
+                    pass
             if fee_id not in fee_ids:
                 candidates = fees_by_case.get(str(allocation.get("case_no") or ""), []) if isinstance(allocation, dict) else []
                 if len(candidates) == 1:
@@ -21586,7 +21628,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
             fee_id = 0
         if fee_id:
             refunds_by_fee.setdefault(fee_id, []).append(refund)
-    fee_ids = {item.id for item in fees}
+    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     active_invoices_by_fee: dict[int, BusinessRecord] = {}
     if fee_ids:
         invoices = list((await db.scalars(select(BusinessRecord).where(
@@ -21607,10 +21649,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
         ))).all())
         for payment in incoming_payments:
             for allocation in payment.allocations or []:
-                try:
-                    direct_fee_id = int(allocation.get("fee_record_id") or 0)
-                except (TypeError, ValueError):
-                    direct_fee_id = 0
+                direct_fee_id = _resolve_case_fee_link_id(allocation, fee_ids, legacy_fee_ids)
                 settlement_rows = allocation.get("settlement_items") if isinstance(allocation.get("settlement_items"), list) else []
                 matched_amounts: dict[int, float] = {}
                 if direct_fee_id in fee_ids:
@@ -21618,10 +21657,7 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
                 for settlement in settlement_rows:
                     if not isinstance(settlement, dict):
                         continue
-                    try:
-                        settlement_fee_id = int(settlement.get("fee_record_id") or settlement.get("fee_id") or 0)
-                    except (TypeError, ValueError):
-                        settlement_fee_id = 0
+                    settlement_fee_id = _resolve_case_fee_link_id(settlement, fee_ids, legacy_fee_ids)
                     if settlement_fee_id in fee_ids and settlement_fee_id not in matched_amounts:
                         matched_amounts[settlement_fee_id] = float(settlement.get("amount") or 0)
                 for fee_id, matched_amount in matched_amounts.items():

@@ -4,11 +4,40 @@ from __future__ import annotations
 
 import unittest
 
-from app.main import _legacy_case_fee_projection
+from app.main import _case_fee_link_maps, _legacy_case_fee_projection, _resolve_case_fee_link_id
+from app.models import BusinessRecord
 from scripts.import_sh_latest50_samples import legacy_case_fee_finance_data
 
 
 class CaseFeeLegacyProjectionRow3Test(unittest.TestCase):
+    def test_resolves_migrated_receipt_link_by_legacy_case_fee_id(self) -> None:
+        fee = BusinessRecord(
+            id=9001,
+            module="finance",
+            serial_no="ROW3-FEE",
+            title="law firm fee",
+            customer="ROW3 customer",
+            status="historical",
+            owner="admin",
+            department="finance",
+            data={"legacy_case_fee_id": 42738, "case_no": "SHMS2600395"},
+        )
+        fee_ids, legacy_fee_ids = _case_fee_link_maps([fee])
+
+        self.assertEqual(
+            _resolve_case_fee_link_id({"legacy_case_fee_id": 42738}, fee_ids, legacy_fee_ids),
+            9001,
+        )
+
+    def test_ambiguous_legacy_id_is_not_assigned(self) -> None:
+        fees = [
+            BusinessRecord(id=value, module="finance", serial_no=f"F-{value}", title="fee", customer="c", status="active", owner="admin", department="finance", data={"legacy_case_fee_id": 42738})
+            for value in (9001, 9002)
+        ]
+        fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+
+        self.assertEqual(_resolve_case_fee_link_id({"legacy_case_fee_id": 42738}, fee_ids, legacy_fee_ids), 0)
+
     def test_new_imports_keep_every_legacy_finance_field_distinct(self) -> None:
         mapped = legacy_case_fee_finance_data({
             "Amount": 200,

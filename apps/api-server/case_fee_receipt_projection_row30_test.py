@@ -37,7 +37,7 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
             # fee carries both stable case and contract ids.
             case_record = BusinessRecord(module="case", serial_no="ROW30-CASE", title="Row 30 Case", customer=customer.title, status="active", owner=ADMIN["username"], department=ADMIN["department"], data={})
             db.add(case_record); await db.flush()
-            fee = BusinessRecord(module="finance", serial_no="ROW30-FEE", title="Row 30 Fee", customer=customer.title, status="pending", owner=ADMIN["username"], department=ADMIN["department"], data={"amount": 8400, "fee_type": "court fee", "case_id": case_record.id, "case_no": case_record.serial_no, "contract_id": contract.id, "contract_no": contract.serial_no})
+            fee = BusinessRecord(module="finance", serial_no="ROW30-FEE", title="Row 30 Fee", customer=customer.title, status="pending", owner=ADMIN["username"], department=ADMIN["department"], data={"amount": 8400, "fee_type": "court fee", "case_id": case_record.id, "case_no": case_record.serial_no, "contract_id": contract.id, "contract_no": contract.serial_no, "legacy_case_fee_id": 42738})
             payment = IncomingPayment(receipt_no="ROW30-RECEIPT", received_date=date(2026, 8, 28), amount=8400, payer_name="Row 30 Payer", bank_reference="ROW30-BANK", status="待分配", claimed_customer=customer.title, claimant=ADMIN["username"], operator=ADMIN["username"])
             db.add_all([fee, payment]); await db.commit()
             self.case_id, self.fee_id, self.payment_id = case_record.id, fee.id, payment.id
@@ -78,6 +78,28 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fee["data"]["received_at"], "2026-08-28")
         self.assertEqual(fee["data"]["incoming_payments"][0]["id"], self.payment_id)
         self.assertEqual(fee["data"]["incoming_payments"][0]["allocated_amount"], 8400)
+
+    async def test_migrated_allocation_resolves_legacy_case_fee_id(self) -> None:
+        async with self.sessions() as db:
+            payment = await db.get(IncomingPayment, self.payment_id)
+            payment.allocations = [{
+                "case_no": "ROW30-CASE",
+                "amount": 8400,
+                "settlement_items": [{
+                    "legacy_case_fee_id": 42738,
+                    "fee_type": "court fee",
+                    "amount": 8400,
+                    "settlement_amount": 8400,
+                }],
+            }]
+            await db.commit()
+
+        response = await self.client.get(f"{API}/cases/{self.case_id}/relations")
+        self.assertEqual(response.status_code, 200, response.text)
+        fee = next(item for item in response.json()["fees"] if item["id"] == self.fee_id)
+        self.assertEqual(fee["data"]["received_amount"], 8400)
+        self.assertEqual(fee["data"]["received_at"], "2026-08-28")
+        self.assertEqual(fee["data"]["incoming_payments"][0]["receipt_no"], "ROW30-RECEIPT")
 
 
 if __name__ == "__main__":
