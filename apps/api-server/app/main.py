@@ -21506,12 +21506,18 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
                     active_invoices_by_fee.setdefault(fee_id, invoice)
     incoming_by_fee: dict[int, dict] = {}
     if fee_ids:
-        incoming_payments = list((await db.scalars(select(IncomingPayment).where(
-            IncomingPayment.claimed_customer == case_record.customer,
-        ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
+        # Allocations are durable links to fees.  Customer names are snapshots and
+        # may diverge after a customer rename, so they must not gate case-fee
+        # receipt projection.
+        incoming_payments = list((await db.scalars(select(IncomingPayment).order_by(
+            IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
+        ))).all())
         for payment in incoming_payments:
             for allocation in payment.allocations or []:
-                direct_fee_id = int(allocation.get("fee_record_id") or 0)
+                try:
+                    direct_fee_id = int(allocation.get("fee_record_id") or 0)
+                except (TypeError, ValueError):
+                    direct_fee_id = 0
                 settlement_rows = allocation.get("settlement_items") if isinstance(allocation.get("settlement_items"), list) else []
                 matched_amounts: dict[int, float] = {}
                 if direct_fee_id in fee_ids:
@@ -21519,7 +21525,10 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
                 for settlement in settlement_rows:
                     if not isinstance(settlement, dict):
                         continue
-                    settlement_fee_id = int(settlement.get("fee_record_id") or settlement.get("fee_id") or 0)
+                    try:
+                        settlement_fee_id = int(settlement.get("fee_record_id") or settlement.get("fee_id") or 0)
+                    except (TypeError, ValueError):
+                        settlement_fee_id = 0
                     if settlement_fee_id in fee_ids and settlement_fee_id not in matched_amounts:
                         matched_amounts[settlement_fee_id] = float(settlement.get("amount") or 0)
                 for fee_id, matched_amount in matched_amounts.items():
