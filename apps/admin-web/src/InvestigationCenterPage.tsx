@@ -471,12 +471,21 @@ export default function InvestigationCenterPage({
   const [assignForm] = Form.useForm();
   const [feeForm] = Form.useForm();
   const [evidenceEditForm] = Form.useForm();
-  const collectionWarehouseId = Form.useWatch("warehouse_id", collectionForm) as number | undefined;
   const certificateWarehouseId = Form.useWatch("warehouse_id", certificateForm) as number | undefined;
   const storageLocationOptions = (warehouseId: number | undefined) =>
     (warehouseCatalog.find((warehouse) => warehouse.id === Number(warehouseId))?.locations || [])
       .filter((location) => location.is_active)
       .map((location) => ({ value: location.id, label: location.name }));
+  const collectionStorageOptions = warehouseCatalog
+    .filter((warehouse) => warehouse.is_active)
+    .map((warehouse) => ({
+      value: warehouse.id,
+      label: warehouse.name,
+      children: warehouse.locations
+        .filter((location) => location.is_active)
+        .map((location) => ({ value: location.id, label: location.name })),
+    }))
+    .filter((warehouse) => warehouse.children.length > 0);
   const personDisplayName = (value: unknown) => {
     const raw = String(value || "").trim();
     if (!raw) return "—";
@@ -2464,6 +2473,10 @@ export default function InvestigationCenterPage({
                     collectionForm.setFieldsValue({
                       warehouse_id: Number(r.data.warehouse_id) || undefined,
                       storage_location_id: Number(r.data.storage_location_id) || undefined,
+                      evidence_storage_path:
+                        r.data.warehouse_id && r.data.storage_location_id
+                          ? [Number(r.data.warehouse_id), Number(r.data.storage_location_id)]
+                          : undefined,
                     });
                     setCollectionFiles([]);
                     setCollectionTarget(r);
@@ -2862,6 +2875,10 @@ export default function InvestigationCenterPage({
         collectionForm.setFieldsValue({
           warehouse_id: Number(row.data.warehouse_id) || undefined,
           storage_location_id: Number(row.data.storage_location_id) || undefined,
+          evidence_storage_path:
+            row.data.warehouse_id && row.data.storage_location_id
+              ? [Number(row.data.warehouse_id), Number(row.data.storage_location_id)]
+              : undefined,
         });
         setCollectionTarget(row);
       }),
@@ -4225,17 +4242,23 @@ export default function InvestigationCenterPage({
           >
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
+          <Form.Item name="warehouse_id" hidden><Input /></Form.Item>
+          <Form.Item name="storage_location_id" hidden><Input /></Form.Item>
           <div className="form-grid">
-            <Form.Item label="仓库" name="warehouse_id" rules={[{ required: true, message: "请选择仓库" }]}>
-              <Select
+            <Form.Item
+              label="证物存放处"
+              name="evidence_storage_path"
+              rules={[{ required: true, message: "请选择证物存放处" }]}
+            >
+              <Cascader
+                options={collectionStorageOptions}
+                placeholder="请选择仓库及库位"
                 showSearch
-                optionFilterProp="label"
-                options={warehouseCatalog.filter((warehouse) => warehouse.is_active).map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
-                onChange={() => collectionForm.setFieldValue("storage_location_id", undefined)}
+                onChange={(path) => collectionForm.setFieldsValue({
+                  warehouse_id: Number(path?.[0]) || undefined,
+                  storage_location_id: Number(path?.[1]) || undefined,
+                })}
               />
-            </Form.Item>
-            <Form.Item label="库位" name="storage_location_id" rules={[{ required: true, message: "请选择库位" }]}>
-              <Select showSearch optionFilterProp="label" options={storageLocationOptions(collectionWarehouseId)} />
             </Form.Item>
             <Form.Item label="证物状态" name="evidence_status" initialValue="未入库">
               <Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} />
