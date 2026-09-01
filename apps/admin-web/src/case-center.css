@@ -181,7 +181,7 @@
 .case-fee-legacy-tip{margin-bottom:10px;border-radius:0}
 .case-fee-legacy-tip .ant-alert-description ol{margin:2px 0 0;padding-left:22px}
 .case-fee-entry-table,.case-fee-payment-table{overflow-x:auto;border:1px solid #d9d9d9}
-.case-fee-entry-head,.case-fee-entry-row{display:grid;grid-template-columns:82px 95px 92px 65px minmax(100px,1fr) 92px 50px;min-width:0}
+.case-fee-entry-head,.case-fee-entry-row{display:grid;grid-template-columns:82px 95px 130px 65px minmax(100px,1fr) 92px 50px;min-width:614px}
 .case-internal-fee-entry-table .case-fee-entry-head,.case-internal-fee-entry-table .case-fee-entry-row{grid-template-columns:92px 120px 120px 80px 90px 90px minmax(120px,1fr) 50px;min-width:760px}
 .case-fee-payment-head,.case-fee-payment-row{display:grid;grid-template-columns:105px 100px 75px minmax(130px,1fr) minmax(150px,1.2fr);min-width:560px}
 .case-fee-payment-request-table .case-fee-payment-head,.case-fee-payment-request-table .case-fee-payment-row{grid-template-columns:105px 110px 80px 120px minmax(130px,1fr) minmax(150px,1.1fr) minmax(150px,1.1fr);min-width:900px}

@@ -9,20 +9,28 @@ const PRESET_NAMES = {
 export const feeTypeSelection = (catalog, feeTypeId) =>
   (Array.isArray(catalog) ? catalog : []).find((item) => Number(item.id) === Number(feeTypeId));
 
-const presetMatches = (item, preset) => {
+const presetMatches = (item, preset, scope) => {
   if (!preset) return true;
   if (preset === "other") return item.base_fee_type === "其他费用" && !PRESET_NAMES["third-party"].has(item.name);
   if (preset === "official") return item.base_fee_type === "官方费用";
-  if (preset === "agency") return item.base_fee_type === "代理费";
+  if (preset === "agency") {
+    if (text(scope) === "平台") return item.name === "平台代理费";
+    return item.base_fee_type === "代理费" && item.name !== "平台代理费";
+  }
   return PRESET_NAMES[preset]?.has(item.name) ?? true;
 };
 
-export const selectableFeeTypes = (catalog, scope, preset = "") =>
-  (Array.isArray(catalog) ? catalog : []).filter((item) =>
+export const selectableFeeTypes = (catalog, scope, preset = "") => {
+  const matching = (Array.isArray(catalog) ? catalog : []).filter((item) =>
     item?.is_active !== false && item?.selectable === true &&
     (!text(scope) || (item.expense_scopes || []).includes(text(scope))) &&
-    presetMatches(item, preset),
+    presetMatches(item, preset, scope),
   );
+  if (text(scope) !== "平台" || preset !== "agency") return matching;
+  return matching.filter((item, index) =>
+    matching.findIndex((candidate) => text(candidate.name) === text(item.name)) === index,
+  );
+};
 
 export const feeTypeTreeData = (catalog, scope, preset = "") => {
   const rows = Array.isArray(catalog) ? catalog : [];
