@@ -120,6 +120,9 @@ CIVIL_CASE_TYPES = {"民事案件", "民事争议", "民事"}
 NORMAL_CASE_BASIC_TYPES = CIVIL_CASE_TYPES | {"刑事案件", "行政案件及国家赔偿"}
 CONTRACT_APPROVED_STATUS = "审批通过"
 CASE_SOURCE_CONTRACT_STATUSES = {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}
+def _contract_allows_downstream_creation(contract: BusinessRecord | None) -> bool:
+    """Only a persisted contract draft is barred from creating downstream work."""
+    return bool(contract and contract.module == "contract" and contract.status != "草稿")
 REQUIRED_SEAL_ASSETS = (
     ("YZ-HT-001", "合同章", "行政部保险柜 A01"),
     ("YZ-GZ-001", "公章", "行政部保险柜 A02"),
@@ -1669,6 +1672,13 @@ def _investigation_task_date(value: object) -> date | None:
         return date.fromisoformat(raw[:10])
     except ValueError:
         return None
+
+
+def _investigation_authorization_expired(record: BusinessRecord, *, today: date | None = None) -> bool:
+    """Return whether an investigation's authorization ended before today."""
+    data = record.data or {}
+    authorized_to = _investigation_task_date(data.get("authorized_to") or data.get("end_date"))
+    return bool(authorized_to and authorized_to < (today or date.today()))
 
 
 class BatchClueCaseInput(BaseModel):
@@ -6207,11 +6217,19 @@ async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, id
 async def list_active_people_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Expose only active personnel names for authenticated internal selectors."""
     users = list((await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all())
+    employees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr", BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all())
+    employee_names = {
+        str((employee.data or {}).get("username") or employee.owner or "").strip().lower(): str(employee.title or "").strip()
+        for employee in employees
+        if str((employee.data or {}).get("username") or employee.owner or "").strip()
+    }
     items = []
     for user in users:
-        name = str(user.display_name or "").strip()
+        name = employee_names.get(user.username.strip().lower()) or str(user.display_name or "").strip()
         if name:
-            items.append({"value": name, "label": name, "username": user.username})
+            items.append({"value": name, "label": name, "username": user.username, "search_text": f"{name} {user.username}"})
     return {"items": items}
 
 
@@ -10611,7 +10629,7 @@ async def open_customer_portal(customer_id: int, body: CustomerPortalActionInput
     customer = await _customer_or_404(customer_id, identity, db)
     contracts = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "contract", BusinessRecord.customer == customer.title,
-        BusinessRecord.status.in_(CASE_SOURCE_CONTRACT_STATUSES),
+        BusinessRecord.status != "草稿",
     ))).all())
     if (customer.data or {}).get("level") != "签约客户" and not contracts:
         raise HTTPException(status_code=409, detail="客户签约或存在审批通过的合同后才能开通客户服务端")
@@ -11557,8 +11575,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
 async def create_contract_investigation(contract_id: int, body: ContractInvestigationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_contract_investigation_create_access(contract, identity, db)
-    if contract.status not in {"审批中", CONTRACT_APPROVED_STATUS, "已完成"}:
-        raise HTTPException(status_code=409, detail="合同审批通过后才能新建调查任务")
+    if not _contract_allows_downstream_creation(contract):
+        raise HTTPException(status_code=409, detail="草稿合同不能新建调查任务")
     if body.authorized_to < body.authorized_from:
         raise HTTPException(status_code=422, detail="授权结束日期不能早于开始日期")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
@@ -12492,8 +12510,8 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         if not contract_id:
             raise HTTPException(status_code=422, detail="父调查任务必须从合同创建并绑定有效合同")
         contract = await _ensure_record_visible(contract_id, identity, db)
-        if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-            raise HTTPException(status_code=409, detail="只能从审批中、审批通过或已完成的合同创建调查任务")
+        if not _contract_allows_downstream_creation(contract):
+            raise HTTPException(status_code=409, detail="草稿合同不能创建调查任务")
         supervisor = await _configured_investigation_supervisor(db)
         requested_owner = str(payload.get("owner") or "").strip()
         if requested_owner and requested_owner != supervisor.username:
@@ -13439,14 +13457,15 @@ async def create_investigation_fee_application(record_id: int, body: Investigati
 async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(set(body.record_ids)), BusinessRecord.module.in_(["investigation", "clue", "task"]), *(await _record_scope_conditions(identity, db))))).all()
     found = {item.id: item for item in records}; errors: list[dict] = []; deleted = 0; paths: list[Path] = []
-    manager = identity.get("role") in {"admin", "manager"}
+    role_ids = set(_identity_role_ids(identity))
+    manager = bool(role_ids.intersection({"admin", "manager"}))
     for record_id in dict.fromkeys(body.record_ids):
         record = found.get(record_id)
         if not record:
             errors.append({"record_id": record_id, "error": "记录不存在或无权访问"}); continue
-        if record.module == "investigation" and identity.get("role") != "admin":
+        if record.module == "investigation" and "admin" not in role_ids:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "仅管理员可以删除调查任务"}); continue
-        if record.module == "task" and identity.get("role") != "admin" and record.owner != identity["username"] and (record.data or {}).get("initiator") != identity["username"]:
+        if record.module == "task" and "admin" not in role_ids and record.owner != identity["username"] and (record.data or {}).get("initiator") != identity["username"]:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "只能删除本人负责或发起的任务"}); continue
         if record.module not in {"task", "investigation"} and not manager and record.owner != identity["username"]:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "只能删除本人负责的记录"}); continue
@@ -13540,6 +13559,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     await _require_record_owner_or_manager(source, identity, db)
     _validate_task_deadline(body.deadline)
     source = await _resolve_investigation_task_root(source, identity, db)
+    if _investigation_authorization_expired(source):
+        raise HTTPException(status_code=409, detail="该任务已过期，不允许新建子任务")
     parent = None
     if body.parent_task_id:
         parent = await _ensure_record_module(body.parent_task_id, "task", identity, db)
@@ -13599,8 +13620,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         contract = await _ensure_record_visible(int(requested_contract_id), identity, db)
     else:
         contract = None
-    if contract and (contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES):
-        raise HTTPException(status_code=409, detail="只能绑定审批中、审批通过或已完成的合同")
+    if contract and not _contract_allows_downstream_creation(contract):
+        raise HTTPException(status_code=409, detail="草稿合同不能创建调查子任务")
     if contract and source.customer.strip() != contract.customer.strip():
         raise HTTPException(status_code=422, detail="所选合同客户必须与调查事项客户一致")
     relation_needs_repair = bool(
@@ -13759,8 +13780,8 @@ async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindin
     if existing_contract:
         raise HTTPException(status_code=409, detail=f"来源调查任务已绑定合同 {existing_contract.serial_no}")
     contract = await _ensure_record_visible(body.contract_record_id, identity, db)
-    if contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-        raise HTTPException(status_code=409, detail="只能绑定审批中、审批通过或已完成的合同")
+    if not _contract_allows_downstream_creation(contract):
+        raise HTTPException(status_code=409, detail="草稿合同不能创建调查子任务")
     contract_data = {"contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "contract_name": contract.title}
     source_task.customer = contract.customer
     source_task.data = {**(source_task.data or {}), **contract_data}
@@ -13799,7 +13820,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if clue_data.get("converted_case_id") or clue.status == "已转案件": errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索已经转为案件"}); continue
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
         contract, contract_error = await _resolve_clue_source_contract(clue, identity, db)
-        if contract and (contract.module != "contract" or contract.status not in CASE_SOURCE_CONTRACT_STATUSES):
+        if contract and not _contract_allows_downstream_creation(contract):
             errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同状态不支持生成案件"}); continue
         contract_data = (contract.data or {}) if contract else {}
         case_customer = contract.customer if contract else clue.customer
@@ -14255,6 +14276,10 @@ async def list_tasks(
             tasks = [task for task in tasks if username in (task.data or {}).get("collaborators", [])]
     tasks = [task for task in tasks if not _is_investigation_task(task)]
     items = await _task_display_dicts(tasks, db)
+    if relation == "initiated":
+        for item in items:
+            if item.get("workflow_status") in {"待接收", "待处理"} and item.get("source") == "案件任务":
+                item["status"] = "进行中"
     all_task_items = list(items)
 
     def contains(value: object, needle: str) -> bool:
@@ -14467,6 +14492,29 @@ def _validate_task_deadline(deadline: date) -> None:
         raise HTTPException(status_code=422, detail="任务截止日期不能超过 30 天")
 
 
+async def _next_manual_task_serial(db: AsyncSession, *, today: date | None = None) -> str:
+    """Return the compact visible number used by manually published tasks.
+
+    Historical task numbers remain valid identifiers.  New manual tasks use a
+    short daily sequence instead of exposing the timestamp/microsecond value.
+    """
+    business_date = today or date.today()
+    prefix = f"RW{business_date:%y%m%d}"
+    existing = list((await db.scalars(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "task",
+        BusinessRecord.serial_no.like(f"{prefix}%"),
+    ))).all())
+    used_sequences = {
+        int(value[len(prefix):])
+        for value in existing
+        if len(value) == len(prefix) + 3 and value[len(prefix):].isdigit()
+    }
+    for sequence in range(1, 1000):
+        if sequence not in used_sequences:
+            return f"{prefix}{sequence:03d}"
+    raise HTTPException(status_code=503, detail="今日任务编号已用完，请联系管理员")
+
+
 @app.post(f"{settings.api_prefix}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(body: TaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _validate_task_deadline(body.deadline)
@@ -14505,7 +14553,7 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
         case_records.append(case_record)
     case_record = case_records[0] if case_records else None
     case_no = case_record.serial_no if case_record else case_no
-    serial = f"RW{datetime.now():%Y%m%d%H%M%S%f}"
+    serial = await _next_manual_task_serial(db)
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     owner = await _active_task_username(body.owner, db, field_name="负责人")
     collaborators = []
@@ -14513,7 +14561,7 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
         collaborator = await _active_task_username(value, db, field_name="协作人")
         if collaborator != owner and collaborator not in collaborators:
             collaborators.append(collaborator)
-    initial_status = "处理中" if source == "案件任务" else "待接收"
+    initial_status = "待处理" if source == "案件任务" else "待接收"
     task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status=initial_status, owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "start_at": body.start_at.isoformat() if body.start_at else "", "end_at": body.end_at.isoformat() if body.end_at else "", "priority": body.priority, "source": source, "creation_mode": "人工", "task_type": "手动任务", "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_nos": [item.serial_no for item in case_records], "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None, "case_ids": [item.id for item in case_records], "case_module": body.case_module if case_record else ""})
     db.add(task)
     await db.flush()
@@ -21984,7 +22032,7 @@ async def list_case_eligible_contracts(identity: dict = Depends(current_identity
     """Return every visible contract that can actually start the staged case flow."""
     conditions = [
         BusinessRecord.module == "contract",
-        BusinessRecord.status.in_(CASE_SOURCE_CONTRACT_STATUSES),
+        BusinessRecord.status != "草稿",
         *(await _record_scope_conditions(identity, db)),
     ]
     contracts = (await db.scalars(
@@ -22304,8 +22352,8 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     contract = await _ensure_record_visible(body.contract_record_id, identity, db)
     if contract.module != "contract":
         raise HTTPException(status_code=422, detail="关联记录不是合同")
-    if contract.status not in CASE_SOURCE_CONTRACT_STATUSES:
-        raise HTTPException(status_code=409, detail="只能从审批中、审批通过或已完成的合同新建案件")
+    if not _contract_allows_downstream_creation(contract):
+        raise HTTPException(status_code=409, detail="草稿合同不能新建案件")
     contract_context = await _contract_customer_projection_context([contract], db)
     contract_customer, relation_status = _customer_reference_from_maps(
         contract.customer,
@@ -24546,9 +24594,13 @@ async def list_case_tasks(
         .offset((page - 1) * page_size).limit(page_size)
     )).all())
     pages = (total + page_size - 1) // page_size if total else 0
+    items = [await _task_display_dict(item, db) for item in rows]
+    for item in items:
+        if item.get("workflow_status") in {"待接收", "待处理"} and item.get("source") == "案件任务":
+            item["status"] = "进行中"
     return {
         "case": _record_dict(case_record),
-        "items": [await _task_display_dict(item, db) for item in rows],
+        "items": items,
         "total": total, "page": page, "page_size": page_size, "pages": pages,
     }
 

@@ -124,6 +124,7 @@ type PersonOption = {
   value: string;
   label: string;
   username?: string;
+  search_text?: string;
 };
 type InvestigationActions = {
   review_clue: boolean;
@@ -288,7 +289,7 @@ const investigationListView = (route: string) => {
     route === "investigation-task-sub-published"
   )
     return "published";
-  if (route === "investigation-task-mine") return "assigned";
+  if (route === "investigation-task-mine") return "published";
   return "";
 };
 
@@ -556,7 +557,7 @@ export default function InvestigationCenterPage({
   const load = async (key = tab) => {
     setLoading(true);
     try {
-      const module = initialTab === "investigation-task-mine" || initialTab.startsWith("investigation-task-sub-")
+      const module = initialTab.startsWith("investigation-task-sub-")
         ? "task"
         : initialTab.startsWith("investigation-task-")
           ? "investigation"
@@ -1639,6 +1640,15 @@ export default function InvestigationCenterPage({
     });
   };
   const openTasks = async (row: Row, createSubtask = false) => {
+    const authorizationEnd = dayjs(String(row.data.authorized_to || row.data.end_date || ""));
+    if (
+      createSubtask &&
+      authorizationEnd.isValid() &&
+      authorizationEnd.isBefore(dayjs(), "day")
+    ) {
+      message.error("该任务已过期，不允许新建子任务");
+      return;
+    }
     try {
       const [{ data }, { data: contractData }] = await Promise.all([
         api.get(`/investigations/${row.id}/tasks`),
@@ -1673,7 +1683,7 @@ export default function InvestigationCenterPage({
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
-            ["审批中", "审批通过", "已完成"].includes(contract.status) &&
+            contract.status !== "草稿" &&
             contract.customer === row.customer,
         ),
       );
@@ -2724,15 +2734,12 @@ export default function InvestigationCenterPage({
       "刷新",
       "修改",
       "上传调查资料",
-      "新增线索",
-      "关闭任务并生成报告",
     ],
     "investigation-task-overdue": [
       "查询",
       "刷新",
       "修改",
       "上传调查资料",
-      "关闭任务并生成报告",
     ],
     "investigation-task-unassigned": ["查询", "刷新", "新增子任务", "删除"],
     "investigation-task-sub-published": ["查询", "刷新", "修改", "批量删除"],
@@ -4763,17 +4770,20 @@ export default function InvestigationCenterPage({
                   </Form.Item>
                 )}
               <Form.Item
-                label="负责人"
+                label="调查员"
                 name="owner"
                 rules={[{ required: true }]}
               >
                 <Select
                   showSearch
-                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    String(option?.search_text || option?.label || "").toLocaleLowerCase().includes(input.toLocaleLowerCase())
+                  }
                   placeholder="请选择系统人员"
                   options={casePeopleOptions.map((item) => ({
                     value: item.username || item.value,
                     label: item.label || item.value,
+                    search_text: item.search_text || `${item.label || item.value} ${item.username || item.value}`,
                   }))}
                 />
               </Form.Item>

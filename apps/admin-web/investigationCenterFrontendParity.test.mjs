@@ -28,7 +28,7 @@ test('investigation task list does not offer a second parent-task creation entry
 test('parent investigation routes request server-side scoped views', () => {
   assert.match(source, /investigationListView=\(route:string\)=>/)
   assert.match(source, /route==='investigation-task-unassigned'[\s\S]*return'assigned'/)
-  assert.match(source, /route==='investigation-task-mine'\)return'assigned'/)
+  assert.match(source, /route==='investigation-task-mine'\)return'published'/)
   assert.match(source, /investigation_view:investigationListView\(initialTab\)/)
   assert.match(source, /scope:initialTab\.startsWith\('investigation-task-'\)&&!initialTab\.startsWith\('investigation-task-sub-'\)\?'mine':'all'/)
 })

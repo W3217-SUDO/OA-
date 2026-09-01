@@ -67,13 +67,17 @@ class CaseTaskDetailRow21Test(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(created.status_code, 201, created.text)
         task = created.json()
-        self.assertEqual(task["status"], "进行中")
-        self.assertEqual(task["workflow_status"], "处理中")
+        self.assertEqual(task["status"], "待处理")
+        self.assertEqual(task["workflow_status"], "待处理")
         self.assertEqual(task["start_at"], start_at.isoformat())
 
         history = await self.client.get(f"{API}/tasks/{task['id']}/history")
         self.assertEqual(history.status_code, 200, history.text)
-        self.assertEqual(history.json()["items"][0]["to_status"], "处理中")
+        self.assertEqual(history.json()["items"][0]["to_status"], "待处理")
+
+        accepted = await self.client.post(f"{API}/tasks/{task['id']}/accept", json={"comment": "负责人接受任务"})
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        self.assertEqual(accepted.json()["workflow_status"], "处理中")
 
         feedback = await self.client.post(
             f"{API}/tasks/{task['id']}/feedback",
@@ -92,7 +96,7 @@ class CaseTaskDetailRow21Test(unittest.IsolatedAsyncioTestCase):
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == task["id"]).order_by(WorkflowEvent.id))).all())
             attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == task["id"]))).all())
         self.assertEqual(stored.status, "已撤回")
-        self.assertEqual([event.action for event in events], ["发起任务", "任务沟通", "上传任务反馈附件", "撤回任务"])
+        self.assertEqual([event.action for event in events], ["发起任务", "接收任务", "任务沟通", "上传任务反馈附件", "撤回任务"])
         self.assertEqual(len(attachments), 1)
         Path(attachments[0].path).unlink(missing_ok=True)
 
