@@ -58,5 +58,6 @@ test("every row-13 document entry calls its distinct backend type and reveals th
     assert.match(source, new RegExp(`generateCaseDocument\\("${documentType}"\\)`));
   }
   assert.match(source, /message\.success\(`\$\{data\.original_name \|\| "案件文书"\}已生成并归入案件附件`\)/);
-  assert.match(source, /setActiveCounselDocCategory\(String\(data\.category \|\| "案件文档全部"\)\)/);
+  assert.match(source, /const targetCategory = String\(data\.category \|\| "案件文档全部"\)/);
+  assert.match(source, /setActiveCounselDocCategory\(targetCategory\)/);
 });

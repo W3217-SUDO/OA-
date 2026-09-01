@@ -11,7 +11,7 @@ test("document toolbar exposes every legacy generation operation", () => {
     "生成二审所函(我方上诉)", "生成二审所函(对方上诉)", "生成执行所函", "生成身份证明",
     "生成结算提成表", "生成代收代付赔偿款申请单",
   ]) assert.ok(source.includes(label), label);
-  assert.match(source, /<Button>生成操作<\/Button>/);
+  assert.match(source, />生成操作<\/Button>/);
 });
 
 test("more operations expose delete, seal and document-folder move", () => {

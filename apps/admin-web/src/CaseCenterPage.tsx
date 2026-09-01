@@ -967,6 +967,8 @@ export default function CaseCenterPage({
   const [counselDetailCustomerTaskTotal, setCounselDetailCustomerTaskTotal] = useState(0);
   const [counselDetailCustomerTaskPages, setCounselDetailCustomerTaskPages] = useState(0);
   const [counselDetailAttachments, setCounselDetailAttachments] = useState<AttachmentRow[]>([]);
+  const [generatingCaseDocumentType, setGeneratingCaseDocumentType] = useState("");
+  const [caseDocumentGenerationMenuOpen, setCaseDocumentGenerationMenuOpen] = useState(false);
   const [counselDetailCustomerAttachments, setCounselDetailCustomerAttachments] = useState<AttachmentRow[]>([]);
   const [counselDetailContractAttachments, setCounselDetailContractAttachments] = useState<AttachmentRow[]>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
@@ -2751,14 +2753,25 @@ export default function CaseCenterPage({
     }catch(error:any){message.error(error?.response?.data?.detail||"批量新增费用失败");}
   };
   const generateCaseDocument = async (documentType: string) => {
-    if (!viewingCounselCase) return;
+    if (!viewingCounselCase || generatingCaseDocumentType) return;
+    setGeneratingCaseDocumentType(documentType);
     try {
       const { data } = await api.post(`/cases/${viewingCounselCase.id}/documents/${documentType}`);
+      const targetCategory = String(data.category || "案件文档全部");
+      setCounselDetailAttachments((current) => [data, ...current.filter((item) => item.id !== data.id)]);
+      setExpandedCounselDocGroups((current) => ({ ...current, "案件文档全部": true }));
+      setActiveCounselDocCategory(targetCategory);
       message.success(`${data.original_name || "案件文书"}已生成并归入案件附件`);
-      setAttachments((current) => [data, ...current.filter((item) => item.id !== data.id)]);
-      setActiveCounselDocCategory(String(data.category || "案件文档全部"));
-      await openCounselDetail(viewingCounselCase);
-    } catch (error: any) { message.error(error?.response?.data?.detail || "案件文书生成失败"); }
+      try {
+        await refreshCounselDetailAttachments(viewingCounselCase.id);
+      } catch {
+        message.warning("文书已生成，但附件列表刷新失败，请稍后刷新页面");
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文书生成失败");
+    } finally {
+      setGeneratingCaseDocumentType("");
+    }
   };
   const openCounselAttachmentSeal = async (item: AttachmentRow) => {
     if (!viewingCounselCase) return;
@@ -5904,7 +5917,31 @@ export default function CaseCenterPage({
                   <Select value={counselUploadCategory} disabled={isAiSpaceFolder} style={{width:180}} onChange={setCounselUploadCategory} options={activeCounselUploadCategoryOptions}/>
                   {counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button icon={<FileWordOutlined/>} onClick={openCreateAiDraft}>新建 Word 文档</Button>}
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
-                  {counselDetailCapabilities.can_generate_document && <Dropdown trigger={["click"]} menu={{items:getLegacyCaseDocumentGenerationItems().map(([key,label])=>({key,label})),onClick:({key})=>void generateCaseDocument(key)}}><Button>生成操作</Button></Dropdown>}
+                  {counselDetailCapabilities.can_generate_document && <div className="case-document-generation-menu">
+                    <Button
+                      loading={Boolean(generatingCaseDocumentType)}
+                      aria-haspopup="menu"
+                      aria-expanded={caseDocumentGenerationMenuOpen}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setCaseDocumentGenerationMenuOpen((open) => !open);
+                      }}
+                    >生成操作</Button>
+                    {caseDocumentGenerationMenuOpen && <div className="case-document-generation-menu-panel" role="menu" onClick={(event) => event.stopPropagation()}>
+                      {getLegacyCaseDocumentGenerationItems().map(([key, label]) => <button
+                        key={key}
+                        type="button"
+                        role="menuitem"
+                        disabled={Boolean(generatingCaseDocumentType)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setCaseDocumentGenerationMenuOpen(false);
+                          void generateCaseDocument(key);
+                        }}
+                      >{label}</button>)}
+                    </div>}
+                  </div>}
                   {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
