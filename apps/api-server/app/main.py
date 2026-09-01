@@ -3680,6 +3680,28 @@ def _contract_customer_manager_values(
     )))
 
 
+def _contract_investigation_source_data(
+    contract: BusinessRecord,
+    customer: BusinessRecord | None,
+) -> dict[str, object]:
+    """Build immutable source identifiers for a contract-created investigation."""
+    contract_data = contract.data or {}
+    return {
+        "contract_id": contract.id,
+        "contract_record_id": contract.id,
+        "contract_no": contract.serial_no,
+        "contract_name": contract.title,
+        "customer_id": customer.id if customer else _positive_record_id(
+            contract_data.get("customer_id") or contract_data.get("customer_record_id")
+        ) or None,
+        "customer_record_id": customer.id if customer else _positive_record_id(
+            contract_data.get("customer_id") or contract_data.get("customer_record_id")
+        ) or None,
+        "customer_no": customer.serial_no if customer else str(contract_data.get("customer_no") or ""),
+        "customer_name": customer.title if customer else contract.customer,
+    }
+
+
 def _positive_record_id(value: object) -> int:
     try:
         parsed = int(value or 0)
@@ -11630,6 +11652,15 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
     ))
     if duplicate:
         raise HTTPException(status_code=409, detail=f"该合同已有同名调查任务 {duplicate.serial_no}")
+    contract_context = await _contract_customer_projection_context([contract], db)
+    customer, _ = _customer_reference_from_maps(
+        contract.customer,
+        contract.data or {},
+        contract_context["customers_by_id"],
+        contract_context["customers_by_no"],
+        contract_context["customers_by_name"],
+    )
+    source_data = _contract_investigation_source_data(contract, customer)
     serial = f"DC{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:4].upper()}"
     investigation = BusinessRecord(
         module="investigation",
@@ -11641,8 +11672,7 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
         department=user.department if user else contract.department,
         description=body.description,
         data={
-            "contract_id": contract.id,
-            "contract_no": contract.serial_no,
+            **source_data,
             "authorized_from": str(body.authorized_from),
             "authorized_to": str(body.authorized_to),
             "region": body.region.strip(),
@@ -11652,8 +11682,8 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
             "publisher": identity["username"],
             "assigner": identity["username"] if owner else "",
             "source_owner": (contract.data or {}).get("source_person") or contract.owner,
-            "customer_managers": list((contract.data or {}).get("customer_managers") or [contract.owner]),
-            "customer_manager": "、".join(list((contract.data or {}).get("customer_managers") or [contract.owner])),
+            "customer_managers": _contract_customer_manager_values(contract, customer),
+            "customer_manager": "、".join(_contract_customer_manager_values(contract, customer)),
         },
     )
     db.add(investigation)

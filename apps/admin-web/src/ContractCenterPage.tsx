@@ -2585,6 +2585,23 @@ export default function ContractCenterPage({
         onCancel={() => setInvestigating(null)}
       >
         <Form form={investigationForm} layout="vertical">
+          <Descriptions
+            bordered
+            size="small"
+            column={1}
+            title="来源合同与客户"
+            style={{ marginBottom: 16 }}
+          >
+            <Descriptions.Item label="绑定客户">
+              {investigating?.data.customer_name || investigating?.customer || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="合同编号">
+              {investigating?.serial_no || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="合同名称">
+              {investigating?.title || "—"}
+            </Descriptions.Item>
+          </Descriptions>
           <Form.Item label="调查任务名称" name="title" rules={[{ required: true, min: 2 }]}>
             <Input />
           </Form.Item>
