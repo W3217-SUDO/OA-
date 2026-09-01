@@ -9281,6 +9281,11 @@ async def list_records(
         requested_statuses = [value.strip() for value in statuses.split(",") if value.strip()]
         if requested_statuses:
             conditions.append(BusinessRecord.status.in_(requested_statuses))
+    if module == "clue" and scope == "mine":
+        # "My investigation clues" is an actor projection for every role,
+        # including administrators.  Elevated data access must not turn a
+        # personal queue into the company-wide clue list.
+        conditions.append(func.lower(BusinessRecord.owner) == identity["username"].lower())
     if module in {"investigation", "task"} and investigation_view:
         publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
         legacy_publisher_missing = or_(

@@ -569,8 +569,9 @@ export default function InvestigationCenterPage({
                 module,
                 page_size: 100,
                 scope:
-                  initialTab.startsWith("investigation-task-") &&
-                  !initialTab.startsWith("investigation-task-sub-")
+                  initialTab.includes("-my-") ||
+                  (initialTab.startsWith("investigation-task-") &&
+                  !initialTab.startsWith("investigation-task-sub-"))
                     ? "mine"
                     : "all",
                 investigation_view: investigationListView(initialTab),
@@ -707,19 +708,12 @@ export default function InvestigationCenterPage({
     }
     if (
       initialTab.includes("-my-") &&
-      profile.role !== "admin" &&
       Boolean(profile.username)
     ) {
-      const names = [profile.username, profile.display_name].filter(Boolean);
-      result = result.filter((row) =>
-        names.includes(
-          String(
-            row.data.publisher ||
-              row.data.imported_by ||
-              row.owner ||
-              "",
-          ),
-        ),
+      result = result.filter(
+        (row) =>
+          String(row.owner || "").toLocaleLowerCase() ===
+          String(profile.username).toLocaleLowerCase(),
       );
     }
     if (initialTab.endsWith("-no-fee"))
