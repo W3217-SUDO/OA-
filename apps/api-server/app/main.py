@@ -11387,10 +11387,11 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     await _require_seal_base_action(identity, db, "apply")
     sync_seal_requested = bool((contract.data or {}).get("sync_seal"))
     sync_seal_draft = contract.status == "审批中" and sync_seal_requested
-    # Pending contracts retain an explicitly requested sync seal application as a
-    # draft until the final contract approval submits it automatically.
+    # Contract approval and seal approval are distinct channels.  An explicitly
+    # submitted sync-seal request must enter the seal approver's queue at once;
+    # only an explicit save-without-submit remains a draft.
     direct_submission = contract.status in {CONTRACT_APPROVED_STATUS, "已完成"} and body.submit
-    submitted = direct_submission
+    submitted = direct_submission or (sync_seal_draft and body.submit)
     if contract.status == "审批中" and not sync_seal_draft:
         raise HTTPException(status_code=409, detail="当前合同状态不支持提交用印审批")
     if body.submit and not (sync_seal_draft or direct_submission):
@@ -11466,6 +11467,7 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
             "seal_application_no": seal.serial_no,
             "seal_requested_at": datetime.now().isoformat(timespec="seconds"),
             "sync_seal": sync_seal_requested,
+            **({"sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"), "sync_seal_file_required": False} if submitted and sync_seal_requested else {}),
         }
         db.add_all([
             WorkflowEvent(record_id=seal.id, action="创建合同用印申请并提交审批" if submitted else "创建合同用印申请", to_status=seal_status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}｜{asset.name}｜{body.copies}份"),

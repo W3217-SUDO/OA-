@@ -44,11 +44,11 @@ test("I19 customer-created contracts retain the legacy four-step workflow", () =
   );
 });
 
-test("I19 sync-seal intent saves a draft while contract approval is pending", () => {
+test("I19 sync-seal intent can submit while contract approval is pending", () => {
   assert.match(
     contractSource,
-    /已选择同步用印[\s\S]{0,180}请保存用印资料为草稿；合同审批通过后，系统会自动提交用印审批。/,
-    "the customer submit flow must preserve the chosen sync intent without submitting seal approval early",
+    /已选择同步用印[\s\S]{0,220}立即提交同步用印；合同审批与用印审批将分别流转。/,
+    "the customer submit flow must preserve the chosen sync intent and expose its independent submission",
   );
 });
 
@@ -71,7 +71,7 @@ test("I19 submit success returns to contract detail, not approval or seal workbe
   assert.match(
     submitWizardSource,
     /if \(syncSealRequested\) \{[\s\S]*sealForm\.setFieldsValue\([\s\S]*submit: false,[\s\S]*setWizardStep\(3\)/,
-    "the sync-seal choice must initialize a draft-only seal form until contract approval completes",
+    "the sync-seal choice initializes the form before the user explicitly submits its independent approval",
   );
 });
 
@@ -116,8 +116,8 @@ test("I19 independent seal setup supports pending approval and approved contract
   );
   assert.match(
     createSealApplicationSource,
-    /const deferSyncSealSubmission = wizardDraft\.status === "审批中" && Boolean\(wizardDraft\.data\.sync_seal\);/,
-    "a selected sync flow must persist the seal application as a draft for the backend approval handoff",
+    /const submitApplication = forcedSubmit \?\? Boolean\(submitFromForm\);/,
+    "a selected sync flow must honor the user's explicit submit action",
   );
   assert.match(
     createSealApplicationSource,

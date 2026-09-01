@@ -6,16 +6,16 @@ SOURCE = Path(__file__).with_name("app") / "main.py"
 
 
 class ContractSyncSealPendingContractTest(unittest.TestCase):
-    def test_pending_contract_sync_seal_remains_draft_until_final_contract_approval(self):
+    def test_pending_contract_sync_seal_submits_to_its_own_approval_channel(self):
         source = SOURCE.read_text(encoding="utf-8")
         start = source.index("async def create_contract_seal_application")
         end = source.index("async def create_contract_investigation", start)
         branch = source[start:end]
         self.assertIn('sync_seal_requested = bool((contract.data or {}).get("sync_seal"))', branch)
         self.assertIn('sync_seal_draft = contract.status == "审批中" and sync_seal_requested', branch)
-        self.assertIn("submitted = direct_submission", branch)
+        self.assertIn("submitted = direct_submission or (sync_seal_draft and body.submit)", branch)
         self.assertIn('seal_status = "待审批" if submitted else "草稿"', branch)
-        self.assertNotIn("sync_submission", branch)
+        self.assertIn('"approver": approver.username', branch)
 
     def test_sync_seal_enters_my_pending_after_contract_approval_without_file_gate(self):
         source = SOURCE.read_text(encoding="utf-8")

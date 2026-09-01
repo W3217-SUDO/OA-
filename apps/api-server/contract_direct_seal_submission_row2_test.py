@@ -18,7 +18,7 @@ class ContractDirectSealSubmissionRow2Test(unittest.TestCase):
         )
         self.assertIn('sync_seal_requested = bool((contract.data or {}).get("sync_seal"))', branch)
         self.assertIn('sync_seal_draft = contract.status == "审批中" and sync_seal_requested', branch)
-        self.assertIn("submitted = direct_submission", branch)
+        self.assertIn("submitted = direct_submission or (sync_seal_draft and body.submit)", branch)
         self.assertIn('seal_status = "待审批" if submitted else "草稿"', branch)
         self.assertIn('"sync_seal": sync_seal_requested', branch)
         self.assertNotIn("sync_submission", branch)
