@@ -1649,7 +1649,9 @@ export default function ContractCenterPage({
       },
     });
   };
+  const [investigationError, setInvestigationError] = useState("");
   const openInvestigation = async (r: Contract) => {
+    setInvestigationError("");
     investigationForm.resetFields();
     setSelectedInvestigationRegions([]);
     try {
@@ -1688,12 +1690,15 @@ export default function ContractCenterPage({
         setContractFile(null);
       }
       message.success(`调查任务 ${data.serial_no} 已创建`);
+      setInvestigationError("");
       setInvestigating(null);
       investigationForm.resetFields();
       setSelectedRowKeys([]);
       onNavigate?.("investigation-task-published");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "调查任务创建失败");
+      const detail = error?.response?.data?.detail || "调查任务创建失败";
+      setInvestigationError(detail);
+      message.error(detail);
     }
   };
   const openContractPayment = async (contract: Contract) => {
@@ -2582,8 +2587,9 @@ export default function ContractCenterPage({
         okText="确认创建"
         cancelText="取消"
         onOk={createInvestigation}
-        onCancel={() => setInvestigating(null)}
+        onCancel={() => { setInvestigationError(""); setInvestigating(null); }}
       >
+        {investigationError && <Alert type="error" showIcon message={investigationError} style={{ marginBottom: 12 }} />}
         <Form form={investigationForm} layout="vertical">
           <Descriptions
             bordered

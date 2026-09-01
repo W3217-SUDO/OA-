@@ -18395,7 +18395,22 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             case_data = case_record.data or {} if case_record else {}
             linked_contract_id = int(case_data.get("contract_id") or case_data.get("contract_record_id") or 0)
             linked_contract_no = str(case_data.get("contract_no") or "").strip()
-            if not case_record or not (linked_contract_id == contract.id or (not linked_contract_id and linked_contract_no == contract.serial_no)):
+            case_contract_matches = linked_contract_id == contract.id or (
+                not linked_contract_id and linked_contract_no == contract.serial_no
+            )
+            fee_data = fee_record.data or {} if fee_record else {}
+            fee_case_id = int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)
+            fee_case_no = str(fee_data.get("case_no") or "").strip()
+            fee_contract_id = int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or 0)
+            fee_contract_no = str(fee_data.get("contract_no") or "").strip()
+            legacy_fee_relation_matches = bool(
+                case_record
+                and not linked_contract_id
+                and not linked_contract_no
+                and (fee_case_id == case_record.id or (not fee_case_id and fee_case_no == case_record.serial_no))
+                and (fee_contract_id == contract.id or (not fee_contract_id and fee_contract_no == contract.serial_no))
+            )
+            if not case_record or not (case_contract_matches or legacy_fee_relation_matches):
                 raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 不属于所选合同")
             if not _record_belongs_to_customer(case_record, claimed_customer_record, item.claimed_customer):
                 raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 的客户与到账认领客户不一致")

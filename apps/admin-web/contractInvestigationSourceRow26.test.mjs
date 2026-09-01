@@ -14,4 +14,5 @@ test("contract investigation modal exposes the immutable customer and contract s
   assert.match(modal, /label="绑定客户"[\s\S]*investigating\?\.data\.customer_name[\s\S]*investigating\?\.customer/);
   assert.match(modal, /label="合同编号"[\s\S]*investigating\?\.serial_no/);
   assert.match(modal, /label="合同名称"[\s\S]*investigating\?\.title/);
+  assert.match(modal, /investigationError[\s\S]*<Alert type="error" showIcon message=\{investigationError\}/);
 });

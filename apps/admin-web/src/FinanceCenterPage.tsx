@@ -1412,6 +1412,7 @@ export default function FinanceCenterPage({
   const [allocationStage, setAllocationStage] = useState("");
   const [allocationFeeType, setAllocationFeeType] = useState("");
   const [allocationComment, setAllocationComment] = useState("");
+  const [allocationValidationError, setAllocationValidationError] = useState("");
   const [incomingAllocationTarget, setIncomingAllocationTarget] =
     useState<IncomingPayment | null>(null);
   const [incomingDetailTarget, setIncomingDetailTarget] =
@@ -2565,6 +2566,7 @@ export default function FinanceCenterPage({
     setAllocationStage("");
     setAllocationFeeType("");
     setAllocationComment("");
+    setAllocationValidationError("");
     try {
       const response = await api.get(
         `/finance/incoming-payments/${payment.id}/allocation-candidates`,
@@ -2600,7 +2602,9 @@ export default function FinanceCenterPage({
     if (!allocateTarget) return;
     const selected = allocationCandidates.filter((row) => selectedAllocationKeys.includes(row.key));
     if (!selected.length) {
-      message.warning("请至少选择一笔待回款案件费用");
+      const detail = "请至少选择一笔待回款案件费用";
+      setAllocationValidationError(detail);
+      message.warning(detail);
       return;
     }
     const allocations = selected.map((row) => ({
@@ -2617,15 +2621,20 @@ export default function FinanceCenterPage({
       }],
     }));
     if (allocations.some((entry) => entry.amount <= 0)) {
-      message.warning("所选费用的本次回款金额必须大于 0");
+      const detail = "所选费用的本次回款金额必须大于 0";
+      setAllocationValidationError(detail);
+      message.warning(detail);
       return;
     }
     const total = allocations.reduce((sum, entry) => sum + entry.amount, 0);
     if (allocateTarget.remaining_amount != null && total > allocateTarget.remaining_amount + 0.001) {
-      message.warning(`本次分配合计不能超过未分配余额 ${money(allocateTarget.remaining_amount)}`);
+      const detail = `本次分配合计不能超过未分配余额 ${money(allocateTarget.remaining_amount)}`;
+      setAllocationValidationError(detail);
+      message.warning(detail);
       return;
     }
     try {
+      setAllocationValidationError("");
       await api.post(
         `/finance/incoming-payments/${allocateTarget.id}/allocate`,
         {
@@ -2637,9 +2646,12 @@ export default function FinanceCenterPage({
       setAllocateTarget(null);
       setAllocationCandidates([]);
       setSelectedAllocationKeys([]);
+      setAllocationValidationError("");
       load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "回款分配失败");
+      const detail = error?.response?.data?.detail || "回款分配失败";
+      setAllocationValidationError(detail);
+      message.error(detail);
     }
   };
   const deleteIncoming = async (row: IncomingPayment) => {
@@ -11888,8 +11900,17 @@ export default function FinanceCenterPage({
           setAllocateTarget(null);
           setAllocationCandidates([]);
           setSelectedAllocationKeys([]);
+          setAllocationValidationError("");
         }}
       >
+        {allocationValidationError && (
+          <Alert
+            type="error"
+            showIcon
+            message={allocationValidationError}
+            style={{ marginBottom: 12 }}
+          />
+        )}
         <section className="finance-allocation-section">
           <div className="finance-allocation-heading">回款信息</div>
           <Descriptions size="small" column={5} colon={false}>

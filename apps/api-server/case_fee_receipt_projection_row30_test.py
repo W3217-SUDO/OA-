@@ -33,7 +33,9 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
             customer = BusinessRecord(module="customer", serial_no="ROW30-CUSTOMER", title="Row 30 Customer", customer="Row 30 Customer", status="active", owner=ADMIN["username"], department=ADMIN["department"])
             contract = BusinessRecord(module="contract", serial_no="ROW30-CONTRACT", title="Row 30 Contract", customer=customer.title, status="approved", owner=ADMIN["username"], department=ADMIN["department"])
             db.add_all([customer, contract]); await db.flush()
-            case_record = BusinessRecord(module="case", serial_no="ROW30-CASE", title="Row 30 Case", customer=customer.title, status="active", owner=ADMIN["username"], department=ADMIN["department"], data={"contract_id": contract.id, "contract_no": contract.serial_no})
+            # Legacy cases can predate the contract relation while a newly entered
+            # fee carries both stable case and contract ids.
+            case_record = BusinessRecord(module="case", serial_no="ROW30-CASE", title="Row 30 Case", customer=customer.title, status="active", owner=ADMIN["username"], department=ADMIN["department"], data={})
             db.add(case_record); await db.flush()
             fee = BusinessRecord(module="finance", serial_no="ROW30-FEE", title="Row 30 Fee", customer=customer.title, status="pending", owner=ADMIN["username"], department=ADMIN["department"], data={"amount": 8400, "fee_type": "court fee", "case_id": case_record.id, "case_no": case_record.serial_no, "contract_id": contract.id, "contract_no": contract.serial_no})
             payment = IncomingPayment(receipt_no="ROW30-RECEIPT", received_date=date(2026, 8, 28), amount=8400, payer_name="Row 30 Payer", bank_reference="ROW30-BANK", status="待分配", claimed_customer=customer.title, claimant=ADMIN["username"], operator=ADMIN["username"])

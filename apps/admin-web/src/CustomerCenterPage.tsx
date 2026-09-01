@@ -2400,7 +2400,8 @@ export default function CustomerCenterPage({
       <Drawer
         size={720}
         loading={detailLoading}
-        open={Boolean(contacts) && initialView !== "customer-new" && !detailPageOpen}
+        destroyOnHidden
+        open={Boolean(contacts) && !editing && initialView !== "customer-new" && !detailPageOpen}
         title={`客户详情：${contacts?.title || ""}`}
         onClose={() => setContacts(null)}
       >
