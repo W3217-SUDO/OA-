@@ -5399,7 +5399,7 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
         ("customer", "新建"): "record.customer.create",
         ("customer", "编辑"): "record.customer.update",
     }.get((module, action))
-    if action_key and action_key not in permission.get("action_keys", []):
+    if action_key and "*" not in permission.get("action_keys", []) and action_key not in permission.get("action_keys", []):
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的动作权限")
 
 
@@ -5654,12 +5654,12 @@ async def _resolve_active_customer_managers(values: list[object], db: AsyncSessi
 
 
 def _prioritize_new_customer_managers(existing: list[object], requested: list[str]) -> list[str]:
-    """Insert newly selected managers at the front, newest selection first."""
+    """Preserve the caller's newest-first priority block ahead of retained managers."""
     existing_names = list(dict.fromkeys(str(value or "").strip() for value in existing if str(value or "").strip()))
     requested_names = list(dict.fromkeys(requested))
     added = [manager for manager in requested_names if manager not in existing_names]
     retained = [manager for manager in existing_names if manager in requested_names]
-    return [*reversed(added), *retained]
+    return [*added, *retained]
 
 
 async def _resolve_active_case_people(values: list[object], db: AsyncSession, *, field_name: str) -> tuple[list[str], list[str]]:
@@ -6514,7 +6514,11 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
             await _ensure_system_user_lifecycle_safe(user, db, action="停用")
         user.is_active = body.is_active
     if body.display_name is not None:
-        user.display_name = body.display_name.strip()
+        user.display_name = await _require_unique_hr_display_name(
+            body.display_name,
+            db,
+            linked_username=user.username,
+        )
     if body.department is not None:
         user.department = body.department.strip()
     if body.password is not None:

@@ -76,7 +76,9 @@ class JobRolePermissionPolicyContractTest(unittest.IsolatedAsyncioTestCase):
             payload = await _user_permission_payload(admin, db)
             self.assertEqual(payload["action_keys"], ["*"])
             self.assertEqual(set(payload["field_keys"]), set(FIELD_KEYS))
-            await _require_hr_employee_action({"username": "admin", "role": "admin", "role_ids": ["admin"]}, db, "hr.employee.create", "新建")
+            identity = {"username": "admin", "role": "admin", "role_ids": ["admin"]}
+            await _require_hr_employee_action(identity, db, "hr.employee.create", "新建")
+            await _require_record_module_menu("customer", identity, db, action="编辑")
 
 
 if __name__ == "__main__":

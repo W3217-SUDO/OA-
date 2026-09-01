@@ -25,5 +25,14 @@ class HrDisplayNameSelfEditRow9Test(unittest.TestCase):
         self.assertEqual(branch.count('detail="中文姓名已存在"'), 2)
 
 
+    def test_account_only_employee_update_uses_the_same_uniqueness_gate(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        start = source.index("async def update_system_user(")
+        end = source.index('@app.get(f"{settings.api_prefix}/system/users/{{user_id}}/permissions")', start)
+        branch = source[start:end]
+        self.assertIn("await _require_unique_hr_display_name(", branch)
+        self.assertIn("linked_username=user.username", branch)
+
+
 if __name__ == "__main__":
     unittest.main()
