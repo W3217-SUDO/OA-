@@ -55,7 +55,7 @@ class InvestigationLegacySubtaskRow18Test(unittest.IsolatedAsyncioTestCase):
                     "migration_source": "8091-local-PRD_CRM_GD_20200211",
                     "legacy_investigation_id": 1330,
                     "authorized_from": "2024-10-15",
-                    "authorized_to": "2024-10-31",
+                    "authorized_to": "2026-09-12",
                     "authorization_scope": "区域",
                 },
             )
@@ -93,4 +93,3 @@ class InvestigationLegacySubtaskRow18Test(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

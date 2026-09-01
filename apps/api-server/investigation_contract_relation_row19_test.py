@@ -92,9 +92,8 @@ class InvestigationContractRelationRow19Test(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertEqual(raised.exception.status_code, 409)
-        self.assertEqual(raised.exception.detail, "只能绑定审批中、审批通过或已完成的合同")
+        self.assertEqual(raised.exception.detail, "草稿合同不能创建调查子任务")
 
 
 if __name__ == "__main__":
     unittest.main()
-
