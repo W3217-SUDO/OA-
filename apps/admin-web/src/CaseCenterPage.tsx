@@ -6,6 +6,7 @@ import {
   Card,
   Checkbox,
   DatePicker,
+  Descriptions,
   Dropdown,
   Drawer,
   Form,
@@ -60,7 +61,6 @@ import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailN
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
-import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { rememberIncomingPaymentDetailTarget } from "./incomingPaymentDetailNavigation";
 import { readStoredGlobalCaseSearchContext } from "./globalCaseSearchParity.mjs";
@@ -622,6 +622,16 @@ const normalizeCaseTaskPageState = (
   return { items, total, page, pageSize, pages };
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean};
+type CaseClueEvidenceRow = CaseRow & {
+  files: AttachmentRow[];
+  can_edit: boolean;
+  can_delete: boolean;
+};
+type CaseClueWorkspace = {
+  clue: CaseRow;
+  clue_files: AttachmentRow[];
+  evidence: CaseClueEvidenceRow[];
+};
 
 const isAiWordGenerationRequest = (value: string) =>
   /(?:生成|起草|新建|制作|编写|撰写|整理).{0,24}(?:word|docx|文档|起诉状|答辩状|代理词|法律意见书|律师函|申请书|合同|函件)/i.test(value)
@@ -959,6 +969,10 @@ export default function CaseCenterPage({
   const [counselDetailCustomerTasks, setCounselDetailCustomerTasks] = useState<TaskRow[]>([]);
   const [counselDetailFinance, setCounselDetailFinance] = useState<CaseRow[]>([]);
   const [counselDetailClues, setCounselDetailClues] = useState<CaseRow[]>([]);
+  const [viewingCaseClue, setViewingCaseClue] = useState<CaseClueWorkspace | null>(null);
+  const [caseClueLoading, setCaseClueLoading] = useState(false);
+  const [selectedCaseClueEvidenceId, setSelectedCaseClueEvidenceId] = useState<number | null>(null);
+  const [editingCaseClueEvidence, setEditingCaseClueEvidence] = useState<CaseClueEvidenceRow | null>(null);
   const [counselDetailTaskPage, setCounselDetailTaskPage] = useState(CASE_TASK_DEFAULT_PAGE);
   const [counselDetailTaskPageSize, setCounselDetailTaskPageSize] = useState(CASE_TASK_DEFAULT_PAGE_SIZE);
   const [counselDetailTaskTotal, setCounselDetailTaskTotal] = useState(0);
@@ -1175,6 +1189,7 @@ export default function CaseCenterPage({
   const [mergeCaseForm] = Form.useForm();
   const [notaryInfoForm] = Form.useForm();
   const [settlementAmountForm] = Form.useForm();
+  const [caseClueEvidenceForm] = Form.useForm();
   const openCreateDefendantEditor = () => {
     createDefendantEditorForm.setFieldsValue({ defendants: createForm.getFieldValue("defendants") || [] });
     setCreateDefendantEditorOpen(true);
@@ -2597,14 +2612,53 @@ export default function CaseCenterPage({
     }
     onNavigate?.("finance-invoice-company");
   };
-  const openRelatedClue = (target: { id?: number; serial_no?: unknown }) => {
+  const openRelatedClue = async (target: { id?: number; serial_no?: unknown }) => {
     const id = Number(target.id || 0) || undefined;
-    const serialNo = String(target.serial_no || "").trim();
-    if (!rememberInvestigationDetailTarget({ id, serial_no: serialNo || undefined, module: "clue" })) {
+    if (!id) {
       message.warning("当前案件未关联调查线索");
       return;
     }
-    onNavigate?.("clue-company-draft");
+    setCaseClueLoading(true);
+    try {
+      const { data } = await api.get(`/investigations/clues/${id}/workspace`);
+      setViewingCaseClue(data);
+      setSelectedCaseClueEvidenceId(null);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "线索取证信息加载失败");
+    } finally {
+      setCaseClueLoading(false);
+    }
+  };
+  const selectedCaseClueEvidence = viewingCaseClue?.evidence.find((item) => item.id === selectedCaseClueEvidenceId) || null;
+  const openCaseClueEvidenceEditor = () => {
+    if (!selectedCaseClueEvidence) return message.warning("请先选择一条取证信息");
+    if (!selectedCaseClueEvidence.can_edit) return message.warning("当前账号无权修改该取证信息");
+    caseClueEvidenceForm.setFieldsValue({
+      notary_institution: selectedCaseClueEvidence.data.notary_institution || "",
+      certificate_no: selectedCaseClueEvidence.data.notarization_no || selectedCaseClueEvidence.data.certificate_no || "",
+      collected_at: selectedCaseClueEvidence.data.collected_at ? dayjs(selectedCaseClueEvidence.data.collected_at) : undefined,
+      invoice_no: selectedCaseClueEvidence.data.invoice_no || "",
+      storage_location: selectedCaseClueEvidence.data.storage_location || "",
+      evidence_status: selectedCaseClueEvidence.data.storage_state || selectedCaseClueEvidence.data.evidence_status || "未入库",
+    });
+    setEditingCaseClueEvidence(selectedCaseClueEvidence);
+  };
+  const saveCaseClueEvidence = async () => {
+    if (!editingCaseClueEvidence || !viewingCaseClue) return;
+    try {
+      const values = await caseClueEvidenceForm.validateFields();
+      await api.put(`/investigations/evidence/${editingCaseClueEvidence.id}`, {
+        ...values,
+        collected_at: values.collected_at ? formatRequiredDate(values.collected_at, "取证时间") : null,
+      });
+      const { data } = await api.get(`/investigations/clues/${viewingCaseClue.clue.id}/workspace`);
+      setViewingCaseClue(data);
+      setEditingCaseClueEvidence(null);
+      caseClueEvidenceForm.resetFields();
+      message.success("取证信息已修改");
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "取证信息修改失败");
+    }
   };
   const openClueConversion = () => {
     clueConversionForm.resetFields();
@@ -6543,6 +6597,94 @@ export default function CaseCenterPage({
           />
         </Form>
       </Drawer>
+      <Drawer
+        width={980}
+        open={Boolean(viewingCaseClue)}
+        title={`线索信息：${viewingCaseClue?.clue.serial_no || ""}`}
+        onClose={() => {
+          setViewingCaseClue(null);
+          setSelectedCaseClueEvidenceId(null);
+        }}
+        destroyOnHidden
+      >
+        <Descriptions
+          bordered
+          size="small"
+          column={2}
+          items={viewingCaseClue ? [
+            { key: "serial", label: "线索编号", children: viewingCaseClue.clue.serial_no || "—" },
+            { key: "status", label: "线索状态", children: viewingCaseClue.clue.status || "—" },
+            { key: "title", label: "线索名称", children: viewingCaseClue.clue.title || "—" },
+            { key: "customer", label: "权利人/客户", children: viewingCaseClue.clue.customer || "—" },
+            { key: "owner", label: "负责人", children: viewingCaseClue.clue.owner_display_name || viewingCaseClue.clue.owner || "—" },
+            { key: "description", label: "线索说明", children: viewingCaseClue.clue.description || "—", span: 2 },
+          ] : []}
+        />
+        <Card size="small" title="线索文件" style={{ marginTop: 16 }}>
+          <Table<AttachmentRow>
+            rowKey="id"
+            size="small"
+            loading={caseClueLoading}
+            pagination={false}
+            dataSource={viewingCaseClue?.clue_files || []}
+            columns={[
+              { title: "上传人", width: 120, render: (_, row) => row.uploader_display_name || row.uploader || "—" },
+              { title: "文件名称", dataIndex: "original_name" },
+              { title: "文档日期", width: 165, render: (_, row) => String(row.created_at || "").replace("T", " ").slice(0, 19) || "—" },
+              { title: "操作", width: 80, render: (_, row) => <Button type="link" onClick={() => void downloadCounselDetailAttachment(row)}>下载</Button> },
+            ]}
+          />
+        </Card>
+        <Card size="small" title="取证信息" style={{ marginTop: 16 }}>
+          <Table<CaseClueEvidenceRow>
+            rowKey="id"
+            size="small"
+            loading={caseClueLoading}
+            pagination={false}
+            rowSelection={{
+              type: "radio",
+              selectedRowKeys: selectedCaseClueEvidenceId ? [selectedCaseClueEvidenceId] : [],
+              onChange: (keys) => setSelectedCaseClueEvidenceId(Number(keys[0]) || null),
+            }}
+            dataSource={viewingCaseClue?.evidence || []}
+            scroll={{ x: 1180 }}
+            columns={[
+              { title: "取证编号", dataIndex: "serial_no", width: 170 },
+              { title: "取证时间", width: 120, render: (_, row) => row.data.collected_at || "—" },
+              { title: "取证机构", width: 180, render: (_, row) => row.data.notary_institution || "—" },
+              { title: "公证书号", width: 180, render: (_, row) => row.data.notarization_no || row.data.certificate_no || "—" },
+              { title: "发票号码", width: 140, render: (_, row) => row.data.invoice_no || "—" },
+              { title: "证物存放处", width: 180, render: (_, row) => row.data.storage_location || "—" },
+              { title: "证物状态", width: 110, render: (_, row) => row.data.storage_state || row.data.evidence_status || row.status || "—" },
+              { title: "证据文件", width: 90, render: (_, row) => row.files?.length || 0 },
+            ]}
+          />
+          <Space style={{ marginTop: 12 }}>
+            <Button disabled={!selectedCaseClueEvidence?.can_edit} onClick={openCaseClueEvidenceEditor}>修改</Button>
+          </Space>
+        </Card>
+      </Drawer>
+      <Modal
+        open={Boolean(editingCaseClueEvidence)}
+        title={`修改取证信息：${editingCaseClueEvidence?.serial_no || ""}`}
+        okText="确定"
+        cancelText="取消"
+        onOk={() => void saveCaseClueEvidence()}
+        onCancel={() => { setEditingCaseClueEvidence(null); caseClueEvidenceForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Form form={caseClueEvidenceForm} layout="vertical">
+          <Form.Item label="取证机构" name="notary_institution" rules={[{ required: true, message: "请输入取证机构" }]}><Input /></Form.Item>
+          <div className="form-grid">
+            <Form.Item label="公证书号" name="certificate_no"><Input /></Form.Item>
+            <Form.Item label="取证时间" name="collected_at" rules={[{ required: true, message: "请选择取证时间" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="发票号码" name="invoice_no"><Input /></Form.Item>
+            <Form.Item label="证物状态" name="evidence_status"><Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} /></Form.Item>
+          </div>
+          <Form.Item label="证物存放处" name="storage_location"><Input /></Form.Item>
+          <Form.Item label="证据文件"><Input disabled value={editingCaseClueEvidence?.files?.map((file) => file.original_name).join("、") || "无"} /></Form.Item>
+        </Form>
+      </Modal>
       <Modal
         width={900}
         open={Boolean(viewingFeeIncomingPayments)}
