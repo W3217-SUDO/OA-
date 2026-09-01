@@ -13,3 +13,4 @@
 - 测试：`investigationPublishedParentTaskRow13.test.mjs` 通过；`investigationPublishedFilter.test.mjs` 1/1 通过；`investigationAdminPublishedVisibility.test.mjs` 通过；`investigationTaskMenuParity.test.mjs` 2/2 通过。
 - 数据库补丁建议：无需数据库迁移；本行是查询模块、视图语义和按钮权限修复。若历史父调查缺少 publisher，后端继续按 owner 兼容即可。
 - 主会话 Chrome 验收：在包含原问题记录的数据环境，以发布者账号进入“调查大厅 → 我发布的调查任务 → 我的调查任务”，确认原父调查记录可见且仅有刷新/修改/上传调查资料；不得出现新增线索或关闭任务并生成报告。再进入“过期调查任务”重复核对；最后以调查员账号确认其子任务执行页仍保留调查员动作。
+- 补证（2026-09-01）：在隔离 SQLite 创建 `CODEX-901-R13-ACTIVE` 与 `CODEX-901-R13-OVERDUE` 发布者父调查样本，以发布者账号 `rqa2.publisher` 分别进入“我的调查任务”和“过期调查任务”。两页均为非空父调查列表，直接展示调查编号、权利人、权利类型、授权起止、调查区域、案源人、任务分配人；底部仅有“修改/上传调查资料”，无“新增线索/关闭任务并生成报告”。整页刷新后记录仍存在。证据：`local-new-system-publisher-active-refreshed.png`、`local-new-system-publisher-overdue-refreshed.png`。

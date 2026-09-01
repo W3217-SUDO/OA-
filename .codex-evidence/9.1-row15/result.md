@@ -6,7 +6,7 @@
 - 根因二：子任务请求字段实际是调查执行人，但表单沿用通用“负责人”标签，与该入口“分配调查员”的业务语义不一致。
 - 整改：下游创建统一要求合同持久存在、`module=contract` 且状态非草稿；调查子任务表单标签改为“调查员”，人员加载和后端有效人员校验保持不变。
 - Chrome 验收：页面 `http://127.0.0.1:15315` 请求命中隔离 API `127.0.0.1:18315`。四条原问题夹具逐一验证：`DC-R15-DRAFT` 保存时明确提示“草稿合同不能创建调查子任务”，无任务写入；`DC-R15-PENDING`、`DC-R15-APPROVED`、`DC-R15-DONE` 均能打开新增子任务，选择“调查员十五”并各成功保存一条隔离任务，页面提示“子任务已创建”且任务表回显调查员十五。三种允许状态页面字段标签均为“调查员”。
-- 浏览器证据：本记录逐项确认结果，以及隔离 API 的 `row15-api.out.log` / `row15-api.err.log`；原问题锚定截图保留为 `C_image433.png`、`C_image434.png`。
+- 浏览器证据：`local-new-system-contract-draft-blocked.png`、`local-new-system-contract-allowed-saved.png`，以及隔离 API 的 `row15-api.out.log` / `row15-api.err.log`；原问题锚定截图保留为 `C_image433.png`、`C_image434.png`。补验截图使用独立 Web 15490、API 18490、SQLite 和 `RQA-` 前缀夹具，由本行责任会话亲自操作 Google Chrome 生成并落盘。
 - owned files：`apps/api-server/app/main.py`、`apps/api-server/contract_downstream_draft_gate_row15_test.py`、`apps/admin-web/src/InvestigationCenterPage.tsx`、`apps/admin-web/investigationSubtaskContractGateRow15.test.mjs`、`.codex-evidence/9.1-row15/*`。
 - 聚焦测试：前端 `node investigationSubtaskContractGateRow15.test.mjs` 通过；后端 `python -m unittest contract_downstream_draft_gate_row15_test.py people_options_chinese_match_row14_test.py`，2/2 通过。
 - 数据库补丁建议：无需迁移。建议只读审计 investigation/case 的 `contract_id` 是否指向不存在的合同，输出孤儿关系清单后由业务确认恢复或解除，禁止自动猜测替换合同。

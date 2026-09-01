@@ -14,3 +14,4 @@
 - 测试：`python -m unittest people_options_chinese_match_row14_test.py task_case_acceptance_status_row12_test.py task_serial_number_row11_test.py` 3/3 通过；新增聚焦断言同时覆盖系统显示名搜索文本和任务负责人 HR 中文姓名回显；`git diff --check` 通过。
 - 数据库补丁建议：无需数据库结构迁移。上线前建议只读核对在职 HR 档案中的 `data.username/owner` 是否能唯一关联系统账号；无法唯一关联的档案应人工维护，不能猜测映射。
 - 主会话 Chrome 验收：在包含原问题数据的环境进入 `DC20260810140152FCE1` 新增子任务，分别以截图涉及人员的用户名、系统显示名和 HR 中文姓名搜索，确认候选集合一致；选择后保存，再刷新并回到原任务，负责人必须持续显示同一 HR 中文姓名。
+- 补证（2026-09-01）：在隔离父调查 `CODEX-901-R14-PARENT` 的新增子任务表单中，以用户名 `rqa2.fan` 搜索时下拉唯一显示 HR 中文姓名“范文玲”；选择后保存，整页刷新并重新打开父调查，顶部子任务列表负责人仍为“范文玲”。证据：`local-new-system-search-fanwenling.png`、`local-new-system-saved-refreshed-fanwenling.png`。
