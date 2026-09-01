@@ -3658,6 +3658,28 @@ def _contract_person_values(value: object) -> list[str]:
     return [item.strip() for item in re.split(r"[、,，;；]", str(value or "")) if item.strip()]
 
 
+def _contract_customer_manager_values(
+    contract: BusinessRecord,
+    customer: BusinessRecord | None,
+) -> list[str]:
+    """Use the linked customer's current manager roster for contract presentation.
+
+    Contract records retain the manager snapshot captured when they were created,
+    but list/detail responses must follow later customer-manager maintenance.  The
+    snapshot remains the fallback only when the customer relation cannot be
+    resolved, so this projection never rewrites historical contract data.
+    """
+    if customer:
+        customer_data = customer.data or {}
+        return list(dict.fromkeys(_contract_person_values(
+            customer_data.get("customer_managers") or [customer.owner]
+        )))
+    contract_data = contract.data or {}
+    return list(dict.fromkeys(_contract_person_values(
+        contract_data.get("customer_managers") or contract_data.get("customer_manager")
+    )))
+
+
 def _positive_record_id(value: object) -> int:
     try:
         parsed = int(value or 0)
@@ -3941,8 +3963,11 @@ async def _contract_customer_record_dict(
             data["customer_record_id"] = customer.id
             data["customer_no"] = customer.serial_no
             data["customer_name"] = customer.title
-            if not data.get("customer_managers") and not data.get("customer_manager"):
-                data["customer_managers"] = customer_data.get("customer_managers") or [customer.owner]
+            # A contract may contain an old creation-time manager snapshot.  The
+            # current linked customer is authoritative for list/detail display.
+            data["customer_managers"] = _contract_customer_manager_values(record, customer)
+            data.pop("customer_manager_display_names", None)
+            data.pop("customer_manager_display_name", None)
         data["customer_relation_status"] = relation_status
         data["signed_at"] = str(
             data.get("signed_at") or data.get("signed_date") or data.get("sign_date") or data.get("contract_date") or ""
@@ -4055,6 +4080,7 @@ async def _contract_customer_record_dicts(
     ))).all()) if investigation_ids else []
     investigations_by_id = {item.id: item for item in investigations}
 
+    contract_context = await _contract_customer_projection_context(records, db)
     usernames: set[str] = set()
     person_keys = (
         "source_person", "customer_source", "submitted_by", "current_approver", "customer_manager",
@@ -4070,11 +4096,22 @@ async def _contract_customer_record_dicts(
         usernames.update(value.lower() for value in _contract_person_values(data.get("customer_managers")))
         usernames.update(value.lower() for value in _contract_person_values(data.get("contact_accounts") or data.get("contact")))
         usernames.update(value.lower() for value in _record_person_usernames(record))
+        if record.module == "contract":
+            customer, _ = _customer_reference_from_maps(
+                record.customer,
+                data,
+                contract_context["customers_by_id"],
+                contract_context["customers_by_no"],
+                contract_context["customers_by_name"],
+            )
+            usernames.update(
+                value.lower()
+                for value in _contract_customer_manager_values(record, customer)
+            )
     usernames.discard("")
     users = list((await db.scalars(select(User).where(func.lower(User.username).in_(usernames)))).all()) if usernames else []
     names_by_username = {user.username.lower(): user.display_name for user in users}
     users_by_username = {user.username.lower(): user for user in users}
-    contract_context = await _contract_customer_projection_context(records, db)
     results = [
         await _contract_customer_record_dict(
             record, allowed_fields, db,
