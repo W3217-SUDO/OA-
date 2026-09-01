@@ -82,7 +82,7 @@ export const normalizeCaseEditPayload = (draft: Record<string, unknown>, kind: C
   assistant: text(draft.assistant),
   investigator: text(draft.investigator),
   investigation_clue_ids: idList(draft.investigation_clue_ids),
-  ...(kind === "normal" ? { business_owner: text(draft.business_owner), right_type: text(draft.right_type) } : {}),
+  ...(kind === "normal" ? { assistants: list(draft.assistants), business_owner: text(draft.business_owner), right_type: text(draft.right_type) } : {}),
   comment: text(draft.comment),
 });
 

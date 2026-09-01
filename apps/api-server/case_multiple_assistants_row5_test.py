@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.main import CaseNormalBasicInput, _case_team_role, update_normal_case_basic
+from app.main import CaseNormalBasicInput, _case_assistant_display, _case_team_role, update_normal_case_basic
 from app.models import BusinessRecord, User
 
 
@@ -16,6 +16,24 @@ ADMIN = {"username": "admin", "role": "admin", "display_name": "管理员", "dep
 
 
 class CaseMultipleAssistantsRow5Test(unittest.IsolatedAsyncioTestCase):
+    def test_scalar_projection_missing_only_tracks_latest_assistant(self) -> None:
+        users = {
+            "latest": User(
+                username="latest", display_name="最新助理", department="上海分所",
+                role="user", password_hash="x", is_active=True,
+            )
+        }
+        display, missing = _case_assistant_display(
+            {"assistant_usernames": ["latest", "unresolved-old"]}, users
+        )
+        self.assertEqual(display, "最新助理")
+        self.assertFalse(missing)
+
+        display, missing = _case_assistant_display(
+            {"assistant_usernames": ["unresolved-latest", "latest"]}, users
+        )
+        self.assertTrue(missing)
+
     async def asyncSetUp(self) -> None:
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
@@ -45,6 +63,7 @@ class CaseMultipleAssistantsRow5Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(case.data["assistant_username"], "new")
         self.assertEqual(case.data["case_team_usernames"], ["admin", "new", "old"])
         self.assertEqual(result["data"]["assistant"], "最新助理")
+        self.assertEqual(_case_assistant_display(case.data, {})[0], "最新助理")
         self.assertEqual(old_role, "assistant")
 
 

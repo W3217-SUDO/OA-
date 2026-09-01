@@ -3923,27 +3923,22 @@ def _case_assistant_display(data: dict, users_by_username: dict[str, User]) -> t
     stored_names = _contract_person_values(
         data.get("assistants") or data.get("assistant") or legacy.get("CaseAssistantName")
     )
-    labels: list[str] = []
-    missing = False
-    for index in range(max(len(usernames), len(stored_names))):
-        username = usernames[index] if index < len(usernames) else ""
-        stored_name = stored_names[index] if index < len(stored_names) else ""
-        label = ""
+    if not usernames and not stored_names:
+        return "—", False
+    username = usernames[0] if usernames else ""
+    stored_name = stored_names[0] if stored_names else ""
+    label = ""
+    unresolved = False
+    if username:
+        label, unresolved = _person_reference_display(username, users_by_username)
+    elif stored_name:
+        label, unresolved = _person_reference_display(stored_name, users_by_username)
+    if (not label or unresolved) and stored_name and stored_name != PERSON_NAME_PLACEHOLDER:
+        label = stored_name
         unresolved = False
-        if username:
-            label, unresolved = _person_reference_display(username, users_by_username)
-        elif stored_name:
-            label, unresolved = _person_reference_display(stored_name, users_by_username)
-        if (not label or unresolved) and stored_name and stored_name != PERSON_NAME_PLACEHOLDER:
-            label = stored_name
-            unresolved = False
-        if not label or label == PERSON_NAME_PLACEHOLDER:
-            label = CONTRACT_PERSON_NAME_PLACEHOLDER
-            unresolved = True
-        if label not in labels:
-            labels.append(label)
-        missing = missing or unresolved
-    return ("、".join(labels), missing) if labels else ("—", False)
+    if not label or label == PERSON_NAME_PLACEHOLDER:
+        return CONTRACT_PERSON_NAME_PLACEHOLDER, True
+    return label, unresolved
 
 
 def _apply_record_person_displays(
