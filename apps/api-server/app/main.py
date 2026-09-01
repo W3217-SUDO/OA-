@@ -4624,6 +4624,15 @@ async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -
         for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer", "customer_manager", "collaborators"):
             usernames.update(_contract_person_values(data.get(key)))
     users_by_username = await _user_display_map(usernames, db)
+    employees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "hr",
+        BusinessRecord.status.not_in({"离职", "停用"}),
+    ))).all())
+    employee_names = {
+        str((employee.data or {}).get("username") or employee.owner or "").strip().lower(): str(employee.title or "").strip()
+        for employee in employees
+        if str((employee.data or {}).get("username") or employee.owner or "").strip()
+    }
     case_conditions = []
     if case_ids:
         case_conditions.append(BusinessRecord.id.in_(case_ids))
@@ -4638,6 +4647,10 @@ async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -
     results: list[dict] = []
     for record in records:
         result = _task_display_with_users(record, users_by_username)
+        employee_name = employee_names.get(str(record.owner or "").strip().lower())
+        if employee_name:
+            result["owner_display_name"] = employee_name
+            result["owner_display_name_missing"] = False
         data = record.data or {}
         linked_case_rows: list[BusinessRecord] = []
         raw_ids = data.get("case_ids") if isinstance(data.get("case_ids"), list) else []
@@ -6288,7 +6301,15 @@ async def list_active_people_options(identity: dict = Depends(current_identity),
     for user in users:
         name = employee_names.get(user.username.strip().lower()) or str(user.display_name or "").strip()
         if name:
-            items.append({"value": name, "label": name, "username": user.username, "search_text": f"{name} {user.username}"})
+            system_display_name = str(user.display_name or "").strip()
+            items.append({
+                "value": name,
+                "label": name,
+                "username": user.username,
+                "search_text": " ".join(
+                    value for value in (name, system_display_name, user.username) if value
+                ),
+            })
     return {"items": items}
 
 

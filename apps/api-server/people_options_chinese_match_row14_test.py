@@ -5,7 +5,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
-from app.main import app
+from app.main import _task_display_dicts, app
 from app.models import BusinessRecord, User
 from app.security import current_identity
 
@@ -31,5 +31,13 @@ class PeopleOptionsChineseMatchRow14Test(unittest.IsolatedAsyncioTestCase):
         response=await self.client.get("/api/v1/people/options"); self.assertEqual(response.status_code,200,response.text)
         matches=[item for item in response.json()["items"] if "范" in item["search_text"]]
         self.assertEqual({item["label"] for item in matches},{"范文林","范玲玲"})
-        self.assertEqual(next(item for item in matches if item["username"]=="fanwenlin")["label"],"范文林")
+        fanwenlin = next(item for item in matches if item["username"]=="fanwenlin")
+        self.assertEqual(fanwenlin["label"],"范文林")
+        self.assertIn("Fwl", fanwenlin["search_text"])
+        self.assertIn("fanwenlin", fanwenlin["search_text"])
+        async with self.sessions() as db:
+            task = BusinessRecord(module="task", serial_no="RW-R14-1", title="调查子任务", customer="", status="待接收", owner="fanwenlin", department="调查部", data={})
+            db.add(task); await db.commit(); await db.refresh(task)
+            rendered = (await _task_display_dicts([task], db))[0]
+        self.assertEqual(rendered["owner_display_name"], "范文林")
 if __name__=="__main__": unittest.main()
