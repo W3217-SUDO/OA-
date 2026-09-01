@@ -17,3 +17,10 @@ test("非迁移且未绑定合同的调查仍保留合同绑定门禁", () => {
   assert.match(source, /!taskTarget\?\.data\.contract_id[\s\S]*?!taskTarget\?\.data\.contract_record_id[\s\S]*?rules=\{\[\{ required: true, message: "请绑定与调查客户一致的合同" \}\]\}/);
 });
 
+test("过期门禁仅限制当前任务，不阻断历史迁移任务继续分配", () => {
+  assert.match(
+    source,
+    /createSubtask\s*&&\s*!isLegacyInvestigationRecord\(row\)\s*&&[\s\S]*?authorizationEnd\.isBefore/,
+  );
+});
+

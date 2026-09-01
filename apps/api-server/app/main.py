@@ -13698,7 +13698,13 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     await _require_record_owner_or_manager(source, identity, db)
     _validate_task_deadline(body.deadline)
     source = await _resolve_investigation_task_root(source, identity, db)
-    if _investigation_authorization_expired(source):
+    source_data = source.data or {}
+    is_legacy_investigation = bool(
+        source_data.get("migration_source")
+        or source_data.get("legacy_investigation_id")
+        or source_data.get("legacy_record")
+    )
+    if _investigation_authorization_expired(source) and not is_legacy_investigation:
         raise HTTPException(status_code=409, detail="该任务已过期，不允许新建子任务")
     parent = None
     if body.parent_task_id:
@@ -13722,13 +13728,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
             attachment = referenced.get(attachment_id)
             if not attachment or attachment.record_id != source.id:
                 raise HTTPException(status_code=422, detail="所选附件不属于当前调查事项")
-    source_data = source.data or {}
     parent_data = parent.data or {} if parent else {}
-    is_legacy_investigation = bool(
-        source_data.get("migration_source")
-        or source_data.get("legacy_investigation_id")
-        or source_data.get("legacy_record")
-    )
     stored_source_contract_id = source_data.get("contract_id") or source_data.get("contract_record_id") or parent_data.get("contract_id") or parent_data.get("contract_record_id")
     source_contract_no = str(source_data.get("contract_no") or parent_data.get("contract_no") or "").strip()
     source_contract = None

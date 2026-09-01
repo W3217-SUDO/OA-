@@ -1644,6 +1644,7 @@ export default function InvestigationCenterPage({
     const authorizationEnd = dayjs(String(row.data.authorized_to || row.data.end_date || ""));
     if (
       createSubtask &&
+      !isLegacyInvestigationRecord(row) &&
       authorizationEnd.isValid() &&
       authorizationEnd.isBefore(dayjs(), "day")
     ) {
