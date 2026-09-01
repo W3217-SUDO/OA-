@@ -2310,6 +2310,7 @@ class CaseNormalBasicInput(BaseModel):
     cause_or_charge: str = Field(min_length=1, max_length=256)
     handling_lawyers: list[str] = Field(min_length=1, max_length=20)
     assistant: str = Field(default="", max_length=128)
+    assistants: list[str] | None = Field(default=None, max_length=20)
     business_owner: str = Field(default="", max_length=128)
     investigator: str = Field(default="", max_length=128)
     investigation_clue_ids: list[int] = Field(default_factory=list, max_length=50)
@@ -3776,7 +3777,7 @@ RECORD_PERSON_FIELDS_BY_MODULE: dict[str, tuple[str, ...]] = {
 }
 
 RECORD_PERSON_LIST_FIELDS_BY_MODULE: dict[str, tuple[str, ...]] = {
-    "case": ("handling_usernames", "handling_lawyers", "handling_lawyer_usernames", "case_team_usernames", "collaborators"),
+    "case": ("handling_usernames", "handling_lawyers", "handling_lawyer_usernames", "assistant_usernames", "assistants", "case_team_usernames", "collaborators"),
     "seal": ("approvers",),
     "finance": ("approvers",),
     "document": ("recipients",),
@@ -3814,10 +3815,10 @@ def _record_person_usernames(record: BusinessRecord) -> set[str]:
 def _case_assistant_display(data: dict, users_by_username: dict[str, User]) -> tuple[str, bool]:
     legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
     usernames = _contract_person_values(
-        data.get("assistant_username") or legacy.get("CaseAssistant")
+        data.get("assistant_usernames") or data.get("assistant_username") or legacy.get("CaseAssistant")
     )
     stored_names = _contract_person_values(
-        data.get("assistant") or legacy.get("CaseAssistantName")
+        data.get("assistants") or data.get("assistant") or legacy.get("CaseAssistantName")
     )
     labels: list[str] = []
     missing = False
@@ -5568,16 +5569,24 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
 
 
 def _case_team_payload(
-    case_data: dict, handling_lawyers: list[str], handling_usernames: list[str], assistant: str, assistant_username: str,
+    case_data: dict, handling_lawyers: list[str], handling_usernames: list[str], assistant: str | list[str], assistant_username: str | list[str],
 ) -> dict:
     """Keep legacy display fields and the stable access-control projection in sync."""
+    assistants = list(dict.fromkeys(
+        str(value or "").strip() for value in (assistant if isinstance(assistant, list) else [assistant]) if str(value or "").strip()
+    ))
+    assistant_usernames = list(dict.fromkeys(
+        str(value or "").strip() for value in (assistant_username if isinstance(assistant_username, list) else [assistant_username]) if str(value or "").strip()
+    ))
     return {
         **case_data,
         "handling_lawyers": handling_lawyers,
-        "assistant": assistant,
+        "assistant": assistants[0] if assistants else "",
+        "assistants": assistants,
         "handling_lawyer_usernames": handling_usernames,
-        "assistant_username": assistant_username,
-        "case_team_usernames": list(dict.fromkeys([*handling_usernames, *([assistant_username] if assistant_username else [])])),
+        "assistant_username": assistant_usernames[0] if assistant_usernames else "",
+        "assistant_usernames": assistant_usernames,
+        "case_team_usernames": list(dict.fromkeys([*handling_usernames, *assistant_usernames])),
     }
 
 
@@ -5595,10 +5604,11 @@ async def _case_team_role(case_record: BusinessRecord, identity: dict, db: Async
     data = case_record.data or {}
     username = identity["username"]
     handling_usernames = {str(value or "").strip() for value in data.get("handling_lawyer_usernames", [])}
+    assistant_usernames = {str(value or "").strip() for value in (data.get("assistant_usernames") or [])}
     assistant_username = str(data.get("assistant_username") or "").strip()
     if username in handling_usernames:
         return "handling_lawyer"
-    if username and username == assistant_username:
+    if username and (username == assistant_username or username in assistant_usernames):
         return "assistant"
     if data.get("case_team_usernames"):
         return "none"
@@ -22941,7 +22951,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     handling_lawyers, handling_usernames = await _resolve_active_case_people(handling_lawyers, db, field_name="经办律师")
     if not handling_lawyers:
         raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
-    assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant.strip()] if body.assistant.strip() else [], db, field_name="律师助理")
+    requested_assistants = body.assistants if body.assistants is not None else ([body.assistant.strip()] if body.assistant.strip() else [])
+    assistant_values, assistant_usernames = await _resolve_active_case_people(requested_assistants, db, field_name="律师助理")
     investigator_values, _ = await _resolve_active_case_people([body.investigator.strip()] if body.investigator.strip() else [], db, field_name="调查员")
     business_owner_values, _ = await _resolve_active_case_people([body.business_owner.strip()] if body.business_owner.strip() else [], db, field_name="案源人")
     clue_ids = list(dict.fromkeys(body.investigation_clue_ids))
@@ -22957,8 +22968,6 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         raise HTTPException(status_code=422, detail="仅行政及国家赔偿案件可以修改权利类型")
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     previous_status = case_record.status
-    assistant = assistant_values[0] if assistant_values else ""
-    assistant_username = assistant_usernames[0] if assistant_usernames else ""
     investigator = investigator_values[0] if investigator_values else ""
     business_owner = business_owner_values[0] if business_owner_values else ""
     clue_nos = [item.serial_no for item in ordered_clues]
@@ -22981,7 +22990,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "investigation_clue": "、".join(clue_nos),
         "clue_record_id": clue_ids[0] if clue_ids else None,
         "clue_no": clue_nos[0] if clue_nos else "",
-    }, handling_lawyers, handling_usernames, assistant, assistant_username)
+    }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改普通案件基本信息",
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],

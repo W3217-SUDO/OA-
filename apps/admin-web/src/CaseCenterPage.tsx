@@ -1948,7 +1948,7 @@ export default function CaseCenterPage({
       customer_manager: row.data.customer_manager || "",
       hearing_lawyer: row.data.hearing_lawyer || "",
       handling_lawyers: resolveCasePersonValues(row.data.handling_lawyers || []),
-      assistant: resolveCasePersonValue(row.data.assistant || ""),
+      assistants: resolveCasePersonValues(row.data.assistant_usernames || row.data.assistants || (row.data.assistant ? [row.data.assistant] : [])),
     });
   };
   const applyCaseTaskPageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
@@ -3205,7 +3205,7 @@ export default function CaseCenterPage({
       case_phase: row.status,
       cause_or_charge: row.data.cause_or_charge || "",
       handling_lawyers: resolveCasePersonValues(row.data.handling_lawyers || []),
-      assistant: resolveCasePersonValue(row.data.assistant || ""),
+      assistants: resolveCasePersonValues(row.data.assistant_usernames || row.data.assistants || (row.data.assistant ? [row.data.assistant] : [])),
       business_owner: resolveCasePersonValue(row.data.business_owner || row.data.source_person || ""),
       investigator: resolveCasePersonValue(row.data.investigator || ""),
       investigation_clue_ids: clueIds,
@@ -6281,7 +6281,7 @@ export default function CaseCenterPage({
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
-            <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
+            <Form.Item label="律师助理" name="assistants"><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" onChange={(selected:string[])=>{const previous:string[]=normalCaseEditForm.getFieldValue("assistants")||[];const added=selected.filter(value=>!previous.includes(value));normalCaseEditForm.setFieldValue("assistants",[...added.reverse(),...selected.filter(value=>previous.includes(value))]);}}/></Form.Item>
             <Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
             {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
