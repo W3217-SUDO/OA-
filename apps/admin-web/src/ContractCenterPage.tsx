@@ -2455,7 +2455,7 @@ export default function ContractCenterPage({
                 <Descriptions bordered size="small" column={2} items={[
                   { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                   { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}` },
-                  { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <Tag color="blue">合同通过后自动提交</Tag> : wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已生成真实用印申请</Tag>, span: 2 },
+                  { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <Tag color="blue">用印草稿待提交</Tag> : wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已提交用印审批</Tag>, span: 2 },
                     ]} />
               ) : (
                 <Form form={sealForm} layout="vertical" className="contract-seal-form">
@@ -3193,7 +3193,7 @@ export default function ContractCenterPage({
               <Descriptions bordered size="small" column={2} items={[
                 { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                 { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}` },
-                { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <Tag color="blue">合同通过后自动提交</Tag> : wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已生成真实用印申请</Tag>, span: 2 },
+                { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <Tag color="blue">用印草稿待提交</Tag> : wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已提交用印审批</Tag>, span: 2 },
               ]} />
             ) : (
               <Form form={sealForm} layout="vertical" className="contract-seal-form">
