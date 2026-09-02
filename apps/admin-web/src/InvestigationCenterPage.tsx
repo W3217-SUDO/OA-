@@ -2746,7 +2746,7 @@ export default function InvestigationCenterPage({
       "修改",
       "上传调查资料",
     ],
-    "investigation-task-unassigned": ["查询", "刷新", "新增子任务"],
+    "investigation-task-unassigned": ["查询", "刷新", "新增子任务", "删除"],
     "investigation-task-sub-published": ["查询", "刷新", "修改", "批量删除"],
     "investigation-task-sub-mine": ["查询", "刷新", "新增线索"],
     "clue-my-draft": ["查询", "修改", "提交", "批量提交", "新增文件", "批量删除"],
@@ -2773,11 +2773,13 @@ export default function InvestigationCenterPage({
     selectedClues.includes(row.id),
   );
   const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
+  const isAdminAccount = [profile.role, ...(profile.role_ids || [])].includes("admin");
   const actionLabels = [
     ...(originalButtons[initialTab] || ["查询"]),
     ...(isClue ? ["导出线索", "导出交接清单"] : []),
   ].filter(
     (label) =>
+      (label !== "删除" || initialTab !== "investigation-task-unassigned" || isAdminAccount) &&
       (label !== "审批" ||
         (initialTab === "clue-audit-customer"
           ? canReviewCustomerClue
