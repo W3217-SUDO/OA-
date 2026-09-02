@@ -1728,7 +1728,7 @@ export default function InvestigationCenterPage({
         const name = String(error.errorFields[0]?.name?.[0] || "");
         const labels: Record<string, string> = {
           title: "任务名称",
-          owner: "负责人",
+          owner: "调查员",
           deadline: "截止日期",
           province: "调查省份",
           city: "调查城市",
@@ -4677,7 +4677,7 @@ export default function InvestigationCenterPage({
                 v || row.investigation_no || taskTarget?.serial_no || "—",
             },
             {
-              title: "负责人",
+              title: "调查员",
               dataIndex: "owner",
               width: 90,
               render: (_value: unknown, row: TaskRow) =>
