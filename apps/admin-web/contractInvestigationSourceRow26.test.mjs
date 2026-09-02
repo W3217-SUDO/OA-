@@ -9,8 +9,12 @@ test("contract investigation wizard preserves the legacy three-step source and a
   const pageStart = source.indexOf('title="新建调查任务"');
   const pageEnd = source.indexOf('title="选择城市"', pageStart);
   const page = source.slice(pageStart, pageEnd);
+  const summaryStart = page.indexOf('<Divider titlePlacement="start">调查信息</Divider>');
+  const summaryEnd = page.indexOf('</Descriptions>', summaryStart);
+  const assignmentSummary = page.slice(summaryStart, summaryEnd);
 
   assert.ok(pageStart > 0 && pageEnd > pageStart);
+  assert.ok(summaryStart > 0 && summaryEnd > summaryStart);
   assert.match(page, /"新建调查任务", "选择分配人", "完成分配"/);
   assert.match(page, /label="权利人"[\s\S]*investigating\?\.data\.customer_name[\s\S]*investigating\?\.customer/);
   assert.match(page, /label="合同编号"[\s\S]*investigating\?\.serial_no/);
@@ -19,6 +23,8 @@ test("contract investigation wizard preserves the legacy three-step source and a
   assert.match(page, /label="授权期限"/);
   assert.match(page, /label="分配人"[\s\S]*<Select disabled options=\{investigationSupervisor/);
   assert.match(page, /<Divider titlePlacement="start">调查信息<\/Divider>/);
+  assert.match(assignmentSummary, /label="合同编号"[\s\S]*investigating\?\.serial_no/);
+  assert.match(assignmentSummary, /label="合同名称"[\s\S]*investigating\?\.title/);
   assert.match(page, /调查任务分配完成/);
   assert.match(page, /investigationError[\s\S]*<Alert type="error" showIcon message=\{investigationError\}/);
   assert.match(source, /setInvestigationDraftValues\(values\)/);

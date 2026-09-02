@@ -2724,6 +2724,8 @@ export default function ContractCenterPage({
               <Descriptions.Item label="案源人">{personName(investigating?.data.source_person || investigating?.owner)}</Descriptions.Item>
               <Descriptions.Item label="权利人">{investigating?.data.customer_name || investigating?.customer || "—"}</Descriptions.Item>
               <Descriptions.Item label="权利类型">{investigationDraftValues?.right_type || "—"}</Descriptions.Item>
+              <Descriptions.Item label="合同编号">{investigating?.serial_no || "—"}</Descriptions.Item>
+              <Descriptions.Item label="合同名称">{investigating?.title || "—"}</Descriptions.Item>
               <Descriptions.Item label="授权开始时间">{investigationDraftValues?.authorized_from?.format?.("YYYY-MM-DD") || "—"}</Descriptions.Item>
               <Descriptions.Item label="授权结束时间">{investigationDraftValues?.authorized_to?.format?.("YYYY-MM-DD") || "—"}</Descriptions.Item>
               <Descriptions.Item label="授权区域" span={2}>{investigationDraftValues?.authorization_scope || "—"}</Descriptions.Item>
