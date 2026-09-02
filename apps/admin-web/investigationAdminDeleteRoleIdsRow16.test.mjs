@@ -9,4 +9,7 @@ assert.match(source, /const isAdminAccount = \[profile\.role, \.\.\.\(profile\.r
 assert.match(source, /label !== "删除" \|\| initialTab !== "investigation-task-unassigned" \|\| isAdminAccount/);
 assert.doesNotMatch(source, /仅管理员可以删除调查任务/);
 
+assert.doesNotMatch(source, /investigationBootstrapPromise/);
+assert.match(source, /const loadInvestigationBootstrap = \(\) =>\s*Promise\.all\(\[/);
+
 console.log("9.1 row 16 admin orphaned investigation delete entry passed");

@@ -247,10 +247,8 @@ const investigationTaskScopeGroups = (data: Record<string, any>) => {
   }
   return groups;
 };
-let investigationBootstrapPromise: Promise<InvestigationBootstrapData> | null = null;
-const loadInvestigationBootstrap = () => {
-  if (!investigationBootstrapPromise) {
-    investigationBootstrapPromise = Promise.all([
+const loadInvestigationBootstrap = () =>
+  Promise.all([
       api.get("/auth/me").then(({ data }) => data as Profile),
       api.get("/investigations/assignment-supervisor")
         .then(({ data }) => String(data.username || ""))
@@ -268,15 +266,9 @@ const loadInvestigationBootstrap = () => {
       api.get("/warehouse/catalog")
         .then(({ data }) => data.items || [])
         .catch(() => [] as WarehouseCatalogItem[]),
-    ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog]) => ({
-      profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog,
-    })).catch((error) => {
-      investigationBootstrapPromise = null;
-      throw error;
-    });
-  }
-  return investigationBootstrapPromise;
-};
+  ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog]) => ({
+    profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog,
+  }));
 type SubtaskLifecycleAction = "accept" | "complete";
 const investigationListView = (route: string) => {
   if (

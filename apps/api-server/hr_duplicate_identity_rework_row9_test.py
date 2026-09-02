@@ -148,6 +148,65 @@ class HrDuplicateIdentityReworkRow9Test(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(await db.get(BusinessRecord, duplicate_id))
             self.assertIsNotNone(await db.get(User, user_id))
 
+    async def test_targeted_repair_requires_the_expected_identity_tokens(self):
+        async with self.sessions() as db:
+            _, canonical, duplicate, _ = await self.seed_conflict(db)
+            canonical_id = canonical.id
+            duplicate_id = duplicate.id
+
+            with self.assertRaisesRegex(RuntimeError, "identity tokens changed"):
+                await REPAIR.repair_session(
+                    db,
+                    apply=True,
+                    canonical_ids={canonical_id},
+                    expected_tokens={"legacy_staff_id:999"},
+                )
+
+            self.assertIsNotNone(await db.get(BusinessRecord, canonical_id))
+            self.assertIsNotNone(await db.get(BusinessRecord, duplicate_id))
+
+    async def test_targeted_repair_applies_only_to_the_selected_identity_group(self):
+        async with self.sessions() as db:
+            _, canonical, duplicate, _ = await self.seed_conflict(db)
+            other_user = User(
+                username="row9_other",
+                display_name="Row 9 Other",
+                department="Test",
+                password_hash="test",
+                role="user",
+                role_ids=["user"],
+                profile={},
+                is_active=True,
+            )
+            db.add(other_user)
+            await db.flush()
+            other_main = BusinessRecord(
+                module="hr", serial_no="ROW9-OTHER-MAIN", title="Row 9 Other",
+                customer="Test", status="Active", owner="row9_other", department="Test",
+                data={"username": "row9_other", "system_user_id": other_user.id, "legacy_staff_id": 999},
+            )
+            other_duplicate = BusinessRecord(
+                module="hr", serial_no="ROW9-OTHER-DUP", title="Row 9 Other Duplicate",
+                customer="Test", status="Active", owner="row9_other", department="Test",
+                data={"username": "row9_other", "system_user_id": other_user.id, "legacy_staff_id": 999},
+            )
+            db.add_all([other_main, other_duplicate])
+            await db.commit()
+
+            result = await REPAIR.repair_session(
+                db,
+                apply=True,
+                canonical_ids={canonical.id},
+                expected_tokens={"username:fwlll", "legacy_staff_id:301"},
+            )
+
+            self.assertEqual(result["duplicate_groups"], 2)
+            self.assertEqual(result["selected_groups"], 1)
+            self.assertEqual(result["duplicates_deleted"], 1)
+            self.assertIsNone(await db.get(BusinessRecord, duplicate.id))
+            self.assertIsNotNone(await db.get(BusinessRecord, other_main.id))
+            self.assertIsNotNone(await db.get(BusinessRecord, other_duplicate.id))
+
 
 if __name__ == "__main__":
     unittest.main()

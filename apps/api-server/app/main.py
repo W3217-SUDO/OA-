@@ -5773,6 +5773,25 @@ def _case_team_payload(
     }
 
 
+def _prioritize_new_case_assistants(
+    case_data: dict,
+    assistant_values: list[str],
+    assistant_usernames: list[str],
+) -> tuple[list[str], list[str]]:
+    """Place newly added assistants first while retaining the stored relative order."""
+    existing_usernames = set(_contract_person_values(
+        case_data.get("assistant_usernames") or case_data.get("assistant_username")
+    ))
+    existing_names = set(_contract_person_values(
+        case_data.get("assistants") or case_data.get("assistant")
+    ))
+    pairs = list(zip(assistant_values, assistant_usernames))
+    added = [pair for pair in pairs if pair[1] not in existing_usernames and pair[0] not in existing_names]
+    retained = [pair for pair in pairs if pair[1] in existing_usernames or pair[0] in existing_names]
+    ordered = [*reversed(added), *retained]
+    return [pair[0] for pair in ordered], [pair[1] for pair in ordered]
+
+
 async def _case_team_role(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> str:
     """Return manager/handling_lawyer/assistant/none for a visible case.
 
@@ -18217,7 +18236,12 @@ async def get_incoming_payment(payment_id: int, identity: dict = Depends(current
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     users_by_username = await _user_display_map({item.claimant, item.operator}, db)
     result = _incoming_payment_dict(item, show_amount=show_amount, users_by_username=users_by_username)
-    settlement_rows = await _general_settlement_rows(identity, db, receipt_ids={payment_id})
+    settlement_rows = await _general_settlement_rows(
+        identity,
+        db,
+        receipt_ids={payment_id},
+        include_active_receipts=True,
+    )
     if settlement_rows:
         settlement_data = settlement_rows[0]["data"]
         result.update({
@@ -19076,6 +19100,7 @@ async def _general_settlement_rows(
     customer_manager: str = "",
     source_person: str = "",
     receipt_ids: set[int] | None = None,
+    include_active_receipts: bool = False,
 ) -> list[dict]:
     """Build the original settlement candidates from bank receipts and their case allocations."""
     payments = list((await db.scalars(select(IncomingPayment).order_by(
@@ -19139,7 +19164,7 @@ async def _general_settlement_rows(
 
     for payment in payments:
         payment_allocations = list(payment.allocations or [])
-        if not payment_allocations or payment.id in active_receipt_ids:
+        if not payment_allocations or (not include_active_receipts and payment.id in active_receipt_ids):
             continue
         details: list[dict] = []
         for allocation in payment_allocations:
@@ -23403,6 +23428,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
     requested_assistants = body.assistants if body.assistants is not None else ([body.assistant.strip()] if body.assistant.strip() else [])
     assistant_values, assistant_usernames = await _resolve_active_case_people(requested_assistants, db, field_name="律师助理")
+    assistant_values, assistant_usernames = _prioritize_new_case_assistants(
+        case_data, assistant_values, assistant_usernames,
+    )
     investigator_values, _ = await _resolve_active_case_people([body.investigator.strip()] if body.investigator.strip() else [], db, field_name="调查员")
     business_owner_values, _ = await _resolve_active_case_people([body.business_owner.strip()] if body.business_owner.strip() else [], db, field_name="案源人")
     clue_ids = list(dict.fromkeys(body.investigation_clue_ids))

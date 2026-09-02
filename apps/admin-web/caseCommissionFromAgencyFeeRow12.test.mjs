@@ -19,7 +19,10 @@ test("migrated lawyer agency fee subtype is accepted even when the base fee type
   assert.match(source, /feeTypes\.some\(\(feeType\) => feeType\.includes\("代理费"\)\)/);
 });
 
-test("row 12 dedicated modal restores all legacy commission columns", () => {
+test("row 33 uses the legacy right-side commission workspace", () => {
+  assert.match(modal, /placement="right"/);
+  assert.match(modal, /width=\{720\}/);
+  assert.match(modal, /case-commission-drawer/);
   for (const heading of ["案号", "费用类型", "支付对象", "基数", "参考提成", "实际金额", "备注", "操作"]) {
     assert.match(modal, new RegExp(heading));
   }

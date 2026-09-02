@@ -18,6 +18,14 @@ export const CASE_CLUE_CONVERSION_ENDPOINT = "/investigations/clues/batch-cases"
 
 const text = (value: unknown) => String(value ?? "").trim();
 const list = (value: unknown) => Array.isArray(value) ? value.map(text).filter(Boolean) : [];
+
+export const prioritizeCaseAssistantSelection = (selected: unknown, previous: unknown) => {
+  const previousValues = Array.from(new Set(list(previous)));
+  const selectedValues = Array.from(new Set(list(selected)));
+  const added = selectedValues.filter((value) => !previousValues.includes(value));
+  const retained = previousValues.filter((value) => selectedValues.includes(value));
+  return [...added.reverse(), ...retained];
+};
 const idList = (value: unknown) => Array.from(new Set(
   (Array.isArray(value) ? value : []).map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0),
 ));

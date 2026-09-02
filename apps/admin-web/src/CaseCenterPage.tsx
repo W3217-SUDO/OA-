@@ -123,6 +123,7 @@ import {
   getCaseMutationBlockReason,
   getClueConversionIssues,
   normalizeCaseEditPayload,
+  prioritizeCaseAssistantSelection,
 } from "./caseSecondBatchParity";
 import {
   buildCaseFileTypeTreeOptions,
@@ -1173,7 +1174,6 @@ export default function CaseCenterPage({
   const [companyScheduleCourtInfoForm] = Form.useForm();
   const [counselEditForm] = Form.useForm();
   const [normalCaseEditForm] = Form.useForm();
-  const assistantOrderRef = useRef<string[]>([]);
   const [arbitrationBasicForm] = Form.useForm();
   const [criminalMaintenanceForm] = Form.useForm();
   const [caseLitigantsForm] = Form.useForm();
@@ -5759,16 +5759,18 @@ export default function CaseCenterPage({
           </div>}
         </>}
       </Drawer>
-      <Modal
+      <Drawer
         open={Boolean(caseCommissionPreview)}
         title="新增提成"
-        width={1120}
-        okText="申请付款"
-        cancelText="取消"
-        confirmLoading={caseCommissionSubmitting}
-        onOk={() => void submitCaseCommissions()}
-        onCancel={closeCaseCommission}
-        className="case-commission-modal"
+        placement="right"
+        width={720}
+        onClose={closeCaseCommission}
+        destroyOnHidden
+        className="case-commission-drawer"
+        footer={<Space style={{ width: "100%", justifyContent: "flex-end" }}>
+          <Button onClick={closeCaseCommission}>取消</Button>
+          <Button type="primary" loading={caseCommissionSubmitting} onClick={() => void submitCaseCommissions()}>申请付款</Button>
+        </Space>}
       >
         <Alert
           className="case-fee-legacy-tip"
@@ -5819,7 +5821,7 @@ export default function CaseCenterPage({
             </Space> },
           ]}
         />
-      </Modal>
+      </Drawer>
       <Modal
         open={Boolean(paymentPackagePreview)}
         title={`申请付款：${paymentPackagePreview?.source?.request_no || ""}`}
@@ -6468,7 +6470,7 @@ export default function CaseCenterPage({
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
-            <Form.Item label="律师助理" name="assistants"><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" onFocus={()=>{assistantOrderRef.current=normalCaseEditForm.getFieldValue("assistants")||[];}} onChange={(values:string[])=>{const previous=assistantOrderRef.current;const added=values.find(value=>!previous.includes(value));const ordered=added?[added,...previous.filter(value=>values.includes(value))]:previous.filter(value=>values.includes(value));assistantOrderRef.current=ordered;normalCaseEditForm.setFieldValue("assistants",ordered);}}/></Form.Item>
+            <Form.Item label="律师助理" name="assistants" normalize={prioritizeCaseAssistantSelection}><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" /></Form.Item>
             <Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
             {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}

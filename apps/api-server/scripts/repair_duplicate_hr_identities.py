@@ -107,16 +107,34 @@ def merged_employee_data(canonical: BusinessRecord, duplicates: list[BusinessRec
     return merged
 
 
-async def repair_session(db, *, apply: bool) -> dict[str, Any]:
+async def repair_session(
+    db,
+    *,
+    apply: bool,
+    canonical_ids: set[int] | None = None,
+    expected_tokens: set[str] | None = None,
+) -> dict[str, Any]:
     records = list((await db.scalars(
         select(BusinessRecord).where(BusinessRecord.module == "hr").order_by(BusinessRecord.id)
     )).all())
-    groups = duplicate_groups(records)
+    all_groups = duplicate_groups(records)
+    selected_groups: list[tuple[BusinessRecord, list[BusinessRecord]]] = []
+    for group in all_groups:
+        canonical = await canonical_record(group, db)
+        if canonical_ids and canonical.id not in canonical_ids:
+            continue
+        tokens = set().union(*(identity_tokens(record) for record in group))
+        if expected_tokens and not expected_tokens.issubset(tokens):
+            continue
+        selected_groups.append((canonical, group))
+    if apply and canonical_ids and len(selected_groups) != len(canonical_ids):
+        selected_ids = {canonical.id for canonical, _ in selected_groups}
+        missing = sorted(canonical_ids - selected_ids)
+        raise RuntimeError(f"Target duplicate identity group not found or identity tokens changed: {missing}")
     plans: list[dict[str, Any]] = []
     repaired = 0
     deleted = 0
-    for group in groups:
-        canonical = await canonical_record(group, db)
+    for canonical, group in selected_groups:
         duplicates = [record for record in group if record.id != canonical.id]
         canonical_data = canonical.data or {}
         user_id = canonical_data.get("system_user_id")
@@ -177,26 +195,45 @@ async def repair_session(db, *, apply: bool) -> dict[str, Any]:
     return {
         "mode": "apply" if apply else "audit",
         "employees_scanned": len(records),
-        "duplicate_groups": len(groups),
+        "duplicate_groups": len(all_groups),
+        "selected_groups": len(selected_groups),
         "groups_repaired": repaired,
         "duplicates_deleted": deleted,
         "plans": plans,
     }
 
 
-async def run(*, apply: bool, backup_confirmed: bool) -> dict[str, Any]:
+async def run(
+    *,
+    apply: bool,
+    backup_confirmed: bool,
+    canonical_ids: set[int] | None = None,
+    expected_tokens: set[str] | None = None,
+) -> dict[str, Any]:
     if apply and not backup_confirmed:
         raise RuntimeError("--apply requires --backup-confirmed")
     async with SessionLocal() as db:
-        return await repair_session(db, apply=apply)
+        return await repair_session(
+            db,
+            apply=apply,
+            canonical_ids=canonical_ids,
+            expected_tokens=expected_tokens,
+        )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--backup-confirmed", action="store_true")
+    parser.add_argument("--canonical-id", action="append", type=int, default=[])
+    parser.add_argument("--expected-token", action="append", default=[])
     args = parser.parse_args()
-    print(json.dumps(asyncio.run(run(apply=args.apply, backup_confirmed=args.backup_confirmed)), ensure_ascii=False, indent=2))
+    print(json.dumps(asyncio.run(run(
+        apply=args.apply,
+        backup_confirmed=args.backup_confirmed,
+        canonical_ids=set(args.canonical_id) or None,
+        expected_tokens={str(token).strip().lower() for token in args.expected_token if str(token).strip()} or None,
+    )), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

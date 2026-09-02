@@ -88,6 +88,19 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(receipt["assigned_agency_fee"], 0)
         self.assertEqual(receipt["payment_method"], "bank")
 
+        async with self.sessions() as db:
+            db.add(BusinessRecord(
+                module="finance_settlement",
+                serial_no="ROW30-SETTLEMENT",
+                title="Row 30 Settlement",
+                customer="Row 30 Customer",
+                status="待审批",
+                owner=ADMIN["username"],
+                department=ADMIN["department"],
+                data={"receipt_id": self.payment_id},
+            ))
+            await db.commit()
+
         detail_response = await self.client.get(f"{API}/finance/incoming-payments/{self.payment_id}")
         self.assertEqual(detail_response.status_code, 200, detail_response.text)
         detail = detail_response.json()

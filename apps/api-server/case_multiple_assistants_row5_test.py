@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import unittest
 
+from fastapi import HTTPException
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -53,7 +55,7 @@ class CaseMultipleAssistantsRow5Test(unittest.IsolatedAsyncioTestCase):
                 User(username="old", display_name="旧助理", department="上海分所", role="user", password_hash="x", is_active=True),
             ])
             await db.commit()
-            result = await update_normal_case_basic(case.id, CaseNormalBasicInput(customer_record_id=customer.id,title=case.title,case_phase=case.status,cause_or_charge="合同纠纷",handling_lawyers=["admin"],assistants=["new","old"]), ADMIN, db)
+            result = await update_normal_case_basic(case.id, CaseNormalBasicInput(customer_record_id=customer.id,title=case.title,case_phase=case.status,cause_or_charge="合同纠纷",handling_lawyers=["admin"],assistants=["old","new"]), ADMIN, db)
             await db.refresh(case)
             old_role = await _case_team_role(case, {"username":"old","role":"user","display_name":"旧助理","department":"上海分所"}, db)
 
@@ -65,6 +67,24 @@ class CaseMultipleAssistantsRow5Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["assistant"], "最新助理")
         self.assertEqual(_case_assistant_display(case.data, {})[0], "最新助理")
         self.assertEqual(old_role, "assistant")
+
+    async def test_invalid_new_assistant_does_not_replace_existing_team(self) -> None:
+        async with self.sessions() as db:
+            customer = BusinessRecord(module="customer", serial_no="CODEX-901-R5-FAIL-CUSTOMER", title="失败客户", customer="失败客户", status="正常", owner="admin", department="上海分所", data={})
+            case = BusinessRecord(module="case", serial_no="CODEX-901-R5-FAIL-CASE", title="失败路径案件", customer="失败客户", status="办理中", owner="admin", department="上海分所", data={"case_type":"民事案件","customer_record_id":1,"cause_or_charge":"合同纠纷","handling_lawyers":["管理员"],"handling_lawyer_usernames":["admin"],"assistants":["原助理"],"assistant_usernames":["old"],"assistant":"原助理","assistant_username":"old"})
+            db.add_all([customer, case,
+                User(username="admin", display_name="管理员", department="上海分所", role="admin", password_hash="x", is_active=True),
+                User(username="old", display_name="原助理", department="上海分所", role="user", password_hash="x", is_active=True),
+            ])
+            await db.commit()
+            original_data = dict(case.data)
+
+            with self.assertRaises(HTTPException) as raised:
+                await update_normal_case_basic(case.id, CaseNormalBasicInput(customer_record_id=customer.id,title=case.title,case_phase=case.status,cause_or_charge="合同纠纷",handling_lawyers=["admin"],assistants=["old","missing"]), ADMIN, db)
+            await db.refresh(case)
+
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertEqual(case.data, original_data)
 
 
 if __name__ == "__main__":
