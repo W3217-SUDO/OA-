@@ -12,12 +12,12 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, SystemParameter, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 
 
 main_module = importlib.import_module("app.main")
-IDENTITY = {"username": "CODEX-828-ROW5-admin", "display_name": "第5行管理员", "role": "admin", "department": "上海分所"}
+IDENTITY = {"username": "CODEX-828-ROW5-user", "display_name": "第5行经办人", "role": "user", "department": "上海分所"}
 
 
 class CaseDocumentOperationsRow5Test(unittest.IsolatedAsyncioTestCase):
@@ -41,6 +41,10 @@ class CaseDocumentOperationsRow5Test(unittest.IsolatedAsyncioTestCase):
             )
             db.add_all([
                 case, unrelated,
+                User(
+                    username=IDENTITY["username"], display_name=IDENTITY["display_name"],
+                    department=IDENTITY["department"], role="user", role_ids=["user"], password_hash="test-only",
+                ),
                 SystemParameter(category="case_file_type", code="ROW5-SUBJECT", name="主体及委托资料", sort_order=1, is_active=True),
                 SystemParameter(category="case_file_type", code="ROW5-COURT", name="法院诉讼文书", sort_order=2, is_active=True),
             ])
@@ -71,7 +75,7 @@ class CaseDocumentOperationsRow5Test(unittest.IsolatedAsyncioTestCase):
         main_module.UPLOAD_ROOT = self.previous_upload_root
         await self.engine.dispose(); self.temp_dir.cleanup()
 
-    async def test_delete_is_atomic_and_limited_to_current_uploader_even_for_admin(self):
+    async def test_delete_is_atomic_and_limited_to_current_uploader_for_ordinary_user(self):
         denied = await self.client.post(f"{settings.api_prefix}/cases/attachments/delete", json={"attachment_ids": [self.own_id, self.other_id]})
         self.assertEqual(denied.status_code, 403, denied.text)
         self.assertIn("只能删除本人上传的文件", denied.json()["detail"])

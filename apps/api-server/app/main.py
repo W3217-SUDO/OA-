@@ -26463,7 +26463,7 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
     for item in attachments:
         if not item.record_id:
             raise HTTPException(status_code=422, detail="所选文件不是案件文件")
-        if item.uploader != identity["username"]:
+        if "admin" not in _identity_role_ids(identity) and item.uploader != identity["username"]:
             raise HTTPException(status_code=403, detail=f"只能删除本人上传的文件：{item.original_name}")
         record = await _ensure_attachment_record_visible(item.record_id, identity, db)
         if context_case:
