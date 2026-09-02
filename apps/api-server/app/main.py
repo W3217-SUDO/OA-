@@ -28145,6 +28145,65 @@ def _hr_record_linked_username(record: BusinessRecord) -> str:
     return str(data.get("username") or record.owner or "").strip().lower()
 
 
+def _hr_record_identity_tokens(record: BusinessRecord) -> set[str]:
+    """Return stable identity keys used to detect migrated duplicate HR files."""
+    data = record.data or {}
+    legacy = data.get("legacy_hr_identity") if isinstance(data.get("legacy_hr_identity"), dict) else {}
+    tokens: set[str] = set()
+    username = _hr_record_linked_username(record)
+    if username:
+        tokens.add(f"username:{username}")
+    system_user_id = data.get("system_user_id")
+    if str(system_user_id or "").strip():
+        tokens.add(f"system_user_id:{system_user_id}")
+    legacy_staff_id = data.get("legacy_staff_id") or legacy.get("legacy_staff_id")
+    if str(legacy_staff_id or "").strip():
+        tokens.add(f"legacy_staff_id:{legacy_staff_id}")
+    return tokens
+
+
+async def _hr_duplicate_identity_group(employee: BusinessRecord, db: AsyncSession) -> list[BusinessRecord]:
+    """Find the transitive HR-record group that resolves to the same identity."""
+    records = list((await db.scalars(
+        select(BusinessRecord).where(BusinessRecord.module == "hr").order_by(BusinessRecord.id)
+    )).all())
+    group: list[BusinessRecord] = [employee]
+    group_ids = {employee.id}
+    tokens = _hr_record_identity_tokens(employee)
+    changed = True
+    while changed:
+        changed = False
+        for record in records:
+            if record.id in group_ids:
+                continue
+            record_tokens = _hr_record_identity_tokens(record)
+            if tokens and tokens.intersection(record_tokens):
+                group.append(record)
+                group_ids.add(record.id)
+                tokens.update(record_tokens)
+                changed = True
+    return group
+
+
+async def _hr_duplicate_identity_canonical(group: list[BusinessRecord], db: AsyncSession) -> BusinessRecord:
+    """Prefer the record already carrying employee-owned data, then the oldest file."""
+    ranked: list[tuple[tuple[int, int, int], BusinessRecord]] = []
+    for record in group:
+        subrecords = int((await db.scalar(
+            select(func.count()).select_from(HrSubrecord).where(HrSubrecord.employee_id == record.id)
+        )) or 0)
+        attachments = int((await db.scalar(
+            select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == record.id)
+        )) or 0)
+        events = int((await db.scalar(
+            select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id == record.id)
+        )) or 0)
+        legacy = (record.data or {}).get("legacy_hr_identity")
+        legacy_weight = len([value for value in legacy.values() if value is not None and value != ""]) if isinstance(legacy, dict) else 0
+        ranked.append(((subrecords + attachments + events, legacy_weight, -int(record.id)), record))
+    return max(ranked, key=lambda item: item[0])[1]
+
+
 async def _require_unique_hr_display_name(display_name: str, db: AsyncSession, *, employee_id: int | None = None, linked_username: str = "") -> str:
     """Keep the personnel-facing Chinese name unique across HR files and login-only accounts."""
     normalized = display_name.strip()
@@ -28554,7 +28613,16 @@ async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, ident
         username = str(employee.owner or "").strip().lower()
     blockers: list[dict[str, object]] = []
     user = await db.scalar(select(User).where(User.username == username)) if username else None
-    if username == identity["username"].lower() or username == "admin" or (user and user.role == "admin"):
+    duplicate_group = await _hr_duplicate_identity_group(employee, db)
+    canonical = await _hr_duplicate_identity_canonical(duplicate_group, db)
+    redundant_duplicate = len(duplicate_group) > 1 and canonical.id != employee.id
+    if len(duplicate_group) > 1 and canonical.id == employee.id:
+        blockers.append({
+            "kind": "重复身份主档案",
+            "count": len(duplicate_group) - 1,
+            "records": [row.serial_no for row in duplicate_group if row.id != employee.id],
+        })
+    if not redundant_duplicate and (username == identity["username"].lower() or username == "admin" or (user and user.role == "admin")):
         blockers.append({"kind": "受保护登录账号", "count": 1, "records": [username or employee.serial_no]})
     subrecord_count = int((await db.scalar(select(func.count()).select_from(HrSubrecord).where(HrSubrecord.employee_id == employee.id))) or 0)
     if subrecord_count:
@@ -28567,7 +28635,7 @@ async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, ident
     reference_terms = [value for value in {username, employee.title.strip()} if value]
     reference_conditions = [BusinessRecord.owner == username] if username else []
     reference_conditions.extend(func.cast(BusinessRecord.data, String).ilike(f"%{value}%") for value in reference_terms)
-    if reference_conditions:
+    if reference_conditions and not redundant_duplicate:
         reference_filter = (
             BusinessRecord.id != employee.id,
             BusinessRecord.module.in_({"case", "task", "investigation", "contract", "seal", "finance"}),
@@ -28577,7 +28645,9 @@ async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, ident
         if reference_count:
             rows = list((await db.scalars(select(BusinessRecord).where(*reference_filter).order_by(BusinessRecord.id).limit(10))).all())
             blockers.append({"kind": "可能业务关联", "count": reference_count, "records": [row.serial_no for row in rows]})
-    return blockers, user
+    # A redundant migrated file shares the surviving record's login. Deleting
+    # that file must never remove the real account.
+    return blockers, None if redundant_duplicate else user
 
 
 @app.get(f"{settings.api_prefix}/hr/employees/{{employee_id}}/deletion-impact")
@@ -28587,7 +28657,15 @@ async def get_hr_employee_deletion_impact(employee_id: int, identity: dict = Dep
     if not employee or employee.module != "hr":
         raise HTTPException(status_code=404, detail="员工档案不存在")
     blockers, _ = await _collect_hr_employee_deletion_blockers(employee, identity, db)
-    return {"deletable": not blockers, "blockers": blockers}
+    duplicate_group = await _hr_duplicate_identity_group(employee, db)
+    canonical = await _hr_duplicate_identity_canonical(duplicate_group, db)
+    duplicate_cleanup = len(duplicate_group) > 1 and canonical.id != employee.id
+    return {
+        "deletable": not blockers,
+        "blockers": blockers,
+        "duplicate_cleanup": duplicate_cleanup,
+        "canonical_employee_id": canonical.id if duplicate_cleanup else None,
+    }
 
 
 async def _load_hr_batch_deletion_impact(body: HrEmployeeBatchDeleteInput, identity: dict, db: AsyncSession) -> tuple[list[tuple[BusinessRecord, User | None]], list[dict[str, object]]]:
