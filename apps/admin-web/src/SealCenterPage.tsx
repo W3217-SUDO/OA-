@@ -799,6 +799,8 @@ export default function SealCenterPage({
   };
   useEffect(() => {
     setTab(tabFromView(initialView));
+    queryForm.resetFields();
+    setQuery({});
     setApplicationPage(1);
     setApplicationGoPage(1);
     setApplicationPageSize(
@@ -814,7 +816,7 @@ export default function SealCenterPage({
         ? 15
         : 20,
     );
-  }, [initialView]);
+  }, [initialView, queryForm]);
   useEffect(() => {
     setSelectedKeys([]);
     setApplicationPage(1);
