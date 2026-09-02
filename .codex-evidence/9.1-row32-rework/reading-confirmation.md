@@ -134,4 +134,4 @@
 - `new-system/03-evidence-updated.png`：保存后侧栏立即回显 `CODEX-901-R32-CERT-NEW`、`Row32 Notary Office Updated`、`CODEX-901-R32-INV-NEW`；已视觉复核。
 - `new-system/04-refresh-persisted.png`：刷新当前案件页、重新点击同一线索后仍回显新值；已视觉复核。
 - SQLite 回读：线索与取证均持久化新取证机构、公证书号、发票号、存放处和“已入库”；`workflow_events` 仅有一次成功的“修改证据信息”日志。
-- 清理：已从 `business_records`、`workflow_events`、`investigation_evidences`、`Legal_Investigation_Clue`、`Legal_Investigation_Clue_Evidence` 清除全部 `CODEX-901-R32-` 夹具/投影，五处复核计数均为 `0`；已关闭本行旧/新系统 Chrome 页签；已停止 `15432`/`18032` 服务并确认端口不再监听；已删除临时 `.env.local`。截图、读取确认及已清理的隔离库/日志仅保存在本行证据目录。
+- 清理：已从 `business_records`、`workflow_events`、`investigation_evidences`、`Legal_Investigation_Clue`、`Legal_Investigation_Clue_Evidence` 清除全部 `CODEX-901-R32-` 夹具/投影，五处复核计数均为 `0`；已关闭本行旧/新系统 Chrome 页签；已停止 `15432`/`18032` 服务并确认端口不再监听；已删除临时 `.env.local`。截图与读取确认保留在本行证据目录，隔离 SQLite、日志、PID 文件、上传目录及整个 `runtime` 目录已精确删除且不进入 Git。
