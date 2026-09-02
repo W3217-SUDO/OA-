@@ -206,6 +206,8 @@
 .case-detail-doc-tree{padding:8px 14px}
 .case-document-list{padding:8px 10px 0}
 .case-document-toolbar{margin-top:8px}
+.case-document-generation-popup{z-index:2400!important;max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain}
+.case-document-generation-popup .ant-dropdown-menu{max-height:inherit;overflow-y:auto}
 
 @media(max-width:1280px){
   .case-detail-body-grid{grid-template-columns:minmax(0,1fr) 230px}

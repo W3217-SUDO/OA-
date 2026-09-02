@@ -5996,6 +5996,10 @@ export default function CaseCenterPage({
                   {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
                   {counselDetailCapabilities.can_generate_document && <Dropdown
                     trigger={["click"]}
+                    placement="bottomLeft"
+                    autoAdjustOverflow={false}
+                    getPopupContainer={() => document.body}
+                    classNames={{root:"case-document-generation-popup"}}
                     open={caseDocumentGenerationMenuOpen}
                     onOpenChange={setCaseDocumentGenerationMenuOpen}
                     menu={{
