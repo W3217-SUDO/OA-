@@ -15595,6 +15595,7 @@ async def _resolve_case_fee_type_master(
     scope = str(expense_scope or "").strip()
     if scope and scope not in option["expense_scopes"]:
         raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
+    _validate_finance_fee_scope_subtype(scope, item.name, option["base_fee_type"])
     return item, option
 
 

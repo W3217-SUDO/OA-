@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, User
+from app.models import BusinessRecord, SystemParameter, User
 from app.security import current_identity
 
 
@@ -101,6 +101,37 @@ class CasePlatformAgencyFeeRow13Test(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response.status_code, 422, response.text)
         self.assertIn("只能归属于平台", response.json()["detail"])
+
+    async def test_platform_master_data_rejects_law_firm_agency_subtype(self) -> None:
+        async with self.sessions() as db:
+            agency = SystemParameter(
+                category="fee_type", code="AGENCY", name="代理费", extra={},
+                sort_order=1, is_active=True, created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+            )
+            witness = SystemParameter(
+                category="fee_type", code="WITNESS", name="律师见证费", extra={"parent_code": "AGENCY"},
+                sort_order=2, is_active=True, created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+            )
+            platform = SystemParameter(
+                category="fee_type", code="PLATFORM", name="平台代理费", extra={"parent_code": "AGENCY"},
+                sort_order=3, is_active=True, created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+            )
+            db.add_all([agency, witness, platform])
+            await db.flush()
+            witness_id, platform_id = witness.id, platform.id
+            await db.commit()
+
+        invalid_payload = self.payload("平台", "律师见证费", self.platform_contract_id)
+        invalid_payload["fee_type_id"] = witness_id
+        invalid = await self.client.post(f"{API}/finance/fees", json=invalid_payload)
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        self.assertIn("只能是平台代理费", invalid.json()["detail"])
+
+        valid_payload = self.payload("平台", "平台代理费", self.platform_contract_id)
+        valid_payload["fee_type_id"] = platform_id
+        valid = await self.client.post(f"{API}/finance/fees", json=valid_payload)
+        self.assertEqual(valid.status_code, 201, valid.text)
+        self.assertEqual(valid.json()["data"]["expense_subtype"], "平台代理费")
 
     async def test_batch_platform_agency_fee_uses_the_same_constraint(self) -> None:
         valid = await self.client.post(f"{API}/cases/batch-fees", json={
