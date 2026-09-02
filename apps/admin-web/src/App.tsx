@@ -901,6 +901,7 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
     }
     return "合同详情";
   }
+  if (normalizedKey.startsWith("contract-investigation-")) return "新建调查任务";
   const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
   return menuLabel || routePageLabels[normalizedKey] || "业务页面";
 }
@@ -1735,6 +1736,8 @@ export default function App() {
       )) ||
     (active.startsWith("contract-detail-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
+    (active.startsWith("contract-investigation-") &&
+      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
     // Leaf menus are independently grantable.  A canonical route can collapse
     // a leaf such as task-my-accepted to its container task-my for component
     // selection, but that must not discard the explicit leaf grant.
@@ -2108,7 +2111,7 @@ export default function App() {
           />
         )}
         <Content
-          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") ? "case-detail-content" : ""}`}
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""}`}
           onClick={() => {
             if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
           }}
