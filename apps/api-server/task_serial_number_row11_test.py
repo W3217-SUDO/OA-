@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import unittest
+from unittest.mock import patch
 
 import httpx
+from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
 from app.database import Base, get_db
-from app.main import app
+from app.main import _next_manual_task_serial, app
 from app.models import BusinessRecord, User
 from app.security import current_identity
 
@@ -62,19 +65,40 @@ class TaskSerialNumberRow11Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()
 
-    async def test_new_numbers_are_short_sequential_and_history_is_unchanged(self) -> None:
-        first = await self._create_task("第一条短编号任务")
-        second = await self._create_task("第二条短编号任务")
+    async def test_new_numbers_match_legacy_shape_and_history_is_unchanged(self) -> None:
+        before_prefix = datetime.now().strftime("%H%M%S")
+        with patch("app.main.secrets.randbelow", side_effect=[25191, 69344]):
+            first = await self._create_task("第一条短编号任务")
+            second = await self._create_task("第二条短编号任务")
+        after_prefix = datetime.now().strftime("%H%M%S")
 
-        expected_prefix = f"RW{date.today():%y%m%d}"
-        self.assertRegex(first["serial_no"], rf"^{expected_prefix}\d{{3}}$")
-        self.assertRegex(second["serial_no"], rf"^{expected_prefix}\d{{3}}$")
-        self.assertLessEqual(len(first["serial_no"]), 11)
-        self.assertEqual(int(second["serial_no"][-3:]), int(first["serial_no"][-3:]) + 1)
+        self.assertRegex(first["serial_no"], r"^\d{11}$")
+        self.assertRegex(second["serial_no"], r"^\d{11}$")
+        self.assertIn(first["serial_no"][:6], {before_prefix, after_prefix})
+        self.assertIn(second["serial_no"][:6], {before_prefix, after_prefix})
+        self.assertEqual(first["serial_no"][-5:], "25191")
+        self.assertEqual(second["serial_no"][-5:], "69344")
+        self.assertNotEqual(first["serial_no"], second["serial_no"])
 
         historical = await self.client.get(f"{API}/tasks", params={"serial_no": "RW20260901134253891085"})
         self.assertEqual(historical.status_code, 200, historical.text)
         self.assertEqual(historical.json()["items"][0]["serial_no"], "RW20260901134253891085")
+
+    async def test_collision_retries_and_exhaustion_fails_without_writing(self) -> None:
+        fixed_now = datetime(2026, 9, 2, 14, 6, 52)
+        async with self.sessions() as db:
+            db.add(BusinessRecord(
+                module="task", serial_no="14065225191", title="旧系统形态占用号", customer="",
+                status="进行中", owner=ADMIN["username"], department=ADMIN["department"], data={},
+            ))
+            await db.commit()
+            with patch("app.main.secrets.randbelow", side_effect=[25191, 69344]):
+                self.assertEqual(await _next_manual_task_serial(db, now=fixed_now), "14065269344")
+            with patch("app.main.secrets.randbelow", return_value=25191):
+                with self.assertRaises(HTTPException) as rejected:
+                    await _next_manual_task_serial(db, now=fixed_now)
+            self.assertEqual(rejected.exception.status_code, 503)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord)), 2)
 
 
 if __name__ == "__main__":

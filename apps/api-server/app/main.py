@@ -10,6 +10,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import secrets
 import unicodedata
 import zipfile
 from zoneinfo import ZoneInfo
@@ -14634,27 +14635,19 @@ def _validate_task_deadline(deadline: date) -> None:
         raise HTTPException(status_code=422, detail="任务截止日期不能超过 30 天")
 
 
-async def _next_manual_task_serial(db: AsyncSession, *, today: date | None = None) -> str:
-    """Return the compact visible number used by manually published tasks.
+async def _next_manual_task_serial(db: AsyncSession, *, now: datetime | None = None) -> str:
+    """Return the legacy-compatible 11-digit visible task number.
 
-    Historical task numbers remain valid identifiers.  New manual tasks use a
-    short daily sequence instead of exposing the timestamp/microsecond value.
+    The legacy task list stores ``HHmmss`` followed by a five-digit collision
+    suffix; whether a task is manual or automatic is represented separately.
+    Historical identifiers remain untouched.
     """
-    business_date = today or date.today()
-    prefix = f"RW{business_date:%y%m%d}"
-    existing = list((await db.scalars(select(BusinessRecord.serial_no).where(
-        BusinessRecord.module == "task",
-        BusinessRecord.serial_no.like(f"{prefix}%"),
-    ))).all())
-    used_sequences = {
-        int(value[len(prefix):])
-        for value in existing
-        if len(value) == len(prefix) + 3 and value[len(prefix):].isdigit()
-    }
-    for sequence in range(1, 1000):
-        if sequence not in used_sequences:
-            return f"{prefix}{sequence:03d}"
-    raise HTTPException(status_code=503, detail="今日任务编号已用完，请联系管理员")
+    time_prefix = f"{now or datetime.now():%H%M%S}"
+    for _ in range(100):
+        candidate = f"{time_prefix}{secrets.randbelow(100000):05d}"
+        if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == candidate)):
+            return candidate
+    raise HTTPException(status_code=503, detail="任务编号生成失败，请稍后重试")
 
 
 @app.post(f"{settings.api_prefix}/tasks", status_code=status.HTTP_201_CREATED)
