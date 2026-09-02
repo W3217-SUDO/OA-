@@ -13602,8 +13602,11 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
         record = found.get(record_id)
         if not record:
             errors.append({"record_id": record_id, "error": "记录不存在或无权访问"}); continue
-        if record.module == "investigation" and "admin" not in role_ids:
-            errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "仅管理员可以删除调查任务"}); continue
+        if record.module == "investigation":
+            publisher = str((record.data or {}).get("publisher") or "").strip().lower()
+            legacy_owner_is_publisher = not publisher and str(record.owner or "").strip().lower() == identity["username"].lower()
+            if "admin" not in role_ids and publisher != identity["username"].lower() and not legacy_owner_is_publisher:
+                errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "只能删除本人发布的调查任务"}); continue
         if record.module == "task" and "admin" not in role_ids and record.owner != identity["username"] and (record.data or {}).get("initiator") != identity["username"]:
             errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "只能删除本人负责或发起的任务"}); continue
         if record.module not in {"task", "investigation"} and not manager and record.owner != identity["username"]:
