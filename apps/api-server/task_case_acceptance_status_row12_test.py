@@ -76,6 +76,14 @@ class TaskCaseAcceptanceStatusRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(case_tasks.json()["items"][0]["status"], "进行中")
         self.assertEqual(case_tasks.json()["items"][0]["workflow_status"], "待处理")
 
+        rejected = await self.client.post(
+            f"{API}/tasks/{task_id}/accept",
+            json={"comment": "发起人不得代替负责人接受"},
+        )
+        self.assertEqual(rejected.status_code, 403, rejected.text)
+        unchanged = await self.client.get(f"{API}/tasks", params={"scope": "mine", "relation": "initiated"})
+        self.assertEqual(unchanged.json()["items"][0]["workflow_status"], "待处理")
+
         self.identity = OWNER
         owned = await self.client.get(f"{API}/tasks", params={"scope": "mine", "relation": "owned"})
         self.assertEqual(owned.json()["summary"]["pending"], 1)
