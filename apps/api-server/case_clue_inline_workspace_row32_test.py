@@ -23,11 +23,21 @@ class CaseClueInlineWorkspaceRow32Test(unittest.TestCase):
         self.assertNotIn("rememberInvestigationDetailTarget", handler)
 
     def test_inline_workspace_matches_legacy_information_and_edit_fields(self) -> None:
-        self.assertIn('title={`线索信息：${viewingCaseClue?.clue.serial_no || ""}`}', self.page)
-        for label in ("线索文件", "取证信息", "取证机构", "公证书号", "取证时间", "发票号码", "证物存放处", "证物状态", "证据文件"):
+        self.assertIn('data-testid="case-clue-context-panel"', self.page)
+        self.assertIn('aria-label="案件内线索信息"', self.page)
+        self.assertIn("{renderCaseClueWorkspace()}", self.page)
+        self.assertNotIn('width={980}\n        open={Boolean(viewingCaseClue)}', self.page)
+        for label in ("线索信息", "线索文件", "取证信息", "取证机构", "公证书号", "取证时间", "发票号", "仓库", "库位", "状态", "文件"):
             self.assertIn(label, self.page)
         self.assertIn("rowSelection={{", self.page)
         self.assertIn("openCaseClueEvidenceEditor", self.page)
+        self.assertIn("deleteCaseClueEvidence", self.page)
+
+    def test_inline_workspace_is_rendered_inside_case_detail_workbench(self) -> None:
+        workbench_start = self.page.index('<div className="case-detail-workbench">')
+        inline_render = self.page.index("{renderCaseClueWorkspace()}", workbench_start)
+        case_drawer_end = self.page.index("</Drawer>", workbench_start)
+        self.assertLess(inline_render, case_drawer_end)
 
     def test_edit_uses_scoped_existing_evidence_endpoint(self) -> None:
         self.assertIn("api.put(`/investigations/evidence/${editingCaseClueEvidence.id}`", self.page)

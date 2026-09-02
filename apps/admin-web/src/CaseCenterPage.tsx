@@ -2663,6 +2663,115 @@ export default function CaseCenterPage({
       if (!error?.errorFields) message.error(error?.response?.data?.detail || "取证信息修改失败");
     }
   };
+  const closeCaseClueWorkspace = () => {
+    setViewingCaseClue(null);
+    setSelectedCaseClueEvidenceId(null);
+    setEditingCaseClueEvidence(null);
+    caseClueEvidenceForm.resetFields();
+  };
+  const deleteCaseClueEvidence = () => {
+    if (!selectedCaseClueEvidence) return message.warning("请先选择一条取证信息");
+    if (!selectedCaseClueEvidence.can_delete) return message.warning("当前账号无权删除该取证信息");
+    Modal.confirm({
+      title: "删除取证信息",
+      content: `确定删除 ${selectedCaseClueEvidence.serial_no || "当前取证记录"} 吗？`,
+      okText: "确定",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.delete(`/investigations/evidence/${selectedCaseClueEvidence.id}`);
+          if (!viewingCaseClue) return;
+          const { data } = await api.get(`/investigations/clues/${viewingCaseClue.clue.id}/workspace`);
+          setViewingCaseClue(data);
+          setSelectedCaseClueEvidenceId(null);
+          message.success("取证信息已删除");
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "取证信息删除失败");
+          throw error;
+        }
+      },
+    });
+  };
+  const renderCaseClueWorkspace = () => viewingCaseClue ? (
+    <aside className="case-clue-context-panel" aria-label="案件内线索信息" data-testid="case-clue-context-panel">
+      <div className="case-clue-context-header">
+        <strong>线索信息</strong>
+        <Button type="text" size="small" icon={<CloseOutlined />} aria-label="关闭线索信息" onClick={closeCaseClueWorkspace}>关闭</Button>
+      </div>
+      <div className="case-clue-context-body">
+        <Descriptions
+          bordered
+          size="small"
+          column={2}
+          items={[
+            { key: "serial", label: "线索编号", children: viewingCaseClue.clue.serial_no || "—" },
+            { key: "method", label: "侵权方式", children: viewingCaseClue.clue.data.infringement_method || viewingCaseClue.clue.data.infringement_type || "—" },
+            { key: "investigated", label: "调查时间", children: String(viewingCaseClue.clue.data.investigated_at || viewingCaseClue.clue.data.investigation_time || viewingCaseClue.clue.data.investigation_date || "").replace("T", " ").slice(0, 19) || "—" },
+            { key: "shop", label: "店铺名称", children: viewingCaseClue.clue.data.shop_name || viewingCaseClue.clue.data.store_name || viewingCaseClue.clue.title || "—" },
+            { key: "shop-id", label: "店铺Id", children: viewingCaseClue.clue.data.shop_id || viewingCaseClue.clue.data.store_id || "—" },
+            { key: "shop-link", label: "店铺链接", children: viewingCaseClue.clue.data.shop_link || viewingCaseClue.clue.data.store_link ? <a href={viewingCaseClue.clue.data.shop_link || viewingCaseClue.clue.data.store_link} target="_blank" rel="noreferrer">{viewingCaseClue.clue.data.shop_link || viewingCaseClue.clue.data.store_link}</a> : "—", span: 2 },
+            { key: "region", label: "调查区域", children: viewingCaseClue.clue.data.investigation_region || viewingCaseClue.clue.data.region || "—" },
+            { key: "address", label: "侵权地址", children: viewingCaseClue.clue.data.infringement_address || viewingCaseClue.clue.data.shop_address || viewingCaseClue.clue.data.address || "—" },
+            { key: "investigator", label: "调查员", children: viewingCaseClue.clue.data.investigator_display_name || viewingCaseClue.clue.owner_display_name || viewingCaseClue.clue.owner || "—" },
+            { key: "assistant", label: "调查辅助", children: viewingCaseClue.clue.data.investigation_assistant_display_name || viewingCaseClue.clue.data.investigation_assistant || "—" },
+            { key: "remark", label: "调查员备注", children: viewingCaseClue.clue.data.investigator_comment || viewingCaseClue.clue.description || "—", span: 2 },
+            { key: "status", label: "审批状态", children: viewingCaseClue.clue.status || "—" },
+            { key: "manager-comment", label: "管理人审核备注", children: viewingCaseClue.clue.data.manager_review_comment || viewingCaseClue.clue.data.review_comment || "—" },
+            { key: "customer-comment", label: "客户审核备注", children: viewingCaseClue.clue.data.customer_review_comment || "—", span: 2 },
+          ]}
+        />
+        <section className="case-clue-context-section">
+          <h3>线索文件</h3>
+          <Table<AttachmentRow>
+            rowKey="id"
+            size="small"
+            loading={caseClueLoading}
+            pagination={false}
+            dataSource={viewingCaseClue.clue_files || []}
+            locale={{ emptyText: "没有查询到线索文件。" }}
+            columns={[
+              { title: "上传人", width: 110, render: (_, row) => row.uploader_display_name || row.uploader || "—" },
+              { title: "文件名称", dataIndex: "original_name" },
+              { title: "文档日期", width: 150, render: (_, row) => String(row.created_at || "").replace("T", " ").slice(0, 19) || "—" },
+              { title: "操作", width: 70, render: (_, row) => <Button type="link" onClick={() => void downloadCounselDetailAttachment(row)}>下载</Button> },
+            ]}
+          />
+        </section>
+        <section className="case-clue-context-section">
+          <h3>取证信息</h3>
+          <Table<CaseClueEvidenceRow>
+            rowKey="id"
+            size="small"
+            loading={caseClueLoading}
+            pagination={false}
+            rowSelection={{
+              type: "radio",
+              selectedRowKeys: selectedCaseClueEvidenceId ? [selectedCaseClueEvidenceId] : [],
+              onChange: (keys) => setSelectedCaseClueEvidenceId(Number(keys[0]) || null),
+            }}
+            dataSource={viewingCaseClue.evidence || []}
+            locale={{ emptyText: "没有查询到取证信息。" }}
+            scroll={{ x: 1040 }}
+            columns={[
+              { title: "公证书号", width: 170, render: (_, row) => row.data.notarization_no || row.data.certificate_no || "—" },
+              { title: "取证时间", width: 120, render: (_, row) => row.data.collected_at || "—" },
+              { title: "取证机构", width: 180, render: (_, row) => row.data.notary_institution || "—" },
+              { title: "发票号", width: 130, render: (_, row) => row.data.invoice_no || "—" },
+              { title: "仓库", width: 130, render: (_, row) => row.data.warehouse_name || row.data.warehouse || row.data.storage_location || "—" },
+              { title: "库位", width: 120, render: (_, row) => row.data.storage_location_name || row.data.location_name || row.data.storage_location || "—" },
+              { title: "状态", width: 105, render: (_, row) => row.data.storage_state || row.data.evidence_status || row.status || "—" },
+              { title: "文件", width: 70, render: (_, row) => row.files?.length || 0 },
+            ]}
+          />
+          <Space className="case-clue-context-actions">
+            <Button danger disabled={!selectedCaseClueEvidence?.can_delete} onClick={deleteCaseClueEvidence}>删除</Button>
+            <Button disabled={!selectedCaseClueEvidence?.can_edit} onClick={openCaseClueEvidenceEditor}>修改</Button>
+          </Space>
+        </section>
+      </div>
+    </aside>
+  ) : null;
   const openClueConversion = () => {
     clueConversionForm.resetFields();
     clueConversionForm.setFieldsValue({ case_type: "民事案件" });
@@ -6105,6 +6214,7 @@ export default function CaseCenterPage({
               </section>
             </aside>
           </div>
+          {renderCaseClueWorkspace()}
         </div>}
       </Drawer>
       <Drawer
@@ -6613,73 +6723,6 @@ export default function CaseCenterPage({
             ]}
           />
         </Form>
-      </Drawer>
-      <Drawer
-        width={980}
-        open={Boolean(viewingCaseClue)}
-        title={`线索信息：${viewingCaseClue?.clue.serial_no || ""}`}
-        onClose={() => {
-          setViewingCaseClue(null);
-          setSelectedCaseClueEvidenceId(null);
-        }}
-        destroyOnHidden
-      >
-        <Descriptions
-          bordered
-          size="small"
-          column={2}
-          items={viewingCaseClue ? [
-            { key: "serial", label: "线索编号", children: viewingCaseClue.clue.serial_no || "—" },
-            { key: "status", label: "线索状态", children: viewingCaseClue.clue.status || "—" },
-            { key: "title", label: "线索名称", children: viewingCaseClue.clue.title || "—" },
-            { key: "customer", label: "权利人/客户", children: viewingCaseClue.clue.customer || "—" },
-            { key: "owner", label: "负责人", children: viewingCaseClue.clue.owner_display_name || viewingCaseClue.clue.owner || "—" },
-            { key: "description", label: "线索说明", children: viewingCaseClue.clue.description || "—", span: 2 },
-          ] : []}
-        />
-        <Card size="small" title="线索文件" style={{ marginTop: 16 }}>
-          <Table<AttachmentRow>
-            rowKey="id"
-            size="small"
-            loading={caseClueLoading}
-            pagination={false}
-            dataSource={viewingCaseClue?.clue_files || []}
-            columns={[
-              { title: "上传人", width: 120, render: (_, row) => row.uploader_display_name || row.uploader || "—" },
-              { title: "文件名称", dataIndex: "original_name" },
-              { title: "文档日期", width: 165, render: (_, row) => String(row.created_at || "").replace("T", " ").slice(0, 19) || "—" },
-              { title: "操作", width: 80, render: (_, row) => <Button type="link" onClick={() => void downloadCounselDetailAttachment(row)}>下载</Button> },
-            ]}
-          />
-        </Card>
-        <Card size="small" title="取证信息" style={{ marginTop: 16 }}>
-          <Table<CaseClueEvidenceRow>
-            rowKey="id"
-            size="small"
-            loading={caseClueLoading}
-            pagination={false}
-            rowSelection={{
-              type: "radio",
-              selectedRowKeys: selectedCaseClueEvidenceId ? [selectedCaseClueEvidenceId] : [],
-              onChange: (keys) => setSelectedCaseClueEvidenceId(Number(keys[0]) || null),
-            }}
-            dataSource={viewingCaseClue?.evidence || []}
-            scroll={{ x: 1180 }}
-            columns={[
-              { title: "取证编号", dataIndex: "serial_no", width: 170 },
-              { title: "取证时间", width: 120, render: (_, row) => row.data.collected_at || "—" },
-              { title: "取证机构", width: 180, render: (_, row) => row.data.notary_institution || "—" },
-              { title: "公证书号", width: 180, render: (_, row) => row.data.notarization_no || row.data.certificate_no || "—" },
-              { title: "发票号码", width: 140, render: (_, row) => row.data.invoice_no || "—" },
-              { title: "证物存放处", width: 180, render: (_, row) => row.data.storage_location || "—" },
-              { title: "证物状态", width: 110, render: (_, row) => row.data.storage_state || row.data.evidence_status || row.status || "—" },
-              { title: "证据文件", width: 90, render: (_, row) => row.files?.length || 0 },
-            ]}
-          />
-          <Space style={{ marginTop: 12 }}>
-            <Button disabled={!selectedCaseClueEvidence?.can_edit} onClick={openCaseClueEvidenceEditor}>修改</Button>
-          </Space>
-        </Card>
       </Drawer>
       <Modal
         open={Boolean(editingCaseClueEvidence)}

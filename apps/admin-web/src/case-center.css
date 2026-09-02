@@ -254,6 +254,23 @@
 .case-archive-application-footer{display:flex;justify-content:flex-end;gap:8px}
 .case-detail-static-root .case-detail-body-grid{min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 
+/* 9.1 row 32 rework: legacy clue details stay inside the case workbench. */
+.case-detail-static-root .case-detail-workbench{position:relative}
+.case-clue-context-panel{position:absolute;z-index:35;top:0;right:0;bottom:0;display:flex;width:min(720px,48%);min-width:520px;flex-direction:column;border-left:1px solid #bfc8d2;background:#fff;box-shadow:-5px 0 14px rgba(31,45,61,.16)}
+.case-clue-context-header{display:flex;min-height:34px;flex:0 0 auto;align-items:center;justify-content:space-between;padding:3px 8px;border-bottom:1px solid #dce2e8;background:#f7f9fb;font-size:12px}
+.case-clue-context-header .ant-btn{height:26px;padding:0 5px;font-size:12px}
+.case-clue-context-body{min-height:0;flex:1 1 auto;overflow:auto;padding:8px}
+.case-clue-context-body .ant-descriptions{font-size:12px}
+.case-clue-context-body .ant-descriptions-item-label,.case-clue-context-body .ant-descriptions-item-content{padding:5px 7px!important}
+.case-clue-context-section{margin-top:10px;border:1px solid #dce2e8;background:#fff}
+.case-clue-context-section h3{height:29px;margin:0;padding:6px 8px;border-bottom:1px solid #dce2e8;background:#f7f9fb;font-size:12px;line-height:16px}
+.case-clue-context-section .ant-table{font-size:12px}
+.case-clue-context-section .ant-table-thead>tr>th,.case-clue-context-section .ant-table-tbody>tr>td{padding:5px 7px!important}
+.case-clue-context-actions{padding:8px}
+.case-clue-context-actions .ant-btn{height:27px;padding:0 13px;border-radius:0;font-size:12px}
+@media(max-width:1100px){.case-clue-context-panel{width:70%;min-width:0}}
+@media(max-width:760px){.case-clue-context-panel{width:100%}}
+
 /* Match the legacy case-detail operation menu: primary actions on the right,
    with nested actions opening into a separate panel on the left. */
 .case-detail-legacy-operation-menu,
