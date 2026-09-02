@@ -8,7 +8,7 @@ const modalEnd = source.indexOf('open={Boolean(paymentPackagePreview)}', modalSt
 const modal = source.slice(modalStart, modalEnd);
 
 test("row 12 opens the dedicated commission preview instead of the generic fee drawer", () => {
-  assert.match(source, /key==="commission"\?void openCaseCommission\(\)/);
+  assert.match(source, /key === "commission" \? void openCaseCommission\(\)/);
   assert.match(source, /\/commission-preview/);
   assert.doesNotMatch(source, /key==="commission"\?handleInternalFeeAction\("create"\)/);
 });

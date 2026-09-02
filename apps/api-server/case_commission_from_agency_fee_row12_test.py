@@ -173,6 +173,28 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             after = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance"))
         self.assertEqual(after, before)
 
+    async def test_unlinked_participant_reports_each_missing_legacy_commission_setting(self):
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.data = {
+                **(case.data or {}),
+                "hearing_lawyer": "外部合作律师",
+                "assistant": "外部合作律师",
+                "source_person": "外部合作律师",
+            }
+            await db.commit()
+
+        response = await self.client.get(
+            f"{API}/cases/{self.case_id}/commission-preview",
+            params={"source_fee_id": self.fee_id},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertIn("外部合作律师未设开庭提成", data["missing_messages"])
+        self.assertIn("外部合作律师未设文书提成", data["missing_messages"])
+        self.assertIn("外部合作律师未设案源提成", data["missing_messages"])
+        self.assertTrue(any(item["commission_type"] == "调查提成" for item in data["items"]))
+
     async def test_non_agency_fee_is_rejected(self):
         response = await self.client.get(
             f"{API}/cases/{self.case_id}/commission-preview",

@@ -18808,7 +18808,7 @@ async def _case_commission_preview(
         for token in _case_commission_person_tokens(case_data, role["fields"]):
             employee = employee_index.get(token.lower())
             if not employee:
-                missing.append(f"{token}未关联员工档案，无法读取{role['label']}提成")
+                missing.append(f"{token}未设{role['label']}提成")
                 continue
             pair = (str(role["key"]), employee.id)
             if pair in seen_role_employees:

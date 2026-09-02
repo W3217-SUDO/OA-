@@ -8,6 +8,17 @@ PAGE = (ROOT / "apps" / "admin-web" / "src" / "CaseCenterPage.tsx").read_text(en
 
 
 class CaseCommissionLegacyPreviewRow33Test(unittest.TestCase):
+    def test_commission_action_uses_legacy_more_actions_entry(self) -> None:
+        firm_fee_toolbar = PAGE.split('{key:"firm-fees"', 1)[1].split('{key:"platform-fees"', 1)[0]
+        create_menu, more_menu = firm_fee_toolbar.split('<Button>新增案件费用</Button>', 1)
+        self.assertNotIn('新建提成(选择代理费)', create_menu)
+        self.assertIn('新建提成(选择代理费)', more_menu)
+        self.assertIn('key === "commission" ? void openCaseCommission()', more_menu)
+
+    def test_unlinked_participant_uses_legacy_missing_setting_message(self) -> None:
+        self.assertIn('missing.append(f"{token}未设{role[\'label\']}提成")', API)
+        self.assertNotIn('未关联员工档案，无法读取', API)
+
     def test_legacy_commission_type_labels_are_preserved(self) -> None:
         for label in (
             "开庭提成", "开庭固定提成", "文书提成", "文书固定提成",
