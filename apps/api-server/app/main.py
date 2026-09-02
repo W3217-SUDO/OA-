@@ -13689,6 +13689,13 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
             child = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "task", BusinessRecord.data["parent_task_id"].as_integer() == record.id))
             if child:
                 errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "任务存在子任务，不能删除"}); continue
+            linked_clue = await db.scalar(
+                select(InvestigationClueLink.clue_record_id).where(
+                    InvestigationClueLink.task_record_id == record.id,
+                )
+            )
+            if linked_clue:
+                errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "任务已有调查线索，不能删除"}); continue
         else:
             child = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "task", BusinessRecord.data["investigation_record_id"].as_integer() == record.id))
             if child:
