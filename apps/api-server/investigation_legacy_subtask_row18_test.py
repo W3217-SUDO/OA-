@@ -55,7 +55,7 @@ class InvestigationLegacySubtaskRow18Test(unittest.IsolatedAsyncioTestCase):
                     "migration_source": "8091-local-PRD_CRM_GD_20200211",
                     "legacy_investigation_id": 1330,
                     "authorized_from": "2024-10-15",
-                    "authorized_to": "2024-10-31",
+                    "authorized_to": "2026-10-31",
                     "authorization_scope": "区域",
                 },
             )
@@ -71,7 +71,7 @@ class InvestigationLegacySubtaskRow18Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created["data"]["contract_no"], "")
         self.assertEqual(created["data"]["region"], "上海市 市辖区 浦东新区")
 
-    async def test_current_expired_investigation_is_still_rejected(self):
+    async def test_current_expired_investigation_is_rejected(self):
         async with self.sessions() as db:
             await self._add_users(db)
             source = BusinessRecord(
@@ -81,6 +81,30 @@ class InvestigationLegacySubtaskRow18Test(unittest.IsolatedAsyncioTestCase):
                 data={
                     "contract_id": 999,
                     "authorized_to": "2024-10-31",
+                },
+            )
+            db.add(source)
+            await db.commit()
+
+            with self.assertRaises(HTTPException) as raised:
+                await create_investigation_task(
+                    source.id, self._payload(), {"username": "admin", "role": "admin"}, db
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.detail, "该任务已过期，不允许新建子任务")
+
+    async def test_legacy_expired_investigation_is_also_rejected(self):
+        async with self.sessions() as db:
+            await self._add_users(db)
+            source = BusinessRecord(
+                module="investigation", serial_no="RW2411260046472",
+                title="过期历史调查", customer="历史客户", status="待分配",
+                owner="admin", department="总部",
+                data={
+                    "migration_source": "legacy",
+                    "legacy_investigation_id": 1,
+                    "authorized_to": "2024-11-23T00:00:00+08:00",
                 },
             )
             db.add(source)

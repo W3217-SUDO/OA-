@@ -13707,7 +13707,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         or source_data.get("legacy_investigation_id")
         or source_data.get("legacy_record")
     )
-    if _investigation_authorization_expired(source) and not is_legacy_investigation:
+    if _investigation_authorization_expired(source):
         raise HTTPException(status_code=409, detail="该任务已过期，不允许新建子任务")
     parent = None
     if body.parent_task_id:

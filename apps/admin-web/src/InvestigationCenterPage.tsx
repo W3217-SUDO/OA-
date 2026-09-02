@@ -1644,11 +1644,14 @@ export default function InvestigationCenterPage({
     const authorizationEnd = dayjs(String(row.data.authorized_to || row.data.end_date || ""));
     if (
       createSubtask &&
-      !isLegacyInvestigationRecord(row) &&
       authorizationEnd.isValid() &&
       authorizationEnd.isBefore(dayjs(), "day")
     ) {
-      message.error("该任务已过期，不允许新建子任务");
+      Modal.error({
+        title: "无法新建子任务",
+        content: "该任务已过期，不允许新建子任务",
+        okText: "知道了",
+      });
       return;
     }
     try {
