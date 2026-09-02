@@ -62,7 +62,7 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
-import { rememberIncomingPaymentDetailTarget } from "./incomingPaymentDetailNavigation";
+import { incomingPaymentDetailRoute } from "./incomingPaymentDetailNavigation";
 import { readStoredGlobalCaseSearchContext } from "./globalCaseSearchParity.mjs";
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
@@ -169,9 +169,15 @@ type CaseFeeIncomingPaymentLink = {
   receipt_no: string;
   received_date: string;
   allocated_amount: number;
+  amount: number;
   payer_name: string;
   bank_reference: string;
   status: string;
+  contract_no: string;
+  customer_name: string;
+  payment_method: string;
+  assigned_official_fee: number;
+  assigned_agency_fee: number;
 };
 type CasePaymentTypeOption = {
   id: number;
@@ -2600,12 +2606,12 @@ export default function CaseCenterPage({
     setViewingFeeIncomingPayments(payments);
   };
   const openIncomingPaymentDetail = (paymentId: number) => {
-    if (!rememberIncomingPaymentDetailTarget(paymentId)) {
+    if (!Number(paymentId || 0)) {
       message.warning("当前回款记录不存在或无权查看");
       return;
     }
     setViewingFeeIncomingPayments(null);
-    onNavigate?.("finance-incoming-company");
+    onNavigate?.(incomingPaymentDetailRoute(paymentId));
   };
   const openRelatedInvoice = (fee: CaseRow) => {
     const invoiceId = Number(fee.data.invoice_record_id || 0);
@@ -6746,9 +6752,9 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={900}
+        width="calc(100vw - 64px)"
         open={Boolean(viewingFeeIncomingPayments)}
-        title="费用回款记录"
+        title="回款信息"
         footer={<Button onClick={() => setViewingFeeIncomingPayments(null)}>关闭</Button>}
         onCancel={() => setViewingFeeIncomingPayments(null)}
       >
@@ -6758,12 +6764,16 @@ export default function CaseCenterPage({
           pagination={false}
           dataSource={viewingFeeIncomingPayments || []}
           columns={[
-            {title:"回款单号",dataIndex:"receipt_no",width:190,render:(value:string,row:CaseFeeIncomingPaymentLink)=><Button type="link" className="case-cell-link" onClick={()=>openIncomingPaymentDetail(row.id)}>{value}</Button>},
+            {title:"回款流水号",dataIndex:"receipt_no",width:180,render:(value:string,row:CaseFeeIncomingPaymentLink)=><Button type="link" className="case-cell-link" onClick={()=>openIncomingPaymentDetail(row.id)}>{value}</Button>},
+            {title:"合同编号",dataIndex:"contract_no",width:150},
+            {title:"客户名称",dataIndex:"customer_name",width:180},
+            {title:"回款单位",dataIndex:"payer_name",width:180},
             {title:"回款日期",dataIndex:"received_date",width:120},
-            {title:"本次分配金额",dataIndex:"allocated_amount",width:130,align:"right" as const},
-            {title:"付款人",dataIndex:"payer_name",width:150},
-            {title:"银行流水号",dataIndex:"bank_reference",width:180},
-            {title:"状态",dataIndex:"status",width:100},
+            {title:"回款金额",dataIndex:"amount",width:120,align:"right" as const,render:(value:number)=>Number(value||0).toFixed(2)},
+            {title:"回款官费",dataIndex:"assigned_official_fee",width:120,align:"right" as const,render:(value:number)=>Number(value||0).toFixed(2)},
+            {title:"回款代理费",dataIndex:"assigned_agency_fee",width:120,align:"right" as const,render:(value:number)=>Number(value||0).toFixed(2)},
+            {title:"回款方式",dataIndex:"payment_method",width:120},
+            {title:"银行单据号",dataIndex:"bank_reference",width:180},
           ]}
         />
       </Modal>

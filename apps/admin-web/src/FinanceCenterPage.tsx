@@ -45,7 +45,7 @@ import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { consumeBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
-import { consumeIncomingPaymentDetailTarget } from "./incomingPaymentDetailNavigation";
+import { resolveIncomingPaymentDetailTarget } from "./incomingPaymentDetailNavigation";
 import { formatRequiredDate } from "./formSafety";
 import { createFinanceActionGate } from "./financeActionGate.mjs";
 import { buildInvoiceApplicationPayload } from "./financeInvoiceHelpers.mjs";
@@ -330,6 +330,24 @@ type IncomingPayment = {
   remaining_amount: number | null;
   contract_no: string;
   bank_source: string;
+  customer_name?: string;
+  payment_method?: string;
+  assigned_official_fee?: number | null;
+  assigned_agency_fee?: number | null;
+  assigned_other_fee?: number | null;
+  claimant_display_name?: string;
+  allocation_details?: Array<{
+    detail_id?: string;
+    case_id?: number;
+    case_type?: string;
+    case_name?: string;
+    case_no?: string;
+    contract_no?: string;
+    fee_type?: string;
+    fee_total_amount?: number | null;
+    fee_allocated_amount?: number | null;
+    current_amount?: number | null;
+  }>;
   allocations: any[];
   operator: string;
   remark: string;
@@ -1418,12 +1436,12 @@ export default function FinanceCenterPage({
   const [incomingDetailTarget, setIncomingDetailTarget] =
     useState<IncomingPayment | null>(null);
   useEffect(() => {
-    const paymentId = consumeIncomingPaymentDetailTarget();
+    const paymentId = resolveIncomingPaymentDetailTarget(initialView);
     if (!paymentId) return;
     void api.get(`/finance/incoming-payments/${paymentId}`)
       .then(({ data }) => setIncomingDetailTarget(data))
       .catch((error: any) => message.error(error?.response?.data?.detail || "回款详情加载失败"));
-  }, []);
+  }, [initialView]);
   const [issueTarget, setIssueTarget] = useState<FinanceFlow | null>(null);
   const [voidTarget, setVoidTarget] = useState<FinanceFlow | null>(null);
   const [refundCompleteTarget, setRefundCompleteTarget] =
@@ -9267,11 +9285,64 @@ export default function FinanceCenterPage({
         </div>
       </section>
     ) : null;
+  const incomingPaymentDetailPage = incomingDetailTarget ? (
+    <section className="finance-original-panel finance-incoming-applied-page">
+      <div className="finance-incoming-applied-titlebar">
+        <h2>已分配回款</h2>
+        <Button onClick={() => {
+          setIncomingDetailTarget(null);
+          onNavigate?.("finance-incoming-company");
+        }}>返回回款列表</Button>
+      </div>
+      <div className="finance-incoming-applied-heading">回款信息</div>
+      <Descriptions
+        className="finance-incoming-applied-summary"
+        column={5}
+        size="small"
+        colon
+      >
+        <Descriptions.Item label="回款单位">{incomingDetailTarget.payer_name || "—"}</Descriptions.Item>
+        <Descriptions.Item label="到账日期">{incomingDetailTarget.received_date || "—"}</Descriptions.Item>
+        <Descriptions.Item label="银行单号">{incomingDetailTarget.bank_reference || "—"}</Descriptions.Item>
+        <Descriptions.Item label="回款方式">{incomingDetailTarget.payment_method || incomingDetailTarget.bank_source || "—"}</Descriptions.Item>
+        <Descriptions.Item label="合同号">{incomingDetailTarget.contract_no || "—"}</Descriptions.Item>
+        <Descriptions.Item label="客户名称">{incomingDetailTarget.customer_name || incomingDetailTarget.claimed_customer || "—"}</Descriptions.Item>
+        <Descriptions.Item label="到账金额">{incomingDetailTarget.amount == null ? "无权限" : money(incomingDetailTarget.amount)}</Descriptions.Item>
+        <Descriptions.Item label="已分配额">{incomingDetailTarget.allocated_amount == null ? "无权限" : money(incomingDetailTarget.allocated_amount)}</Descriptions.Item>
+        <Descriptions.Item label="未分配额">{incomingDetailTarget.remaining_amount == null ? "无权限" : money(incomingDetailTarget.remaining_amount)}</Descriptions.Item>
+        <Descriptions.Item label="领款人">{incomingDetailTarget.claimant_display_name || incomingDetailTarget.claimant || "—"}</Descriptions.Item>
+        <Descriptions.Item label="备注" span={5}>{incomingDetailTarget.remark || "—"}</Descriptions.Item>
+      </Descriptions>
+      <div className="finance-incoming-applied-heading">费用分配明细</div>
+      <Table
+        className="finance-incoming-applied-table"
+        rowKey={(row, index) => row.detail_id || `${row.case_no || "row"}-${index}`}
+        size="small"
+        pagination={false}
+        dataSource={incomingDetailTarget.allocation_details || []}
+        locale={{ emptyText: "没有查询到符合条件的记录" }}
+        columns={[
+          { title: <><Checkbox disabled /> 全选</>, width: 76, render: () => <Checkbox disabled /> },
+          { title: "案件类型", dataIndex: "case_type", width: 110, render: (value: string) => value || "—" },
+          { title: "案件名称", dataIndex: "case_name", width: 220, render: (value: string) => value || "—" },
+          { title: "案号", dataIndex: "case_no", width: 150, render: (value: string) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—" },
+          { title: "合同号", dataIndex: "contract_no", width: 150, render: (value: string) => value ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—" },
+          { title: "费用类型", dataIndex: "fee_type", width: 120, render: (value: string) => value || "—" },
+          { title: "总额", dataIndex: "fee_total_amount", width: 110, align: "right" as const, render: (value: number | null) => value == null ? "无权限" : money(value) },
+          { title: "已收", dataIndex: "fee_allocated_amount", width: 110, align: "right" as const, render: (value: number | null) => value == null ? "无权限" : money(value) },
+          { title: "待收", width: 110, align: "right" as const, render: (_: unknown, row) => row.fee_total_amount == null || row.fee_allocated_amount == null ? "无权限" : money(Math.max(row.fee_total_amount - row.fee_allocated_amount, 0)) },
+          { title: "本次回款", dataIndex: "current_amount", width: 120, align: "right" as const, render: (value: number | null) => value == null ? "无权限" : money(value) },
+        ]}
+      />
+    </section>
+  ) : null;
+
   if (initialView === "finance-receipts-new") return <ReceiptCreatePage />;
 
   return (
     <>
-      {invoiceDetailPage ||
+      {incomingPaymentDetailPage ||
+        invoiceDetailPage ||
         paymentPrintPreviewPage ||
         paymentPackagePrintPage ||
         internalPaymentDetail ||
@@ -11828,64 +11899,6 @@ export default function FinanceCenterPage({
             { title: "分配时间", dataIndex: "allocated_at", width: 180 },
           ]}
         />
-      </Modal>
-      <Modal
-        width={860}
-        open={Boolean(incomingDetailTarget)}
-        title={`回款详情：${incomingDetailTarget?.receipt_no || ""}`}
-        footer={null}
-        onCancel={() => setIncomingDetailTarget(null)}
-      >
-        <Descriptions column={2} size="small" bordered>
-          <Descriptions.Item label="到账编号">
-            {incomingDetailTarget?.receipt_no || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="到账日期">
-            {incomingDetailTarget?.received_date || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="付款单位/户名">
-            {incomingDetailTarget?.payer_name || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="银行流水号">
-            {incomingDetailTarget?.bank_reference || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="到账金额">
-            {incomingDetailTarget?.amount == null ? "无权限" : money(incomingDetailTarget.amount)}
-          </Descriptions.Item>
-          <Descriptions.Item label="已分配">
-            {incomingDetailTarget?.allocated_amount == null ? "无权限" : money(incomingDetailTarget.allocated_amount)}
-          </Descriptions.Item>
-          <Descriptions.Item label="认领客户">
-            {incomingDetailTarget?.claimed_customer || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="状态">
-            {incomingDetailTarget?.status || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="认领人">
-            {incomingDetailTarget?.claimant || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="备注">
-            {incomingDetailTarget?.remark || "—"}
-          </Descriptions.Item>
-        </Descriptions>
-        {Boolean(incomingDetailTarget?.allocations?.length) && (
-          <Table
-            style={{ marginTop: 16 }}
-            size="small"
-            pagination={false}
-            rowKey={(row: any, index) =>
-              String(row.transaction_id || row.receivable_plan_id || index)
-            }
-            dataSource={incomingDetailTarget?.allocations || []}
-            columns={[
-              { title: "合同号", dataIndex: "contract_no", render: (v: string) => v ? <Button type="link" onClick={() => openContractDetail(v)}>{v}</Button> : "—" },
-              { title: "案号", dataIndex: "case_no", render: (v: string) => v ? <Button type="link" onClick={() => openCaseDetail(v)}>{v}</Button> : "—" },
-              { title: "金额", dataIndex: "amount", render: (value: number) => money(value) },
-              { title: "分配人", dataIndex: "allocated_by", width: 100 },
-              { title: "分配时间", dataIndex: "allocated_at", width: 180 },
-            ]}
-          />
-        )}
       </Modal>
       <Modal
         width="calc(100vw - 48px)"

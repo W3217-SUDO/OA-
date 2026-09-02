@@ -8,6 +8,17 @@ export const rememberIncomingPaymentDetailTarget = (id: number) => {
   return true;
 };
 
+export const incomingPaymentDetailRoute = (id: number) => {
+  const normalizedId = Number(id || 0);
+  return normalizedId ? `finance-incoming-payment-${normalizedId}` : "finance-incoming-company";
+};
+
+export const resolveIncomingPaymentDetailTarget = (route: string): number | null => {
+  const match = String(route || "").match(/^finance-incoming-payment-(\d+)$/);
+  if (match) return Number(match[1]) || null;
+  return consumeIncomingPaymentDetailTarget();
+};
+
 export const consumeIncomingPaymentDetailTarget = (): number | null => {
   const raw = sessionStorage.getItem(STORAGE_KEY);
   if (!raw) return null;

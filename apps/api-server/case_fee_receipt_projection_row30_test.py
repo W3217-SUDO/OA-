@@ -35,10 +35,10 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
             db.add_all([customer, contract]); await db.flush()
             # Legacy cases can predate the contract relation while a newly entered
             # fee carries both stable case and contract ids.
-            case_record = BusinessRecord(module="case", serial_no="ROW30-CASE", title="Row 30 Case", customer=customer.title, status="active", owner=ADMIN["username"], department=ADMIN["department"], data={})
+            case_record = BusinessRecord(module="case", serial_no="ROW30-CASE", title="Row 30 Case", customer=customer.title, status="active", owner=ADMIN["username"], department=ADMIN["department"], data={"case_type": "Civil dispute"})
             db.add(case_record); await db.flush()
             fee = BusinessRecord(module="finance", serial_no="ROW30-FEE", title="Row 30 Fee", customer=customer.title, status="pending", owner=ADMIN["username"], department=ADMIN["department"], data={"amount": 8400, "fee_type": "court fee", "case_id": case_record.id, "case_no": case_record.serial_no, "contract_id": contract.id, "contract_no": contract.serial_no, "legacy_case_fee_id": 42738})
-            payment = IncomingPayment(receipt_no="ROW30-RECEIPT", received_date=date(2026, 8, 28), amount=8400, payer_name="Row 30 Payer", bank_reference="ROW30-BANK", status="待分配", claimed_customer=customer.title, claimant=ADMIN["username"], operator=ADMIN["username"])
+            payment = IncomingPayment(receipt_no="ROW30-RECEIPT", received_date=date(2026, 8, 28), amount=8400, payer_name="Row 30 Payer", bank_reference="ROW30-BANK", bank_source="Bank transfer", status="待分配", claimed_customer=customer.title, claimant=ADMIN["username"], operator=ADMIN["username"])
             db.add_all([fee, payment]); await db.commit()
             self.case_id, self.fee_id, self.payment_id = case_record.id, fee.id, payment.id
 
@@ -61,6 +61,8 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
             "fee_record_id": self.fee_id,
             "amount": 8400,
             "case_no": "ROW30-CASE",
+            "case_id": self.case_id,
+            "contract_no": "ROW30-CONTRACT",
             "payment_method": "bank",
             "settlement_items": [{"fee_record_id": self.fee_id, "fee_type": "court fee", "amount": 8400, "settlement_amount": 8400, "archive_fee": 0}],
         }]})
@@ -78,6 +80,33 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fee["data"]["received_at"], "2026-08-28")
         self.assertEqual(fee["data"]["incoming_payments"][0]["id"], self.payment_id)
         self.assertEqual(fee["data"]["incoming_payments"][0]["allocated_amount"], 8400)
+        receipt = fee["data"]["incoming_payments"][0]
+        self.assertEqual(receipt["contract_no"], "ROW30-CONTRACT")
+        self.assertEqual(receipt["customer_name"], "Row 30 Customer")
+        self.assertEqual(receipt["amount"], 8400)
+        self.assertEqual(receipt["assigned_official_fee"], 8400)
+        self.assertEqual(receipt["assigned_agency_fee"], 0)
+        self.assertEqual(receipt["payment_method"], "bank")
+
+        detail_response = await self.client.get(f"{API}/finance/incoming-payments/{self.payment_id}")
+        self.assertEqual(detail_response.status_code, 200, detail_response.text)
+        detail = detail_response.json()
+        self.assertEqual(detail["receipt_no"], "ROW30-RECEIPT")
+        self.assertEqual(detail["contract_no"], "ROW30-CONTRACT")
+        self.assertEqual(detail["payment_method"], "bank")
+        self.assertEqual(detail["allocated_amount"], 8400)
+        self.assertEqual(detail["remaining_amount"], 0)
+        self.assertEqual(detail["claimant_display_name"], ADMIN["display_name"])
+        self.assertEqual(detail["assigned_official_fee"], 8400)
+        self.assertEqual(len(detail["allocation_details"]), 1)
+        allocation_detail = detail["allocation_details"][0]
+        self.assertEqual(allocation_detail["case_type"], "Civil dispute")
+        self.assertEqual(allocation_detail["case_name"], "Row 30 Case")
+        self.assertEqual(allocation_detail["case_no"], "ROW30-CASE")
+        self.assertEqual(allocation_detail["contract_no"], "ROW30-CONTRACT")
+        self.assertEqual(allocation_detail["fee_total_amount"], 8400)
+        self.assertEqual(allocation_detail["fee_allocated_amount"], 8400)
+        self.assertEqual(allocation_detail["current_amount"], 8400)
 
     async def test_migrated_allocation_resolves_legacy_case_fee_id(self) -> None:
         async with self.sessions() as db:

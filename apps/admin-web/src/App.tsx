@@ -728,6 +728,8 @@ export function routeForMenuOpenChange(
   return toggled && !alreadyInsideSection ? route : null;
 }
 function canonicalRoute(route: string): string {
+  if (route.startsWith("finance-incoming-payment-"))
+    return "finance-incoming-company";
   if (route.endsWith("-schedule") && route.startsWith("case-"))
     return "case-schedule";
   if (route.endsWith("-execution") && route.startsWith("case-"))

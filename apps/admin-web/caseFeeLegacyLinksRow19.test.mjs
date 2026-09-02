@@ -21,8 +21,8 @@ test("row 19 opens every blue legacy relation instead of styling inert text", ()
   assert.match(columns, /title:"回款金额"[\s\S]*?openRelatedIncomingPayment\(row\)/);
   assert.match(columns, /title:"发票号"[\s\S]*?openRelatedInvoice\(row\)/);
   assert.match(page, /setViewingFeeIncomingPayments\(payments\)/);
-  assert.match(page, /title="费用回款记录"[\s\S]*?title:"回款单号"[\s\S]*?openIncomingPaymentDetail\(row.id\)/);
-  assert.match(page, /rememberIncomingPaymentDetailTarget\(paymentId\)[\s\S]*?finance-incoming-company/);
+  assert.match(page, /title="回款信息"[\s\S]*?title:"回款流水号"[\s\S]*?openIncomingPaymentDetail\(row.id\)/);
+  assert.match(page, /incomingPaymentDetailRoute\(paymentId\)/);
   assert.match(page, /rememberBusinessRecordDetailTarget\(\{ id: invoiceId, module: "invoice" \}\)[\s\S]*?finance-invoice-company/);
-  assert.match(financePage, /consumeIncomingPaymentDetailTarget\(\)[\s\S]*?\/finance\/incoming-payments\/\$\{paymentId\}/);
+  assert.match(financePage, /resolveIncomingPaymentDetailTarget\(initialView\)[\s\S]*?\/finance\/incoming-payments\/\$\{paymentId\}/);
 });

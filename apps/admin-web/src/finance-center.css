@@ -1791,3 +1791,48 @@
 .finance-invoice-request-table .ant-input-number { width: 104px; }
 @media (max-width: 900px) { .finance-invoice-request-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .finance-invoice-request-drawer .ant-drawer-body { padding: 12px; } .finance-invoice-request-grid { grid-template-columns: 1fr; padding: 10px 12px 0; } .finance-invoice-request-grid .span-2 { grid-column: span 1; } .finance-invoice-request-section-heading { align-items: flex-start; flex-direction: column; gap: 2px; } .finance-invoice-request-section-heading span { padding: 0 12px 8px; } }
+.finance-incoming-applied-page {
+  min-height: calc(100vh - 112px);
+  background: #fff;
+}
+
+.finance-incoming-applied-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.finance-incoming-applied-titlebar h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.finance-incoming-applied-heading {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-left: 3px solid #5b6573;
+  background: #f3f5f7;
+  font-weight: 600;
+}
+
+.finance-incoming-applied-summary {
+  padding: 14px 16px 10px;
+  background: #eef1f4;
+}
+
+.finance-incoming-applied-summary .ant-descriptions-item-label {
+  color: #8a9199;
+}
+
+.finance-incoming-applied-table {
+  padding: 0 8px 16px;
+}
+
+.finance-incoming-applied-table .ant-btn-link {
+  height: auto;
+  padding: 0;
+}
