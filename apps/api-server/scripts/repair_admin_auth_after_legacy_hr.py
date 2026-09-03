@@ -18,7 +18,7 @@ from app.models import User
 from app.security import hash_password
 
 
-async def repair(*, apply: bool) -> dict[str, object]:
+async def repair(*, apply: bool, password_file: str = "") -> dict[str, object]:
     async with SessionLocal() as db:
         user = await db.scalar(select(User).where(User.username == settings.initial_admin_username))
         if user is None:
@@ -26,7 +26,10 @@ async def repair(*, apply: bool) -> dict[str, object]:
         role_ids = set(user.role_ids or [])
         if user.role != "admin" and "admin" not in role_ids:
             raise RuntimeError("Configured administrator username is not an administrator account")
-        if not settings.initial_admin_password:
+        target_password = settings.initial_admin_password
+        if password_file:
+            target_password = Path(password_file).read_text(encoding="utf-8").rstrip("\r\n")
+        if not target_password:
             raise RuntimeError("INITIAL_ADMIN_PASSWORD is not configured")
 
         profile = user.profile or {}
@@ -40,7 +43,7 @@ async def repair(*, apply: bool) -> dict[str, object]:
             "applied": False,
         }
         if apply:
-            user.password_hash = hash_password(settings.initial_admin_password)
+            user.password_hash = hash_password(target_password)
             user.is_active = True
             user.failed_login_attempts = 0
             user.locked_until = None
@@ -53,8 +56,9 @@ async def repair(*, apply: bool) -> dict[str, object]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--password-file", default="")
     args = parser.parse_args()
-    print(json.dumps(asyncio.run(repair(apply=args.apply)), ensure_ascii=False))
+    print(json.dumps(asyncio.run(repair(apply=args.apply, password_file=args.password_file)), ensure_ascii=False))
 
 
 if __name__ == "__main__":
