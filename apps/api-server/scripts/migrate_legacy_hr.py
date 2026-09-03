@@ -134,7 +134,7 @@ async def migrate_payload(db, payload: dict[str, Any]) -> dict[str, dict[str, in
     result = {
         "departments": {"created": 0, "updated": 0},
         "users": {"created": 0, "updated": 0},
-        "employees": {"created": 0, "updated": 0},
+        "employees": {"created": 0, "updated": 0, "rekeyed": 0},
         "performances": {"created": 0, "updated": 0},
     }
 
@@ -230,6 +230,39 @@ async def migrate_payload(db, payload: dict[str, Any]) -> dict[str, dict[str, in
             user.failed_login_attempts = 0
             user.locked_until = None
             result["users"]["updated"] += 1
+
+        conflicting_employee = employees_by_no.get(serial_no)
+        conflicting_username = clean(
+            (conflicting_employee.data or {}).get("username") or conflicting_employee.owner
+        ).lower() if conflicting_employee else ""
+        if (
+            existing_for_username is None
+            and conflicting_employee is not None
+            and conflicting_username not in {"", username}
+        ):
+            conflicting_data = dict(conflicting_employee.data or {})
+            if conflicting_data.get("migration_source") == SOURCE:
+                raise ValueError(f"Employee number {employee_no} belongs to another legacy username")
+            local_serial_base = f"{employee_no}-LOCAL-{conflicting_employee.id}"
+            local_serial = local_serial_base
+            serial_suffix = 2
+            while local_serial in employees_by_no:
+                local_serial = f"{local_serial_base}-{serial_suffix}"
+                serial_suffix += 1
+            conflicting_data["source_employee_no"] = conflicting_data.get("employee_no") or employee_no
+            conflicting_data["employee_no"] = local_serial
+            conflicting_employee.serial_no = local_serial
+            conflicting_employee.data = conflicting_data
+            employees_by_no.pop(serial_no, None)
+            employees_by_no[local_serial] = conflicting_employee
+            conflicting_user = users_by_username.get(conflicting_username)
+            if conflicting_user is not None:
+                conflicting_user.profile = {
+                    **(conflicting_user.profile or {}),
+                    "source_employee_no": (conflicting_user.profile or {}).get("employee_no") or employee_no,
+                    "employee_no": local_serial,
+                }
+            result["employees"]["rekeyed"] += 1
 
         employee = existing_for_username or employees_by_no.get(serial_no)
         if employee and clean((employee.data or {}).get("username") or employee.owner).lower() not in {"", username}:

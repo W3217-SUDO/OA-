@@ -78,6 +78,43 @@ class LegacyHrCompleteMigrationRow3Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await db.scalar(select(func.count()).select_from(User)), 0)
             self.assertEqual(await db.scalar(select(func.count()).select_from(Department)), 0)
 
+    async def test_preserves_local_employee_when_legacy_employee_claims_same_number(self):
+        async with self.sessions() as db:
+            local_user = User(
+                username="local.user",
+                display_name="本地员工",
+                department="诉讼一部",
+                password_hash="unchanged",
+                role="user",
+                role_ids=["user"],
+                profile={"employee_no": "001"},
+                is_active=True,
+            )
+            local_employee = BusinessRecord(
+                module="hr",
+                serial_no="001",
+                title="本地员工",
+                customer="申浩",
+                status="在职",
+                owner="local.user",
+                department="诉讼一部",
+                data={"username": "local.user", "employee_no": "001"},
+            )
+            db.add_all([local_user, local_employee])
+            await db.commit()
+
+            result = await migrate_payload(db, payload())
+            await db.commit()
+
+            await db.refresh(local_user)
+            await db.refresh(local_employee)
+            migrated = await db.scalar(select(BusinessRecord).where(BusinessRecord.owner == "active.user"))
+            self.assertEqual(migrated.serial_no, "001")
+            self.assertEqual(local_employee.serial_no, f"001-LOCAL-{local_employee.id}")
+            self.assertEqual(local_employee.data["source_employee_no"], "001")
+            self.assertEqual(local_user.profile["employee_no"], local_employee.serial_no)
+            self.assertEqual(result["employees"]["rekeyed"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
