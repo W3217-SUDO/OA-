@@ -1218,6 +1218,10 @@ async def lifespan(_: FastAPI):
             await _sync_legacy_case(record, {"username": "system"}, db)
         await _backfill_clue_generated_case_register_dates(db)
         await db.commit()
+        # The lifespan generator remains suspended for the entire process lifetime.
+        # Drop the startup-only ORM snapshot before yielding so migrated record JSON
+        # does not remain resident until the service stops.
+        records.clear()
     await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
     dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
