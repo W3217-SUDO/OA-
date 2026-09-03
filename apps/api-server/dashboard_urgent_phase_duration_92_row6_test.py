@@ -52,8 +52,12 @@ class DashboardUrgentPhaseDuration92Row6Test(unittest.IsolatedAsyncioTestCase):
             "CODEX-92-R6-LEGACY", 1,
             data={"phase_changed_at": "", "legacy_record": {"ChangeTime": str(date.today() - timedelta(days=500))}},
         )
+        urgent_counsel = self.case(
+            "CODEX-92-R6-COUNSEL", 400,
+            data={"case_type": "法律顾问"},
+        )
         async with self.sessions() as db:
-            db.add_all([overdue, boundary, flagged_recent, legacy])
+            db.add_all([overdue, boundary, flagged_recent, legacy, urgent_counsel])
             await db.commit()
             result = await dashboard(IDENTITY, db)
             drilldown = await _query_counsel_cases(
@@ -63,7 +67,10 @@ class DashboardUrgentPhaseDuration92Row6Test(unittest.IsolatedAsyncioTestCase):
                 counsel_only=False,
             )
 
-        self.assertEqual({item.serial_no for item in drilldown}, {"CODEX-92-R6-OVER", "CODEX-92-R6-LEGACY"})
+        self.assertEqual(
+            {item.serial_no for item in drilldown},
+            {"CODEX-92-R6-OVER", "CODEX-92-R6-LEGACY", "CODEX-92-R6-COUNSEL"},
+        )
         metric = {item["key"]: item for item in result["metrics"]}["urgent-cases"]
         self.assertEqual(metric["value"], f"{len(drilldown)}件")
         self.assertEqual(metric["route"], "case-company-urgent")

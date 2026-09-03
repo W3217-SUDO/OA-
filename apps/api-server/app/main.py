@@ -22599,7 +22599,7 @@ async def _query_counsel_cases(
         records = [record for record in records if str((record.data or {}).get("case_type") or "") == "法律顾问"]
     elif requested_types:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") in requested_types]
-    else:
+    elif not body.case_queue:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
     if body.case_queue:
         records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
