@@ -373,6 +373,8 @@ export default function TaskCenterPage({
     initialView === "task-company-accepted";
   const canManageCompanyCreatedTask =
     initialView === "task-company-created";
+  const isInitiatedTaskContext = canManageInitiatedTask || canManageCompanyCreatedTask;
+  const isAcceptedTaskContext = canManageAcceptedTask;
   const hideTaskFooter =
     taskMeta.total === 0 &&
     (isCreated ||
@@ -390,6 +392,7 @@ export default function TaskCenterPage({
   const canWithdrawTask = (row?: TaskRow | null) =>
     Boolean(
       row &&
+        isInitiatedTaskContext &&
         (profile.role === "admin" || row.initiator === profile.username) &&
         ["待接收", "待处理", "处理中", "进行中"].includes(row.workflow_status || row.status),
     );
@@ -704,10 +707,14 @@ export default function TaskCenterPage({
     };
     if (!beginTaskAction()) return;
     try {
-      await api.post(`/tasks/${row.id}/${type}`, { comment: labels[type] });
+      const { data } = await api.post(`/tasks/${row.id}/${type}`, { comment: labels[type] });
       message.success(labels[type]);
       setSelectedKeys([]);
-      load();
+      if (communication?.id === row.id) {
+        setCommunication(data);
+        await loadTaskFeedback(data);
+      }
+      await load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "操作失败");
     } finally {
@@ -1026,6 +1033,10 @@ export default function TaskCenterPage({
       return;
     }
     void simpleAction(selected, selected.handoff_auto_complete_at ? "restart" : "accept");
+  };
+  const openTaskHandoff = (row: TaskRow) => {
+    setHandoff(row);
+    handoffForm.setFieldsValue({ recipient: "", comment: "" });
   };
   const markSelectedUnreadTasksRead = async () => {
     if (!selectedRows.length) {
@@ -1614,7 +1625,10 @@ export default function TaskCenterPage({
               {isUnread && (
                 <Button loading={actionSubmitting} onClick={() => void markSelectedUnreadTasksRead()}>标记已读</Button>
               )}
-              {canManageInitiatedTask && (
+              {canManageInitiatedTask && statusTab === "finished" && (
+                <Button onClick={() => requireOne((row) => void simpleAction(row, "confirm"))}>验收任务</Button>
+              )}
+              {canManageInitiatedTask && statusTab !== "finished" && (
                 <Button danger disabled={!canWithdrawTask(selected)} onClick={() => selected && requestTaskWithdrawal(selected)}>
                   撤回任务
                 </Button>
@@ -1625,29 +1639,24 @@ export default function TaskCenterPage({
               )}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && ["已完成", "待确认"].includes(selected?.workflow_status || selected?.status || "") && (
                 <>
-                  <Button onClick={() => selected && void simpleAction(selected, "confirm")}>确认完成</Button>
                   {!selected?.auto_completed && (
-                    <Button onClick={() => selected && void simpleAction(selected, "restart")}>退回重启</Button>
+                    <Button onClick={() => selected && void simpleAction(selected, "restart")}>重启任务</Button>
                   )}
                 </>
               )}
-              {canManageAcceptedTask && <Button onClick={acceptSelectedTask}>接受任务</Button>}
-              {canManageAcceptedTask && ["待接收", "待处理"].includes(selected?.workflow_status || selected?.status || "") && (
-                  <Button onClick={() => selected && openDialog(selected, "reject")}>拒绝任务</Button>
-              )}
-              {canManageAcceptedTask && (selected?.workflow_status || selected?.status) === "处理中" && (
+              {canManageAcceptedTask && statusTab === "pending" && <Button onClick={acceptSelectedTask}>接受任务</Button>}
+              {canManageAcceptedTask && statusTab === "pending" && (
                 <>
-                  <Button onClick={() => selected && void simpleAction(selected, "complete")}>完成任务</Button>
+                  <Button onClick={() => requireOne((row) => void simpleAction(row, "complete"))}>完成任务</Button>
+                  <Button onClick={() => requireOne(openTaskHandoff)}>转交任务</Button>
+                </>
+              )}
+              {canManageAcceptedTask && statusTab === "processing" && (
+                <>
+                  <Button onClick={() => requireOne((row) => void simpleAction(row, "complete"))}>完成任务</Button>
                   <Button onClick={() => selected && requestTaskException(selected, "挂起")}>申请挂起</Button>
                   <Button danger onClick={() => selected && requestTaskException(selected, "取消")}>申请取消</Button>
-                  <Button
-                    onClick={() => {
-                      setHandoff(selected);
-                      handoffForm.setFieldsValue({ recipient: "", comment: "" });
-                    }}
-                  >
-                    转交任务
-                  </Button>
+                  <Button onClick={() => requireOne(openTaskHandoff)}>转交任务</Button>
                 </>
               )}
               {selectedRows.length > 1 && (canManageAcceptedTask || canManageInitiatedTask || canManageCompanyCreatedTask) && (
@@ -2053,7 +2062,26 @@ export default function TaskCenterPage({
         width={760}
         open={Boolean(communication)}
         title="案件任务"
-        footer={<Button onClick={closeCommunication}>关闭</Button>}
+        footer={communication ? (
+          <Space>
+            {isInitiatedTaskContext && ["已完成", "待确认", "已拒绝"].includes(communication.workflow_status || communication.status) && (
+              <>
+                {!communication.auto_completed && <Button loading={actionSubmitting} onClick={() => void simpleAction(communication, "restart")}>重启任务</Button>}
+                <Button loading={actionSubmitting} onClick={() => void simpleAction(communication, "confirm")}>确认完成</Button>
+              </>
+            )}
+            {isAcceptedTaskContext && ["待接收", "待处理"].includes(communication.workflow_status || communication.status) && (
+              <Button loading={actionSubmitting} onClick={() => void simpleAction(communication, communication.handoff_auto_complete_at ? "restart" : "accept")}>接受任务</Button>
+            )}
+            {isAcceptedTaskContext && ["待接收", "待处理", "处理中", "进行中", "已逾期"].includes(communication.workflow_status || communication.status) && (
+              <>
+                <Button loading={actionSubmitting} onClick={() => void simpleAction(communication, "complete")}>完成任务</Button>
+                <Button loading={actionSubmitting} onClick={() => openTaskHandoff(communication)}>转交任务</Button>
+              </>
+            )}
+            <Button onClick={closeCommunication}>关闭</Button>
+          </Space>
+        ) : <Button onClick={closeCommunication}>关闭</Button>}
         onCancel={closeCommunication}
       >
         <div className="task-detail-flow" aria-label="任务流程">

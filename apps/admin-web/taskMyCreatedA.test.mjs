@@ -32,7 +32,7 @@ test('事务中心我发起的任务 restores the legacy batch acceptance action
   assert.match(source, /TaskBatchLifecycleAction = "accept" \| "complete" \| "confirm" \| "handoff" \| "withdraw"/)
   assert.match(api, /\^\(accept\|complete\|confirm\|handoff\|withdraw\)\$/)
   assert.match(api, /仅任务发起人可以批量确认完成/)
-  assert.match(api, /仅待确认或已完成任务可以批量确认/)
+  assert.match(api, /当前状态不能批量确认/)
 })
 
 test('事务中心 batch selection trusts the server-authorized task page instead of re-filtering it locally', () => {

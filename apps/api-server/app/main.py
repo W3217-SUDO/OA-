@@ -14908,13 +14908,13 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         elif body.action == "complete":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可提交完成")
-            if task.status != "处理中":
-                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 仅处理中可提交完成")
+            if task.status not in {"待接收", "待处理", "处理中", "进行中", "已逾期"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能提交完成")
         elif body.action == "confirm":
             if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅任务发起人可以批量确认完成")
-            if task.status not in {"待确认", "已完成"}:
-                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 仅待确认或已完成任务可以批量确认")
+            if task.status not in {"待确认", "已完成", "已拒绝"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能批量确认")
         elif body.action == "handoff":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅当前负责人可交接")
@@ -15559,16 +15559,16 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
     task = await _task_or_404(task_id, db); data = task.data or {}
     if task.status == "已完成" and (task.data or {}).get("auto_completed"):
         raise HTTPException(status_code=409, detail="任务已自动完成，请新建后续任务")
-    if task.status in {"待确认", "已完成"}:
+    if task.status in {"待确认", "已完成", "已拒绝"}:
         if identity.get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有发起人可以退回重启")
     elif identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有任务负责人可以开始任务")
     if task.status == "已停止" and ((data.get("exception_request") or {}).get("action") != "挂起" or (data.get("exception_request") or {}).get("status") != "已通过"):
         raise HTTPException(status_code=409, detail="只有审批通过的挂起任务可以恢复")
-    if task.status not in {"待接收", "待处理", "待确认", "已完成", "已停止"}: raise HTTPException(status_code=409, detail="当前状态不能重新开始")
+    if task.status not in {"待接收", "待处理", "待确认", "已完成", "已拒绝", "已停止"}: raise HTTPException(status_code=409, detail="当前状态不能重新开始")
     previous = task.status
     task.status = "处理中"
-    task.data = {**data, "handoff_restarted": True, "restarted_at": str(date.today()), "completion_auto_confirm_at": "", "completion_comment": "", "exception_request": {**(data.get("exception_request") or {}), "resumed_at": datetime.now().isoformat(timespec="seconds"), "resumed_by": identity["username"]}}
+    task.data = {**data, "handoff_restarted": True, "restarted_at": str(date.today()), "completion_auto_confirm_at": "", "completion_comment": "", "rejected_reason": "", "exception_request": {**(data.get("exception_request") or {}), "resumed_at": datetime.now().isoformat(timespec="seconds"), "resumed_by": identity["username"]}}
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新开始任务", from_status=previous, to_status="处理中", operator=identity["username"], comment=body.comment), db, content="任务已重新开始.")
     await db.commit()
     await db.refresh(task)
@@ -15621,7 +15621,7 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
 async def complete_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     task = await _task_or_404(task_id, db)
     if identity.get("role") != "admin" and task.owner != identity["username"]: raise HTTPException(status_code=403, detail="只有任务负责人可以提交完成")
-    if task.status != "处理中": raise HTTPException(status_code=409, detail="只有处理中的任务可以提交完成")
+    if task.status not in {"待接收", "待处理", "处理中", "进行中", "已逾期"}: raise HTTPException(status_code=409, detail="当前状态不能提交完成")
     previous = task.status
     task.status = "已完成"
     auto_at = date.today() + timedelta(days=5)
@@ -15636,7 +15636,7 @@ async def complete_task(task_id: int, body: TaskActionInput, identity: dict = De
 async def confirm_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     task = await _task_or_404(task_id, db); data = task.data or {}
     if identity.get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有任务发起人可以确认完成")
-    if task.status not in {"待确认", "已完成"}: raise HTTPException(status_code=409, detail="只有已完成待验收任务可以验收")
+    if task.status not in {"待确认", "已完成", "已拒绝"}: raise HTTPException(status_code=409, detail="当前状态不能确认完成")
     previous = task.status
     task.status = "已验收"; task.data = {**data, "confirmed_at": datetime.now().isoformat(timespec="seconds"), "completion_auto_confirm_at": ""}
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="验收任务", from_status=previous, to_status="已验收", operator=identity["username"], comment=body.comment), db, content="任务已确认完成.")
@@ -22874,7 +22874,7 @@ async def _ensure_case_fixed_tasks(case_record: BusinessRecord, db: AsyncSession
         if key in existing_keys:
             continue
         task = BusinessRecord(
-            module="task", serial_no=f"RW{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:4].upper()}",
+            module="task", serial_no=await _next_manual_task_serial(db),
             title=f"{title}—{case_record.serial_no}", customer=case_record.customer, status="待接收",
             owner=case_record.owner, department=case_record.department, description=description,
             data={
@@ -25221,7 +25221,7 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
         notary = await db.get(BusinessRecord, notary_id)
         if notary:
             notary_data = notary.data or {}; scanner = str(notary_data.get("scan_uploaded_by") or notary.owner or identity["username"]).strip(); recipient = (assistant_username or next(iter(handling_usernames), "") or case_data["hearing_lawyer"])
-            task = BusinessRecord(module="task", serial_no=f"RW{datetime.now():%Y%m%d%H%M%S%f}", title=f"公证书及公证费发票原件交接—{case_record.serial_no}", customer=case_record.customer, status="待接收", owner=scanner, department=case_record.department, description=f"扫描文员向案件文书人员 {recipient} 交接公证书及公证费发票原件", data={"deadline": str(date.today() + timedelta(days=5)), "priority": "紧急", "source": "案件任务", "creation_mode": "自动", "task_type": "自动任务", "initiator": recipient, "collaborators": [recipient] if recipient != scanner else [], "case_no": case_record.serial_no, "case_id": case_record.id, "notary_id": notary.id, "notary_no": notary.serial_no, "auto_task_type": "notary_original_handoff", "handoff_recipient": recipient, "system_created_by": identity["username"]})
+            task = BusinessRecord(module="task", serial_no=await _next_manual_task_serial(db), title=f"公证书及公证费发票原件交接—{case_record.serial_no}", customer=case_record.customer, status="待接收", owner=scanner, department=case_record.department, description=f"扫描文员向案件文书人员 {recipient} 交接公证书及公证费发票原件", data={"deadline": str(date.today() + timedelta(days=5)), "priority": "紧急", "source": "案件任务", "creation_mode": "自动", "task_type": "自动任务", "initiator": recipient, "collaborators": [recipient] if recipient != scanner else [], "case_no": case_record.serial_no, "case_id": case_record.id, "notary_id": notary.id, "notary_no": notary.serial_no, "auto_task_type": "notary_original_handoff", "handoff_recipient": recipient, "system_created_by": identity["username"]})
             db.add(task); await db.flush(); case_record.data = {**case_record.data, "notary_handoff_task_id": task.id}; notary.data = {**notary_data, "handoff_task_id": task.id, "handoff_recipient": recipient}
             await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="系统生成原件交接任务", to_status="待接收", operator="system", comment=f"扫描文员 {scanner} 向 {recipient} 交接；来源案件 {case_record.serial_no}"), db, content="任务已分派.")
             db.add(WorkflowEvent(record_id=case_record.id, action="生成公证原件交接任务", from_status=case_record.status, to_status=case_record.status, operator="system", comment=f"任务 {task.serial_no}；负责人 {scanner}；接收人 {recipient}"))
