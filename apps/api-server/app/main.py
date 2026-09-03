@@ -1,7 +1,9 @@
 import asyncio
 import base64
+import ctypes
 from contextlib import asynccontextmanager, suppress
 import csv
+import gc
 import hashlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_UP
@@ -11,6 +13,7 @@ import logging
 from pathlib import Path
 import re
 import secrets
+import sys
 from typing import Literal
 import unicodedata
 import zipfile
@@ -1222,6 +1225,12 @@ async def lifespan(_: FastAPI):
         # Drop the startup-only ORM snapshot before yielding so migrated record JSON
         # does not remain resident until the service stops.
         records.clear()
+    gc.collect()
+    if sys.platform.startswith("linux"):
+        try:
+            ctypes.CDLL(None).malloc_trim(0)
+        except (AttributeError, OSError):
+            logger.warning("Unable to return released startup heap pages to the operating system")
     await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
     dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
