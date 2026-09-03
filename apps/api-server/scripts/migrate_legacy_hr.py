@@ -23,6 +23,7 @@ from sqlalchemy import select
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import Base, SessionLocal, engine
+from app.config import settings
 from app.models import BusinessRecord, Department, HrSubrecord, User
 from app.security import hash_password
 
@@ -195,6 +196,14 @@ async def migrate_payload(db, payload: dict[str, Any]) -> dict[str, dict[str, in
         active = legacy_bool(row.get("IsActived"))
         status = _employee_status(row)
         user = users_by_username.get(username)
+        is_system_admin = bool(
+            user
+            and (
+                user.username == settings.initial_admin_username
+                or user.role == "admin"
+                or "admin" in (user.role_ids or [])
+            )
+        )
         profile_update = {
             "migration_source": SOURCE,
             "legacy_staff_id": row.get("StaffId"),
@@ -224,11 +233,15 @@ async def migrate_payload(db, payload: dict[str, Any]) -> dict[str, dict[str, in
             user.display_name = display_name
             user.department = department_name
             user.profile = {**(user.profile or {}), **profile_update}
-            user.password_hash = _password_hash(row, user.password_hash)
-            user.is_active = active
-            user.must_change_password = False
-            user.failed_login_attempts = 0
-            user.locked_until = None
+            # Legacy HR identity data may share the configured administrator
+            # username. Import the employee profile without replacing the
+            # privileged account's credentials or access state.
+            if not is_system_admin:
+                user.password_hash = _password_hash(row, user.password_hash)
+                user.is_active = active
+                user.must_change_password = False
+                user.failed_login_attempts = 0
+                user.locked_until = None
             result["users"]["updated"] += 1
 
         conflicting_employee = employees_by_no.get(serial_no)
