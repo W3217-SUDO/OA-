@@ -18,10 +18,12 @@ from app.main import (
     SEAL_APPLICATION_FILE_CATEGORY,
     SEAL_STAMPED_FILE_CATEGORY,
     SealApprovalInput,
+    SealApplicationInput,
     SealStampInput,
     _seal_record_dict,
     approve_seal_application,
     create_contract_seal_application,
+    create_seal_application,
     list_seal_application_files,
     stamp_seal_application,
 )
@@ -154,6 +156,38 @@ class SealWorkflowCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created["data"]["source_attachment_ids"], [source.id])
         copied = list((await self.db.scalars(select(FileAttachment).where(FileAttachment.record_id == created["id"], FileAttachment.category == SEAL_APPLICATION_FILE_CATEGORY))).all())
         self.assertEqual([attachment.original_name for attachment in copied], ["当前合同.pdf"])
+
+    async def test_case_file_creates_a_case_seal_application_with_the_selected_source(self) -> None:
+        case = BusinessRecord(
+            module="case", serial_no="SEAL-CAP-CASE", title="能力测试案件",
+            customer="能力测试客户", status="文书准备", owner=APPLICANT["username"],
+            department="上海分所", data={"contract_no": "SEAL-CAP-CONTRACT"},
+        )
+        self.db.add(case)
+        await self.db.flush()
+        source_path = main.UPLOAD_ROOT / "case-source.docx"
+        source_path.write_bytes(b"case source")
+        source = FileAttachment(
+            record_id=case.id, category="案件文档", original_name="案件材料.docx",
+            stored_name=source_path.name, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size=source_path.stat().st_size, path=str(source_path), uploader=APPLICANT["username"],
+        )
+        self.db.add(source)
+        await self.db.commit()
+
+        created = await create_seal_application(SealApplicationInput(
+            title="案件文件用印申请", case_no=case.serial_no, use_type="案件用印",
+            seal_asset_id=self.asset.id, copies=2, purpose="案件文件用印",
+            use_date=date.today(), source_attachment_ids=[source.id], document_names=source.original_name,
+        ), APPLICANT, self.db)
+
+        self.assertEqual(created["data"]["case_no"], case.serial_no)
+        self.assertEqual(created["data"]["use_type"], "案件用印")
+        copied = list((await self.db.scalars(select(FileAttachment).where(
+            FileAttachment.record_id == created["id"],
+            FileAttachment.category == SEAL_APPLICATION_FILE_CATEGORY,
+        ))).all())
+        self.assertEqual([attachment.original_name for attachment in copied], [source.original_name])
 
 
 if __name__ == "__main__":

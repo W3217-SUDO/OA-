@@ -2972,7 +2972,21 @@ export default function CaseCenterPage({
       const { data } = await api.get("/seals/assets");
       const available = (data.items || []).filter((asset: { status: string }) => asset.status === "可用");
       setCaseSealAssets(available);
-      caseFileSealForm.setFieldsValue({ seal_asset_id: undefined, print_quantity: 2, is_electronic_seal: false, is_offline_print: true, need_audit: true, remark: "" });
+      caseFileSealForm.setFieldsValue({
+        title: `${viewingCounselCase.serial_no}-${item.original_name}-用印申请`,
+        use_type: "案件用印",
+        case_no: viewingCounselCase.serial_no,
+        contract_no: viewingCounselCase.data.contract_no || "",
+        customer: viewingCounselCase.customer,
+        seal_asset_id: undefined,
+        use_date: dayjs(),
+        copies: 2,
+        delivery_method: "现场用印",
+        is_electronic_seal: false,
+        is_offline_print: true,
+        purpose: "案件文件用印",
+        remark: "",
+      });
       setSealingCounselAttachment(item);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "可用印章加载失败");
@@ -2982,19 +2996,29 @@ export default function CaseCenterPage({
     if (!viewingCounselCase || !sealingCounselAttachment) return;
     try {
       const values = await caseFileSealForm.validateFields();
-      await api.post("/official-outgoing", {
-        title: sealingCounselAttachment.original_name,
-        source_type: "case",
-        source_record_id: viewingCounselCase.id,
-        source_file_ids: [sealingCounselAttachment.id],
+      const response = await api.post("/seals/applications", {
+        title: String(values.title || "").trim(),
+        customer: viewingCounselCase.customer,
+        case_no: viewingCounselCase.serial_no,
+        contract_no: viewingCounselCase.data.contract_no || "",
+        use_type: "案件用印",
+        source_attachment_ids: [sealingCounselAttachment.id],
         seal_asset_id: values.seal_asset_id,
-        print_quantity: values.print_quantity,
+        copies: values.copies,
+        print_quantity: values.copies,
+        purpose: String(values.purpose || "").trim(),
+        use_date: values.use_date.format("YYYY-MM-DD"),
+        delivery_method: values.delivery_method,
         is_electronic_seal: Boolean(values.is_electronic_seal),
         is_offline_print: Boolean(values.is_offline_print),
-        need_audit: Boolean(values.need_audit),
         remark: String(values.remark || "").trim(),
+        description: String(values.remark || "").trim(),
+        document_names: sealingCounselAttachment.original_name,
       });
-      message.success("已创建正式发文草稿，可在正式发文继续提交审批");
+      await api.post(`/seals/applications/${response.data.id}/submit`, {
+        comment: "从案件文档发起用印并提交审批",
+      });
+      message.success("用印申请已创建并提交审批");
       setSealingCounselAttachment(null);
       caseFileSealForm.resetFields();
       await openCounselDetail(viewingCounselCase);
@@ -6422,15 +6446,27 @@ export default function CaseCenterPage({
           <Form.Item label="正式案件文档目录" name="category" rules={[{required:true,message:"请选择正式目录"}]}><Select showSearch optionFilterProp="label" loading={aiDraftPromoteOptionsLoading} options={aiDraftPromoteOptions}/></Form.Item>
         </Form>
       </Modal>
-      <Modal open={Boolean(sealingCounselAttachment)} title={`案件文件提交用印：${sealingCounselAttachment?.original_name || ""}`} okText="创建正式发文草稿" cancelText="取消" onOk={submitCounselAttachmentSeal} onCancel={()=>{setSealingCounselAttachment(null);caseFileSealForm.resetFields();}} destroyOnHidden>
-        <Alert type="info" showIcon message="将复制当前 Word 文件为正式发文附件" description="请明确选择可用印章。创建后仍需在“正式发文”中提交审批，原案件文件不会被修改或移动。" style={{ marginBottom: 12 }} />
+      <Modal width={720} open={Boolean(sealingCounselAttachment)} title="用印申请" okText="提交用印申请" cancelText="取消" onOk={submitCounselAttachmentSeal} onCancel={()=>{setSealingCounselAttachment(null);caseFileSealForm.resetFields();}} destroyOnHidden>
+        <Alert type="info" showIcon message="案件用印" description="已带入当前案件、客户、合同和所选案件文件；申请仍在当前案件页面完成。" style={{ marginBottom: 12 }} />
         <Form form={caseFileSealForm} layout="vertical">
-          <Form.Item label="印章类型" name="seal_asset_id" rules={[{ required: true, message: "请选择可用印章" }]}><Select placeholder="请选择可用印章" options={caseSealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}` }))} /></Form.Item>
-          <Form.Item label="盖章份数" name="print_quantity" rules={[{ required: true }]}><InputNumber min={1} max={9999} style={{ width: "100%" }} /></Form.Item>
-          <Form.Item name="is_electronic_seal" valuePropName="checked"><Checkbox>电子盖章</Checkbox></Form.Item>
-          <Form.Item name="is_offline_print" valuePropName="checked"><Checkbox>线下打印盖章</Checkbox></Form.Item>
-          <Form.Item name="need_audit" valuePropName="checked"><Checkbox>创建后进入正式发文审批</Checkbox></Form.Item>
-          <Form.Item label="备注" name="remark" rules={[{ max: 2000 }]}><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
+          <div className="form-grid">
+            <Form.Item label="用印类型" name="use_type"><Input disabled /></Form.Item>
+            <Form.Item label="案件号" name="case_no"><Input disabled /></Form.Item>
+            <Form.Item label="合同号" name="contract_no"><Input disabled /></Form.Item>
+            <Form.Item label="客户名称" name="customer"><Input disabled /></Form.Item>
+          </div>
+          <Form.Item label="申请标题" name="title" rules={[{ required: true, message: "请输入申请标题" }]}><Input maxLength={255} /></Form.Item>
+          <div className="form-grid">
+            <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择可用印章" }]}><Select placeholder="请选择可用印章" options={caseSealAssets.map((asset) => ({ value: asset.id, label: `${asset.name}（${asset.seal_type}）` }))} /></Form.Item>
+            <Form.Item label="计划用印日期" name="use_date" rules={[{ required: true, message: "请选择计划用印日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="用印份数" name="copies" rules={[{ required: true }]}><InputNumber min={1} max={999} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="办理方式" name="delivery_method"><Select options={["现场用印", "邮寄用印", "外带用印"].map((value) => ({ value, label: value }))} /></Form.Item>
+            <Form.Item label="是否电子印章" name="is_electronic_seal"><Select options={[{ value: true, label: "是" }, { value: false, label: "否" }]} /></Form.Item>
+            <Form.Item label="是否打印盖章" name="is_offline_print"><Select options={[{ value: true, label: "需要" }, { value: false, label: "不需要" }]} /></Form.Item>
+          </div>
+          <Form.Item label="用印事由" name="purpose" rules={[{ required: true, message: "请输入用印事由" }]}><Input maxLength={500} /></Form.Item>
+          <Form.Item label="用印备注" name="remark" rules={[{ max: 2000 }]}><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
+          <Form.Item label="附件"><Input value={sealingCounselAttachment?.original_name || ""} disabled /></Form.Item>
         </Form>
       </Modal>
       <Modal open={reminderOpen} title={`新增案件提醒：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselReminder} onCancel={()=>setReminderOpen(false)}>

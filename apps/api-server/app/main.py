@@ -8408,11 +8408,21 @@ async def user_directory(
     db: AsyncSession = Depends(get_db),
 ):
     directory_purpose = purpose.strip().lower()
-    eligible_usernames = (
-        await _active_customer_usernames(db)
-        if directory_purpose == "customer_contact"
-        else await _active_employee_usernames(db)
-    )
+    if directory_purpose == "contract_approver":
+        approver_employees = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "hr",
+        ))).all()
+        eligible_usernames = {
+            str((item.data or {}).get("username") or item.owner or "").strip().lower()
+            for item in approver_employees
+            if str((item.data or {}).get("username") or item.owner or "").strip()
+        }
+    else:
+        eligible_usernames = (
+            await _active_customer_usernames(db)
+            if directory_purpose == "customer_contact"
+            else await _active_employee_usernames(db)
+        )
     if directory_purpose == "customer_manager":
         # Keep active legacy/system accounts in the response so an existing
         # customer source or manager can still render its display name.  The
@@ -8433,7 +8443,7 @@ async def user_directory(
     employee_display_names: dict[str, str] = {}
     active_employees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
-        BusinessRecord.status.not_in({"离职", "停用"}),
+        *([] if directory_purpose == "contract_approver" else [BusinessRecord.status.not_in({"离职", "停用"})]),
     ))).all()
     for employee in active_employees:
         username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
@@ -8486,7 +8496,6 @@ async def contract_approver_settings(identity: dict = Depends(current_identity),
     _require_admin(identity)
     employees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
-        BusinessRecord.status.not_in({"离职", "停用"}),
     ).order_by(BusinessRecord.title, BusinessRecord.id))).all())
     usernames = list(dict.fromkeys(
         str((item.data or {}).get("username") or item.owner or "").strip().lower()
@@ -8494,7 +8503,7 @@ async def contract_approver_settings(identity: dict = Depends(current_identity),
         if str((item.data or {}).get("username") or item.owner or "").strip()
     ))
     users = list((await db.scalars(select(User).where(User.username.in_(usernames), User.is_active.is_(True)))).all()) if usernames else []
-    by_username = {item.username: item for item in users if item.role != "admin"}
+    by_username = {item.username: item for item in users}
     items = []
     seen_usernames: set[str] = set()
     for employee in employees:
@@ -8520,7 +8529,6 @@ async def save_contract_approver_settings(body: ContractApproverSettingsInput, i
     requested = set(dict.fromkeys(value.strip().lower() for value in body.usernames if value.strip()))
     employees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
-        BusinessRecord.status.not_in({"离职", "停用"}),
     ))).all())
     eligible = {
         str((item.data or {}).get("username") or item.owner or "").strip().lower()
@@ -8529,19 +8537,17 @@ async def save_contract_approver_settings(body: ContractApproverSettingsInput, i
     }
     invalid = sorted(requested - eligible)
     if invalid:
-        raise HTTPException(status_code=422, detail=f"所选人员不是启用的在职员工：{', '.join(invalid)}")
+        raise HTTPException(status_code=422, detail=f"所选人员没有关联员工档案：{', '.join(invalid)}")
     users = list((await db.scalars(select(User).where(User.username.in_(eligible)))).all()) if eligible else []
-    active_usernames = {item.username for item in users if item.is_active and item.role != "admin"}
+    active_usernames = {item.username for item in users if item.is_active}
     invalid = sorted(requested - active_usernames)
     if invalid:
-        raise HTTPException(status_code=422, detail=f"所选人员账号不存在、已停用或为管理员账号：{', '.join(invalid)}")
+        raise HTTPException(status_code=422, detail=f"所选人员账号不存在或已停用：{', '.join(invalid)}")
     users_by_username = {item.username: item for item in users}
     invalid_names = sorted(username for username in requested if not _valid_contract_person_name(users_by_username[username].display_name, username))
     if invalid_names:
         raise HTTPException(status_code=422, detail="所选员工缺少有效姓名，请先在人事中心维护姓名并取消其合同审批资格")
     for user in users:
-        if user.role == "admin":
-            continue
         user.profile = {**(user.profile or {}), "contract_approval_enabled": user.username in requested}
     await db.commit()
     return {"usernames": sorted(requested), "count": len(requested)}
@@ -10378,7 +10384,7 @@ async def release_customer(customer_id: int, body: CustomerActionInput, identity
     try:
         customer = await _locked_customer_or_404(customer_id, identity, db)
         await _require_record_owner_or_manager(customer, identity, db)
-        if customer.status not in {"正常", "跟进中", "已回收", *CUSTOMER_CREATE_STATUSES}: raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
+        if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
         old = customer.status; customer.status = "公海"; customer.owner = "公海"
         customer.data = {
             **(customer.data or {}),
@@ -11061,8 +11067,6 @@ async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
     """Resolve a selectable contract approver from one authoritative rule."""
     if not user.is_active:
         return False
-    if user.role == "admin":
-        return True
     if not _valid_contract_person_name(user.display_name, user.username):
         return False
     if not bool((user.profile or {}).get("contract_approval_enabled")):
@@ -11070,14 +11074,13 @@ async def _is_contract_approver(user: User, db: AsyncSession) -> bool:
     employee_id = await db.scalar(
         select(BusinessRecord.id).where(
             BusinessRecord.module == "hr",
-            BusinessRecord.status.not_in({"离职", "停用"}),
             or_(
                 BusinessRecord.owner == user.username,
                 BusinessRecord.data["username"].as_string() == user.username,
             ),
         ).limit(1)
     )
-    return employee_id is not None and await _user_has_contract_approval_action(user, db)
+    return employee_id is not None
 
 
 CONTRACT_APPROVAL_ACTION_CODE = "contract.application.approve"
@@ -28659,7 +28662,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     preserved_secondary_roles = [role for role in existing_role_ids[1:] if role != effective_role]
     next_role_ids = [effective_role, *preserved_secondary_roles] if account_type == "员工账号" else ["user"]
     user.display_name = display_name; user.department = body.department.strip(); user.role = next_role_ids[0]; user.role_ids = next_role_ids; user.is_active = body.is_active; user.profile = profile
-    contract_approval_enabled = account_type == "员工账号" and bool(profile.get("contract_approval_enabled"))
+    contract_approval_enabled = bool(profile.get("contract_approval_enabled"))
     employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
@@ -28705,22 +28708,11 @@ async def update_hr_employee_contract_approval_status(employee_id: int, body: Hr
     employee = await db.get(BusinessRecord, employee_id)
     if not employee or employee.module != "hr":
         raise HTTPException(status_code=404, detail="员工档案不存在")
-    if employee.status in {"离职", "停用"}:
-        raise HTTPException(status_code=409, detail="离职或停用员工不能配置为合同审批人")
     data = dict(employee.data or {})
-    account_type = str(data.get("account_type") or "员工账号").strip()
-    if account_type != "员工账号":
-        raise HTTPException(status_code=409, detail="该员工档案未关联系统登录账号")
     username = str(data.get("username") or employee.owner).strip().lower()
     user = await db.scalar(select(User).where(User.username == username))
     if not user:
         raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在")
-    if user.role == "admin":
-        raise HTTPException(status_code=409, detail="管理员账号不能配置为合同审批人")
-    if not user.is_active and body.contract_approval_enabled:
-        raise HTTPException(status_code=409, detail="登录账号已停用，不能配置为合同审批人")
-    if body.contract_approval_enabled and not _valid_contract_person_name(user.display_name, user.username):
-        raise HTTPException(status_code=422, detail="请先在人事中心维护有效姓名")
     previous_enabled = bool((user.profile or {}).get("contract_approval_enabled"))
     user.profile = {**(user.profile or {}), "contract_approval_enabled": body.contract_approval_enabled}
     data.update({

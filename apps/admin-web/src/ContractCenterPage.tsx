@@ -771,7 +771,7 @@ export default function ContractCenterPage({
     const targetRequest = target ? resolveContractDetailTarget(target) : null;
     const auxiliaryRequests = Promise.allSettled([
       api.get("/auth/me"),
-      api.get("/users/directory"),
+      api.get("/users/directory", { params: { purpose: "contract_approver" } }),
       api.get("/seals/assets"),
       api.get("/customers", { params: { scope: "mine", customer_type: "客户", page: 1, page_size: 200 } }),
     ]);
@@ -2269,7 +2269,7 @@ export default function ContractCenterPage({
       const response = await api.put("/contracts/approver-settings", { usernames: selectedApproverUsernames });
       const feedback = normalizeContractActionResponse(response, "合同审批人设置保存失败");
       if (!feedback.ok) throw new Error(feedback.message);
-      const directoryResponse = await api.get("/users/directory");
+      const directoryResponse = await api.get("/users/directory", { params: { purpose: "contract_approver" } });
       setDirectory((directoryResponse.data.items || []).filter((item: DirectoryUser) => item.is_active !== false));
       setApproverSettingsOpen(false);
       message.success("合同审批人设置已保存");

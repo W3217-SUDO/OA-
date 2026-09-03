@@ -599,6 +599,66 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(disabled.json()["user"]["contract_approval_enabled"])
         self.assertFalse(disabled.json()["can_approve_contract"])
 
+    async def test_contract_approval_switch_has_no_role_account_type_or_employment_status_gate(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            admin_user = await db.scalar(select(User).where(User.username == "admin"))
+            admin_user.profile = {
+                **(admin_user.profile or {}),
+                "account_type": "外部合作账号",
+                "contract_approval_enabled": False,
+            }
+            employee = BusinessRecord(
+                module="hr",
+                serial_no="HR-ROW2-ADMIN-OFFBOARD",
+                title="Admin",
+                status=STATUS_OFFBOARD,
+                owner="admin",
+                department=DEPT,
+                data={
+                    "username": "admin",
+                    "account_type": "外部合作账号",
+                    "contract_approval_enabled": False,
+                },
+            )
+            db.add(employee)
+            await db.flush()
+            employee_id = int(employee.id)
+            await db.commit()
+
+        enabled = await self.client.patch(
+            f"{API}/hr/employees/{employee_id}/contract-approval-status",
+            headers=admin_headers,
+            json={"contract_approval_enabled": True},
+        )
+        self.assertEqual(enabled.status_code, status.HTTP_200_OK, enabled.text)
+        self.assertTrue(enabled.json()["employee"]["data"]["contract_approval_enabled"])
+        self.assertTrue(enabled.json()["user"]["contract_approval_enabled"])
+        self.assertTrue(enabled.json()["can_approve_contract"])
+
+        directory = await self.client.get(
+            f"{API}/users/directory?purpose=contract_approver",
+            headers=admin_headers,
+        )
+        self.assertEqual(directory.status_code, status.HTTP_200_OK, directory.text)
+        directory_row = next(item for item in directory.json()["items"] if item["username"] == "admin")
+        self.assertTrue(directory_row["can_approve_contract"])
+
+        settings = await self.client.get(f"{API}/contracts/approver-settings", headers=admin_headers)
+        self.assertEqual(settings.status_code, status.HTTP_200_OK, settings.text)
+        settings_row = next(item for item in settings.json()["items"] if item["username"] == "admin")
+        self.assertTrue(settings_row["selected"])
+
+        disabled = await self.client.patch(
+            f"{API}/hr/employees/{employee_id}/contract-approval-status",
+            headers=admin_headers,
+            json={"contract_approval_enabled": False},
+        )
+        self.assertEqual(disabled.status_code, status.HTTP_200_OK, disabled.text)
+        self.assertFalse(disabled.json()["employee"]["data"]["contract_approval_enabled"])
+        self.assertFalse(disabled.json()["user"]["contract_approval_enabled"])
+        self.assertFalse(disabled.json()["can_approve_contract"])
+
     async def test_job_role_field_permissions_model_and_api(self):
         admin_headers = await self._admin_headers()
         created = await self.client.post(

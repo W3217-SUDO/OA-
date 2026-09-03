@@ -35,35 +35,31 @@ test('new employee approval switch is tied to employee system-account eligibilit
   )
 })
 
-test('employee edit approval switch follows account type, role and formal HR record eligibility', () => {
-  assert.ok(source.includes("Form.useWatch('account_type',employeeEditForm)"), 'edit form should react to account type changes')
+test('employee edit approval switch is a direct boolean setting for every persisted employee', () => {
   assert.ok(
-    source.includes('canConfigureContractApproval=(systemRole:string,employeeId?:number,accountType=employeeAccountType)'),
-    'shared approval guard should include account type',
+    source.includes('canConfigureContractApproval=(employeeId?:number)=>Boolean(employeeId&&employeeId>0)'),
+    'the only UI prerequisite should be a persisted employee record',
   )
   assert.ok(
-    saveEmployeeEdit.includes('canConfigureContractApproval(roleValue,editingEmployee.id,normalizedAccountType)'),
-    'edit save should use selected account type when deciding approval eligibility',
+    saveEmployeeEdit.includes('editableData.contract_approval_enabled=Boolean(value.contract_approval_enabled)'),
+    'edit save should persist the selected boolean without role or account-type coercion',
   )
   assert.ok(
-    editModal.includes('disabled={!canConfigureContractApproval(editingSystemRole,editingEmployee?.id,editingAccountType)||savingEmployee}'),
-    'edit approval switch should be disabled when account type or role is ineligible',
+    editModal.includes('disabled={!canConfigureContractApproval(editingEmployee?.id)||savingEmployee}'),
+    'the switch should remain available for every persisted employee',
   )
+  assert.ok(!editModal.includes('系统管理员或非员工账号不能配置'), 'the removed eligibility warning must not remain visible')
 })
 
 test('employee edit approval switch normalizes legacy account type and persists approval eligibility', () => {
   assert.ok(source.includes('const normalizeAccountType='), 'legacy employees with missing account_type should be normalized before approval checks')
   assert.ok(
-    source.includes("const editingAccountType=normalizeAccountType(Form.useWatch('account_type',employeeEditForm))"),
-    'edit approval guard should not treat blank legacy account_type as ineligible',
-  )
-  assert.ok(
     saveEmployeeEdit.includes('account_type:normalizedAccountType'),
     'edit save should persist normalized account type so refresh keeps the approval flag eligible',
   )
   assert.ok(
-    saveEmployeeEdit.includes('editableData.contract_approval_enabled=canAssignContractApproval&&Boolean(value.contract_approval_enabled)'),
-    'edit save should keep the selected approval flag when the employee is eligible',
+    saveEmployeeEdit.includes('editableData.contract_approval_enabled=Boolean(value.contract_approval_enabled)'),
+    'edit save should keep the selected approval flag without extra eligibility checks',
   )
 })
 
@@ -100,11 +96,11 @@ test('employee edit approval switch keeps modal and outer list state bound to ba
     'opening edit should reconcile stale outer list rows with the system-account approval flag',
   )
   assert.ok(
-    source.includes('const approved=Boolean(data.can_approve_contract??checked)'),
-    'toggle success should trust the backend approver eligibility response',
+    source.includes('const configured=Boolean(data.user?.contract_approval_enabled??data.employee?.data?.contract_approval_enabled??checked)'),
+    'toggle success should use the persisted configuration rather than derived runtime permission',
   )
   assert.ok(
-    source.includes("employeeEditForm.setFieldValue('contract_approval_enabled',approved)"),
+    source.includes("employeeEditForm.setFieldValue('contract_approval_enabled',configured)"),
     'toggle success should write the backend value back into the modal form',
   )
   assert.ok(

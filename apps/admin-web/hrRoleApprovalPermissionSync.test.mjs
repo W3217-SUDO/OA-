@@ -27,26 +27,24 @@ test('employee edit keeps business role synchronized with account role, staff ro
   assert.ok(saveEmployeeEdit.includes('editableData.permission_role=permissionRole'), 'business permission role marker should be preserved in employee data')
 })
 
-test('contract approval qualification follows the selected account role and is blocked for admin or non-formal accounts', () => {
+test('contract approval qualification is directly configurable for every persisted employee', () => {
   assert.ok(source.includes('const canConfigureContractApproval='), 'HR page should centralize contract approval eligibility')
-  assert.ok(source.includes("Form.useWatch('staff_role',employeeEditForm)"), 'contract approval UI should react to the selected staff role')
   assert.ok(
-    saveEmployeeEdit.includes('canConfigureContractApproval(roleValue,editingEmployee.id,normalizedAccountType)'),
-    'save path should evaluate approval eligibility from the selected role and employee id',
+    source.includes('canConfigureContractApproval=(employeeId?:number)=>Boolean(employeeId&&employeeId>0)'),
+    'save path should only require a persisted employee record',
   )
   assert.ok(
-    saveEmployeeEdit.includes('editableData.contract_approval_enabled=canAssignContractApproval&&Boolean(value.contract_approval_enabled)'),
-    'save path should not persist approval qualification when the selected role is not eligible',
+    saveEmployeeEdit.includes('editableData.contract_approval_enabled=Boolean(value.contract_approval_enabled)'),
+    'save path should preserve the selected approval setting without role coercion',
   )
   assert.ok(
-    editModal.includes('disabled={!canConfigureContractApproval(editingSystemRole,editingEmployee?.id,editingAccountType)||savingEmployee}'),
-    'contract approval switch should be disabled when admin/non-formal accounts cannot be approvers',
+    editModal.includes('disabled={!canConfigureContractApproval(editingEmployee?.id)||savingEmployee}'),
+    'contract approval switch should remain enabled for admin and non-employee account types',
   )
 })
 
-test('contract approval flag is cleared immediately when role switching removes eligibility', () => {
-  assert.ok(source.includes('employeeEditForm.setFieldValue(\'contract_approval_enabled\',false)'), 'role switch should clear stale approval qualification')
-  assert.ok(source.includes('editingSystemRole'), 'role-switch cleanup should depend on the live selected system role')
+test('role changes do not clear the independently configured contract approval flag', () => {
+  assert.ok(!source.includes("if(!editingEmployee)return;if(!canConfigureContractApproval"), 'role/account changes must not clear the switch')
 })
 
 test('hr edit keeps only the contract approval eligibility switch, not the removed relationship shortcut', () => {

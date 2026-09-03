@@ -375,7 +375,8 @@ export default function TaskCenterPage({
     initialView === "task-company-created";
   const hideTaskFooter =
     taskMeta.total === 0 &&
-    (isAccepted ||
+    (isCreated ||
+      isAccepted ||
       isCollaborating ||
       isReminder ||
       initialView === "task-dept-created" ||
@@ -1613,8 +1614,12 @@ export default function TaskCenterPage({
               {isUnread && (
                 <Button loading={actionSubmitting} onClick={() => void markSelectedUnreadTasksRead()}>标记已读</Button>
               )}
-              {canManageInitiatedTask && <Button onClick={openCreateTask}>新增任务</Button>}
-              {canWithdrawTask(selected) && <Button danger onClick={() => selected && requestTaskWithdrawal(selected)}>撤回任务</Button>}
+              {canManageInitiatedTask && (
+                <Button danger disabled={!canWithdrawTask(selected)} onClick={() => selected && requestTaskWithdrawal(selected)}>
+                  撤回任务
+                </Button>
+              )}
+              {!canManageInitiatedTask && canWithdrawTask(selected) && <Button danger onClick={() => selected && requestTaskWithdrawal(selected)}>撤回任务</Button>}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && selected?.status === "已拒绝" && (
                 <Button onClick={() => openDialog(selected, "resend")}>重新派发</Button>
               )}
