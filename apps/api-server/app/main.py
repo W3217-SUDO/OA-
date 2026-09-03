@@ -1821,6 +1821,8 @@ class CaseBatchUpdateInput(BaseModel):
     handling_lawyers: list[str] | None = Field(default=None, max_length=20)
     assistant: str | None = Field(default=None, max_length=128)
     case_stage: str | None = Field(default=None, max_length=128)
+    source_lawyer: str | None = Field(default=None, max_length=128)
+    litigation_amount: float | None = Field(default=None, ge=0, le=1000000000)
     comment: str = Field(default="", max_length=500)
 
 
@@ -1864,6 +1866,7 @@ class CaseBatchFeeInput(BaseModel):
 class RefundCaseFeeBatchItemInput(BaseModel):
     case_id: int = Field(gt=0)
     contract_record_id: int | None = Field(default=None, gt=0)
+    fee_type_id: int | None = Field(default=None, gt=0)
     fee_type: str = Field(pattern="^(官方费用|代理费|其他费用|内部费用)$")
     amount: float
     remark: str = Field(default="", max_length=1000)
@@ -6855,6 +6858,46 @@ def _fee_type_catalog(items: list[SystemParameter]) -> list[dict]:
     return result
 
 
+def _case_file_type_tree(items: list[SystemParameter]) -> list[dict]:
+    flat: list[dict] = []
+    for item in items:
+        extra = item.extra or {}
+        flat.append({
+            "id": item.id,
+            "code": item.code,
+            "value": item.name,
+            "title": item.name,
+            "parent_code": str(extra.get("parent_code") or "").strip(),
+            "children": [],
+        })
+    by_code = {row["code"]: row for row in flat}
+    roots: list[dict] = []
+    for row in flat:
+        parent_code = row["parent_code"]
+        if parent_code and parent_code in by_code:
+            by_code[parent_code]["children"].append(row)
+        else:
+            roots.append(row)
+    def _clean(nodes: list[dict]) -> list[dict]:
+        result = []
+        for node in nodes:
+            children = _clean(node["children"])
+            entry = {
+                "id": node["id"],
+                "code": node["code"],
+                "value": node["value"],
+                "title": node["title"],
+            }
+            if children:
+                entry["children"] = children
+            result.append(entry)
+        return result
+    tree = _clean(roots)
+    if not any(node["value"] == "普通附件" for node in flat):
+        tree.append({"id": 0, "code": "COMMON", "value": "普通附件", "title": "普通附件"})
+    return tree
+
+
 def _clear_parameter_cache(category: str | None = None, operator: str = "system") -> None:
     if category:
         SYSTEM_PARAMETER_CACHE.pop(category, None)
@@ -6884,7 +6927,7 @@ async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, g
 @app.get(f"{settings.api_prefix}/system/parameters/options")
 async def list_system_parameter_options(category: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Expose active, form-safe parameter choices to authenticated users."""
-    if category not in {"notary_office", "fee_type"}:
+    if category not in {"notary_office", "fee_type", "case_file_type"}:
         raise HTTPException(status_code=422, detail="当前参数分类不提供业务选项")
     items = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == category,
@@ -6892,6 +6935,8 @@ async def list_system_parameter_options(category: str, identity: dict = Depends(
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     if category == "fee_type":
         return {"items": _fee_type_catalog(list(items))}
+    if category == "case_file_type":
+        return {"items": _case_file_type_tree(list(items))}
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
 
 
@@ -21923,7 +21968,7 @@ async def delete_reconciliation(batch_id: int, identity: dict = Depends(current_
 async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以批量修改案件")
-    changes_requested = any(value is not None for value in (body.hearing_lawyer, body.handling_lawyers, body.assistant, body.case_stage))
+    changes_requested = any(value is not None for value in (body.hearing_lawyer, body.handling_lawyers, body.assistant, body.case_stage, body.source_lawyer, body.litigation_amount))
     if not changes_requested:
         raise HTTPException(status_code=422, detail="请至少提供一个需要修改的案件字段")
     case_ids = list(dict.fromkeys(body.case_ids))
@@ -21979,6 +22024,12 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
         if body.case_stage is not None:
             changes.append(f"案件阶段：{data.get('case_stage') or case.status} → {body.case_stage.strip()}")
             data["case_stage"] = body.case_stage.strip()
+        if body.source_lawyer is not None:
+            changes.append(f"案源人：{data.get('source_lawyer', '')} → {body.source_lawyer.strip()}")
+            data["source_lawyer"] = body.source_lawyer.strip()
+        if body.litigation_amount is not None:
+            changes.append(f"诉讼标的：{data.get('litigation_amount', 0)} → {body.litigation_amount}")
+            data["litigation_amount"] = body.litigation_amount
         case.data = data
         db.add(WorkflowEvent(record_id=case.id, action="批量修改案件", from_status=case.status, to_status=case.status, operator=identity["username"], comment="；".join(changes + ([body.comment.strip()] if body.comment.strip() else []))))
     await db.commit()
@@ -22281,6 +22332,200 @@ async def create_case_log(case_id: int, body: CaseLogInput, identity: dict = Dep
     return {"id": event.id, "content": event.comment, "operator": event.operator, "created_at": event.created_at}
 
 
+_BUILTIN_DOCUMENT_TEMPLATES: dict[str, dict] = {
+    "authorization": {
+        "name": "授权委托书",
+        "category": "诉讼文书",
+        "content": """授 权 委 托 书
+
+{{plaintiff_name}}（以下简称"委托人"）因与 {{defendant_name}} {{case_type}} 纠纷一案，特委托 {{law_firm_name}}（以下简称"受托人"）的律师作为代理人。
+
+一、委托事项
+{{entrust_matter}}
+
+二、委托权限
+{{entrust_authority}}
+
+三、委托期限
+自本委托书签署之日起至 {{entrust_deadline}} 止。
+
+四、其他约定
+{{other_terms}}
+
+委托人（盖章）：________________
+法定代表人（签字）：________________
+日期：{{sign_date}}
+
+受托人（盖章）：{{law_firm_name}}
+经办律师：{{handling_lawyer}}
+日期：{{sign_date}}""",
+    },
+    "law-firm-letter": {
+        "name": "律师事务所函",
+        "category": "诉讼文书",
+        "content": """律师事务所函
+
+{{recipient_unit}}：
+
+本律所接受 {{plaintiff_name}} 的委托，指派本所 {{handling_lawyer}} 律师担任贵单位审理的 {{plaintiff_name}} 与 {{defendant_name}} {{case_type}} 纠纷一案中 {{plaintiff_name}} 的诉讼代理人。
+
+该律师在本案中的代理权限为：{{entrust_authority}}
+
+请贵单位依法予以接洽并提供相应的诉讼便利。
+
+特此函告。
+
+{{law_firm_name}}（盖章）
+年　　月　　日
+
+附：授权委托书一份""",
+    },
+    "identity": {
+        "name": "身份证明",
+        "category": "诉讼文书",
+        "content": """身 份 证 明
+
+兹证明：
+
+单位名称：{{subject_name}}
+统一社会信用代码/注册号：{{credit_code}}
+住所地：{{subject_address}}
+法定代表人/负责人：{{legal_representative}}
+职务：{{representative_title}}
+
+上述人员系我单位法定代表人（负责人），以我单位名义办理相关事项，其行为我单位均予承认。
+
+特此证明。
+
+{{subject_name}}（盖章）
+年　　月　　日
+
+附：法定代表人/负责人身份证复印件""",
+    },
+    "settlement": {
+        "name": "结算提成表",
+        "category": "内部表单",
+        "content": """案 件 结 算 提 成 表
+
+一、案件基本信息
+案　　号：{{case_no}}
+案件类型：{{case_type}}
+客户名称：{{customer_name}}
+对方当事人：{{opposite_name}}
+经办律师：{{handling_lawyer}}
+开庭律师：{{hearing_lawyer}}
+案　源　人：{{source_lawyer}}
+
+二、费用明细
+合同金额：￥{{contract_amount}} 元
+已收费用：￥{{received_amount}} 元
+未收费用：￥{{outstanding_amount}} 元
+退费金额：￥{{refund_amount}} 元
+诉讼标的：￥{{litigation_amount}} 元
+
+三、提成计算
+提成比例：{{commission_rate}}
+提成金额：￥{{commission_amount}} 元
+
+四、复核意见
+{{review_comment}}
+
+经办律师签字：________________
+部门负责人签字：________________
+财务审核：________________
+日期：______年____月____日""",
+    },
+}
+
+
+def _fill_template(template_content: str, data: dict) -> str:
+    result = template_content
+    for key, value in data.items():
+        placeholder = "{{" + key + "}}"
+        if placeholder in result:
+            result = result.replace(placeholder, str(value) if value is not None else "")
+    import re
+    result = re.sub(r"\{\{[^}]+\}\}", "", result)
+    return result
+
+
+def _build_case_template_data(case_record: BusinessRecord) -> dict:
+    data = case_record.data or {}
+    case_data = _record_dict(case_record, set())
+    return {
+        "case_no": case_data.get("serial_no", ""),
+        "case_type": data.get("case_type", ""),
+        "customer_name": data.get("customer", ""),
+        "plaintiff_name": data.get("plaintiff", data.get("customer", "")),
+        "defendant_name": data.get("defendant", ""),
+        "opposite_name": data.get("defendant", ""),
+        "handling_lawyer": ",".join(data.get("handling_lawyers") or []) if data.get("handling_lawyers") else "",
+        "hearing_lawyer": data.get("hearing_lawyer", ""),
+        "source_lawyer": data.get("source_lawyer", ""),
+        "assistant": data.get("assistant", ""),
+        "case_stage": data.get("case_stage", case_record.status),
+        "litigation_amount": data.get("litigation_amount", ""),
+        "contract_amount": data.get("contract_amount", ""),
+        "received_amount": data.get("received_amount", ""),
+        "outstanding_amount": data.get("outstanding_amount", ""),
+        "refund_amount": data.get("refund_amount", ""),
+        "commission_rate": data.get("commission_rate", ""),
+        "commission_amount": data.get("commission_amount", ""),
+        "court": data.get("court", ""),
+        "law_firm_name": data.get("law_firm_name", "律师事务所"),
+        "entrust_matter": data.get("entrust_matter", "代为进行诉讼活动，包括起诉、应诉、参加庭审、调解、和解等"),
+        "entrust_authority": data.get("entrust_authority", "一般授权：代为调查取证、查阅案件材料、参加庭审、进行和解、调解；特别授权：代为承认、放弃、变更诉讼请求，进行和解，提起反诉或上诉，代收诉讼文书，代领标的款物"),
+        "entrust_deadline": data.get("entrust_deadline", "本案一审终结"),
+        "other_terms": data.get("other_terms", "无"),
+        "sign_date": data.get("sign_date", ""),
+        "recipient_unit": data.get("recipient_unit", data.get("court", "")),
+        "subject_name": data.get("subject_name", data.get("customer", "")),
+        "credit_code": data.get("credit_code", ""),
+        "subject_address": data.get("subject_address", ""),
+        "legal_representative": data.get("legal_representative", ""),
+        "representative_title": data.get("representative_title", "法定代表人"),
+        "review_comment": data.get("review_comment", ""),
+    }
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/documents/generate")
+async def generate_case_document(
+    case_id: int,
+    doc_type: str = Query(..., description="文档类型：authorization(授权委托书)/law-firm-letter(律所函)/identity(身份证明)/settlement(结算提成表)"),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    template = _BUILTIN_DOCUMENT_TEMPLATES.get(doc_type)
+    if not template:
+        raise HTTPException(status_code=400, detail="不支持的文档类型")
+    case_data = _build_case_template_data(case_record)
+    filled_content = _fill_template(template["content"], case_data)
+    doc = Document()
+    for paragraph_text in filled_content.split("\n"):
+        paragraph = doc.add_paragraph()
+        run = paragraph.add_run(paragraph_text)
+        run.font.name = "宋体"
+        run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+        if paragraph_text.startswith("　　") or paragraph_text == paragraph_text.lstrip():
+            pass
+        if any(keyword in paragraph_text for keyword in ["授 权", "律师事务所函", "身 份", "案 件 结 算"]):
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run.font.size = Pt(18)
+            run.bold = True
+    import io
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    filename = f"{template['name']}-{case_data['case_no']}.docx"
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename.encode('utf-8').decode('latin-1')}"},
+    )
+
+
 @app.post(f"{settings.api_prefix}/cases/batch-fees", status_code=status.HTTP_201_CREATED)
 async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_ids = list(dict.fromkeys(body.case_ids))
@@ -22377,9 +22622,14 @@ async def create_refund_page_case_fees(
                 raise HTTPException(status_code=422, detail=f"第 {index} 行只有内部费用可以使用负数冲销")
 
             expense_scope = "内部" if request_item.fee_type == "内部费用" else "律所"
-            fee_parameter, fee_option = await _resolve_case_fee_type_master(
-                None, expense_scope, db, legacy_name="", legacy_base=request_item.fee_type,
-            )
+            if request_item.fee_type_id:
+                fee_parameter, fee_option = await _resolve_case_fee_type_master(
+                    request_item.fee_type_id, expense_scope, db,
+                )
+            else:
+                fee_parameter, fee_option = await _resolve_case_fee_type_master(
+                    None, expense_scope, db, legacy_name="", legacy_base=request_item.fee_type,
+                )
             fee_snapshot = _case_fee_type_snapshot(fee_parameter, fee_option)
             contract_record = None
             if request_item.contract_record_id:

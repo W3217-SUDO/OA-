@@ -22,6 +22,7 @@ import {
   Table,
   Tabs,
   Tag,
+  TreeSelect,
 } from "antd";
 import {
   AuditOutlined,
@@ -1231,19 +1232,26 @@ export default function FinanceCenterPage({
   const [paymentRollbackTarget, setPaymentRollbackTarget] =
     useState<Fee | null>(null);
   const [paymentRollbackComment, setPaymentRollbackComment] = useState("");
-  const [settlementBatchAction, setSettlementBatchAction] = useState<
-    "hearing_lawyer" | "handling_lawyers" | "assistant" | "case_stage" | null
-  >(null);
+  const [settlementBatchOpen, setSettlementBatchOpen] = useState(false);
   const [settlementContext, setSettlementContext] = useState<{
-    mode: "tasks" | "logs";
+    mode: "tasks" | "logs" | "log-create" | "task-create";
     caseRecords: Fee[];
   } | null>(null);
+  const [settlementLogContent, setSettlementLogContent] = useState("");
+  const [settlementTaskForm, setSettlementTaskForm] = useState({
+    title: "",
+    owner: "",
+    deadline: null as any,
+    priority: "普通",
+  });
   const [settlementContextRows, setSettlementContextRows] = useState<any[]>([]);
   const [settlementActionLoading, setSettlementActionLoading] = useState(false);
   const [refundBatchFeeOpen, setRefundBatchFeeOpen] = useState(false);
   const [refundBatchFeeStep, setRefundBatchFeeStep] = useState(0);
   const [refundBatchFeeLoading, setRefundBatchFeeLoading] = useState(false);
   const [refundBatchFeeKind, setRefundBatchFeeKind] = useState<"ordinary" | "internal">("ordinary");
+  const [refundBatchFeeBaseType, setRefundBatchFeeBaseType] = useState<string>("官方费用");
+  const [refundBatchFeeSubTypes, setRefundBatchFeeSubTypes] = useState<any[]>([]);
   const [refundBatchPaymentTypes, setRefundBatchPaymentTypes] = useState<any[]>([]);
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeEditTarget, setFeeEditTarget] = useState<Fee | null>(null);
@@ -1467,6 +1475,7 @@ export default function FinanceCenterPage({
   const [recordFiles, setRecordFiles] = useState<Attachment[]>([]);
   const [recordFile, setRecordFile] = useState<File | null>(null);
   const [recordUploadFiles, setRecordUploadFiles] = useState<File[]>([]);
+  const [recordFileTypeTree, setRecordFileTypeTree] = useState<any[]>([]);
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [voucherTarget, setVoucherTarget] = useState<Transaction | null>(null);
   const [voucherFile, setVoucherFile] = useState<File | null>(null);
@@ -3400,6 +3409,11 @@ export default function FinanceCenterPage({
       setRecordFile(null);
       setRecordUploadFiles([]);
       recordFileForm.setFieldsValue({ category, remark: "", document_date: dayjs() });
+      if (targets.length > 1 && !recordFileTypeTree.length) {
+        api.get("/system/parameters/options", { params: { category: "case_file_type" } })
+          .then(({ data }) => setRecordFileTypeTree(data.items || []))
+          .catch(() => setRecordFileTypeTree([]));
+      }
     } catch (error: any) {
       setRecordFiles([]);
       setRecordFileTarget(null);
@@ -8575,9 +8589,25 @@ export default function FinanceCenterPage({
       ),
     ];
   };
-  const openSettlementContext = async (mode: "tasks" | "logs") => {
+  const openSettlementContext = async (mode: "tasks" | "logs" | "log-create" | "task-create") => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
+    if (mode === "log-create") {
+      setSettlementLogContent("");
+      setSettlementContext({ mode, caseRecords: linked });
+      return;
+    }
+    if (mode === "task-create") {
+      const firstAssistant = linked[0]?.data?.assistant || currentUser.username;
+      setSettlementTaskForm({
+        title: "",
+        owner: firstAssistant,
+        deadline: dayjs().add(15, "day"),
+        priority: "普通",
+      });
+      setSettlementContext({ mode, caseRecords: linked });
+      return;
+    }
     setSettlementActionLoading(true);
     try {
       if (mode === "tasks") {
@@ -8587,7 +8617,7 @@ export default function FinanceCenterPage({
         setSettlementContextRows(groups.flat());
       } else {
         const groups = await Promise.all(linked.map(async (item) => {
-          const { data } = await api.get(`/records/${item.id}/history`);
+          const { data } = await api.get(`/cases/${item.id}/logs`);
           return (data.items || []).map((row: any) => ({ ...row, source_case_no: item.serial_no }));
         }));
         setSettlementContextRows(groups.flat());
@@ -8599,108 +8629,130 @@ export default function FinanceCenterPage({
       setSettlementActionLoading(false);
     }
   };
+  const submitSettlementLog = async () => {
+    const content = settlementLogContent.trim();
+    if (!content) {
+      message.warning("请输入日志内容");
+      return;
+    }
+    const linked = settlementContext?.caseRecords || [];
+    setSettlementActionLoading(true);
+    try {
+      await Promise.all(linked.map((item) =>
+        api.post(`/cases/${item.id}/logs`, { content }),
+      ));
+      message.success(`已为 ${linked.length} 个案件添加日志`);
+      setSettlementContext(null);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "日志添加失败");
+    } finally {
+      setSettlementActionLoading(false);
+    }
+  };
+  const submitSettlementTask = async () => {
+    const form = settlementTaskForm;
+    if (!form.title.trim()) {
+      message.warning("请输入任务名称");
+      return;
+    }
+    if (!form.owner.trim()) {
+      message.warning("请选择负责人");
+      return;
+    }
+    if (!form.deadline) {
+      message.warning("请选择截止日期");
+      return;
+    }
+    const linked = settlementContext?.caseRecords || [];
+    setSettlementActionLoading(true);
+    try {
+      await Promise.all(linked.map((item) =>
+        api.post("/tasks", {
+          title: form.title.trim(),
+          owner: form.owner.trim(),
+          deadline: form.deadline.format("YYYY-MM-DD"),
+          priority: form.priority,
+          source: "案件任务",
+          case_record_id: item.id,
+          case_module: "case",
+        }),
+      ));
+      message.success(`已为 ${linked.length} 个案件创建任务`);
+      setSettlementContext(null);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "任务创建失败");
+    } finally {
+      setSettlementActionLoading(false);
+    }
+  };
   const generateSettlementDocument = async (
     key: "authorization" | "law-firm-letter" | "identity" | "settlement",
   ) => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
-    const specs = {
-      authorization: {
-        name: "授权委托书",
-        category: "诉讼文书",
-        fields: ["委托人", "受托人", "委托事项", "委托权限", "委托期限"],
-      },
-      "law-firm-letter": {
-        name: "律所函",
-        category: "诉讼文书",
-        fields: ["收函单位", "案件基本信息", "律师意见", "联系方式"],
-      },
-      identity: {
-        name: "身份证明",
-        category: "诉讼文书",
-        fields: ["主体信息", "法定代表人或负责人", "身份证明事项", "签章"],
-      },
-      settlement: {
-        name: "结算提成表",
-        category: "内部表单",
-        fields: ["案件信息", "费用明细", "提成计算", "复核意见"],
-      },
-    } as const;
-    const spec = specs[key];
+    const nameMap: Record<string, string> = {
+      authorization: "授权委托书",
+      "law-firm-letter": "律所函",
+      identity: "身份证明",
+      settlement: "结算提成表",
+    };
     setSettlementActionLoading(true);
     try {
-      const templateResponse = await api.get("/templates");
-      let template = templateResponse.data.items.find(
-        (item: any) => item.is_active !== false && item.name === spec.name,
-      );
-      if (!template) {
-        template = (
-          await api.post("/templates", {
-            name: spec.name,
-            category: spec.category,
-            version: "1.0",
-            description: "内部提成待结算页案件文书模板",
-            fields: [...spec.fields],
-          })
-        ).data;
-      }
       for (const caseRecord of linked) {
-        const title = `${spec.name}-${caseRecord.serial_no}`;
-        const generated = await api.post("/agent/documents", {
-          template_id: template.id,
-          record_id: caseRecord.id,
-          title,
-          instruction:
-            "请依据案件现有资料生成；不得虚构事实，缺失信息标记为【待补充】。",
-        });
         const response = await api.get(
-          `/agent/documents/${generated.data.id}/download`,
-          { responseType: "blob" },
+          `/cases/${caseRecord.id}/documents/generate`,
+          { params: { doc_type: key }, responseType: "blob" },
         );
         const url = URL.createObjectURL(response.data);
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download = `${title}.docx`;
+        const cd = response.headers["content-disposition"];
+        const match = cd && cd.match(/filename\*=UTF-8''([^;]+)/);
+        anchor.download = match ? decodeURIComponent(match[1]) : `${nameMap[key]}-${caseRecord.serial_no}.docx`;
         anchor.click();
         URL.revokeObjectURL(url);
       }
-      message.success(`${spec.name}已为 ${linked.length} 个案件生成并下载`);
+      message.success(`${nameMap[key]}已为 ${linked.length} 个案件生成并下载`);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "文书生成失败");
     } finally {
       setSettlementActionLoading(false);
     }
   };
-  const openSettlementBatch = (
-    action: "hearing_lawyer" | "handling_lawyers" | "assistant" | "case_stage",
-  ) => {
+  const openSettlementBatch = () => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
     settlementBatchForm.resetFields();
-    setSettlementBatchAction(action);
+    setSettlementBatchOpen(true);
   };
   const submitSettlementBatch = async () => {
-    if (!settlementBatchAction) return;
     const linked = selectedSettlementCases();
     if (!linked.length) return;
     const values = await settlementBatchForm.validateFields();
-    const value = String(values.value || "").trim();
     const body: Record<string, any> = {
       case_ids: linked.map((row) => row.id),
       comment: values.comment || "待结算列表批量修改",
     };
-    body[settlementBatchAction] =
-      settlementBatchAction === "handling_lawyers"
-        ? value
-            .split(/[，,]/)
-            .map((item) => item.trim())
-            .filter(Boolean)
-        : value;
+    if (values.hearing_lawyer?.trim()) body.hearing_lawyer = values.hearing_lawyer.trim();
+    if (values.handling_lawyers?.trim()) {
+      body.handling_lawyers = values.handling_lawyers
+        .split(/[，,]/)
+        .map((item: string) => item.trim())
+        .filter(Boolean);
+    }
+    if (values.assistant?.trim()) body.assistant = values.assistant.trim();
+    if (values.source_lawyer?.trim()) body.source_lawyer = values.source_lawyer.trim();
+    if (values.case_stage) body.case_stage = values.case_stage;
+    if (values.litigation_amount != null) body.litigation_amount = values.litigation_amount;
+    if (Object.keys(body).length <= 2) {
+      message.warning("请至少修改一个字段");
+      return;
+    }
     setSettlementActionLoading(true);
     try {
       const { data } = await api.post("/cases/batch-update", body);
       message.success(`已修改 ${data.updated} 个案件`);
-      setSettlementBatchAction(null);
+      setSettlementBatchOpen(false);
       setSelectedOriginalRows([]);
       await load();
     } catch (error: any) {
@@ -8714,11 +8766,18 @@ export default function FinanceCenterPage({
     if (!linked.length) return;
     const internal = feeType === "内部费用";
     setRefundBatchFeeKind(internal ? "internal" : "ordinary");
+    setRefundBatchFeeBaseType(feeType);
     if (!internal) {
       void api.get("/finance/payment-types").then(({ data }) => {
         setRefundBatchPaymentTypes(data.items || []);
       }).catch((error: any) => message.error(error?.response?.data?.detail || "收款单位加载失败"));
     }
+    void api.get("/system/parameters/options", { params: { category: "fee_type" } }).then(({ data }) => {
+      const items = (data.items || []).filter((item: any) => item.selectable && item.base_fee_type === feeType);
+      setRefundBatchFeeSubTypes(items);
+    }).catch(() => {
+      setRefundBatchFeeSubTypes([]);
+    });
     const deadline = dayjs().add(5, "day");
     refundBatchFeeForm.setFieldsValue({
       handler: currentUser.username,
@@ -8728,6 +8787,8 @@ export default function FinanceCenterPage({
         customer: item.customer,
         contract_record_id: Number(item.data?.contract_record_id || item.data?.contract_id || 0) || undefined,
         fee_type: feeType,
+        fee_type_id: undefined,
+        fee_type_name: "",
         amount: undefined,
         payment_amount: undefined,
         payment_type_id: undefined,
@@ -8747,25 +8808,16 @@ export default function FinanceCenterPage({
     setRefundBatchFeeStep(0);
     refundBatchFeeForm.resetFields();
   };
-  const copyFirstRefundFeeRow = () => {
+  const syncFirstRefundFeeField = (field: string) => {
     const items = refundBatchFeeForm.getFieldValue("items") || [];
     if (items.length < 2) return;
     const first = items[0] || {};
+    const value = first[field];
+    if (value === undefined || value === null || value === "") return;
     refundBatchFeeForm.setFieldValue(
       "items",
       items.map((item: Record<string, any>, index: number) =>
-        index === 0
-          ? item
-          : {
-              ...item,
-              fee_type: first.fee_type,
-              amount: first.amount,
-              remark: first.remark,
-              deadline: first.deadline,
-              payee_username: first.payee_username,
-              base_amount: first.base_amount,
-              reference_commission: first.reference_commission,
-            },
+        index === 0 ? item : { ...item, [field]: value },
       ),
     );
   };
@@ -8775,10 +8827,11 @@ export default function FinanceCenterPage({
     try {
       const { data } = await api.post("/finance/case-fees/batch", {
         handler: values.handler,
-        submit_payment: values.items.every((item: Record<string, any>) => item.fee_type !== "代理费"),
+        submit_payment: refundBatchFeeBaseType !== "代理费",
         items: values.items.map((item: Record<string, any>) => ({
           case_id: item.case_id,
           contract_record_id: item.contract_record_id || null,
+          fee_type_id: item.fee_type_id || null,
           fee_type: item.fee_type,
           amount: item.amount,
           remark: item.remark || "",
@@ -8791,7 +8844,7 @@ export default function FinanceCenterPage({
           reference_commission: item.reference_commission || 0,
         })),
       });
-      message.success(`已创建 ${data.created} 条案件费用${values.items[0]?.fee_type === "代理费" ? "" : "并提交付款申请"}`);
+      message.success(`已创建 ${data.created} 条案件费用${refundBatchFeeBaseType === "代理费" ? "" : "并提交付款申请"}`);
       closeRefundBatchFee();
       setSelectedOriginalRows([]);
       await load();
@@ -8816,18 +8869,7 @@ export default function FinanceCenterPage({
       const linked = selectedSettlementCases();
       if (linked.length) void openRecordFiles(linked[0], "普通附件", linked);
     }
-    if (
-      [
-        "hearing_lawyer",
-        "handling_lawyers",
-        "assistant",
-        "case_stage",
-      ].includes(key)
-    )
-      openSettlementBatch(
-        key as
-          "hearing_lawyer" | "handling_lawyers" | "assistant" | "case_stage",
-      );
+    if (key === "batch-modify") openSettlementBatch();
     if (
       ["authorization", "law-firm-letter", "identity", "settlement"].includes(
         key,
@@ -8836,8 +8878,8 @@ export default function FinanceCenterPage({
       void generateSettlementDocument(
         key as "authorization" | "law-firm-letter" | "identity" | "settlement",
       );
-    if (key === "tasks") void openSettlementContext("tasks");
-    if (key === "logs") void openSettlementContext("logs");
+    if (key === "tasks") void openSettlementContext("task-create");
+    if (key === "logs") void openSettlementContext("log-create");
   };
   const originalFields = activeRouteConfig
     ? activeRouteConfig.fields.map(configuredField)
@@ -12051,7 +12093,7 @@ export default function FinanceCenterPage({
               }}>下一步</Button>
             ) : (
               <Button type="primary" loading={refundBatchFeeLoading} onClick={() => void submitRefundBatchFee()}>
-                {refundBatchFeeForm.getFieldValue(["items", 0, "fee_type"]) === "代理费" ? "保存费用" : "申请付款"}
+                {refundBatchFeeBaseType === "代理费" ? "保存费用" : "申请付款"}
               </Button>
             )}
           </div>
@@ -12070,15 +12112,50 @@ export default function FinanceCenterPage({
             <Alert
               type="info"
               showIcon
-              title={refundBatchFeeKind === "internal" ? "内部费用按案件分别填写支付对象、基数、参考提成和实际金额。" : "每个案件可分别选择合同、费用类型、金额、备注和截止日期；任何一行校验失败时整批不会写入。"}
               style={{ marginBottom: 12 }}
-              action={<Button size="small" onClick={copyFirstRefundFeeRow}>同步首行到全部</Button>}
+              description={
+                refundBatchFeeKind === "internal" ? (
+                  <>
+                    <p style={{ margin: 0 }}>1. 申请付款按照每个案号生成一个申请单。</p>
+                    <p style={{ margin: "2px 0 0" }}>2. 点击表格头部（费用类型，基数，实际金额，备注）会把第一行数据同步到各行。</p>
+                    <p style={{ margin: "2px 0 0" }}>3. 基数用于计算提成的分母数，点击基数会把第一行数据同步到各行，同时自动计算提成。</p>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ margin: 0 }}>1. 同一付款单位可以申请付款，否则请按实际业务进行操作。</p>
+                    <p style={{ margin: "2px 0 0" }}>2. 申请付款按照每个合同号生成一个申请单。</p>
+                    <p style={{ margin: "2px 0 0" }}>3. 点击表格头部（费用类型，金额，备注，截止日期）会把第一行数据同步到各行。</p>
+                    <p style={{ margin: "2px 0 0" }}>4. 截止日期默认为申请之日第5天，如有特殊情况，在申请时自行修改。</p>
+                  </>
+                )
+              }
             />
               <Form.List name="items">
                 {(fields, { add, remove }) => (
-                  <div className="finance-refund-batch-fee-table">
+                  <div className={`finance-refund-batch-fee-table ${refundBatchFeeKind === "internal" ? "is-internal" : "is-ordinary"}`}>
                     <div className="finance-refund-batch-fee-head">
-                      {refundBatchFeeKind === "internal" ? <><span>案号</span><span>费用类型</span><span>支付对象</span><span>基数</span><span>参考提成</span><span>实际金额</span><span>操作</span></> : <><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></>}
+                      {refundBatchFeeKind === "internal" ? (
+                        <>
+                          <span>案号</span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("fee_type_id")}>费用类型</a></span>
+                          <span>支付对象</span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("base_amount")}>基数</a></span>
+                          <span>参考提成</span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("amount")}>实际金额</a></span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("remark")}>备注</a></span>
+                          <span>操作</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>案号</span>
+                          <span>合同号</span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("fee_type_id")}>费用类型</a></span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("amount")}>金额</a></span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("remark")}>备注</a></span>
+                          <span><a style={{ color: "inherit", cursor: "pointer" }} onClick={() => syncFirstRefundFeeField("deadline")}>截止日期</a></span>
+                          <span>操作</span>
+                        </>
+                      )}
                     </div>
                     {fields.map((field) => {
                       const row = refundBatchFeeForm.getFieldValue(["items", field.name]) || {};
@@ -12096,9 +12173,23 @@ export default function FinanceCenterPage({
                           {refundBatchFeeKind === "ordinary" && <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}>
                               <Select showSearch optionFilterProp="label" options={contractOptions} placeholder="请选择" />
                             </Form.Item>}
-                          <Form.Item name={[field.name, "fee_type"]} rules={[{ required: true }]}>
-                            {refundBatchFeeKind === "internal" ? <Input readOnly /> : <Select options={feeTypes.map((value) => ({ value, label: value }))} />}
+                          <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择费用类型" }]}>
+                            <Select
+                              showSearch
+                              optionFilterProp="label"
+                              placeholder="请选择"
+                              options={(refundBatchFeeSubTypes.length
+                                ? refundBatchFeeSubTypes.map((item: any) => ({ value: item.id, label: item.name }))
+                                : [{ value: refundBatchFeeBaseType, label: refundBatchFeeBaseType, disabled: true }]) as any[]}
+                              onChange={(_value, option: any) => {
+                                refundBatchFeeForm.setFieldValue(
+                                  [field.name, "fee_type_name"],
+                                  option?.label || "",
+                                );
+                              }}
+                            />
                           </Form.Item>
+                          <Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item>
                           {refundBatchFeeKind === "internal" ? <>
                             <Form.Item name={[field.name, "payee_username"]} rules={[{ required: true, message: "请选择支付对象" }]}>
                               <Select showSearch optionFilterProp="label" options={financePeople.map((person) => ({ value: person.username, label: person.label }))} />
@@ -12109,8 +12200,8 @@ export default function FinanceCenterPage({
                           <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }, { validator: (_, value) => value === 0 ? Promise.reject(new Error("金额不能为0")) : Promise.resolve() }]}>
                             <InputNumber precision={2} style={{ width: "100%" }} />
                           </Form.Item>
-                          {refundBatchFeeKind === "ordinary" && <><Form.Item name={[field.name, "remark"]}><Input /></Form.Item>
-                            <Form.Item name={[field.name, "deadline"]} rules={[{ required: true, message: "请选择截止日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item></>}
+                          <Form.Item name={[field.name, "remark"]}><Input placeholder="备注" /></Form.Item>
+                          {refundBatchFeeKind === "ordinary" && <Form.Item name={[field.name, "deadline"]} rules={[{ required: true, message: "请选择截止日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>}
                           <Space size={2}>
                             <Button type="text" aria-label="复制费用行" icon={<PlusOutlined />} onClick={() => add({ ...row, amount: undefined, remark: "" }, field.name + 1)} />
                             <Button type="text" danger aria-label="删除费用行" icon={<MinusCircleOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} />
@@ -12124,15 +12215,15 @@ export default function FinanceCenterPage({
             </>
           ) : (
             <>
-              <Alert type="info" showIcon title={refundBatchFeeForm.getFieldValue(["items", 0, "fee_type"]) === "代理费" ? "代理费不允许申请付款，本次仅保存费用。" : "同一收款单位可批量申请；系统按每个合同号分别形成付款申请。"} style={{ marginBottom: 12 }} />
+              <Alert type="info" showIcon title={refundBatchFeeBaseType === "代理费" ? "代理费不允许申请付款，本次仅保存费用。" : "同一收款单位可批量申请；系统按每个合同号分别形成付款申请。"} style={{ marginBottom: 12 }} />
               <Form.List name="items">
                 {(fields) => <div className="finance-refund-payment-table">
                   <div className="finance-refund-payment-head"><span>案号</span><span>费用类型</span><span>付款金额</span><span>付款备注</span><span>收款单位/支付对象</span></div>
                   {fields.map((field) => {
                     const row = refundBatchFeeForm.getFieldValue(["items", field.name]) || {};
-                    const agency = row.fee_type === "代理费";
+                    const agency = refundBatchFeeBaseType === "代理费";
                     return <div className="finance-refund-payment-row" key={field.key}>
-                      <strong>{row.case_no}</strong><span>{row.fee_type}</span>
+                      <strong>{row.case_no}</strong><span>{row.fee_type_name || row.fee_type}</span>
                       <Form.Item name={[field.name, "payment_amount"]} initialValue={Math.abs(Number(row.amount || 0))} rules={agency ? [] : [{ required: true, message: "请输入付款金额" }]}><InputNumber disabled={agency} min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
                       <Form.Item name={[field.name, "payment_remark"]}><Input disabled={agency} /></Form.Item>
                       {refundBatchFeeKind === "internal" ? <Form.Item name={[field.name, "payee_username"]} rules={[{ required: true, message: "请选择支付对象" }]}><Select disabled options={financePeople.map((person) => ({ value: person.username, label: person.label }))} /></Form.Item> : <Form.Item name={[field.name, "payment_type_id"]} rules={agency ? [] : [{ required: true, message: "请选择收款单位" }]}><Select disabled={agency} showSearch optionFilterProp="label" options={refundBatchPaymentTypes.map((item) => ({ value: item.id, label: `${item.payee}｜${item.account_bank}｜${item.account}` }))} /></Form.Item>}
@@ -12145,103 +12236,223 @@ export default function FinanceCenterPage({
         </Form>
       </Drawer>
       <Modal
-        open={Boolean(settlementBatchAction)}
-        title={
-          {
-            hearing_lawyer: "批量修改开庭律师",
-            handling_lawyers: "批量修改经办律师",
-            assistant: "批量修改律师助理",
-            case_stage: "批量修改案件阶段",
-          }[settlementBatchAction || "hearing_lawyer"]
-        }
+        width={640}
+        open={settlementBatchOpen}
+        title="批量修改案件信息"
         okText="保存修改"
         cancelText="取消"
         confirmLoading={settlementActionLoading}
         onOk={submitSettlementBatch}
-        onCancel={() => setSettlementBatchAction(null)}
+        onCancel={() => setSettlementBatchOpen(false)}
         destroyOnHidden
       >
         <Alert
           type="info"
           showIcon
-          title={`将修改已选费用关联的 ${new Set(selectedSettlementRows.map((row) => row.data?.case_id || row.data?.case_no).filter(Boolean)).size} 个案件`}
+          title={`将修改已选费用关联的 ${selectedSettlementCases().length} 个案件（仅填写的字段会被修改）`}
           style={{ marginBottom: 16 }}
         />
         <Form form={settlementBatchForm} layout="vertical">
-          <Form.Item
-            label={
-              settlementBatchAction === "handling_lawyers"
-                ? "经办律师（多人用逗号分隔）"
-                : "修改为"
-            }
-            name="value"
-            rules={[{ required: true, message: "请输入修改后的内容" }]}
-          >
-            <Input
-              placeholder={
-                settlementBatchAction === "handling_lawyers"
-                  ? "例如：张律师，李律师"
-                  : "请输入"
-              }
+          <div className="form-grid">
+            <Form.Item label="开庭律师" name="hearing_lawyer">
+              <Select
+                showSearch
+                optionFilterProp="label"
+                allowClear
+                placeholder="不修改请留空"
+                options={financePeople.map((person) => ({ value: person.username, label: person.label }))}
+              />
+            </Form.Item>
+            <Form.Item label="律师助理" name="assistant">
+              <Select
+                showSearch
+                optionFilterProp="label"
+                allowClear
+                placeholder="不修改请留空"
+                options={financePeople.map((person) => ({ value: person.username, label: person.label }))}
+              />
+            </Form.Item>
+          </div>
+          <Form.Item label="经办律师（多人用逗号分隔）" name="handling_lawyers">
+            <Input placeholder="不修改请留空，例如：张律师，李律师" />
+          </Form.Item>
+          <Form.Item label="案源人" name="source_lawyer">
+            <Select
+              showSearch
+              optionFilterProp="label"
+              allowClear
+              placeholder="不修改请留空"
+              options={financePeople.map((person) => ({ value: person.username, label: person.label }))}
             />
           </Form.Item>
+          <div className="form-grid">
+            <Form.Item label="诉讼标的（元）" name="litigation_amount">
+              <InputNumber min={0} precision={2} style={{ width: "100%" }} placeholder="不修改请留空" />
+            </Form.Item>
+            <Form.Item label="案件阶段" name="case_stage">
+              <Input placeholder="不修改请留空" />
+            </Form.Item>
+          </div>
           <Form.Item label="修改说明" name="comment">
-            <Input.TextArea rows={3} />
+            <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
       </Modal>
       <Modal
         width={900}
         open={Boolean(settlementContext)}
-        title={`已选 ${settlementContext?.caseRecords.length || 0} 个案件｜${settlementContext?.mode === "tasks" ? "案件任务" : "案件日志"}`}
+        title={
+          settlementContext?.mode === "log-create"
+            ? `新增案件日志（${settlementContext?.caseRecords.length || 0} 个案件）`
+            : settlementContext?.mode === "task-create"
+              ? `新增案件任务（${settlementContext?.caseRecords.length || 0} 个案件）`
+              : `已选 ${settlementContext?.caseRecords.length || 0} 个案件｜${settlementContext?.mode === "tasks" ? "案件任务" : "案件日志"}`
+        }
         footer={
-          <Button onClick={() => setSettlementContext(null)}>关闭</Button>
+          settlementContext?.mode === "log-create" ? (
+            <>
+              <Button onClick={() => setSettlementContext(null)}>取消</Button>
+              <Button type="primary" loading={settlementActionLoading} onClick={() => void submitSettlementLog()}>保存日志</Button>
+            </>
+          ) : settlementContext?.mode === "task-create" ? (
+            <>
+              <Button onClick={() => setSettlementContext(null)}>取消</Button>
+              <Button type="primary" loading={settlementActionLoading} onClick={() => void submitSettlementTask()}>创建任务</Button>
+            </>
+          ) : (
+            <Button onClick={() => setSettlementContext(null)}>关闭</Button>
+          )
         }
         onCancel={() => setSettlementContext(null)}
+        destroyOnHidden
       >
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={settlementContextRows}
-          pagination={{ pageSize: 10, showTotal: (total) => `共 ${total} 条` }}
-          locale={{
-            emptyText:
+        {settlementContext?.mode === "log-create" ? (
+          <div>
+            <Alert
+              type="info"
+              showIcon
+              message={`将为以下 ${settlementContext?.caseRecords.length || 0} 个案件添加相同的日志：`}
+              description={
+                <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 8 }}>
+                  {(settlementContext?.caseRecords || []).map((row: Fee) => (
+                    <div key={row.id} style={{ fontSize: 12, lineHeight: "20px" }}>
+                      {row.data?.case_no || row.serial_no}
+                    </div>
+                  ))}
+                </div>
+              }
+              style={{ marginBottom: 16 }}
+            />
+            <Input.TextArea
+              rows={8}
+              value={settlementLogContent}
+              onChange={(e) => setSettlementLogContent(e.target.value)}
+              placeholder="请输入日志内容..."
+            />
+          </div>
+        ) : settlementContext?.mode === "task-create" ? (
+          <div>
+            <Alert
+              type="info"
+              showIcon
+              message={`将为以下 ${settlementContext?.caseRecords.length || 0} 个案件创建相同的任务：`}
+              description={
+                <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 8 }}>
+                  {(settlementContext?.caseRecords || []).map((row: Fee) => (
+                    <div key={row.id} style={{ fontSize: 12, lineHeight: "20px" }}>
+                      {row.data?.case_no || row.serial_no}
+                    </div>
+                  ))}
+                </div>
+              }
+              style={{ marginBottom: 16 }}
+            />
+            <Form layout="vertical">
+              <Form.Item label="任务名称" required>
+                <Input
+                  value={settlementTaskForm.title}
+                  onChange={(e) => setSettlementTaskForm({ ...settlementTaskForm, title: e.target.value })}
+                  placeholder="请输入任务名称"
+                />
+              </Form.Item>
+              <div className="form-grid">
+                <Form.Item label="负责人" required>
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    value={settlementTaskForm.owner || undefined}
+                    onChange={(val) => setSettlementTaskForm({ ...settlementTaskForm, owner: val })}
+                    placeholder="请选择负责人"
+                    options={financePeople.map((person) => ({ value: person.username, label: person.label }))}
+                  />
+                </Form.Item>
+                <Form.Item label="优先级">
+                  <Select
+                    value={settlementTaskForm.priority}
+                    onChange={(val) => setSettlementTaskForm({ ...settlementTaskForm, priority: val })}
+                    options={[
+                      { value: "紧急", label: "紧急" },
+                      { value: "高", label: "高" },
+                      { value: "普通", label: "普通" },
+                      { value: "低", label: "低" },
+                    ]}
+                  />
+                </Form.Item>
+              </div>
+              <Form.Item label="截止日期" required>
+                <DatePicker
+                  style={{ width: "100%" }}
+                  value={settlementTaskForm.deadline}
+                  onChange={(val) => setSettlementTaskForm({ ...settlementTaskForm, deadline: val })}
+                />
+              </Form.Item>
+            </Form>
+          </div>
+        ) : (
+          <Table
+            rowKey="id"
+            size="small"
+            dataSource={settlementContextRows}
+            pagination={{ pageSize: 10, showTotal: (total) => `共 ${total} 条` }}
+            locale={{
+              emptyText:
+                settlementContext?.mode === "tasks"
+                  ? "当前案件没有任务"
+                  : "当前案件没有日志",
+            }}
+            columns={
               settlementContext?.mode === "tasks"
-                ? "当前案件没有任务"
-                : "当前案件没有日志",
-          }}
-          columns={
-            settlementContext?.mode === "tasks"
-              ? [
-                  { title: "案号", dataIndex: "source_case_no", width: 150 },
-                  { title: "任务编号", dataIndex: "serial_no", width: 150 },
-                  { title: "任务名称", dataIndex: "title", width: 200 },
-                  { title: "状态", dataIndex: "status", width: 90 },
-                  { title: "负责人", dataIndex: "owner", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.owner_display_name) },
-                  { title: "截止日期", dataIndex: "deadline", width: 120 },
-                ]
-              : [
-                  { title: "案号", dataIndex: "source_case_no", width: 150 },
-                  { title: "操作", dataIndex: "action", width: 130 },
-                  {
-                    title: "状态变化",
-                    key: "status",
-                    width: 150,
-                    render: (_: unknown, row: any) =>
-                      `${row.from_status || "—"} → ${row.to_status || "—"}`,
-                  },
-                  { title: "操作人", dataIndex: "operator", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.operator_display_name) },
-                  { title: "说明", dataIndex: "comment" },
-                  {
-                    title: "时间",
-                    dataIndex: "created_at",
-                    width: 170,
-                    render: (value: string) =>
-                      value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—",
-                  },
-                ]
-          }
-        />
+                ? [
+                    { title: "案号", dataIndex: "source_case_no", width: 150 },
+                    { title: "任务编号", dataIndex: "serial_no", width: 150 },
+                    { title: "任务名称", dataIndex: "title", width: 200 },
+                    { title: "状态", dataIndex: "status", width: 90 },
+                    { title: "负责人", dataIndex: "owner", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.owner_display_name) },
+                    { title: "截止日期", dataIndex: "deadline", width: 120 },
+                  ]
+                : [
+                    { title: "案号", dataIndex: "source_case_no", width: 150 },
+                    { title: "操作", dataIndex: "action", width: 130 },
+                    {
+                      title: "状态变化",
+                      key: "status",
+                      width: 150,
+                      render: (_: unknown, row: any) =>
+                        `${row.from_status || "—"} → ${row.to_status || "—"}`,
+                    },
+                    { title: "操作人", dataIndex: "operator", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.operator_display_name) },
+                    { title: "说明", dataIndex: "comment" },
+                    {
+                      title: "时间",
+                      dataIndex: "created_at",
+                      width: 170,
+                      render: (value: string) =>
+                        value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—",
+                    },
+                  ]
+            }
+          />
+        )}
       </Modal>
       <Modal
         open={incomingOpen}
@@ -13433,25 +13644,47 @@ export default function FinanceCenterPage({
               name="category"
               rules={[{ required: true }]}
             >
-              <Select
-                options={(recordFileTargets.length ? [
-                  "普通附件",
-                  "主体及委托资料",
-                  "起诉材料及证据",
-                  "答辩材料及证据",
-                  "法院诉讼文书",
-                  "庭审及庭后文件",
-                  "鉴别资料",
-                  "调查文档",
-                  "取证文档",
-                ] : [
-                  "发票扫描件",
-                  "退费凭证",
-                  "法院退费通知",
-                  "银行回单",
-                  "其他财务材料",
-                ]).map((v) => ({ value: v, label: v }))}
-              />
+              {recordFileTargets.length > 1 ? (
+                <TreeSelect
+                  treeData={recordFileTypeTree.length ? recordFileTypeTree : [
+                    {
+                      title: "案件文件",
+                      value: "CASE_GROUP",
+                      children: [
+                        { title: "主体及委托资料", value: "主体及委托资料" },
+                        { title: "起诉材料及证据", value: "起诉材料及证据" },
+                        { title: "答辩材料及证据", value: "答辩材料及证据" },
+                        { title: "法院诉讼文书", value: "法院诉讼文书" },
+                        { title: "庭审及庭后文件", value: "庭审及庭后文件" },
+                        { title: "普通附件", value: "普通附件" },
+                      ],
+                    },
+                    {
+                      title: "调查文档",
+                      value: "INVESTIGATION_GROUP",
+                      children: [
+                        { title: "鉴别资料", value: "鉴别资料" },
+                        { title: "调查文档", value: "调查文档" },
+                        { title: "取证文档", value: "取证文档" },
+                      ],
+                    },
+                  ]}
+                  treeDefaultExpandAll
+                  placeholder="请选择文档类型"
+                  treeNodeFilterProp="title"
+                  showSearch
+                />
+              ) : (
+                <Select
+                  options={[
+                    "发票扫描件",
+                    "退费凭证",
+                    "法院退费通知",
+                    "银行回单",
+                    "其他财务材料",
+                  ].map((v) => ({ value: v, label: v }))}
+                />
+              )}
             </Form.Item>
             {recordFileTargets.length > 0 && <Form.Item label="参考日期" name="document_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>}
             <Form.Item label="选择文件" required>
