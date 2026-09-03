@@ -158,10 +158,17 @@ class SealWorkflowCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([attachment.original_name for attachment in copied], ["当前合同.pdf"])
 
     async def test_case_file_creates_a_case_seal_application_with_the_selected_source(self) -> None:
+        contract = BusinessRecord(
+            module="contract", serial_no="SEAL-CAP-CONTRACT", title="能力测试合同",
+            customer="能力测试客户", status="审批通过", owner=APPLICANT["username"],
+            department="上海分所", data={},
+        )
+        self.db.add(contract)
+        await self.db.flush()
         case = BusinessRecord(
             module="case", serial_no="SEAL-CAP-CASE", title="能力测试案件",
             customer="能力测试客户", status="文书准备", owner=APPLICANT["username"],
-            department="上海分所", data={"contract_no": "SEAL-CAP-CONTRACT"},
+            department="上海分所", data={"contract_no": contract.serial_no, "contract_record_id": contract.id},
         )
         self.db.add(case)
         await self.db.flush()
