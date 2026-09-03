@@ -1855,11 +1855,18 @@ class RefundCaseFeeBatchItemInput(BaseModel):
     amount: float
     remark: str = Field(default="", max_length=1000)
     deadline: date | None = None
+    payment_type_id: int | None = Field(default=None, gt=0)
+    payment_amount: float | None = Field(default=None, gt=0)
+    payment_remark: str = Field(default="", max_length=1000)
+    payee_username: str = Field(default="", max_length=64)
+    base_amount: float = 0
+    reference_commission: float = 0
 
 
 class RefundCaseFeeBatchCreateInput(BaseModel):
     items: list[RefundCaseFeeBatchItemInput] = Field(min_length=1, max_length=100)
     handler: str = Field(default="", max_length=128)
+    submit_payment: bool = False
 
 
 class AttachmentBatchInput(BaseModel):
@@ -22372,14 +22379,38 @@ async def create_refund_page_case_fees(
                 case_record, contract_record, expense_scope, identity, db,
             )
             amount = _round_fee_amount(request_item.amount)
+            payment_type = None
+            payee_user = None
+            payment_amount = None
+            if body.submit_payment:
+                payment_amount = _round_fee_amount(request_item.payment_amount or abs(amount))
+                if payment_amount > abs(amount) + 0.001:
+                    raise HTTPException(status_code=409, detail=f"第 {index} 行申请付款金额不能超过费用金额 {abs(amount):.2f}")
+                if request_item.fee_type == "代理费":
+                    raise HTTPException(status_code=409, detail=f"第 {index} 行代理费不允许申请付款")
+                if request_item.fee_type == "内部费用":
+                    payee_username = request_item.payee_username.strip()
+                    payee_user = await db.scalar(select(User).where(User.username == payee_username, User.is_active.is_(True)))
+                    if not payee_user:
+                        raise HTTPException(status_code=422, detail=f"第 {index} 行内部费用支付对象不存在或已停用")
+                else:
+                    if not request_item.payment_type_id:
+                        raise HTTPException(status_code=422, detail=f"第 {index} 行请选择系统收款单位")
+                    payment_type = await _active_payment_type(request_item.payment_type_id, db)
             serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:6]}"
             case_data = case_record.data or {}
+            payment_type_data = _finance_payment_type_dict(payment_type) if payment_type else {}
+            payee_name = (
+                _contract_person_display_name(payee_user.display_name, {payee_user.username.lower(): payee_user.display_name})
+                if payee_user else str(payment_type_data.get("payee") or case_data.get("court_name") or case_data.get("court") or "")
+            )
+            record_status = "待审批" if body.submit_payment else "草稿"
             item = BusinessRecord(
                 module="finance",
                 serial_no=serial,
                 title=f"{case_record.title}{fee_parameter.name}",
                 customer=case_record.customer,
-                status="草稿",
+                status=record_status,
                 owner=handler,
                 department=case_record.department,
                 description=request_item.remark,
@@ -22396,14 +22427,31 @@ async def create_refund_page_case_fees(
                     "handler": handler,
                     "court": str(case_data.get("court_name") or case_data.get("court") or ""),
                     "document_no": "",
-                    "payee": str(case_data.get("court_name") or case_data.get("court") or ""),
+                    "payee": payee_name,
+                    "base_amount": _round_fee_amount(request_item.base_amount),
+                    "reference_commission": _round_fee_amount(request_item.reference_commission),
+                    "actual_commission": abs(amount) if request_item.fee_type == "内部费用" else 0,
+                    "commission_type": fee_parameter.name if request_item.fee_type == "内部费用" else "",
+                    "payment_requested_amount": payment_amount or 0,
+                    "payment_type_id": payment_type.id if payment_type else None,
+                    "payment_type_code": payment_type.code if payment_type else "",
+                    "payment_type_name": payment_type.name if payment_type else "",
+                    "payment_account": str(payment_type_data.get("account") or (payee_user.username if payee_user else "")),
+                    "payment_account_bank": str(payment_type_data.get("account_bank") or ""),
+                    "payment_payee": payee_name,
+                    "payment_remark": request_item.payment_remark.strip(),
+                    "payment_applied_at": datetime.now().isoformat(timespec="seconds") if body.submit_payment else "",
+                    "payment_applied_by": identity["username"] if body.submit_payment else "",
+                    "payment_status": "待审批" if body.submit_payment else "",
                 },
             )
             db.add(item)
             await db.flush()
             created.append(item)
             detail = f"{case_record.serial_no}｜{fee_option['path']}：{amount:.2f} 元"
-            db.add(WorkflowEvent(record_id=item.id, action="批量创建案件费用", to_status="草稿", operator=identity["username"], comment=detail))
+            db.add(WorkflowEvent(record_id=item.id, action="批量创建案件费用", to_status=record_status, operator=identity["username"], comment=detail))
+            if body.submit_payment:
+                db.add(WorkflowEvent(record_id=item.id, action="提交费用付款申请", from_status="草稿", to_status="待审批", operator=identity["username"], comment=request_item.payment_remark.strip() or f"申请付款 {payment_amount:.2f} 元"))
             db.add(WorkflowEvent(record_id=case_record.id, action="批量新增案件费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"{item.serial_no}｜{detail}"))
         await db.commit()
     except Exception:
@@ -22412,6 +22460,15 @@ async def create_refund_page_case_fees(
     for item in created:
         await db.refresh(item)
     return {"created": len(created), "items": [await _record_dict_for_identity(item, identity, db) for item in created]}
+
+
+@app.get(f"{settings.api_prefix}/finance/payment-types")
+async def list_finance_payment_types(
+    keyword: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    return {"items": await _active_payment_type_rows(db, keyword)}
 
 
 @app.get(f"{settings.api_prefix}/cases/summary")
@@ -27234,7 +27291,7 @@ async def upload_attachment(
     source_case = None
     transaction = None
     resolved_case_file_type = None
-    customer_metadata_provided = customer_guid is not None or is_license is not None or document_date is not None
+    customer_metadata_provided = customer_guid is not None or is_license is not None
     if source_case_id is not None and record_id is None:
         raise HTTPException(status_code=422, detail="案件关联文档必须指定客户或合同记录")
     if customer_metadata_provided and record_id is None:

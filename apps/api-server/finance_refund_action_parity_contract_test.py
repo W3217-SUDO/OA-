@@ -22,6 +22,13 @@ class RefundActionParityContractTest(unittest.TestCase):
         self.assertIn('_case_detail_action_capabilities', block)
         self.assertIn('_resolve_case_fee_contract', block)
 
+    def test_batch_payment_and_internal_fee_fields_are_persisted(self):
+        self.assertIn('/finance/payment-types', SOURCE)
+        self.assertIn('submit_payment: bool = False', SOURCE)
+        self.assertIn('代理费不允许申请付款', SOURCE)
+        for field in ('payment_requested_amount', 'payment_type_id', 'payee_username', 'base_amount', 'reference_commission', 'actual_commission'):
+            self.assertIn(field, SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()

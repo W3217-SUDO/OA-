@@ -1243,6 +1243,8 @@ export default function FinanceCenterPage({
   const [refundBatchFeeOpen, setRefundBatchFeeOpen] = useState(false);
   const [refundBatchFeeStep, setRefundBatchFeeStep] = useState(0);
   const [refundBatchFeeLoading, setRefundBatchFeeLoading] = useState(false);
+  const [refundBatchFeeKind, setRefundBatchFeeKind] = useState<"ordinary" | "internal">("ordinary");
+  const [refundBatchPaymentTypes, setRefundBatchPaymentTypes] = useState<any[]>([]);
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeEditTarget, setFeeEditTarget] = useState<Fee | null>(null);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
@@ -1461,8 +1463,10 @@ export default function FinanceCenterPage({
   const [recordFileTarget, setRecordFileTarget] = useState<FinanceFlow | null>(
     null,
   );
+  const [recordFileTargets, setRecordFileTargets] = useState<FinanceFlow[]>([]);
   const [recordFiles, setRecordFiles] = useState<Attachment[]>([]);
   const [recordFile, setRecordFile] = useState<File | null>(null);
+  const [recordUploadFiles, setRecordUploadFiles] = useState<File[]>([]);
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [voucherTarget, setVoucherTarget] = useState<Transaction | null>(null);
   const [voucherFile, setVoucherFile] = useState<File | null>(null);
@@ -3384,7 +3388,7 @@ export default function FinanceCenterPage({
       message.error(error?.response?.data?.detail || "退款到账登记失败");
     }
   };
-  const openRecordFiles = async (row: FinanceFlow, category: string) => {
+  const openRecordFiles = async (row: FinanceFlow, category: string, targets: FinanceFlow[] = [row]) => {
     try {
       const recordModule = attachmentRecordModule(row, category);
       const { data } = await api.get("/attachments", {
@@ -3392,28 +3396,38 @@ export default function FinanceCenterPage({
       });
       setRecordFiles(data.items);
       setRecordFileTarget(row);
+      setRecordFileTargets(targets);
       setRecordFile(null);
-      recordFileForm.setFieldsValue({ category, remark: "" });
+      setRecordUploadFiles([]);
+      recordFileForm.setFieldsValue({ category, remark: "", document_date: dayjs() });
     } catch (error: any) {
       setRecordFiles([]);
       setRecordFileTarget(null);
+      setRecordFileTargets([]);
       setRecordFile(null);
+      setRecordUploadFiles([]);
       message.error(error?.response?.data?.detail || "业务凭证加载失败");
     }
   };
   const uploadRecordFile = async () => {
-    if (!recordFileTarget || !recordFile) return message.warning("请选择文件");
+    if (!recordFileTarget || (!recordFile && !recordUploadFiles.length)) return message.warning("请选择文件");
     const v = await recordFileForm.validateFields();
-    const form = new FormData();
-    form.append("file", recordFile);
-    form.append("record_id", String(recordFileTarget.id));
-    form.append("category", v.category);
-    form.append("module", attachmentRecordModule(recordFileTarget, v.category));
-    form.append("remark", v.remark || "");
     try {
-      await api.post("/attachments", form);
-      message.success("业务凭证已上传");
-      await openRecordFiles(recordFileTarget, v.category);
+      const filesToUpload = recordUploadFiles.length ? recordUploadFiles : [recordFile!];
+      for (const target of recordFileTargets.length ? recordFileTargets : [recordFileTarget]) {
+        for (const sourceFile of filesToUpload) {
+        const form = new FormData();
+        form.append("file", sourceFile);
+        form.append("record_id", String(target.id));
+        form.append("category", v.category);
+        form.append("module", attachmentRecordModule(target, v.category));
+        form.append("remark", v.remark || "");
+        if (v.document_date) form.append("document_date", formatRequiredDate(v.document_date, "参考日期"));
+        await api.post("/attachments", form);
+        }
+      }
+      message.success(`${filesToUpload.length} 个文件已上传到 ${recordFileTargets.length || 1} 个案件`);
+      await openRecordFiles(recordFileTarget, v.category, recordFileTargets);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "上传失败");
     }
@@ -8691,6 +8705,13 @@ export default function FinanceCenterPage({
   const openRefundBatchFee = (feeType: string) => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
+    const internal = feeType === "内部费用";
+    setRefundBatchFeeKind(internal ? "internal" : "ordinary");
+    if (!internal) {
+      void api.get("/finance/payment-types").then(({ data }) => {
+        setRefundBatchPaymentTypes(data.items || []);
+      }).catch((error: any) => message.error(error?.response?.data?.detail || "收款单位加载失败"));
+    }
     const deadline = dayjs().add(5, "day");
     refundBatchFeeForm.setFieldsValue({
       handler: currentUser.username,
@@ -8701,6 +8722,12 @@ export default function FinanceCenterPage({
         contract_record_id: Number(item.data?.contract_record_id || item.data?.contract_id || 0) || undefined,
         fee_type: feeType,
         amount: undefined,
+        payment_amount: undefined,
+        payment_type_id: undefined,
+        payment_remark: "",
+        payee_username: undefined,
+        base_amount: undefined,
+        reference_commission: undefined,
         remark: "",
         deadline,
       })),
@@ -8728,6 +8755,9 @@ export default function FinanceCenterPage({
               amount: first.amount,
               remark: first.remark,
               deadline: first.deadline,
+              payee_username: first.payee_username,
+              base_amount: first.base_amount,
+              reference_commission: first.reference_commission,
             },
       ),
     );
@@ -8738,16 +8768,23 @@ export default function FinanceCenterPage({
     try {
       const { data } = await api.post("/finance/case-fees/batch", {
         handler: values.handler,
+        submit_payment: values.items.every((item: Record<string, any>) => item.fee_type !== "代理费"),
         items: values.items.map((item: Record<string, any>) => ({
           case_id: item.case_id,
           contract_record_id: item.contract_record_id || null,
           fee_type: item.fee_type,
           amount: item.amount,
           remark: item.remark || "",
-          deadline: formatRequiredDate(item.deadline, "截止日期"),
+          deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : null,
+          payment_type_id: item.payment_type_id || null,
+          payment_amount: item.payment_amount || Math.abs(Number(item.amount || 0)),
+          payment_remark: item.payment_remark || "",
+          payee_username: item.payee_username || "",
+          base_amount: item.base_amount || 0,
+          reference_commission: item.reference_commission || 0,
         })),
       });
-      message.success(`已创建 ${data.created} 条案件费用草稿`);
+      message.success(`已创建 ${data.created} 条案件费用${values.items[0]?.fee_type === "代理费" ? "" : "并提交付款申请"}`);
       closeRefundBatchFee();
       setSelectedOriginalRows([]);
       await load();
@@ -8769,8 +8806,8 @@ export default function FinanceCenterPage({
       return;
     }
     if (key === "upload") {
-      const linked = selectedSettlementCase();
-      if (linked) void openRecordFiles(linked, "案件文档");
+      const linked = selectedSettlementCases();
+      if (linked.length) void openRecordFiles(linked[0], "普通附件", linked);
     }
     if (
       [
@@ -11984,8 +12021,8 @@ export default function FinanceCenterPage({
       </Drawer>
       <Drawer
         open={refundBatchFeeOpen}
-        title="新增费用"
-        width="min(1180px, 94vw)"
+        title={refundBatchFeeKind === "internal" ? "新增内部费用" : "新增费用"}
+        width={refundBatchFeeKind === "internal" ? "min(700px, 100vw)" : "min(580px, 100vw)"}
         onClose={closeRefundBatchFee}
         destroyOnHidden
         footer={
@@ -11999,7 +12036,7 @@ export default function FinanceCenterPage({
               }}>下一步</Button>
             ) : (
               <Button type="primary" loading={refundBatchFeeLoading} onClick={() => void submitRefundBatchFee()}>
-                保存草稿
+                {refundBatchFeeForm.getFieldValue(["items", 0, "fee_type"]) === "代理费" ? "保存费用" : "申请付款"}
               </Button>
             )}
           </div>
@@ -12011,22 +12048,22 @@ export default function FinanceCenterPage({
           items={[{ title: "新增费用" }, { title: "申请付款" }]}
           style={{ marginBottom: 16 }}
         />
-        {refundBatchFeeStep === 0 ? (
-          <>
+        <Form form={refundBatchFeeForm} layout="vertical">
+          <Form.Item name="handler" hidden><Input /></Form.Item>
+          {refundBatchFeeStep === 0 ? (
+            <>
             <Alert
               type="info"
               showIcon
-              title="每个案件可分别选择合同、费用类型、金额、备注和截止日期；任何一行校验失败时整批不会写入。"
+              title={refundBatchFeeKind === "internal" ? "内部费用按案件分别填写支付对象、基数、参考提成和实际金额。" : "每个案件可分别选择合同、费用类型、金额、备注和截止日期；任何一行校验失败时整批不会写入。"}
               style={{ marginBottom: 12 }}
               action={<Button size="small" onClick={copyFirstRefundFeeRow}>同步首行到全部</Button>}
             />
-            <Form form={refundBatchFeeForm} layout="vertical">
-              <Form.Item name="handler" hidden><Input /></Form.Item>
               <Form.List name="items">
                 {(fields, { add, remove }) => (
                   <div className="finance-refund-batch-fee-table">
                     <div className="finance-refund-batch-fee-head">
-                      <span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span>
+                      {refundBatchFeeKind === "internal" ? <><span>案号</span><span>费用类型</span><span>支付对象</span><span>基数</span><span>参考提成</span><span>实际金额</span><span>操作</span></> : <><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></>}
                     </div>
                     {fields.map((field) => {
                       const row = refundBatchFeeForm.getFieldValue(["items", field.name]) || {};
@@ -12041,19 +12078,24 @@ export default function FinanceCenterPage({
                             <Form.Item name={[field.name, "case_no"]} hidden><Input /></Form.Item>
                             <Form.Item name={[field.name, "customer"]} hidden><Input /></Form.Item>
                           </div>
-                          <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}>
-                            <Select showSearch optionFilterProp="label" options={contractOptions} placeholder="请选择" />
-                          </Form.Item>
+                          {refundBatchFeeKind === "ordinary" && <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}>
+                              <Select showSearch optionFilterProp="label" options={contractOptions} placeholder="请选择" />
+                            </Form.Item>}
                           <Form.Item name={[field.name, "fee_type"]} rules={[{ required: true }]}>
-                            <Select options={feeTypes.map((value) => ({ value, label: value }))} />
+                            {refundBatchFeeKind === "internal" ? <Input readOnly /> : <Select options={feeTypes.map((value) => ({ value, label: value }))} />}
                           </Form.Item>
+                          {refundBatchFeeKind === "internal" ? <>
+                            <Form.Item name={[field.name, "payee_username"]} rules={[{ required: true, message: "请选择支付对象" }]}>
+                              <Select showSearch optionFilterProp="label" options={financePeople.map((person) => ({ value: person.username, label: person.label }))} />
+                            </Form.Item>
+                            <Form.Item name={[field.name, "base_amount"]} rules={[{ required: true, message: "请输入基数" }]}><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
+                            <Form.Item name={[field.name, "reference_commission"]} rules={[{ required: true, message: "请输入参考提成" }]}><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
+                          </> : null}
                           <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }, { validator: (_, value) => value === 0 ? Promise.reject(new Error("金额不能为0")) : Promise.resolve() }]}>
                             <InputNumber precision={2} style={{ width: "100%" }} />
                           </Form.Item>
-                          <Form.Item name={[field.name, "remark"]}><Input /></Form.Item>
-                          <Form.Item name={[field.name, "deadline"]} rules={[{ required: true, message: "请选择截止日期" }]}>
-                            <DatePicker style={{ width: "100%" }} />
-                          </Form.Item>
+                          {refundBatchFeeKind === "ordinary" && <><Form.Item name={[field.name, "remark"]}><Input /></Form.Item>
+                            <Form.Item name={[field.name, "deadline"]} rules={[{ required: true, message: "请选择截止日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item></>}
                           <Space size={2}>
                             <Button type="text" aria-label="复制费用行" icon={<PlusOutlined />} onClick={() => add({ ...row, amount: undefined, remark: "" }, field.name + 1)} />
                             <Button type="text" danger aria-label="删除费用行" icon={<MinusCircleOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} />
@@ -12064,27 +12106,28 @@ export default function FinanceCenterPage({
                   </div>
                 )}
               </Form.List>
-            </Form>
-          </>
-        ) : (
-          <>
-            <Alert type="warning" showIcon title="确认后将创建费用草稿。请在费用列表提交付款申请，系统仍按合同分别生成申请单。" style={{ marginBottom: 12 }} />
-            <Table<Record<string, any>>
-              rowKey={(_row, index) => `${_row.case_id}-${index}`}
-              size="small"
-              pagination={false}
-              dataSource={refundBatchFeeForm.getFieldValue("items") || []}
-              columns={[
-                { title: "案号", dataIndex: "case_no" },
-                { title: "合同号", dataIndex: "contract_record_id", render: (value) => contracts.find((item) => item.id === value)?.serial_no || "—" },
-                { title: "费用类型", dataIndex: "fee_type" },
-                { title: "金额", dataIndex: "amount", render: money },
-                { title: "备注", dataIndex: "remark" },
-                { title: "截止日期", dataIndex: "deadline", render: (value) => value?.format?.("YYYY-MM-DD") || "—" },
-              ]}
-            />
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              <Alert type="info" showIcon title={refundBatchFeeForm.getFieldValue(["items", 0, "fee_type"]) === "代理费" ? "代理费不允许申请付款，本次仅保存费用。" : "同一收款单位可批量申请；系统按每个合同号分别形成付款申请。"} style={{ marginBottom: 12 }} />
+              <Form.List name="items">
+                {(fields) => <div className="finance-refund-payment-table">
+                  <div className="finance-refund-payment-head"><span>案号</span><span>费用类型</span><span>付款金额</span><span>付款备注</span><span>收款单位/支付对象</span></div>
+                  {fields.map((field) => {
+                    const row = refundBatchFeeForm.getFieldValue(["items", field.name]) || {};
+                    const agency = row.fee_type === "代理费";
+                    return <div className="finance-refund-payment-row" key={field.key}>
+                      <strong>{row.case_no}</strong><span>{row.fee_type}</span>
+                      <Form.Item name={[field.name, "payment_amount"]} initialValue={Math.abs(Number(row.amount || 0))} rules={agency ? [] : [{ required: true, message: "请输入付款金额" }]}><InputNumber disabled={agency} min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
+                      <Form.Item name={[field.name, "payment_remark"]}><Input disabled={agency} /></Form.Item>
+                      {refundBatchFeeKind === "internal" ? <Form.Item name={[field.name, "payee_username"]} rules={[{ required: true, message: "请选择支付对象" }]}><Select disabled options={financePeople.map((person) => ({ value: person.username, label: person.label }))} /></Form.Item> : <Form.Item name={[field.name, "payment_type_id"]} rules={agency ? [] : [{ required: true, message: "请选择收款单位" }]}><Select disabled={agency} showSearch optionFilterProp="label" options={refundBatchPaymentTypes.map((item) => ({ value: item.id, label: `${item.payee}｜${item.account_bank}｜${item.account}` }))} /></Form.Item>}
+                    </div>;
+                  })}
+                </div>}
+              </Form.List>
+            </>
+          )}
+        </Form>
       </Drawer>
       <Modal
         open={Boolean(settlementBatchAction)}
@@ -13321,9 +13364,9 @@ export default function FinanceCenterPage({
       <Modal
         width={760}
         open={Boolean(recordFileTarget)}
-        title={`业务凭证：${recordFileTarget?.serial_no || ""}`}
+        title={recordFileTargets.length > 1 ? `批量上传案件文档（已选 ${recordFileTargets.length} 个案件）` : `业务凭证：${recordFileTarget?.serial_no || ""}`}
         footer={null}
-        onCancel={() => setRecordFileTarget(null)}
+        onCancel={() => { setRecordFileTarget(null); setRecordFileTargets([]); }}
       >
         <Table
           rowKey="id"
@@ -13376,20 +13419,36 @@ export default function FinanceCenterPage({
               rules={[{ required: true }]}
             >
               <Select
-                options={[
+                options={(recordFileTargets.length ? [
+                  "普通附件",
+                  "主体及委托资料",
+                  "起诉材料及证据",
+                  "答辩材料及证据",
+                  "法院诉讼文书",
+                  "庭审及庭后文件",
+                  "鉴别资料",
+                  "调查文档",
+                  "取证文档",
+                ] : [
                   "发票扫描件",
                   "退费凭证",
                   "法院退费通知",
                   "银行回单",
                   "其他财务材料",
-                ].map((v) => ({ value: v, label: v }))}
+                ]).map((v) => ({ value: v, label: v }))}
               />
             </Form.Item>
+            {recordFileTargets.length > 0 && <Form.Item label="参考日期" name="document_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>}
             <Form.Item label="选择文件" required>
               <input
                 type="file"
+                multiple={recordFileTargets.length > 0}
                 accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
-                onChange={(e) => setRecordFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setRecordUploadFiles(files);
+                  setRecordFile(files[0] || null);
+                }}
               />
             </Form.Item>
           </div>
