@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, HrSubrecord, User
+from app.models import BusinessRecord, HrSubrecord, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -62,6 +62,11 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
                     created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
                 ),
                 HrSubrecord(
+                    employee_id=employees[0].id, kind="commission",
+                    data={"start_date": "2025-01-01", "end_date": "", "hearing_rate": 0.20, "hearing_fixed": 0},
+                    created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+                ),
+                HrSubrecord(
                     employee_id=employees[1].id, kind="commission",
                     data={"start_date": "2020-01-01", "end_date": "", "document_rate": 0, "document_fixed": 0},
                     created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
@@ -83,10 +88,17 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
                 department=IDENTITY["department"],
                 data={
                     "case_type": "民事争议", "case_creation_step": "completed",
+                    "case_register_date": "2024-06-15",
+                    "hearing_lawyer_usernames": ["row12-hearing"],
                     "hearing_lawyer_username": "row12-hearing",
-                    "assistant": "律师助理乙",
+                    "hearing_lawyer": "历史开庭律师",
+                    "assistant_usernames": ["row12-assistant"],
+                    "assistant": "律师助理乙", "assistants": ["律师助理乙", "历史助理"],
+                    "source_person_usernames": ["row12-source"],
                     "source_person_username": "row12-source",
-                    "investigator": "调查员丁",
+                    "source_person": "历史案源人",
+                    "investigator_usernames": ["row12-investigator"],
+                    "investigator": "调查员丁", "investigators": ["调查员丁", "历史调查员"],
                 },
             )
             db.add(case)
@@ -137,6 +149,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows["案源固定提成"]["reference_commission"], 300)
         self.assertEqual(rows["调查提成"]["reference_commission"], 840)
         self.assertIn("律师助理乙未设文书提成", data["missing_messages"])
+        self.assertEqual(data["case_date"], "2024-06-15")
+        self.assertFalse(any("历史" in message for message in data["missing_messages"]))
 
     async def test_batch_create_is_atomic_and_persists_source_relation(self):
         preview = (await self.client.get(
@@ -152,7 +166,11 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             ],
         })
         self.assertEqual(response.status_code, 201, response.text)
-        self.assertEqual(response.json()["total"], 2)
+        result = response.json()
+        self.assertEqual(result["total"], 2)
+        self.assertTrue(result["application_no"].startswith("P"))
+        self.assertEqual(len(result["payment_items"]), 2)
+        self.assertTrue(all(item["application_no"] == result["application_no"] for item in result["payment_items"]))
         async with self.sessions() as db:
             rows = list((await db.scalars(select(BusinessRecord).where(
                 BusinessRecord.module == "finance",
@@ -160,6 +178,13 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             ))).all())
             self.assertEqual(len(rows), 2)
             self.assertTrue(all((row.data or {}).get("base_amount") == 8400 for row in rows))
+            self.assertTrue(all(row.status == "待审批" for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_status") == "待审批" for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_application_no") == result["application_no"] for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_requested_amount") == (row.data or {}).get("amount") for row in rows))
+            events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id.in_([row.id for row in rows])))).all())
+            self.assertEqual(len(events), 2)
+            self.assertTrue(all(event.action == "提交提成付款申请" and event.to_status == "待审批" for event in events))
             before = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance"))
         failed = await self.client.post(f"{API}/cases/{self.case_id}/commissions", json={
             "source_fee_id": self.fee_id,
@@ -178,6 +203,9 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             case = await db.get(BusinessRecord, self.case_id)
             case.data = {
                 **(case.data or {}),
+                "hearing_lawyer_usernames": [], "hearing_lawyer_username": "",
+                "assistant_usernames": [], "assistant_username": "", "assistants": [],
+                "source_person_usernames": [], "source_person_username": "",
                 "hearing_lawyer": "外部合作律师",
                 "assistant": "外部合作律师",
                 "source_person": "外部合作律师",

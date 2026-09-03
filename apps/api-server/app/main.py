@@ -18815,16 +18815,21 @@ CASE_COMMISSION_ROLES = (
 
 
 def _case_commission_person_tokens(data: dict, fields: tuple[str, ...]) -> list[str]:
-    tokens: list[str] = []
+    # A role is stored in both stable username and legacy display-name aliases.
+    # Use the first populated projection so migrated aliases cannot add stale or
+    # duplicate people to the same commission calculation.
     for field in fields:
         raw = data.get(field)
+        tokens: list[str] = []
         values = raw if isinstance(raw, list) else [raw]
         for value in values:
             for token in re.split(r"[,，、;/；\n]+", str(value or "")):
                 normalized = token.strip()
                 if normalized and normalized not in {"—", "-", "无", "未分配", PERSON_NAME_PLACEHOLDER}:
                     tokens.append(normalized)
-    return list(dict.fromkeys(tokens))
+        if tokens:
+            return list(dict.fromkeys(tokens))
+    return []
 
 
 async def _commission_employee_index(db: AsyncSession) -> dict[str, BusinessRecord]:
@@ -18893,7 +18898,8 @@ async def _case_commission_preview(
 
     employee_index = await _commission_employee_index(db)
     case_data = case_record.data or {}
-    case_date = case_record.created_at.date() if case_record.created_at else date.today()
+    resolved_case_date = _dashboard_case_date(case_record)
+    case_date = resolved_case_date.date() if resolved_case_date != datetime.min else date.today()
     rows: list[dict] = []
     missing: list[str] = []
     personnel: list[dict] = []
@@ -18982,13 +18988,15 @@ async def create_case_commissions(
         raise HTTPException(status_code=401, detail="当前用户不存在")
     case_record = await db.get(BusinessRecord, case_id)
     source_fee = await db.get(BusinessRecord, body.source_fee_id)
+    application_no = _new_internal_payment_package_no()
+    applied_at = datetime.now().isoformat(timespec="seconds")
     created: list[BusinessRecord] = []
     for template, amount, remark in normalized:
         serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{len(created):02d}"
         record = BusinessRecord(
             module="finance", serial_no=serial,
             title=f"{case_record.serial_no} {template['commission_type']}",
-            customer=case_record.customer, status="草稿",
+            customer=case_record.customer, status="待审批",
             owner=template["employee_username"] or identity["username"],
             department=actor.department, description=remark,
             data={
@@ -19005,19 +19013,41 @@ async def create_case_commissions(
                 "commission_role": template["commission_role"],
                 "source_fee_id": source_fee.id, "source_fee_no": source_fee.serial_no,
                 "source_fee_amount": preview["source_fee"]["amount"],
+                "payment_application_no": application_no,
+                "payment_requested_amount": amount,
+                "payment_status": "待审批",
+                "payment_applied_at": applied_at,
+                "payment_applied_by": identity["username"],
             },
         )
         db.add(record); await db.flush()
         db.add(WorkflowEvent(
-            record_id=record.id, action="根据代理费新建提成", to_status="草稿",
+            record_id=record.id, action="提交提成付款申请", to_status="待审批",
             operator=identity["username"],
-            comment=f"{template['employee_display_name']}｜{template['commission_type']}｜{amount:.2f} 元｜来源 {source_fee.serial_no}",
+            comment=f"{application_no}｜{template['employee_display_name']}｜{template['commission_type']}｜{amount:.2f} 元｜来源 {source_fee.serial_no}",
         ))
         created.append(record)
     await db.commit()
     for record in created:
         await db.refresh(record)
-    return {"items": [await _record_dict_for_identity(record, identity, db) for record in created], "total": len(created)}
+    return {
+        "application_no": application_no,
+        "application_date": applied_at[:10],
+        "items": [await _record_dict_for_identity(record, identity, db) for record in created],
+        "payment_items": [
+            {
+                "record_id": record.id,
+                "application_no": application_no,
+                "payee": str((record.data or {}).get("payee_display_name") or record.owner),
+                "commission_type": str((record.data or {}).get("commission_type") or record.title),
+                "amount": _round_fee_amount(float((record.data or {}).get("amount") or 0)),
+                "case_no": case_record.serial_no,
+                "application_date": applied_at[:10],
+            }
+            for record in created
+        ],
+        "total": len(created),
+    }
 
 
 @app.post(f"{settings.api_prefix}/finance/fees", status_code=status.HTTP_201_CREATED)

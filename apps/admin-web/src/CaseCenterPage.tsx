@@ -220,6 +220,19 @@ type CaseCommissionPreview = {
   items: Omit<CaseCommissionPreviewRow, "client_key">[];
   missing_messages: string[];
 };
+type CaseCommissionResult = {
+  application_no: string;
+  application_date: string;
+  payment_items: Array<{
+    record_id: number;
+    application_no: string;
+    payee: string;
+    commission_type: string;
+    amount: number;
+    case_no: string;
+    application_date: string;
+  }>;
+};
 type CaseLitigantPartyField = "plaintiffs" | "defendants" | "third_parties";
 type CaseLitigantCandidate = {
   id: number;
@@ -1014,6 +1027,7 @@ export default function CaseCenterPage({
   const [selectedInternalFeeKeys, setSelectedInternalFeeKeys] = useState<Key[]>([]);
   const [caseCommissionPreview, setCaseCommissionPreview] = useState<CaseCommissionPreview | null>(null);
   const [caseCommissionRows, setCaseCommissionRows] = useState<CaseCommissionPreviewRow[]>([]);
+  const [caseCommissionResult, setCaseCommissionResult] = useState<CaseCommissionResult | null>(null);
   const [caseCommissionLoading, setCaseCommissionLoading] = useState(false);
   const [caseCommissionSubmitting, setCaseCommissionSubmitting] = useState(false);
   const [activeCounselDocCategory, setActiveCounselDocCategory] = useState("");
@@ -4869,6 +4883,7 @@ export default function CaseCenterPage({
   const closeCaseCommission = () => {
     setCaseCommissionPreview(null);
     setCaseCommissionRows([]);
+    setCaseCommissionResult(null);
   };
   const openCaseCommission = async () => {
     if (!viewingCounselCase || !requireSingleFee(selectedFirmFeeKeys, selectedFirmFee, "新建提成")) return;
@@ -4889,6 +4904,7 @@ export default function CaseCenterPage({
       });
       const preview = data as CaseCommissionPreview;
       setCaseCommissionPreview(preview);
+      setCaseCommissionResult(null);
       setCaseCommissionRows((preview.items || []).map((item, index) => ({ ...item, client_key: `${item.preview_key}:${index}` })));
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "提成预览加载失败");
@@ -4925,8 +4941,8 @@ export default function CaseCenterPage({
           remark: row.remark || "",
         })),
       });
-      message.success(`已新建 ${data.total || caseCommissionRows.length} 条提成`);
-      closeCaseCommission();
+      setCaseCommissionResult(data as CaseCommissionResult);
+      message.success(`付款申请 ${data.application_no} 已提交`);
       await openCounselDetail(viewingCounselCase, "internal-fees");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "新建提成失败");
@@ -5771,10 +5787,28 @@ export default function CaseCenterPage({
         destroyOnHidden
         className="case-commission-drawer"
         footer={<Space style={{ width: "100%", justifyContent: "flex-end" }}>
-          <Button onClick={closeCaseCommission}>取消</Button>
-          <Button type="primary" loading={caseCommissionSubmitting} onClick={() => void submitCaseCommissions()}>申请付款</Button>
+          <Button onClick={closeCaseCommission}>{caseCommissionResult ? "关闭" : "取消"}</Button>
+          {!caseCommissionResult && <Button type="primary" loading={caseCommissionSubmitting} onClick={() => void submitCaseCommissions()}>申请付款</Button>}
         </Space>}
       >
+        <Steps size="small" current={caseCommissionResult ? 1 : 0} items={[{ title: "新增提成" }, { title: "申请结果" }]} style={{ marginBottom: 16 }} />
+        {caseCommissionResult ? <>
+          <Alert type="success" showIcon title={`付款申请 ${caseCommissionResult.application_no} 已提交审批`} style={{ marginBottom: 12 }} />
+          <Table
+            rowKey="record_id"
+            size="small"
+            pagination={false}
+            dataSource={caseCommissionResult.payment_items}
+            columns={[
+              { title: "申请单号", dataIndex: "application_no", width: 190 },
+              { title: "收款人", dataIndex: "payee", width: 120 },
+              { title: "提成类型", dataIndex: "commission_type", width: 150 },
+              { title: "金额", dataIndex: "amount", width: 100, align: "right" },
+              { title: "案号", dataIndex: "case_no", width: 150 },
+              { title: "申请日期", dataIndex: "application_date", width: 120 },
+            ]}
+          />
+        </> : <>
         <Alert
           className="case-fee-legacy-tip"
           type="info"
@@ -5824,6 +5858,7 @@ export default function CaseCenterPage({
             </Space> },
           ]}
         />
+        </>}
       </Drawer>
       <Modal
         open={Boolean(paymentPackagePreview)}
@@ -6142,8 +6177,8 @@ export default function CaseCenterPage({
               {key:"firm-fees",label:"律所费用",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={externalCaseFeeColumns}/>
                 {firmFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
-                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"}],onClick:({key})=>openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[...(counselDetailCapabilities.can_create_finance?[{key:"commission",label:"新建提成(选择代理费)"}]:[]),{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "commission" ? void openCaseCommission() : key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
+                  {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key === "commission" ? void openCaseCommission() : openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
                 </Space>}
               </div>},
               {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel">

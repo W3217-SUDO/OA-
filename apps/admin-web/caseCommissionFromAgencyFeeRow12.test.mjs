@@ -35,4 +35,8 @@ test("row 12 submits one atomic batch and refreshes internal settlement", () => 
   assert.match(source, /source_fee_id: caseCommissionPreview\.source_fee\.id/);
   assert.match(source, /preview_key: row\.preview_key/);
   assert.match(source, /openCounselDetail\(viewingCounselCase, "internal-fees"\)/);
+  assert.match(modal, /\{ title: "新增提成" \}, \{ title: "申请结果" \}/);
+  for (const heading of ["申请单号", "收款人", "提成类型", "金额", "案号", "申请日期"]) {
+    assert.match(modal, new RegExp(heading));
+  }
 });
