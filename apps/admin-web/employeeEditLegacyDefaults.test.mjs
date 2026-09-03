@@ -19,7 +19,9 @@ test("legacy business roles become valid role-select values", () => {
 
 test("employee edit values are applied after the conditional form is mounted", () => {
   const source = readFileSync(new URL("./src/HrCenterPage.tsx", import.meta.url), "utf8");
-  assert.match(source, /useEffect\(\(\)=>\{if\(!editingEmployee\|\|!employeeEditInitialValues\)return;employeeEditForm\.setFieldsValue\(employeeEditInitialValues\)\}/);
+  assert.match(source, /useEffect\(\(\)=>\{if\(!employeeEditInitialValues\)return;employeeEditForm\.setFieldsValue\(employeeEditInitialValues\)\}/);
+  assert.doesNotMatch(source, /\[editingEmployee,employeeEditInitialValues,employeeEditForm\]/);
+  assert.match(source, /setEmployeeEditInitialValues\(current=>current\?\{\.\.\.current,contract_approval_enabled:configured\}:current\)/);
   assert.doesNotMatch(source, /setEmployeeLoginEnabled\(loginEnabled\);employeeEditForm\.setFieldsValue\(/);
   assert.doesNotMatch(source, /name="system_role"/);
   assert.match(source, /name=\{name\} label=\{shownLabel\}/);

@@ -2,12 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { buildCaseOrdinarySearchPayload, ordinaryCaseQueueForView } from "./src/caseOrdinarySearchParity.mjs";
+import {
+  buildCaseOrdinarySearchPayload,
+  dashboardCaseQueryForView,
+  ordinaryCaseQueueForView,
+} from "./src/caseOrdinarySearchParity.mjs";
 
 
 test("9.2 row 6 preserves the urgent queue in the drilldown request", () => {
   const queue = ordinaryCaseQueueForView("case-company-urgent");
   assert.equal(queue, "urgent");
+  assert.deepEqual(dashboardCaseQueryForView("case-company-urgent"), {
+    case_queue: "urgent",
+    sort_order: "updated_desc",
+  });
   assert.equal(buildCaseOrdinarySearchPayload({ case_queue: queue }, "company", [], 1, 15).case_queue, "urgent");
 });
 

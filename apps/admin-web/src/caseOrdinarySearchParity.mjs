@@ -95,13 +95,18 @@ export const legacyCasePhaseFilterValues = (phase) => {
   ].filter(Boolean))];
 };
 
-export const dashboardCaseQueryForView = (view) => String(view || "") === "case-mine-appeal"
-  ? {
+export const dashboardCaseQueryForView = (view) => {
+  const route = String(view || "");
+  if (route === "case-mine-appeal") {
+    return {
       status: "一审等待上诉",
       case_statuses: ["一审等待上诉", "待上诉"],
       sort_order: "updated_desc",
-    }
-  : {};
+    };
+  }
+  const caseQueue = ordinaryCaseQueueForView(route);
+  return caseQueue ? { case_queue: caseQueue, sort_order: "updated_desc" } : {};
+};
 
 export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
   const counts = normalizePhaseCounts(phaseCounts);
