@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app import main
 from app.database import Base
 from app.main import SealApplicationInput, _seal_record_dict, create_seal_application, list_seal_application_files
-from app.models import BusinessRecord, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, User, WorkflowEvent
+from app.models import BusinessRecord, ContractObject, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, User, WorkflowEvent
 
 
 ADMIN = {"username": "codex_seal_files_admin", "role": "admin", "department": "上海分所"}
@@ -29,6 +29,7 @@ class SealFileListRealAttachmentTest(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
             BusinessRecord.__table__,
+            ContractObject.__table__,
             FileAttachment.__table__,
             WorkflowEvent.__table__,
             SealAsset.__table__,

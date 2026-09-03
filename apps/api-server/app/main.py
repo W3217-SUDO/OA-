@@ -28124,6 +28124,18 @@ async def _single_linked_case_for_contract(
     db: AsyncSession,
 ) -> BusinessRecord | None:
     scope = await _record_scope_conditions(identity, db)
+    linked_case_ids = select(ContractObject.case_record_id).where(
+        ContractObject.contract_record_id == contract.id,
+    )
+    rows = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        BusinessRecord.id.in_(linked_case_ids),
+        *scope,
+    ).order_by(BusinessRecord.id).limit(2))).all())
+    if len(rows) == 1:
+        return rows[0]
+    if rows:
+        return None
     rows = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case",
         or_(

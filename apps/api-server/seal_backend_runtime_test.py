@@ -34,7 +34,7 @@ from app.main import (
     _next_seal_application_serial,
     _single_linked_case_for_contract,
 )
-from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, ContractObject, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 ADMIN = {"username": "admin", "role": "admin", "department": "上海分所"}
@@ -53,6 +53,7 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
         tables = [
             BusinessRecord.__table__,
             ContractApprovalStep.__table__,
+            ContractObject.__table__,
             WorkflowEvent.__table__,
             SealAsset.__table__,
             SealAssetAudit.__table__,

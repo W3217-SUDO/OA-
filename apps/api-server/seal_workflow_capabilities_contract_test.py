@@ -27,7 +27,7 @@ from app.main import (
     list_seal_application_files,
     stamp_seal_application,
 )
-from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, JobRole, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, ContractObject, FileAttachment, JobRole, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 APPLICANT = {"username": "seal-cap-applicant", "role": "user", "department": "上海分所"}
@@ -43,7 +43,7 @@ class SealWorkflowCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
         main.UPLOAD_ROOT = Path(self.tempdir.name)
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
-            BusinessRecord.__table__, ContractApprovalStep.__table__, FileAttachment.__table__, WorkflowEvent.__table__,
+            BusinessRecord.__table__, ContractApprovalStep.__table__, ContractObject.__table__, FileAttachment.__table__, WorkflowEvent.__table__,
             SealAsset.__table__, SealAssetAudit.__table__, User.__table__, JobRole.__table__, RolePermission.__table__,
             LegacyOfficialDocument.__table__, LegacyOfficialDocumentAudit.__table__, LegacyOfficialDocumentFile.__table__,
         ]

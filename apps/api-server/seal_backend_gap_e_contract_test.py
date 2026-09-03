@@ -33,7 +33,7 @@ from app.main import (
     upload_attachment,
     upload_seal_application_files,
 )
-from app.models import BusinessRecord, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
+from app.models import BusinessRecord, ContractObject, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
 
 HERE = Path(__file__).resolve().parent
@@ -129,6 +129,7 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
             BusinessRecord.__table__,
+            ContractObject.__table__,
             WorkflowEvent.__table__,
             SealAsset.__table__,
             SealAssetAudit.__table__,
