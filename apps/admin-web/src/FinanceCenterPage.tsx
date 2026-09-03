@@ -7098,24 +7098,31 @@ export default function FinanceCenterPage({
         : cellValue(row, header);
     openCustomerDetail(customerName, customerNo);
   };
+  const openRowCaseLogs = async (row: Fee) => {
+    const caseId = row.data?.case_id;
+    if (!caseId) {
+      message.warning("无法获取关联案件");
+      return;
+    }
+    setSettlementActionLoading(true);
+    try {
+      const { data } = await api.get(`/records/${caseId}/history`);
+      const items = (data.items || []).map((item: any) => ({
+        ...item,
+        source_case_no: row.data?.case_no || row.serial_no || "",
+      }));
+      setSettlementContextRows(items);
+      setSettlementContext({ mode: "logs", caseRecords: [row] });
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件日志加载失败");
+    } finally {
+      setSettlementActionLoading(false);
+    }
+  };
   const refundCaseFeeOperation = (_: unknown, row: Fee) => (
-    <Dropdown
-      trigger={["click"]}
-      menu={{
-        items: [
-          { key: "court", label: "添加法院日志" },
-          { key: "received", label: "添加到账日志" },
-          { key: "other", label: "添加其他日志" },
-        ],
-        onClick: ({ key }) => {
-          setSelectedOriginalRows([row.id]);
-          setRefundCaseFeeLogContent("");
-          setRefundCaseFeeLogKind(key as "court" | "received" | "other");
-        },
-      }}
-    >
-      <Button type="link">日志</Button>
-    </Dropdown>
+    <Button type="link" onClick={() => void openRowCaseLogs(row)}>
+      日志
+    </Button>
   );
   const activeRouteConfig = routeConfigs[initialView];
   const settlementColumnWidths = [
@@ -11214,10 +11221,18 @@ export default function FinanceCenterPage({
                         onClick: ({ key }) => {
                           if (!requireRefundCaseFeeSelection().length) return;
                           if (key === "status") {
-                            setRefundCaseFeeStatus("R10");
+                            const firstId = selectedOriginalRows[0];
+                            const firstRow = configuredRows.find((row) => row.id === firstId);
+                            const currentStatus = firstRow?.data?.refund_status || "R10";
+                            setRefundCaseFeeStatus(currentStatus);
                             setRefundCaseFeeStatusOpen(true);
                           } else {
-                            setRefundCaseFeeLogContent("");
+                            const templates: Record<string, string> = {
+                              court: "提交法院时间:\n法院联系人:\n联系电话:\n快递单号:",
+                              received: "法院打款时间:\n账户:",
+                              other: "",
+                            };
+                            setRefundCaseFeeLogContent(templates[key] || "");
                             setRefundCaseFeeLogKind(key as "court" | "received" | "other");
                           }
                         },
@@ -12022,7 +12037,7 @@ export default function FinanceCenterPage({
       <Drawer
         open={refundBatchFeeOpen}
         title={refundBatchFeeKind === "internal" ? "新增内部费用" : "新增费用"}
-        width={refundBatchFeeKind === "internal" ? "min(700px, 100vw)" : "min(580px, 100vw)"}
+        width="min(1000px, 95vw)"
         onClose={closeRefundBatchFee}
         destroyOnHidden
         footer={
