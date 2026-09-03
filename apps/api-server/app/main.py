@@ -24,6 +24,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt
+from openpyxl import load_workbook
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import OAuth2PasswordRequestForm
@@ -11711,7 +11712,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         raise HTTPException(status_code=409, detail="当前合同没有可复制的有效附件，不能发起同步用印")
     if len(source_files) != len(source_attachment_ids):
         raise HTTPException(status_code=422, detail="当前合同附件无法完整复制")
-    serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
+    linked_case = await _single_linked_case_for_contract(contract, identity, db)
+    serial = await _next_seal_application_serial(db)
     seal_status = "待审批" if submitted else "草稿"
     seal = BusinessRecord(
         module="seal",
@@ -11723,6 +11725,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         department=contract.department,
         description=body.description,
         data={
+            "case_record_id": linked_case.id if linked_case else None,
+            "case_no": linked_case.serial_no if linked_case else "",
             "contract_record_id": contract.id,
             "contract_no": contract.serial_no,
             "use_type": "合同用印",
@@ -26952,6 +26956,48 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     return FileResponse(path, media_type=item.content_type, filename=item.original_name)
 
 
+ATTACHMENT_TEXT_PREVIEW_MAX_CHARS = 200_000
+XLSX_PREVIEW_MAX_SHEETS = 20
+XLSX_PREVIEW_MAX_ROWS_PER_SHEET = 2_000
+XLSX_PREVIEW_MAX_COLUMNS = 100
+
+
+def _xlsx_preview_text(path: Path) -> str:
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    parts: list[str] = []
+    character_count = 0
+    truncated = False
+    try:
+        worksheets = workbook.worksheets[:XLSX_PREVIEW_MAX_SHEETS]
+        for worksheet in worksheets:
+            sheet_lines = [f"工作表：{worksheet.title}"]
+            max_row = min(worksheet.max_row or 1, XLSX_PREVIEW_MAX_ROWS_PER_SHEET)
+            max_column = min(worksheet.max_column or 1, XLSX_PREVIEW_MAX_COLUMNS)
+            for cells in worksheet.iter_rows(min_row=1, max_row=max_row, max_col=max_column):
+                values = ["" if cell.value is None else str(cell.value) for cell in cells]
+                while values and not values[-1]:
+                    values.pop()
+                line = "\t".join(values)
+                if character_count + len(line) + 1 > ATTACHMENT_TEXT_PREVIEW_MAX_CHARS:
+                    truncated = True
+                    break
+                sheet_lines.append(line)
+                character_count += len(line) + 1
+            parts.append("\n".join(sheet_lines).rstrip())
+            if truncated:
+                break
+        if len(workbook.worksheets) > XLSX_PREVIEW_MAX_SHEETS:
+            truncated = True
+    finally:
+        workbook.close()
+    preview_text = "\n\n".join(part for part in parts if part).strip()
+    if not preview_text:
+        preview_text = "（该 XLSX 工作簿没有可显示的单元格内容）"
+    if truncated:
+        preview_text += "\n\n[工作簿内容过长，在线预览仅显示前部分内容]"
+    return preview_text
+
+
 @app.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/preview")
 async def preview_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return safe, authenticated metadata/content for the in-app attachment preview."""
@@ -26987,16 +27033,24 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
             preview_text = "\n\n".join(parts) or "（该 DOCX 文档没有可提取的文字内容）"
         except Exception as exc:
             raise HTTPException(status_code=422, detail="DOCX 文件无法在线读取") from exc
-        if len(preview_text) > 200_000:
-            preview_text = f"{preview_text[:200_000]}\n\n[文档内容过长，在线预览仅显示前 200000 个字符]"
+        if len(preview_text) > ATTACHMENT_TEXT_PREVIEW_MAX_CHARS:
+            preview_text = f"{preview_text[:ATTACHMENT_TEXT_PREVIEW_MAX_CHARS]}\n\n[文档内容过长，在线预览仅显示前 200000 个字符]"
         return {**base, "kind": "docx", "text": preview_text}
+    if suffix == ".xlsx":
+        if path.stat().st_size == 0:
+            return {**base, "kind": "unsupported", "detail": "XLSX 文件为空，无法在线查看，请重新上传有效文件"}
+        try:
+            preview_text = _xlsx_preview_text(path)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="XLSX 文件无法在线读取") from exc
+        return {**base, "kind": "xlsx", "text": preview_text}
     if suffix in {".txt", ".md", ".csv", ".json", ".xml", ".log", ".yaml", ".yml", ".html", ".htm"}:
         try:
             preview_text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             raise HTTPException(status_code=422, detail="文本文件无法在线读取") from exc
-        if len(preview_text) > 200_000:
-            preview_text = f"{preview_text[:200_000]}\n\n[文件内容过长，在线预览仅显示前 200000 个字符]"
+        if len(preview_text) > ATTACHMENT_TEXT_PREVIEW_MAX_CHARS:
+            preview_text = f"{preview_text[:ATTACHMENT_TEXT_PREVIEW_MAX_CHARS]}\n\n[文件内容过长，在线预览仅显示前 200000 个字符]"
         return {**base, "kind": "text", "text": preview_text}
     return {**base, "kind": "unsupported", "detail": "当前文件格式暂不支持在线预览，请下载后查看"}
 
@@ -27539,7 +27593,25 @@ async def _get_seal_application_for_action(record_id: int, action: str, identity
     return item
 
 
-async def _validated_seal_relations(body: SealApplicationInput, identity: dict, db: AsyncSession) -> tuple[str, str, str, str]:
+async def _single_linked_case_for_contract(
+    contract: BusinessRecord,
+    identity: dict,
+    db: AsyncSession,
+) -> BusinessRecord | None:
+    scope = await _record_scope_conditions(identity, db)
+    rows = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        or_(
+            BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_no"].as_string() == contract.serial_no,
+        ),
+        *scope,
+    ).order_by(BusinessRecord.id).limit(2))).all())
+    return rows[0] if len(rows) == 1 else None
+
+
+async def _validated_seal_relations(body: SealApplicationInput, identity: dict, db: AsyncSession) -> tuple[str, str, str, str, int | None, int | None]:
     """Return canonical, visible seal references and prevent dangling business links."""
     case_no, contract_no, customer = body.case_no.strip(), body.contract_no.strip(), body.customer.strip()
     use_type = body.use_type.strip() or ("案件用印" if case_no else "合同用印" if contract_no else "行政用印")
@@ -27559,6 +27631,25 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
         raise HTTPException(status_code=422, detail="合同用印必须选择关联合同")
     case = await visible("case", case_no, "案件") if case_no else None
     contract = await visible("contract", contract_no, "合同") if contract_no else None
+    if case:
+        case_data = case.data or {}
+        linked_contract_id = _positive_record_id(case_data.get("contract_record_id") or case_data.get("contract_id"))
+        linked_contract_no = str(case_data.get("contract_no") or "").strip()
+        linked_contract = None
+        if linked_contract_id:
+            linked_contract = await _ensure_record_module(linked_contract_id, "contract", identity, db)
+        elif linked_contract_no:
+            linked_contract = await visible("contract", linked_contract_no, "合同")
+        if contract and (not linked_contract or contract.id != linked_contract.id):
+            raise HTTPException(status_code=422, detail="关联案件与合同不匹配")
+        if linked_contract:
+            contract = linked_contract
+            contract_no = linked_contract.serial_no
+    elif contract:
+        linked_case = await _single_linked_case_for_contract(contract, identity, db)
+        if linked_case:
+            case = linked_case
+            case_no = linked_case.serial_no
     if customer:
         customer_row = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", or_(BusinessRecord.title == customer, BusinessRecord.customer == customer, BusinessRecord.serial_no == customer), *scope))
         if not customer_row:
@@ -27568,7 +27659,23 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
         customer = case.customer
     elif contract:
         customer = contract.customer
-    return case_no, contract_no, customer, use_type
+    return case_no, contract_no, customer, use_type, case.id if case else None, contract.id if contract else None
+
+
+async def _next_seal_application_serial(
+    db: AsyncSession,
+    applied_at: datetime | None = None,
+) -> str:
+    prefix = f"P{applied_at or datetime.now():%y%m%d}-"
+    for _ in range(20):
+        suffix = int(uuid4().hex, 16) % 100_000_000
+        candidate = f"{prefix}{suffix:08d}"
+        exists = await db.scalar(
+            select(BusinessRecord.id).where(BusinessRecord.serial_no == candidate)
+        )
+        if not exists:
+            return candidate
+    raise HTTPException(status_code=503, detail="用印编号生成失败，请重试")
 
 
 @app.get(f"{settings.api_prefix}/seals/applications")
@@ -27762,8 +27869,8 @@ async def _resolve_seal_source_attachment_ids(
         for item_id in [*body.source_attachment_ids, *body.contract_file_ids, *body.case_file_ids]
         if int(item_id) > 0
     ))
-    module = "contract" if contract_no else "case" if case_no else ""
-    serial_no = contract_no or case_no
+    module = "case" if case_no else "contract" if contract_no else ""
+    serial_no = case_no or contract_no
     if not module:
         if explicit_ids:
             raise HTTPException(status_code=422, detail="行政用印不能选择合同或案件来源文件")
@@ -27802,9 +27909,9 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     seal_types = list(dict.fromkeys([asset.seal_type, *body.seal_types]))
     if any(item not in REQUIRED_SEAL_TYPES for item in seal_types):
         raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
-    case_no, contract_no, customer, use_type = await _validated_seal_relations(body, identity, db)
-    serial = f"YY{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:3].upper()}"
-    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
+    case_no, contract_no, customer, use_type, case_record_id, contract_record_id = await _validated_seal_relations(body, identity, db)
+    serial = await _next_seal_application_serial(db)
+    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
     copied_targets: list[Path] = []
     source_attachment_ids = await _resolve_seal_source_attachment_ids(
         body, case_no, contract_no, identity, db
@@ -27836,10 +27943,10 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     seal_types = list(dict.fromkeys([asset.seal_type, *body.seal_types]))
     if any(item not in REQUIRED_SEAL_TYPES for item in seal_types):
         raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
-    case_no, contract_no, customer, use_type = await _validated_seal_relations(body, identity, db)
+    case_no, contract_no, customer, use_type, case_record_id, contract_record_id = await _validated_seal_relations(body, identity, db)
     item.title = body.title.strip(); item.customer = customer; item.description = body.description.strip()
     existing_names = str((item.data or {}).get("document_names") or "")
-    item.data = {"case_no": case_no, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
+    item.data = {"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
     db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await _sync_legacy_official_document(item, identity, db)
     await db.commit(); await db.refresh(item)

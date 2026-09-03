@@ -34,6 +34,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { openAttachmentOnlinePreview } from "./attachmentOnlinePreview.mjs";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
@@ -417,6 +418,7 @@ export default function SealCenterPage({
   const [createForm] = Form.useForm();
   const [assetForm] = Form.useForm();
   const [actionForm] = Form.useForm();
+  const [detailAuditForm] = Form.useForm();
   const [batchStampForm] = Form.useForm();
   const [queryForm] = Form.useForm();
   const [actionSubmitting, setActionSubmitting] = useState(false);
@@ -1363,8 +1365,9 @@ export default function SealCenterPage({
       );
     }
   };
-  const openDetail = async (row: SealRow) => {
+  const openDetail = async (row: SealRow, preserveAuditInput = false) => {
     const requestId = detailRequestTracker.next();
+    if (!preserveAuditInput) detailAuditForm.resetFields();
     setDetail(row);
     setHistory([]);
     setAttachments([]);
@@ -1412,15 +1415,53 @@ export default function SealCenterPage({
     const latestRows = await load();
     const latestRow =
       latestRows?.find((item: SealRow) => item.id === detail.id) || detail;
-    await openDetail(latestRow);
+    await openDetail(latestRow, true);
   };
   const openSealNumber = (row: SealRow) => {
-    if (tab === "audit" && canSealAction("approve", row)) {
-      setAction({ type: "approve", row });
-      actionForm.resetFields();
+    void openDetail(row);
+  };
+  const closeDetail = () => {
+    detailRequestTracker.invalidate();
+    setDetail(null);
+    setHistory([]);
+    setAttachments([]);
+    setAttachmentPage(1);
+    setAttachmentPageSize(sealFilePagination.defaultPageSize);
+    setAttachmentTotal(0);
+    setAttachmentSelectedKeys([]);
+    detailAuditForm.resetFields();
+  };
+  const runDetailApproval = async (approved: boolean) => {
+    if (!detail) return;
+    const comment = String(detailAuditForm.getFieldValue("comment") || "").trim();
+    if (!approved && !comment) {
+      detailAuditForm.setFields([
+        { name: "comment", errors: ["拒绝时必须填写原因"] },
+      ]);
       return;
     }
-    void openDetail(row);
+    if (!actionGate.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      await postSeal(`/seals/applications/${detail.id}/approve`, {
+        approved,
+        comment,
+      });
+      message.success(approved ? "审批已通过" : "申请已拒绝");
+      closeDetail();
+      await load();
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.detail ||
+          sealActionFailureMessage(approved ? "approve" : "reject"),
+      );
+    } finally {
+      actionGate.leave();
+      setActionSubmitting(false);
+    }
   };
   const openAuditList = async (row: SealRow) => {
     await openDetail(row);
@@ -1485,45 +1526,11 @@ export default function SealCenterPage({
     await loadFileList(row, 1, sealFilePagination.defaultPageSize);
   };
   const previewAttachment = async (item: AttachmentRow) => {
-    const requestId = previewRequestTracker.next();
-    setPreviewOpen(false);
-    setPreviewName("");
-    setPreviewText("");
-    setPreviewDetail("");
-    setPreviewMode("unsupported");
-    setPreviewUrl((previous) => {
-      if (previous) URL.revokeObjectURL(previous);
-      return "";
-    });
     try {
-      const { data } = await api.get(`/attachments/${item.id}/preview`);
-      if (!previewRequestTracker.isCurrent(requestId)) return;
-      const mode = getSealPreviewMode(data);
-      setPreviewMode(mode);
-      setPreviewText(data.text || "");
-      setPreviewDetail(data.detail || "");
-      setPreviewUrl((previous) => {
-        if (previous) URL.revokeObjectURL(previous);
-        return "";
-      });
-      if (mode === "binary") {
-        const response = await api.get(`/attachments/${item.id}/download`, {
-          responseType: "blob",
-        });
-        const url = URL.createObjectURL(response.data);
-        if (!previewRequestTracker.isCurrent(requestId)) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        setPreviewUrl(url);
-      }
-      if (!previewRequestTracker.isCurrent(requestId)) return;
-      setPreviewName(item.original_name);
-      setPreviewOpen(true);
+      await openAttachmentOnlinePreview(api, item);
     } catch (error: any) {
-      if (!previewRequestTracker.isCurrent(requestId)) return;
       message.error(
-        sealErrorMessage(error, sealAttachmentPreviewFailureMessage(error?.response?.status)),
+        sealErrorMessage(error, error?.message || sealAttachmentPreviewFailureMessage(error?.response?.status)),
       );
     }
   };
@@ -2954,18 +2961,32 @@ export default function SealCenterPage({
       <Drawer
         open={Boolean(detail)}
         size={640}
-        title={`用印详情：${detail?.serial_no || ""}`}
+        title={`${
+          detail && tab === "audit" &&
+          (canSealAction("approve", detail) || canSealAction("reject", detail))
+            ? "用印审核"
+            : "用印详情"
+        }：${detail?.serial_no || ""}`}
         extra={detail ? <Button icon={<ReloadOutlined />} onClick={() => void refreshDetail()}>刷新</Button> : null}
-        onClose={() => {
-          detailRequestTracker.invalidate();
-          setDetail(null);
-          setHistory([]);
-          setAttachments([]);
-          setAttachmentPage(1);
-          setAttachmentPageSize(sealFilePagination.defaultPageSize);
-          setAttachmentTotal(0);
-          setAttachmentSelectedKeys([]);
-        }}
+        footer={
+          detail && tab === "audit" &&
+          (canSealAction("approve", detail) || canSealAction("reject", detail)) ? (
+            <Space>
+              {canSealAction("approve", detail) && (
+                <Button type="primary" loading={actionSubmitting} onClick={() => void runDetailApproval(true)}>
+                  通过
+                </Button>
+              )}
+              {canSealAction("reject", detail) && (
+                <Button danger loading={actionSubmitting} onClick={() => void runDetailApproval(false)}>
+                  拒绝
+                </Button>
+              )}
+              <Button disabled={actionSubmitting} onClick={closeDetail}>取消</Button>
+            </Space>
+          ) : null
+        }
+        onClose={closeDetail}
       >
         {detail && (
           <>
@@ -3094,6 +3115,14 @@ export default function SealCenterPage({
                 { key: "owner", label: "申请人", children: personDisplayName(detail.owner_display_name) },
               ]}
             />
+            {tab === "audit" &&
+              (canSealAction("approve", detail) || canSealAction("reject", detail)) && (
+                <Form form={detailAuditForm} layout="vertical" style={{ marginTop: 16 }}>
+                  <Form.Item label="审批意见" name="comment">
+                    <Input.TextArea rows={4} />
+                  </Form.Item>
+                </Form>
+              )}
             <h3 className="seal-history-title">
               <FileDoneOutlined /> {sealAttachmentListLabel}
             </h3>

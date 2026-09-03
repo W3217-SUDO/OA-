@@ -28,6 +28,7 @@ import {
 import { CheckOutlined, CloseOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { openAttachmentOnlinePreview } from "./attachmentOnlinePreview.mjs";
 import { LegacyContractHistoryPanel } from "./LegacyContractHistoryPanel";
 import * as contractWorkflowPolicyModule from "./contractWorkflowPolicy.mjs";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -1267,19 +1268,9 @@ export default function ContractCenterPage({
   };
   const previewAttachment = async (item: Attachment) => {
     try {
-      const { data } = await api.get(`/attachments/${item.id}/preview`);
-      if (data.kind === "unsupported") {
-        message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
-        return;
-      }
-      if (data.kind === "image" || data.kind === "pdf") {
-        const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
-        setAttachmentPreview({ name: item.original_name, kind: data.kind, url: URL.createObjectURL(response.data) });
-      } else {
-        setAttachmentPreview({ name: item.original_name, kind: data.kind, text: data.text || "" });
-      }
+      await openAttachmentOnlinePreview(api, item);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同附件预览失败");
+      message.error(error?.response?.data?.detail || error?.message || "合同附件预览失败");
     }
   };
   const closeAttachmentPreview = () => {

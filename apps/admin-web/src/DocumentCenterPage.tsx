@@ -41,6 +41,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { openAttachmentOnlinePreview } from "./attachmentOnlinePreview.mjs";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
@@ -677,23 +678,9 @@ export default function DocumentCenterPage({
   };
   const previewAttachment = async (row: Attachment) => {
     try {
-      const { data } = await api.get(`/attachments/${row.id}/preview`);
-      if (data.kind === "unsupported") {
-        message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
-        return;
-      }
-      setPreviewName(row.original_name);
-      setPreviewKind(data.kind);
-      setPreviewText(data.text || "");
-      if (data.kind === "image" || data.kind === "pdf") {
-        const response = await api.get(`/attachments/${row.id}/download`, { responseType: "blob" });
-        setPreviewUrl(URL.createObjectURL(response.data));
-      } else {
-        setPreviewUrl("");
-      }
-      setPreviewOpen(true);
+      await openAttachmentOnlinePreview(api, row);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "附件预览失败");
+      message.error(error?.response?.data?.detail || error?.message || "附件预览失败");
     }
   };  const deleteFile = async (id: number) => {
     try {

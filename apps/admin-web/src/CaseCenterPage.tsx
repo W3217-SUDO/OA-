@@ -55,6 +55,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { api } from "./api";
+import { openAttachmentOnlinePreview } from "./attachmentOnlinePreview.mjs";
 import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -3076,35 +3077,9 @@ export default function CaseCenterPage({
   };
   const previewCounselDetailAttachment = async (item: AttachmentRow) => {
     try {
-      const { data } = await api.get(`/attachments/${item.id}/preview`);
-      if (data.kind === "unsupported") {
-        message.info(data.detail || "当前文件格式暂不支持在线预览，请下载后查看");
-        return;
-      }
-      if (data.kind === "pdf") {
-        const metadata = await api.get(`/attachments/${item.id}/pdf-preview`);
-        const response = await api.get(`/attachments/${item.id}/pdf-preview/pages/1.png`, {
-          params: { width: 1440 },
-          responseType: "blob",
-        });
-        setAttachmentPreview({
-          name: item.original_name,
-          kind: "pdf",
-          url: URL.createObjectURL(response.data),
-          attachmentId: item.id,
-          page: 1,
-          pageCount: Number(metadata.data.page_count || 1),
-        });
-        return;
-      }
-      if (data.kind === "image") {
-        const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
-        setAttachmentPreview({ name: item.original_name, kind: data.kind, url: URL.createObjectURL(response.data) });
-        return;
-      }
-      setAttachmentPreview({ name: item.original_name, kind: data.kind, text: data.text || "" });
+      await openAttachmentOnlinePreview(api, item);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "案件文件预览失败");
+      message.error(error?.response?.data?.detail || error?.message || "案件文件预览失败");
     }
   };
   const loadAttachmentPdfPage = async (page: number) => {

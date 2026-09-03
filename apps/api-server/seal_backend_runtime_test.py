@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
@@ -30,6 +31,8 @@ from app.main import (
     batch_stamp_seal_applications,
     batch_withdraw_seal_applications,
     create_seal_application,
+    _next_seal_application_serial,
+    _single_linked_case_for_contract,
 )
 from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, RolePermission, SealAsset, SealAssetAudit, User, WorkflowEvent
 
@@ -148,6 +151,118 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
             await create_seal_application(body, ADMIN, self.db)
 
         self.assertEqual(raised.exception.status_code, 422)
+        self.assertEqual(
+            await self.db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "seal")),
+            0,
+        )
+
+    async def test_seal_serial_matches_legacy_rule_and_retries_collision(self) -> None:
+        self.db.add(BusinessRecord(
+            module="seal",
+            serial_no="P240905-00000001",
+            title="existing",
+            status="草稿",
+            owner="admin",
+            data={},
+        ))
+        await self.db.flush()
+
+        candidates = [SimpleNamespace(hex="1"), SimpleNamespace(hex="2")]
+        with patch.object(main, "uuid4", side_effect=candidates):
+            serial = await _next_seal_application_serial(
+                self.db,
+                datetime(2024, 9, 5, 12, 30),
+            )
+
+        self.assertEqual(serial, "P240905-00000002")
+        self.assertRegex(serial, r"^P\d{6}-\d{8}$")
+
+    async def test_create_seal_persists_same_legacy_compatible_serial(self) -> None:
+        asset = await self.add_asset("SERIAL")
+        await self.db.commit()
+        body = SealApplicationInput(
+            title="编号持久化测试",
+            seal_asset_id=asset.id,
+            copies=1,
+            purpose="验证编号投影",
+            use_type="行政用印",
+            use_date=date.today(),
+            document_names="编号测试.pdf",
+        )
+
+        with patch.object(main, "uuid4", return_value=SimpleNamespace(hex="123456789")):
+            created = await create_seal_application(body, ADMIN, self.db)
+
+        self.assertRegex(created["serial_no"], r"^P\d{6}-\d{8}$")
+        record = await self.db.get(BusinessRecord, created["id"])
+        legacy = await self.db.scalar(select(LegacyOfficialDocument).where(
+            LegacyOfficialDocument.OfficialDocumentNo == created["serial_no"]
+        ))
+        self.assertEqual(record.serial_no, created["serial_no"])
+        self.assertIsNotNone(legacy)
+        self.assertEqual(legacy.OfficialDocumentNo, record.serial_no)
+
+    async def test_case_seal_derives_and_persists_its_authoritative_contract(self) -> None:
+        asset = await self.add_asset("CASE-CONTRACT")
+        contract = BusinessRecord(
+            module="contract", serial_no="HT-ROW10", title="第10行合同", customer="第10行客户",
+            status="已通过", owner="admin", department="上海分所", data={},
+        )
+        self.db.add(contract)
+        await self.db.flush()
+        case = BusinessRecord(
+            module="case", serial_no="CASE-ROW10", title="第10行案件", customer="第10行客户",
+            status="办理中", owner="admin", department="上海分所",
+            data={"contract_record_id": contract.id, "contract_no": contract.serial_no},
+        )
+        self.db.add(case)
+        await self.db.flush()
+        source_path = self.upload_root / "row10-case-source.docx"
+        source_path.write_bytes(b"row10 case source")
+        source = FileAttachment(
+            record_id=case.id, category="案件文档", original_name="第10行案件文件.docx",
+            stored_name=source_path.name, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size=source_path.stat().st_size, path=str(source_path), uploader="admin",
+        )
+        self.db.add(source)
+        await self.db.commit()
+
+        created = await create_seal_application(SealApplicationInput(
+            title="案件申请用印", case_no=case.serial_no, use_type="案件用印",
+            seal_asset_id=asset.id, copies=1, purpose="案件文件盖章", use_date=date.today(),
+            source_attachment_ids=[source.id],
+        ), ADMIN, self.db)
+
+        self.assertEqual(created["data"]["case_no"], case.serial_no)
+        self.assertEqual(created["data"]["case_record_id"], case.id)
+        self.assertEqual(created["data"]["contract_no"], contract.serial_no)
+        self.assertEqual(created["data"]["contract_record_id"], contract.id)
+        self.assertEqual(created["file_count"], 1)
+        legacy = await self.db.scalar(select(LegacyOfficialDocument).where(
+            LegacyOfficialDocument.OfficialDocumentNo == created["serial_no"]
+        ))
+        self.assertEqual(legacy.CaseNo, case.serial_no)
+        self.assertEqual(legacy.ContractNo, contract.serial_no)
+        self.assertEqual((await _single_linked_case_for_contract(contract, ADMIN, self.db)).id, case.id)
+
+    async def test_case_seal_rejects_a_contract_from_another_case(self) -> None:
+        asset = await self.add_asset("CASE-MISMATCH")
+        linked = BusinessRecord(module="contract", serial_no="HT-LINKED", title="已关联合同", customer="客户", status="已通过", owner="admin", data={})
+        other = BusinessRecord(module="contract", serial_no="HT-OTHER", title="其他合同", customer="客户", status="已通过", owner="admin", data={})
+        self.db.add_all([linked, other])
+        await self.db.flush()
+        case = BusinessRecord(module="case", serial_no="CASE-MISMATCH", title="案件", customer="客户", status="办理中", owner="admin", data={"contract_id": linked.id, "contract_no": linked.serial_no})
+        self.db.add(case)
+        await self.db.commit()
+
+        with self.assertRaises(HTTPException) as raised:
+            await create_seal_application(SealApplicationInput(
+                title="错误关系用印", case_no=case.serial_no, contract_no=other.serial_no, use_type="案件用印",
+                seal_asset_id=asset.id, copies=1, purpose="不应创建", use_date=date.today(),
+            ), ADMIN, self.db)
+
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertIn("不匹配", raised.exception.detail)
         self.assertEqual(
             await self.db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "seal")),
             0,
