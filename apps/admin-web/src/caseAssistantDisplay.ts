@@ -22,9 +22,11 @@ export const caseAssistantDisplayValues = (data: CaseAssistantData | null | unde
     legacy.CaseAssistantName,
     legacy.CaseAssistant,
   ];
-  for (const candidate of candidates) {
+  // Migrated rows can contain a legacy scalar display value alongside a newer
+  // username array. Prefer the most complete projection so a populated scalar
+  // never hides additional assistants stored in another compatible field.
+  return candidates.reduce<unknown[]>((best, candidate) => {
     const values = populatedValues(candidate);
-    if (values.length) return values;
-  }
-  return [];
+    return values.length > best.length ? values : best;
+  }, []);
 };
