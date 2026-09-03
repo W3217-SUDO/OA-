@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 import re
 import secrets
+from typing import Literal
 import unicodedata
 import zipfile
 from zoneinfo import ZoneInfo
@@ -2866,6 +2867,12 @@ class RefundBatchStatusInput(BaseModel):
     comment: str = ""
 
 
+class CaseFeeRefundLogInput(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    kind: Literal["court", "received", "other"]
+    content: str = Field(min_length=2, max_length=1000)
+
+
 class FinanceTransactionInput(BaseModel):
     finance_record_id: int | None = None
     transaction_type: str
@@ -4014,6 +4021,12 @@ async def _contract_customer_record_dict(
     if record.module not in {"case", "contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
     data = result["data"]
+    if record.module == "case":
+        phase_changed_date = _case_phase_changed_date(record)
+        phase_changed_days = _case_phase_changed_days(record)
+        data["phase_changed_at"] = phase_changed_date.isoformat()
+        data["phase_changed_days"] = phase_changed_days
+        data["phase_duration"] = f"{phase_changed_days}天"
     if record.module == "contract":
         context = contract_context or await _contract_customer_projection_context([record], db)
         customer, relation_status = _customer_reference_from_maps(
@@ -7782,17 +7795,65 @@ DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES = {
     "二审补充证据",
     "再审补充证据",
 }
-DASHBOARD_CASE_QUEUES = {"supplement_evidence"}
+DASHBOARD_SUPPLEMENT_OPINION_STATUSES = {
+    "一审补充代理意见",
+    "二审补充代理意见",
+}
+DASHBOARD_CASE_QUEUES = {"supplement_evidence", "supplement_opinion", "urgent"}
+
+
+def _case_phase_changed_date(item: BusinessRecord) -> date:
+    data = item.data or {}
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    for raw in (
+        data.get("phase_changed_at"),
+        legacy.get("PhaseChangedTime"),
+        legacy.get("ChangeTime"),
+        data.get("case_register_date"),
+        item.created_at,
+    ):
+        if isinstance(raw, datetime):
+            return raw.date()
+        if isinstance(raw, date):
+            return raw
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+        except ValueError:
+            try:
+                return date.fromisoformat(text[:10])
+            except ValueError:
+                continue
+    return date.today()
+
+
+def _case_phase_changed_days(item: BusinessRecord, *, as_of: date | None = None) -> int:
+    return max(((as_of or date.today()) - _case_phase_changed_date(item)).days, 0)
+
+
+def _is_urgent_case(item: BusinessRecord, *, as_of: date | None = None) -> bool:
+    return _case_phase_changed_days(item, as_of=as_of) > 365
 
 
 def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
-    if queue != "supplement_evidence":
-        return False
     data = item.data or {}
-    return (
-        str(data.get("case_type") or "").strip() in {"民事争议", "民事案件"}
-        and str(item.status or "").strip() in DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES
-    )
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    case_type = str(data.get("case_type") or "").strip()
+    status_name = str(
+        data.get("case_phase_name")
+        or legacy.get("CasePhaseName")
+        or item.status
+        or ""
+    ).strip()
+    if queue == "supplement_evidence":
+        return case_type in {"民事争议", "民事案件"} and status_name in DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES
+    if queue == "supplement_opinion":
+        return case_type in {"民事争议", "民事案件"} and status_name in DASHBOARD_SUPPLEMENT_OPINION_STATUSES
+    if queue == "urgent":
+        return _is_urgent_case(item)
+    return False
 def _dashboard_case_date(record: BusinessRecord) -> datetime:
     def as_utc_naive(value: datetime) -> datetime:
         if value.tzinfo is not None:
@@ -7962,15 +8023,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         if item["fee_category"] == "official" and item["owner"] == username
     ]
     unpaid_amount = sum(item["remaining_amount"] for item in personal_official_receivables)
-    pending_refunds = [
-        item for item in finances
-        if item.status not in {"已完成", "已付款", "已驳回", "已拒绝", "已作废"}
-        and (
-            item.module == "refund"
-            or amount((item.data or {}).get("refund_requested_amount")) > amount((item.data or {}).get("refunded_amount"))
-            or "退费" in str((item.data or {}).get("fee_type") or "")
-        )
-    ]
+    pending_refunds = await _refund_case_fee_rows(identity, db)
     def case_signal(item: BusinessRecord, *words: str) -> bool:
         data = item.data or {}
         values = [
@@ -7979,7 +8032,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         ]
         return any(word in str(value or "") for word in words for value in values)
     supplement_evidence = [item for item in cases if _matches_dashboard_case_queue(item, "supplement_evidence")]
-    supplement_opinion = [item for item in cases if case_signal(item, "补充意见")]
+    supplement_opinion = [item for item in cases if _matches_dashboard_case_queue(item, "supplement_opinion")]
     personal_cases = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case",
         _case_personal_scope_condition(username),
@@ -7990,12 +8043,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         if str(item.status or "").strip() in appeal_phases
     ]
     pending_execution = [item for item in cases if _is_pending_execution_case(item)]
-    urgent_cases = [
-        item for item in cases
-        if bool((item.data or {}).get("urgent"))
-        or str((item.data or {}).get("priority") or "") in {"紧急", "特急"}
-        or "紧急" in item.status
-    ]
+    urgent_cases = [item for item in cases if _matches_dashboard_case_queue(item, "urgent")]
     metrics = [
         {
             "key": "official-fee-unpaid", "label": "待缴官费",
@@ -8005,10 +8053,10 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         },
         {"key": "refund-pending", "label": "待退费", "value": f"{len(pending_refunds)}件", "tone": "cyan", "route": "finance-refund"},
         {"key": "evidence-supplement", "label": "补充证据", "value": f"{len(supplement_evidence)}件", "tone": "green", "route": "case-company-supplement-evidence"},
-        {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company"},
+        {"key": "opinion-supplement", "label": "补充意见", "value": f"{len(supplement_opinion)}件", "tone": "blue", "route": "case-company-supplement-opinion"},
         {"key": "appeal-pending", "label": "待上诉", "value": f"{len(pending_appeal)}件", "tone": "red", "route": "case-mine-appeal"},
         {"key": "execution-pending", "label": "待执行", "value": f"{len(pending_execution)}件", "tone": "purple", "route": "case-company-execution"},
-        {"key": "urgent-cases", "label": "紧急案件", "value": f"{len(urgent_cases)}件", "tone": "orange", "route": "case-company"},
+        {"key": "urgent-cases", "label": "紧急案件", "value": f"{len(urgent_cases)}件", "tone": "orange", "route": "case-company-urgent"},
         {
             "key": "official-fee-unreceived", "label": "未到官费金额",
             "value": f"{unpaid_amount:.2f}元", "tone": "navy",
@@ -16201,8 +16249,9 @@ async def _invoice_case_fee_rows(
             if fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
                 receipts_by_fee.setdefault(fee_id, []).append((payment, float(allocation.get("amount") or 0)))
 
+    refund_scope_conditions = [] if scope_authorized_fee_ids is not None else scope_conditions
     refunds = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "refund", *scope_conditions
+        BusinessRecord.module == "refund", *refund_scope_conditions
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
     official_by_case: dict[str, list[BusinessRecord]] = {}
@@ -16338,9 +16387,13 @@ async def _invoice_case_fee_rows(
             continue
         result = _record_dict(item, allowed_fields)
         result_data = dict(result.get("data") or {})
+        plaintiff = "、".join(_case_party_values(case_data, CASE_PLAINTIFF_FIELDS))
+        opponent = "、".join(_case_party_values(case_data, CASE_DEFENDANT_FIELDS))
         result_data.update({
             "case_id": linked_case.id if linked_case else data.get("case_id"),
             "case_no": linked_case.serial_no if linked_case else data.get("case_no", ""),
+            "plaintiff": data.get("plaintiff") or plaintiff or (linked_case.customer if linked_case else item.customer),
+            "opponent": data.get("opponent") or opponent,
             "case_stage": case_stage,
             "assistant": assistant_name,
             "hearing_lawyer": hearing_name,
@@ -16469,6 +16522,7 @@ async def _fee_query_rows(
     paid_from: date | None = None, paid_to: date | None = None,
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "",
     fee_types: str = "", ids: set[int] | None = None,
+    scope_authorized_fee_ids: set[int] | None = None,
 ) -> list[dict]:
     rows = await _invoice_case_fee_rows(
         identity, db, scope=scope, case_no=case_no,
@@ -16479,6 +16533,7 @@ async def _fee_query_rows(
         assistant=assistant, case_stages=case_stages, paid_from=paid_from,
         paid_to=paid_to, fee_types=fee_types, payer_name="",
         cashed_from=None, cashed_to=None, ids=ids, include_all_fee_types=True,
+        scope_authorized_fee_ids=scope_authorized_fee_ids,
     )
     filtered: list[dict] = []
     for row in rows:
@@ -16505,6 +16560,292 @@ async def _fee_query_rows(
                 continue
         filtered.append(row)
     return filtered
+
+
+REFUND_CASE_FEE_STATUSES = {
+    "R10": "准备材料",
+    "R20": "已提交法院",
+    "R30": "法院处理中",
+    "R35": "待退款到账",
+    "R40": "退款已到账",
+    "R50": "退费完成",
+    "R100": "不再办理退费",
+}
+REFUND_CASE_FEE_STATUS_BY_LABEL = {label: code for code, label in REFUND_CASE_FEE_STATUSES.items()}
+
+
+def _refund_case_fee_status(data: dict) -> tuple[str, str]:
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    raw = data.get("refund_status") or legacy.get("RefundStatus") or "R10"
+    if isinstance(raw, (int, float)) or str(raw).strip().isdigit():
+        code = f"R{int(raw)}"
+    else:
+        value = str(raw).strip()
+        code = value.upper() if value.upper() in REFUND_CASE_FEE_STATUSES else REFUND_CASE_FEE_STATUS_BY_LABEL.get(value, "R10")
+    label = str(data.get("refund_status_label") or REFUND_CASE_FEE_STATUSES.get(code) or raw).strip()
+    return code, label
+
+
+def _refund_case_fee_started_at(data: dict, status_code: str) -> str:
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    return str(
+        data.get("refund_status_started_at")
+        or data.get("refund_status_start_time")
+        or legacy.get(f"RefundStatus{status_code.removeprefix('R')}StartTime")
+        or data.get("created_at")
+        or ""
+    )
+
+
+async def _refund_case_fee_authorized_ids(identity: dict, db: AsyncSession) -> set[int] | None:
+    await _require_record_module_menu("finance", identity, db, action="查看")
+    if "admin" in _identity_role_ids(identity):
+        return None
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not user:
+        raise HTTPException(status_code=401, detail="当前用户不存在")
+    if (await _user_permission_payload(user, db))["data_scope"] == "全所数据":
+        return None
+    cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_(("case", "ipr_case")),
+        _case_personal_scope_condition(user.username),
+    ))).all())
+    case_ids = {item.id for item in cases}
+    case_nos = {item.serial_no for item in cases if item.serial_no}
+    if not case_ids and not case_nos:
+        return set()
+    conditions = []
+    if case_ids:
+        conditions.append(BusinessRecord.data["case_id"].as_integer().in_(case_ids))
+    if case_nos:
+        conditions.append(BusinessRecord.data["case_no"].as_string().in_(case_nos))
+    return set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.module == "finance", or_(*conditions),
+    ))).all())
+
+
+async def _refund_case_fee_rows(
+    identity: dict,
+    db: AsyncSession,
+    *,
+    case_no: str = "",
+    court_case_no: str = "",
+    court_name: str = "",
+    paid_from: date | None = None,
+    paid_to: date | None = None,
+    customer: str = "",
+    paid_organization: str = "",
+    refund_status: str = "",
+    refund_amount_from: float | None = None,
+    refund_amount_to: float | None = None,
+    hearing_lawyer: str = "",
+    assistant: str = "",
+    case_stages: str = "",
+    fee_types: str = "",
+    ids: set[int] | None = None,
+    pending_only: bool = True,
+    include_not_required: bool = False,
+) -> list[dict]:
+    authorized_ids = await _refund_case_fee_authorized_ids(identity, db)
+    selected_ids = ids
+    if authorized_ids is not None:
+        selected_ids = authorized_ids if selected_ids is None else selected_ids.intersection(authorized_ids)
+    rows = await _fee_query_rows(
+        identity, db, scope="company", case_no=case_no,
+        court_case_no=court_case_no, refund_amount_from=None,
+        refund_amount_to=None, customer=customer,
+        paid_organization=paid_organization, paid_from=paid_from,
+        paid_to=paid_to, hearing_lawyer=hearing_lawyer,
+        assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+        ids=selected_ids, scope_authorized_fee_ids=authorized_ids,
+    )
+    fee_ids = {int(row["id"]) for row in rows}
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance", BusinessRecord.id.in_(fee_ids),
+    ))).all()) if fee_ids else []
+    records_by_id = {item.id: item for item in records}
+    show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
+    result: list[dict] = []
+    for row in rows:
+        item = records_by_id[int(row["id"])]
+        raw_data = _legacy_case_fee_projection(item.data or {})
+        data = dict(row.get("data") or {})
+        requested = max(float(data.get("refund_requested_amount") or 0), float(raw_data.get("refund_requested_amount") or raw_data.get("refund_amount") or 0))
+        refunded = max(float(data.get("refunded_amount") or 0), float(raw_data.get("refunded_amount") or 0))
+        status_code, status_label = _refund_case_fee_status(raw_data)
+        started_at = _refund_case_fee_started_at(raw_data, status_code) or str(item.created_at or "")
+        try:
+            progress_days = max((date.today() - date.fromisoformat(started_at[:10])).days, 0)
+        except (TypeError, ValueError):
+            progress_days = 0
+        case_data = data.get("case_data") if isinstance(data.get("case_data"), dict) else {}
+        data.update({
+            "refund_requested_amount": requested if show_amount else None,
+            "refunded_amount": refunded if show_amount else None,
+            "refund_status": status_code,
+            "refund_status_label": status_label,
+            "refund_status_started_at": started_at,
+            "refund_progress_days": progress_days,
+            "plaintiff": data.get("plaintiff") or raw_data.get("plaintiff") or case_data.get("plaintiff") or row.get("customer") or "",
+            "opponent": data.get("opponent") or raw_data.get("opponent") or case_data.get("opponent") or "",
+            "court_name": data.get("court_name") or raw_data.get("court_name") or raw_data.get("court") or "",
+            "created_at": str(item.created_at or ""),
+        })
+        if pending_only and requested <= refunded:
+            continue
+        if not include_not_required and status_code == "R100":
+            continue
+        expected_status = str(refund_status or "").strip()
+        if expected_status and expected_status not in {status_code, status_label}:
+            continue
+        if court_name.strip() and court_name.strip().casefold() not in str(data.get("court_name") or "").casefold():
+            continue
+        if refund_amount_from is not None and requested < refund_amount_from:
+            continue
+        if refund_amount_to is not None and requested > refund_amount_to:
+            continue
+        row["data"] = data
+        result.append(row)
+    result.sort(key=lambda row: (str((row.get("data") or {}).get("refund_status_started_at") or ""), int(row["id"])))
+    return result
+
+
+@app.get(f"{settings.api_prefix}/finance/case-fees/refunds")
+async def query_refund_case_fees(
+    case_no: str = "", court_case_no: str = "", court_name: str = "",
+    paid_from: date | None = None, paid_to: date | None = None,
+    customer: str = "", paid_organization: str = "", refund_status: str = "",
+    refund_amount_from: float | None = None, refund_amount_to: float | None = None,
+    hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    if refund_amount_from is not None and refund_amount_to is not None and refund_amount_from > refund_amount_to:
+        raise HTTPException(status_code=422, detail="退费最小金额不能大于最大金额")
+    if paid_from and paid_to and paid_from > paid_to:
+        raise HTTPException(status_code=422, detail="付款开始日期不能晚于结束日期")
+    rows = await _refund_case_fee_rows(
+        identity, db, case_no=case_no, court_case_no=court_case_no,
+        court_name=court_name, paid_from=paid_from, paid_to=paid_to,
+        customer=customer, paid_organization=paid_organization,
+        refund_status=refund_status, refund_amount_from=refund_amount_from,
+        refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
+        assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+    )
+    start = (page - 1) * page_size
+    return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size}
+
+
+@app.get(f"{settings.api_prefix}/finance/case-fees/refunds/export")
+async def export_refund_case_fees(
+    ids: str = "", case_no: str = "", court_case_no: str = "", court_name: str = "",
+    paid_from: date | None = None, paid_to: date | None = None,
+    customer: str = "", paid_organization: str = "", refund_status: str = "",
+    refund_amount_from: float | None = None, refund_amount_to: float | None = None,
+    hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    selected_ids = set(_export_ids(ids)) if ids.strip() else None
+    rows = await _refund_case_fee_rows(
+        identity, db, case_no=case_no, court_case_no=court_case_no,
+        court_name=court_name, paid_from=paid_from, paid_to=paid_to,
+        customer=customer, paid_organization=paid_organization,
+        refund_status=refund_status, refund_amount_from=refund_amount_from,
+        refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
+        assistant=assistant, case_stages=case_stages, fee_types=fee_types, ids=selected_ids,
+    )
+    if selected_ids is not None and len(rows) != len(selected_ids):
+        raise HTTPException(status_code=422, detail="部分退费记录不存在或无权导出")
+    if not rows:
+        raise HTTPException(status_code=422, detail="当前没有可导出的退费记录")
+    headers = ["案号", "原告", "被告", "案件阶段", "律师助理", "开庭律师", "费用类型", "金额", "退费金额", "新建时间", "法院名称", "退费进度", "进度时长"]
+    keys = ["case_no", "plaintiff", "opponent", "case_stage", "assistant", "hearing_lawyer", "fee_type", "amount", "refund_requested_amount", "created_at", "court_name", "refund_status_label", "refund_progress_days"]
+    number_keys = {"amount", "refund_requested_amount", "refund_progress_days"}
+    sheet_rows = ["<Row>" + "".join(f'<Cell><Data ss:Type="String">{xml_escape(value)}</Data></Cell>' for value in headers) + "</Row>"]
+    for row in rows:
+        data = row.get("data") or {}
+        cells = []
+        for key in keys:
+            value = data.get(key)
+            cell_type = "Number" if key in number_keys and value is not None else "String"
+            cells.append(f'<Cell><Data ss:Type="{cell_type}">{xml_escape(str(value if value is not None else ""))}</Data></Cell>')
+        sheet_rows.append("<Row>" + "".join(cells) + "</Row>")
+    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="退费查询"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    disposition = f"attachment; filename=refund-case-fees.xls; filename*=UTF-8''{quote(f'退费查询-{date.today()}.xls')}"
+    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+
+
+async def _editable_refund_case_fees(ids: list[int], identity: dict, db: AsyncSession) -> list[BusinessRecord]:
+    unique_ids = set(ids)
+    rows = await _refund_case_fee_rows(identity, db, ids=unique_ids, pending_only=False, include_not_required=True)
+    if len(rows) != len(unique_ids):
+        raise HTTPException(status_code=422, detail="部分退费记录不存在或无权操作")
+    return list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance", BusinessRecord.id.in_(unique_ids),
+    ).order_by(BusinessRecord.id))).all())
+
+
+@app.post(f"{settings.api_prefix}/finance/case-fees/refunds/status")
+async def update_refund_case_fee_status(
+    body: RefundBatchStatusInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    value = str(body.status).strip()
+    code = value.upper() if value.upper() in REFUND_CASE_FEE_STATUSES else REFUND_CASE_FEE_STATUS_BY_LABEL.get(value, "")
+    if not code:
+        raise HTTPException(status_code=422, detail="退费进度无效")
+    if code == "R100" and identity.get("role") not in {"admin", "manager"}:
+        permission = await _permission_payload_for_identity(identity, db)
+        if "*" not in permission.get("action_keys", []) and "finance.refund.not_required" not in permission.get("action_keys", []):
+            raise HTTPException(status_code=403, detail="当前角色没有标记不再办理退费的权限")
+    items = await _editable_refund_case_fees(body.ids, identity, db)
+    changed_at = datetime.now().isoformat(timespec="seconds")
+    for item in items:
+        data = dict(item.data or {})
+        previous_code, previous_label = _refund_case_fee_status(data)
+        data.update({
+            "refund_status": code,
+            "refund_status_label": REFUND_CASE_FEE_STATUSES[code],
+            "refund_status_started_at": changed_at,
+            "refund_not_required": code == "R100",
+        })
+        item.data = data
+        db.add(WorkflowEvent(
+            record_id=item.id, action="标记不再办理退费" if code == "R100" else "修改退费进度",
+            from_status=previous_label, to_status=REFUND_CASE_FEE_STATUSES[code],
+            operator=identity["username"], comment=body.comment.strip(),
+        ))
+    await db.commit()
+    return {"updated": len(items), "status": code, "status_label": REFUND_CASE_FEE_STATUSES[code]}
+
+
+@app.post(f"{settings.api_prefix}/finance/case-fees/refunds/logs")
+async def add_refund_case_fee_logs(
+    body: CaseFeeRefundLogInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    items = await _editable_refund_case_fees(body.ids, identity, db)
+    labels = {"court": "法院", "received": "到账", "other": "其他"}
+    case_events: set[int] = set()
+    for item in items:
+        data = item.data or {}
+        label = labels[body.kind]
+        db.add(WorkflowEvent(
+            record_id=item.id, action=f"添加{label}退费日志", operator=identity["username"],
+            comment=body.content.strip(),
+        ))
+        try:
+            case_id = int(data.get("case_id") or 0)
+        except (TypeError, ValueError):
+            case_id = 0
+        if case_id and case_id not in case_events:
+            case_events.add(case_id)
+            db.add(WorkflowEvent(
+                record_id=case_id, action="新增案件日志", operator=identity["username"],
+                comment=f"{label}退费日志：{body.content.strip()}",
+            ))
+    await db.commit()
+    return {"created": len(items), "kind": body.kind}
 
 
 @app.get(f"{settings.api_prefix}/finance/fees/query")
@@ -23513,6 +23854,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "clue_record_id": clue_ids[0] if clue_ids else None,
         "clue_no": clue_nos[0] if clue_nos else "",
     }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
+    if phase != previous_status:
+        case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改普通案件基本信息",
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],
@@ -23564,6 +23907,8 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         "investigation_clue_id": clue_ids[0] if clue_ids else None, "investigation_clue": "、".join(clue_nos),
         "clue_record_id": clue_ids[0] if clue_ids else None, "clue_no": clue_nos[0] if clue_nos else "",
     }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
+    if phase != previous_status:
+        case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=case_record.id, action="修改仲裁案件基本信息", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else "")))
     await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
@@ -25229,6 +25574,8 @@ async def update_case_progress(case_id: int, body: CaseProgressInput, identity: 
         merged_progress["second_court_case_no"] = body.second_instance_case_no.strip()
     if body.second_court_name.strip():
         merged_progress["second_instance_court"] = body.second_court_name.strip()
+    if target != previous:
+        merged_progress["phase_changed_at"] = datetime.now().isoformat(timespec="seconds")
     case_record.status = target; case_record.data = merged_progress
     db.add(WorkflowEvent(record_id=case_record.id, action="登记案件诉讼进展", from_status=previous, to_status=target, operator=identity["username"], comment=body.comment or "根据法院案号、裁判日期等案件要素自动推进阶段"))
     await db.commit(); await db.refresh(case_record); return _record_dict(case_record)

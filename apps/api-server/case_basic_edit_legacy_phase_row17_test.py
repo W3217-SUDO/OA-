@@ -96,6 +96,7 @@ class CaseBasicEditLegacyPhaseRow17Test(unittest.IsolatedAsyncioTestCase):
                         "handling_lawyers": [IDENTITY["display_name"]],
                         "handling_lawyer_usernames": [IDENTITY["username"]],
                         "case_team_usernames": [IDENTITY["username"]],
+                        "phase_changed_at": "2025-01-01",
                     },
                 ))
             await db.commit()
@@ -146,6 +147,7 @@ class CaseBasicEditLegacyPhaseRow17Test(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(response.json()["status"], "待分配")
                 self.assertEqual(response.json()["data"]["case_creation_step"], "basic")
+                self.assertEqual(response.json()["data"]["phase_changed_at"], "2025-01-01")
 
         async with self.sessions() as db:
             records = (await db.scalars(select(BusinessRecord).where(
@@ -180,6 +182,7 @@ class CaseBasicEditLegacyPhaseRow17Test(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["status"], "文书准备")
+        self.assertNotEqual(response.json()["data"]["phase_changed_at"], "2025-01-01")
 
 
 if __name__ == "__main__":

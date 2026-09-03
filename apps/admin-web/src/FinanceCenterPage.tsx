@@ -1178,6 +1178,14 @@ export default function FinanceCenterPage({
     totals: {} as Record<string, number | null>,
   });
   const [feeQueryExportLoading, setFeeQueryExportLoading] = useState(false);
+  const [refundCaseFeeStatusOpen, setRefundCaseFeeStatusOpen] = useState(false);
+  const [refundCaseFeeStatus, setRefundCaseFeeStatus] = useState("R10");
+  const [refundCaseFeeLogKind, setRefundCaseFeeLogKind] = useState<
+    "court" | "received" | "other" | null
+  >(null);
+  const [refundCaseFeeLogContent, setRefundCaseFeeLogContent] = useState("");
+  const [refundCaseFeeMutationLoading, setRefundCaseFeeMutationLoading] =
+    useState(false);
   const [invoiceExportLoading, setInvoiceExportLoading] = useState(false);
   const [invoiceDetail, setInvoiceDetail] = useState<FinanceFlow | null>(null);
   const [refundDetail, setRefundDetail] = useState<FinanceFlow | null>(null);
@@ -1523,7 +1531,8 @@ export default function FinanceCenterPage({
     isArchiveSettlementPaymentRoute ||
     isArchiveSettlementPaidRoute ||
     isArchiveSettlementRejectedRoute;
-  const isFeeQueryRoute = initialView === "finance-fee-query";
+  const isRefundCaseFeeRoute = initialView === "finance-refund";
+  const isFeeQueryRoute = ["finance-fee-query", "finance-refund"].includes(initialView);
   const isRefundNotRequiredRoute = initialView === "finance-refund-not-required";
   const activeRefundStatus = refundStatusForRoute(initialView, refundStatusFilter);
   const generalSettlementParams = (
@@ -1687,10 +1696,28 @@ export default function FinanceCenterPage({
     page = 1,
     pageSize = feeQueryMeta.pageSize,
   ) => {
-    const refundRange = query.routeField3;
-    const paidRange = query.routeField7;
+    const refundRange = isRefundCaseFeeRoute ? query.routeField7 : query.routeField3;
+    const paidRange = isRefundCaseFeeRoute ? query.routeField3 : query.routeField7;
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
+    if (isRefundCaseFeeRoute) return {
+      case_no: query.routeField0 || "",
+      court_case_no: query.routeField1 || "",
+      court_name: query.routeField2 || "",
+      paid_from: paidRange?.[0]?.format?.("YYYY-MM-DD") || undefined,
+      paid_to: paidRange?.[1]?.format?.("YYYY-MM-DD") || undefined,
+      customer: query.routeField4 || "",
+      paid_organization: query.routeField5 || "",
+      refund_status: query.routeField6 || "",
+      refund_amount_from: refundRange?.[0] ?? undefined,
+      refund_amount_to: refundRange?.[1] ?? undefined,
+      hearing_lawyer: query.routeField8 || "",
+      assistant: query.routeField9 || "",
+      case_stages: listValue(query.routeField10),
+      fee_types: listValue(query.routeField11),
+      page,
+      page_size: pageSize,
+    };
     return {
       scope: query.dashboardScope || "company",
       unpaid_official: query.dashboardUnpaidOfficial || undefined,
@@ -1717,9 +1744,13 @@ export default function FinanceCenterPage({
     page = 1,
     pageSize = feeQueryMeta.pageSize,
   ) => {
-    const response = await api.get("/finance/fees/query", {
+    const response = await api.get(
+      isRefundCaseFeeRoute
+        ? "/finance/case-fees/refunds"
+        : "/finance/fees/query", {
       params: feeQueryParams(query, page, pageSize),
-    });
+      },
+    );
     setFeeQueryRows(response.data.items || []);
     setFeeQueryMeta({
       total: response.data.total || 0,
@@ -2243,7 +2274,7 @@ export default function FinanceCenterPage({
               data: { items: [], total: 0, totals: {}, page: 1, page_size: 10 },
             }),
         isFeeQueryRoute
-          ? api.get("/finance/fees/query", {
+          ? api.get(isRefundCaseFeeRoute ? "/finance/case-fees/refunds" : "/finance/fees/query", {
               params: feeQueryParams(dashboardFeeQuerySeed, 1, 15),
             })
           : Promise.resolve({
@@ -4242,12 +4273,13 @@ export default function FinanceCenterPage({
     "finance-archive-fee-refused",
     "finance-query",
     "finance-fee-query",
+    "finance-refund",
   ];
   const originalMode = originalFinanceRoutes.includes(initialView);
   const originalKind =
     initialView === "finance-internal-mine"
       ? "internal"
-      : ["finance-query", "finance-fee-query"].includes(initialView)
+      : ["finance-query", "finance-fee-query", "finance-refund"].includes(initialView)
         ? "fee-query"
         : "payment";
   const originalTitle: Record<string, string> = {
@@ -4296,6 +4328,7 @@ export default function FinanceCenterPage({
     "finance-archive-fee-refused": "已拒绝",
     "finance-query": "费用查询",
     "finance-fee-query": "费用查询",
+    "finance-refund": "退费查询",
   };
   const displayedOriginalTitle =
     platformMode && initialView === "finance-payment-mine"
@@ -6330,6 +6363,65 @@ export default function FinanceCenterPage({
         "付款状态",
       ],
     },
+    "finance-refund": {
+      fields: [
+        f("案件编号"),
+        f("法院案号"),
+        f("法院名称"),
+        f("付款时间", { control: "date" }),
+        f("客户名称"),
+        f("收款单位"),
+        f("退费进度", {
+          options: [
+            "准备材料",
+            "已提交法院",
+            "法院处理中",
+            "待退款到账",
+            "退款已到账",
+            "退费完成",
+          ],
+        }),
+        f("退费金额", { control: "money" }),
+        f("开庭律师"),
+        f("律师助理"),
+        f("案件阶段"),
+        f("费用类型", {
+          control: "multi",
+          pickerLabel: "选择费用类型",
+          options: [
+            "官费",
+            "一审诉讼费",
+            "二审诉讼费",
+            "再审诉讼费",
+            "公证费",
+            "保全费",
+            "执行费",
+            "代理费",
+            "其他费用",
+          ],
+        }),
+      ],
+      source: "feeQuery",
+      selectable: true,
+      clear: true,
+      export: true,
+      headers: [
+        "案号",
+        "原告",
+        "被告",
+        "案件阶段",
+        "律师助理",
+        "开庭律师",
+        "费用类型",
+        "金额",
+        "退费金额",
+        "新建时间",
+        "法院名称",
+        "退费进度",
+        "进度时长",
+        "操作",
+      ],
+    },
   };
 
   const configuredField = (spec: OriginalFieldSpec, index: number) => {
@@ -6775,7 +6867,7 @@ export default function FinanceCenterPage({
         linkedCaseData.plaintiff ||
         linkedCaseData.appellant_names,
       被告:
-        data.defendant ||
+        data.defendant || data.opponent ||
         linkedCaseData.defendant ||
         linkedCaseData.appellee_names ||
         linkedCaseData.opponent,
@@ -6818,6 +6910,7 @@ export default function FinanceCenterPage({
         row.created_at ||
         ""
       ).slice?.(0, 10),
+      新建时间: (data.created_at || row.created_at || "").slice?.(0, 10),
       内部费用类型:
         data.internal_fee_type ||
         data.commission_type ||
@@ -6831,6 +6924,8 @@ export default function FinanceCenterPage({
         ? data.refund_requested_amount
         : data.refund_amount,
       已退金额: data.refunded_amount,
+      退费进度: data.refund_status_label || data.refund_status,
+      进度时长: data.refund_progress_days,
       付款金额: isInvoiceUnissuedRoute
         ? data.paid_amount
         : tx?.amount || data.payment_amount,
@@ -6984,6 +7079,25 @@ export default function FinanceCenterPage({
         : cellValue(row, header);
     openCustomerDetail(customerName, customerNo);
   };
+  const refundCaseFeeOperation = (_: unknown, row: Fee) => (
+    <Dropdown
+      trigger={["click"]}
+      menu={{
+        items: [
+          { key: "court", label: "添加法院日志" },
+          { key: "received", label: "添加到账日志" },
+          { key: "other", label: "添加其他日志" },
+        ],
+        onClick: ({ key }) => {
+          setSelectedOriginalRows([row.id]);
+          setRefundCaseFeeLogContent("");
+          setRefundCaseFeeLogKind(key as "court" | "received" | "other");
+        },
+      }}
+    >
+      <Button type="link">日志</Button>
+    </Dropdown>
+  );
   const activeRouteConfig = routeConfigs[initialView];
   const settlementColumnWidths = [
     86, 129, 172, 69, 129, 69, 86, 69, 69, 69, 69, 69, 69, 69,
@@ -7077,6 +7191,8 @@ export default function FinanceCenterPage({
           archiveSettlementPendingOperation(_, row)
         ) : activeRouteConfig?.source === "paymentPackages" ? (
           paymentPackageOperation(_, row)
+        ) : isRefundCaseFeeRoute ? (
+          refundCaseFeeOperation(_, row)
         ) : (
           originalOperation(_, row)
         )
@@ -7762,7 +7878,10 @@ export default function FinanceCenterPage({
     }
     setFeeQueryExportLoading(true);
     try {
-      const response = await api.get("/finance/fees/query/export", {
+      const response = await api.get(
+        isRefundCaseFeeRoute
+          ? "/finance/case-fees/refunds/export"
+          : "/finance/fees/query/export", {
         params: {
           ...feeQueryParams(originalQuery, 1, feeQueryMeta.pageSize),
           page: undefined,
@@ -7771,17 +7890,72 @@ export default function FinanceCenterPage({
           ids: selectedOnly ? selectedOriginalRows.join(",") : undefined,
         },
         responseType: "blob",
-      });
+        },
+      );
       const url = URL.createObjectURL(response.data);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `费用查询-${dayjs().format("YYYY-MM-DD")}.xls`;
+      anchor.download = `${isRefundCaseFeeRoute ? "退费查询" : "费用查询"}-${dayjs().format("YYYY-MM-DD")}.xls`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "费用查询导出失败");
+      message.error(
+        error?.response?.data?.detail ||
+          (isRefundCaseFeeRoute ? "退费查询导出失败" : "费用查询导出失败"),
+      );
     } finally {
       setFeeQueryExportLoading(false);
+    }
+  };
+  const selectedRefundCaseFeeIds = () =>
+    selectedOriginalRows.map(Number).filter((value) => Number.isInteger(value));
+  const requireRefundCaseFeeSelection = () => {
+    const ids = selectedRefundCaseFeeIds();
+    if (!ids.length) message.warning("请选择需要操作的退费记录");
+    return ids;
+  };
+  const submitRefundCaseFeeStatus = async (forcedStatus?: string) => {
+    const ids = requireRefundCaseFeeSelection();
+    if (!ids.length) return;
+    const status = forcedStatus || refundCaseFeeStatus;
+    setRefundCaseFeeMutationLoading(true);
+    try {
+      await api.post("/finance/case-fees/refunds/status", {
+        ids,
+        status,
+        comment: status === "R100" ? "标记不再办理退费" : "退费查询批量修改进度",
+      });
+      message.success(status === "R100" ? "已标记不再办理退费" : "退费进度已修改");
+      setRefundCaseFeeStatusOpen(false);
+      setSelectedOriginalRows([]);
+      await loadFeeQuery(originalQuery, feeQueryMeta.page, feeQueryMeta.pageSize);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "退费操作失败");
+    } finally {
+      setRefundCaseFeeMutationLoading(false);
+    }
+  };
+  const submitRefundCaseFeeLog = async () => {
+    const ids = requireRefundCaseFeeSelection();
+    if (!ids.length || !refundCaseFeeLogKind) return;
+    if (refundCaseFeeLogContent.trim().length < 2) {
+      message.warning("请输入至少 2 个字的日志内容");
+      return;
+    }
+    setRefundCaseFeeMutationLoading(true);
+    try {
+      await api.post("/finance/case-fees/refunds/logs", {
+        ids,
+        kind: refundCaseFeeLogKind,
+        content: refundCaseFeeLogContent.trim(),
+      });
+      message.success("退费日志已保存");
+      setRefundCaseFeeLogKind(null);
+      setRefundCaseFeeLogContent("");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "退费日志保存失败");
+    } finally {
+      setRefundCaseFeeMutationLoading(false);
     }
   };
   const exportInternalDetails = async (selectedOnly: boolean) => {
@@ -10869,6 +11043,99 @@ export default function FinanceCenterPage({
                     </Dropdown>
                     <Button onClick={markCommissionPaid}>标识提成已发</Button>
                   </Space>
+                ) : isRefundCaseFeeRoute ? (
+                  <Space size={7} wrap>
+                    <Dropdown
+                      trigger={["click"]}
+                      menu={{
+                        items: [
+                          { key: "selected", label: "导出选中" },
+                          { key: "all", label: "导出全部" },
+                        ],
+                        onClick: ({ key }) => void exportFeeQuery(key === "selected"),
+                      }}
+                    >
+                      <Button loading={feeQueryExportLoading}>导出 ▾</Button>
+                    </Dropdown>
+                    <Dropdown
+                      trigger={["click"]}
+                      menu={{
+                        items: [
+                          { key: "upload", label: "上传案件文档" },
+                          {
+                            key: "new-fee",
+                            label: "新增案件费用",
+                            children: [
+                              { key: "official-fee", label: "新增官费" },
+                              { key: "agency-fee", label: "新增代理费" },
+                              { key: "other-fee", label: "新增其他费用" },
+                            ],
+                          },
+                          { key: "internal-fee", label: "新增内部费用" },
+                          {
+                            key: "batch-modify",
+                            label: "批量修改",
+                            children: [
+                              { key: "hearing_lawyer", label: "修改开庭律师" },
+                              { key: "handling_lawyers", label: "修改经办律师" },
+                              { key: "assistant", label: "修改律师助理" },
+                              { key: "case_stage", label: "修改案件阶段" },
+                            ],
+                          },
+                          { key: "authorization", label: "生成授权委托书" },
+                          { key: "law-firm-letter", label: "生成律所函" },
+                          { key: "identity", label: "生成身份证明" },
+                          { key: "settlement", label: "生成结算提成表" },
+                          { key: "tasks", label: "案件任务" },
+                          { key: "logs", label: "案件日志" },
+                        ],
+                        onClick: ({ key }) => runSettlementMoreAction(key),
+                      }}
+                    >
+                      <Button loading={settlementActionLoading}>更多操作 ▾</Button>
+                    </Dropdown>
+                    <Dropdown
+                      trigger={["click"]}
+                      menu={{
+                        items: [
+                          { key: "status", label: "退费进度修改" },
+                          { key: "court", label: "添加法院日志" },
+                          { key: "received", label: "添加到账日志" },
+                          { key: "other", label: "添加其他日志" },
+                        ],
+                        onClick: ({ key }) => {
+                          if (!requireRefundCaseFeeSelection().length) return;
+                          if (key === "status") {
+                            setRefundCaseFeeStatus("R10");
+                            setRefundCaseFeeStatusOpen(true);
+                          } else {
+                            setRefundCaseFeeLogContent("");
+                            setRefundCaseFeeLogKind(key as "court" | "received" | "other");
+                          }
+                        },
+                      }}
+                    >
+                      <Button>退费操作 ▾</Button>
+                    </Dropdown>
+                    {canManage && (
+                      <Button
+                        danger
+                        loading={refundCaseFeeMutationLoading}
+                        onClick={() => {
+                          if (!requireRefundCaseFeeSelection().length) return;
+                          Modal.confirm({
+                            title: "标记不再办理退费",
+                            content: "确认将选中费用移出待退费列表？",
+                            okText: "确认标记",
+                            cancelText: "取消",
+                            onOk: () => submitRefundCaseFeeStatus("R100"),
+                          });
+                        }}
+                      >
+                        标记不再办理退费
+                      </Button>
+                    )}
+                  </Space>
                 ) : isFeeQueryRoute ? (
                   <Space size={7}>
                     <Dropdown
@@ -12781,6 +13048,50 @@ export default function FinanceCenterPage({
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={refundCaseFeeStatusOpen}
+        title={`退费进度修改（已选 ${selectedOriginalRows.length} 条）`}
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={refundCaseFeeMutationLoading}
+        onOk={() => void submitRefundCaseFeeStatus()}
+        onCancel={() => setRefundCaseFeeStatusOpen(false)}
+      >
+        <Select
+          aria-label="案件费用退费进度"
+          value={refundCaseFeeStatus}
+          onChange={setRefundCaseFeeStatus}
+          options={[
+            ["R10", "准备材料"],
+            ["R20", "已提交法院"],
+            ["R30", "法院处理中"],
+            ["R35", "待退款到账"],
+            ["R40", "退款已到账"],
+            ["R50", "退费完成"],
+          ].map(([value, label]) => ({ value, label }))}
+          style={{ width: "100%" }}
+        />
+      </Modal>
+      <Modal
+        open={Boolean(refundCaseFeeLogKind)}
+        title={{ court: "添加法院日志", received: "添加到账日志", other: "添加其他日志" }[refundCaseFeeLogKind || "other"]}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={refundCaseFeeMutationLoading}
+        onOk={() => void submitRefundCaseFeeLog()}
+        onCancel={() => {
+          setRefundCaseFeeLogKind(null);
+          setRefundCaseFeeLogContent("");
+        }}
+      >
+        <Input.TextArea
+          aria-label="退费日志内容"
+          rows={4}
+          value={refundCaseFeeLogContent}
+          onChange={(event) => setRefundCaseFeeLogContent(event.target.value)}
+          placeholder="请输入日志内容"
+        />
       </Modal>
       <Modal
         open={refundBatchStatusOpen}

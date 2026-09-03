@@ -237,7 +237,9 @@ export const buildCaseOrdinarySearchPayload = (
 };
 
 export const ordinaryCaseQueueForView = (view = "") =>
-  String(view || "") === "case-company-supplement-evidence" ? "supplement_evidence" : "";
+  String(view || "") === "case-company-supplement-evidence" ? "supplement_evidence"
+    : String(view || "") === "case-company-supplement-opinion" ? "supplement_opinion"
+      : String(view || "") === "case-company-urgent" ? "urgent" : "";
 
 export const ordinaryCaseTypesForView = (view = "") => {
   const route = String(view || "");

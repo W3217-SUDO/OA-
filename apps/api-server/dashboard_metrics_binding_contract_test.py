@@ -65,7 +65,7 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                 BusinessRecord(
                     module="case", serial_no="AJ-DASH-URGENT", title="紧急案件",
                     customer="客户", status="新案待分配", owner="admin", department="上海",
-                    data={"priority": "紧急"},
+                    data={"phase_changed_at": str(date.today() - timedelta(days=366))},
                 ),
                 BusinessRecord(
                     module="case", serial_no="AJ-DASH-EXECUTION", title="待执行案件",
@@ -79,7 +79,12 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                 BusinessRecord(
                     module="case", serial_no="AJ-DASH-SUPPLEMENT", title="补充材料案件",
                     customer="客户", status="一审补充证据", owner="admin", department="上海",
-                    data={"case_type": "民事争议", "supplement_type": "补充意见"},
+                    data={"case_type": "民事争议"},
+                ),
+                BusinessRecord(
+                    module="case", serial_no="AJ-DASH-OPINION", title="补充代理意见案件",
+                    customer="客户", status="一审补充代理意见", owner="admin", department="上海",
+                    data={"case_type": "民事争议"},
                 ),
                 BusinessRecord(
                     module="case", serial_no="AJ-DASH-FALSE-SUPPLEMENT", title="仅文字提到补证",
@@ -100,6 +105,7 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics["execution-pending"]["value"], "1件")
         self.assertEqual(metrics["urgent-cases"]["value"], "1件")
         self.assertEqual(metrics["evidence-supplement"]["route"], "case-company-supplement-evidence")
+        self.assertEqual(metrics["opinion-supplement"]["route"], "case-company-supplement-opinion")
         self.assertEqual(metrics["execution-pending"]["route"], "case-company-execution")
         self.assertEqual(result["source"], "realtime")
 

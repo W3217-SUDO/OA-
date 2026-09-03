@@ -867,6 +867,9 @@ function replaceWithRootRoute() {
 }
 const routePageLabels: Record<string, string> = {
   "case-company-supplement-evidence": "补充证据",
+  "case-company-supplement-opinion": "补充意见",
+  "case-company-urgent": "紧急案件",
+  "finance-refund": "退费查询",
   "system-audit": "操作日志",
   "contract-approver-settings": "审批关系",
   "documents-agent": "AI 智能文档",
