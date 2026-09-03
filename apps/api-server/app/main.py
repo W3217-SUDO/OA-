@@ -1848,6 +1848,20 @@ class CaseBatchFeeInput(BaseModel):
     description: str = Field(default="", max_length=1000)
 
 
+class RefundCaseFeeBatchItemInput(BaseModel):
+    case_id: int = Field(gt=0)
+    contract_record_id: int | None = Field(default=None, gt=0)
+    fee_type: str = Field(pattern="^(官方费用|代理费|其他费用|内部费用)$")
+    amount: float
+    remark: str = Field(default="", max_length=1000)
+    deadline: date | None = None
+
+
+class RefundCaseFeeBatchCreateInput(BaseModel):
+    items: list[RefundCaseFeeBatchItemInput] = Field(min_length=1, max_length=100)
+    handler: str = Field(default="", max_length=128)
+
+
 class AttachmentBatchInput(BaseModel):
     attachment_ids: list[int] = Field(min_length=1, max_length=100)
     case_id: int | None = Field(default=None, gt=0)
@@ -22301,6 +22315,100 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
         db.add(WorkflowEvent(record_id=item.id, action="批量创建案件费用", to_status="草稿", operator=identity["username"], comment=f"{case_record.serial_no}｜{fee_option['path']}：{amount:.2f} 元"))
         db.add(WorkflowEvent(record_id=case_record.id, action="批量新增案件费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"{item.serial_no}｜{fee_option['path']}：{amount:.2f} 元"))
     await db.commit()
+    for item in created:
+        await db.refresh(item)
+    return {"created": len(created), "items": [await _record_dict_for_identity(item, identity, db) for item in created]}
+
+
+@app.post(f"{settings.api_prefix}/finance/case-fees/batch", status_code=status.HTTP_201_CREATED)
+async def create_refund_page_case_fees(
+    body: RefundCaseFeeBatchCreateInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_ids = list(dict.fromkeys(item.case_id for item in body.items))
+    visible_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        BusinessRecord.id.in_(case_ids),
+        *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    cases_by_id = {item.id: item for item in visible_cases}
+    if len(cases_by_id) != len(case_ids):
+        raise HTTPException(status_code=404, detail="存在无权访问或不存在的案件")
+
+    handler = body.handler.strip() or identity["username"]
+    if identity.get("role") == "user":
+        handler = identity["username"]
+    handler_user = await db.scalar(select(User).where(User.username == handler, User.is_active.is_(True)))
+    if not handler_user:
+        raise HTTPException(status_code=422, detail="费用经办人不存在或已停用")
+
+    created: list[BusinessRecord] = []
+    try:
+        for index, request_item in enumerate(body.items, start=1):
+            case_record = cases_by_id[request_item.case_id]
+            if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
+                raise HTTPException(status_code=409, detail=f"第 {index} 行案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
+            if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
+                raise HTTPException(status_code=403, detail=f"第 {index} 行案件 {case_record.serial_no} 无新增费用权限")
+            if request_item.amount == 0:
+                raise HTTPException(status_code=422, detail=f"第 {index} 行费用金额不能为 0")
+            if request_item.amount < 0 and request_item.fee_type != "内部费用":
+                raise HTTPException(status_code=422, detail=f"第 {index} 行只有内部费用可以使用负数冲销")
+
+            expense_scope = "内部" if request_item.fee_type == "内部费用" else "律所"
+            fee_parameter, fee_option = await _resolve_case_fee_type_master(
+                None, expense_scope, db, legacy_name="", legacy_base=request_item.fee_type,
+            )
+            fee_snapshot = _case_fee_type_snapshot(fee_parameter, fee_option)
+            contract_record = None
+            if request_item.contract_record_id:
+                contract_record = await db.get(BusinessRecord, request_item.contract_record_id)
+                if not contract_record or contract_record.module != "contract":
+                    raise HTTPException(status_code=422, detail=f"第 {index} 行关联合同不存在")
+                if contract_record.customer != case_record.customer:
+                    raise HTTPException(status_code=409, detail=f"第 {index} 行关联合同不属于当前案件客户")
+            contract_record = await _resolve_case_fee_contract(
+                case_record, contract_record, expense_scope, identity, db,
+            )
+            amount = _round_fee_amount(request_item.amount)
+            serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:6]}"
+            case_data = case_record.data or {}
+            item = BusinessRecord(
+                module="finance",
+                serial_no=serial,
+                title=f"{case_record.title}{fee_parameter.name}",
+                customer=case_record.customer,
+                status="草稿",
+                owner=handler,
+                department=case_record.department,
+                description=request_item.remark,
+                data={
+                    "amount": amount,
+                    **fee_snapshot,
+                    "expense_scope": expense_scope,
+                    "is_refund": request_item.fee_type == "内部费用" and amount < 0,
+                    "case_no": case_record.serial_no,
+                    "case_id": case_record.id,
+                    "contract_id": contract_record.id if contract_record else None,
+                    "contract_no": contract_record.serial_no if contract_record else str(case_data.get("contract_no") or ""),
+                    "deadline": str(request_item.deadline) if request_item.deadline else "",
+                    "handler": handler,
+                    "court": str(case_data.get("court_name") or case_data.get("court") or ""),
+                    "document_no": "",
+                    "payee": str(case_data.get("court_name") or case_data.get("court") or ""),
+                },
+            )
+            db.add(item)
+            await db.flush()
+            created.append(item)
+            detail = f"{case_record.serial_no}｜{fee_option['path']}：{amount:.2f} 元"
+            db.add(WorkflowEvent(record_id=item.id, action="批量创建案件费用", to_status="草稿", operator=identity["username"], comment=detail))
+            db.add(WorkflowEvent(record_id=case_record.id, action="批量新增案件费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"{item.serial_no}｜{detail}"))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     for item in created:
         await db.refresh(item)
     return {"created": len(created), "items": [await _record_dict_for_identity(item, identity, db) for item in created]}

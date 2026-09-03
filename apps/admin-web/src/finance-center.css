@@ -1836,3 +1836,53 @@
   height: auto;
   padding: 0;
 }
+.finance-refund-batch-fee-table {
+  min-width: 980px;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+}
+
+.finance-refund-batch-fee-head,
+.finance-refund-batch-fee-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(145px, 1fr) minmax(125px, .9fr) minmax(105px, .7fr) minmax(150px, 1.1fr) minmax(135px, .9fr) 76px;
+  align-items: start;
+}
+
+.finance-refund-batch-fee-head {
+  background: #f5f7fa;
+  border-bottom: 1px solid #e5e7eb;
+  color: #303133;
+  font-weight: 600;
+}
+
+.finance-refund-batch-fee-head > span,
+.finance-refund-batch-fee-row > * {
+  min-width: 0;
+  padding: 9px 8px;
+}
+
+.finance-refund-batch-fee-row {
+  border-bottom: 1px solid #edf0f3;
+}
+
+.finance-refund-batch-fee-row:last-child {
+  border-bottom: 0;
+}
+
+.finance-refund-batch-fee-row .ant-form-item {
+  margin-bottom: 0;
+}
+
+.finance-refund-batch-fee-case {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.finance-refund-batch-fee-case small {
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

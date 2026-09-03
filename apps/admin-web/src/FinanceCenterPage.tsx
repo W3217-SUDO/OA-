@@ -17,6 +17,7 @@ import {
   Popover,
   Select,
   Space,
+  Steps,
   Statistic,
   Table,
   Tabs,
@@ -1235,10 +1236,13 @@ export default function FinanceCenterPage({
   >(null);
   const [settlementContext, setSettlementContext] = useState<{
     mode: "tasks" | "logs";
-    caseRecord: Fee;
+    caseRecords: Fee[];
   } | null>(null);
   const [settlementContextRows, setSettlementContextRows] = useState<any[]>([]);
   const [settlementActionLoading, setSettlementActionLoading] = useState(false);
+  const [refundBatchFeeOpen, setRefundBatchFeeOpen] = useState(false);
+  const [refundBatchFeeStep, setRefundBatchFeeStep] = useState(0);
+  const [refundBatchFeeLoading, setRefundBatchFeeLoading] = useState(false);
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeEditTarget, setFeeEditTarget] = useState<Fee | null>(null);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
@@ -1480,6 +1484,7 @@ export default function FinanceCenterPage({
   const [incomingForm] = Form.useForm();
   const [claimForm] = Form.useForm();
   const [settlementBatchForm] = Form.useForm();
+  const [refundBatchFeeForm] = Form.useForm();
   const watchedFeeType = Form.useWatch("fee_type", feeForm);
   const [feeTypeOverride, setFeeTypeOverride] = useState("");
   const selectedFeeType = watchedFeeType || feeTypeOverride;
@@ -8550,17 +8555,23 @@ export default function FinanceCenterPage({
     ];
   };
   const openSettlementContext = async (mode: "tasks" | "logs") => {
-    const linked = selectedSettlementCase();
-    if (!linked) return;
+    const linked = selectedSettlementCases();
+    if (!linked.length) return;
     setSettlementActionLoading(true);
     try {
       if (mode === "tasks") {
-        setSettlementContextRows(await loadSettlementContextTasks(linked.id));
+        const groups = await Promise.all(linked.map(async (item) =>
+          (await loadSettlementContextTasks(item.id)).map((row: any) => ({ ...row, source_case_no: item.serial_no })),
+        ));
+        setSettlementContextRows(groups.flat());
       } else {
-        const { data } = await api.get(`/records/${linked.id}/history`);
-        setSettlementContextRows(data.items || []);
+        const groups = await Promise.all(linked.map(async (item) => {
+          const { data } = await api.get(`/records/${item.id}/history`);
+          return (data.items || []).map((row: any) => ({ ...row, source_case_no: item.serial_no }));
+        }));
+        setSettlementContextRows(groups.flat());
       }
-      setSettlementContext({ mode, caseRecord: linked });
+      setSettlementContext({ mode, caseRecords: linked });
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件信息加载失败");
     } finally {
@@ -8570,8 +8581,8 @@ export default function FinanceCenterPage({
   const generateSettlementDocument = async (
     key: "authorization" | "law-firm-letter" | "identity" | "settlement",
   ) => {
-    const linked = selectedSettlementCase();
-    if (!linked) return;
+    const linked = selectedSettlementCases();
+    if (!linked.length) return;
     const specs = {
       authorization: {
         name: "授权委托书",
@@ -8612,25 +8623,27 @@ export default function FinanceCenterPage({
           })
         ).data;
       }
-      const title = `${spec.name}-${linked.serial_no}`;
-      const generated = await api.post("/agent/documents", {
-        template_id: template.id,
-        record_id: linked.id,
-        title,
-        instruction:
-          "请依据案件现有资料生成；不得虚构事实，缺失信息标记为【待补充】。",
-      });
-      const response = await api.get(
-        `/agent/documents/${generated.data.id}/download`,
-        { responseType: "blob" },
-      );
-      const url = URL.createObjectURL(response.data);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${title}.docx`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-      message.success(`${spec.name}已生成并下载`);
+      for (const caseRecord of linked) {
+        const title = `${spec.name}-${caseRecord.serial_no}`;
+        const generated = await api.post("/agent/documents", {
+          template_id: template.id,
+          record_id: caseRecord.id,
+          title,
+          instruction:
+            "请依据案件现有资料生成；不得虚构事实，缺失信息标记为【待补充】。",
+        });
+        const response = await api.get(
+          `/agent/documents/${generated.data.id}/download`,
+          { responseType: "blob" },
+        );
+        const url = URL.createObjectURL(response.data);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${title}.docx`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+      message.success(`${spec.name}已为 ${linked.length} 个案件生成并下载`);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "文书生成失败");
     } finally {
@@ -8675,6 +8688,75 @@ export default function FinanceCenterPage({
       setSettlementActionLoading(false);
     }
   };
+  const openRefundBatchFee = (feeType: string) => {
+    const linked = selectedSettlementCases();
+    if (!linked.length) return;
+    const deadline = dayjs().add(5, "day");
+    refundBatchFeeForm.setFieldsValue({
+      handler: currentUser.username,
+      items: linked.map((item) => ({
+        case_id: item.id,
+        case_no: item.serial_no,
+        customer: item.customer,
+        contract_record_id: Number(item.data?.contract_record_id || item.data?.contract_id || 0) || undefined,
+        fee_type: feeType,
+        amount: undefined,
+        remark: "",
+        deadline,
+      })),
+    });
+    setRefundBatchFeeStep(0);
+    setRefundBatchFeeOpen(true);
+  };
+  const closeRefundBatchFee = () => {
+    setRefundBatchFeeOpen(false);
+    setRefundBatchFeeStep(0);
+    refundBatchFeeForm.resetFields();
+  };
+  const copyFirstRefundFeeRow = () => {
+    const items = refundBatchFeeForm.getFieldValue("items") || [];
+    if (items.length < 2) return;
+    const first = items[0] || {};
+    refundBatchFeeForm.setFieldValue(
+      "items",
+      items.map((item: Record<string, any>, index: number) =>
+        index === 0
+          ? item
+          : {
+              ...item,
+              fee_type: first.fee_type,
+              amount: first.amount,
+              remark: first.remark,
+              deadline: first.deadline,
+            },
+      ),
+    );
+  };
+  const submitRefundBatchFee = async () => {
+    const values = await refundBatchFeeForm.validateFields();
+    setRefundBatchFeeLoading(true);
+    try {
+      const { data } = await api.post("/finance/case-fees/batch", {
+        handler: values.handler,
+        items: values.items.map((item: Record<string, any>) => ({
+          case_id: item.case_id,
+          contract_record_id: item.contract_record_id || null,
+          fee_type: item.fee_type,
+          amount: item.amount,
+          remark: item.remark || "",
+          deadline: formatRequiredDate(item.deadline, "截止日期"),
+        })),
+      });
+      message.success(`已创建 ${data.created} 条案件费用草稿`);
+      closeRefundBatchFee();
+      setSelectedOriginalRows([]);
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "批量新增费用失败");
+    } finally {
+      setRefundBatchFeeLoading(false);
+    }
+  };
   const runSettlementMoreAction = (key: string) => {
     const feeTypeByKey: Record<string, string> = {
       "official-fee": "官方费用",
@@ -8683,18 +8765,7 @@ export default function FinanceCenterPage({
       "internal-fee": "内部费用",
     };
     if (feeTypeByKey[key]) {
-      const linked = selectedSettlementCase();
-      if (!linked) return;
-      feeForm.resetFields();
-      feeForm.setFieldsValue({
-        fee_type: feeTypeByKey[key],
-        case_no: linked.serial_no,
-        customer: linked.customer,
-        handler: currentUser.username,
-        commission_details: [],
-      });
-      setFeeTypeOverride(feeTypeByKey[key]);
-      setFeeOpen(true);
+      openRefundBatchFee(feeTypeByKey[key]);
       return;
     }
     if (key === "upload") {
@@ -11911,6 +11982,110 @@ export default function FinanceCenterPage({
           dataSource={(initialView === "finance-payment-audit" ? paymentReviewRows : feeReviewRows) as any}
         />
       </Drawer>
+      <Drawer
+        open={refundBatchFeeOpen}
+        title="新增费用"
+        width="min(1180px, 94vw)"
+        onClose={closeRefundBatchFee}
+        destroyOnHidden
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button onClick={closeRefundBatchFee}>取消</Button>
+            {refundBatchFeeStep === 1 && <Button onClick={() => setRefundBatchFeeStep(0)}>上一步</Button>}
+            {refundBatchFeeStep === 0 ? (
+              <Button type="primary" onClick={async () => {
+                await refundBatchFeeForm.validateFields();
+                setRefundBatchFeeStep(1);
+              }}>下一步</Button>
+            ) : (
+              <Button type="primary" loading={refundBatchFeeLoading} onClick={() => void submitRefundBatchFee()}>
+                保存草稿
+              </Button>
+            )}
+          </div>
+        }
+      >
+        <Steps
+          size="small"
+          current={refundBatchFeeStep}
+          items={[{ title: "新增费用" }, { title: "申请付款" }]}
+          style={{ marginBottom: 16 }}
+        />
+        {refundBatchFeeStep === 0 ? (
+          <>
+            <Alert
+              type="info"
+              showIcon
+              title="每个案件可分别选择合同、费用类型、金额、备注和截止日期；任何一行校验失败时整批不会写入。"
+              style={{ marginBottom: 12 }}
+              action={<Button size="small" onClick={copyFirstRefundFeeRow}>同步首行到全部</Button>}
+            />
+            <Form form={refundBatchFeeForm} layout="vertical">
+              <Form.Item name="handler" hidden><Input /></Form.Item>
+              <Form.List name="items">
+                {(fields, { add, remove }) => (
+                  <div className="finance-refund-batch-fee-table">
+                    <div className="finance-refund-batch-fee-head">
+                      <span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span>
+                    </div>
+                    {fields.map((field) => {
+                      const row = refundBatchFeeForm.getFieldValue(["items", field.name]) || {};
+                      const contractOptions = contracts
+                        .filter((contract) => contract.customer === row.customer)
+                        .map((contract) => ({ value: contract.id, label: contract.serial_no }));
+                      return (
+                        <div className="finance-refund-batch-fee-row" key={field.key}>
+                          <div className="finance-refund-batch-fee-case">
+                            <strong>{row.case_no}</strong><small>{row.customer}</small>
+                            <Form.Item name={[field.name, "case_id"]} hidden><Input /></Form.Item>
+                            <Form.Item name={[field.name, "case_no"]} hidden><Input /></Form.Item>
+                            <Form.Item name={[field.name, "customer"]} hidden><Input /></Form.Item>
+                          </div>
+                          <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}>
+                            <Select showSearch optionFilterProp="label" options={contractOptions} placeholder="请选择" />
+                          </Form.Item>
+                          <Form.Item name={[field.name, "fee_type"]} rules={[{ required: true }]}>
+                            <Select options={feeTypes.map((value) => ({ value, label: value }))} />
+                          </Form.Item>
+                          <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }, { validator: (_, value) => value === 0 ? Promise.reject(new Error("金额不能为0")) : Promise.resolve() }]}>
+                            <InputNumber precision={2} style={{ width: "100%" }} />
+                          </Form.Item>
+                          <Form.Item name={[field.name, "remark"]}><Input /></Form.Item>
+                          <Form.Item name={[field.name, "deadline"]} rules={[{ required: true, message: "请选择截止日期" }]}>
+                            <DatePicker style={{ width: "100%" }} />
+                          </Form.Item>
+                          <Space size={2}>
+                            <Button type="text" aria-label="复制费用行" icon={<PlusOutlined />} onClick={() => add({ ...row, amount: undefined, remark: "" }, field.name + 1)} />
+                            <Button type="text" danger aria-label="删除费用行" icon={<MinusCircleOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} />
+                          </Space>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Form.List>
+            </Form>
+          </>
+        ) : (
+          <>
+            <Alert type="warning" showIcon title="确认后将创建费用草稿。请在费用列表提交付款申请，系统仍按合同分别生成申请单。" style={{ marginBottom: 12 }} />
+            <Table<Record<string, any>>
+              rowKey={(_row, index) => `${_row.case_id}-${index}`}
+              size="small"
+              pagination={false}
+              dataSource={refundBatchFeeForm.getFieldValue("items") || []}
+              columns={[
+                { title: "案号", dataIndex: "case_no" },
+                { title: "合同号", dataIndex: "contract_record_id", render: (value) => contracts.find((item) => item.id === value)?.serial_no || "—" },
+                { title: "费用类型", dataIndex: "fee_type" },
+                { title: "金额", dataIndex: "amount", render: money },
+                { title: "备注", dataIndex: "remark" },
+                { title: "截止日期", dataIndex: "deadline", render: (value) => value?.format?.("YYYY-MM-DD") || "—" },
+              ]}
+            />
+          </>
+        )}
+      </Drawer>
       <Modal
         open={Boolean(settlementBatchAction)}
         title={
@@ -11960,7 +12135,7 @@ export default function FinanceCenterPage({
       <Modal
         width={900}
         open={Boolean(settlementContext)}
-        title={`${settlementContext?.caseRecord.serial_no || ""}｜${settlementContext?.mode === "tasks" ? "案件任务" : "案件日志"}`}
+        title={`已选 ${settlementContext?.caseRecords.length || 0} 个案件｜${settlementContext?.mode === "tasks" ? "案件任务" : "案件日志"}`}
         footer={
           <Button onClick={() => setSettlementContext(null)}>关闭</Button>
         }
@@ -11980,6 +12155,7 @@ export default function FinanceCenterPage({
           columns={
             settlementContext?.mode === "tasks"
               ? [
+                  { title: "案号", dataIndex: "source_case_no", width: 150 },
                   { title: "任务编号", dataIndex: "serial_no", width: 150 },
                   { title: "任务名称", dataIndex: "title", width: 200 },
                   { title: "状态", dataIndex: "status", width: 90 },
@@ -11987,6 +12163,7 @@ export default function FinanceCenterPage({
                   { title: "截止日期", dataIndex: "deadline", width: 120 },
                 ]
               : [
+                  { title: "案号", dataIndex: "source_case_no", width: 150 },
                   { title: "操作", dataIndex: "action", width: 130 },
                   {
                     title: "状态变化",
