@@ -9,7 +9,10 @@ const source = readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url)
 test("document toolbar exposes every legacy generation operation", () => {
   assert.deepEqual(getLegacyCaseDocumentGenerationItems().map(([, label]) => label), [
     "生成归档封面", "生成授权委托书", "生成一审所函(我方原告)", "生成一审所函(我方被告)",
-    "生成二审所函(我方上诉)", "生成二审所函(对方上诉)", "生成执行所函", "生成身份证明",
+    "生成二审所函(我方上诉)", "生成二审所函(对方上诉)", "生成执行所函",
+    "生成广东版授权委托书", "生成广东版一审上诉人律师函", "生成广东版一审被上诉人律师函",
+    "生成广东版二审上诉人律师函", "生成广东版二审被上诉人律师函", "生成广东版执行律师函",
+    "生成身份证明",
     "生成结算提成表", "生成代收代付赔偿款申请单",
   ]);
   assert.match(source, />生成操作<\/Button>/);

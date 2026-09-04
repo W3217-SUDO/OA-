@@ -12,11 +12,20 @@ test("9.1 row 2 keeps the complete generation menu outside the scrolling case de
   assert.match(cssSource, /\.case-document-generation-popup\{[^}]*z-index:2400!important[^}]*max-height:calc\(100vh - 96px\)[^}]*overflow-y:auto/);
 });
 
-test("9.1 row 2 preserves every legacy generation action from first to last", async () => {
+test("9.1 row 2 preserves every legacy generation action, including Guangdong national-standard letters", async () => {
   const { getLegacyCaseDocumentGenerationItems } = await import("./src/caseDocumentGenerationActions.mjs");
-  const labels = getLegacyCaseDocumentGenerationItems().map(([, label]) => label);
+  const items = getLegacyCaseDocumentGenerationItems();
+  const labels = items.map(([, label]) => label);
 
-  assert.equal(labels.length, 10);
+  assert.equal(labels.length, 16);
   assert.equal(labels[0], "生成归档封面");
   assert.equal(labels.at(-1), "生成代收代付赔偿款申请单");
+  assert.deepEqual(items.slice(7, 13), [
+    ["gd-authorization-letter", "生成广东版授权委托书"],
+    ["gd-first-instance-appellant-lawyer-letter", "生成广东版一审上诉人律师函"],
+    ["gd-first-instance-appellee-lawyer-letter", "生成广东版一审被上诉人律师函"],
+    ["gd-second-instance-appellant-lawyer-letter", "生成广东版二审上诉人律师函"],
+    ["gd-second-instance-appellee-lawyer-letter", "生成广东版二审被上诉人律师函"],
+    ["gd-execution-lawyer-letter", "生成广东版执行律师函"],
+  ]);
 });
