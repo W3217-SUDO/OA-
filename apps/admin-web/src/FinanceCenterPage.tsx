@@ -990,6 +990,7 @@ export default function FinanceCenterPage({
   const [customers, setCustomers] = useState<Fee[]>([]);
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [incoming, setIncoming] = useState<IncomingPayment[]>([]);
+  const [selectedIncomingRows, setSelectedIncomingRows] = useState<number[]>([]);
   const [pendingSettlements, setPendingSettlements] = useState<Fee[]>([]);
   const [generalSettlementRows, setGeneralSettlementRows] = useState<Fee[]>([]);
   const [generalSettlementMeta, setGeneralSettlementMeta] = useState({
@@ -2343,6 +2344,7 @@ export default function FinanceCenterPage({
       setCustomers(customerRes.data.items);
       setReceivables(receivableRes.data.items);
       setIncoming(incomingRes.data.items);
+      setSelectedIncomingRows([]);
       setTransactions(txRes.data.items);
       setReconciliations(recRes.data.items);
       setSummary(sumRes.data);
@@ -11453,6 +11455,23 @@ export default function FinanceCenterPage({
                   <Button icon={<ReloadOutlined />} onClick={load}>
                     刷新
                   </Button>
+                  {tab === "receipts" && (
+                    <Button
+                      disabled={selectedIncomingRows.length !== 1}
+                      onClick={() => {
+                        const selected = incoming.find(
+                          (row) => row.id === selectedIncomingRows[0],
+                        );
+                        if (!selected) {
+                          message.warning("请选择一笔回款记录");
+                          return;
+                        }
+                        setIncomingAllocationTarget(selected);
+                      }}
+                    >
+                      已分配记录
+                    </Button>
+                  )}
                   {["fees", "audit"].includes(tab) && (
                     <Button
                       type="primary"
@@ -11669,6 +11688,10 @@ export default function FinanceCenterPage({
                   columns={incomingColumns}
                   dataSource={shownIncoming}
                   scroll={{ x: 1700 }}
+                  rowSelection={{
+                    selectedRowKeys: selectedIncomingRows,
+                    onChange: (keys) => setSelectedIncomingRows(keys as number[]),
+                  }}
                 />
               ) : tab === "invoices" ? (
                 <Table
