@@ -582,6 +582,18 @@ const paymentPackageRequestParams = (
   page: number,
   pageSize: number,
 ) => {
+  if (initialView === "finance-payment-package-manage") {
+    const paymentRange = query.routeField3 || [];
+    return {
+      page,
+      page_size: pageSize,
+      ...(String(query.routeField0 || "").trim() ? { package_no: String(query.routeField0).trim() } : {}),
+      ...(String(query.routeField1 || "").trim() ? { status: String(query.routeField1).trim() } : {}),
+      ...(String(query.routeField2 || "").trim() ? { payee: String(query.routeField2).trim() } : {}),
+      ...(paymentRange?.[0] ? { payment_date_from: paymentRange[0].format("YYYY-MM-DD") } : {}),
+      ...(paymentRange?.[1] ? { payment_date_to: paymentRange[1].format("YYYY-MM-DD") } : {}),
+    };
+  }
   const pageId = initialView === "finance-internal-writeoff" ? "5001003006" : "";
   const status = String(
     initialView === "finance-internal-writeoff"
@@ -1220,6 +1232,12 @@ export default function FinanceCenterPage({
   const [paymentPackageDetail, setPaymentPackageDetail] = useState<Fee | null>(
     null,
   );
+  const [paymentPackageEditTarget, setPaymentPackageEditTarget] =
+    useState<Fee | null>(null);
+  const [paymentPackageEditorOpen, setPaymentPackageEditorOpen] = useState(false);
+  const [paymentPackageSelectedFeeIds, setPaymentPackageSelectedFeeIds] =
+    useState<number[]>([]);
+  const [paymentPackageCandidates, setPaymentPackageCandidates] = useState<Fee[]>([]);
   const [paymentPackageWriteoffTarget, setPaymentPackageWriteoffTarget] =
     useState<Fee | null>(null);
   const [feeReviewTargets, setFeeReviewTargets] = useState<Fee[]>([]);
@@ -1493,6 +1511,7 @@ export default function FinanceCenterPage({
   const [voucherForm] = Form.useForm();
   const [writeoffForm] = Form.useForm();
   const [paymentPackageWriteoffForm] = Form.useForm();
+  const [paymentPackageEditForm] = Form.useForm();
   const [recordFileForm] = Form.useForm();
   const [incomingForm] = Form.useForm();
   const [claimForm] = Form.useForm();
@@ -2547,6 +2566,10 @@ export default function FinanceCenterPage({
     setPaymentPrintPreview(null);
     setPaymentPackagePreview(null);
     setPaymentPackageDetail(null);
+    setPaymentPackageEditTarget(null);
+    setPaymentPackageEditorOpen(false);
+    setPaymentPackageSelectedFeeIds([]);
+    paymentPackageEditForm.resetFields();
     setPaymentPackageWriteoffTarget(null);
     setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
@@ -4274,6 +4297,7 @@ export default function FinanceCenterPage({
     "finance-payment-audit",
     "finance-payment-waiting",
     "finance-payment-print",
+    "finance-payment-package-manage",
     "finance-payment-writeoff",
     "finance-payment-query",
     "finance-internal-mine",
@@ -4328,6 +4352,7 @@ export default function FinanceCenterPage({
     "finance-payment-audit": "请款单审批",
     "finance-payment-waiting": "请款单列表",
     "finance-payment-print": "请款单列表",
+    "finance-payment-package-manage": "付款打包-管理",
     "finance-payment-writeoff": "请款单列表",
     "finance-payment-query": "请款单列表",
     "finance-refund-not-required": "不再办理退费案件",
@@ -5107,7 +5132,23 @@ export default function FinanceCenterPage({
     </Space>
   );
   const paymentPackageOperation = (_: unknown, row: Fee) =>
-    initialView === "finance-internal-done" ? (
+    initialView === "finance-payment-package-manage" ? (
+      <Space size={0}>
+        <Button type="link" onClick={() => void openPaymentPackageDetail(row)}>
+          查看
+        </Button>
+        {row.status === "待核销" && (
+          <Button type="link" onClick={() => openPaymentPackageEditor(row)}>
+            编辑
+          </Button>
+        )}
+        {role === "admin" && (
+          <Button type="link" danger onClick={() => deletePaymentPackage(row)}>
+            删除
+          </Button>
+        )}
+      </Space>
+    ) : initialView === "finance-internal-done" ? (
       <Button
         type="link"
         loading={paymentPackageLoading}
@@ -5790,6 +5831,18 @@ export default function FinanceCenterPage({
         "客户管理人",
         "交款人",
       ],
+    },
+    "finance-payment-package-manage": {
+      fields: [
+        f("付款包号码"),
+        f("付款状态", { options: ["待核销", "已付款"] }),
+        f("收款单位"),
+        f("付款日期", { control: "date" }),
+      ],
+      source: "paymentPackages",
+      clear: true,
+      headers: ["操作", "付款包号码", "付款状态", "收款单位", "付款总金额", "付款日期", "制单人", "备注"],
+      note: "付款包号不可修改；仅待核销付款包可调整费用构成和备注。",
     },
     "finance-receipts-icbc": {
       fields: bankFields,
@@ -7300,7 +7353,7 @@ export default function FinanceCenterPage({
         cellValue(row, header) ? <Button type="link" onClick={() => openCaseDetail(cellValue(row, header))}>{cellValue(row, header)}</Button> : "—"
       ) : activeRouteConfig?.source === "paymentPackages" &&
         header === "付款包号码" ? (
-        <Button type="link" onClick={() => setPaymentPackageDetail(row)}>
+        <Button type="link" onClick={() => void openPaymentPackageDetail(row)}>
           {cellValue(row, header)}
         </Button>
       ) : (
@@ -7679,6 +7732,91 @@ export default function FinanceCenterPage({
       financeActionGates.paymentPackage.leave();
       setPaymentPackageLoading(false);
     }
+  };
+  const openPaymentPackageDetail = async (row: Fee) => {
+    try {
+      const { data } = await api.get(`/finance/payment-packages/${row.id}`);
+      setPaymentPackageDetail(data);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "付款包详情加载失败");
+    }
+  };
+  const openPaymentPackageEditor = (row?: Fee) => {
+    const target = row || null;
+    const currentIds = target?.data?.fee_ids || [];
+    setPaymentPackageEditTarget(target);
+    setPaymentPackageEditorOpen(true);
+    setPaymentPackageSelectedFeeIds(currentIds.map((id: any) => Number(id)));
+    paymentPackageEditForm.setFieldsValue({ comment: target?.data?.comment || target?.description || "" });
+    void api.get("/finance/payment-packages/candidates", { params: target ? { package_id: target.id } : {} })
+      .then(({ data }) => setPaymentPackageCandidates(data.items || []))
+      .catch((error: any) => message.error(error?.response?.data?.detail || "付款包候选费用加载失败"));
+  };
+  const submitPaymentPackageEditor = async () => {
+    if (!paymentPackageSelectedFeeIds.length) {
+      message.warning("请至少选择一笔内部费用");
+      return;
+    }
+    const values = await paymentPackageEditForm.validateFields();
+    if (!financeActionGates.paymentPackage.tryEnter()) {
+      message.info("操作正在提交，请勿重复点击");
+      return;
+    }
+    setPaymentPackageLoading(true);
+    try {
+      const isEditingPaymentPackage = Boolean(paymentPackageEditTarget);
+      if (isEditingPaymentPackage) {
+        await api.put(`/finance/payment-packages/${paymentPackageEditTarget!.id}`, {
+          fee_ids: paymentPackageSelectedFeeIds,
+          comment: values.comment || "",
+        });
+        message.success("付款包已更新");
+      } else {
+        const { data: preview } = await api.post("/finance/payment-packages/preview", {
+          fee_ids: paymentPackageSelectedFeeIds,
+        });
+        await api.post("/finance/payment-packages", {
+          fee_ids: paymentPackageSelectedFeeIds,
+          package_no: preview.package_no,
+          comment: values.comment || "",
+        });
+        message.success("付款包已新增");
+      }
+      setPaymentPackageEditTarget(null);
+      setPaymentPackageEditorOpen(false);
+      setPaymentPackageSelectedFeeIds([]);
+      paymentPackageEditForm.resetFields();
+      await loadPaymentPackages(
+        originalQuery,
+        isEditingPaymentPackage ? paymentPackageMeta.page : 1,
+        paymentPackageMeta.pageSize,
+      );
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "付款包保存失败");
+    } finally {
+      financeActionGates.paymentPackage.leave();
+      setPaymentPackageLoading(false);
+    }
+  };
+  const deletePaymentPackage = (row: Fee) => {
+    Modal.confirm({
+      title: `删除付款包：${row.serial_no}`,
+      content: "仅待核销付款包可以删除；已核销付款包必须通过受控冲正流程处理。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.delete(`/finance/payment-packages/${row.id}`);
+          message.success("付款包已删除，关联费用已恢复待付款");
+          const nextPage = paymentPackages.length === 1 && paymentPackageMeta.page > 1
+            ? paymentPackageMeta.page - 1 : paymentPackageMeta.page;
+          await loadPaymentPackages(originalQuery, nextPage, paymentPackageMeta.pageSize);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "付款包删除失败");
+        }
+      },
+    });
   };
   const configuredDefaults = Object.fromEntries(
     (activeRouteConfig?.fields || [])
@@ -9788,6 +9926,16 @@ export default function FinanceCenterPage({
                 >
                   刷新
                 </Button>
+              )}
+              {initialView === "finance-payment-package-manage" && (
+                <>
+                  <Button icon={<ReloadOutlined />} onClick={() => void loadPaymentPackages(originalQuery, paymentPackageMeta.page, paymentPackageMeta.pageSize)}>
+                    刷新
+                  </Button>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => openPaymentPackageEditor()}>
+                    新增付款包
+                  </Button>
+                </>
               )}
               {activeRouteConfig?.upload && (
                 <Button
@@ -12864,6 +13012,50 @@ export default function FinanceCenterPage({
           </Form.Item>
           <Form.Item label="请输入付款备注" name="remark">
             <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        width={860}
+        open={paymentPackageEditorOpen}
+        title={paymentPackageEditTarget ? `编辑付款包：${paymentPackageEditTarget.serial_no}` : "新增付款包"}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={paymentPackageLoading}
+        onOk={() => void submitPaymentPackageEditor()}
+        onCancel={() => {
+          setPaymentPackageEditTarget(null);
+          setPaymentPackageEditorOpen(false);
+          setPaymentPackageSelectedFeeIds([]);
+          paymentPackageEditForm.resetFields();
+        }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="请选择同一收款人的已审批内部费用"
+          description="编辑后会重新计算金额，并同步更新所选费用。已核销付款包不可编辑。"
+          style={{ marginBottom: 12 }}
+        />
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={{ pageSize: 6, size: "small" }}
+          dataSource={paymentPackageCandidates}
+          rowSelection={{
+            selectedRowKeys: paymentPackageSelectedFeeIds,
+            onChange: (keys) => setPaymentPackageSelectedFeeIds(keys.map(Number)),
+          }}
+          columns={[
+            { title: "请款单号", dataIndex: "serial_no", width: 180 },
+            { title: "收款人", render: (_: unknown, fee: Fee) => fee.data?.payee || fee.data?.applicant || fee.owner || "—" },
+            { title: "金额", render: (_: unknown, fee: Fee) => money(Number(fee.data?.actual_commission ?? fee.data?.amount ?? 0)) },
+            { title: "状态", dataIndex: "status", width: 100 },
+          ]}
+        />
+        <Form form={paymentPackageEditForm} layout="vertical" style={{ marginTop: 12 }}>
+          <Form.Item label="备注" name="comment" rules={[{ max: 500, message: "备注不能超过500个字符" }]}>
+            <Input.TextArea rows={3} placeholder="可选，记录本次付款打包说明" />
           </Form.Item>
         </Form>
       </Modal>

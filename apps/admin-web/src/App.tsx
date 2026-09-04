@@ -427,6 +427,7 @@ const menuItems: NavItem[] = [
           { key: "finance-payment-audit", label: "请款单审批" },
           { key: "finance-payment-waiting", label: "待付款列表" },
           { key: "finance-payment-print", label: "付款单打印" },
+          { key: "finance-payment-package-manage", label: "付款打包-管理" },
           { key: "finance-payment-writeoff", label: "待核销列表" },
           { key: "finance-payment-query", label: "付款单查询" },
         ],
