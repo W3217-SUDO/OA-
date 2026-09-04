@@ -572,7 +572,7 @@ export default function CustomerCenterPage({
       );
     return list;
   }, [allRows, initialView, profile, customerType, managerKeyword]);
-  const startCreate = () => {
+  const startCreate = (customerType = "客户") => {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({
@@ -581,7 +581,7 @@ export default function CustomerCenterPage({
       owner: profile.username || "admin",
       customer_managers: directoryOptions.some((option) => option.value === profile.username) ? [profile.username] : [],
       department: profile.department || "上海分所",
-      customer_type: "客户",
+      customer_type: customerType,
       level: "立案客户",
       is_shared: "否",
       is_assisted: "否",
@@ -1986,7 +1986,24 @@ export default function CustomerCenterPage({
         </Card>
       )}
       {initialView !== "customer-new" && !(isReadOnlyCustomerList && detailPageOpen) && (
-      <Card className="panel customer-list-panel" title="客户列表">
+      <Card
+        className="panel customer-list-panel"
+        title="客户列表"
+        extra={(
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                { key: "客户", label: "新建非诉客户" },
+                { key: "当事人", label: "新建诉讼客户" },
+              ],
+              onClick: ({ key }) => startCreate(key),
+            }}
+          >
+            <Button type="primary" icon={<PlusOutlined />}>新建客户</Button>
+          </Dropdown>
+        )}
+      >
         <div className="customer-query">
           <label>客户名称</label>
           <Input
