@@ -204,7 +204,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("clue-company", "investigation", "公司调查线索", "", 73), ("clue-company-draft", "clue-company", "待提交线索", "", 1), ("clue-company-pending", "clue-company", "待审核线索", "", 2), ("clue-company-collect", "clue-company", "待取证线索", "", 3), ("clue-company-collected", "clue-company", "已取证线索", "", 4), ("clue-company-refused", "clue-company", "已拒绝线索", "", 5), ("clue-company-no-fee", "clue-company", "未申请费用线索", "", 6), ("clue-company-fee", "clue-company", "已申请费用线索", "", 7),
     ("notary-import-storage", "notary", "公证书号仓库信息导入", "", 1), ("notary-import-files", "notary", "公证书文件导入", "", 2), ("notary-import-invoices", "notary", "发票文件导入", "", 3), ("notary-query-files", "notary", "公证文件查询", "", 4),
     ("finance-receipts", "finance", "回款管理", "", 1), ("finance-receipts-icbc", "finance-receipts", "回款(工行)", "", 1), ("finance-receipts-citic", "finance-receipts", "回款(中信)", "", 2), ("finance-receipts-boc", "finance-receipts", "回款(中行)", "", 3), ("finance-receipts-new", "finance-receipts", "新增回款", "", 4), ("finance-receipts-manage", "finance-receipts", "回款管理", "", 5), ("finance-receipts-claim", "finance-receipts", "回款领取", "", 6), ("finance-receipts-pending", "finance-receipts", "待分配回款", "", 7), ("finance-receipts-allocated", "finance-receipts", "已分配回款", "", 8), ("finance-receipts-query", "finance-receipts", "到账查询", "", 9),
-    ("finance-payment", "finance", "付款管理", "", 2), ("finance-payment-mine", "finance-payment", "我的请款单", "", 1), ("finance-payment-audit", "finance-payment", "请款单审批", "", 2), ("finance-payment-waiting", "finance-payment", "待付款列表", "", 3), ("finance-payment-print", "finance-payment", "付款单打印", "", 4), ("finance-payment-writeoff", "finance-payment", "待核销列表", "", 5), ("finance-payment-query", "finance-payment", "付款单查询", "", 6),
+    ("finance-payment", "finance", "付款管理", "", 2), ("finance-payment-mine", "finance-payment", "我的请款单", "", 1), ("finance-payment-audit", "finance-payment", "请款单审批", "", 2), ("finance-payment-waiting", "finance-payment", "待付款列表", "", 3), ("finance-payment-print", "finance-payment", "付款单打印", "", 4), ("finance-payment-package-manage", "finance-payment", "付款打包-管理", "", 5), ("finance-payment-writeoff", "finance-payment", "待核销列表", "", 6), ("finance-payment-query", "finance-payment", "付款单查询", "", 7),
     ("finance-internal", "finance", "内部费用", "", 3), ("finance-internal-mine", "finance-internal", "我的请款单", "", 1), ("finance-internal-settle", "finance-internal", "内部提成-待结算", "", 2), ("finance-internal-archive", "finance-internal", "内部提成-待归档", "", 3), ("finance-internal-audit", "finance-internal", "内部提成-待审核", "", 4), ("finance-internal-fee-audit", "finance-internal", "内部费用-待审核", "", 5), ("finance-internal-refused", "finance-internal", "内部提成-已拒绝", "", 6), ("finance-internal-void", "finance-internal", "内部提成-已作废", "", 7), ("finance-internal-refund-audit", "finance-internal", "内部提成(退费)-待审核", "", 8), ("finance-internal-payment", "finance-internal", "待付款列表", "", 9), ("finance-internal-writeoff", "finance-internal", "待核销列表", "", 10), ("finance-internal-query", "finance-internal", "付款单查询", "", 11), ("finance-internal-done", "finance-internal", "已核销列表", "", 12), ("finance-internal-detail", "finance-internal", "内部费用明细", "", 13), ("finance-internal-company", "finance-internal", "内部费用明细(公司)", "", 14),
     ("finance-invoice", "finance", "开票管理", "", 4), ("finance-invoice-mine", "finance-invoice", "我的开票", "", 1), ("finance-invoice-pending", "finance-invoice", "待处理开票", "", 2), ("finance-invoice-company", "finance-invoice", "公司开票", "", 3), ("finance-invoice-unissued", "finance-invoice", "未开票", "", 4), ("finance-invoice-company-unissued", "finance-invoice", "公司未开票", "", 5),
     ("finance-settlement", "finance", "结算管理", "", 5), ("finance-settlement-pending", "finance-settlement", "待结算", "", 1), ("finance-settlement-audit", "finance-settlement", "待审核", "", 2), ("finance-settlement-payment", "finance-settlement", "待付款", "", 3), ("finance-settlement-paid", "finance-settlement", "已付款", "", 4), ("finance-settlement-refused", "finance-settlement", "已拒绝", "", 5),
@@ -2961,6 +2961,11 @@ class FinancePaymentPackagePreviewInput(BaseModel):
 
 class FinancePaymentPackageCreateInput(FinancePaymentPackagePreviewInput):
     package_no: str = Field(pattern=r"^P\d{6}-\d{8}$")
+    comment: str = Field(default="", max_length=500)
+
+
+class FinancePaymentPackageUpdateInput(FinancePaymentPackagePreviewInput):
+    """Editable pending package composition and its operator note."""
     comment: str = Field(default="", max_length=500)
 
 
@@ -22004,7 +22009,7 @@ async def list_internal_refund_review_candidates(identity: dict = Depends(curren
 
 
 async def _prepare_internal_payment_package(
-    fee_ids: list[int], identity: dict, db: AsyncSession
+    fee_ids: list[int], identity: dict, db: AsyncSession, editable_package_id: int | None = None,
 ) -> tuple[list[BusinessRecord], list[dict], str, float]:
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有打包付款权限")
@@ -22021,7 +22026,18 @@ async def _prepare_internal_payment_package(
     invalid_type = [item.serial_no for item in fees if (item.data or {}).get("fee_type") != "内部费用"]
     if invalid_type:
         raise HTTPException(status_code=409, detail="仅内部费用提成可以打包付款：" + "、".join(invalid_type))
-    invalid_status = [item.serial_no for item in fees if item.status != "已审批"]
+    invalid_status = [
+        item.serial_no
+        for item in fees
+        if not (
+            item.status == "已审批"
+            or (
+                editable_package_id is not None
+                and item.status == "待核销"
+                and int((item.data or {}).get("payment_package_id") or 0) == editable_package_id
+            )
+        )
+    ]
     if invalid_status:
         raise HTTPException(status_code=409, detail="仅待付款提成可以打包付款：" + "、".join(invalid_status))
     payees = {
@@ -22231,6 +22247,10 @@ async def list_internal_payment_packages(
     page_size: int | None = Query(None, ge=1, le=200),
     status_filter: str = Query("", alias="status"),
     page_id: str = Query("", alias="page_id"),
+    package_no: str = Query(""),
+    payee: str = Query(""),
+    payment_date_from: date | None = Query(None),
+    payment_date_to: date | None = Query(None),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -22246,6 +22266,14 @@ async def list_internal_payment_packages(
     ]
     if effective_status:
         conditions.append(BusinessRecord.status == effective_status)
+    if package_no.strip():
+        conditions.append(BusinessRecord.serial_no.ilike(f"%{package_no.strip()}%"))
+    if payee.strip():
+        conditions.append(BusinessRecord.data["payee"].as_string().ilike(f"%{payee.strip()}%"))
+    if payment_date_from:
+        conditions.append(BusinessRecord.data["payment_date"].as_string() >= str(payment_date_from))
+    if payment_date_to:
+        conditions.append(BusinessRecord.data["payment_date"].as_string() <= str(payment_date_to))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0
     query = select(BusinessRecord).where(*conditions).order_by(
         BusinessRecord.created_at.desc(), BusinessRecord.id.desc()
@@ -22259,6 +22287,24 @@ async def list_internal_payment_packages(
         "page": page,
         "page_size": page_size if page_size is not None else len(items),
     }
+
+
+@app.get(f"{settings.api_prefix}/finance/payment-packages/candidates")
+async def list_internal_payment_package_candidates(
+    package_id: int | None = Query(None),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有打包付款权限")
+    conditions = [BusinessRecord.module == "finance", *(await _record_scope_conditions(identity, db))]
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
+    items = [
+        row for row in rows
+        if (row.data or {}).get("fee_type") == "内部费用"
+        and (row.status == "已审批" or (package_id is not None and row.status == "待核销" and int((row.data or {}).get("payment_package_id") or 0) == package_id))
+    ]
+    return {"items": [await _record_dict_for_identity(item, identity, db) for item in items], "total": len(items)}
 
 
 @app.post(f"{settings.api_prefix}/finance/payment-packages/preview")
@@ -22322,6 +22368,80 @@ async def create_internal_payment_package(body: FinancePaymentPackageCreateInput
             "payment_applied_by": identity["username"],
         }
         db.add(WorkflowEvent(record_id=fee.id, action="申请打包付款", from_status=previous, to_status="待核销", operator=identity["username"], comment=f"付款包 {package.serial_no}；{body.comment.strip()}"))
+    await db.commit()
+    await db.refresh(package)
+    return await _record_dict_for_identity(package, identity, db)
+
+
+@app.get(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}")
+async def get_internal_payment_package(package_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    package = await _ensure_record_module(package_id, "finance_package", identity, db)
+    return await _record_dict_for_identity(package, identity, db)
+
+
+@app.put(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}")
+async def update_internal_payment_package(package_id: int, body: FinancePaymentPackageUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有编辑付款包权限")
+    package = await _ensure_record_module(package_id, "finance_package", identity, db)
+    if package.status != "待核销":
+        raise HTTPException(status_code=409, detail="仅待核销付款包可以编辑费用构成")
+    previous_data = package.data or {}
+    raw_previous_ids = list(previous_data.get("fee_ids", []))
+    if not raw_previous_ids or any(not str(item_id).strip().isdigit() for item_id in raw_previous_ids):
+        raise HTTPException(status_code=409, detail="付款包原费用关联无效，不能编辑")
+    previous_ids = [int(item_id) for item_id in raw_previous_ids]
+    fees, details, payee, total_amount = await _prepare_internal_payment_package(
+        body.fee_ids, identity, db, editable_package_id=package.id,
+    )
+    next_ids = [item.id for item in fees]
+    current_fees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(previous_ids), BusinessRecord.module == "finance"
+    ))).all() if previous_ids else []
+    if len({item.id for item in current_fees}) != len(set(previous_ids)):
+        raise HTTPException(status_code=409, detail="付款包原费用关联不完整，不能编辑")
+    inconsistent = [
+        item.serial_no for item in current_fees
+        if item.status != "待核销"
+        or int((item.data or {}).get("payment_package_id") or 0) != package.id
+        or str((item.data or {}).get("payment_package_no") or "").strip() != package.serial_no
+    ]
+    if inconsistent:
+        raise HTTPException(status_code=409, detail="付款包原费用关联不一致：" + "、".join(inconsistent))
+    payment_keys = {
+        "payment_status", "payment_date", "payment_package_id", "payment_package_no",
+        "payment_requested_amount", "paid_amount", "payment_applied_at", "payment_applied_by",
+        "paid_at", "paid_by", "writeoff_status", "writeoff_voucher_no", "payment_method",
+        "written_off_at", "written_off_by",
+    }
+    removed = [item for item in current_fees if item.id not in next_ids]
+    for fee in removed:
+        data = fee.data or {}
+        if int(data.get("payment_package_id") or 0) != package.id:
+            raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 的付款包关联不一致")
+        fee.status = "已审批"
+        fee.data = {key: value for key, value in data.items() if key not in payment_keys}
+        db.add(WorkflowEvent(record_id=fee.id, action="编辑付款包移除费用", from_status="待核销", to_status="已审批", operator=identity["username"], comment=package.serial_no))
+    now = datetime.now().isoformat(timespec="seconds")
+    for fee in fees:
+        data = fee.data or {}
+        if fee.id not in previous_ids and data.get("payment_package_id"):
+            raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 已关联其他付款包")
+        previous_status = fee.status
+        amount = _round_fee_amount(float(data.get("actual_commission") if data.get("actual_commission") is not None else data.get("amount") or 0))
+        fee.status = "待核销"
+        fee.data = {**data, "payment_status": "待核销", "payment_requested_amount": amount, "paid_amount": 0,
+                    "payment_package_id": package.id, "payment_package_no": package.serial_no,
+                    "payment_applied_at": now, "payment_applied_by": identity["username"]}
+        if fee.id not in previous_ids:
+            db.add(WorkflowEvent(record_id=fee.id, action="编辑付款包加入费用", from_status=previous_status, to_status="待核销", operator=identity["username"], comment=package.serial_no))
+    comment = body.comment.strip()
+    package.title = f"{payee}提成付款申请单"
+    package.description = comment
+    package.data = {**previous_data, "fee_ids": next_ids, "payee": payee, "amount": total_amount,
+                    "total_amount": total_amount, "items": details, "comment": comment,
+                    "updated_at": now, "updated_by": identity["username"]}
+    db.add(WorkflowEvent(record_id=package.id, action="编辑付款包", from_status="待核销", to_status="待核销", operator=identity["username"], comment=comment or "更新费用构成"))
     await db.commit()
     await db.refresh(package)
     return await _record_dict_for_identity(package, identity, db)
@@ -22399,10 +22519,15 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
     if package.status not in {"待核销", "已付款"}:
         raise HTTPException(status_code=409, detail="当前付款包状态不能撤销")
     package_data = package.data or {}
-    fee_ids = [int(item_id) for item_id in package_data.get("fee_ids", [])]
+    raw_fee_ids = list(package_data.get("fee_ids", []))
+    if not raw_fee_ids or any(not str(item_id).strip().isdigit() for item_id in raw_fee_ids):
+        raise HTTPException(status_code=409, detail="付款包费用关联无效，不能撤销")
+    fee_ids = [int(item_id) for item_id in raw_fee_ids]
     fees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(fee_ids), BusinessRecord.module == "finance"
     ))).all() if fee_ids else []
+    if len({item.id for item in fees}) != len(set(fee_ids)):
+        raise HTTPException(status_code=409, detail="付款包关联费用不完整，不能撤销")
     payment_keys = {
         "payment_status", "payment_date", "payment_package_id",
         "payment_package_no", "payment_requested_amount", "paid_amount",
@@ -22412,8 +22537,11 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
     }
     for fee in fees:
         data = fee.data or {}
-        if int(data.get("payment_package_id") or 0) != package.id:
-            continue
+        if (
+            int(data.get("payment_package_id") or 0) != package.id
+            or str(data.get("payment_package_no") or "").strip() != package.serial_no
+        ):
+            raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 的付款包关联不一致")
         previous = fee.status
         fee.status = "已审批"
         fee.data = {key: value for key, value in data.items() if key not in payment_keys}
