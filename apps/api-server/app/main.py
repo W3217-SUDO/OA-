@@ -27522,6 +27522,34 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
     return {"deleted": len(prepared)}
 
 
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/unlock")
+async def unlock_case_attachment(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Unlock one civil case document after enforcing the case-detail write gate."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(case_record, identity, db)
+    if case_record.status == "已合并":
+        raise HTTPException(status_code=409, detail="已合并案件不能解锁案件文件")
+    attachment = await db.scalar(select(FileAttachment).where(
+        FileAttachment.id == attachment_id,
+        FileAttachment.record_id == case_record.id,
+    ))
+    if not attachment:
+        raise HTTPException(status_code=404, detail="案件文件不存在或不属于当前案件")
+    if not attachment.is_locked:
+        raise HTTPException(status_code=409, detail="该文件未锁定，无需解锁")
+    attachment.is_locked = False
+    attachment.locked_at = None
+    attachment.locked_by = ""
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="解锁民事案件文件", from_status=case_record.status,
+        to_status=case_record.status, operator=identity["username"],
+        comment=f"{attachment.category}｜{attachment.original_name}",
+    ))
+    await db.commit()
+    await db.refresh(attachment)
+    return _attachment_dict(attachment, case_record)
+
+
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/move")
 async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)

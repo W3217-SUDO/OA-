@@ -644,7 +644,7 @@ const normalizeCaseTaskPageState = (
       : 0;
   return { items, total, page, pageSize, pages };
 };
-type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean};
+type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
 type CaseClueEvidenceRow = CaseRow & {
   files: AttachmentRow[];
   can_edit: boolean;
@@ -3073,6 +3073,16 @@ export default function CaseCenterPage({
       URL.revokeObjectURL(url);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件文件下载失败");
+    }
+  };
+  const unlockCounselDetailAttachment = async (item: AttachmentRow) => {
+    if (!viewingCounselCase) return message.warning("请先打开案件详情再解锁文件");
+    try {
+      await api.post(`/cases/${viewingCounselCase.id}/attachments/${item.id}/unlock`);
+      message.success("案件文件已解锁");
+      await refreshCounselDetailAttachments(viewingCounselCase.id);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件文件解锁失败");
     }
   };
   const previewCounselDetailAttachment = async (item: AttachmentRow) => {
@@ -6167,7 +6177,7 @@ export default function CaseCenterPage({
                   {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
                   {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
                   {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
-                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:280,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
+                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:320,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&row.record_id===viewingCounselCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
                 ]}/>
                 {caseDocumentGenerationError && <Alert
                   type="error"
