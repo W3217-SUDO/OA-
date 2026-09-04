@@ -1657,7 +1657,7 @@ export default function SealCenterPage({
     }
     try {
       const res = await postSealBlob(
-        "/seals/applications/package-download",
+        "/seals/applications/batch-download",
         { application_ids: selected.map((row) => row.id) },
         { responseType: "blob" },
       );
@@ -2294,6 +2294,7 @@ export default function SealCenterPage({
                             标记用印
                           </Button>
                           <Button
+                            disabled={!selectedRows.length}
                             onClick={() => downloadSelectedSealFiles()}
                           >
                             打包下载

@@ -25,6 +25,7 @@ from app.main import (
     SealBatchStampInput,
     SealPackageDownloadInput,
     SealStampInput,
+    batch_download_seal_files,
     batch_stamp_seal_applications,
     create_seal_application,
     list_attachments,
@@ -102,10 +103,21 @@ class SealBackendGapEContractTest(unittest.TestCase):
             self.assertIn(token, seal_upload)
 
     def test_package_download_filters_seal_attachment_category(self):
-        source = self._span("package_download_seal_files")
+        source = self._span("batch_download_seal_files")
         self.assertIn("SEAL_APPLICATION_FILE_CATEGORY", source)
         self.assertIn("SEAL_STAMPED_FILE_CATEGORY", source)
         self.assertIn("category.in_({SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY})", source)
+
+    def test_batch_download_is_canonical_and_package_download_is_compatible_alias(self):
+        batch_source = self._span("batch_download_seal_files")
+        package_source = self._span("package_download_seal_files")
+        for token in (
+            '/seals/applications/batch-download',
+            "_attachment_storage_path(attachment)",
+            'media_type="application/zip"',
+        ):
+            self.assertIn(token, batch_source)
+        self.assertIn("batch_download_seal_files(body, identity, db)", package_source)
 
     def test_attachment_list_contract_has_server_pagination(self):
         source = self._span("list_attachments")
@@ -346,6 +358,31 @@ class SealBackendGapERuntimeTest(unittest.IsolatedAsyncioTestCase):
         names = archive.namelist()
         self.assertEqual(len(names), 1)
         self.assertIn(f"{record.serial_no}/{seal_file.id}-pkg-seal.pdf", names[0])
+
+    async def test_administrative_batch_download_allows_visible_draft_files(self) -> None:
+        draft = await self.add_record("草稿", suffix="PKG-DRAFT")
+        seal_file = await self.add_attachment(draft, "pkg-draft")
+        await self.db.commit()
+
+        response = await batch_download_seal_files(
+            SealPackageDownloadInput(application_ids=[draft.id]), ADMIN, self.db
+        )
+        archive = zipfile.ZipFile(io.BytesIO(b"".join([chunk async for chunk in response.body_iterator])))
+        self.assertEqual(archive.namelist(), [f"{draft.serial_no}/{seal_file.id}-pkg-draft.pdf"])
+
+    async def test_administrative_batch_download_returns_zip_for_pending_files(self) -> None:
+        pending = await self.add_record("待用印", suffix="PKG-PENDING")
+        seal_file = await self.add_attachment(pending, "pkg-pending")
+        await self.db.commit()
+
+        response = await batch_download_seal_files(
+            SealPackageDownloadInput(application_ids=[pending.id]), ADMIN, self.db
+        )
+        archive = zipfile.ZipFile(io.BytesIO(b"".join([chunk async for chunk in response.body_iterator])))
+        self.assertEqual(
+            archive.namelist(),
+            [f"{pending.serial_no}/{seal_file.id}-pkg-pending.pdf"],
+        )
 
     async def test_attachment_list_paginates_server_side(self) -> None:
         record = await self.add_record("待用印", suffix="PAGE")

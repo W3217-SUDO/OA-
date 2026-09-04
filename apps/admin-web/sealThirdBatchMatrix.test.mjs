@@ -31,7 +31,7 @@ test("seal third batch keeps legacy selection semantics while wiring protected a
   // 09–12: administrative stamping/approval UI is connected to real endpoints.
   assert.match(localPage, /initialView === "seal-admin-pending"/);
   assert.match(localPage, /setAction\(\{ type: "stamp", row: selectedRow \}\)/);
-  assert.match(localPage, /\/seals\/applications\/package-download/);
+  assert.match(localPage, /\/seals\/applications\/batch-download/);
   assert.match(localPage, /\/seals\/applications\/\$\{action\.row\.id\}\/approve/);
   assert.match(localApi, /async def package_download_seal_files/);
   assert.match(localApi, /async def approve_seal_application/);

@@ -32,21 +32,17 @@ test("legacy stamp and download entries report a missing selection", () => {
   );
 });
 
-test("stamp and download actions use guarded selection handlers instead of silent disabled buttons", () => {
+test("stamp keeps its selection handler while package download requires a selection", () => {
   assert.match(
     page,
     /<Button\s+onClick=\{\(\) => stampSelectedApplications\(\)\}\s*>\s*标记用印\s*<\/Button>/,
   );
   assert.match(
     page,
-    /<Button\s+onClick=\{\(\) => downloadSelectedSealFiles\(\)\}\s*>\s*打包下载\s*<\/Button>/,
+    /<Button\s+disabled=\{!selectedRows\.length\}\s+onClick=\{\(\) => downloadSelectedSealFiles\(\)\}\s*>\s*打包下载\s*<\/Button>/,
   );
   assert.doesNotMatch(
     page,
     /<Button[\s\S]*?disabled=\{\s*!canBatchStampSealRows\(selectedRows\)\s*\}[\s\S]*?标记用印\s*<\/Button>/,
-  );
-  assert.doesNotMatch(
-    page,
-    /<Button[\s\S]*?disabled=\{\s*!selectedRows\.length\s*\}[\s\S]*?打包下载\s*<\/Button>/,
   );
 });

@@ -29412,8 +29412,8 @@ async def list_seal_applications(view: str = "my", keyword: str = "", record_sta
     }
 
 
-@app.post(f"{settings.api_prefix}/seals/applications/package-download")
-async def package_download_seal_files(body: SealPackageDownloadInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+@app.post(f"{settings.api_prefix}/seals/applications/batch-download")
+async def batch_download_seal_files(body: SealPackageDownloadInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record_ids = list(dict.fromkeys(body.application_ids))
     records: dict[int, BusinessRecord] = {}
     for record_id in record_ids:
@@ -29431,15 +29431,16 @@ async def package_download_seal_files(body: SealPackageDownloadInput, identity: 
 
     output = io.BytesIO()
     included = 0
-    upload_root = UPLOAD_ROOT.resolve()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for attachment in attachments:
             record = records[int(attachment.record_id)]
-            path = Path(attachment.path)
-            if not path.is_file() or upload_root not in path.resolve().parents:
+            path = _attachment_storage_path(attachment)
+            if path is None:
                 continue
-            safe_name = Path(attachment.original_name).name or attachment.stored_name
-            archive.writestr(f"{record.serial_no}/{attachment.id}-{safe_name}", path.read_bytes())
+            safe_name = Path(str(attachment.original_name or attachment.stored_name).replace("\\", "/")).name
+            safe_name = re.sub(r"[\x00-\x1f]+", "_", safe_name).strip(" .") or attachment.stored_name
+            safe_serial = re.sub(r"[\\/\x00-\x1f]+", "_", record.serial_no).strip(" .") or f"seal-{record.id}"
+            archive.writestr(f"{safe_serial}/{attachment.id}-{safe_name}", path.read_bytes())
             included += 1
     if not included:
         raise HTTPException(status_code=404, detail="所选附件文件不存在")
@@ -29450,6 +29451,12 @@ async def package_download_seal_files(body: SealPackageDownloadInput, identity: 
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post(f"{settings.api_prefix}/seals/applications/package-download")
+async def package_download_seal_files(body: SealPackageDownloadInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Compatibility alias for callers that used the earlier package endpoint."""
+    return await batch_download_seal_files(body, identity, db)
 
 
 async def _copy_seal_source_attachments(
