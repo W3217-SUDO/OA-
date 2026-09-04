@@ -39,6 +39,7 @@ test("system and case pages consume the same hierarchical fee master", () => {
   assert.match(casePage, /category: "fee_type"/);
   assert.match(casePage, /name=\{\[field\.name, "fee_type_id"\]\}/);
   assert.match(casePage, /TreeSelect[\s\S]*treeData=\{feeTypeTreeOptions\}/);
-  assert.equal((casePage.match(/TreeSelect showSearch treeNodeFilterProp="title"/g) || []).length, 4);
+  assert.equal((casePage.match(/TreeSelect showSearch treeNodeFilterProp="title"/g) || []).length, 5);
   assert.match(casePage, /fee_type_id:values\.fee_type_id/);
+  assert.match(casePage, /\/finance\/internal-fees/);
 });
