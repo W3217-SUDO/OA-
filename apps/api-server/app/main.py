@@ -16673,7 +16673,7 @@ async def list_tasks(
         elif relation == "collaborating":
             tasks = [task for task in tasks if department_usernames.intersection((task.data or {}).get("collaborators", []))]
         else:
-            tasks = [task for task in tasks if task.department == user.department]
+            tasks = [task for task in tasks if (task.data or {}).get("initiator") in department_usernames]
     username = identity["username"]
     if scope == "company":
         # Company initiated/accepted views include every company task.  The
@@ -17104,7 +17104,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
             if recipient == task.owner:
                 raise HTTPException(status_code=422, detail=f"任务 {task.serial_no} 不能交接给当前负责人")
         else:  # withdraw
-            if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
+            if data.get("initiator") != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅发起人可撤回")
             if task.status not in {"待接收", "待处理", "处理中"}:
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能撤回")
@@ -17401,8 +17401,8 @@ async def withdraw_task(task_id: int, body: TaskActionInput, identity: dict = De
     """Withdraw a live task through its dedicated lifecycle, never generic transition."""
     task = await _task_or_404(task_id, db)
     data = task.data or {}
-    if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
-        raise HTTPException(status_code=403, detail="只有任务发起人或系统管理员可以撤回任务")
+    if data.get("initiator") != identity["username"]:
+        raise HTTPException(status_code=403, detail="只有任务发起人可以撤回任务")
     # ``待处理`` is retained for historical imported tasks and has the same pre-accept semantics.
     if task.status not in {"待接收", "待处理", "处理中"}:
         raise HTTPException(status_code=409, detail="只有待接收或处理中的任务可以撤回")
@@ -31750,7 +31750,7 @@ async def _single_linked_case_for_contract(
     return rows[0] if len(rows) == 1 else None
 
 
-async def _validated_seal_relations(body: SealApplicationInput, identity: dict, db: AsyncSession) -> tuple[str, str, str, str, int | None, int | None]:
+async def _validated_seal_relations(body: SealApplicationInput, identity: dict, db: AsyncSession) -> tuple[str, str, str, str, int | None, int | None, int | None]:
     """Return canonical, visible seal references and prevent dangling business links."""
     case_no, contract_no, customer = body.case_no.strip(), body.contract_no.strip(), body.customer.strip()
     use_type = body.use_type.strip() or ("案件用印" if case_no else "合同用印" if contract_no else "行政用印")
@@ -31789,6 +31789,7 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
         if linked_case:
             case = linked_case
             case_no = linked_case.serial_no
+    customer_row = None
     if customer:
         customer_row = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", or_(BusinessRecord.title == customer, BusinessRecord.customer == customer, BusinessRecord.serial_no == customer), *scope))
         if not customer_row:
@@ -31798,7 +31799,26 @@ async def _validated_seal_relations(body: SealApplicationInput, identity: dict, 
         customer = case.customer
     elif contract:
         customer = contract.customer
-    return case_no, contract_no, customer, use_type, case.id if case else None, contract.id if contract else None
+    if not customer_row:
+        linked_customer_id = _positive_record_id(
+            ((case.data or {}).get("customer_record_id") or (case.data or {}).get("customer_id")) if case else None
+        ) or _positive_record_id(
+            ((contract.data or {}).get("customer_record_id") or (contract.data or {}).get("customer_id")) if contract else None
+        )
+        if linked_customer_id:
+            customer_row = await _ensure_record_module(linked_customer_id, "customer", identity, db)
+        elif customer:
+            customer_row = await db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == "customer",
+                or_(BusinessRecord.title == customer, BusinessRecord.customer == customer),
+                *scope,
+            ))
+    return (
+        case_no, contract_no, customer, use_type,
+        case.id if case else None,
+        contract.id if contract else None,
+        customer_row.id if customer_row else None,
+    )
 
 
 async def _next_seal_application_serial(
@@ -31972,6 +31992,8 @@ async def _copy_seal_source_attachments(
                 await _ensure_record_module(source_record.id, "contract", identity, db)
             elif source_record.module == "case":
                 await _ensure_record_module(source_record.id, "case", identity, db)
+            elif source_record.module == "customer":
+                await _ensure_record_module(source_record.id, "customer", identity, db)
             else:
                 raise HTTPException(status_code=422, detail="鐢ㄥ嵃鐢宠鍙兘浠庡悎鍚屾垨妗堜欢澶嶅埗鏉ユ簮鏂囦欢")
             source_path = _attachment_storage_path(source)
@@ -32006,6 +32028,9 @@ async def _resolve_seal_source_attachment_ids(
     body: SealApplicationInput,
     case_no: str,
     contract_no: str,
+    case_record_id: int | None,
+    contract_record_id: int | None,
+    customer_record_id: int | None,
     identity: dict,
     db: AsyncSession,
 ) -> list[int]:
@@ -32031,11 +32056,14 @@ async def _resolve_seal_source_attachment_ids(
     if not source_record:
         raise HTTPException(status_code=422, detail="关联业务记录不存在或当前账号无权使用")
 
+    allowed_record_ids = {
+        record_id for record_id in (case_record_id, contract_record_id, customer_record_id) if record_id
+    }
     if explicit_ids:
         selected = list((await db.scalars(
             select(FileAttachment).where(FileAttachment.id.in_(explicit_ids))
         )).all())
-        if len(selected) != len(explicit_ids) or any(item.record_id != source_record.id for item in selected):
+        if len(selected) != len(explicit_ids) or any(item.record_id not in allowed_record_ids for item in selected):
             raise HTTPException(status_code=422, detail="选择的来源文件不属于当前关联合同或案件")
         return explicit_ids
 
@@ -32055,12 +32083,12 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
     seal_types = list(dict.fromkeys([asset.seal_type, *body.seal_types]))
     if any(item not in REQUIRED_SEAL_TYPES for item in seal_types):
         raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
-    case_no, contract_no, customer, use_type, case_record_id, contract_record_id = await _validated_seal_relations(body, identity, db)
+    case_no, contract_no, customer, use_type, case_record_id, contract_record_id, customer_record_id = await _validated_seal_relations(body, identity, db)
     serial = await _next_seal_application_serial(db)
     item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
     copied_targets: list[Path] = []
     source_attachment_ids = await _resolve_seal_source_attachment_ids(
-        body, case_no, contract_no, identity, db
+        body, case_no, contract_no, case_record_id, contract_record_id, customer_record_id, identity, db
     )
     # FileAttachment copies are created inside the same transaction as the draft.
     try:
@@ -32089,7 +32117,7 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     seal_types = list(dict.fromkeys([asset.seal_type, *body.seal_types]))
     if any(item not in REQUIRED_SEAL_TYPES for item in seal_types):
         raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
-    case_no, contract_no, customer, use_type, case_record_id, contract_record_id = await _validated_seal_relations(body, identity, db)
+    case_no, contract_no, customer, use_type, case_record_id, contract_record_id, _customer_record_id = await _validated_seal_relations(body, identity, db)
     item.title = body.title.strip(); item.customer = customer; item.description = body.description.strip()
     existing_names = str((item.data or {}).get("document_names") or "")
     item.data = {"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}

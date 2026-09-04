@@ -196,6 +196,84 @@ class SealWorkflowCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
         ))).all())
         self.assertEqual([attachment.original_name for attachment in copied], [source.original_name])
 
+    async def test_case_seal_accepts_verified_case_contract_customer_chain_and_rejects_external_file_atomically(self) -> None:
+        customer = BusinessRecord(
+            module="customer", serial_no="SEAL-CAP-CUSTOMER", title="能力测试客户",
+            customer="能力测试客户", status="有效", owner=APPLICANT["username"],
+            department="上海分所", data={},
+        )
+        external_customer = BusinessRecord(
+            module="customer", serial_no="SEAL-CAP-EXTERNAL-CUSTOMER", title="外部客户",
+            customer="外部客户", status="有效", owner=APPLICANT["username"],
+            department="上海分所", data={},
+        )
+        self.db.add_all([customer, external_customer])
+        await self.db.flush()
+        contract = BusinessRecord(
+            module="contract", serial_no="SEAL-CAP-CHAIN-CONTRACT", title="关系链合同",
+            customer=customer.title, status="审批通过", owner=APPLICANT["username"],
+            department="上海分所", data={"customer_record_id": customer.id},
+        )
+        self.db.add(contract)
+        await self.db.flush()
+        case = BusinessRecord(
+            module="case", serial_no="SEAL-CAP-CHAIN-CASE", title="关系链案件",
+            customer=customer.title, status="文书准备", owner=APPLICANT["username"],
+            department="上海分所", data={
+                "contract_record_id": contract.id, "contract_no": contract.serial_no,
+                "customer_record_id": customer.id,
+            },
+        )
+        self.db.add(case)
+        await self.db.flush()
+
+        sources = []
+        for record, filename in (
+            (case, "case.docx"), (contract, "contract.docx"),
+            (customer, "customer.docx"), (external_customer, "external.docx"),
+        ):
+            path = main.UPLOAD_ROOT / filename
+            path.write_bytes(filename.encode())
+            attachment = FileAttachment(
+                record_id=record.id, category="业务文档", original_name=filename,
+                stored_name=path.name, content_type="application/octet-stream",
+                size=path.stat().st_size, path=str(path), uploader=APPLICANT["username"],
+            )
+            self.db.add(attachment)
+            sources.append(attachment)
+        await self.db.commit()
+
+        body = SealApplicationInput(
+            title="关系链文件用印", case_no=case.serial_no, use_type="案件用印",
+            seal_asset_id=self.asset.id, copies=1, purpose="关系链验证",
+            use_date=date.today(), source_attachment_ids=[item.id for item in sources[:3]],
+        )
+        created = await create_seal_application(body, APPLICANT, self.db)
+        copied = list((await self.db.scalars(select(FileAttachment).where(
+            FileAttachment.record_id == created["id"],
+            FileAttachment.category == SEAL_APPLICATION_FILE_CATEGORY,
+        ))).all())
+        self.assertEqual(
+            {item.original_name for item in copied},
+            {"case.docx", "contract.docx", "customer.docx"},
+        )
+
+        seals_before = len(list((await self.db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "seal"
+        ))).all()))
+        files_before = {path.name for path in main.UPLOAD_ROOT.iterdir()}
+        with self.assertRaises(HTTPException) as external:
+            await create_seal_application(
+                body.model_copy(update={"source_attachment_ids": [sources[3].id]}),
+                APPLICANT, self.db,
+            )
+        self.assertEqual(external.exception.status_code, 422)
+        seals_after = len(list((await self.db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "seal"
+        ))).all()))
+        self.assertEqual(seals_after, seals_before)
+        self.assertEqual({path.name for path in main.UPLOAD_ROOT.iterdir()}, files_before)
+
 
 if __name__ == "__main__":
     unittest.main()
