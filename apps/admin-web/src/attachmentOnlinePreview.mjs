@@ -16,6 +16,13 @@ const page = (title, body) => `<!doctype html>
     header{position:sticky;top:0;padding:12px 20px;background:#fff;border-bottom:1px solid #dfe2e7;font-weight:600;overflow-wrap:anywhere}
     main{box-sizing:border-box;min-height:calc(100vh - 49px);padding:20px}
     pre{box-sizing:border-box;max-width:1200px;margin:0 auto;padding:24px;background:#fff;border:1px solid #dfe2e7;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
+    section{margin:0 0 20px;background:#fff;border:1px solid #dfe2e7}
+    h2{position:sticky;left:0;margin:0;padding:10px 12px;font-size:15px;border-bottom:1px solid #dfe2e7}
+    .sheet{overflow:auto;max-height:calc(100vh - 150px)}
+    table{border-collapse:collapse;min-width:100%;font-size:13px}
+    td{min-width:96px;max-width:360px;padding:7px 9px;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}
+    tr:first-child td{position:sticky;top:0;background:#f5f7fa;font-weight:600}
+    .notice{padding:10px 12px;background:#fff8e6;border:1px solid #ffd591;margin-bottom:16px}
     iframe{display:block;width:100%;height:calc(100vh - 89px);border:0;background:#fff}
     img{display:block;max-width:100%;max-height:calc(100vh - 89px);margin:0 auto;background:#fff}
     .status{max-width:1200px;margin:0 auto;padding:24px;background:#fff;border:1px solid #dfe2e7}
@@ -28,6 +35,17 @@ const writePage = (target, html) => {
   target.document.open();
   target.document.write(html);
   target.document.close();
+};
+
+const workbookPage = (data) => {
+  const notice = data.truncated
+    ? '<div class="notice">文件内容较多，当前页面仅显示前部分行列。</div>'
+    : "";
+  const sheets = (data.sheets || []).map((sheet) => {
+    const rows = (sheet.rows || []).map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("");
+    return `<section><h2>${escapeHtml(sheet.name || "工作表")}</h2><div class="sheet"><table><tbody>${rows || '<tr><td>（空工作表）</td></tr>'}</tbody></table></div></section>`;
+  }).join("");
+  return `${notice}${sheets || '<div class="status">（工作簿没有可显示的内容）</div>'}`;
 };
 
 export async function openAttachmentOnlinePreview(api, attachment, options = {}) {
@@ -54,6 +72,10 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
         : `<iframe src="${escapeHtml(url)}" title="${escapeHtml(name)}"></iframe>`;
       writePage(target, page(name, body));
       target.addEventListener?.("beforeunload", () => revokeObjectURL(url), { once: true });
+      return data.kind;
+    }
+    if (data.kind === "workbook") {
+      writePage(target, page(name, workbookPage(data)));
       return data.kind;
     }
     writePage(target, page(name, `<pre>${escapeHtml(data.text || "（文件没有可显示的文字内容）")}</pre>`));

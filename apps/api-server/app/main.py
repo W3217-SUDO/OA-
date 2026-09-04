@@ -30,6 +30,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt
 from openpyxl import load_workbook
+import xlrd
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import OAuth2PasswordRequestForm
@@ -31039,6 +31040,42 @@ XLSX_PREVIEW_MAX_ROWS_PER_SHEET = 2_000
 XLSX_PREVIEW_MAX_COLUMNS = 100
 
 
+def _xls_preview_sheets(path: Path) -> tuple[list[dict], bool]:
+    """Read a bounded legacy BIFF workbook for safe browser table rendering."""
+    workbook = xlrd.open_workbook(path, on_demand=True)
+    sheets: list[dict] = []
+    truncated = workbook.nsheets > XLSX_PREVIEW_MAX_SHEETS
+    try:
+        for sheet in workbook.sheets()[:XLSX_PREVIEW_MAX_SHEETS]:
+            row_count = min(sheet.nrows, XLSX_PREVIEW_MAX_ROWS_PER_SHEET)
+            column_count = min(sheet.ncols, XLSX_PREVIEW_MAX_COLUMNS)
+            if sheet.nrows > row_count or sheet.ncols > column_count:
+                truncated = True
+            rows: list[list[str]] = []
+            for row_index in range(row_count):
+                values: list[str] = []
+                for column_index in range(column_count):
+                    cell = sheet.cell(row_index, column_index)
+                    if cell.ctype == xlrd.XL_CELL_DATE:
+                        value = xlrd.xldate.xldate_as_datetime(cell.value, workbook.datemode).isoformat(sep=" ")
+                    elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
+                        value = "TRUE" if cell.value else "FALSE"
+                    elif cell.ctype == xlrd.XL_CELL_NUMBER and float(cell.value).is_integer():
+                        value = str(int(cell.value))
+                    elif cell.ctype in {xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK}:
+                        value = ""
+                    else:
+                        value = str(cell.value)
+                    values.append(value)
+                while values and not values[-1]:
+                    values.pop()
+                rows.append(values)
+            sheets.append({"name": sheet.name, "rows": rows})
+    finally:
+        workbook.release_resources()
+    return sheets, truncated
+
+
 def _xlsx_preview_text(path: Path) -> str:
     workbook = load_workbook(path, read_only=True, data_only=True)
     parts: list[str] = []
@@ -31121,6 +31158,14 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
         except Exception as exc:
             raise HTTPException(status_code=422, detail="XLSX 文件无法在线读取") from exc
         return {**base, "kind": "xlsx", "text": preview_text}
+    if suffix == ".xls":
+        if path.stat().st_size == 0:
+            return {**base, "kind": "unsupported", "detail": "XLS 文件为空，无法在线查看，请重新上传有效文件"}
+        try:
+            sheets, truncated = _xls_preview_sheets(path)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="XLS 文件无法在线读取") from exc
+        return {**base, "kind": "workbook", "sheets": sheets, "truncated": truncated}
     if suffix in {".txt", ".md", ".csv", ".json", ".xml", ".log", ".yaml", ".yml", ".html", ".htm"}:
         try:
             preview_text = path.read_text(encoding="utf-8", errors="replace")

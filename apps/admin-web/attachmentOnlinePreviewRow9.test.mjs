@@ -56,6 +56,24 @@ test("PDF preview uses the authenticated download blob in the new page", async (
   assert.match(target.writes.at(-1), /iframe src="blob:authenticated-preview"/);
 });
 
+test("legacy XLS preview renders escaped workbook cells as an HTML table", async () => {
+  const target = popup();
+  const api = { get: async () => ({ data: {
+    kind: "workbook",
+    sheets: [{ name: "费用<表>", rows: [["案号", "金额"], ["<script>bad()</script>", "100"]] }],
+    truncated: false,
+  } }) };
+
+  const kind = await openAttachmentOnlinePreview(api, { id: 16, original_name: "历史费用.xls" }, { openWindow: () => target });
+
+  assert.equal(kind, "workbook");
+  const html = target.writes.at(-1);
+  assert.match(html, /<table>/);
+  assert.match(html, /费用&lt;表&gt;/);
+  assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>bad\(\)<\/script>/);
+});
+
 test("unsupported files close the temporary page and preserve the server detail", async () => {
   const target = popup();
   const api = { get: async () => ({ data: { kind: "unsupported", detail: "格式不支持" } }) };
