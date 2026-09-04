@@ -62,6 +62,8 @@ type TaskRow = {
   defendant: string;
   case_stage: string;
   department: string;
+  start_at: string;
+  end_at: string;
   created_at: string;
   updated_at: string;
   verified_at: string;
@@ -79,6 +81,12 @@ type TaskRow = {
   unread_count: number;
   latest_unread_notification_id?: number;
   data?: Record<string, unknown>;
+};
+type DirectoryUser = {
+  username: string;
+  display_name: string;
+  department: string;
+  is_active: boolean;
 };
 type Summary = {
   total: number;
@@ -314,6 +322,8 @@ export default function TaskCenterPage({
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [handoff, setHandoff] = useState<TaskRow | null>(null);
+  const [handoffDirectory, setHandoffDirectory] = useState<DirectoryUser[]>([]);
+  const [handoffDirectoryLoading, setHandoffDirectoryLoading] = useState(false);
   const [dialog, setDialog] = useState<{
     row: TaskRow;
     action: DialogAction;
@@ -393,9 +403,25 @@ export default function TaskCenterPage({
     Boolean(
       row &&
         isInitiatedTaskContext &&
-        (profile.role === "admin" || row.initiator === profile.username) &&
+        row.initiator === profile.username &&
         ["待接收", "待处理", "处理中", "进行中"].includes(row.workflow_status || row.status),
     );
+  const openTaskHandoff = async (row: TaskRow) => {
+    setHandoff(row);
+    handoffForm.setFieldsValue({ recipient: "", comment: "" });
+    setHandoffDirectoryLoading(true);
+    try {
+      const { data } = await api.get("/users/directory");
+      setHandoffDirectory(
+        (data.items || []).filter((item: DirectoryUser) => item.is_active !== false),
+      );
+    } catch (error: any) {
+      setHandoffDirectory([]);
+      message.error(error?.response?.data?.detail || "员工目录加载失败，请稍后重试");
+    } finally {
+      setHandoffDirectoryLoading(false);
+    }
+  };
   const canReviewTaskException = (row?: TaskRow | null) =>
     Boolean(
       row &&
@@ -1633,7 +1659,6 @@ export default function TaskCenterPage({
                   撤回任务
                 </Button>
               )}
-              {!canManageInitiatedTask && canWithdrawTask(selected) && <Button danger onClick={() => selected && requestTaskWithdrawal(selected)}>撤回任务</Button>}
               {(canManageInitiatedTask || canManageCompanyCreatedTask) && selected?.status === "已拒绝" && (
                 <Button onClick={() => openDialog(selected, "resend")}>重新派发</Button>
               )}
@@ -1654,8 +1679,6 @@ export default function TaskCenterPage({
               {canManageAcceptedTask && statusTab === "processing" && (
                 <>
                   <Button onClick={() => requireOne((row) => void simpleAction(row, "complete"))}>完成任务</Button>
-                  <Button onClick={() => selected && requestTaskException(selected, "挂起")}>申请挂起</Button>
-                  <Button danger onClick={() => selected && requestTaskException(selected, "取消")}>申请取消</Button>
                   <Button onClick={() => requireOne(openTaskHandoff)}>转交任务</Button>
                 </>
               )}
@@ -1694,10 +1717,7 @@ export default function TaskCenterPage({
                   </Button>
                   <Button
                     onClick={() =>
-                      requireOne((row) => {
-                        setHandoff(row);
-                        handoffForm.setFieldsValue({ recipient: "", comment: "" });
-                      })
+                      requireOne((row) => void openTaskHandoff(row))
                     }
                   >
                     转交任务
@@ -1938,12 +1958,29 @@ export default function TaskCenterPage({
           message="转交后 5 天内接收人未开始，系统按交接规则自动完成。"
         />
         <Form form={handoffForm} layout="vertical" style={{ marginTop: 18 }}>
+          <div className="form-grid">
+            <Form.Item label="任务开始时间">
+              <Input value={formatTaskDateTime(handoff?.start_at || handoff?.created_at)} disabled />
+            </Form.Item>
+            <Form.Item label="任务结束时间">
+              <Input value={formatTaskDateTime(handoff?.end_at || handoff?.deadline)} disabled />
+            </Form.Item>
+          </div>
           <Form.Item
             label="接收人"
             name="recipient"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "请选择接收人" }]}
           >
-            <Input />
+            <Select
+              showSearch
+              loading={handoffDirectoryLoading}
+              optionFilterProp="label"
+              placeholder="输入姓名或部门搜索"
+              options={handoffDirectory.map((user) => ({
+                value: user.username,
+                label: `${user.display_name || user.username}（${user.department || "未设置部门"}）`,
+              }))}
+            />
           </Form.Item>
           <Form.Item label="转交说明" name="comment">
             <Input.TextArea rows={3} />
@@ -2124,11 +2161,6 @@ export default function TaskCenterPage({
           <span><b>状态：</b><Tag color={statusColors[communication?.status || ""] || "blue"}>{communication?.status || "-"}</Tag></span>
           <span><b>当前协作人：</b>{visibleCollaboratorNames(communication)}</span>
         </div>
-        {communication && canWithdrawTask(communication) && (
-          <div className="task-detail-actions">
-            <Button danger onClick={() => requestTaskWithdrawal(communication)}>撤回任务</Button>
-          </div>
-        )}
         {communication && isTaskParticipant(communication) ? <>
           <div className="task-detail-section-title">沟通记录</div>
           <List
