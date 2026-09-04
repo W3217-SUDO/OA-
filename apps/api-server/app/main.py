@@ -11887,6 +11887,49 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
     return None
 
 
+def _require_internal_fee_payload(body: FinanceFeeInput) -> None:
+    """Keep the internal-fee workbench from creating another fee category."""
+    if body.fee_type != "内部费用" or body.expense_scope != "内部":
+        raise HTTPException(status_code=422, detail="内部费用必须使用“内部”归属和“内部费用”类型")
+
+
+async def _internal_fee_mutation_target(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """Resolve a dedicated internal-fee mutation without exposing other fee rows."""
+    item = await db.get(BusinessRecord, fee_id)
+    if not item or item.module != "finance" or (item.data or {}).get("fee_type") != "内部费用":
+        raise HTTPException(status_code=404, detail="内部费用记录不存在")
+    return item
+
+
+@app.post(f"{settings.api_prefix}/finance/internal-fees", status_code=status.HTTP_201_CREATED)
+async def create_internal_fee(body: FinanceFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Create an internal-fee draft through the internal settlement workbench."""
+    _require_internal_fee_payload(body)
+    return await create_finance_fee(body, identity, db)
+
+
+@app.put(f"{settings.api_prefix}/finance/internal-fees/{{fee_id}}")
+async def update_internal_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Edit only a visible, mutable internal-fee draft using the shared fee rules."""
+    await _internal_fee_mutation_target(fee_id, identity, db)
+    _require_internal_fee_payload(body)
+    return await update_finance_fee(fee_id, body, identity, db)
+
+
+@app.delete(f"{settings.api_prefix}/finance/internal-fees/{{fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_internal_fee(fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Delete only a visible, mutable internal-fee draft with its workflow audit."""
+    await _internal_fee_mutation_target(fee_id, identity, db)
+    item = await _editable_finance_fee(fee_id, identity, db)
+    previous = item.status
+    # Keep the deletion event queryable. The generic physical-delete route
+    # cascades WorkflowEvent rows, which would erase this finance audit trail.
+    item.status = "已删除"
+    db.add(WorkflowEvent(record_id=item.id, action="删除内部费用草稿", from_status=previous, to_status="已删除", operator=identity["username"], comment=item.serial_no))
+    await db.commit()
+    return None
+
+
 @app.patch(f"{settings.api_prefix}/contracts/{{contract_id}}")
 async def update_contract_draft(contract_id: int, body: ContractDraftInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _ensure_record_module(contract_id, "contract", identity, db)
@@ -18692,7 +18735,7 @@ async def _internal_fee_rows(
 ) -> list[dict]:
     scope_conditions = await _record_scope_conditions(identity, db)
     fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *scope_conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
-    fees = [item for item in fees if (item.data or {}).get("fee_type") == "内部费用"]
+    fees = [item for item in fees if (item.data or {}).get("fee_type") == "内部费用" and item.status != "已删除"]
     if ids is not None:
         fees = [item for item in fees if item.id in ids]
     case_records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope_conditions))).all())
