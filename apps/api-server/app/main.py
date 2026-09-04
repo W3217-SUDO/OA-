@@ -9193,6 +9193,35 @@ def _excel_response(filename: str, headers: list[str], rows: list[list[object]])
     return Response(content=content.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
 
 
+@app.get(f"{settings.api_prefix}/contracts/{{contract_id}}/export")
+async def export_contract_detail_excel(
+    contract_id: int,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export exactly one visible contract as a SpreadsheetML workbook."""
+    await _require_record_module_menu("contract", identity, db, action="导出")
+    contract = await db.scalar(
+        select(BusinessRecord).where(
+            BusinessRecord.id == contract_id,
+            BusinessRecord.module == "contract",
+            *(await _record_scope_conditions(identity, db)),
+        )
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="合同不存在或当前账号无权导出")
+
+    visible = _record_dict(contract, await _allowed_field_keys(identity, db))
+    headers = ["业务编号", "标题", "客户/主体", "状态", "负责人", "部门", "说明", "扩展数据", "创建时间", "更新时间"]
+    row = [
+        visible["serial_no"], visible["title"], visible["customer"], visible["status"],
+        visible["owner"], visible["department"], visible["description"],
+        json.dumps(visible.get("data") or {}, ensure_ascii=False), visible["created_at"], visible["updated_at"],
+    ]
+    filename = f'{contract.serial_no or contract.id}-合同详情.xls'
+    return _excel_response(filename, headers, [row])
+
+
 async def _selected_ordinary_case_export_records(ids: str, identity: dict, db: AsyncSession) -> list[BusinessRecord]:
     """Resolve only selected, visible ordinary cases; never broaden export scope."""
     await _require_record_module_menu("case", identity, db, action="导出")

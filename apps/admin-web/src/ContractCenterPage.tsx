@@ -1956,12 +1956,7 @@ export default function ContractCenterPage({
   };
   const exportContractDetailExcel = async (contract: Contract) => {
     try {
-      const res = await api.get("/records/export-excel", {
-        params: {
-          module: "contract",
-          serial_no: contract.serial_no || undefined,
-          title: contract.serial_no ? undefined : contract.title,
-        },
+      const res = await api.get(`/contracts/${contract.id}/export`, {
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
@@ -2783,7 +2778,7 @@ export default function ContractCenterPage({
         width={isContractDetailView ? "100%" : 860}
         open={Boolean(viewing)}
         title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
-        footer={<Space>{viewing?.status === "草稿" && <Button danger disabled={!detailContractCapabilities.canEdit} onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}{viewing && <Button disabled={!detailContractCapabilities.canChange} onClick={() => openChange(viewing)}>合同变更</Button>}<Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button><Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
+        footer={<Space>{viewing?.status === "草稿" && <Button danger disabled={!detailContractCapabilities.canEdit} onClick={() => revokeDraft(viewing)}>撤销草稿</Button>}{viewing && <Button disabled={!detailContractCapabilities.canChange} onClick={() => openChange(viewing)}>合同变更</Button>}{!isContractDetailView && <Button onClick={() => viewing && void exportContractDetailExcel(viewing)}>导出Excel</Button>}<Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button><Button onClick={returnFromDetail}>关闭</Button></Space>}
         onCancel={returnFromDetail}
         getContainer={isContractDetailView ? false : undefined}
         mask={!isContractDetailView}
@@ -2821,6 +2816,7 @@ export default function ContractCenterPage({
               className="contract-detail-tabs"
               activeKey={detailActiveTab}
               onChange={handleContractDetailTabChange}
+              tabBarExtraContent={<Button onClick={() => void exportContractDetailExcel(viewing)}>导出Excel</Button>}
               items={[
                 {
                   key: "objects",

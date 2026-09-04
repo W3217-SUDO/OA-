@@ -22,15 +22,15 @@ const detailExportSource = sliceBetween(
 const detailModalSource = sliceBetween(
   source,
   "      <Modal\n        width={isContractDetailView ? \"100%\" : 860}",
-  "        onCancel={returnFromDetail}",
+  "      <Modal open={Boolean(objectEditing)}",
   "contract detail modal",
 );
 
 test("contract detail restores the legacy ExportToExcel entry from ContractInfo", () => {
   assert.match(
     detailExportSource,
-    /api\.get\("\/records\/export-excel", \{[\s\S]*module: "contract",[\s\S]*serial_no: contract\.serial_no \|\| undefined,[\s\S]*responseType: "blob"/,
-    "detail export should reuse the existing contract Excel endpoint with the opened contract number",
+    /api\.get\(`\/contracts\/\$\{contract\.id\}\/export`, \{[\s\S]*responseType: "blob"/,
+    "detail export should call the exact opened contract export endpoint",
   );
   assert.match(
     detailExportSource,
@@ -39,7 +39,7 @@ test("contract detail restores the legacy ExportToExcel entry from ContractInfo"
   );
   assert.match(
     detailModalSource,
-    /exportContractDetailExcel\(viewing\)[\s\S]*导出Excel/,
-    "the contract detail footer should expose the old 导出Excel action",
+    /tabBarExtraContent=\{<Button onClick=\{\(\) => void exportContractDetailExcel\(viewing\)\}>导出Excel<\/Button>\}/,
+    "the contract detail tab bar should expose the old 导出Excel action on the right",
   );
 });

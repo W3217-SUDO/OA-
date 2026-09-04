@@ -74,6 +74,12 @@ class ContractExportFilteredTest(unittest.TestCase):
                 self.assertNotIn(excluded, text)
                 self.assertIn("中文合同扩展数据验收", text)
                 self.assertGreaterEqual(len(cells), 10)
+
+            status, headers, body = call("GET", f"/contracts/{created[0]}/export", token)
+            self.assertEqual(status, 200)
+            self.assertIn("application/vnd.ms-excel", headers.get("Content-Type", ""))
+            self.assertIn(f"{prefix}-1", body.decode("utf-8"))
+            self.assertNotIn(f"{prefix}-2", body.decode("utf-8"))
         finally:
             db_path = pathlib.Path(__file__).with_name("legal_platform.db")
             connection = sqlite3.connect(db_path); connection.execute("PRAGMA foreign_keys=ON")
