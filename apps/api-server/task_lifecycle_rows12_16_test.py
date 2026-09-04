@@ -21,6 +21,7 @@ API = settings.api_prefix
 INITIATOR = {"username": "row12-initiator", "role": "staff", "display_name": "发起人", "department": "事务部"}
 OWNER = {"username": "row15-owner", "role": "staff", "display_name": "负责人", "department": "事务部"}
 RECIPIENT = {"username": "row15-recipient", "role": "staff", "display_name": "接收人", "department": "事务部"}
+ADMIN = {"username": "row15-admin", "role": "admin", "display_name": "管理员", "department": "管理部"}
 
 
 class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
@@ -32,11 +33,15 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         async with self.sessions() as db:
-            for identity in (INITIATOR, OWNER, RECIPIENT):
+            for identity in (INITIATOR, OWNER, RECIPIENT, ADMIN):
                 db.add(User(
                     username=identity["username"], display_name=identity["display_name"],
                     department=identity["department"], role=identity["role"], password_hash="x", is_active=True,
                 ))
+            db.add(User(
+                username="row15-disabled", display_name="停用接收人", department="事务部",
+                role="staff", password_hash="x", is_active=False,
+            ))
             await db.commit()
         self.identity = dict(INITIATOR)
         self.previous_overrides = dict(app.dependency_overrides)
@@ -124,6 +129,65 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual((accepted.status_code, completed.status_code, handed.status_code), (409, 409, 409))
         self.assertEqual((await self.persisted_task(stopped)).status, "已停止")
+
+    async def test_handoff_rejects_unknown_or_inactive_recipient_without_partial_writes(self) -> None:
+        self.identity = dict(OWNER)
+        task_id = await self.create_task("进行中", "1603")
+        for recipient in ("missing-user", "row15-disabled"):
+            response = await self.client.post(f"{API}/tasks/{task_id}/handoff", json={
+                "recipient": recipient, "comment": "不应写入",
+            })
+            self.assertEqual(response.status_code, 422, response.text)
+            persisted = await self.persisted_task(task_id)
+            self.assertEqual((persisted.owner, persisted.status), (OWNER["username"], "进行中"))
+            self.assertNotIn("handoff_recipient", persisted.data or {})
+        async with self.sessions() as db:
+            event_count = len(list((await db.scalars(select(WorkflowEvent).where(
+                WorkflowEvent.record_id == task_id
+            ))).all()))
+        self.assertEqual(event_count, 0)
+
+    async def test_only_initiator_can_withdraw_even_when_current_user_is_admin(self) -> None:
+        task_id = await self.create_task("待接收", "1504")
+        batch_task_id = await self.create_task("待处理", "1505")
+        self.identity = dict(ADMIN)
+        denied = await self.client.post(f"{API}/tasks/{task_id}/withdraw", json={"comment": "越权撤回"})
+        self.assertEqual(denied.status_code, 403, denied.text)
+        batch_denied = await self.client.post(f"{API}/tasks/batch-lifecycle", json={
+            "task_ids": [batch_task_id], "action": "withdraw", "comment": "批量越权撤回",
+        })
+        self.assertEqual(batch_denied.status_code, 403, batch_denied.text)
+        self.assertEqual((await self.persisted_task(task_id)).status, "待接收")
+        self.assertEqual((await self.persisted_task(batch_task_id)).status, "待处理")
+
+        self.identity = dict(INITIATOR)
+        allowed = await self.client.post(f"{API}/tasks/{task_id}/withdraw", json={"comment": "发起人撤回"})
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertEqual((await self.persisted_task(task_id)).status, "已撤回")
+
+    async def test_department_initiated_scope_uses_initiator_membership_not_task_department(self) -> None:
+        async with self.sessions() as db:
+            db.add_all([
+                BusinessRecord(
+                    module="task", serial_no="9031801", title="本部门成员发起", customer="",
+                    status="待接收", owner=RECIPIENT["username"], department="错误缓存部门",
+                    data={"initiator": OWNER["username"], "collaborators": []},
+                ),
+                BusinessRecord(
+                    module="task", serial_no="9031802", title="跨部门成员发起", customer="",
+                    status="待接收", owner=RECIPIENT["username"], department=INITIATOR["department"],
+                    data={"initiator": ADMIN["username"], "collaborators": []},
+                ),
+            ])
+            await db.commit()
+        self.identity = dict(INITIATOR)
+        response = await self.client.get(f"{API}/tasks", params={
+            "scope": "department", "relation": "initiated", "page_size": 200,
+        })
+        self.assertEqual(response.status_code, 200, response.text)
+        serials = {item["serial_no"] for item in response.json()["items"]}
+        self.assertIn("9031801", serials)
+        self.assertNotIn("9031802", serials)
 
     async def test_batch_complete_and_confirm_match_single_task_state_machine(self) -> None:
         self.identity = dict(OWNER)
