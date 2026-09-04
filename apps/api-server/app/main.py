@@ -9648,6 +9648,158 @@ async def export_report_staff_roi(
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="staff-roi-{date.today()}.csv"'})
 
 
+
+def _large_screen_case_is_excluded(case: BusinessRecord) -> bool:
+    """Keep drafts and cancelled/merged records out of operational case totals."""
+    status_value = str(case.status or "").strip()
+    return status_value in {"草稿", "已撤销", "已撤回", "已作废", "已删除", "已合并"}
+
+
+def _large_screen_case_is_closed(case: BusinessRecord) -> bool:
+    """Use the dedicated close marker, with archived legacy rows as a fallback."""
+    data = case.data or {}
+    record_status = str(case.status or "").strip()
+    phase = str(data.get("case_phase_name") or data.get("case_phase") or "").strip()
+    closed_phases = {
+        "已结案", "一审和解结案", "一审判决结案", "二审和解结案",
+        "二审判决结案", "再审和解结案", "再审判决结案", "执行结案",
+    }
+    return bool(data.get("case_closed_at")) or record_status in {"已归档", "亏损归档"} or phase in closed_phases or record_status in closed_phases
+
+
+def _large_screen_month_keys(today: date) -> list[str]:
+    keys: list[str] = []
+    for offset in range(11, -1, -1):
+        year = today.year
+        month = today.month - offset
+        while month <= 0:
+            month += 12
+            year -= 1
+        keys.append(f"{year:04d}-{month:02d}")
+    return keys
+
+
+@app.get(f"{settings.api_prefix}/reports/large-screen")
+async def report_large_screen(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return one scoped, realtime snapshot for the report-centre large screen."""
+    permission = await _permission_payload_for_identity(identity, db)
+    if "admin" not in _identity_role_ids(identity) and "reports-large-screen" not in permission.get("menu_keys", []):
+        raise HTTPException(status_code=403, detail="当前角色没有报表大屏权限")
+
+    scope = await _record_scope_conditions(identity, db)
+    visible_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", *scope,
+    ))).all())
+    cases = [item for item in visible_cases if not _large_screen_case_is_excluded(item)]
+    closed_cases = [item for item in cases if _large_screen_case_is_closed(item)]
+    active_cases = [item for item in cases if not _large_screen_case_is_closed(item)]
+    customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "customer", *scope,
+    ))).all())
+
+    type_counts: dict[str, int] = {}
+    for case in cases:
+        case_type = str((case.data or {}).get("case_type") or "未分类").strip() or "未分类"
+        type_counts[case_type] = type_counts.get(case_type, 0) + 1
+
+    today = date.today()
+    month_keys = _large_screen_month_keys(today)
+    monthly_cases = {key: 0 for key in month_keys}
+    employee_counts: dict[str, int] = {}
+    for case in cases:
+        created_at = case.created_at.date() if case.created_at else None
+        if created_at:
+            month_key = created_at.strftime("%Y-%m")
+            if month_key in monthly_cases:
+                monthly_cases[month_key] += 1
+            if created_at.year == today.year:
+                owner = str(case.owner or "").strip() or "未分配"
+                employee_counts[owner] = employee_counts.get(owner, 0) + 1
+    users_by_username = await _user_display_map(set(employee_counts), db)
+    employee_ranking = [
+        {
+            "username": username,
+            "name": (users_by_username.get(username.lower()).display_name if users_by_username.get(username.lower()) else username),
+            "value": value,
+        }
+        for username, value in sorted(employee_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+    ]
+
+    amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
+    monthly_income = {key: None for key in month_keys}
+    monthly_expense = {key: None for key in month_keys}
+    finance: dict = {
+        "amount_visible": amount_visible,
+        "income": None,
+        "expense": None,
+        "income_label": "实际到账",
+        "expense_label": "实际已支付",
+    }
+    if amount_visible:
+        # IncomingPayment is the bank-arrival source of truth.  Payments are
+        # recorded financial transactions, so applications and approvals do not
+        # inflate either total.
+        incoming = list((await db.scalars(select(IncomingPayment))).all())
+        if identity.get("role") not in {"admin", "auditor"}:
+            visible_customer_titles = {item.title for item in customers}
+            incoming = [
+                item for item in incoming
+                if item.operator == identity["username"]
+                or item.claimant == identity["username"]
+                or item.claimed_customer in visible_customer_titles
+            ]
+        visible_record_ids = set((await db.scalars(select(BusinessRecord.id).where(*scope))).all())
+        transaction_conditions = [FinanceTransaction.transaction_type == "付款"]
+        if identity.get("role") != "admin":
+            transaction_conditions.append(or_(
+                and_(FinanceTransaction.finance_record_id.is_not(None), FinanceTransaction.finance_record_id.in_(visible_record_ids)),
+                and_(FinanceTransaction.finance_record_id.is_(None), FinanceTransaction.operator == identity["username"]),
+            ))
+        payments = list((await db.scalars(select(FinanceTransaction).where(*transaction_conditions))).all())
+        monthly_income = {key: 0.0 for key in month_keys}
+        monthly_expense = {key: 0.0 for key in month_keys}
+        for item in incoming:
+            month_key = item.received_date.strftime("%Y-%m")
+            if month_key in monthly_income:
+                monthly_income[month_key] += float(item.amount or 0)
+        for item in payments:
+            month_key = item.transaction_date.strftime("%Y-%m")
+            if month_key in monthly_expense:
+                monthly_expense[month_key] += float(item.amount or 0)
+        finance["income"] = round(sum(float(item.amount or 0) for item in incoming), 2)
+        finance["expense"] = round(sum(float(item.amount or 0) for item in payments), 2)
+
+    return {
+        "source": "realtime",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "case_summary": {"total": len(cases), "in_progress": len(active_cases), "closed": len(closed_cases)},
+        "finance": finance,
+        "customer_summary": {"total": len(customers)},
+        "employee_ranking": employee_ranking,
+        "case_type_distribution": [
+            {"name": name, "value": value}
+            for name, value in sorted(type_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "monthly_trend": [
+            {
+                "month": month,
+                "cases": monthly_cases[month],
+                "income": round(monthly_income[month], 2) if monthly_income[month] is not None else None,
+                "expense": round(monthly_expense[month], 2) if monthly_expense[month] is not None else None,
+            }
+            for month in month_keys
+        ],
+        "definitions": {
+            "case_total": "当前数据范围内排除草稿、撤销、撤回、作废、删除和合并记录后的案件数",
+            "case_in_progress": "有效案件中未写入办结确认、未处于结案阶段且未归档的案件数",
+            "case_closed": "已写入办结确认，或状态/案件阶段属于明确结案阶段，或历史状态为已归档、亏损归档的案件数",
+            "income": "可见银行到账记录的实际到账金额，包含未认领到账，不按申请或分配次数重复计算",
+            "expense": "可见付款流水的实际已支付金额，不包含费用申请或审批金额",
+            "employee_ranking": f"{today.year}年有效新建案件数，按案件负责人排序",
+            "monthly_trend": "最近12个自然月的有效新建案件数；有财务金额权限时同时返回实际到账和实际已支付金额",
+        },
+    }
+
 async def _report_analytics(view: str, identity: dict, db: AsyncSession, customer: str = "", court_lawyer: str = "", handling_lawyer: str = "", assistant: str = "", investigator: str = "", court: str = "", source_from: date | None = None, source_to: date | None = None, hearing_from: date | None = None, hearing_to: date | None = None, group_mode: str = "") -> dict:
     if view not in {"brand", "lawyer", "refund", "execution-1", "execution-2", "execution-3"}: raise HTTPException(status_code=422, detail="不支持的统计视图")
     if source_from and source_to and source_from > source_to: raise HTTPException(status_code=422, detail="案源开始日期不能晚于结束日期")

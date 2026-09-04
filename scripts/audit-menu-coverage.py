@@ -3615,6 +3615,24 @@ def main() -> None:
     ):
         assert token in HR, f"Employee deletion blocker cleanup modal contract missing: {token}"
     print("HR_DELETE_BLOCKER_CLEANUP_OK: cleanable HR blockers map each returned record kind to its maintenance tab without bypassing business lifecycle")
+    for token in (
+        '@app.get(f"{settings.api_prefix}/reports/large-screen")',
+        '"case_summary": {"total": len(cases), "in_progress": len(active_cases), "closed": len(closed_cases)}',
+        '"amount_visible": amount_visible,',
+        '"monthly_trend": [',
+        '"employee_ranking": employee_ranking,',
+    ):
+        assert token in MAIN, f"report large-screen API contract missing: {token}"
+    for token in (
+        'initialView === "reports-large-screen"',
+        'api.get<LargeScreenData>("/reports/large-screen")',
+        'data.finance.amount_visible ? (',
+        'data.definitions?.income || data.finance.income_label',
+        'data.finance.amount_visible && <><Line yAxisId="amount"',
+        'onNavigate("reports-large-screen")',
+    ):
+        assert token in REPORT, f"report large-screen UI contract missing: {token}"
+    print("REPORT_LARGE_SCREEN_OK: menu entry, scoped realtime API, nullable amount permission state, and chart bindings")
     print("REPORT_LAYOUT_OK: 6 routes, execution views keep 10 original charts")
 
 

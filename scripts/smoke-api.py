@@ -381,6 +381,13 @@ def main():
         assert len(dashboard["case_trend"]) == 10
         assert all(item["value"] >= 0 for item in dashboard["case_trend"])
         assert sum(item["value"] for item in dashboard["civil_distribution"]) == len(dashboard["latest_cases"]) or len(dashboard["latest_cases"]) == 15
+        large_screen = call("GET", "/reports/large-screen")
+        assert large_screen["source"] == "realtime"
+        assert set(large_screen["case_summary"]) == {"total", "in_progress", "closed"}
+        assert large_screen["case_summary"]["total"] == large_screen["case_summary"]["in_progress"] + large_screen["case_summary"]["closed"]
+        assert "amount_visible" in large_screen["finance"]
+        assert len(large_screen["monthly_trend"]) == 12
+        assert all(set(item) >= {"month", "cases", "income", "expense"} for item in large_screen["monthly_trend"])
         passed("健康检查、登录鉴权、个人资料和控制台数据")
 
         username = f"smoke_{suffix}".lower()

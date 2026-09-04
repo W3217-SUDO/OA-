@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
-import { Button, DatePicker, Empty, Form, Input, message, Select, Spin, Table } from "antd";
-import {
+import { Alert, Button, DatePicker, Empty, Form, Input, Select, Spin, Table, message } from "antd";import {
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -436,39 +441,140 @@ function StaffRoiReport() {
 }
 
 const largeScreenViews = ["reports-refund", "reports-execution-1", "reports-execution-2", "reports-execution-3"];
+const LARGE_SCREEN_COLORS = ["#18c7bb", "#4e8cff", "#ffb95c", "#8a74e8", "#ef6d85", "#2cc47c"];
 
-export function ReportLargeScreenPage({ initialView = "reports-refund" }: { initialView?: string }) {
-  const [index, setIndex] = useState(() => Math.max(0, largeScreenViews.indexOf(initialView)));
-  const [fullscreen, setFullscreen] = useState(false);
+type LargeScreenData = {
+  case_summary: { total: number; in_progress: number; closed: number };
+  finance: { amount_visible: boolean; income: number | null; expense: number | null; income_label?: string; expense_label?: string };
+  customer_summary: { total: number };
+  employee_ranking: { username?: string; name: string; value: number }[];
+  case_type_distribution: { name: string; value: number }[];
+  monthly_trend: { month: string; cases: number; income: number | null; expense: number | null }[];
+  definitions?: Record<string, string>;
+  generated_at?: string;
+};
 
-  useEffect(() => {
-    const timer = setInterval(() => setIndex(current => (current + 1) % largeScreenViews.length), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+const emptyLargeScreenData: LargeScreenData = {
+  case_summary: { total: 0, in_progress: 0, closed: 0 },
+  finance: { amount_visible: false, income: null, expense: null },
+  customer_summary: { total: 0 },
+  employee_ranking: [],
+  case_type_distribution: [],
+  monthly_trend: [],
+};
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      const request = document.documentElement.requestFullscreen?.();
-      if (request) void request.then(() => setFullscreen(true)).catch(() => setFullscreen(false));
-    } else {
-      const exit = document.exitFullscreen?.();
-      if (exit) void exit.then(() => setFullscreen(false));
+const formatNumber = (value: number) => Number(value || 0).toLocaleString("zh-CN");
+const formatCurrency = (value: number | null) => value == null ? "—" : `¥${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function LargeScreenEmpty({ description = "暂无可展示的真实业务数据" }: { description?: string }) {
+  return <Empty className="large-screen-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description={description} />;
+}
+
+export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
+  const [screenMode, setScreenMode] = useState<"overview" | "legacy">("overview");
+  const [legacyIndex, setLegacyIndex] = useState(0);
+  const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [data, setData] = useState<LargeScreenData>(emptyLargeScreenData);
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.get<LargeScreenData>("/reports/large-screen");
+      setData({ ...emptyLargeScreenData, ...response.data, case_summary: { ...emptyLargeScreenData.case_summary, ...response.data.case_summary }, finance: { ...emptyLargeScreenData.finance, ...response.data.finance }, customer_summary: { ...emptyLargeScreenData.customer_summary, ...response.data.customer_summary } });
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.detail || "大屏实时数据加载失败，请稍后重试。");
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    void load();
+    const refreshTimer = window.setInterval(() => void load(), 60_000);
+    const syncFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (screenMode !== "legacy") return;
+    const timer = window.setInterval(() => setLegacyIndex(current => (current + 1) % largeScreenViews.length), 30_000);
+    return () => window.clearInterval(timer);
+  }, [screenMode]);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+      return;
+    }
+    void document.documentElement.requestFullscreen?.().catch(() => message.warning("当前浏览器不支持进入全屏模式"));
+  };
+
+  const rankingData = data.employee_ranking.slice(0, 8);
+  const typeData = data.case_type_distribution;
+  const trendData = data.monthly_trend;
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, overflow: "auto", background: "#0b2545", color: "#fff" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px" }}>
-        <span>报表大屏</span>
-        <Button onClick={toggleFullscreen}>{fullscreen ? "退出全屏" : "全屏"}</Button>
-      </div>
-      <ReportCenterPage key={largeScreenViews[index]} initialView={largeScreenViews[index]} />
+    <div className="report-large-screen">
+      <header className="large-screen-header">
+        <div>
+          <p>REPORTING CENTER · REALTIME</p>
+          <h1>经营数据大屏</h1>
+        </div>
+        <div className="large-screen-actions">
+          <Button type={screenMode === "overview" ? "primary" : "default"} onClick={() => setScreenMode("overview")}>综合概览</Button>
+          <Button type={screenMode === "legacy" ? "primary" : "default"} onClick={() => setScreenMode("legacy")}>旧报表轮播</Button>
+          <Button onClick={() => void load()} loading={loading}>刷新数据</Button>
+          <Button onClick={toggleFullscreen}>{fullscreen ? "退出全屏" : "全屏展示"}</Button>
+          {onExit && <Button onClick={onExit}>返回报表中心</Button>}
+        </div>
+      </header>
+      {screenMode === "legacy" ? (
+        <section className="large-screen-legacy">
+          <div className="large-screen-legacy-note">旧版专题报表每 30 秒自动切换，可保留用于会议轮播展示。</div>
+          <ReportCenterPage key={largeScreenViews[legacyIndex]} initialView={largeScreenViews[legacyIndex]} />
+        </section>
+      ) : (
+        <Spin spinning={loading} tip="正在汇总实时数据">
+          {error ? <Alert className="large-screen-alert" type="error" showIcon message="大屏数据未加载" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : (
+            <main className="large-screen-content">
+              <section className="large-screen-kpis" aria-label="业务概览">
+                <article><span>案件总数</span><strong>{formatNumber(data.case_summary.total)}</strong><em>{data.definitions?.case_total || "符合统计条件的可见案件"}</em></article>
+                <article><span>在办案件</span><strong>{formatNumber(data.case_summary.in_progress)}</strong><em>{data.definitions?.case_in_progress || "当前办理中"}</em></article>
+                <article><span>已结案件</span><strong>{formatNumber(data.case_summary.closed)}</strong><em>{data.definitions?.case_closed || "已完成或归档"}</em></article>
+                <article><span>财务收入</span><strong>{formatCurrency(data.finance.income)}</strong><em>{data.finance.amount_visible ? (data.definitions?.income || data.finance.income_label || "当前数据范围") : "无财务数据查看权限"}</em></article>
+                <article><span>财务支出</span><strong>{formatCurrency(data.finance.expense)}</strong><em>{data.finance.amount_visible ? (data.definitions?.expense || data.finance.expense_label || "当前数据范围") : "无财务数据查看权限"}</em></article>
+                <article><span>客户总数</span><strong>{formatNumber(data.customer_summary.total)}</strong><em>全部可见客户</em></article>
+              </section>
+              <section className="large-screen-grid">
+                <article className="large-screen-card ranking-card">
+                  <h2>员工业绩排行 <small>{data.definitions?.employee_ranking || "统计口径以系统数据为准"}</small></h2>
+                  <div className="large-screen-chart">{rankingData.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={rankingData} layout="vertical" margin={{ top: 8, right: 24, bottom: 0, left: 14 }}><CartesianGrid stroke="#e8f0f2" horizontal={false} /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 12 }} /><Tooltip formatter={(value) => [formatNumber(Number(value)), "办案量"]} /><Bar dataKey="value" fill="#00a65a" radius={[0, 5, 5, 0]} maxBarSize={20} /></BarChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>
+                </article>
+                <article className="large-screen-card distribution-card">
+                  <h2>案件类型分布 <small>按案件数量</small></h2>
+                  <div className="large-screen-chart">{typeData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={typeData} dataKey="value" nameKey="name" innerRadius="48%" outerRadius="72%" paddingAngle={3}>{typeData.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={LARGE_SCREEN_COLORS[index % LARGE_SCREEN_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => [formatNumber(Number(value)), "案件"]} /><Legend /></PieChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>
+                </article>
+                <article className="large-screen-card trend-card">
+                  <h2>月度业务趋势 <small>{data.definitions?.monthly_trend || "最近12个月案件量与收支概览"}</small></h2>
+                  <div className="large-screen-chart">{trendData.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={trendData} margin={{ top: 12, right: 28, bottom: 0, left: 0 }}><CartesianGrid stroke="#e8f0f2" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 12 }} /><YAxis yAxisId="count" allowDecimals={false} />{data.finance.amount_visible && <YAxis yAxisId="amount" orientation="right" tickFormatter={(value) => `${Math.round(Number(value) / 10000)}万`} />}<Tooltip formatter={(value, name) => [name === "案件量" ? formatNumber(Number(value)) : formatCurrency(value == null ? null : Number(value)), name]} /><Legend /><Line yAxisId="count" type="monotone" dataKey="cases" name="案件量" stroke="#00a65a" strokeWidth={3} dot={false} />{data.finance.amount_visible && <><Line yAxisId="amount" type="monotone" dataKey="income" name="收入" stroke="#3e8ef7" strokeWidth={2} dot={false} /><Line yAxisId="amount" type="monotone" dataKey="expense" name="支出" stroke="#ef7e56" strokeWidth={2} dot={false} /></>}</LineChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>
+                </article>
+              </section>
+              {data.generated_at && <p className="large-screen-updated">数据更新时间：{data.generated_at}</p>}
+            </main>
+          )}
+        </Spin>
+      )}
     </div>
   );
 }
 
-export default function ReportCenterPage({ initialView = "reports-brand", onNavigate }: { initialView?: string; onNavigate?: (route: string) => void }) {
-  const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
+function StandardReportCenterPage({ initialView = "reports-brand", onNavigate }: { initialView?: string; onNavigate?: (route: string) => void }) {  const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
   const [loading, setLoading] = useState(false);
   const [analytics, setAnalytics] = useState<Analytics>({ charts: [], filter_options: { customers: [], lawyers: [] }, source: "realtime" });
   const [query, setQuery] = useState<ReportFilterValues>({});
@@ -510,9 +616,11 @@ export default function ReportCenterPage({ initialView = "reports-brand", onNavi
   if (initialView === "reports-staff-roi") return <StaffRoiReport />;
   return (
     <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>
-      <div className="report-page-heading">{page.title}</div>
-      {(page.filter === "brand" || page.filter === "lawyer") && <Filters key={initialView} kind={page.filter} options={analytics.filter_options} onQuery={queryReport} />}
-      {page.tab && (
+      <div className="report-page-heading">
+        <span>{page.title}</span>
+        {onNavigate && <Button size="small" type="primary" onClick={() => onNavigate("reports-large-screen")}>大屏展示</Button>}
+      </div>
+      {page.filter !== "none" && <Filters key={initialView} kind={page.filter} options={analytics.filter_options} onQuery={queryReport} />}      {page.tab && (
         <div className="report-tabs">
           <span className="report-tab-active">{page.tab}</span>
         </div>
@@ -526,4 +634,10 @@ export default function ReportCenterPage({ initialView = "reports-brand", onNavi
       </Spin>
     </div>
   );
+}
+
+export default function ReportCenterPage({ initialView = "reports-brand", onNavigate }: { initialView?: string; onNavigate?: (route: string) => void }) {
+  return initialView === "reports-large-screen"
+    ? <ReportLargeScreenPage onExit={() => onNavigate?.("reports-brand")} />
+    : <StandardReportCenterPage initialView={initialView} onNavigate={onNavigate} />;
 }
