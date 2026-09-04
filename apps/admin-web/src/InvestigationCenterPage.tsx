@@ -400,6 +400,7 @@ export default function InvestigationCenterPage({
   const [reviewerCandidates, setReviewerCandidates] = useState<PersonOption[]>([]);
   const [reviewerCandidatesLoading, setReviewerCandidatesLoading] = useState(false);
   const [collectionTarget, setCollectionTarget] = useState<Row | null>(null);
+  const [batchCollectionTargets, setBatchCollectionTargets] = useState<Row[]>([]);
   const [evidenceSource, setEvidenceSource] = useState<Row | null>(null);
   const [certificateTarget, setCertificateTarget] = useState<Row | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -999,26 +1000,37 @@ export default function InvestigationCenterPage({
     }
   };
   const registerCollection = async () => {
-    if (!collectionTarget) return;
+    if (!collectionTarget && batchCollectionTargets.length === 0) return;
     const uploadedIds: number[] = [];
     try {
       const v = await collectionForm.validateFields();
       for (const file of collectionFiles) {
         const form = new FormData();
         form.append("file", file);
-        form.append("record_id", String(collectionTarget.id));
+        form.append("record_id", String(collectionTarget!.id));
         form.append("category", "取证文件");
         form.append("remark", "线索取证登记附件");
         const { data } = await api.post("/attachments", form);
         uploadedIds.push(data.id);
       }
-      await api.post(`/investigations/clues/${collectionTarget.id}/collect`, {
+      const payload = {
         ...v,
         evidence_file_ids: uploadedIds,
         collected_at: formatRequiredDate(v.collected_at, "取证日期"),
-      });
-      message.success("取证信息已登记，线索进入已取证");
+      };
+      if (batchCollectionTargets.length > 0) {
+        const { data } = await api.post("/investigations/clues/batch-collect", {
+          ...payload,
+          clue_ids: batchCollectionTargets.map((row) => row.id),
+        });
+        message.success(`已为 ${data.collected} 条线索批量登记取证`);
+      } else {
+        await api.post(`/investigations/clues/${collectionTarget!.id}/collect`, payload);
+        message.success("取证信息已登记，线索进入已取证");
+      }
       setCollectionTarget(null);
+      setBatchCollectionTargets([]);
+      setSelectedClues([]);
       setCollectionFiles([]);
       load("clue");
     } catch (error: any) {
@@ -1028,6 +1040,30 @@ export default function InvestigationCenterPage({
         error?.response?.data?.detail || error?.message || "取证登记失败",
       );
     }
+  };
+  const openSingleCollection = (row: Row) => {
+    collectionForm.resetFields();
+    collectionForm.setFieldsValue({
+      warehouse_id: Number(row.data.warehouse_id) || undefined,
+      storage_location_id: Number(row.data.storage_location_id) || undefined,
+      evidence_storage_path:
+        row.data.warehouse_id && row.data.storage_location_id
+          ? [Number(row.data.warehouse_id), Number(row.data.storage_location_id)]
+          : undefined,
+    });
+    setCollectionFiles([]);
+    setBatchCollectionTargets([]);
+    setCollectionTarget(row);
+  };
+  const openBatchCollection = () => {
+    const targets = rows.filter((row) => selectedClues.includes(row.id));
+    if (targets.length < 2) return message.warning("请至少选择两条待取证线索");
+    const invalid = targets.filter((row) => row.status !== "待取证");
+    if (invalid.length > 0) return message.warning(`仅待取证线索可批量办理：${invalid.map((row) => row.serial_no).join("、")}`);
+    collectionForm.resetFields();
+    setCollectionFiles([]);
+    setCollectionTarget(null);
+    setBatchCollectionTargets(targets);
   };
   const createEvidence = async () => {
     if (!evidenceSource) return;
@@ -2473,19 +2509,7 @@ export default function InvestigationCenterPage({
               {r.status === "待取证" && (
                 <Button
                   type="link"
-                  onClick={() => {
-                    collectionForm.resetFields();
-                    collectionForm.setFieldsValue({
-                      warehouse_id: Number(r.data.warehouse_id) || undefined,
-                      storage_location_id: Number(r.data.storage_location_id) || undefined,
-                      evidence_storage_path:
-                        r.data.warehouse_id && r.data.storage_location_id
-                          ? [Number(r.data.warehouse_id), Number(r.data.storage_location_id)]
-                          : undefined,
-                    });
-                    setCollectionFiles([]);
-                    setCollectionTarget(r);
-                  }}
+                  onClick={() => openSingleCollection(r)}
                 >
                   登记取证
                 </Button>
@@ -2874,18 +2898,7 @@ export default function InvestigationCenterPage({
         clueReviewForm.setFieldsValue({ approved: true });
       }),
     取证: () =>
-      requireSingleRow("取证", (row) => {
-        collectionForm.resetFields();
-        collectionForm.setFieldsValue({
-          warehouse_id: Number(row.data.warehouse_id) || undefined,
-          storage_location_id: Number(row.data.storage_location_id) || undefined,
-          evidence_storage_path:
-            row.data.warehouse_id && row.data.storage_location_id
-              ? [Number(row.data.warehouse_id), Number(row.data.storage_location_id)]
-              : undefined,
-        });
-        setCollectionTarget(row);
-      }),
+      requireSingleRow("取证", openSingleCollection),
     建立公证: () =>
       requireSingleRow("建立公证", (row) => void applyNotary(row)),
     建立证据目录: () =>
@@ -4033,6 +4046,22 @@ export default function InvestigationCenterPage({
                     >
                       <Button>申请费用</Button>
                     </Dropdown>
+                  ) : label === "取证" ? (
+                    <Dropdown
+                      key={label}
+                      menu={{
+                        items: [
+                          { key: "single", label: "单个取证" },
+                          { key: "batch", label: "批量取证" },
+                        ],
+                        onClick: ({ key }) => key === "single"
+                          ? runOriginalAction(label)
+                          : openBatchCollection(),
+                      }}
+                    >
+                      <Button>取证</Button>
+                    </Dropdown>
+                  ) : (                    </Dropdown>
                   ) : (
                     <Button key={label} onClick={() => runOriginalAction(label)}>
                       {label === "审批" && initialTab === "clue-audit-customer"
@@ -4042,8 +4071,7 @@ export default function InvestigationCenterPage({
                           : label}
                     </Button>
                   ),
-                )}
-              </div>
+                )}              </div>
             )}
           </>
         )}
@@ -4225,13 +4253,16 @@ export default function InvestigationCenterPage({
         </Form>
       </Modal>
       <Modal
-        open={Boolean(collectionTarget)}
-        title={`登记取证：${collectionTarget?.serial_no || ""}`}
+        open={Boolean(collectionTarget) || batchCollectionTargets.length > 0}
+        title={batchCollectionTargets.length > 0
+          ? `批量取证：已选 ${batchCollectionTargets.length} 条线索`
+          : `单个取证：${collectionTarget?.serial_no || ""}`}
         okText="确认已取证"
         cancelText="取消"
         onOk={registerCollection}
         onCancel={() => {
           setCollectionTarget(null);
+          setBatchCollectionTargets([]);
           setCollectionFiles([]);
         }}
       >
@@ -4293,7 +4324,7 @@ export default function InvestigationCenterPage({
               <Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} />
             </Form.Item>
           </div>
-          <Form.Item label="证据文件">
+          {batchCollectionTargets.length === 0 && <Form.Item label="证据文件">
             <input
               type="file"
               multiple
@@ -4302,7 +4333,7 @@ export default function InvestigationCenterPage({
               }
             />
             {collectionFiles.length > 0 && <div>已选择 {collectionFiles.length} 个文件</div>}
-          </Form.Item>
+          </Form.Item>}
           <Form.Item label="取证说明" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>

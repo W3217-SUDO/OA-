@@ -1655,6 +1655,10 @@ class ClueCollectionInput(BaseModel):
     comment: str = ""
 
 
+class ClueBatchCollectionInput(ClueCollectionInput):
+    clue_ids: list[int] = Field(min_length=2, max_length=200)
+
+
 class EvidenceCreateInput(BaseModel):
     title: str
     owner: str
@@ -14048,8 +14052,7 @@ async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
-@app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/collect")
-async def register_clue_collection(clue_id: int, body: ClueCollectionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def _register_clue_collection(clue_id: int, body: ClueCollectionInput, identity: dict, db: AsyncSession) -> BusinessRecord:
     clue = await _ensure_record_module(clue_id, "clue", identity, db); await _require_record_owner_or_manager(clue, identity, db)
     if clue.status != "待取证": raise HTTPException(status_code=409, detail="只有审批通过的待取证线索可以登记取证")
     if body.collected_at > date.today(): raise HTTPException(status_code=422, detail="取证日期不能晚于今天")
@@ -14084,6 +14087,30 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
     db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {body.notary_institution.strip()}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
     await _sync_legacy_projection(clue, identity, db)
     await _sync_legacy_investigation_clue_evidence(clue, identity, db, evidence_file_ids)
+    return clue
+
+
+@app.post(f"{settings.api_prefix}/investigations/clues/batch-collect")
+async def register_clue_collection_batch(body: ClueBatchCollectionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    clue_ids = list(dict.fromkeys(body.clue_ids))
+    if len(clue_ids) < 2:
+        raise HTTPException(status_code=422, detail="批量取证至少需要选择两条线索")
+    if body.evidence_file_ids:
+        raise HTTPException(status_code=422, detail="批量取证不支持共用附件，请在单个取证中分别上传")
+    collected = []
+    try:
+        for clue_id in clue_ids:
+            collected.append(await _register_clue_collection(clue_id, body, identity, db))
+    except Exception:
+        await db.rollback()
+        raise
+    await db.commit()
+    return {"collected": len(collected), "clue_ids": [clue.id for clue in collected]}
+
+
+@app.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/collect")
+async def register_clue_collection(clue_id: int, body: ClueCollectionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    clue = await _register_clue_collection(clue_id, body, identity, db)
     await db.commit(); await db.refresh(clue); return _record_dict(clue)
 
 
