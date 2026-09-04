@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import secrets
 import sys
-from typing import Literal
+from typing import Annotated, Literal
 import unicodedata
 import zipfile
 from zoneinfo import ZoneInfo
@@ -23052,8 +23052,20 @@ def _legacy_case_fee_projection(data: dict) -> dict:
 
 
 @app.get(f"{settings.api_prefix}/cases/{{case_id}}/relations")
-async def list_case_relations(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Return all records linked to one case without global-list pagination loss."""
+async def list_case_relations(
+    case_id: int,
+    clue_page: Annotated[int | None, Query(ge=1)] = None,
+    clue_page_size: Annotated[int | None, Query(ge=1, le=200)] = None,
+    clue_keyword: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return one case's related records, with opt-in clue search and pagination.
+
+    Existing consumers receive the original complete ``clues`` array when no
+    clue query option is supplied.  The case-detail clue tab can opt into a
+    page without changing the fee relation payload or the old response shape.
+    """
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     case_data = case_record.data or {}
     raw_clue_nos = case_data.get("investigation_clue_nos") or case_data.get("clue_nos") or []
@@ -23095,6 +23107,31 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
     clues = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "clue", clue_condition,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    clue_query_requested = clue_page is not None or clue_page_size is not None or bool(clue_keyword.strip())
+    if clue_keyword.strip():
+        keyword = clue_keyword.strip().casefold()
+        clue_search_fields = (
+            "shop_name", "store_name", "shop_address", "address", "location_address",
+            "platform", "product", "certificate_no", "notary_no", "notarization_no",
+        )
+        clues = [
+            item for item in clues
+            if keyword in " ".join(
+                str(value or "") for value in (
+                    item.serial_no, item.title, item.customer, item.description,
+                    *((item.data or {}).get(field) for field in clue_search_fields),
+                )
+            ).casefold()
+        ]
+    clue_total = len(clues)
+    effective_clue_page = clue_page or 1
+    effective_clue_page_size = clue_page_size or 15
+    clue_pages = (clue_total + effective_clue_page_size - 1) // effective_clue_page_size if clue_total else 0
+    if clue_query_requested:
+        clue_start = (effective_clue_page - 1) * effective_clue_page_size
+        paged_clues = clues[clue_start:clue_start + effective_clue_page_size]
+    else:
+        paged_clues = clues
     refunds = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "refund"))).all())
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
     for refund in refunds:
@@ -23203,9 +23240,12 @@ async def list_case_relations(case_id: int, identity: dict = Depends(current_ide
         "case_id": case_record.id,
         "case_no": case_record.serial_no,
         "fees": [related_dict(item) for item in fees],
-        "clues": [related_dict(item) for item in clues],
+        "clues": [related_dict(item) for item in paged_clues],
         "fee_total": len(fees),
-        "clue_total": len(clues),
+        "clue_total": clue_total,
+        "clue_page": effective_clue_page,
+        "clue_page_size": effective_clue_page_size,
+        "clue_pages": clue_pages,
     }
 
 

@@ -61,9 +61,12 @@ import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from ".
 import { consumeCaseDetailTarget, rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
+import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { consumeCustomerRelationTarget } from "./customerRelationNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { incomingPaymentDetailRoute } from "./incomingPaymentDetailNavigation";
+// @ts-expect-error This small runtime helper is intentionally shared with its Node behavior test.
+import { shouldApplyCaseClueResponse } from "./caseClueRelationsRequestGuard.mjs";
 import { readStoredGlobalCaseSearchContext } from "./globalCaseSearchParity.mjs";
 import { formatRequiredDate } from "./formSafety";
 import { buildCaseContractOptions, resolveCaseSourcePerson } from "./caseContractPrefill";
@@ -1028,6 +1031,13 @@ export default function CaseCenterPage({
   const [counselDetailCustomerTasks, setCounselDetailCustomerTasks] = useState<TaskRow[]>([]);
   const [counselDetailFinance, setCounselDetailFinance] = useState<CaseRow[]>([]);
   const [counselDetailClues, setCounselDetailClues] = useState<CaseRow[]>([]);
+  const [counselDetailCluePage, setCounselDetailCluePage] = useState(1);
+  const [counselDetailCluePageSize, setCounselDetailCluePageSize] = useState(10);
+  const [counselDetailClueTotal, setCounselDetailClueTotal] = useState(0);
+  const [counselDetailCluePages, setCounselDetailCluePages] = useState(0);
+  const [counselDetailClueKeyword, setCounselDetailClueKeyword] = useState("");
+  const [counselDetailClueSearchInput, setCounselDetailClueSearchInput] = useState("");
+  const [counselDetailClueLoading, setCounselDetailClueLoading] = useState(false);
   const [viewingCaseClue, setViewingCaseClue] = useState<CaseClueWorkspace | null>(null);
   const [caseClueLoading, setCaseClueLoading] = useState(false);
   const [selectedCaseClueEvidenceId, setSelectedCaseClueEvidenceId] = useState<number | null>(null);
@@ -1143,6 +1153,7 @@ export default function CaseCenterPage({
   const warehouseLocationOptions = useMemo(() => buildWarehouseLocationOptions(warehouseCatalog), [warehouseCatalog]);
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
+  const counselDetailClueRequestRef = useRef(0);
   const caseLitigantSearchTimerRef = useRef<number | undefined>(undefined);
   const caseLitigantSearchRequestRef = useRef(0);
   const [createForm] = Form.useForm();
@@ -2086,6 +2097,37 @@ export default function CaseCenterPage({
     });
     return applyCounselDetailCustomerTaskPageState(data, nextPage, nextPageSize);
   };
+  const applyCounselDetailCluePageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
+    const items = Array.isArray(payload?.clues) ? payload.clues : [];
+    const total = Number(payload?.clue_total ?? items.length) || 0;
+    const page = Math.max(1, Number(payload?.clue_page ?? fallbackPage) || fallbackPage);
+    const pageSize = Math.max(1, Number(payload?.clue_page_size ?? fallbackPageSize) || fallbackPageSize);
+    const pages = Math.max(0, Number(payload?.clue_pages ?? Math.ceil(total / pageSize)) || 0);
+    setCounselDetailClues(items);
+    setCounselDetailClueTotal(total);
+    setCounselDetailCluePage(page);
+    setCounselDetailCluePageSize(pageSize);
+    setCounselDetailCluePages(pages);
+    return { items, total, page, pageSize, pages };
+  };
+  const loadCounselDetailCluesPage = async (
+    row: CaseRow,
+    nextPage = counselDetailCluePage,
+    nextPageSize = counselDetailCluePageSize,
+    keyword = counselDetailClueKeyword,
+  ) => {
+    const requestId = ++counselDetailClueRequestRef.current;
+    setCounselDetailClueLoading(true);
+    try {
+      const { data } = await api.get(`/cases/${row.id}/relations`, {
+        params: { clue_page: nextPage, clue_page_size: nextPageSize, clue_keyword: keyword || undefined },
+      });
+      if (!shouldApplyCaseClueResponse({ requestId, currentRequestId: counselDetailClueRequestRef.current, currentCaseId: viewingCounselCase?.id, targetCaseId: row.id })) return null;
+      return applyCounselDetailCluePageState(data, nextPage, nextPageSize);
+    } finally {
+      if (requestId === counselDetailClueRequestRef.current) setCounselDetailClueLoading(false);
+    }
+  };
   const openCaseTasks = async (row: CaseRow) => {
     try {
       await loadCaseTasksPage(row, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
@@ -2129,12 +2171,21 @@ export default function CaseCenterPage({
       return;
     }
     try {
+      const clueRequestId = ++counselDetailClueRequestRef.current;
+      setCounselDetailClues([]);
+      setCounselDetailClueKeyword("");
+      setCounselDetailClueSearchInput("");
+      setCounselDetailCluePage(1);
+      setCounselDetailCluePageSize(10);
+      setCounselDetailClueTotal(0);
+      setCounselDetailCluePages(0);
       const storedTab = sessionStorage.getItem("sunhold:case-detail-tab");
       if (preferredTab || storedTab) setActiveCounselDetailTab(preferredTab || storedTab || "documents");
       if (storedTab) sessionStorage.removeItem("sunhold:case-detail-tab");
       // 基础案件详情必须先打开；历史、附件、提醒等附加面板不能因为单点失败
       // 阻断案号关联、搜索或通知进入详情。
       const recordRes = await api.get(`/records/${row.id}`);
+      if (clueRequestId !== counselDetailClueRequestRef.current) return;
       const detailRecord = recordRes.data as CaseRow;
       setViewingCounselCase(detailRecord);
       void api.get<{ legacy_case_id: number }>(`/legacy-ls-history/current-records/${detailRecord.id}`)
@@ -2166,7 +2217,7 @@ export default function CaseCenterPage({
         api.get(`/cases/${row.id}/reminders`),
         api.get(`/cases/${row.id}/logs`),
         api.get(`/cases/${row.id}/action-capabilities`),
-        api.get(`/cases/${row.id}/relations`),
+        api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
         customerRecordId ? api.get("/attachments", { params: { record_id: customerRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
         contractRecordId ? api.get("/attachments", { params: { record_id: contractRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
         api.get(`/cases/${row.id}/document-folders`),
@@ -2190,7 +2241,11 @@ export default function CaseCenterPage({
       setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
       setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
       setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
-      setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
+      if (relationRes.status === "fulfilled" && clueRequestId === counselDetailClueRequestRef.current) {
+        applyCounselDetailCluePageState(relationRes.value.data, 1, 10);
+      } else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
+        applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
+      }
       if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
         message.warning("部分案件附加信息加载失败，已打开基础详情");
       }
@@ -2683,11 +2738,39 @@ export default function CaseCenterPage({
     }
     setCaseClueLoading(true);
     try {
+      // The case relation grants access to the association, while the
+      // investigation workspace remains the authority for clue-detail access.
+      await api.get(`/investigations/clues/${id}/workspace`);
+      if (!onNavigate) {
+        message.warning("当前页面未配置调查中心跳转");
+        return;
+      }
+      rememberInvestigationDetailTarget({
+        id,
+        serial_no: String(target.serial_no || "").trim(),
+        module: "clue",
+      });
+      onNavigate("clue-company-draft");
+    } catch (error: any) {
+      if (error?.response?.status === 403) message.warning("当前账号无权查看该调查线索详情");
+      else if (error?.response?.status === 404) message.warning("关联调查线索不存在或已被删除");
+      else message.error(error?.response?.data?.detail || "线索详情加载失败");
+    } finally {
+      setCaseClueLoading(false);
+    }
+  };
+  const openCaseClueWorkspace = async (target: { id?: number }) => {
+    const id = Number(target.id || 0) || undefined;
+    if (!id) return message.warning("当前案件未关联调查线索");
+    setCaseClueLoading(true);
+    try {
       const { data } = await api.get(`/investigations/clues/${id}/workspace`);
       setViewingCaseClue(data);
       setSelectedCaseClueEvidenceId(null);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "线索取证信息加载失败");
+      if (error?.response?.status === 403) message.warning("当前账号无权查看该调查线索详情");
+      else if (error?.response?.status === 404) message.warning("关联调查线索不存在或已被删除");
+      else message.error(error?.response?.data?.detail || "线索取证信息加载失败");
     } finally {
       setCaseClueLoading(false);
     }
@@ -3461,6 +3544,10 @@ export default function CaseCenterPage({
       message.success("案件基本信息已保存");
       setEditingNormalCase(null);
       setViewingCounselCase(data);
+      if (viewingCounselCase?.id === data.id) {
+        void loadCounselDetailCluesPage(data, 1, counselDetailCluePageSize)
+          .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索刷新失败"));
+      }
       await load();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "案件基本信息保存失败");
@@ -3484,7 +3571,12 @@ export default function CaseCenterPage({
     if (validationError) return message.warning(validationError);
     try {
       const {data} = await api.put(`/cases/${editingArbitrationCase.id}/arbitration-basic`, normalizeCaseEditPayload({ ...values, customer_record_id: Number(values.customer_record_id) > 0 ? values.customer_record_id : null, legacy_case_edit: true }, "arbitration"));
-      message.success("仲裁案件基本信息已保存"); setEditingArbitrationCase(null); setViewingCounselCase(data); await load();
+      message.success("仲裁案件基本信息已保存"); setEditingArbitrationCase(null); setViewingCounselCase(data);
+      if (viewingCounselCase?.id === data.id) {
+        void loadCounselDetailCluesPage(data, 1, counselDetailCluePageSize)
+          .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索刷新失败"));
+      }
+      await load();
     } catch(error:any) { message.error(error?.response?.data?.detail||"仲裁案件基本信息保存失败"); }
   };
   const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
@@ -3754,6 +3846,18 @@ export default function CaseCenterPage({
     showTotal: (total: number) => `共 ${total} 项${counselDetailCustomerTaskPages ? ` / ${counselDetailCustomerTaskPages} 页` : ""}`,
     onChange: (nextPage: number, nextPageSize: number) => {
       if (viewingCounselCase) void loadCounselDetailCustomerTasksPage(viewingCounselCase, nextPage, nextPageSize);
+    },
+  };
+  const counselDetailCluePagination = {
+    current: counselDetailCluePage,
+    pageSize: counselDetailCluePageSize,
+    total: counselDetailClueTotal,
+    pageSizeOptions: caseTaskBasePagination.pageSizeOptions,
+    showSizeChanger: caseTaskBasePagination.showSizeChanger,
+    showTotal: (total: number) => `共 ${total} 条${counselDetailCluePages ? ` / ${counselDetailCluePages} 页` : ""}`,
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (viewingCounselCase) void loadCounselDetailCluesPage(viewingCounselCase, nextPage, nextPageSize)
+        .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"));
     },
   };
   const openCaseFee = async (row: CaseRow, expenseScope: "律所" | "平台" | "内部" = "律所", expenseSubtype?: string) => {
@@ -6232,6 +6336,10 @@ export default function CaseCenterPage({
               if (key === "customer-tasks" && viewingCounselCase) {
                 void loadCounselDetailCustomerTasksPage(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
               }
+              if (key === "clues" && viewingCounselCase) {
+                void loadCounselDetailCluesPage(viewingCounselCase, 1, counselDetailCluePageSize, counselDetailClueKeyword)
+                  .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"));
+              }
             }}
             items={[
               ...(legacyLsHistoryCaseIds[viewingCounselCase.id] ? [{ key: "legacy-ls-history", label: "历史诉讼", children: <LegacyLsHistoryPanel initialCaseId={legacyLsHistoryCaseIds[viewingCounselCase.id]} currentCaseRecordId={viewingCounselCase.id} /> }] : []),
@@ -6360,8 +6468,34 @@ export default function CaseCenterPage({
                 <Table rowKey="id" size="small" pagination={counselDetailCustomerTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailCustomerTasks} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",width:100,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
               </div>},
               {key:"clues",label:"线索信息",children:<div className="case-legacy-tab-panel">
-                <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1540}} dataSource={counselDetailClues} columns={[
-                  {title:"序号",width:65,align:"center",render:(_:unknown,_row:CaseRow,index:number)=>index+1},
+                <Space wrap style={{ marginBottom: 10 }}>
+                  <Input.Search
+                    aria-label="搜索关联线索"
+                    allowClear
+                    placeholder="线索号、店铺、地址、公证书号"
+                    value={counselDetailClueSearchInput}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setCounselDetailClueSearchInput(value);
+                      if (!value && counselDetailClueKeyword && viewingCounselCase) {
+                        setCounselDetailClueKeyword("");
+                        void loadCounselDetailCluesPage(viewingCounselCase, 1, counselDetailCluePageSize, "")
+                          .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"));
+                      }
+                    }}
+                    onSearch={(value) => {
+                      const keyword = value.trim();
+                      setCounselDetailClueKeyword(keyword);
+                      if (viewingCounselCase) void loadCounselDetailCluesPage(viewingCounselCase, 1, counselDetailCluePageSize, keyword)
+                        .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索搜索失败"));
+                    }}
+                    style={{ width: 300 }}
+                  />
+                  <Button icon={<ReloadOutlined />} loading={counselDetailClueLoading} onClick={() => viewingCounselCase && void loadCounselDetailCluesPage(viewingCounselCase, counselDetailCluePage, counselDetailCluePageSize)
+                    .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"))}>刷新</Button>
+                </Space>
+                <Table rowKey="id" size="small" tableLayout="fixed" loading={counselDetailClueLoading} pagination={counselDetailCluePagination} scroll={{x:1800}} dataSource={counselDetailClues} locale={{ emptyText: "没有查询到关联线索" }} columns={[
+                  {title:"序号",width:65,align:"center",render:(_:unknown,_row:CaseRow,index:number)=>(counselDetailCluePage-1)*counselDetailCluePageSize+index+1},
                   {title:"线索号",dataIndex:"serial_no",width:155,render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedClue(row)}>{value||"—"}</Button>},
                   {title:"调查时间",width:150,render:(_:unknown,row:CaseRow)=>String(row.data.investigated_at||row.data.collected_at||row.data.investigation_time||row.data.investigation_date||"").replace("T"," ").slice(0,19)||"—"},
                   {title:"店铺名称",width:180,ellipsis:true,render:(_:unknown,row:CaseRow)=>row.data.shop_name||row.data.store_name||row.title||"—"},
@@ -6373,6 +6507,7 @@ export default function CaseCenterPage({
                   {title:"仓库名称",width:130,render:(_:unknown,row:CaseRow)=>row.data.warehouse_name||row.data.warehouse||"—"},
                   {title:"仓库位置",width:120,render:(_:unknown,row:CaseRow)=>row.data.warehouse_location||row.data.storage_location||row.data.location||"—"},
                   {title:"证物状态",width:110,render:(_:unknown,row:CaseRow)=>row.data.evidence_status||row.data.warehouse_status||"—"},
+                  {title:"操作",width:90,fixed:"right",render:(_:unknown,row:CaseRow)=><Button type="link" onClick={()=>void openCaseClueWorkspace(row)}>查看</Button>},
                 ]}/>
                 {counselDetailCapabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button></div>}
               </div>},
