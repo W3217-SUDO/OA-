@@ -54,8 +54,9 @@ from .ipr_cpc import CPC_APPLICATION_CATEGORY, create_ipr_cpc_router, is_cpc_app
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
-from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_passwordfrom .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
-
+from .models import AgentDocument, BusinessRecord, CaseEvent, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent
+from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
+from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 logger = logging.getLogger(__name__)
 
@@ -1860,6 +1861,31 @@ class CaseReminderInput(BaseModel):
     reminder_date: date
     deadline: date
     content: str = Field(min_length=1, max_length=1000)
+
+
+class CaseEventInput(BaseModel):
+    event_type_id: int = Field(default=0, ge=0)
+    event_type: str = Field(min_length=1, max_length=128)
+    event_time: datetime
+    content: str = Field(min_length=1, max_length=500)
+    deadline: date | None = None
+    reminder_enabled: bool = False
+    remind_at: datetime | None = None
+
+
+class CaseEventUpdateInput(BaseModel):
+    event_type_id: int | None = Field(default=None, ge=0)
+    event_type: str | None = Field(default=None, min_length=1, max_length=128)
+    event_time: datetime | None = None
+    content: str | None = Field(default=None, min_length=1, max_length=500)
+    deadline: date | None = None
+    reminder_enabled: bool | None = None
+    remind_at: datetime | None = None
+    status: Literal["待处理", "已完成"] | None = None
+
+
+class CaseEventBatchDeleteInput(BaseModel):
+    event_ids: list[int] = Field(min_length=1, max_length=100)
 
 
 class CaseLogInput(BaseModel):
@@ -23891,6 +23917,293 @@ async def list_case_reminders(case_id: int, identity: dict = Depends(current_ide
     return {"items": [_record_dict(item) for item in items], "total": len(items)}
 
 
+CASE_EVENT_PENDING_STATUS = "待处理"
+CASE_EVENT_COMPLETED_STATUS = "已完成"
+CASE_EVENT_OVERDUE_STATUS = "已逾期"
+CASE_EVENT_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+
+
+def _case_event_storage_time(value: datetime) -> datetime:
+    """Normalize incoming event instants for SQLite and PostgreSQL alike.
+
+    Browser clients submit ISO timestamps with an offset.  A timestamp without
+    one is deliberately interpreted as the firm's Shanghai local time, then
+    stored as UTC.  SQLite drops timezone metadata for DateTime columns, so the
+    companion display function treats its naive values as UTC rather than as the
+    process-local timezone.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=CASE_EVENT_TIME_ZONE)
+    return value.astimezone(timezone.utc)
+
+
+def _case_event_display_time(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(CASE_EVENT_TIME_ZONE)
+
+
+def _case_event_status(item: CaseEvent) -> str:
+    if item.status != CASE_EVENT_COMPLETED_STATUS and item.deadline and item.deadline < datetime.now(CASE_EVENT_TIME_ZONE).date():
+        return CASE_EVENT_OVERDUE_STATUS
+    return item.status
+
+
+def _case_event_mutable_by(item: CaseEvent, identity: dict, team_role: str) -> bool:
+    return bool(
+        team_role == "manager"
+        or identity.get("role") in {"admin", "manager"}
+        or item.creator == identity["username"]
+    )
+
+
+def _case_event_dict(item: CaseEvent, users_by_username: dict[str, User], identity: dict, *, can_manage: bool, team_role: str) -> dict:
+    return {
+        "id": item.id,
+        "case_id": item.case_record_id,
+        "case_record_id": item.case_record_id,
+        "event_type_id": item.event_type_id,
+        "event_type": item.event_type,
+        "event_time": _case_event_display_time(item.event_time),
+        "content": item.content,
+        "deadline": item.deadline,
+        "reminder_enabled": item.reminder_enabled,
+        "remind_at": _case_event_display_time(item.remind_at),
+        "reminder_record_id": item.reminder_record_id,
+        "status": _case_event_status(item),
+        "stored_status": item.status,
+        "is_active": item.is_active,
+        "creator": item.creator,
+        "creator_display_name": _person_reference_display(item.creator, users_by_username)[0],
+        "updated_by": item.updated_by,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "can_edit": can_manage and _case_event_mutable_by(item, identity, team_role),
+        "can_delete": can_manage and _case_event_mutable_by(item, identity, team_role),
+    }
+
+
+def _validate_case_event_reminder(*, deadline: date | None, reminder_enabled: bool, remind_at: datetime | None) -> datetime | None:
+    if not reminder_enabled:
+        return None
+    if remind_at is None:
+        raise HTTPException(status_code=422, detail="启用提醒时必须填写提醒日期")
+    if deadline and _case_event_display_time(remind_at).date() > deadline:
+        raise HTTPException(status_code=422, detail="提醒日期不能晚于截止日期")
+    return remind_at
+
+
+async def _sync_case_event_reminder(item: CaseEvent, case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """Project enabled event reminders into the existing ordinary-case reminder module."""
+    linked = await db.get(BusinessRecord, item.reminder_record_id) if item.reminder_record_id else None
+    if linked and (linked.module != "case_reminder" or int((linked.data or {}).get("case_id") or 0) != case_record.id):
+        linked = None
+        item.reminder_record_id = None
+    if not item.reminder_enabled or item.status == CASE_EVENT_COMPLETED_STATUS:
+        if linked:
+            await db.delete(linked)
+        item.reminder_record_id = None
+        return
+    if item.remind_at is None:
+        raise HTTPException(status_code=422, detail="启用提醒时必须填写提醒日期")
+    reminder_content = f"[{item.event_type}] {item.content}"
+    reminder_data = {
+        "case_id": case_record.id,
+        "case_no": case_record.serial_no,
+        "reminder_date": str(_case_event_display_time(item.remind_at).date()),
+        "deadline": str(item.deadline or _case_event_display_time(item.remind_at).date()),
+        "case_event_id": item.id,
+    }
+    if linked:
+        linked.title = reminder_content[:255]
+        linked.description = reminder_content
+        linked.status = "有效"
+        linked.data = reminder_data
+        return
+    linked = BusinessRecord(
+        module="case_reminder", serial_no=f"TX{datetime.now():%Y%m%d%H%M%S%f}",
+        title=reminder_content[:255], customer=case_record.customer, status="有效",
+        owner=identity["username"], department=case_record.department,
+        description=reminder_content, data=reminder_data,
+    )
+    db.add(linked)
+    await db.flush()
+    item.reminder_record_id = linked.id
+
+
+async def _delete_case_events_for_case_cleanup(case_id: int, db: AsyncSession) -> None:
+    """Remove event rows and their reminder projections before a test case is removed.
+
+    This is explicit even though production databases enforce the CaseEvent FK:
+    SQLite test connections may not have foreign-key pragmas enabled.
+    """
+    items = list((await db.scalars(select(CaseEvent).where(CaseEvent.case_record_id == case_id))).all())
+    reminder_ids = [item.reminder_record_id for item in items if item.reminder_record_id]
+    if reminder_ids:
+        reminders = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id.in_(reminder_ids), BusinessRecord.module == "case_reminder",
+        ))).all())
+        for reminder in reminders:
+            if int((reminder.data or {}).get("case_id") or 0) == case_id:
+                await db.delete(reminder)
+    for item in items:
+        await db.delete(item)
+
+
+async def _case_event_access(case_id: int, identity: dict, db: AsyncSession, *, write: bool) -> tuple[BusinessRecord, str | None]:
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    return case_record, (await _require_case_event_write_access(case_record, identity, db) if write else None)
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/events")
+async def list_case_events(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record, _ = await _case_event_access(case_id, identity, db, write=False)
+    items = list((await db.scalars(select(CaseEvent).where(
+        CaseEvent.case_record_id == case_record.id,
+    ).order_by(CaseEvent.event_time, CaseEvent.deadline, CaseEvent.id))).all())
+    try:
+        team_role = await _require_case_event_write_access(case_record, identity, db)
+        can_manage = True
+    except HTTPException:
+        team_role, can_manage = "none", False
+    users_by_username = await _user_display_map({item.creator for item in items}, db)
+    return {
+        "items": [_case_event_dict(item, users_by_username, identity, can_manage=can_manage, team_role=team_role) for item in items],
+        "total": len(items),
+        "capabilities": {"can_create": can_manage, "can_edit": can_manage, "can_delete": can_manage},
+    }
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/events", status_code=status.HTTP_201_CREATED)
+async def create_case_event(case_id: int, body: CaseEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record, team_role = await _case_event_access(case_id, identity, db, write=True)
+    if not body.event_type.strip() or not body.content.strip():
+        raise HTTPException(status_code=422, detail="事件类型和事件内容不能为空")
+    remind_at = _validate_case_event_reminder(
+        deadline=body.deadline, reminder_enabled=body.reminder_enabled,
+        remind_at=_case_event_storage_time(body.remind_at or body.event_time) if body.reminder_enabled else None,
+    )
+    item = CaseEvent(
+        case_record_id=case_record.id, event_type_id=body.event_type_id,
+        event_type=body.event_type.strip(), event_time=_case_event_storage_time(body.event_time),
+        content=body.content.strip(), deadline=body.deadline,
+        reminder_enabled=body.reminder_enabled, remind_at=remind_at,
+        status=CASE_EVENT_PENDING_STATUS, creator=identity["username"], updated_by=identity["username"],
+    )
+    db.add(item)
+    await db.flush()
+    await _sync_case_event_reminder(item, case_record, identity, db)
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="新增案件事件", from_status=case_record.status,
+        to_status=case_record.status, operator=identity["username"],
+        comment=f"事件#{item.id}｜{item.event_type}｜事件日期：{item.event_time}；截止日期：{item.deadline or '未设置'}；{item.content}",
+    ))
+    await db.commit()
+    await db.refresh(item)
+    users = await _user_display_map({item.creator}, db)
+    return _case_event_dict(item, users, identity, can_manage=True, team_role=team_role or "none")
+
+
+@app.patch(f"{settings.api_prefix}/cases/{{case_id}}/events/{{event_id}}")
+async def update_case_event(case_id: int, event_id: int, body: CaseEventUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record, team_role = await _case_event_access(case_id, identity, db, write=True)
+    item = await db.scalar(select(CaseEvent).where(CaseEvent.id == event_id, CaseEvent.case_record_id == case_record.id))
+    if not item:
+        raise HTTPException(status_code=404, detail="案件事件不存在或不属于当前案件")
+    if not _case_event_mutable_by(item, identity, team_role or "none"):
+        raise HTTPException(status_code=403, detail="只有事件创建人、部门负责人或系统管理员可以修改案件事件")
+    fields = body.model_fields_set
+    for required_field, label in (("event_type", "事件类型"), ("event_time", "事件时间"), ("content", "事件内容")):
+        if required_field in fields and getattr(body, required_field) is None:
+            raise HTTPException(status_code=422, detail=f"{label}不能为空")
+    if "event_type" in fields and not (body.event_type or "").strip():
+        raise HTTPException(status_code=422, detail="事件类型不能为空")
+    if "content" in fields and not (body.content or "").strip():
+        raise HTTPException(status_code=422, detail="事件内容不能为空")
+    next_event_time = _case_event_storage_time(body.event_time) if "event_time" in fields else item.event_time
+    next_deadline = body.deadline if "deadline" in fields else item.deadline
+    next_reminder_enabled = body.reminder_enabled if "reminder_enabled" in fields else item.reminder_enabled
+    next_remind_at = _case_event_storage_time(body.remind_at) if "remind_at" in fields and body.remind_at else (item.remind_at if "remind_at" not in fields else None)
+    if next_reminder_enabled and next_remind_at is None:
+        next_remind_at = next_event_time
+    next_remind_at = _validate_case_event_reminder(
+        deadline=next_deadline, reminder_enabled=next_reminder_enabled, remind_at=next_remind_at,
+    )
+    before_status = _case_event_status(item)
+    if "event_type_id" in fields:
+        item.event_type_id = body.event_type_id or 0
+    if "event_type" in fields:
+        item.event_type = (body.event_type or "").strip()
+    if "event_time" in fields:
+        item.event_time = next_event_time
+    if "content" in fields:
+        item.content = (body.content or "").strip()
+    if "deadline" in fields:
+        item.deadline = next_deadline
+    item.reminder_enabled = bool(next_reminder_enabled)
+    item.remind_at = next_remind_at
+    if "status" in fields:
+        item.status = body.status or CASE_EVENT_PENDING_STATUS
+    item.updated_by = identity["username"]
+    await _sync_case_event_reminder(item, case_record, identity, db)
+    changes = []
+    if "event_type_id" in fields or "event_type" in fields:
+        changes.append("事件类型")
+    if "event_time" in fields:
+        changes.append("事件时间")
+    if "content" in fields:
+        changes.append("事件内容")
+    if "deadline" in fields:
+        changes.append("截止日期")
+    if "reminder_enabled" in fields or "remind_at" in fields:
+        changes.append("提醒设置")
+    if "status" in fields:
+        changes.append("状态")
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="修改案件事件", from_status=case_record.status,
+        to_status=case_record.status, operator=identity["username"],
+        comment=f"事件#{item.id}｜修改：{'、'.join(changes) or '无'}｜状态：{before_status} -> {_case_event_status(item)}",
+    ))
+    await db.commit()
+    await db.refresh(item)
+    users = await _user_display_map({item.creator}, db)
+    return _case_event_dict(item, users, identity, can_manage=True, team_role=team_role or "none")
+
+
+@app.delete(f"{settings.api_prefix}/cases/{{case_id}}/events/{{event_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_case_event(case_id: int, event_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record, team_role = await _case_event_access(case_id, identity, db, write=True)
+    item = await db.scalar(select(CaseEvent).where(CaseEvent.id == event_id, CaseEvent.case_record_id == case_record.id))
+    if not item:
+        raise HTTPException(status_code=404, detail="案件事件不存在或不属于当前案件")
+    if not _case_event_mutable_by(item, identity, team_role or "none"):
+        raise HTTPException(status_code=403, detail="只有事件创建人、部门负责人或系统管理员可以删除案件事件")
+    await _sync_case_event_reminder(CaseEvent(case_record_id=case_record.id, reminder_enabled=False, reminder_record_id=item.reminder_record_id), case_record, identity, db)
+    db.add(WorkflowEvent(record_id=case_record.id, action="删除案件事件", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"事件#{item.id}｜{item.event_type}｜{item.content}"))
+    await db.delete(item)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete(f"{settings.api_prefix}/cases/{{case_id}}/events")
+async def batch_delete_case_events(case_id: int, body: CaseEventBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record, team_role = await _case_event_access(case_id, identity, db, write=True)
+    event_ids = list(dict.fromkeys(body.event_ids))
+    items = list((await db.scalars(select(CaseEvent).where(CaseEvent.id.in_(event_ids)))).all())
+    if len(items) != len(event_ids) or any(item.case_record_id != case_record.id for item in items):
+        raise HTTPException(status_code=404, detail="存在不存在或不属于当前案件的事件，未执行删除")
+    if any(not _case_event_mutable_by(item, identity, team_role or "none") for item in items):
+        raise HTTPException(status_code=403, detail="存在无权删除的案件事件，未执行删除")
+    for item in items:
+        await _sync_case_event_reminder(CaseEvent(case_record_id=case_record.id, reminder_enabled=False, reminder_record_id=item.reminder_record_id), case_record, identity, db)
+        await db.delete(item)
+    db.add(WorkflowEvent(record_id=case_record.id, action="批量删除案件事件", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"事件数量：{len(items)}；ID：{','.join(map(str, event_ids))}"))
+    await db.commit()
+    return {"deleted": len(items), "deleted_ids": event_ids}
+
+
 @app.post(f"{settings.api_prefix}/cases/{{case_id}}/reminders", status_code=status.HTTP_201_CREATED)
 async def create_case_reminder(case_id: int, body: CaseReminderInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
@@ -23926,6 +24239,20 @@ async def delete_case_reminder(case_id: int, reminder_id: int, identity: dict = 
     item = await db.get(BusinessRecord, reminder_id)
     if not item or item.module != "case_reminder" or int((item.data or {}).get("case_id") or 0) != case_id:
         raise HTTPException(status_code=404, detail="案件提醒不存在")
+    linked_event_id = int((item.data or {}).get("case_event_id") or 0)
+    if linked_event_id:
+        linked_event = await db.scalar(select(CaseEvent).where(
+            CaseEvent.id == linked_event_id,
+            CaseEvent.case_record_id == case_record.id,
+            CaseEvent.reminder_record_id == item.id,
+        ))
+        if linked_event:
+            team_role = await _require_case_event_write_access(case_record, identity, db)
+            if not _case_event_mutable_by(linked_event, identity, team_role):
+                raise HTTPException(status_code=403, detail="只有事件创建人、部门负责人或系统管理员可以删除关联提醒")
+            linked_event.reminder_enabled = False
+            linked_event.reminder_record_id = None
+            linked_event.updated_by = identity["username"]
     db.add(WorkflowEvent(
         record_id=case_record.id, action="删除案件提醒", from_status=case_record.status,
         to_status=case_record.status, operator=identity["username"],
@@ -26696,6 +27023,19 @@ async def _require_case_note_write_access(
     """
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
+
+
+async def _require_case_event_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> str:
+    """Restrict independently maintained case events to the actual case team.
+
+    Record visibility alone deliberately is not enough: an all-office reader can
+    see an event but cannot create or change a deadline-bearing case milestone.
+    """
+    await _require_case_note_write_access(case_record, identity, db, "case.event.manage")
+    team_role = await _case_team_role(case_record, identity, db)
+    if team_role == "none":
+        raise HTTPException(status_code=403, detail="只有案件负责人、案件团队成员、部门负责人或系统管理员可以维护案件事件")
+    return team_role
 
 
 async def _require_case_task_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
@@ -37052,6 +37392,8 @@ async def delete_record(record_id: int, identity: dict = Depends(current_identit
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == record_id))
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == record_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == record_id))
+    if record.module == "case":
+        await _delete_case_events_for_case_cleanup(record_id, db)
     if record.module == "task":
         await _delete_task_notifications(record_id, db)
     await db.delete(record)
@@ -37093,6 +37435,7 @@ async def delete_smoke_case(case_id: int, identity: dict = Depends(current_ident
     await db.execute(delete(HearingSchedule).where(HearingSchedule.case_record_id == case_id))
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == case_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == case_id))
+    await _delete_case_events_for_case_cleanup(case_id, db)
     await db.delete(record)
     await db.commit()
     for path in attachment_paths:
@@ -37149,7 +37492,7 @@ async def delete_smoke_record(record_id: int, identity: dict = Depends(current_i
             await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == task.id))
             await db.delete(task)
         await db.execute(delete(CaseAssistedFee).where(CaseAssistedFee.case_record_id == record.id))
-    await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == record_id))
+                await _delete_case_events_for_case_cleanup(record.id, db)    await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == record_id))
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == record_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == record_id))
     if record.module == "task":

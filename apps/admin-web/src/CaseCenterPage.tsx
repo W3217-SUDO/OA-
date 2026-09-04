@@ -750,6 +750,25 @@ type AttachmentPreview = {
   pageCount?: number;
 };
 type CaseReminderRow = {id:number;description:string;owner:string;data:{reminder_date:string;deadline:string;case_id:number}};
+type CaseEventRow = {
+  id: number;
+  case_id: number;
+  event_type: string;
+  content: string;
+  event_time: string;
+  deadline?: string | null;
+  remind_at?: string | null;
+  reminder_enabled: boolean;
+  status: "待处理" | "已完成" | "已逾期";
+  creator: string;
+  creator_display_name?: string;
+  created_at?: string;
+  updated_at?: string;
+  can_edit?: boolean;
+  can_delete?: boolean;
+};
+type CaseEventCapabilities = { can_create: boolean; can_edit: boolean; can_delete: boolean };
+const noCaseEventCapabilities: CaseEventCapabilities = { can_create: false, can_edit: false, can_delete: false };
 type CaseLogRow = {id:number;content:string;operator:string;operator_display_name?:string;created_at:string};
 type CaseLogKind = "case" | "refund";
 type CaseTaskKind = "案件任务" | "客户任务";
@@ -1089,6 +1108,13 @@ export default function CaseCenterPage({
   const [movingCounselAttachmentIds, setMovingCounselAttachmentIds] = useState<number[] | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
   const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
+  const [counselCaseEvents, setCounselCaseEvents] = useState<CaseEventRow[]>([]);
+  const [counselCaseEventCapabilities, setCounselCaseEventCapabilities] = useState<CaseEventCapabilities>(noCaseEventCapabilities);
+  const [counselCaseEventsError, setCounselCaseEventsError] = useState("");
+  const [selectedCounselCaseEventKeys, setSelectedCounselCaseEventKeys] = useState<Key[]>([]);
+  const [caseEventOpen, setCaseEventOpen] = useState(false);
+  const [editingCaseEvent, setEditingCaseEvent] = useState<CaseEventRow | null>(null);
+  const [caseEventSubmitting, setCaseEventSubmitting] = useState(false);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
   const [counselDetailCapabilities, setCounselDetailCapabilities] = useState<CaseDetailCapabilities>(noCaseDetailWriteCapability);
   const [caseActionCapabilities, setCaseActionCapabilities] = useState<Record<number, CaseDetailCapabilities>>({});
@@ -1290,6 +1316,7 @@ export default function CaseCenterPage({
   const [refundCompleteForm] = Form.useForm();
   const [courtRefundFee, setCourtRefundFee] = useState<CaseRow | null>(null);
   const [reminderForm] = Form.useForm();
+  const [caseEventForm] = Form.useForm();
   const [caseLogForm] = Form.useForm();
   const [attachmentRenameForm] = Form.useForm();
   const [aiDraftForm] = Form.useForm();
@@ -2344,6 +2371,7 @@ export default function CaseCenterPage({
         }));
       document.querySelector<HTMLElement>(".content")?.scrollTo({top:0,left:0});
       setSelectedCounselAttachmentKeys([]);
+      setSelectedCounselCaseEventKeys([]);
       setActiveCounselDocCategory("");
       setExpandedCounselDocGroups({ "调查文档全部": true, "案件文档全部": true });
       const contractRecordId = Number(detailRecord.data.contract_record_id || detailRecord.data.contract_id)
@@ -2351,7 +2379,7 @@ export default function CaseCenterPage({
       const customerRecordId = Number(detailRecord.data.customer_record_id || detailRecord.data.customer_id)
         || caseCustomers.find((item) => item.title === detailRecord.customer)?.id;
       const emptyAttachmentResponse = { data: { items: [] } };
-      const [historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
+      const [historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, eventRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
         api.get(`/records/${row.id}/history`),
         api.get(`/cases/${row.id}/tasks`, {
           params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case", is_vip: counselDetailTaskVipFilter === "all" ? undefined : counselDetailTaskVipFilter === "vip" },
@@ -2361,6 +2389,7 @@ export default function CaseCenterPage({
         }),
         api.get("/attachments", { params: { record_id: row.id, page_size: 200 } }),
         api.get(`/cases/${row.id}/reminders`),
+        api.get(`/cases/${row.id}/events`),
         api.get(`/cases/${row.id}/logs`),
         api.get(`/cases/${row.id}/action-capabilities`),
         api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
@@ -2384,16 +2413,18 @@ export default function CaseCenterPage({
       setCounselDetailContractAttachments(contractAttachmentRes.status === "fulfilled" ? contractAttachmentRes.value.data.items || [] : []);
       setCounselDocumentFolderTree(folderRes.status === "fulfilled" && Array.isArray(folderRes.value.data?.tree) ? folderRes.value.data.tree : []);
       setCounselReminders(reminderRes.status === "fulfilled" ? reminderRes.value.data.items || [] : []);
+      setCounselCaseEvents(eventRes.status === "fulfilled" ? eventRes.value.data.items || [] : []);
+      setCounselCaseEventCapabilities(eventRes.status === "fulfilled" ? eventRes.value.data.capabilities || noCaseEventCapabilities : noCaseEventCapabilities);
+      setCounselCaseEventsError(eventRes.status === "rejected" ? "案件事件加载失败，请重试" : "");
       setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
       setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
       setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
+      setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
       if (relationRes.status === "fulfilled" && clueRequestId === counselDetailClueRequestRef.current) {
         applyCounselDetailCluePageState(relationRes.value.data, 1, 10);
       } else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
         applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
-      }
-      if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
-        message.warning("部分案件附加信息加载失败，已打开基础详情");
+            if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, eventRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {        message.warning("部分案件附加信息加载失败，已打开基础详情");
       }
     } catch (error: any) {
       setCounselDetailCapabilities(noCaseDetailWriteCapability);
@@ -3149,6 +3180,93 @@ export default function CaseCenterPage({
         message.success("案件提醒已删除");
         await openCounselDetail(viewingCounselCase);
       } catch(error:any){message.error(error?.response?.data?.detail||"案件提醒删除失败");}
+    }});
+  };
+  const loadCounselCaseEvents = async (targetCase = viewingCounselCase) => {
+    if (!targetCase) return;
+    try {
+      const { data } = await api.get(`/cases/${targetCase.id}/events`);
+      setCounselCaseEvents(data.items || []);
+      setCounselCaseEventCapabilities(data.capabilities || noCaseEventCapabilities);
+      setSelectedCounselCaseEventKeys([]);
+      setCounselCaseEventsError("");
+    } catch (error: any) {
+      setCounselCaseEventsError(error?.response?.data?.detail || "案件事件加载失败，请重试");
+      message.error(error?.response?.data?.detail || "案件事件加载失败");
+    }
+  };
+  const openCaseEventEditor = (event?: CaseEventRow) => {
+    setEditingCaseEvent(event || null);
+    caseEventForm.resetFields();
+    caseEventForm.setFieldsValue({
+      event_type: event?.event_type || "",
+      content: event?.content || "",
+      event_time: event?.event_time ? dayjs(event.event_time) : dayjs(),
+      deadline: event?.deadline ? dayjs(event.deadline) : undefined,
+      reminder_enabled: Boolean(event?.reminder_enabled),
+      remind_at: event?.remind_at ? dayjs(event.remind_at) : undefined,
+      status: event?.status === "已完成" ? "已完成" : "待处理",
+    });
+    setCaseEventOpen(true);
+  };
+  const saveCaseEvent = async () => {
+    if (!viewingCounselCase) return;
+    if (caseEventSubmitting) return;
+    try {
+      const values = await caseEventForm.validateFields();
+      if (!String(values.event_type || "").trim()) return message.warning("请输入事件类型");
+      if (!String(values.content || "").trim()) return message.warning("请输入事件内容");
+      const payload = {
+        event_type: String(values.event_type || "").trim(),
+        content: String(values.content || "").trim(),
+        event_time: dayjs(values.event_time).toISOString(),
+        deadline: values.deadline ? formatRequiredDate(values.deadline, "截止日期") : undefined,
+        reminder_enabled: Boolean(values.reminder_enabled),
+        remind_at: values.reminder_enabled && values.remind_at ? dayjs(values.remind_at).toISOString() : null,
+        ...(editingCaseEvent ? { status: values.status } : {}),
+      };
+      setCaseEventSubmitting(true);
+      if (editingCaseEvent) {
+        await api.patch(`/cases/${viewingCounselCase.id}/events/${editingCaseEvent.id}`, payload);
+        message.success("案件事件已更新");
+      } else {
+        await api.post(`/cases/${viewingCounselCase.id}/events`, payload);
+        message.success("案件事件已创建");
+      }
+      setCaseEventOpen(false);
+      setEditingCaseEvent(null);
+      caseEventForm.resetFields();
+      await loadCounselCaseEvents(viewingCounselCase);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || (editingCaseEvent ? "更新案件事件失败" : "创建案件事件失败"));
+    } finally {
+      setCaseEventSubmitting(false);
+    }
+  };
+  const deleteCounselCaseEvent = (event: CaseEventRow) => {
+    if (!viewingCounselCase) return;
+    if (caseEventSubmitting) return;
+    Modal.confirm({ title: "删除案件事件", content: `确认删除“${event.event_type}”吗？`, okText: "删除", okButtonProps: { danger: true }, onOk: async () => {
+      try {
+        setCaseEventSubmitting(true);
+        await api.delete(`/cases/${viewingCounselCase.id}/events/${event.id}`);
+        message.success("案件事件已删除");
+        await loadCounselCaseEvents(viewingCounselCase);
+      } catch (error: any) { message.error(error?.response?.data?.detail || "删除案件事件失败"); } finally { setCaseEventSubmitting(false); }
+    }});
+  };
+  const deleteCounselCaseEvents = () => {
+    if (!viewingCounselCase) return;
+    if (caseEventSubmitting) return;
+    const eventIds = selectedCounselCaseEventKeys.map(Number).filter((id) => counselCaseEvents.some((event) => event.id === id && event.can_delete));
+    if (!eventIds.length) return message.warning("请选择需要删除的案件事件");
+    Modal.confirm({ title: "批量删除案件事件", content: `确认删除选中的 ${eventIds.length} 个案件事件吗？`, okText: "删除", okButtonProps: { danger: true }, onOk: async () => {
+      try {
+        setCaseEventSubmitting(true);
+        const { data } = await api.delete(`/cases/${viewingCounselCase.id}/events`, { data: { event_ids: eventIds } });
+        message.success(`已删除 ${data.deleted ?? eventIds.length} 个案件事件`);
+        await loadCounselCaseEvents(viewingCounselCase);
+      } catch (error: any) { message.error(error?.response?.data?.detail || "批量删除案件事件失败"); } finally { setCaseEventSubmitting(false); }
     }});
   };
   const openCounselLogCreator = (kind: CaseLogKind) => {
@@ -6820,6 +6938,24 @@ export default function CaseCenterPage({
                   ]}
                 />
               </div>},
+              {key:"case-events",label:"案件事件",children:<div className="case-legacy-tab-panel" data-testid="case-events-tab">
+                <Space wrap style={{marginBottom:10}}>
+                  {counselCaseEventCapabilities.can_create && <Button type="primary" icon={<PlusOutlined/>} disabled={caseEventSubmitting} onClick={()=>openCaseEventEditor()}>新增事件</Button>}
+                  {counselCaseEventCapabilities.can_delete && <Button danger loading={caseEventSubmitting} disabled={!selectedCounselCaseEventKeys.length} onClick={deleteCounselCaseEvents}>批量删除</Button>}
+                </Space>
+                {counselCaseEventsError && <Alert type="error" showIcon style={{marginBottom:10}} message={counselCaseEventsError} action={<Button size="small" onClick={()=>void loadCounselCaseEvents()}>重试</Button>}/>}
+                <Table rowKey="id" size="small" tableLayout="fixed" pagination={false} scroll={{x:1320}} dataSource={counselCaseEvents} rowSelection={counselCaseEventCapabilities.can_delete ? {selectedRowKeys:selectedCounselCaseEventKeys,onChange:setSelectedCounselCaseEventKeys,getCheckboxProps:(row:CaseEventRow)=>({disabled:!row.can_delete})} : undefined} columns={[
+                  {title:"事件类型",dataIndex:"event_type",width:150,ellipsis:true},
+                  {title:"事件时间",dataIndex:"event_time",width:160,render:(value:string)=>value?dayjs(value).format("YYYY-MM-DD HH:mm"):"—"},
+                  {title:"截止日期",dataIndex:"deadline",width:130,render:(value:string)=>value?dayjs(value).format("YYYY-MM-DD"):"—"},
+                  {title:"事件内容",dataIndex:"content",width:300,ellipsis:true},
+                  {title:"提醒",width:180,render:(_:unknown,row:CaseEventRow)=>row.reminder_enabled ? `已启用${row.remind_at ? `：${dayjs(row.remind_at).format("YYYY-MM-DD HH:mm")}` : ""}` : "未启用"},
+                  {title:"状态",dataIndex:"status",width:100,render:(value:CaseEventRow["status"])=><Tag color={value==="已完成"?"green":value==="已逾期"?"red":"blue"}>{value}</Tag>},
+                  {title:"创建人",width:110,ellipsis:true,render:(_:unknown,row:CaseEventRow)=>casePersonDisplayName(row.creator,row.creator_display_name)},
+                  {title:"创建/修改时间",width:180,render:(_:unknown,row:CaseEventRow)=>row.updated_at||row.created_at||"—"},
+                  {title:"操作",key:"actions",width:140,fixed:"right" as const,render:(_:unknown,row:CaseEventRow)=><Space size={0}>{row.can_edit && <Button type="link" disabled={caseEventSubmitting} onClick={()=>openCaseEventEditor(row)}>编辑</Button>}{row.can_delete && <Button type="link" danger loading={caseEventSubmitting} onClick={()=>deleteCounselCaseEvent(row)}>删除</Button>}</Space>},
+                ]}/>
+              </div>},
               {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",width:110,render:(_:unknown,row:CaseReminderRow)=>casePersonDisplayName(row.owner)},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",width:110,render:(_:unknown,row:CaseLogRow)=>casePersonDisplayName(row.operator,row.operator_display_name)}]}/></>},
               {key:"logs",label:"系统日志",children:<>{counselDetailCapabilities.can_create_log&&<Space style={{marginBottom:10}}><Button type="primary" icon={<PlusOutlined/>} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",width:110,render:(_:unknown,row:any)=>casePersonDisplayName(row.operator,row.operator_display_name)},{title:"说明",dataIndex:"comment"}]}/></>},
@@ -7129,6 +7265,20 @@ export default function CaseCenterPage({
           <div className="form-grid"><Form.Item label="提醒日期" name="reminder_date" rules={[{required:true,message:"请选择提醒日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item><Form.Item label="截止日期" name="deadline" rules={[{required:true,message:"请选择截止日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item></div>
           <Form.Item label="提醒内容" name="content" rules={[{required:true,message:"请输入提醒内容"},{max:1000}]}><Input.TextArea rows={4}/></Form.Item>
           <Alert type="info" showIcon title="提醒日期不能晚于截止日期；保存和删除都会写入案件审计记录。"/>
+        </Form>
+      </Modal>
+      <Modal width={680} open={caseEventOpen} title={`${editingCaseEvent ? "编辑" : "新增"}案件事件：${viewingCounselCase?.serial_no || ""}`} okText={editingCaseEvent ? "保存修改" : "创建事件"} cancelText="取消" confirmLoading={caseEventSubmitting} cancelButtonProps={{disabled:caseEventSubmitting}} onOk={saveCaseEvent} onCancel={()=>{setCaseEventOpen(false);setEditingCaseEvent(null);caseEventForm.resetFields();}} destroyOnHidden>
+        <Form form={caseEventForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item label="事件类型" name="event_type" rules={[{required:true,message:"请输入事件类型"},{max:100}]}><Input placeholder="例如：举证期限、答辩期限" maxLength={100}/></Form.Item>
+            <Form.Item label="事件时间" name="event_time" rules={[{required:true,message:"请选择事件时间"}]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{width:"100%"}}/></Form.Item>
+            <Form.Item label="截止日期" name="deadline"><DatePicker style={{width:"100%"}}/></Form.Item>
+            {editingCaseEvent && <Form.Item label="事件状态" name="status" rules={[{required:true}]}><Select options={[{value:"待处理",label:"待处理"},{value:"已完成",label:"已完成"}]}/></Form.Item>}
+          </div>
+          <Form.Item label="事件内容" name="content" rules={[{required:true,message:"请输入事件内容"},{max:2000}]}><Input.TextArea rows={4} maxLength={2000} showCount/></Form.Item>
+          <Form.Item name="reminder_enabled" valuePropName="checked"><Checkbox>启用提醒</Checkbox></Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.reminder_enabled !== current.reminder_enabled}>{({getFieldValue})=><Form.Item label="提醒时间" name="remind_at"><DatePicker disabled={!getFieldValue("reminder_enabled")} showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{width:"100%"}} placeholder="启用提醒后可设置"/></Form.Item>}</Form.Item>
+          <Alert type="info" showIcon title="已逾期状态由系统根据未完成事件和截止日期自动计算；创建、修改和删除均会写入案件操作日志。"/>
         </Form>
       </Modal>
       <Modal open={caseLogOpen} title={`${caseLogKind === "refund" ? "新增退费日志" : "新增案件日志"}：${caseLogTarget?.serial_no || viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselLog} onCancel={()=>{setCaseLogOpen(false);setCaseLogTarget(null);}}>

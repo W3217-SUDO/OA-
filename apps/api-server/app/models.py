@@ -1467,6 +1467,34 @@ class ContractEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CaseEvent(Base):
+    """A material ordinary-case date, kept apart from workflow audit entries.
+
+    The linked reminder record is optional.  It lets an event participate in the
+    existing case-reminder workbench without turning the event itself into a
+    generic business record.
+    """
+
+    __tablename__ = "case_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    event_type_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    event_type: Mapped[str] = mapped_column(String(128), default="其他", index=True)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    remind_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    reminder_record_id: Mapped[int | None] = mapped_column(ForeignKey("business_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="待处理", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    creator: Mapped[str] = mapped_column(String(64), index=True)
+    updated_by: Mapped[str] = mapped_column(String(64), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class ContractObject(Base):
     """A contract's independently maintained case/fee subject line."""
 

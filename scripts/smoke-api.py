@@ -1823,6 +1823,49 @@ def main():
         call("DELETE", f"/records/{reminder['id']}", expected=(409,))
         call("DELETE", f"/cases/{counsel_case['id']}/reminders/{reminder['id']}", expected=(204,))
         assert call("GET", f"/cases/{counsel_case['id']}/reminders")["total"] == 0
+        # Case events are independent case-date records.  They may optionally
+        # create a linked reminder, but neither generic record APIs nor a
+        # reminder-only path may bypass their dedicated lifecycle.
+        event_base = {
+            "event_type_id": 0,
+            "event_type": "举证期限",
+            "event_time": f"{date.today()}T10:00:00",
+            "content": f"SMOKE-案件事件举证材料-{suffix}",
+            "deadline": str(date.today() + timedelta(days=5)),
+            "reminder_enabled": True,
+            "remind_at": f"{date.today() + timedelta(days=2)}T09:00:00",
+        }
+        call("POST", f"/cases/{counsel_case['id']}/events", {
+            **event_base,
+            "event_type": "",
+        }, expected=(422,))
+        case_event = call("POST", f"/cases/{counsel_case['id']}/events", event_base, expected=(201,))
+        event_list = call("GET", f"/cases/{counsel_case['id']}/events")
+        assert event_list["total"] == 1 and event_list["items"][0]["id"] == case_event["id"]
+        assert event_list["items"][0]["status"] == "待处理" and event_list["items"][0]["reminder_enabled"] is True
+        updated_event = call("PATCH", f"/cases/{counsel_case['id']}/events/{case_event['id']}", {
+            "content": f"SMOKE-案件事件举证材料已完成-{suffix}",
+            "status": "已完成",
+            "reminder_enabled": False,
+        })
+        assert updated_event["status"] == "已完成" and updated_event["reminder_enabled"] is False
+        assert call("GET", f"/cases/{counsel_case['id']}/reminders")["total"] == 0
+        event_second = call("POST", f"/cases/{counsel_case['id']}/events", {
+            **event_base,
+            "event_type": "答辩期限",
+            "content": f"SMOKE-案件事件答辩材料-{suffix}",
+            "event_time": f"{date.today() + timedelta(days=1)}T10:00:00",
+            "reminder_enabled": False,
+            "remind_at": None,
+        }, expected=(201,))
+        batch_event_delete = call("DELETE", f"/cases/{counsel_case['id']}/events", {"event_ids": [case_event["id"], event_second["id"]]})
+        assert batch_event_delete["deleted"] == 2
+        assert call("GET", f"/cases/{counsel_case['id']}/events")["total"] == 0
+        assert call("GET", f"/cases/{counsel_case['id']}/reminders")["total"] == 0
+        history_after_events = call("GET", f"/records/{counsel_case['id']}/history")["items"]
+        event_actions = {item.get("action") for item in history_after_events}
+        assert {"新增案件事件", "修改案件事件", "批量删除案件事件"}.issubset(event_actions)
+        passed("案件事件增改、状态、提醒联动、批量删除和审计")
         case_log = call("POST", f"/cases/{counsel_case['id']}/logs", {"content": "冒烟法律顾问案件日志"}, expected=(201,))
         assert case_log["content"] == "冒烟法律顾问案件日志"
         assert call("GET", f"/cases/{counsel_case['id']}/logs")["items"][0]["id"] == case_log["id"]
