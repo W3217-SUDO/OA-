@@ -54,8 +54,7 @@ from .ipr_cpc import CPC_APPLICATION_CATEGORY, create_ipr_cpc_router, is_cpc_app
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
-from .models import AgentDocument, BusinessRecord, CaseEvent, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent
-from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
+from .models import AgentDocument, BusinessRecord, CaseEvent, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprCaseAnnualFee, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEventfrom .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
 from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 logger = logging.getLogger(__name__)
@@ -2411,6 +2410,32 @@ class IprCaseAssistedFeeUpdateInput(BaseModel):
 
 class IprCaseAssistedFeeConfirmInput(BaseModel):
     remark: str = Field(default="", max_length=1000)
+
+
+class IprCaseAnnualFeeCreateInput(BaseModel):
+    """Annual-fee year is a Gregorian payment year, never the legacy year sequence."""
+
+    fee_year: int = Field(ge=2000, le=2100)
+    fee_name: str = Field(min_length=1, max_length=255)
+    amount: float = Field(ge=0, le=999999999999.99)
+    currency: str = Field(default="CNY", min_length=3, max_length=8)
+    due_date: date
+    paid_date: date | None = None
+    status: Literal["待缴", "已缴", "未缴"] = "待缴"
+    reminder_date: date | None = None
+    notes: str = Field(default="", max_length=2000)
+
+
+class IprCaseAnnualFeeUpdateInput(BaseModel):
+    fee_year: int | None = Field(default=None, ge=2000, le=2100)
+    fee_name: str | None = Field(default=None, min_length=1, max_length=255)
+    amount: float | None = Field(default=None, ge=0, le=999999999999.99)
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    due_date: date | None = None
+    paid_date: date | None = None
+    status: Literal["待缴", "已缴", "未缴"] | None = None
+    reminder_date: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class IprCaseReminderInput(BaseModel):
@@ -35941,6 +35966,166 @@ async def replace_ipr_case_reminder_suppressions(case_id: int, body: IprCaseRemi
     db.add(WorkflowEvent(record_id=record.id, action="设置知识产权案件提醒不监控", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"新增不监控：{'、'.join(added) or '无'}；恢复监控：{'、'.join(removed) or '无'}"))
     await db.commit()
     return {"suppressed_ids": sorted(requested)}
+
+
+def _ipr_annual_fee_reminder_content(row: IprCaseAnnualFee) -> str:
+    return f"年费#{row.id}｜{row.fee_year}年度｜{row.fee_name}｜应缴日期：{row.due_date}"
+
+
+def _ipr_annual_fee_dict(row: IprCaseAnnualFee, reminder: IprCaseReminder | None = None) -> dict:
+    return {
+        "id": row.id, "case_record_id": row.case_record_id, "fee_year": row.fee_year,
+        "fee_name": row.fee_name, "amount": float(row.amount), "currency": row.currency,
+        "due_date": row.due_date, "paid_date": row.paid_date, "status": row.status,
+        "reminder_date": row.reminder_date, "reminder_id": row.reminder_id,
+        "reminder": _ipr_case_reminder_dict(reminder) if reminder else None,
+        "notes": row.notes, "created_by": row.created_by,
+        "created_at": row.created_at, "updated_at": row.updated_at,
+    }
+
+
+def _validate_ipr_annual_fee_values(*, status_value: str, paid_date: date | None, reminder_date: date | None, due_date: date) -> None:
+    if status_value == "已缴" and not paid_date:
+        raise HTTPException(status_code=422, detail="已缴年费必须填写实际缴费日期")
+    if status_value != "已缴" and paid_date:
+        raise HTTPException(status_code=422, detail="待缴或未缴年费不能填写实际缴费日期")
+    if reminder_date and reminder_date > due_date:
+        raise HTTPException(status_code=422, detail="年费提醒日期不能晚于应缴日期")
+
+
+async def _sync_ipr_annual_fee_reminder(row: IprCaseAnnualFee, case_record: BusinessRecord, identity: dict, db: AsyncSession) -> IprCaseReminder | None:
+    """Persist one IPR in-app reminder per unpaid annual fee; paid fees clear it."""
+    reminder = None
+    if row.reminder_id:
+        reminder = await db.scalar(select(IprCaseReminder).where(
+            IprCaseReminder.id == row.reminder_id,
+            IprCaseReminder.case_record_id == case_record.id,
+        ))
+    suppressed = await db.scalar(select(IprCaseReminderSuppression.id).where(
+        IprCaseReminderSuppression.case_record_id == case_record.id,
+        IprCaseReminderSuppression.event_type_id == 4,
+    ))
+    if row.status == "已缴":
+        row.reminder_date = None
+    if row.status == "已缴" or suppressed or not row.reminder_date:
+        if reminder:
+            await db.delete(reminder)
+        row.reminder_id = None
+        return None
+    if not reminder:
+        reminder = IprCaseReminder(
+            case_record_id=case_record.id, event_type_id=4, event_type="缴纳年费",
+            reminder_date=row.reminder_date, deadline=row.due_date,
+            content=_ipr_annual_fee_reminder_content(row), creator=identity["username"],
+        )
+        db.add(reminder)
+        await db.flush()
+        row.reminder_id = reminder.id
+        return reminder
+    reminder.reminder_date = row.reminder_date
+    reminder.deadline = row.due_date
+    reminder.content = _ipr_annual_fee_reminder_content(row)
+    return reminder
+
+
+async def _ipr_annual_fee_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    if case_record.status != "在办":
+        return {"can_manage": False}
+    try:
+        await _require_record_owner_or_manager(case_record, identity, db)
+    except HTTPException:
+        return {"can_manage": False}
+    return {"can_manage": True}
+
+
+@app.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees")
+async def list_ipr_case_annual_fees(
+    case_id: int, fee_year: int | None = Query(default=None, ge=2000, le=2100),
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    conditions = [IprCaseAnnualFee.case_record_id == case_record.id]
+    if fee_year is not None:
+        conditions.append(IprCaseAnnualFee.fee_year == fee_year)
+    total = int(await db.scalar(select(func.count()).select_from(IprCaseAnnualFee).where(*conditions)) or 0)
+    rows = list((await db.scalars(select(IprCaseAnnualFee).where(*conditions)
+        .order_by(IprCaseAnnualFee.fee_year.desc(), IprCaseAnnualFee.due_date.asc(), IprCaseAnnualFee.id.desc())
+        .offset((page - 1) * page_size).limit(page_size))).all())
+    reminder_ids = [row.reminder_id for row in rows if row.reminder_id]
+    reminders = list((await db.scalars(select(IprCaseReminder).where(IprCaseReminder.id.in_(reminder_ids)))).all()) if reminder_ids else []
+    by_id = {item.id: item for item in reminders}
+    return {
+        "items": [_ipr_annual_fee_dict(row, by_id.get(row.reminder_id)) for row in rows],
+        "total": total, "page": page, "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+        "capabilities": await _ipr_annual_fee_capabilities(case_record, identity, db),
+    }
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees", status_code=status.HTTP_201_CREATED)
+async def create_ipr_case_annual_fee(case_id: int, body: IprCaseAnnualFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    _validate_ipr_annual_fee_values(status_value=body.status, paid_date=body.paid_date, reminder_date=body.reminder_date, due_date=body.due_date)
+    row = IprCaseAnnualFee(
+        case_record_id=case_record.id, fee_year=body.fee_year, fee_name=body.fee_name.strip(),
+        amount=Decimal(str(body.amount)), currency=body.currency.strip().upper(), due_date=body.due_date,
+        paid_date=body.paid_date, status=body.status, reminder_date=body.reminder_date,
+        notes=body.notes.strip(), created_by=identity["username"],
+    )
+    db.add(row)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="该案件的缴费年度已存在年费记录")
+    reminder = await _sync_ipr_annual_fee_reminder(row, case_record, identity, db)
+    db.add(WorkflowEvent(record_id=case_record.id, action="新增知识产权案件年费", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"缴费年度：{row.fee_year}；状态：{row.status}"))
+    await db.commit(); await db.refresh(row)
+    return _ipr_annual_fee_dict(row, reminder)
+
+
+@app.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees/{{annual_fee_id}}")
+async def update_ipr_case_annual_fee(case_id: int, annual_fee_id: int, body: IprCaseAnnualFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    row = await db.scalar(select(IprCaseAnnualFee).where(IprCaseAnnualFee.id == annual_fee_id, IprCaseAnnualFee.case_record_id == case_record.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="知识产权案件年费不存在或不属于当前案件")
+    values = body.model_dump(exclude_unset=True)
+    if not values:
+        raise HTTPException(status_code=422, detail="请至少提交一个需要修改的年费字段")
+    for field in {"fee_year", "fee_name", "amount", "currency", "due_date", "paid_date", "status", "reminder_date", "notes"} & values.keys():
+        value = values[field]
+        if field in {"fee_name", "currency", "notes"} and value is not None:
+            value = value.strip()
+        if field == "currency" and value:
+            value = value.upper()
+        if field == "amount" and value is not None:
+            value = Decimal(str(value))
+        setattr(row, field, value)
+    _validate_ipr_annual_fee_values(status_value=row.status, paid_date=row.paid_date, reminder_date=row.reminder_date, due_date=row.due_date)
+    reminder = await _sync_ipr_annual_fee_reminder(row, case_record, identity, db)
+    db.add(WorkflowEvent(record_id=case_record.id, action="修改知识产权案件年费", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"年费#{row.id}；缴费年度：{row.fee_year}；状态：{row.status}"))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="该案件的缴费年度已存在年费记录")
+    await db.refresh(row)
+    return _ipr_annual_fee_dict(row, reminder)
+
+
+@app.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees/{{annual_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_case_annual_fee(case_id: int, annual_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    case_record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    row = await db.scalar(select(IprCaseAnnualFee).where(IprCaseAnnualFee.id == annual_fee_id, IprCaseAnnualFee.case_record_id == case_record.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="知识产权案件年费不存在或不属于当前案件")
+    reminder = await db.scalar(select(IprCaseReminder).where(IprCaseReminder.id == row.reminder_id, IprCaseReminder.case_record_id == case_record.id)) if row.reminder_id else None
+    if reminder:
+        await db.delete(reminder)
+    db.add(WorkflowEvent(record_id=case_record.id, action="删除知识产权案件年费", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"缴费年度：{row.fee_year}；年费：{row.fee_name}"))
+    await db.delete(row); await db.commit()
 
 
 async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:

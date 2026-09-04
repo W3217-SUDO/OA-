@@ -104,6 +104,20 @@ type AssistedFee = {
   remark: string;
   receipt: Attachment | null;
 };
+type AnnualFee = {
+  id: number;
+  fee_year: number;
+  fee_name: string;
+  amount: number | null;
+  currency?: string;
+  due_date: string;
+  paid_date: string | null;
+  status: "待缴" | "已缴" | "未缴" | string;
+  reminder_date: string | null;
+  reminder_id?: number | null;
+  reminder_sent?: boolean;
+  notes?: string;
+};
 type IprCaseEvent = {
   id: number;
   event_type_id: number;
@@ -178,7 +192,7 @@ type CpcApplication = {
 type IprBatchCreateError = { row_no: number; message: string; errors: Record<string, string> };
 type IprDetailPageState = { page: number; pageSize: number; total: number; pages: number };
 type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number; capabilities?: Record<string, boolean> };
-const IPR_DETAIL_DEFAULT_PAGE = 1;
+type AnnualFeePagePayload = IprDetailPagePayload<AnnualFee> & { capabilities?: { can_manage?: boolean } };const IPR_DETAIL_DEFAULT_PAGE = 1;
 const IPR_DETAIL_DEFAULT_PAGE_SIZE = 15;
 const isLegacyIprRecord = (record: IprRecord) => Number(record.data?.legacy_ipr_case_id || record.data?.legacy_case_id || 0) > 0;
 const isIprLawsuit = (record: IprRecord | null) => record?.data?.case_category === "litigation";
@@ -272,6 +286,7 @@ export default function IprCenterPage({
     reminders: "",
     tasks: "",
     assistedFees: "",
+    annualFees: "",
   });
   const [filesPageState, setFilesPageState] = useState<IprDetailPageState>({
     page: IPR_DETAIL_DEFAULT_PAGE,
@@ -297,6 +312,12 @@ export default function IprCenterPage({
     total: 0,
     pages: 0,
   });
+  const [annualFeesPageState, setAnnualFeesPageState] = useState<IprDetailPageState>({
+    page: IPR_DETAIL_DEFAULT_PAGE,
+    pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  });
   const [customers, setCustomers] = useState<Customer[]>([]),
     [peopleOptions, setPeopleOptions] = useState<PeopleOption[]>([]),
     [profile, setProfile] = useState<{ role?: string; username?: string }>({}),
@@ -313,6 +334,12 @@ export default function IprCenterPage({
     [transactTarget, setTransactTarget] = useState<AssistedFee | null>(null),
     [transactForm] = Form.useForm(),
     [receiptFile, setReceiptFile] = useState<File | null>(null),
+    [annualFees, setAnnualFees] = useState<AnnualFee[]>([]),
+    [annualFeeYearFilter, setAnnualFeeYearFilter] = useState<number | undefined>(undefined),
+    [annualFeesCanManage, setAnnualFeesCanManage] = useState(false),
+    [annualFeeOpen, setAnnualFeeOpen] = useState(false),
+    [editingAnnualFee, setEditingAnnualFee] = useState<AnnualFee | null>(null),
+    [annualFeeForm] = Form.useForm(),
     [iprCaseEvents, setIprCaseEvents] = useState<IprCaseEvent[]>([]),
     [iprEventOpen, setIprEventOpen] = useState(false),
     [editingIprEvent, setEditingIprEvent] = useState<IprCaseEvent | null>(null),
@@ -432,6 +459,8 @@ export default function IprCenterPage({
       ...current,
       [section]: section === "tasks"
         ? getIprApiErrorMessage(error, "案件任务加载失败")
+        : section === "annualFees"
+          ? getIprApiErrorMessage(error, "年费明细加载失败")
         : getIprSectionLoadError(section, error),
     }));
   };
@@ -874,7 +903,32 @@ export default function IprCenterPage({
   };
   const refreshAssistedFeesAndLogs = async (caseId: number) => {
     await Promise.all([loadAssistedFees(caseId), loadIprLogs(caseId)]);
+    const loadAnnualFees = async (
+    caseId: number,
+    nextPage = annualFeesPageState.page,
+    nextPageSize = annualFeesPageState.pageSize,
+    nextFeeYear = annualFeeYearFilter,
+  ) => {
+    try {
+      const { data } = await api.get<AnnualFeePagePayload>(
+        `/ipr/cases/${caseId}/annual-fees`,
+        { params: { page: nextPage, page_size: nextPageSize, fee_year: nextFeeYear } },
+      );
+      setAnnualFees(data.items || []);
+      setAnnualFeesPageState({
+        page: data.page ?? nextPage,
+        pageSize: data.page_size ?? nextPageSize,
+        total: data.total ?? data.items?.length ?? 0,
+        pages: data.pages ?? 0,
+      });
+      setAnnualFeesCanManage(Boolean(data.capabilities?.can_manage));
+      clearIprSectionError("annualFees");
+    } catch (error) {
+      setIprSectionError("annualFees", error);
+    }
   };
+  const refreshAnnualFees = () => {
+    if (detail) void loadAnnualFees(detail.id, annualFeesPageState.page, annualFeesPageState.pageSize);  };
   const loadIprCaseEvents = async (
     caseId: number,
     nextPage = remindersPageState.page,
@@ -1293,13 +1347,16 @@ export default function IprCenterPage({
     setCpcApplicationsError("");
     setAssistedFees([]);
     setCanManageAssistedFees(false);
-    setIprCaseEvents([]);
+        setAnnualFees([]);
+    setAnnualFeesCanManage(false);
+    setAnnualFeeYearFilter(undefined);    setIprCaseEvents([]);
     setIprCaseTasks([]);
     setFilesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
     setRemindersPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
     setIprTasksPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
     setAssistedFeesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
-    setIprSectionErrors({ files: "", logs: "", reminders: "", tasks: "", assistedFees: "" });
+    setAnnualFeesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
+    setIprSectionErrors({ files: "", logs: "", reminders: "", tasks: "", assistedFees: "", annualFees: "" });
     try {
       await Promise.all([
         loadIprFiles(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
@@ -1310,6 +1367,7 @@ export default function IprCenterPage({
         loadIprHistory(record.id),
         ...(record.data?.case_kind === "专利" ? [loadCpcApplications(record.id)] : []),
         loadAssistedFees(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
+        loadAnnualFees(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE, undefined),
         loadIprCaseEvents(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadIprCaseTasks(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadReminderSuppressions(record.id),
@@ -1569,6 +1627,70 @@ export default function IprCenterPage({
       await loadAssistedFees(detail.id);
     } catch (e: any) {
       message.error(e?.response?.data?.detail || "删除协助费失败");
+    }
+  };
+  const openAnnualFeeEditor = (row?: AnnualFee) => {
+    setEditingAnnualFee(row || null);
+    annualFeeForm.resetFields();
+    annualFeeForm.setFieldsValue({
+      fee_year: row?.fee_year ?? dayjs().year(),
+      fee_name: row?.fee_name ?? "年费",
+      amount: row?.amount ?? undefined,
+      currency: row?.currency || "CNY",
+      due_date: row?.due_date ? dayjs(row.due_date) : dayjs(),
+      paid_date: row?.paid_date ? dayjs(row.paid_date) : undefined,
+      status: row?.status || "待缴",
+      reminder_date: row?.reminder_date ? dayjs(row.reminder_date) : undefined,
+      notes: row?.notes || "",
+    });
+    setAnnualFeeOpen(true);
+  };
+  const saveAnnualFee = async () => {
+    if (!detail) return;
+    try {
+      const values = await annualFeeForm.validateFields();
+      const payload = {
+        fee_year: Number(values.fee_year),
+        fee_name: String(values.fee_name || "").trim(),
+        amount: Number(values.amount),
+        currency: values.currency || "CNY",
+        due_date: formatRequiredDate(values.due_date, "缴费期限"),
+        paid_date: values.paid_date ? formatRequiredDate(values.paid_date, "缴费日期") : null,
+        status: values.status,
+        reminder_date: values.reminder_date ? formatRequiredDate(values.reminder_date, "提醒日期") : null,
+        notes: String(values.notes || "").trim(),
+      };
+      if (payload.status === "已缴" && !payload.paid_date) {
+        annualFeeForm.setFields([{ name: "paid_date", errors: ["已缴状态必须填写缴费日期"] }]);
+        return;
+      }
+      if (payload.status !== "已缴" && payload.paid_date) {
+        annualFeeForm.setFields([{ name: "paid_date", errors: ["待缴或未缴状态不能填写缴费日期"] }]);
+        return;
+      }
+      if (editingAnnualFee) {
+        await api.put(`/ipr/cases/${detail.id}/annual-fees/${editingAnnualFee.id}`, payload);
+        message.success("年费明细已更新");
+      } else {
+        await api.post(`/ipr/cases/${detail.id}/annual-fees`, payload);
+        message.success("年费明细已新增");
+      }
+      setAnnualFeeOpen(false);
+      setEditingAnnualFee(null);
+      annualFeeForm.resetFields();
+      await loadAnnualFees(detail.id, IPR_DETAIL_DEFAULT_PAGE, annualFeesPageState.pageSize);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(getIprApiErrorMessage(error, editingAnnualFee ? "更新年费明细失败" : "新增年费明细失败"));
+    }
+  };
+  const deleteAnnualFee = async (row: AnnualFee) => {
+    if (!detail) return;
+    try {
+      await api.delete(`/ipr/cases/${detail.id}/annual-fees/${row.id}`);
+      message.success("年费明细及其专属提醒已删除");
+      await loadAnnualFees(detail.id, annualFeesPageState.page, annualFeesPageState.pageSize);
+    } catch (error) {
+      message.error(getIprApiErrorMessage(error, "删除年费明细失败"));
     }
   };
   const saveIprCaseEvent = async () => {
@@ -1939,6 +2061,16 @@ export default function IprCenterPage({
     pageSizeOptions: ["15", "20", "50"],
     onChange: (nextPage: number, nextPageSize: number) => {
       if (detail) void loadAssistedFees(detail.id, nextPage, nextPageSize);
+    },
+  };
+  const annualFeesPagination = {
+    current: annualFeesPageState.page,
+    pageSize: annualFeesPageState.pageSize,
+    total: annualFeesPageState.total,
+    showSizeChanger: true,
+    pageSizeOptions: ["15", "20", "50"],
+    onChange: (nextPage: number, nextPageSize: number) => {
+      if (detail) void loadAnnualFees(detail.id, nextPage, nextPageSize);
     },
   };
   const remindersPagination = {
@@ -2953,6 +3085,54 @@ export default function IprCenterPage({
             </Card>
                   ),
                 },
+                {
+                  key: "annualFees",
+                  label: "年费管理",
+                  children: (
+                    <Card
+                      size="small"
+                      title="年费明细"
+                      style={{ marginTop: 16 }}
+                      extra={<Space size={8} wrap>
+                        <InputNumber
+                          min={2000}
+                          max={2100}
+                          placeholder="按缴费年度筛选"
+                          style={{ width: 150 }}
+                          value={annualFeeYearFilter}
+                          onChange={(value) => {
+                            const feeYear = typeof value === "number" ? value : undefined;
+                            setAnnualFeeYearFilter(feeYear);
+                            if (detail) void loadAnnualFees(detail.id, IPR_DETAIL_DEFAULT_PAGE, annualFeesPageState.pageSize, feeYear);
+                          }}
+                        />
+                        <Button size="small" onClick={refreshAnnualFees}>刷新</Button>
+                        {annualFeesCanManage ? <Button type="primary" size="small" onClick={() => openAnnualFeeEditor()}>新增年费</Button> : null}
+                      </Space>}
+                    >
+                      {iprSectionErrors.annualFees ? <Alert type="error" showIcon message={iprSectionErrors.annualFees} style={{ marginBottom: 12 }} /> : null}
+                      <Table
+                        rowKey="id"
+                        size="small"
+                        pagination={annualFeesPagination}
+                        dataSource={annualFees}
+                        scroll={{ x: 1050 }}
+                        locale={{ emptyText: "暂无年费明细" }}
+                        columns={[
+                          { title: "缴费年度", dataIndex: "fee_year", width: 100, render: (value) => value ? `${value} 年` : "—" },
+                          { title: "费用名称", dataIndex: "fee_name", width: 150, ellipsis: true },
+                          { title: "金额", dataIndex: "amount", width: 120, render: (value, row: AnnualFee) => value == null ? "—" : `${row.currency || "CNY"} ${Number(value).toFixed(2)}` },
+                          { title: "缴费期限", dataIndex: "due_date", width: 112, render: (value) => value || "—" },
+                          { title: "缴费日期", dataIndex: "paid_date", width: 112, render: (value) => value || "—" },
+                          { title: "提醒", width: 142, render: (_, row: AnnualFee) => row.reminder_date ? <Space size={4}><Tag color={row.reminder_id ? "blue" : "gold"}>{row.reminder_id ? "已建提醒" : "待同步"}</Tag><span>{row.reminder_date}</span></Space> : "未设提醒" },
+                          { title: "状态", dataIndex: "status", width: 92, render: (value) => <Tag color={value === "已缴" ? "green" : value === "未缴" ? "red" : "gold"}>{value}</Tag> },
+                          { title: "说明", dataIndex: "notes", ellipsis: true, render: (value) => value || "—" },
+                          { title: "操作", fixed: "right", width: 122, render: (_, row: AnnualFee) => annualFeesCanManage ? <Space size={0}><Button type="link" onClick={() => openAnnualFeeEditor(row)}>编辑</Button><Button type="link" danger onClick={() => confirmIprDeletion("annual-fee", `${row.fee_year}年${row.fee_name}`, () => deleteAnnualFee(row))}>删除</Button></Space> : "—" },
+                        ]}
+                      />
+                    </Card>
+                  ),
+                },
               ]}
             />
             <Card
@@ -3490,6 +3670,28 @@ export default function IprCenterPage({
           <Form.Item name="remark" label="说明">
             <Input.TextArea rows={3} />
           </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={annualFeeOpen}
+        title={editingAnnualFee ? "编辑年费明细" : "新增年费明细"}
+        onCancel={() => { setAnnualFeeOpen(false); setEditingAnnualFee(null); annualFeeForm.resetFields(); }}
+        onOk={() => void saveAnnualFee()}
+        okText={editingAnnualFee ? "保存修改" : "新增"}
+      >
+        <Form form={annualFeeForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item name="fee_year" label="缴费年度" rules={[{ required: true, message: "请填写缴费年度" }]}><InputNumber min={2000} max={2100} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="fee_name" label="费用名称" rules={[{ required: true, whitespace: true, message: "请填写费用名称" }]}><Input maxLength={255} /></Form.Item>
+            <Form.Item name="amount" label="金额" rules={[{ required: true, message: "请填写金额" }]}><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="currency" label="币种"><Select options={[{ value: "CNY", label: "CNY（人民币）" }, { value: "USD", label: "USD（美元）" }, { value: "EUR", label: "EUR（欧元）" }]} /></Form.Item>
+            <Form.Item name="due_date" label="缴费期限" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="status" label="缴费状态" rules={[{ required: true }]}><Select options={["待缴", "已缴", "未缴"].map((value) => ({ value, label: value }))} /></Form.Item>
+            <Form.Item name="paid_date" label="缴费日期"><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="reminder_date" label="提醒日期"><DatePicker style={{ width: "100%" }} /></Form.Item>
+          </div>
+          <Form.Item name="notes" label="说明"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
+          <div style={{ color: "#666" }}>填写提醒日期后，系统会为这笔年费同步“缴纳年费”提醒；提醒日期不得晚于缴费期限。</div>
         </Form>
       </Modal>
       <Modal

@@ -1267,6 +1267,29 @@ class IprCaseReminderType(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class IprCaseAnnualFee(Base):
+    """One annual-fee obligation for an IPR case, with an optional real reminder."""
+
+    __tablename__ = "ipr_case_annual_fees"
+    __table_args__ = (UniqueConstraint("case_record_id", "fee_year", name="uq_ipr_case_annual_fee_year"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    fee_year: Mapped[int] = mapped_column(Integer, index=True)
+    fee_name: Mapped[str] = mapped_column(String(255))
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    currency: Mapped[str] = mapped_column(String(8), default="CNY")
+    due_date: Mapped[date] = mapped_column(Date, index=True)
+    paid_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="待缴", index=True)
+    reminder_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    reminder_id: Mapped[int | None] = mapped_column(ForeignKey("ipr_case_reminders.id", ondelete="SET NULL"), nullable=True, index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class FinanceTransaction(Base):
     __tablename__ = "finance_transactions"
 
