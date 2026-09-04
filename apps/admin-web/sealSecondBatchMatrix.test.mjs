@@ -32,7 +32,7 @@ test("seal second batch maps upload, permissions, package download and workflow 
   assert.match(oldController, /public JsonResult Download\(List<string> officialDocumentNos\)/);
   assert.match(oldController, /下载成功！/);
   assert.match(oldScript, /请选择用印文件/);
-  assert.match(localPage, /\/seals\/applications\/package-download/);
+  assert.match(localPage, /\/seals\/applications\/batch-download/);
   assert.match(localPage, /const downloadSelectedSealFiles = \(\) =>[\s\S]*?请选择用印文件/);
   assert.match(localApi, /async def package_download_seal_files/);
   assert.match(localApi, /所选用印申请暂无可下载附件/);
