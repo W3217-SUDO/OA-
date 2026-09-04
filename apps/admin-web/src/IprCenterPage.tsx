@@ -166,6 +166,40 @@ type IprReminderType = {
   updated_by: string;
 };
 type IprReminderEventOption = { id: number; name: string };
+type IprWarningRule = {
+  id: number;
+  name: string;
+  case_kind?: "专利" | "商标" | "";
+  case_type?: string;
+  case_phase?: string;
+  time_node: "case_deadline" | "reminder_deadline";
+  event_type_id?: number | null;
+  days_before: number;
+  is_active: boolean;
+  created_by?: string;
+  updated_by?: string;
+};
+type IprWarning = {
+  id: number;
+  rule_id: number;
+  case_id: number;
+  case_no: string;
+  case_title: string;
+  case_kind: string;
+  reminder_id?: number | null;
+  due_date: string;
+  title: string;
+  content: string;
+  recipient: string;
+  status: "未读" | "已读" | "已处理";
+  is_read: boolean;
+  read_at?: string | null;
+  processed_at?: string | null;
+  processed_by?: string | null;
+  process_comment?: string | null;
+  created_at: string;
+  notification_id?: number | null;
+};
 type ReminderEventType = { id: number; name: string; suppressed: boolean };
 type IprLawFirm = { id: number; law_firm_id: number; code: string; name: string; phone: string; email: string };
 type IprLawFirmCandidate = { id: number; code: string; name: string; phone: string; email: string; selected: boolean };
@@ -224,6 +258,7 @@ const statusColor: Record<string, string> = {
   已结案: "green",
 };
 const CUSTOMER_IPR_RELATION_STORAGE_KEY = "sunhold:customer-ipr-relation";
+const IPR_WARNING_TARGET_STORAGE_KEY = "sunhold:ipr-warning-target";
 const IPR_ROLE_VIEW_BY_ROUTE: Record<string, { roleView: string; label: string }> = {
   "ipr-source-person": { roleView: "source_person", label: "我是案源人" },
   "ipr-procurator": { roleView: "procurator", label: "我是代理人" },
@@ -400,6 +435,21 @@ export default function IprCenterPage({
     [iprLogForm] = Form.useForm();
   const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
   const [deadlineOffsetForm] = Form.useForm();
+  const [warningWorkbenchOpen, setWarningWorkbenchOpen] = useState(false);
+  const [warningRuleEditorOpen, setWarningRuleEditorOpen] = useState(false);
+  const [warningRules, setWarningRules] = useState<IprWarningRule[]>([]);
+  const [warnings, setWarnings] = useState<IprWarning[]>([]);
+  const [warningLoading, setWarningLoading] = useState(false);
+  const [warningRulesLoading, setWarningRulesLoading] = useState(false);
+  const [warningTotal, setWarningTotal] = useState(0);
+  const [warningUnread, setWarningUnread] = useState(0);
+  const [warningPage, setWarningPage] = useState(1);
+  const [warningStatus, setWarningStatus] = useState<"" | "未读" | "已读" | "已处理">("");
+  const [warningCaseKind, setWarningCaseKind] = useState<"" | "专利" | "商标">("");
+  const [editingWarningRule, setEditingWarningRule] = useState<IprWarningRule | null>(null);
+  const [processingWarning, setProcessingWarning] = useState<IprWarning | null>(null);
+  const [warningRuleForm] = Form.useForm();
+  const [warningProcessForm] = Form.useForm();
   const [iprBatchCreateOpen, setIprBatchCreateOpen] = useState(false);
   const [iprBatchCreateForm] = Form.useForm();
   const [iprBatchCreateErrors, setIprBatchCreateErrors] = useState<IprBatchCreateError[]>([]);
@@ -544,7 +594,23 @@ export default function IprCenterPage({
         .filter((item) => item.username && item.label)))
       .catch(() => setPeopleOptions([]));
   }, [initialView, annualFeeMonitoringFilter, caseCategoryFilter]);
-  const resetMainListSearch = () => {
+  useEffect(() => {
+    const openStoredWarningTarget = () => {
+      try {
+        const raw = window.sessionStorage.getItem(IPR_WARNING_TARGET_STORAGE_KEY);
+        window.sessionStorage.removeItem(IPR_WARNING_TARGET_STORAGE_KEY);
+        const caseId = Number(raw || 0);
+        if (caseId > 0) {
+          void api.get<IprRecord>(`/ipr/cases/${caseId}`).then(({ data }) => void openDetail(data)).catch(() =>
+            message.error("关联知识产权案件不可查看或已不存在"),
+          );
+        }
+      } catch { /* Ignore unavailable session storage. */ }
+    };
+    openStoredWarningTarget();
+    window.addEventListener("sunhold:ipr-warning-target", openStoredWarningTarget);
+    return () => window.removeEventListener("sunhold:ipr-warning-target", openStoredWarningTarget);
+  }, [initialView]);  const resetMainListSearch = () => {
     setKeyword("");
     setAnnualFeeMonitoringFilter("");
     setCaseCategoryFilter("");
@@ -1916,6 +1982,122 @@ export default function IprCenterPage({
       message.error(getIprCaseActionErrorMessage(e, "操作失败"));
     }
   };
+  const canManageWarningRules = ["admin", "manager"].includes(profile.role || "");
+  const loadWarningRules = async () => {
+    setWarningRulesLoading(true);
+    try {
+      const { data } = await api.get<{ items: IprWarningRule[] }>("/ipr/warning-rules");
+      setWarningRules(data.items || []);
+    } catch (error: any) {
+      setWarningRules([]);
+      message.error(error?.response?.data?.detail || "预警规则加载失败");
+    } finally {
+      setWarningRulesLoading(false);
+    }
+  };
+  const loadWarnings = async (nextPage = warningPage) => {
+    setWarningLoading(true);
+    try {
+      const { data } = await api.get<{ items: IprWarning[]; total: number; unread: number; page?: number }>("/ipr/warnings", {
+        params: { status: warningStatus || undefined, case_kind: warningCaseKind || undefined, page: nextPage, page_size: 15 },
+      });
+      setWarnings(data.items || []);
+      setWarningTotal(data.total || 0);
+      setWarningUnread(data.unread || 0);
+      setWarningPage(data.page || nextPage);
+    } catch (error: any) {
+      setWarnings([]);
+      message.error(error?.response?.data?.detail || "案件预警加载失败");
+    } finally {
+      setWarningLoading(false);
+    }
+  };
+  const openWarningWorkbench = () => {
+    setWarningWorkbenchOpen(true);
+    void Promise.all([loadWarningRules(), loadWarnings(1), loadReminderEventTypes()]);
+  };
+  const generateWarnings = async () => {
+    try {
+      const { data } = await api.post<{ created: number; total: number }>("/ipr/warnings/generate");
+      message.success(data.created ? `已生成 ${data.created} 条案件预警` : "预警已按当前规则更新");
+      await loadWarnings(1);
+      window.dispatchEvent(new Event("sunhold:notifications-updated"));
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "生成案件预警失败");
+    }
+  };
+  const openWarningRuleEditor = (rule?: IprWarningRule) => {
+    setEditingWarningRule(rule || null);
+    warningRuleForm.resetFields();
+    warningRuleForm.setFieldsValue({
+      name: rule?.name || "",
+      case_kind: rule?.case_kind || undefined,
+      case_type: rule?.case_type || "",
+      case_phase: rule?.case_phase || "",
+      time_node: rule?.time_node || "case_deadline",
+      event_type_id: rule?.event_type_id ?? 0,
+      days_before: rule?.days_before ?? 7,
+      is_active: rule?.is_active ?? true,
+    });
+    setWarningRuleEditorOpen(true);
+  };
+  const saveWarningRule = async () => {
+    try {
+      const values = await warningRuleForm.validateFields();
+      const payload = {
+        name: String(values.name || "").trim(), case_kind: values.case_kind || "", case_type: String(values.case_type || "").trim(),
+        case_phase: String(values.case_phase || "").trim(), time_node: values.time_node,
+        event_type_id: values.time_node === "reminder_deadline" ? Number(values.event_type_id ?? 0) : 0,
+        days_before: Number(values.days_before), is_active: !!values.is_active,
+      };
+      if (editingWarningRule) await api.patch(`/ipr/warning-rules/${editingWarningRule.id}`, payload);
+      else await api.post("/ipr/warning-rules", payload);
+      message.success(editingWarningRule ? "预警规则已更新" : "预警规则已创建");
+      setWarningRuleEditorOpen(false);
+      await Promise.all([loadWarningRules(), loadWarnings(1)]);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "保存预警规则失败");
+    }
+  };
+  const deleteWarningRule = (rule: IprWarningRule) => Modal.confirm({
+    title: `删除预警规则：${rule.name}`,
+    content: "删除规则会一并清理该规则已生成的预警记录及其站内通知，且不能恢复。",
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        await api.delete(`/ipr/warning-rules/${rule.id}`);
+        message.success("预警规则及其关联预警已删除");
+        await Promise.all([loadWarningRules(), loadWarnings(1)]);
+        window.dispatchEvent(new Event("sunhold:notifications-updated"));
+      }
+      catch (error: any) { message.error(error?.response?.data?.detail || "删除预警规则失败"); }
+    },
+  });
+  const markWarningRead = async (warning: IprWarning) => {
+    if (warning.is_read) return;
+    try {
+      await api.post(`/ipr/warnings/${warning.id}/read`);
+      await loadWarnings();
+      window.dispatchEvent(new Event("sunhold:notifications-updated"));
+    } catch (error: any) { message.error(error?.response?.data?.detail || "标记已读失败"); }
+  };
+  const processWarning = async () => {
+    if (!processingWarning) return;
+    try {
+      const values = await warningProcessForm.validateFields();
+      await api.post(`/ipr/warnings/${processingWarning.id}/process`, { comment: String(values.comment || "").trim() });
+      message.success("案件预警已处理");
+      setProcessingWarning(null); warningProcessForm.resetFields(); await loadWarnings();
+      window.dispatchEvent(new Event("sunhold:notifications-updated"));
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "处理案件预警失败");
+    }
+  };
+  const openWarningCase = async (warning: IprWarning) => {
+    if (!warning.is_read && (profile.role === "admin" || warning.recipient === profile.username)) await markWarningRead(warning);
+    try { const { data } = await api.get<IprRecord>(`/ipr/cases/${warning.case_id}`); await openDetail(data); }
+    catch (error: any) { message.error(error?.response?.data?.detail || "关联知识产权案件不可查看或已不存在"); }
+  };
   const columns: TableColumnsType<IprRecord> = useMemo(
     () => [
       {
@@ -2117,6 +2299,7 @@ export default function IprCenterPage({
                 options={[{ value: "", label: "全部案件" }, { value: "litigation", label: "诉讼案件" }, { value: "non_litigation", label: "非诉案件" }]}
               />
               <Button onClick={resetMainListSearch}>重置</Button>
+              <Button onClick={openWarningWorkbench}>案件预警{warningUnread ? <Tag color="red" style={{ marginInlineStart: 6 }}>{warningUnread}</Tag> : null}</Button>
               <Button onClick={openReminderTypeWorkbench}>案件提醒类型</Button>
               <Button onClick={openLegacyHistory}>Historical read-only cases</Button>
               {reminderTypeId ? <Tag closable onClose={() => { setReminderTypeId(null); setReminderTypeName(""); void load(1, pageSize, keyword, null); }}>提醒类型：{reminderTypeName || reminderTypeId}</Tag> : null}
@@ -2162,6 +2345,50 @@ export default function IprCenterPage({
           }}
         />
       </Card>
+      <Drawer
+        open={warningWorkbenchOpen}
+        title={<Space>案件预警工作台{warningUnread ? <Tag color="red">{warningUnread} 条未读</Tag> : null}</Space>}
+        width={1120}
+        onClose={() => setWarningWorkbenchOpen(false)}
+        extra={<Space><Button onClick={() => onNavigate?.("user-messages")}>通知中心</Button><Button onClick={() => void generateWarnings()}>刷新并生成</Button>{canManageWarningRules ? <Button type="primary" onClick={() => openWarningRuleEditor()}>新建规则</Button> : null}</Space>}
+      >
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} message="规则按案件类型与时间节点生成预警" description="预警只显示当前登录人可查看且分配给本人的案件；打开、标已读和处理会同步通知中心。" />
+        <Card size="small" title="预警规则" style={{ marginBottom: 16 }}>
+          <Table<IprWarningRule> rowKey="id" size="small" loading={warningRulesLoading} dataSource={warningRules} pagination={false} scroll={{ x: 880 }} columns={[
+            { title: "规则名称", dataIndex: "name", width: 180 },
+            { title: "案件类型", dataIndex: "case_kind", width: 100, render: value => value || "全部" },
+            { title: "案件子类型 / 阶段", width: 210, render: (_, row) => [row.case_type, row.case_phase].filter(Boolean).join(" / ") || "全部" },
+            { title: "时间节点", width: 170, render: (_, row) => row.time_node === "reminder_deadline" ? `提醒事项截止日${row.event_type_id ? `（事件 #${row.event_type_id}）` : ""}` : "案件办理期限" },
+            { title: "提前天数", dataIndex: "days_before", width: 100, render: value => `${value} 天` },
+            { title: "状态", dataIndex: "is_active", width: 90, render: value => <Tag color={value ? "green" : "default"}>{value ? "启用" : "停用"}</Tag> },
+            { title: "操作", fixed: "right", width: 130, render: (_, row) => canManageWarningRules ? <Space size={0}><Button type="link" onClick={() => openWarningRuleEditor(row)}>编辑</Button><Button type="link" danger onClick={() => deleteWarningRule(row)}>删除</Button></Space> : "—" },
+          ]} />
+        </Card>
+        <Card size="small" title={profile.role === "admin" ? "可见案件预警" : "我的案件预警"} extra={<Space><Select value={warningStatus} onChange={value => { setWarningStatus(value); }} style={{ width: 104 }} options={[{ value: "", label: "全部状态" }, { value: "未读", label: "未读" }, { value: "已读", label: "已读" }, { value: "已处理", label: "已处理" }]} /><Select value={warningCaseKind} onChange={value => { setWarningCaseKind(value); }} style={{ width: 104 }} options={[{ value: "", label: "全部类型" }, { value: "专利", label: "专利" }, { value: "商标", label: "商标" }]} /><Button onClick={() => void loadWarnings(1)}>查询</Button></Space>}>
+          <Table<IprWarning> rowKey="id" size="small" loading={warningLoading} dataSource={warnings} scroll={{ x: 1120 }} pagination={{ current: warningPage, pageSize: 15, total: warningTotal, showSizeChanger: false, onChange: nextPage => void loadWarnings(nextPage) }} columns={[
+            { title: "状态", width: 88, render: (_, row) => <Tag color={row.status === "已处理" ? "green" : row.is_read ? "blue" : "red"}>{row.status}</Tag> },
+            { title: "预警内容", dataIndex: "title", width: 210, ellipsis: true },
+            { title: "关联案件", width: 220, ellipsis: true, render: (_, row) => <Button type="link" onClick={() => void openWarningCase(row)}>{row.case_no}｜{row.case_title}</Button> },
+            { title: "类型", dataIndex: "case_kind", width: 75 },
+            { title: "到期日", dataIndex: "due_date", width: 112 },
+            { title: "说明", dataIndex: "content", ellipsis: true },
+            { title: "处理说明", dataIndex: "process_comment", width: 160, ellipsis: true, render: value => value || "—" },
+            { title: "操作", fixed: "right", width: 150, render: (_, row) => (profile.role === "admin" || row.recipient === profile.username) ? <Space size={0}>{!row.is_read && <Button type="link" onClick={() => void markWarningRead(row)}>标已读</Button>}{row.status !== "已处理" && <Button type="link" onClick={() => { warningProcessForm.resetFields(); setProcessingWarning(row); }}>处理</Button>}</Space> : "仅接收人可处理" },
+          ]} />
+        </Card>
+      </Drawer>
+      <Modal open={warningRuleEditorOpen} title={editingWarningRule ? `编辑预警规则：${editingWarningRule.name}` : "新建案件预警规则"} width={680} onCancel={() => setWarningRuleEditorOpen(false)} onOk={() => void saveWarningRule()} okText="保存">
+        <Form form={warningRuleForm} layout="vertical"><div className="form-grid">
+          <Form.Item name="name" label="规则名称" rules={[{ required: true, message: "请输入规则名称" }]}><Input maxLength={128} /></Form.Item>
+          <Form.Item name="case_kind" label="案件类型"><Select allowClear options={[{ value: "专利", label: "专利" }, { value: "商标", label: "商标" }]} /></Form.Item>
+          <Form.Item name="case_type" label="案件子类型"><Input maxLength={128} /></Form.Item>
+          <Form.Item name="case_phase" label="案件阶段"><Input maxLength={128} /></Form.Item>
+          <Form.Item name="time_node" label="时间节点" rules={[{ required: true }]}><Select options={[{ value: "case_deadline", label: "案件办理期限" }, { value: "reminder_deadline", label: "提醒事项截止日" }]} /></Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.time_node !== current.time_node}>{({ getFieldValue }) => getFieldValue("time_node") === "reminder_deadline" ? <Form.Item name="event_type_id" label="提醒事项类型" rules={[{ required: true, message: "请选择提醒事项类型" }]}><Select options={[{ value: 0, label: "全部提醒事项类型" }, ...reminderTypeEventOptions.map(item => ({ value: item.id, label: item.name }))]} /></Form.Item> : <div />}</Form.Item>
+          <Form.Item name="days_before" label="提前预警天数" rules={[{ required: true, message: "请输入提前天数" }]}><InputNumber min={0} max={3650} precision={0} style={{ width: "100%" }} /></Form.Item>
+        </div><Form.Item name="is_active" valuePropName="checked"><Checkbox>启用规则</Checkbox></Form.Item></Form>
+      </Modal>
+      <Modal open={!!processingWarning} title="处理案件预警" onCancel={() => setProcessingWarning(null)} onOk={() => void processWarning()} okText="确认处理"><p>{processingWarning?.title}</p><Form form={warningProcessForm} layout="vertical"><Form.Item name="comment" label="处理说明"><Input.TextArea rows={4} maxLength={1000} placeholder="可选；会保留在预警处理记录中" /></Form.Item></Form></Modal>
       <Drawer
         open={legacyHistoryOpen}
         title="Historical IPR cases (read-only)"

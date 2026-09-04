@@ -54,8 +54,7 @@ from .ipr_cpc import CPC_APPLICATION_CATEGORY, create_ipr_cpc_router, is_cpc_app
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
-from .models import AgentDocument, BusinessRecord, CaseEvent, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprCaseAnnualFee, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEventfrom .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
-from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
+from .models import AgentDocument, BusinessRecord, CaseEvent, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprCaseAnnualFee, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEventfrom .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_passwordfrom .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 logger = logging.getLogger(__name__)
 
@@ -2491,6 +2490,32 @@ class IprCaseReminderTypeUpdateInput(BaseModel):
     is_default: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=100000)
+
+
+class IprCaseWarningRuleInput(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    case_kind: str = Field(default="", max_length=16)
+    case_type: str = Field(default="", max_length=128)
+    case_phase: str = Field(default="", max_length=128)
+    time_node: str = Field(default="case_deadline", max_length=32)
+    event_type_id: int = Field(default=0, ge=0)
+    days_before: int = Field(default=0, ge=0, le=3650)
+    is_active: bool = True
+
+
+class IprCaseWarningRuleUpdateInput(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    case_kind: str | None = Field(default=None, max_length=16)
+    case_type: str | None = Field(default=None, max_length=128)
+    case_phase: str | None = Field(default=None, max_length=128)
+    time_node: str | None = Field(default=None, max_length=32)
+    event_type_id: int | None = Field(default=None, ge=0)
+    days_before: int | None = Field(default=None, ge=0, le=3650)
+    is_active: bool | None = None
+
+
+class IprCaseWarningProcessInput(BaseModel):
+    comment: str = Field(default="", max_length=1000)
 
 
 class IprCaseFileTransmitInput(BaseModel):
@@ -8901,12 +8926,21 @@ async def _dingtalk_notification_loop() -> None:
 
 async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
     username = identity["username"]; today = date.today(); candidates: list[dict] = []
+    # Warning materialization belongs to the notification lifecycle so a case
+    # owner receives an inbox item without first opening the IPR warning page.
+    can_view_ipr = True
+    try:
+        await _materialize_ipr_case_warnings(identity, db)
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+        can_view_ipr = False
     task_terminal_statuses = ["已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"]
     all_tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
     tasks = [task for task in all_tasks if task.status not in task_terminal_statuses]
     terminal_task_ids = {task.id for task in all_tasks if task.status in task_terminal_statuses}
     current_user = await db.scalar(select(User).where(User.username == username))
-    stale = (await db.scalars(select(Notification).where(Notification.recipient == username, Notification.source_type.in_(["task", "finance", "contract", "case"])))).all()
+    stale = (await db.scalars(select(Notification).where(Notification.recipient == username, Notification.source_type.in_(["task", "finance", "contract", "case", "ipr_warning"])))).all()
     existing_record_ids = set((await db.scalars(select(BusinessRecord.id))).all())
     if identity.get("role") != "admin":
         visible_tasks = [task for task in all_tasks if _is_task_participant(task, identity) or (identity.get("role") == "manager" and current_user and task.department == current_user.department)]
@@ -8917,6 +8951,14 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
         visible_ids = existing_record_ids
         visible_task_ids = {task.id for task in all_tasks}
     for notice in stale:
+        if notice.source_type == "ipr_warning":
+            if not can_view_ipr:
+                await db.delete(notice)
+                continue
+            warning = await db.scalar(select(IprCaseWarning.id).where(IprCaseWarning.notification_id == notice.id, IprCaseWarning.recipient == username))
+            if not warning:
+                await db.delete(notice)
+                continue
         is_auto_reminder = (
             (notice.source_type == "task" and notice.source_key.startswith("task-") and not notice.source_key.startswith(("task-history-", "task-message-")))
             or notice.source_key.startswith(("finance-approval-", "contract-approval-", "hearing-"))
@@ -8979,7 +9021,7 @@ async def list_notifications(
         if notification_type not in {"系统通知", "用户通知"}: raise HTTPException(status_code=422, detail="消息类型无效")
         conditions.append(Notification.notification_type == notification_type)
     if source_type:
-        if source_type not in {"task", "finance", "contract", "case", "message"}: raise HTTPException(status_code=422, detail="消息来源无效")
+        if source_type not in {"task", "finance", "contract", "case", "ipr_warning", "message"}: raise HTTPException(status_code=422, detail="消息来源无效")
         conditions.append(Notification.source_type == source_type)
     if level:
         if level not in {"info", "warning", "error"}: raise HTTPException(status_code=422, detail="提醒级别无效")
@@ -9173,7 +9215,11 @@ async def send_user_message(body: UserMessageInput, identity: dict = Depends(cur
 async def read_notification(notification_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await db.get(Notification, notification_id)
     if not item or item.recipient != identity["username"] or item.recipient_deleted: raise HTTPException(status_code=404, detail="消息不存在")
-    item.is_read = True; item.read_at = datetime.now(); await db.commit(); await db.refresh(item)
+    item.is_read = True; item.read_at = datetime.now()
+    if item.source_type == "ipr_warning":
+        warning = await db.scalar(select(IprCaseWarning).where(IprCaseWarning.notification_id == item.id, IprCaseWarning.recipient == identity["username"]))
+        if warning and warning.status == "未读": warning.status = "已读"; warning.read_at = item.read_at
+    await db.commit(); await db.refresh(item)
     users_by_username = await _user_display_map({item.sender, item.recipient}, db)
     return _notification_dict(item, users_by_username)
 
@@ -9182,7 +9228,11 @@ async def read_notification(notification_id: int, identity: dict = Depends(curre
 async def read_all_notifications(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     items = (await db.scalars(select(Notification).where(Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False), Notification.is_read.is_(False)))).all()
     now = datetime.now()
-    for item in items: item.is_read = True; item.read_at = now
+    for item in items:
+        item.is_read = True; item.read_at = now
+        if item.source_type == "ipr_warning":
+            warning = await db.scalar(select(IprCaseWarning).where(IprCaseWarning.notification_id == item.id, IprCaseWarning.recipient == identity["username"]))
+            if warning and warning.status == "未读": warning.status = "已读"; warning.read_at = now
     await db.commit(); return {"updated": len(items)}
 
 
@@ -36127,6 +36177,207 @@ async def delete_ipr_case_annual_fee(case_id: int, annual_fee_id: int, identity:
     db.add(WorkflowEvent(record_id=case_record.id, action="删除知识产权案件年费", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"缴费年度：{row.fee_year}；年费：{row.fee_name}"))
     await db.delete(row); await db.commit()
 
+IPR_WARNING_TIME_NODES = {"case_deadline", "reminder_deadline"}
+
+
+def _validate_ipr_warning_rule_payload(payload: IprCaseWarningRuleInput | IprCaseWarningRuleUpdateInput) -> None:
+    if "name" in payload.model_fields_set and not str(payload.name or "").strip():
+        raise HTTPException(status_code=422, detail="案件预警规则名称不能为空")
+    if isinstance(payload, IprCaseWarningRuleUpdateInput):
+        required_fields = {"case_kind", "case_type", "case_phase", "time_node", "event_type_id", "days_before", "is_active"}
+        if any(name in payload.model_fields_set and getattr(payload, name) is None for name in required_fields):
+            raise HTTPException(status_code=422, detail="预警规则字段不能为 null")
+    if payload.case_kind is not None and payload.case_kind and payload.case_kind not in IPR_CASE_KINDS:
+        raise HTTPException(status_code=422, detail="预警规则的案件类型仅支持专利或商标")
+    if payload.time_node is not None and payload.time_node not in IPR_WARNING_TIME_NODES:
+        raise HTTPException(status_code=422, detail="预警时间节点仅支持案件期限或提醒期限")
+    if payload.event_type_id is not None and payload.event_type_id and payload.event_type_id not in IPR_REMINDER_EVENT_TYPE_BY_ID:
+        raise HTTPException(status_code=422, detail="预警规则的提醒类型无效")
+
+
+def _ipr_warning_rule_dict(row: IprCaseWarningRule) -> dict:
+    return {"id": row.id, "name": row.name, "case_kind": row.case_kind, "case_type": row.case_type,
+            "case_phase": row.case_phase, "time_node": row.time_node, "event_type_id": row.event_type_id,
+            "days_before": row.days_before, "is_active": row.is_active, "created_by": row.created_by,
+            "updated_by": row.updated_by, "created_at": row.created_at, "updated_at": row.updated_at}
+
+
+async def _materialize_ipr_case_warnings(identity: dict, db: AsyncSession) -> int:
+    """Create due warning rows and inbox notices idempotently for visible active IPR cases."""
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    today = date.today()
+    rules = list((await db.scalars(select(IprCaseWarningRule).where(IprCaseWarningRule.is_active.is_(True)))).all())
+    cases = await _visible_ipr_cases(identity, db)
+    created = 0
+    for case_record in cases:
+        if case_record.status != "在办" or not str(case_record.owner or "").strip():
+            continue
+        data = case_record.data or {}
+        for rule in rules:
+            if rule.case_kind and data.get("case_kind") != rule.case_kind:
+                continue
+            if rule.case_type and data.get("case_type") != rule.case_type:
+                continue
+            if rule.case_phase and data.get("case_phase") != rule.case_phase:
+                continue
+            sources: list[tuple[int | None, date, str]] = []
+            if rule.time_node == "case_deadline":
+                try:
+                    sources.append((None, date.fromisoformat(str(data.get("deadline") or "")), "案件期限"))
+                except ValueError:
+                    pass
+            else:
+                reminders = list((await db.scalars(select(IprCaseReminder).where(IprCaseReminder.case_record_id == case_record.id))).all())
+                suppressed = set((await db.scalars(select(IprCaseReminderSuppression.event_type_id).where(IprCaseReminderSuppression.case_record_id == case_record.id))).all())
+                for reminder in reminders:
+                    if rule.event_type_id and reminder.event_type_id != rule.event_type_id:
+                        continue
+                    if reminder.event_type_id in suppressed:
+                        continue
+                    sources.append((reminder.id, reminder.deadline, reminder.event_type or "提醒期限"))
+            for reminder_id, due_date, node_name in sources:
+                if due_date > today + timedelta(days=rule.days_before):
+                    continue
+                warning_source_key = f"rule-{rule.id}-case-{case_record.id}-reminder-{reminder_id or 0}-due-{due_date.isoformat()}-recipient-{case_record.owner}"
+                existing = await db.scalar(select(IprCaseWarning).where(IprCaseWarning.source_key == warning_source_key))
+                if existing:
+                    continue
+                warning = IprCaseWarning(rule_id=rule.id, case_record_id=case_record.id, reminder_id=reminder_id,
+                                         due_date=due_date, recipient=case_record.owner, source_key=warning_source_key)
+                try:
+                    async with db.begin_nested():
+                        db.add(warning)
+                        await db.flush()
+                except IntegrityError:
+                    continue
+                notice = Notification(source_key=f"ipr-warning-{warning.id}-{warning.recipient}", source_type="ipr_warning",
+                                      source_id=case_record.id, sender="system", recipient=warning.recipient,
+                                      notification_type="系统通知", title=f"知识产权案件预警：{rule.name}",
+                                      content=f"{case_record.serial_no}｜{case_record.title}｜{node_name}：{due_date.isoformat()}",
+                                      level="error" if due_date <= today else "warning", dingtalk_status="skipped")
+                db.add(notice)
+                await db.flush()
+                warning.notification_id = notice.id
+                created += 1
+    return created
+
+
+def _ipr_warning_dict(row: IprCaseWarning, rule: IprCaseWarningRule, case_record: BusinessRecord) -> dict:
+    data = case_record.data or {}
+    return {"id": row.id, "rule_id": row.rule_id, "rule_name": rule.name, "case_id": case_record.id,
+            "case_no": case_record.serial_no, "case_title": case_record.title, "case_kind": data.get("case_kind", ""),
+            "reminder_id": row.reminder_id, "due_date": row.due_date, "title": f"知识产权案件预警：{rule.name}",
+            "content": f"{case_record.serial_no}｜{case_record.title}｜期限：{row.due_date.isoformat()}",
+            "recipient": row.recipient, "status": row.status, "is_read": row.status != "未读", "read_at": row.read_at,
+            "processed_at": row.processed_at, "processed_by": row.processed_by, "process_comment": row.process_comment,
+            "notification_id": row.notification_id, "created_at": row.created_at}
+
+
+@app.get(f"{settings.api_prefix}/ipr/warning-rules")
+async def list_ipr_warning_rules(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    rows = list((await db.scalars(select(IprCaseWarningRule).order_by(IprCaseWarningRule.id))).all())
+    return {"items": [_ipr_warning_rule_dict(row) for row in rows], "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/warning-rules", status_code=status.HTTP_201_CREATED)
+async def create_ipr_warning_rule(body: IprCaseWarningRuleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_ipr_reminder_type_manage(identity); _validate_ipr_warning_rule_payload(body)
+    if await db.scalar(select(IprCaseWarningRule.id).where(IprCaseWarningRule.name == body.name.strip())):
+        raise HTTPException(status_code=409, detail="案件预警规则名称已存在")
+    row = IprCaseWarningRule(**body.model_dump(exclude={"name"}), name=body.name.strip(), created_by=identity["username"], updated_by=identity["username"])
+    db.add(row); await db.commit(); await db.refresh(row)
+    return _ipr_warning_rule_dict(row)
+
+
+@app.patch(f"{settings.api_prefix}/ipr/warning-rules/{{rule_id}}")
+async def update_ipr_warning_rule(rule_id: int, body: IprCaseWarningRuleUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_ipr_reminder_type_manage(identity); _validate_ipr_warning_rule_payload(body)
+    row = await db.get(IprCaseWarningRule, rule_id)
+    if not row: raise HTTPException(status_code=404, detail="案件预警规则不存在")
+    values = body.model_dump(exclude_unset=True)
+    if "name" in values:
+        values["name"] = values["name"].strip()
+        duplicate = await db.scalar(select(IprCaseWarningRule.id).where(IprCaseWarningRule.name == values["name"], IprCaseWarningRule.id != rule_id))
+        if duplicate: raise HTTPException(status_code=409, detail="案件预警规则名称已存在")
+    for key, value in values.items(): setattr(row, key, value)
+    row.updated_by = identity["username"]
+    await db.commit(); await db.refresh(row)
+    return _ipr_warning_rule_dict(row)
+
+
+@app.delete(f"{settings.api_prefix}/ipr/warning-rules/{{rule_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_warning_rule(rule_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_ipr_reminder_type_manage(identity)
+    row = await db.get(IprCaseWarningRule, rule_id)
+    if not row: raise HTTPException(status_code=404, detail="案件预警规则不存在")
+    notification_ids = list((await db.scalars(select(IprCaseWarning.notification_id).where(IprCaseWarning.rule_id == row.id, IprCaseWarning.notification_id.is_not(None)))).all())
+    if notification_ids:
+        await db.execute(delete(Notification).where(Notification.id.in_(notification_ids)))
+    await db.execute(delete(IprCaseWarning).where(IprCaseWarning.rule_id == row.id))
+    await db.delete(row); await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(f"{settings.api_prefix}/ipr/warnings/generate")
+async def generate_ipr_warnings(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    created = await _materialize_ipr_case_warnings(identity, db)
+    await db.commit()
+    return {"created": created, "total": created}
+
+
+@app.get(f"{settings.api_prefix}/ipr/warnings")
+async def list_ipr_warnings(status_filter: str = Query("", alias="status"), case_kind: str = "", page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _materialize_ipr_case_warnings(identity, db)
+    await db.commit()
+    scope = await _record_scope_conditions(identity, db)
+    conditions = [BusinessRecord.module == "ipr_case", *scope]
+    if identity.get("role") != "admin":
+        conditions.append(IprCaseWarning.recipient == identity["username"])
+    if status_filter:
+        if status_filter not in {"未读", "已读", "已处理"}: raise HTTPException(status_code=422, detail="预警状态无效")
+        conditions.append(IprCaseWarning.status == status_filter)
+    if case_kind:
+        if case_kind not in IPR_CASE_KINDS: raise HTTPException(status_code=422, detail="案件类型无效")
+        conditions.append(BusinessRecord.data["case_kind"].as_string() == case_kind)
+    statement = select(IprCaseWarning, IprCaseWarningRule, BusinessRecord).join(IprCaseWarningRule, IprCaseWarningRule.id == IprCaseWarning.rule_id).join(BusinessRecord, BusinessRecord.id == IprCaseWarning.case_record_id).where(*conditions)
+    total = int(await db.scalar(select(func.count()).select_from(IprCaseWarning).join(BusinessRecord, BusinessRecord.id == IprCaseWarning.case_record_id).where(*conditions)) or 0)
+    rows = (await db.execute(statement.order_by(IprCaseWarning.due_date, IprCaseWarning.id).offset((page - 1) * page_size).limit(page_size))).all()
+    unread = int(await db.scalar(select(func.count()).select_from(IprCaseWarning).join(BusinessRecord, BusinessRecord.id == IprCaseWarning.case_record_id).where(*conditions, IprCaseWarning.status == "未读")) or 0)
+    return {"items": [_ipr_warning_dict(warning, rule, case_record) for warning, rule, case_record in rows], "total": total, "unread": unread, "page": page, "page_size": page_size}
+
+
+async def _ipr_warning_for_recipient(warning_id: int, identity: dict, db: AsyncSession) -> IprCaseWarning:
+    row = await db.get(IprCaseWarning, warning_id)
+    if not row or (row.recipient != identity["username"] and identity.get("role") != "admin"):
+        raise HTTPException(status_code=404, detail="案件预警不存在或无权处理")
+    await _ensure_record_module(row.case_record_id, "ipr_case", identity, db)
+    return row
+
+
+@app.post(f"{settings.api_prefix}/ipr/warnings/{{warning_id}}/read")
+async def read_ipr_warning(warning_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    row = await _ipr_warning_for_recipient(warning_id, identity, db)
+    if row.status == "未读": row.status = "已读"; row.read_at = datetime.now()
+    if row.notification_id:
+        notice = await db.get(Notification, row.notification_id)
+        if notice and notice.recipient == row.recipient: notice.is_read = True; notice.read_at = row.read_at or datetime.now()
+    await db.commit()
+    return {"id": row.id, "status": row.status, "is_read": True, "read_at": row.read_at}
+
+
+@app.post(f"{settings.api_prefix}/ipr/warnings/{{warning_id}}/process")
+async def process_ipr_warning(warning_id: int, body: IprCaseWarningProcessInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    row = await _ipr_warning_for_recipient(warning_id, identity, db)
+    if row.status == "已处理":
+        return {"id": row.id, "status": row.status, "processed_at": row.processed_at, "processed_by": row.processed_by}
+    now = datetime.now(); row.status = "已处理"; row.read_at = row.read_at or now; row.processed_at = now; row.processed_by = identity["username"]; row.process_comment = body.comment.strip()
+    if row.notification_id:
+        notice = await db.get(Notification, row.notification_id)
+        if notice and notice.recipient == row.recipient: notice.is_read = True; notice.read_at = now
+    db.add(WorkflowEvent(record_id=row.case_record_id, action="处理知识产权案件预警", operator=identity["username"], comment=row.process_comment or "已处理预警"))
+    await db.commit()
+    return {"id": row.id, "status": row.status, "processed_at": row.processed_at, "processed_by": row.processed_by}
 
 async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     """Dedicated guard for IPR case files; generic attachment routes must not bypass it."""

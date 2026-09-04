@@ -1286,7 +1286,46 @@ class IprCaseAnnualFee(Base):
     reminder_id: Mapped[int | None] = mapped_column(ForeignKey("ipr_case_reminders.id", ondelete="SET NULL"), nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(String(64), index=True)
+
+class IprCaseWarningRule(Base):
+    """Configurable, deadline-driven IPR warning rule."""
+
+    __tablename__ = "ipr_case_warning_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    case_kind: Mapped[str] = mapped_column(String(16), default="", index=True)
+    case_type: Mapped[str] = mapped_column(String(128), default="")
+    case_phase: Mapped[str] = mapped_column(String(128), default="")
+    time_node: Mapped[str] = mapped_column(String(32), default="case_deadline", index=True)
+    event_type_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    days_before: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    updated_by: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IprCaseWarning(Base):
+    """One materialized warning per rule, deadline source and assignee."""
+
+    __tablename__ = "ipr_case_warnings"
+    __table_args__ = (UniqueConstraint("source_key", name="uq_ipr_case_warning_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("ipr_case_warning_rules.id", ondelete="CASCADE"), index=True)
+    case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
+    reminder_id: Mapped[int | None] = mapped_column(ForeignKey("ipr_case_reminders.id", ondelete="CASCADE"), nullable=True, index=True)
+    due_date: Mapped[date] = mapped_column(Date, index=True)
+    recipient: Mapped[str] = mapped_column(String(64), index=True)
+    source_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="未读", index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processed_by: Mapped[str] = mapped_column(String(64), default="")
+    process_comment: Mapped[str] = mapped_column(Text, default="")
+    notification_id: Mapped[int | None] = mapped_column(ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True, index=True)    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

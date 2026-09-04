@@ -59,9 +59,21 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
     if (item.source_type === "contract" && item.source_id) rememberContractDetailTarget({ id: item.source_id });
     if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
     if (item.source_type === "task" && item.source_id) rememberTaskDetailTarget({ id: item.source_id });
+    let iprWarningRoute = "";
+    if (item.source_type === "ipr_warning" && item.source_id) {
+      try {
+        const { data } = await api.get<{ data?: { case_kind?: string } }>(`/ipr/cases/${item.source_id}`);
+        window.sessionStorage.setItem("sunhold:ipr-warning-target", String(item.source_id));
+        window.dispatchEvent(new Event("sunhold:ipr-warning-target"));
+        iprWarningRoute = data.data?.case_kind === "商标" ? "ipr-trademark" : "ipr-patent";
+      } catch (error: any) {
+        setSelectedNotice(nextNotice);
+        return;
+      }
+    }
     if (["clue", "notary", "evidence"].includes(item.source_type) && item.source_id) rememberInvestigationDetailTarget({ id: item.source_id, module: item.source_type });
     if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(item.source_type) && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: item.source_type as "finance" | "finance_package" | "finance_settlement" | "finance_archive_settlement" });
-    const route = routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
+    const route = iprWarningRoute || routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
     if (route) {
       onNavigate(route);
       setOpen(false);
