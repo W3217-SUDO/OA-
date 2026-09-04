@@ -10511,7 +10511,6 @@ async def claim_customer(customer_id: int, body: CustomerActionInput, identity: 
 async def release_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     try:
         customer = await _locked_customer_or_404(customer_id, identity, db)
-        await _require_record_owner_or_manager(customer, identity, db)
         if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
         old = customer.status; customer.status = "公海"; customer.owner = "公海"
         customer.data = {
@@ -11062,8 +11061,9 @@ async def customer_portal_create_demand(body: CustomerPortalDemandInput, db: Asy
     owner = customer.owner
     if not await db.scalar(select(User.id).where(User.username == owner, User.is_active.is_(True))):
         raise HTTPException(status_code=409, detail="客户负责人不存在或已停用，暂不能提交需求")
+    serial_no = await _next_rw_task_serial_no(db)
     task = BusinessRecord(
-        module="task", serial_no=f"RW{datetime.now():%Y%m%d%H%M%S%f}", title=f"客户需求—{body.title.strip()}",
+        module="task", serial_no=serial_no, title=f"客户需求—{body.title.strip()}",
         customer=customer.title, status="待接收", owner=owner, department=customer.department, description=body.content.strip(),
         data={"deadline": str(date.today() + timedelta(days=7)), "priority": "普通", "source": "客户任务", "task_type": "手动任务", "initiator": owner, "collaborators": [], "case_no": case_record.serial_no if case_record else "", "case_id": case_record.id if case_record else None, "portal_customer_id": customer.id, "portal_account": body.account.strip()},
     )
@@ -14034,7 +14034,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "parent_task_id": parent.id if parent else None,
         "parent_task_no": parent.serial_no if parent else "",
     }
-    serial_no = f"RW{datetime.now():%Y%m%d%H%M%S%f}"
+    serial_no = await _next_rw_task_serial_no(db)
     task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data=task_data)
     db.add(task); await db.flush()
     db.add(WorkflowEvent(record_id=source.id, action="创建调查任务", from_status=source.status, to_status=source.status, operator=identity["username"], comment=f"{serial_no}：{body.title}"))
@@ -14857,6 +14857,32 @@ async def _next_manual_task_serial(db: AsyncSession, *, now: datetime | None = N
     raise HTTPException(status_code=503, detail="任务编号生成失败，请稍后重试")
 
 
+async def _next_rw_task_serial_no(db: AsyncSession, *, now: datetime | None = None) -> str:
+    """Generate RW-prefixed task serial number: RW + yyMMdd + 4-digit sequence."""
+    today = now or datetime.now()
+    date_prefix = f"RW{today:%y%m%d}"
+    last = await db.scalar(
+        select(BusinessRecord.serial_no)
+        .where(BusinessRecord.serial_no.like(f"{date_prefix}%"))
+        .order_by(BusinessRecord.serial_no.desc())
+        .limit(1)
+    )
+    seq = 1
+    if last and len(last) == len(date_prefix) + 4:
+        try:
+            seq = int(last[-4:]) + 1
+        except ValueError:
+            seq = 1
+    for _ in range(9999):
+        if seq > 9999:
+            raise HTTPException(status_code=503, detail="今日任务编号已达上限")
+        candidate = f"{date_prefix}{seq:04d}"
+        if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == candidate)):
+            return candidate
+        seq += 1
+    raise HTTPException(status_code=503, detail="任务编号生成失败，请稍后重试")
+
+
 @app.post(f"{settings.api_prefix}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(body: TaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _validate_task_deadline(body.deadline)
@@ -15646,9 +15672,10 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
         raise HTTPException(status_code=409, detail="只有审批通过的挂起任务可以恢复")
     if task.status not in {"待接收", "待处理", "待确认", "已完成", "已拒绝", "已停止"}: raise HTTPException(status_code=409, detail="当前状态不能重新开始")
     previous = task.status
-    task.status = "处理中"
+    restart_status = "待处理" if task.status == "已拒绝" else "处理中"
+    task.status = restart_status
     task.data = {**data, "handoff_restarted": True, "restarted_at": str(date.today()), "completion_auto_confirm_at": "", "completion_comment": "", "rejected_reason": "", "exception_request": {**(data.get("exception_request") or {}), "resumed_at": datetime.now().isoformat(timespec="seconds"), "resumed_by": identity["username"]}}
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新开始任务", from_status=previous, to_status="处理中", operator=identity["username"], comment=body.comment), db, content="任务已重新开始.")
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新开始任务", from_status=previous, to_status=restart_status, operator=identity["username"], comment=body.comment), db, content="任务已重新开始.")
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)
