@@ -2656,6 +2656,7 @@ class TaskInput(BaseModel):
     start_at: datetime | None = None
     end_at: datetime | None = None
     description: str = ""
+    is_vip: bool = False
 
 
 class VipTaskInput(BaseModel):
@@ -2752,6 +2753,7 @@ class TaskBatchUpdateInput(BaseModel):
     owner: str | None = Field(default=None, max_length=128)
     deadline: date | None = None
     priority: str | None = None
+    is_vip: bool | None = None
     comment: str = Field(default="", max_length=1000)
 
 
@@ -4672,6 +4674,94 @@ def _task_creation_mode(data: dict) -> str:
     return "人工"
 
 
+def _explicit_vip_value(value: object) -> bool:
+    """Recognize only an explicit VIP marker, never a general key-customer label."""
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "是", "vip"}
+    return isinstance(value, (int, float)) and value == 1
+
+
+def _customer_has_vip_marker(customer: BusinessRecord | None) -> bool:
+    if not customer or customer.module != "customer":
+        return False
+    data = customer.data or {}
+    if any(_explicit_vip_value(data.get(key)) for key in ("is_vip", "vip", "vip_customer")):
+        return True
+    return any(str(data.get(key) or "").strip().upper() == "VIP" for key in ("vip_level", "customer_level", "level"))
+
+
+async def _case_customer_has_vip_marker(case_record: BusinessRecord, db: AsyncSession) -> bool:
+    """Resolve a customer through record IDs before a unique legacy-name fallback."""
+    case_data = case_record.data or {}
+    candidate_ids: list[int] = []
+    for key in ("customer_record_id", "customer_id"):
+        try:
+            value = int(case_data.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0 and value not in candidate_ids:
+            candidate_ids.append(value)
+    try:
+        contract_id = int(case_data.get("contract_record_id") or case_data.get("contract_id") or 0)
+    except (TypeError, ValueError):
+        contract_id = 0
+    if contract_id > 0:
+        contract = await db.get(BusinessRecord, contract_id)
+        if contract and contract.module == "contract":
+            for key in ("customer_record_id", "customer_id"):
+                try:
+                    value = int((contract.data or {}).get(key) or 0)
+                except (TypeError, ValueError):
+                    value = 0
+                if value > 0 and value not in candidate_ids:
+                    candidate_ids.append(value)
+    for customer_id in candidate_ids:
+        customer = await db.get(BusinessRecord, customer_id)
+        if customer and customer.module == "customer":
+            return _customer_has_vip_marker(customer)
+    if candidate_ids:
+        return False
+    if str(case_record.customer or "").strip():
+        matches = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "customer", BusinessRecord.title == case_record.customer,
+        ))).all())
+        if len(matches) == 1:
+            return _customer_has_vip_marker(matches[0])
+    return False
+
+
+async def _task_has_vip_customer(task: BusinessRecord, db: AsyncSession) -> bool:
+    data = task.data or {}
+    candidate_ids = [data.get("case_record_id"), data.get("case_id")]
+    candidate_nos = [data.get("case_no")]
+    candidate_ids.extend(data.get("case_ids") if isinstance(data.get("case_ids"), list) else [])
+    candidate_nos.extend(data.get("case_nos") if isinstance(data.get("case_nos"), list) else [])
+    seen_ids: set[int] = set()
+    for raw_id in candidate_ids:
+        try:
+            case_id = int(raw_id or 0)
+        except (TypeError, ValueError):
+            case_id = 0
+        if case_id <= 0 or case_id in seen_ids:
+            continue
+        seen_ids.add(case_id)
+        case_record = await db.get(BusinessRecord, case_id)
+        if case_record and case_record.module in {"case", "ipr_case"} and await _case_customer_has_vip_marker(case_record, db):
+            return True
+    for raw_no in candidate_nos:
+        case_no = str(raw_no or "").strip()
+        if not case_no:
+            continue
+        case_record = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module.in_({"case", "ipr_case"}), BusinessRecord.serial_no == case_no,
+        ))
+        if case_record and await _case_customer_has_vip_marker(case_record, db):
+            return True
+    return False
+
+
 def _task_dict(record: BusinessRecord) -> dict:
     data = record.data or {}
     raw_case_nos = data.get("case_nos") if isinstance(data.get("case_nos"), list) else []
@@ -4715,6 +4805,7 @@ def _task_dict(record: BusinessRecord) -> dict:
     return {
         **_record_dict(record), "status": effective_status, "workflow_status": workflow_status,
         "deadline": deadline, "days_remaining": days_remaining,
+        "is_vip": _explicit_vip_value(data.get("is_vip")),
         "priority": data.get("priority", "普通"), "source": data.get("source", "日常任务"),
         "creation_mode": _task_creation_mode(data), "task_type": data.get("task_type", ""),
         "initiator": data.get("initiator", ""), "collaborators": data.get("collaborators", []),
@@ -15750,7 +15841,12 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
         if collaborator != owner and collaborator not in collaborators:
             collaborators.append(collaborator)
     initial_status = "待处理" if source == "案件任务" else "待接收"
-    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status=initial_status, owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "start_at": body.start_at.isoformat() if body.start_at else "", "end_at": body.end_at.isoformat() if body.end_at else "", "priority": body.priority, "source": source, "creation_mode": "人工", "task_type": "手动任务", "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_nos": [item.serial_no for item in case_records], "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None, "case_ids": [item.id for item in case_records], "case_module": body.case_module if case_record else ""})
+    inherited_vip = False
+    for linked_case in case_records:
+        if await _case_customer_has_vip_marker(linked_case, db):
+            inherited_vip = True
+            break
+    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status=initial_status, owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "start_at": body.start_at.isoformat() if body.start_at else "", "end_at": body.end_at.isoformat() if body.end_at else "", "priority": body.priority, "source": source, "creation_mode": "人工", "task_type": "手动任务", "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_nos": [item.serial_no for item in case_records], "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None, "case_ids": [item.id for item in case_records], "case_module": body.case_module if case_record else "", "is_vip": bool(body.is_vip or inherited_vip)})
     db.add(task)
     await db.flush()
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="发起任务", to_status=initial_status, operator=identity["username"], comment=f"负责人：{owner}；截止日期：{body.deadline}"), db, content="任务已分派.")
@@ -15761,7 +15857,7 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
 
 @app.post(f"{settings.api_prefix}/tasks/batch-update")
 async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if body.owner is None and body.deadline is None and body.priority is None:
+    if body.owner is None and body.deadline is None and body.priority is None and body.is_vip is None:
         raise HTTPException(status_code=422, detail="请至少选择一个需要修改的字段")
     if body.deadline is not None:
         duration = (body.deadline - date.today()).days
@@ -15790,6 +15886,11 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
         if body.priority is not None:
             changes.append(f"优先级：{data.get('priority', '')} → {body.priority}")
             data["priority"] = body.priority
+        if body.is_vip is not None:
+            previous_vip = _explicit_vip_value(data.get("is_vip"))
+            next_vip = bool(body.is_vip or await _task_has_vip_customer(task, db))
+            changes.append(f"VIP：{'是' if previous_vip else '否'} ⇒ {'是' if next_vip else '否'}")
+            data["is_vip"] = next_vip
         task.data = data
         await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="批量修改任务", from_status=task.status, to_status=task.status, operator=identity["username"], comment="；".join(changes + ([body.comment] if body.comment else []))), db, content="任务已修改.")
     await db.commit()
@@ -26671,6 +26772,7 @@ async def list_case_tasks(
     scope: str = Query("", pattern="^(|case|customer)$"),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
+    is_vip: bool | None = None,
 ):
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     link_condition = or_(
@@ -26692,6 +26794,13 @@ async def list_case_tasks(
         task_condition.append(BusinessRecord.data["source"].as_string() == "客户任务")
     elif scope == "case":
         task_condition.append(func.coalesce(BusinessRecord.data["source"].as_string(), "") != "客户任务")
+    if is_vip is True:
+        task_condition.append(BusinessRecord.data["is_vip"].as_boolean().is_(True))
+    elif is_vip is False:
+        task_condition.append(or_(
+            BusinessRecord.data["is_vip"].as_boolean().is_(False),
+            BusinessRecord.data["is_vip"].as_boolean().is_(None),
+        ))
     total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_condition)) or 0)
     if identity.get("role") != "admin" and visible_total == 0:
         all_linked = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
