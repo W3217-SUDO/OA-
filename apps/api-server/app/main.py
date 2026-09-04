@@ -21728,6 +21728,53 @@ async def mark_finance_fee_no_payment(fee_id: int, body: FinanceActionInput, ide
     return await _record_dict_for_identity(item, identity, db)
 
 
+@app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/mark-refund-not-required")
+async def mark_finance_fee_refund_not_required(fee_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if identity.get("role") not in {"admin", "manager"}:
+        permission = await _permission_payload_for_identity(identity, db)
+        if "*" not in permission.get("action_keys", []) and "finance.refund.not_required" not in permission.get("action_keys", []):
+            raise HTTPException(status_code=403, detail="当前角色没有标记不再办理退费的权限")
+    item = (await _editable_refund_case_fees([fee_id], identity, db))[0]
+    data = dict(item.data or {})
+    previous_code, previous_label = _refund_case_fee_status(data)
+    if previous_code == "R100":
+        raise HTTPException(status_code=409, detail="该费用已标记为不再办理退费")
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    has_explicit_refund_status = any(
+        value is not None and str(value).strip()
+        for value in (data.get("refund_status"), data.get("refund_status_label"), legacy.get("RefundStatus"))
+    )
+    has_refund_amount = any(
+        _receivable_number(data.get(field)) > 0
+        for field in ("refund_requested_amount", "refund_amount", "refunded_amount")
+    )
+    if not has_explicit_refund_status and not has_refund_amount:
+        raise HTTPException(status_code=409, detail="仅有退费记录的费用可以标记不再办理退费")
+    changed_at = datetime.now().isoformat(timespec="seconds")
+    comment = body.comment.strip()
+    item.data = {
+        **data,
+        "refund_status": "R100",
+        "refund_status_label": REFUND_CASE_FEE_STATUSES["R100"],
+        "refund_status_started_at": changed_at,
+        "refund_not_required": True,
+        "refund_not_required_comment": comment,
+        "refund_not_required_by": identity["username"],
+        "refund_not_required_at": changed_at,
+    }
+    db.add(WorkflowEvent(
+        record_id=item.id,
+        action="标记不再办理退费",
+        from_status=previous_label,
+        to_status=REFUND_CASE_FEE_STATUSES["R100"],
+        operator=identity["username"],
+        comment=comment or "案件费用标记不再办理退费",
+    ))
+    await db.commit()
+    await db.refresh(item)
+    return await _record_dict_for_identity(item, identity, db)
+
+
 @app.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/approve")
 async def approve_finance_fee(fee_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = await _ensure_record_module(fee_id, "finance", identity, db)

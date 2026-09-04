@@ -185,6 +185,67 @@ class DashboardRefundWorkbench92Row4Test(unittest.IsolatedAsyncioTestCase):
         listed = await self.client.get(f"{API}/finance/case-fees/refunds")
         self.assertNotIn(self.related_fee_id, {row["id"] for row in listed.json()["items"]})
 
+    async def test_case_fee_endpoint_marks_refund_not_required_with_audit_fields(self):
+        app.dependency_overrides[current_identity] = lambda: MEMBER
+        forbidden = await self.client.post(
+            f"{API}/finance/fees/{self.related_fee_id}/mark-refund-not-required",
+            json={"comment": "无权限尝试"},
+        )
+        self.assertEqual(forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
+        app.dependency_overrides[current_identity] = lambda: ADMIN
+        marked = await self.client.post(
+            f"{API}/finance/fees/{self.related_fee_id}/mark-refund-not-required",
+            json={"comment": "法院确认不再办理"},
+        )
+        self.assertEqual(marked.status_code, status.HTTP_200_OK)
+        result = marked.json()
+        self.assertEqual(result["status"], "已付款")
+        self.assertEqual(result["data"]["refund_status"], "R100")
+        self.assertEqual(result["data"]["refund_status_label"], "不再办理退费")
+        self.assertEqual(result["data"]["refund_not_required_by"], ADMIN["username"])
+        self.assertEqual(result["data"]["refund_not_required_comment"], "法院确认不再办理")
+        self.assertTrue(result["data"]["refund_not_required_at"])
+
+        async with self.sessions() as db:
+            event = await db.scalar(select(WorkflowEvent).where(
+                WorkflowEvent.record_id == self.related_fee_id,
+                WorkflowEvent.action == "标记不再办理退费",
+            ))
+        self.assertIsNotNone(event)
+        self.assertEqual(event.from_status, "准备材料")
+        self.assertEqual(event.to_status, "不再办理退费")
+        self.assertEqual(event.operator, ADMIN["username"])
+        self.assertEqual(event.comment, "法院确认不再办理")
+
+    async def test_case_fee_endpoint_rejects_fee_without_refund_context_without_writing(self):
+        async with self.sessions() as db:
+            plain_fee = BusinessRecord(
+                module="finance", serial_no="CODEX-92-R4-FEE-NO-REFUND", title="无退费流程费用",
+                customer="相关客户", status="已付款", owner=ADMIN["username"], department="测试部",
+                data={
+                    "case_id": self.related_case_id, "case_no": "CODEX-92-R4-CASE-RELATED",
+                    "fee_type": "官方费用", "amount": 300,
+                },
+            )
+            db.add(plain_fee)
+            await db.commit()
+            plain_fee_id = plain_fee.id
+
+        rejected = await self.client.post(
+            f"{API}/finance/fees/{plain_fee_id}/mark-refund-not-required",
+            json={"comment": "不应写入"},
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_409_CONFLICT)
+
+        async with self.sessions() as db:
+            unchanged = await db.get(BusinessRecord, plain_fee_id)
+            self.assertNotIn("refund_status", unchanged.data or {})
+            events = list((await db.scalars(select(WorkflowEvent).where(
+                WorkflowEvent.record_id == plain_fee_id,
+            ))).all())
+        self.assertEqual(events, [])
+
 
 if __name__ == "__main__":
     unittest.main()

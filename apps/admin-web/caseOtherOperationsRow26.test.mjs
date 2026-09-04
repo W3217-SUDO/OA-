@@ -5,14 +5,29 @@ import test from "node:test";
 const page = fs.readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
 const backend = fs.readFileSync(new URL("../api-server/app/main.py", import.meta.url), "utf8");
 
-test("案件律所费用其他操作与旧系统六项菜单一致", () => {
-  for (const label of ["法院退费", "申请付款", "申请开票", "修改", "删除", "标记不缴费"]) {
+test("案件律所与平台费用其他操作包含独立的退费终止入口", () => {
+  for (const label of ["法院退费", "申请付款", "申请开票", "修改", "删除", "标记不缴费", "标记不再办理退费"]) {
     assert.match(page, new RegExp(`label:\"${label}\"`));
   }
-  assert.match(page, /key===\"edit\"\)return editCaseFee\(selectedFirmFee!\)/);
-  assert.match(page, /key===\"delete\"\)return deleteCaseFee\(selectedFirmFee!\)/);
-  assert.match(page, /key===\"no-payment\"\)return markCaseFeeNoPayment\(selectedFirmFee!\)/);
+  assert.match(page, /key===\"edit\"\)return editCaseFee\(selectedFee!\)/);
+  assert.match(page, /key===\"delete\"\)return deleteCaseFee\(selectedFee!\)/);
+  assert.match(page, /key===\"no-payment\"\)return markCaseFeeNoPayment\(selectedFee!\)/);
   assert.match(page, /api\.post\(`\/finance\/fees\/\$\{row\.id\}\/mark-no-payment`/);
+  assert.match(page, /key==="refund-not-required"\)return markCaseFeeRefundNotRequired\(selectedFee!\)/);
+  assert.match(page, /api\.post\(`\/finance\/fees\/\$\{row\.id\}\/mark-refund-not-required`, \{ comment: comment\.trim\(\) \}\)/);
+  assert.match(page, /placeholder="请输入备注（可选）"/);
+  assert.match(page, /canMarkCaseFeeRefundNotRequired\(selectedFirmFee\)/);
+  assert.match(page, /canMarkCaseFeeRefundNotRequired\(selectedPlatformFee\)/);
+});
+
+test("标记不再办理退费持久化 R100、操作人、时间、备注和日志", () => {
+  assert.match(backend, /@app\.post\(f"\{settings\.api_prefix\}\/finance\/fees\/\{\{fee_id\}\}\/mark-refund-not-required"\)/);
+  assert.match(backend, /"finance\.refund\.not_required" not in permission\.get\("action_keys", \[\]\)/);
+  assert.match(backend, /"refund_status": "R100"/);
+  assert.match(backend, /"refund_not_required_comment": comment/);
+  assert.match(backend, /"refund_not_required_by": identity\["username"\]/);
+  assert.match(backend, /"refund_not_required_at": changed_at/);
+  assert.match(backend, /action="标记不再办理退费"/);
 });
 
 test("标记不缴费是受权限和状态保护的持久化操作", () => {
