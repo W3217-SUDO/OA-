@@ -3905,6 +3905,38 @@ export default function CaseCenterPage({
       },
     });
   };
+  const canMarkCaseFeeRefundNotRequired = (row: CaseRow | undefined) => {
+    if (!row || row.data.refund_status === "R100" || row.data.refund_not_required) return false;
+    const legacyRefundStatus = row.data.legacy_record && typeof row.data.legacy_record === "object"
+      ? row.data.legacy_record.RefundStatus
+      : undefined;
+    return Boolean(
+      row.data.refund_status
+      || row.data.refund_status_label
+      || legacyRefundStatus
+      || Number(row.data.refund_requested_amount || row.data.refund_amount || row.data.refunded_amount || 0) > 0
+    );
+  };
+  const markCaseFeeRefundNotRequired = (row: CaseRow) => {
+    if (!canMarkCaseFeeRefundNotRequired(row)) return message.warning("仅有退费记录且尚未终止退费的费用可以标记不再办理退费");
+    let comment = "";
+    Modal.confirm({
+      title: `标记不再办理退费：${row.serial_no}`,
+      content: <Input.TextArea rows={4} maxLength={1000} placeholder="请输入备注（可选）" onChange={(event) => { comment = event.target.value; }} />,
+      okText: "确认标记",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.post(`/finance/fees/${row.id}/mark-refund-not-required`, { comment: comment.trim() });
+          message.success("费用已标记为不再办理退费");
+          await load();
+          if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "标记不再办理退费失败");
+        }
+      },
+    });
+  };
   const editCaseFee = (row: CaseRow) => {
     if (row.status !== "草稿") return message.warning("仅草稿费用可以修改");
     setFeeSubtypePreset("");
@@ -4837,11 +4869,12 @@ export default function CaseCenterPage({
     return true;
   };
   const handleExternalFeeOperation=async(keys:Key[],selectedFee:CaseRow|undefined,key:string)=>{
-    if(!requireSingleFee(keys,selectedFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":"标记不缴费"))return;
+    if(!requireSingleFee(keys,selectedFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":key==="refund-not-required"?"标记不再办理退费":"标记不缴费"))return;
     if(key==="payment")return openPaymentRequest(selectedFee!);
     if(key==="edit")return editCaseFee(selectedFee!);
     if(key==="delete")return deleteCaseFee(selectedFee!);
     if(key==="no-payment")return markCaseFeeNoPayment(selectedFee!);
+    if(key==="refund-not-required")return markCaseFeeRefundNotRequired(selectedFee!);
     if(key==="invoice"){
       try {
         const {data}=await api.get("/finance/case-fees/invoice-status",{params:{scope:"company",invoice_status:"未开票",case_no:selectedFee!.data.case_no||viewingCounselCase?.serial_no||"",fee_types:"",page:1,page_size:200}});
@@ -6177,14 +6210,14 @@ export default function CaseCenterPage({
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={externalCaseFeeColumns}/>
                 {firmFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key === "commission" ? void openCaseCommission() : openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"},...(canMarkCaseFeeRefundNotRequired(selectedFirmFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[])],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
                 </Space>}
               </div>},
               {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={platformFeeRows} locale={{emptyText:renderCaseFeeEmptyState("平台")}} rowSelection={{selectedRowKeys:selectedPlatformFeeKeys,onChange:setSelectedPlatformFeeKeys}} columns={externalCaseFeeColumns}/>
                 {platformFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"}],onClick:({key})=>openCaseFeeBySubtype("平台",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedPlatformFee ? openCourtRefund(selectedPlatformFee) : requireSingleFee(selectedPlatformFeeKeys,selectedPlatformFee,"办理法院退费")) : void handleExternalFeeOperation(selectedPlatformFeeKeys,selectedPlatformFee,key)}}><Button>其他操作</Button></Dropdown>
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"},...(canMarkCaseFeeRefundNotRequired(selectedPlatformFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[])],onClick:({key})=>key === "refund" ? (selectedPlatformFee ? openCourtRefund(selectedPlatformFee) : requireSingleFee(selectedPlatformFeeKeys,selectedPlatformFee,"办理法院退费")) : void handleExternalFeeOperation(selectedPlatformFeeKeys,selectedPlatformFee,key)}}><Button>其他操作</Button></Dropdown>
                 </Space>}
               </div>},
               {key:"internal-fees",label:"内部结算",children:<div className="case-legacy-tab-panel">
