@@ -1073,6 +1073,7 @@ export default function CaseCenterPage({
   const [selectedFirmFeeKeys, setSelectedFirmFeeKeys] = useState<Key[]>([]);
   const [selectedPlatformFeeKeys, setSelectedPlatformFeeKeys] = useState<Key[]>([]);
   const [selectedInternalFeeKeys, setSelectedInternalFeeKeys] = useState<Key[]>([]);
+  const [informDateFeeKeys, setInformDateFeeKeys] = useState<Key[] | null>(null);
   const [caseCommissionPreview, setCaseCommissionPreview] = useState<CaseCommissionPreview | null>(null);
   const [caseCommissionRows, setCaseCommissionRows] = useState<CaseCommissionPreviewRow[]>([]);
   const [caseCommissionResult, setCaseCommissionResult] = useState<CaseCommissionResult | null>(null);
@@ -1234,6 +1235,7 @@ export default function CaseCenterPage({
   const [reviewForm] = Form.useForm();
   const [taskForm] = Form.useForm();
   const [feeForm] = Form.useForm();
+  const [informDateForm] = Form.useForm();
   const [paymentRequestForm] = Form.useForm();
   const [paymentTypeCreateForm] = Form.useForm();
   const [courtRefundForm] = Form.useForm();
@@ -5067,9 +5069,29 @@ export default function CaseCenterPage({
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
     return true;
   };
+  const openInformDateBatchUpdate=(keys:Key[])=>{
+    if(!keys.length){message.warning("请先选择需要修改通知日期的费用记录");return;}
+    informDateForm.resetFields();
+    setInformDateFeeKeys([...keys]);
+  };
+  const submitInformDateBatchUpdate=async()=>{
+    const values=await informDateForm.validateFields();
+    const feeIds=(informDateFeeKeys||[]).map(Number).filter(id=>Number.isInteger(id)&&id>0);
+    if(!feeIds.length)return message.warning("请选择需要修改通知日期的费用记录");
+    try{
+      const {data}=await api.post("/finance/case-fees/batch-update",{
+        fee_ids:feeIds,
+        inform_date:formatRequiredDate(values.inform_date,"通知日期"),
+      });
+      message.success(`已修改 ${data.updated??feeIds.length} 条费用的通知日期`);
+      setInformDateFeeKeys(null);
+      informDateForm.resetFields();
+      if(viewingCounselCase)await openCounselDetail(viewingCounselCase);
+    }catch(error:any){message.error(error?.response?.data?.detail||"批量修改通知日期失败");}
+  };
   const handleExternalFeeOperation=async(keys:Key[],selectedFee:CaseRow|undefined,key:string)=>{
-    if(!requireSingleFee(keys,selectedFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":key==="refund-not-required"?"标记不再办理退费":"标记不缴费"))return;
-    if(key==="payment")return openPaymentRequest(selectedFee!);
+    if(key==="inform-date")return openInformDateBatchUpdate(keys);
+        if(!requireSingleFee(keys,selectedFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":key==="refund-not-required"?"标记不再办理退费":"标记不缴费"))return;    if(key==="payment")return openPaymentRequest(selectedFee!);
     if(key==="edit")return editCaseFee(selectedFee!);
     if(key==="delete")return deleteCaseFee(selectedFee!);
     if(key==="no-payment")return markCaseFeeNoPayment(selectedFee!);
@@ -5102,6 +5124,7 @@ export default function CaseCenterPage({
     {title:"退费",width:110,align:"right" as const,render:(_:unknown,row:CaseRow)=>caseFeeRefundLabel(row.data)},
     {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
     {title:"提交日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
+    {title:"通知日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.inform_date||row.data.notice_date||"").slice(0,10)||"—"},
     {title:"回款日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.received_at||row.data.cashed_date||"").slice(0,10)||"—"},
     {title:"回款金额",width:110,align:"right" as const,render:(_:unknown,row:CaseRow)=>{
       const value=row.data.received_amount??row.data.cashed_amount;
@@ -6427,16 +6450,14 @@ export default function CaseCenterPage({
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={firmFeeRows} locale={{emptyText:renderCaseFeeEmptyState("律所")}} rowSelection={{selectedRowKeys:selectedFirmFeeKeys,onChange:setSelectedFirmFeeKeys}} columns={externalCaseFeeColumns}/>
                 {firmFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择代理费)"}],onClick:({key})=>key === "commission" ? void openCaseCommission() : openCaseFeeBySubtype("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"},...(canMarkCaseFeeRefundNotRequired(selectedFirmFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[])],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>
-                </Space>}
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"inform-date",label:"修改通知日期"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"},...(canMarkCaseFeeRefundNotRequired(selectedFirmFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[])],onClick:({key})=>key === "refund" ? (selectedFirmFee ? openCourtRefund(selectedFirmFee) : requireSingleFee(selectedFirmFeeKeys,selectedFirmFee,"办理法院退费")) : void handleExternalFeeOperation(selectedFirmFeeKeys,selectedFirmFee,key)}}><Button>其他操作</Button></Dropdown>                </Space>}
               </div>},
               {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={platformFeeRows} locale={{emptyText:renderCaseFeeEmptyState("平台")}} rowSelection={{selectedRowKeys:selectedPlatformFeeKeys,onChange:setSelectedPlatformFeeKeys}} columns={externalCaseFeeColumns}/>
                 {platformFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
                   {counselDetailCapabilities.can_create_finance&&<Button title="传统模式：新增平台代理费" onClick={()=>openCaseFeeBySubtype("平台",PLATFORM_AGENCY_FEE_SUBTYPE)}>传统模式</Button>}
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"}],onClick:({key})=>openCaseFeeBySubtype("平台",key)}}><Button>新增案件费用</Button></Dropdown>}
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"},...(canMarkCaseFeeRefundNotRequired(selectedPlatformFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[])],onClick:({key})=>key === "refund" ? (selectedPlatformFee ? openCourtRefund(selectedPlatformFee) : requireSingleFee(selectedPlatformFeeKeys,selectedPlatformFee,"办理法院退费")) : void handleExternalFeeOperation(selectedPlatformFeeKeys,selectedPlatformFee,key)}}><Button>其他操作</Button></Dropdown>
-                </Space>}
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"inform-date",label:"修改通知日期"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"},...(canMarkCaseFeeRefundNotRequired(selectedPlatformFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[])],onClick:({key})=>key === "refund" ? (selectedPlatformFee ? openCourtRefund(selectedPlatformFee) : requireSingleFee(selectedPlatformFeeKeys,selectedPlatformFee,"办理法院退费")) : void handleExternalFeeOperation(selectedPlatformFeeKeys,selectedPlatformFee,key)}}><Button>其他操作</Button></Dropdown>                </Space>}
                 {platformFeeRows.length===0&&counselDetailCapabilities.can_create_finance&&<Space className="case-legacy-bottom-actions"><Button title="传统模式：新增平台代理费" onClick={()=>openCaseFeeBySubtype("平台",PLATFORM_AGENCY_FEE_SUBTYPE)}>传统模式</Button></Space>}
               </div>},
               {key:"internal-fees",label:"内部结算",children:<div className="case-legacy-tab-panel">
@@ -6448,6 +6469,7 @@ export default function CaseCenterPage({
                   {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.paid_amount??0},
                   {title:"状态",dataIndex:"status",width:100},
                   {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
+                  {title:"通知日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.inform_date||row.data.notice_date||"").slice(0,10)||"—"},
                   {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.paid_at||row.data.payment_date||"").slice(0,10)||"—"},
                   {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName(row.owner)},
                   {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>row.description||row.data.remark||"—"},
@@ -6457,8 +6479,8 @@ export default function CaseCenterPage({
                   {counselDetailCapabilities.can_create_finance&&<Button onClick={()=>handleInternalFeeAction("create")}>新增内部费用</Button>}
                   <Button onClick={()=>handleInternalFeeAction("payment")}>申请付款</Button>
                   {counselDetailCapabilities.can_create_finance&&<Button disabled={selectedInternalFee?.status!=="草稿"} onClick={()=>handleInternalFeeAction("edit")}>编辑</Button>}
-                  {counselDetailCapabilities.can_create_finance&&<Button danger disabled={selectedInternalFee?.status!=="草稿"} onClick={()=>handleInternalFeeAction("delete")}>删除</Button>}
-                </Space>
+                                    <Button onClick={()=>openInformDateBatchUpdate(selectedInternalFeeKeys)}>修改通知日期</Button>
+                                    {counselDetailCapabilities.can_create_finance&&<Button danger disabled={selectedInternalFee?.status!=="草稿"} onClick={()=>handleInternalFeeAction("delete")}>删除</Button>}                </Space>
               </div>},
               {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",width:110,render:(_:unknown,row:CaseReminderRow)=>casePersonDisplayName(row.owner)},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",width:110,render:(_:unknown,row:CaseLogRow)=>casePersonDisplayName(row.operator,row.operator_display_name)}]}/></>},
@@ -6748,6 +6770,20 @@ export default function CaseCenterPage({
           <Form.Item label="用印事由" name="purpose" rules={[{ required: true, message: "请输入用印事由" }]}><Input maxLength={500} /></Form.Item>
           <Form.Item label="用印备注" name="remark" rules={[{ max: 2000 }]}><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
           <Form.Item label="附件"><Input value={sealingCounselAttachment?.original_name || ""} disabled /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={informDateFeeKeys!==null}
+        title={`修改通知日期（已选 ${informDateFeeKeys?.length||0} 条）`}
+        okText="确定"
+        cancelText="取消"
+        onOk={submitInformDateBatchUpdate}
+        onCancel={()=>{setInformDateFeeKeys(null);informDateForm.resetFields();}}
+      >
+        <Form form={informDateForm} layout="vertical">
+          <Form.Item label="通知日期" name="inform_date" rules={[{required:true,message:"请选择通知日期"}]}>
+            <DatePicker style={{width:"100%"}} />
+          </Form.Item>
         </Form>
       </Modal>
       <Modal open={reminderOpen} title={`新增案件提醒：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselReminder} onCancel={()=>setReminderOpen(false)}>

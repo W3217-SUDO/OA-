@@ -2943,6 +2943,9 @@ class JarFeeStatusInput(BaseModel):
     status: Literal["待确认", "已确认", "已入账", "已作废"]
     comment: str = Field(default="", max_length=1000)
 
+class CaseFeeBatchUpdateInput(BaseModel):
+    fee_ids: list[int] = Field(min_length=1, max_length=100)
+    inform_date: date
 
 class CaseCommissionCreateItemInput(BaseModel):
     preview_key: str = Field(min_length=1, max_length=256)
@@ -18150,6 +18153,40 @@ async def query_refund_case_fees(
     )
     start = (page - 1) * page_size
     return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size}
+
+
+@app.post(f"{settings.api_prefix}/finance/case-fees/batch-update")
+async def batch_update_case_fee_inform_date(
+    body: CaseFeeBatchUpdateInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_record_module_menu("finance", identity, db, action="编辑")
+    fee_ids = list(dict.fromkeys(body.fee_ids))
+    items = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.id.in_(fee_ids),
+        *(await _record_scope_conditions(identity, db)),
+    ).order_by(BusinessRecord.id))).all())
+    if len(items) != len(fee_ids):
+        raise HTTPException(status_code=404, detail="部分案件费用不存在或无权访问")
+
+    inform_date = body.inform_date.isoformat()
+    for item in items:
+        data = dict(item.data or {})
+        previous_inform_date = str(data.get("inform_date") or "").strip()
+        data["inform_date"] = inform_date
+        item.data = data
+        db.add(WorkflowEvent(
+            record_id=item.id,
+            action="批量修改通知日期",
+            from_status=item.status,
+            to_status=item.status,
+            operator=identity["username"],
+            comment=f"通知日期：{previous_inform_date or '未设置'} -> {inform_date}",
+        ))
+    await db.commit()
+    return {"updated": len(items), "fee_ids": fee_ids, "inform_date": inform_date}
 
 
 @app.get(f"{settings.api_prefix}/finance/case-fees/refunds/export")
