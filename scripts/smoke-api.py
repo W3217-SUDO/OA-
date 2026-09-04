@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import io
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -3863,7 +3864,14 @@ def main():
 
 
 if __name__ == "__main__":
-    if "--group" in sys.argv:
+    if "--ipr-cpc-only" in sys.argv:
+        # CPC uses an isolated in-memory DB and temporary upload root.  Keep it
+        # separate from the full smoke suite so it cannot touch a configured
+        # local business database while still exercising its real HTTP routes.
+        cpc_test = Path(__file__).resolve().parents[1] / "apps" / "api-server" / "ipr_cpc_contract_test.py"
+        completed = subprocess.run([sys.executable, str(cpc_test)], cwd=cpc_test.parent, check=False)
+        raise SystemExit(completed.returncode)
+    elif "--group" in sys.argv:
         group = sys.argv[sys.argv.index("--group") + 1]
         if group != "hr_lifecycle":
             raise SystemExit(f"未知冒烟分组：{group}")

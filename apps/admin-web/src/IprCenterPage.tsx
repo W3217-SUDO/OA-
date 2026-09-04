@@ -159,6 +159,19 @@ type IprCaseContact = CustomerContact & { customer_id: number; customer_name: st
 type IprBusinessLog = { id: number; content: string; created_by: string; created_by_display_name?: string; created_at: string };
 type IprOperationLog = { id: number; action: string; operator: string; operator_display_name?: string; comment: string; from_status?: string; to_status?: string; created_at: string };
 type IprHistoryItem = { id: number; action: string; operator: string; operator_display_name?: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
+type CpcApplication = {
+  id: number;
+  case_id: number;
+  case_no: string;
+  original_name: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+  created_by: string;
+  status: string;
+  download_url: string;
+  format: string;
+};
 type IprBatchCreateError = { row_no: number; message: string; errors: Record<string, string> };
 type IprDetailPageState = { page: number; pageSize: number; total: number; pages: number };
 type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number };
@@ -322,6 +335,10 @@ export default function IprCenterPage({
   const [iprBusinessLogs, setIprBusinessLogs] = useState<IprBusinessLog[]>([]),
     [iprOperationLogs, setIprOperationLogs] = useState<IprOperationLog[]>([]),
     [iprHistory, setIprHistory] = useState<IprHistoryItem[]>([]),
+    [cpcApplications, setCpcApplications] = useState<CpcApplication[]>([]),
+    [cpcApplicationsLoading, setCpcApplicationsLoading] = useState(false),
+    [cpcApplicationsError, setCpcApplicationsError] = useState(""),
+    [cpcGenerating, setCpcGenerating] = useState(false),
     [iprLogOpen, setIprLogOpen] = useState(false),
     [iprBusinessLogDetail, setIprBusinessLogDetail] = useState<IprBusinessLog | null>(null),
     [iprOperationLogDetail, setIprOperationLogDetail] = useState<IprOperationLog | null>(null),
@@ -379,6 +396,8 @@ export default function IprCenterPage({
     }));
   };
   const handledDetailTarget = useRef("");
+  const cpcHistoryRequest = useRef(0);
+  const activeIprDetailId = useRef<number | null>(null);
   const reviewView = initialView === "ipr-review";
   const load = async (
     nextPage = page,
@@ -935,6 +954,64 @@ export default function IprCenterPage({
       message.error(e?.response?.data?.detail || "案件事项记录加载失败");
     }
   };
+  const loadCpcApplications = async (caseId: number) => {
+    const requestId = cpcHistoryRequest.current + 1;
+    cpcHistoryRequest.current = requestId;
+    setCpcApplicationsLoading(true);
+    setCpcApplicationsError("");
+    try {
+      const { data } = await api.get<{ items: CpcApplication[] }>(`/ipr/cases/${caseId}/cpc-applications`);
+      if (requestId !== cpcHistoryRequest.current || activeIprDetailId.current !== caseId) return;
+      setCpcApplications(data.items || []);
+    } catch (error: any) {
+      if (requestId !== cpcHistoryRequest.current || activeIprDetailId.current !== caseId) return;
+      setCpcApplications([]);
+      setCpcApplicationsError(getIprApiErrorMessage(error, "CPC申报历史加载失败"));
+    } finally {
+      if (requestId === cpcHistoryRequest.current && activeIprDetailId.current === caseId) setCpcApplicationsLoading(false);
+    }
+  };
+  const generateCpcApplication = async (record: IprRecord) => {
+    if (record.data?.case_kind !== "专利") {
+      message.warning("CPC申报仅适用于专利案件");
+      return;
+    }
+    setCpcGenerating(true);
+    try {
+      await api.post(`/ipr/cases/${record.id}/cpc-applications`);
+      message.success("CPC基础申报信息文件已生成");
+      if (activeIprDetailId.current === record.id) await loadCpcApplications(record.id);
+    } catch (error: any) {
+      message.error(getIprApiErrorMessage(error, "CPC申报文件生成失败"));
+    } finally {
+      setCpcGenerating(false);
+    }
+  };
+  const downloadCpcApplication = async (record: IprRecord, application: CpcApplication) => {
+    try {
+      const response = await api.get(
+        `/ipr/cases/${record.id}/cpc-applications/${application.id}/download`,
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = application.original_name || `CPC申报信息-${record.serial_no}.zip`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      let errorMessage = getIprApiErrorMessage(error, "CPC申报文件下载失败");
+      if (error?.response?.data instanceof Blob) {
+        try {
+          const payload = JSON.parse(await error.response.data.text());
+          errorMessage = getIprApiErrorMessage({ ...error, response: { ...error.response, data: payload } }, errorMessage);
+        } catch {
+          // Keep the standard request error when a file response has no JSON error body.
+        }
+      }
+      message.error(errorMessage);
+    }
+  };
   const createIprLog = async () => {
     if (!detail) return;
     try {
@@ -1065,10 +1142,14 @@ export default function IprCenterPage({
     }
   };
   const openDetail = async (record: IprRecord) => {
+    activeIprDetailId.current = record.id;
+    cpcHistoryRequest.current += 1;
     setDetail(record);
     setAttachments([]);
     setIprBusinessLogs([]);
     setIprOperationLogs([]);
+    setCpcApplications([]);
+    setCpcApplicationsError("");
     setAssistedFees([]);
     setIprCaseEvents([]);
     setIprCaseTasks([]);
@@ -1085,6 +1166,7 @@ export default function IprCenterPage({
         loadCaseContacts(record.id),
         loadIprLogs(record.id),
         loadIprHistory(record.id),
+        ...(record.data?.case_kind === "专利" ? [loadCpcApplications(record.id)] : []),
         loadAssistedFees(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadIprCaseEvents(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadIprCaseTasks(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
@@ -1093,6 +1175,10 @@ export default function IprCenterPage({
     } catch (error) {
       message.error(getIprApiErrorMessage(error, "案件详情加载失败"));
     }
+  };
+  const openCpcApplicationWorkbench = async (record: IprRecord) => {
+    if (record.data?.case_kind !== "专利") return;
+    await openDetail(record);
   };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1632,6 +1718,11 @@ export default function IprCenterPage({
             {!isLegacyIprRecord(row) && <Button type="link" onClick={() => void openIprReboot(row)}>
               案件重提
             </Button>}
+            {!isLegacyIprRecord(row) && row.data?.case_kind === "专利" && (
+              <Button type="link" onClick={() => void openCpcApplicationWorkbench(row)}>
+                CPC申报
+              </Button>
+            )}
             {reviewView &&
               row.status === "待立案审核" &&
               ["admin", "manager"].includes(profile.role || "") && (
@@ -2102,7 +2193,7 @@ export default function IprCenterPage({
         }
         width={820}
         extra={detail && !isLegacyIprRecord(detail) ? <Space size={0}><Button onClick={() => openCopy(detail)}>复制案件</Button><Button onClick={() => void openIprReboot(detail)}>案件重提</Button><Button onClick={() => openIprCaseTask(detail)}>案件任务</Button></Space> : null}
-        onClose={() => setDetail(null)}
+        onClose={() => { activeIprDetailId.current = null; cpcHistoryRequest.current += 1; setDetail(null); }}
       >
         {detail && (
           <>
@@ -2182,6 +2273,50 @@ export default function IprCenterPage({
                 },
               ]}
             />
+            {detail.data?.case_kind === "专利" && (
+              <Card
+                size="small"
+                title="CPC专利申报"
+                style={{ marginTop: 16 }}
+                extra={
+                  !isLegacyIprRecord(detail) ? (
+                    <Space>
+                      <Button size="small" onClick={() => void loadCpcApplications(detail.id)} loading={cpcApplicationsLoading}>
+                        刷新历史
+                      </Button>
+                      <Button size="small" type="primary" disabled={detail.status !== "在办"} loading={cpcGenerating} onClick={() => void generateCpcApplication(detail)}>
+                        生成CPC申报文件
+                      </Button>
+                    </Space>
+                  ) : null
+                }
+              >
+                <Alert
+                  type="info"
+                  showIcon
+                  message="生成CPC基础申报信息快照"
+                  description={`当前生成 ZIP 文件，内含 UTF-8 基础信息文本供核对；它不是中国专利电子申请系统的官方提交包。${detail.status === "在办" ? "" : " 仅在办案件可生成，历史文件仍可下载。"}`}
+                  style={{ marginBottom: 12 }}
+                />
+                {cpcApplicationsError ? <Alert type="error" showIcon message={cpcApplicationsError} style={{ marginBottom: 12 }} /> : null}
+                <Table<CpcApplication>
+                  rowKey="id"
+                  size="small"
+                  loading={cpcApplicationsLoading}
+                  pagination={false}
+                  locale={{ emptyText: "暂无CPC申报记录" }}
+                  dataSource={cpcApplications}
+                  columns={[
+                    { title: "申报文件", dataIndex: "original_name", ellipsis: true },
+                    { title: "格式", dataIndex: "format", width: 180, ellipsis: true },
+                    { title: "状态", dataIndex: "status", width: 90, render: (value: string) => <Tag color="green">{value}</Tag> },
+                    { title: "生成人", dataIndex: "created_by", width: 100, render: personDisplayName },
+                    { title: "生成时间", dataIndex: "created_at", width: 165, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—" },
+                    { title: "操作", width: 80, render: (_, row) => <Button type="link" onClick={() => void downloadCpcApplication(detail, row)}>下载</Button> },
+                  ]}
+                />
+              </Card>
+            )}
             <Card
               size="small"
               title="案件业务日志与操作日志"
