@@ -261,6 +261,7 @@ def main() -> None:
 
     ipr_center = (ROOT / "apps/admin-web/src/IprCenterPage.tsx").read_text(encoding="utf-8")
     ipr_official = (ROOT / "apps/admin-web/src/IprOfficialFilePage.tsx").read_text(encoding="utf-8")
+    ipr_cpc = (ROOT / "apps/api-server/app/ipr_cpc.py").read_text(encoding="utf-8")
     assert 'new URLSearchParams(window.location.search).get("record_id")' in ipr_center, (
         "IPR case detail links must consume the precise record_id target"
     )
@@ -280,6 +281,23 @@ def main() -> None:
     assert 'ipr/cases/{{case_id}}/maintenance' in MAIN and '维护知识产权案件期限年费费率' in MAIN, (
         "active IPR deadline/year/rate maintenance must be a dedicated audited action"
     )
+    assert all(token in ipr_cpc for token in (
+        '@router.post("/ipr/cases/{case_id}/cpc-applications"',
+        '@router.get("/ipr/cases/{case_id}/cpc-applications")',
+        '@router.get("/ipr/cases/{case_id}/cpc-applications/{application_id}/download")',
+        'await ensure_write(case_id, identity, db)',
+        'record_id == record.id',
+        'CPC基础申报信息.txt',
+        'WorkflowEvent(',
+    )), "CPC patent applications must use scoped generate/history/download endpoints, a real ZIP snapshot and an audit event"
+    assert all(token in ipr_center for token in (
+        'CPC申报',
+        '/ipr/cases/${record.id}/cpc-applications',
+        '/ipr/cases/${record.id}/cpc-applications/${application.id}/download',
+        'title="CPC专利申报"',
+        '暂无CPC申报记录',
+    )), "IPR patent details must expose CPC generation, history and actual download actions"
+    print("IPR_CPC_APPLICATION_OK: patent-only CPC ZIP snapshots have scoped generation, download and recorded history")
 
     fallback_menu = APP[APP.index("const menuItems: NavItem[] = [") : APP.index("function configuredMenuItems")]
     fallback_top_order = [

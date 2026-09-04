@@ -49,6 +49,7 @@ from .database import Base, SessionLocal, engine, get_db
 from .legacy_contract_history_router import create_legacy_contract_history_router
 from .legacy_ipr_history_router import create_legacy_ipr_history_router
 from .ipr_fee_file_router import router as ipr_fee_file_router
+from .ipr_cpc import CPC_APPLICATION_CATEGORY, create_ipr_cpc_router, is_cpc_application_attachment
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
@@ -34152,6 +34153,13 @@ async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSes
     return record
 
 
+app.include_router(create_ipr_cpc_router(
+    ensure_visible=lambda case_id, identity, db: _ensure_record_module(case_id, "ipr_case", identity, db),
+    ensure_write=_ensure_ipr_case_file_write,
+    upload_root=lambda: UPLOAD_ROOT,
+), prefix=settings.api_prefix)
+
+
 def _ipr_case_file_type_dict(item: SystemParameter) -> dict:
     extra = item.extra or {}
     return {
@@ -34229,6 +34237,8 @@ async def upload_ipr_case_file(
     normalized_category = category.strip()
     if not normalized_category or len(normalized_category) > 64:
         raise HTTPException(status_code=422, detail="文档类型不能为空且不能超过 64 个字符")
+    if normalized_category == CPC_APPLICATION_CATEGORY:
+        raise HTTPException(status_code=422, detail="CPC申报历史只能由专用生成入口创建")
     if len(remark.strip()) > 1000:
         raise HTTPException(status_code=422, detail="文档说明不能超过 1000 个字符")
     file_type = await _active_ipr_case_file_type(record, normalized_category, db)
@@ -34519,6 +34529,8 @@ async def batch_upload_ipr_case_file(
     normalized_category = category.strip()
     if not normalized_category or len(normalized_category) > 64 or len(remark.strip()) > 1000:
         raise HTTPException(status_code=422, detail="文件类型或说明不符合要求")
+    if normalized_category == CPC_APPLICATION_CATEGORY:
+        raise HTTPException(status_code=422, detail="CPC申报历史只能由专用生成入口创建")
     suffix = Path(file.filename or "").suffix.lower()
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
     if suffix not in allowed:
@@ -34601,6 +34613,8 @@ async def unlock_ipr_case_file(case_id: int, attachment_id: int, identity: dict 
     """Legacy CaseFileUnlock equivalent; a generated application package must be unlocked before deletion."""
     record = await _ensure_ipr_case_file_write(case_id, identity, db)
     attachment = await _ipr_case_file_attachment(record, attachment_id, identity, db)
+    if is_cpc_application_attachment(attachment):
+        raise HTTPException(status_code=409, detail="CPC申报历史快照不可解锁或改写")
     if not attachment.is_locked:
         raise HTTPException(status_code=409, detail="该文档未锁定，无需解锁")
     attachment.is_locked = False
@@ -34616,6 +34630,8 @@ async def generate_ipr_case_application_file(case_id: int, attachment_id: int, i
     """Legacy GeneratePatentApplication equivalent: persist a real locked ZIP package."""
     record = await _ensure_ipr_case_file_write(case_id, identity, db)
     attachment = await _ipr_case_file_attachment(record, attachment_id, identity, db)
+    if is_cpc_application_attachment(attachment):
+        raise HTTPException(status_code=409, detail="CPC申报历史快照不可重新打包")
     if attachment.is_locked:
         raise HTTPException(status_code=409, detail="已生成申请文件包的文档处于锁定状态，请先解锁")
     source_path = Path(attachment.path)
@@ -34651,6 +34667,8 @@ async def generate_ipr_case_application_file(case_id: int, attachment_id: int, i
 async def delete_ipr_case_file(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _ensure_ipr_case_file_write(case_id, identity, db)
     attachment = await _ipr_case_file_attachment(record, attachment_id, identity, db)
+    if is_cpc_application_attachment(attachment):
+        raise HTTPException(status_code=409, detail="CPC申报历史快照不可删除")
     if attachment.is_locked:
         raise HTTPException(status_code=409, detail="锁定文档必须先解锁才能删除")
     path = Path(attachment.path)
