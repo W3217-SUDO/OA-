@@ -35325,6 +35325,7 @@ IPR_CASE_DOCUMENT_TYPES = {
 
 
 CASE_DOCUMENT_TYPES = {
+    "identification_letter": "鉴定函",
     "authorization-letter": "授权委托书",
     "archive-cover": "归档封面",
     "archive-letter": "归档函",
@@ -35356,6 +35357,7 @@ CASE_LEGACY_LAW_FIRM_LETTER_TYPES = {
 }
 
 CASE_DOCUMENT_CATEGORY = {
+    "identification_letter": "法院诉讼文书",
     "authorization-letter": "主体及委托资料",
     "identity-certificate": "主体及委托资料",
     "archive-cover": "庭审及庭后文件",
@@ -35583,6 +35585,19 @@ def _case_document_bytes(record: BusinessRecord, document_type: str, context: di
         phone_parts = [value for value in [context.get("case_lawyer_phone"), context.get("assistant_phone")] if value]
         phone_text = "、".join(dict.fromkeys(phone_parts)) or "（员工档案未填写）"
         _case_document_paragraph(document, f"附：经办律师{case_lawyer}，开庭律师{context.get('court_lawyer') or case_lawyer}，律师助理{assistant}；联系电话：{phone_text}", size=12)
+    elif document_type == "identification_letter":
+        # Basic editable letter until a dedicated approved template is supplied.
+        _case_document_paragraph(document, title, center=True, bold=True, size=22)
+        _case_document_paragraph(document, f"案件编号：{record.serial_no}")
+        _case_document_paragraph(document, f"案件名称：{record.title}")
+        _case_document_paragraph(document, "致：________________（鉴定机构）")
+        _case_document_paragraph(document, f"本所接受{record.customer or '（未填写）'}委托，由{case_lawyer}律师办理上述案件，现就本案司法鉴定相关事宜函告贵机构。")
+        _case_document_paragraph(document, "鉴定事项及要求：________________")
+        _case_document_paragraph(document, "送鉴材料：________________")
+        _case_document_paragraph(document, "请就上述事项依法办理鉴定。")
+        _case_document_paragraph(document, company["name"])
+        _case_document_paragraph(document, today_cn)
+        _case_document_paragraph(document, f"经办律师：{case_lawyer}；联系电话：{context.get('case_lawyer_phone') or '（未填写）'}", size=12)
     elif document_type == "identity-certificate":
         customer = context.get("customer") or {}
         legal_name = _case_document_value(customer, "legal_representative", "legal_agent_name") or "（客户档案未填写）"

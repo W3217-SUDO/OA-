@@ -567,6 +567,7 @@ export const isCompanyCaseListRoute = (initialView: string) =>
 export const shouldShowCaseListActions = (initialView: string) =>
   isMyCaseListRoute(initialView) || isCompanyCaseListRoute(initialView);
 const caseDocumentTypes = [
+  ["identification_letter", "鉴定函"],
   ["authorization-letter", "授权委托书"], ["archive-letter", "归档函"], ["gd-authorization-letter", "广东版授权委托书"], ["compensation-letter", "赔偿函"],
   ["law-firm-letter", "律师事务所函"], ["identity-certificate", "主体身份证明"], ["settlement-list", "结算提成表"],
   ["first-instance-appellant-lawyer-letter", "一审上诉人律师函"], ["first-instance-appellee-lawyer-letter", "一审被上诉人律师函"],

@@ -13,6 +13,7 @@ export const LEGACY_CASE_DOCUMENT_GENERATION_ITEMS = Object.freeze([
   ["gd-second-instance-appellee-lawyer-letter", "生成广东版二审被上诉人律师函"],
   ["gd-execution-lawyer-letter", "生成广东版执行律师函"],
   ["identity-certificate", "生成身份证明"],
+  ["identification_letter", "生成鉴定函"],
   ["settlement-list", "生成结算提成表"],
   ["compensation-payment-application", "生成代收代付赔偿款申请单"],
 ]);

@@ -26,6 +26,7 @@ EDITOR = {"username": "row13-lawyer", "role": "user", "display_name": "第十三
 VIEWER = {"username": "row13-viewer", "role": "user", "display_name": "第十三行查看员", "department": "诉讼部"}
 
 DOCUMENTS = {
+    "identification_letter": ("法院诉讼文书", "鉴定函"),
     "archive-cover": ("庭审及庭后文件", "归档封面"),
     "authorization-letter": ("主体及委托资料", "授权委托书"),
     "first-instance-appellant-lawyer-letter": ("法院诉讼文书", "一审（我方原告）律所函"),
@@ -112,7 +113,7 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             yield db
 
-    async def test_all_ten_legacy_actions_generate_distinct_downloadable_docx_files(self) -> None:
+    async def test_all_document_actions_generate_distinct_downloadable_docx_files(self) -> None:
         generated_ids = []
         for document_type, (category, expected_title) in DOCUMENTS.items():
             response = await self.client.post(f"{API}/cases/{self.complete_id}/documents/{document_type}")
@@ -130,7 +131,11 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(download.status_code, 200, download.text)
             self.assertGreater(len(download.content), 1000)
             visible_text = "\n".join(paragraph.text for paragraph in Document(path).paragraphs)
-            if document_type == "authorization-letter":
+            if document_type == "identification_letter":
+                self.assertEqual(Document(path).core_properties.title, "鉴定函")
+                for expected in ["鉴定函", "CODEX-827-13-COMPLETE", "第十三行完整文书案件", "第十三行测试公司", "第十三行律师", "13800138130", "鉴定事项及要求：________________", "送鉴材料：________________"]:
+                    self.assertIn(expected, visible_text)
+            elif document_type == "authorization-letter":
                 self.assertIn("代理权限为特别授权", visible_text)
                 self.assertIn("代为申请执行并收取执行款项", visible_text)
             elif document_type == "identity-certificate":
@@ -149,10 +154,10 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("上海申浩律师事务所 函", visible_text)
                 self.assertIn("合同纠纷", visible_text)
                 self.assertIn("第十三行助理", visible_text)
-        self.assertEqual(len(set(generated_ids)), 10)
+        self.assertEqual(len(set(generated_ids)), len(DOCUMENTS))
         async with self.sessions() as db:
-            self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == self.complete_id)), 10)
-            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id == self.complete_id, WorkflowEvent.action == "生成案件文书")), 10)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == self.complete_id)), len(DOCUMENTS))
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id == self.complete_id, WorkflowEvent.action == "生成案件文书")), len(DOCUMENTS))
 
     async def test_missing_legacy_fields_fail_atomically_without_file_or_database_residue(self) -> None:
         before = set(Path(self.temp_dir.name).glob("*"))
@@ -164,6 +169,19 @@ class CaseDocumentGenerationRow13Test(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == self.incomplete_id)), 0)
             self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id == self.incomplete_id)), 0)
+
+    async def test_identification_letter_rejects_locked_cases_without_files_or_events(self) -> None:
+        for locked_status in ["已归档", "已合并"]:
+            async with self.sessions() as db:
+                record = await db.get(BusinessRecord, self.complete_id)
+                record.status = locked_status
+                await db.commit()
+            response = await self.client.post(f"{API}/cases/{self.complete_id}/documents/identification_letter")
+            self.assertEqual(response.status_code, 409, response.text)
+            self.assertEqual(list(Path(self.temp_dir.name).iterdir()), [])
+            async with self.sessions() as db:
+                self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+                self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent)), 0)
 
     async def test_frontend_capability_and_backend_permission_use_the_same_gate(self) -> None:
         capability = await self.client.get(f"{API}/cases/{self.complete_id}/action-capabilities")

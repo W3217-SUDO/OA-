@@ -14,6 +14,7 @@ const clickEvent = (key, calls) => ({
 });
 
 for (const [key, label] of [
+  ["identification_letter", "生成鉴定函"],
   ["archive-cover", "生成归档封面"],
   ["authorization-letter", "生成授权委托书"],
   ["gd-authorization-letter", "生成广东版授权委托书"],
