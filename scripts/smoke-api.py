@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import io
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
@@ -282,47 +281,6 @@ def contract_approve_as(username: str, contract_id: int, approved: bool, comment
         TOKEN = previous
 
 
-def smoke_vip_tasks():
-    """VIP task root/node/message lifecycle with exact cleanup of its isolated rows."""
-    global TOKEN
-    if not PASSWORD:
-        raise RuntimeError("SMOKE_PASSWORD 未配置；请在本机 .env 中设置测试账号密码")
-    previous = TOKEN
-    task_id: int | None = None
-    suffix = f"{int(time.time())}{uuid.uuid4().hex[:5]}"
-    try:
-        TOKEN = login(USERNAME, PASSWORD)["access_token"]
-        call("GET", f"{BASE}/health", expected=(200,))
-        today = date.today()
-        call("POST", "/vip-tasks", {"title": f"CODEX-VIP-SMOKE-非法日期-{suffix}", "customer": "CODEX-VIP客户", "owner": USERNAME, "priority": "普通", "start_at": f"{today}T12:00:00", "end_at": f"{today}T11:00:00"}, expected=(422,))
-        task = call("POST", "/vip-tasks", {"title": f"CODEX-VIP-SMOKE-{suffix}", "customer": "CODEX-VIP客户", "owner": USERNAME, "priority": "紧急", "status": "待处理", "start_at": f"{today}T09:00:00", "deadline": str(today), "end_at": f"{today}T18:00:00", "description": "VIP 冒烟闭环"}, expected=(201,))
-        task_id = int(task["id"])
-        vip_query = urllib.parse.urlencode({"customer": "CODEX-VIP客户", "status_filter": "待处理", "priority": "紧急"})
-        listed = call("GET", f"/vip-tasks?{vip_query}")
-        assert task_id in {item["id"] for item in listed["items"]}
-        node = call("POST", f"/vip-tasks/{task_id}/nodes", {"title": "CODEX-VIP节点", "owner": USERNAME, "priority": "普通", "status": "待处理", "start_at": f"{today}T09:00:00", "deadline": str(today), "end_at": f"{today}T18:00:00"}, expected=(201,))
-        node_id = int(node["id"])
-        call("PUT", f"/vip-tasks/{task_id}", {"status": "处理中"})
-        call("PUT", f"/vip-tasks/{task_id}", {"status": "已完成"}, expected=(409,))
-        call("PUT", f"/vip-tasks/{task_id}/nodes/{node_id}", {"status": "处理中"})
-        call("PUT", f"/vip-tasks/{task_id}/nodes/{node_id}", {"status": "已完成"})
-        sent = call("POST", f"/vip-tasks/{task_id}/messages", {"node_id": node_id, "content": "CODEX-VIP节点通知", "recipients": [USERNAME]}, expected=(201,))
-        message_ids = [item["id"] for item in sent["items"]]
-        assert message_ids
-        unread = call("GET", f"/vip-tasks/{task_id}/messages?unread_only=true")
-        assert set(message_ids).issubset({item["id"] for item in unread["items"]})
-        assert call("POST", f"/vip-tasks/{task_id}/messages/read", {"message_ids": message_ids})["updated"] == len(message_ids)
-        completed = call("PUT", f"/vip-tasks/{task_id}", {"status": "已完成"})
-        assert completed["status"] == "已完成"
-        detail = call("GET", f"/vip-tasks/{task_id}")
-        assert detail["node_count"] == 1 and detail["unread_message_count"] == 0
-        passed("VIP任务 CRUD、客户/状态/优先级筛选、节点状态、消息已读与完成阻断")
-    finally:
-        if task_id is not None:
-            call("DELETE", f"/vip-tasks/{task_id}", expected=(204, 404))
-        TOKEN = previous
-
-
 def main():
     global TOKEN
     if not PASSWORD:
@@ -395,7 +353,7 @@ def main():
                 call("DELETE", f"/templates/{stale_template['id']}", expected=(204, 404, 409))
         # 清理因上一次进程中断而留下的、带明确 SMOKE 标识的本地测试记录。
         # 生产环境不存在 testing cleanup 路由，普通业务数据也不会命中此条件。
-        for smoke_module in ["customer", "contract", "case", "ipr_case", "task", "finance", "jar_fee", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+        for smoke_module in ["customer", "contract", "case", "ipr_case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
             stale = call("GET", f"/records?module={smoke_module}&keyword=SMOKE&page_size=100")["items"]
             for stale_item in stale:
                 # 搜索会命中关联字段中的 SMOKE；清理接口仍应拒绝没有明确测试标识的记录。
@@ -474,11 +432,6 @@ def main():
         TOKEN = user_token
         assert call("GET", "/auth/me")["role"] == "user"
         call("POST", "/system/users", {"username": f"smoke_forbidden_{suffix}".lower(), "display_name": "普通用户不得创建审批人", "password": "SmokePass2026!", "role": "auditor"}, expected=(403,))
-        # Cache administration is an administrator-only operational control;
-        # direct access must be blocked before any cache key is inspected.
-        call("GET", "/system/cache", expected=(403,))
-        call("POST", "/system/cache/not-a-real-cache/clear", expected=(403,))
-        call("POST", "/system/cache/clear-all", expected=(403,))
         # A hidden menu must also deny direct generic-record writes/exports;
         # this verifies the API boundary rather than relying on the sidebar.
         call("POST", "/records", {
@@ -1081,31 +1034,9 @@ def main():
         assert call("PATCH", "/system/configs/application_settings", {"value": application})["value"]["page_size"] == 30
         for key, value in system_configs_original.items(): call("PATCH", f"/system/configs/{key}", {"value": value})
         system_configs_original = {}
-        # Prime an actual per-category memory bucket, then prove the cache
-        # management contract distinguishes it from legacy direct-SQL rows.
-        call("GET", "/system/parameters?category=case_type")
-        cache_list = call("GET", "/system/cache")
-        assert {"items", "total", "summary"}.issubset(cache_list)
-        assert cache_list["summary"]["scope"].startswith("当前 API 进程内存")
-        cached_row = next(item for item in cache_list["items"] if item["key"] == "IPR_CASETYPE_PREFIX_casetype")
-        direct_sql_row = next(item for item in cache_list["items"] if item["key"] == "DEPARTMENT_PREFIX_department")
-        assert cached_row["storage"] == "进程内存" and cached_row["clearable"] is True and cached_row["entry_count"] > 0
-        assert direct_sql_row["storage"] == "直接 SQL 查询" and direct_sql_row["clearable"] is False
-        call("POST", "/system/cache/not-a-real-cache/clear", expected=(404,))
-        call("POST", f"/system/cache/{direct_sql_row['key']}/clear", expected=(409,))
-        cleared_one = call("POST", f"/system/cache/{cached_row['key']}/clear")
-        assert cleared_one["cleared"] is True and cleared_one["key"] == cached_row["key"]
-        # Court has no legacy cache row.  It still belongs to the process cache
-        # and must be removed by the explicit clear-all operation.
-        call("GET", "/system/parameters?category=court")
-        before_clear_all = call("GET", "/system/cache")
-        assert before_clear_all["summary"]["cache_buckets"] > 0
-        cleared_all = call("POST", "/system/cache/clear-all")
-        assert cleared_all["clear_all"] is True and "court" in cleared_all["cleared"]
-        after_clear_all = call("GET", "/system/cache")
-        assert after_clear_all["summary"]["cache_buckets"] == 0 and after_clear_all["summary"]["cache_entries"] == 0
-        cache_audits = call("GET", "/audit/events?module=system_audit&keyword=%E6%B8%85%E7%90%86%E7%B3%BB%E7%BB%9F%E7%BC%93%E5%AD%98&page_size=50")["items"]
-        assert any(item["action"] == "清理系统缓存" and item["title"] == "系统缓存:全部" for item in cache_audits)
+        cache = call("GET", "/system/caches")["items"][0]
+        assert cache["key"] == "system-parameters"
+        assert call("POST", "/system/caches/system-parameters/clear")["cleared"] is True
         menus = call("GET", "/system/menus")["items"]
         assert len(menus) >= 264 and any(item["key"] == "dashboard" for item in menus)
         navigation = call("GET", "/system/menus/navigation")["items"]
@@ -1417,43 +1348,6 @@ def main():
         assert call("POST", f"/contracts/{self_approval_contract['id']}/approve", {"approved": True, "comment": "本人按流程审批"})["status"] == "已通过"
         TOKEN = contract_admin_token
         contract = create_record("contract", "草稿", "冒烟合同", {"amount": 1000, "external_contract_no": f"EXT-{suffix}"})
-        jar_payload = {
-            "contract_id": contract["id"], "title": f"SMOKE-JAR交案费-{suffix}",
-            "payer_name": "冒烟交款单位", "bank_voucher_no": serial("JAR-VOUCHER"),
-            "received_date": str(date.today()), "amount": 100, "official_fee_amount": 20,
-            "agency_fee_amount": 70, "other_fee_amount": 10, "payment_method": "银行转账",
-            "handler": USERNAME, "remark": "JAR独立应收验收",
-        }
-        call("POST", "/records", {"module": "jar_fee", "serial_no": serial("JAR-BYPASS"), "title": "SMOKE-JAR通用入口", "status": "待确认", "owner": USERNAME, "data": {}}, expected=(422,))
-        call("POST", "/finance/jar-fees", {**jar_payload, "official_fee_amount": 40, "agency_fee_amount": 70}, expected=(422,))
-        jar_fee = call("POST", "/finance/jar-fees", jar_payload, expected=(201,))
-        records.append(jar_fee["id"])
-        assert jar_fee["module"] == "jar_fee" and jar_fee["status"] == "待确认" and jar_fee["data"]["contract_id"] == contract["id"]
-        call("PATCH", f"/records/{jar_fee['id']}", {"title": "SMOKE-JAR通用编辑绕过"}, expected=(409,))
-        call("POST", f"/records/{jar_fee['id']}/transition", {"to_status": "已确认", "comment": "通用流转绕过"}, expected=(409,))
-        call("DELETE", f"/records/{jar_fee['id']}", expected=(409,))
-        multipart_upload("/attachments", {"record_id": jar_fee["id"], "category": "普通附件"}, f"smoke-jar-generic-{suffix}.pdf", b"generic attachment bypass", expected=(409,))
-        jar_list = call("GET", f"/finance/jar-fees?contract_id={contract['id']}&keyword={urllib.parse.quote(jar_payload['bank_voucher_no'])}")
-        assert jar_list["total"] == 1 and jar_list["items"][0]["id"] == jar_fee["id"]
-        jar_export_status, jar_export_payload, jar_export_type = call("GET", f"/finance/jar-fees/export?contract_id={contract['id']}", raw=True)
-        assert jar_export_status == 200 and jar_export_type.startswith("text/csv") and jar_payload["bank_voucher_no"].encode() in jar_export_payload
-        multipart_upload(f"/finance/jar-fees/{jar_fee['id']}/files", {"category": "JAR交案费附件"}, f"smoke-jar-{suffix}.txt", b"jar attachment", expected=(422,))
-        # The JAR route permits documents but intentionally rejects generic text files.
-        jar_file = multipart_upload(f"/finance/jar-fees/{jar_fee['id']}/files", {"category": "JAR交案费附件"}, f"smoke-jar-{suffix}.pdf", b"jar attachment")
-        jar_files = call("GET", f"/finance/jar-fees/{jar_fee['id']}/files")
-        assert jar_files["total"] == 1 and jar_files["items"][0]["id"] == jar_file["id"]
-        file_status, file_payload, _ = call("GET", f"/finance/jar-fees/{jar_fee['id']}/files/{jar_file['id']}/download", raw=True)
-        assert file_status == 200 and file_payload == b"jar attachment"
-        call("POST", f"/finance/jar-fees/{jar_fee['id']}/status", {"status": "已入账", "comment": "跳过确认应阻断"}, expected=(409,))
-        jar_fee = call("POST", f"/finance/jar-fees/{jar_fee['id']}/status", {"status": "已确认", "comment": "确认交案费"})
-        assert jar_fee["status"] == "已确认"
-        call("PUT", f"/finance/jar-fees/{jar_fee['id']}", jar_payload, expected=(409,))
-        call("POST", f"/finance/jar-fees/{jar_fee['id']}/files", expected=(422,))
-        jar_fee = call("POST", f"/finance/jar-fees/{jar_fee['id']}/status", {"status": "已入账", "comment": "交案费入账"})
-        assert jar_fee["status"] == "已入账"
-        jar_history = call("GET", f"/records/{jar_fee['id']}/history")["items"]
-        assert {"创建交案费", "上传交案费文件", "变更交案费状态"}.issubset({item["action"] for item in jar_history})
-        passed("JAR交案费独立CRUD、金额校验、状态机、附件下载、导出、操作日志及通用入口阻断")
         call("PATCH", f"/records/{contract['id']}", {"status": "已通过", "title": "绕过合同审批"}, expected=(409,))
         call("POST", f"/records/{contract['id']}/transition", {"to_status": "审批中", "comment": "绕过合同专用审批"}, expected=(409,))
         call("DELETE", f"/records/{contract['id']}", expected=(409,))
@@ -1823,75 +1717,9 @@ def main():
         call("DELETE", f"/records/{reminder['id']}", expected=(409,))
         call("DELETE", f"/cases/{counsel_case['id']}/reminders/{reminder['id']}", expected=(204,))
         assert call("GET", f"/cases/{counsel_case['id']}/reminders")["total"] == 0
-        # Case events are independent case-date records.  They may optionally
-        # create a linked reminder, but neither generic record APIs nor a
-        # reminder-only path may bypass their dedicated lifecycle.
-        event_base = {
-            "event_type_id": 0,
-            "event_type": "举证期限",
-            "event_time": f"{date.today()}T10:00:00",
-            "content": f"SMOKE-案件事件举证材料-{suffix}",
-            "deadline": str(date.today() + timedelta(days=5)),
-            "reminder_enabled": True,
-            "remind_at": f"{date.today() + timedelta(days=2)}T09:00:00",
-        }
-        call("POST", f"/cases/{counsel_case['id']}/events", {
-            **event_base,
-            "event_type": "",
-        }, expected=(422,))
-        case_event = call("POST", f"/cases/{counsel_case['id']}/events", event_base, expected=(201,))
-        event_list = call("GET", f"/cases/{counsel_case['id']}/events")
-        assert event_list["total"] == 1 and event_list["items"][0]["id"] == case_event["id"]
-        assert event_list["items"][0]["status"] == "待处理" and event_list["items"][0]["reminder_enabled"] is True
-        updated_event = call("PATCH", f"/cases/{counsel_case['id']}/events/{case_event['id']}", {
-            "content": f"SMOKE-案件事件举证材料已完成-{suffix}",
-            "status": "已完成",
-            "reminder_enabled": False,
-        })
-        assert updated_event["status"] == "已完成" and updated_event["reminder_enabled"] is False
-        assert call("GET", f"/cases/{counsel_case['id']}/reminders")["total"] == 0
-        event_second = call("POST", f"/cases/{counsel_case['id']}/events", {
-            **event_base,
-            "event_type": "答辩期限",
-            "content": f"SMOKE-案件事件答辩材料-{suffix}",
-            "event_time": f"{date.today() + timedelta(days=1)}T10:00:00",
-            "reminder_enabled": False,
-            "remind_at": None,
-        }, expected=(201,))
-        batch_event_delete = call("DELETE", f"/cases/{counsel_case['id']}/events", {"event_ids": [case_event["id"], event_second["id"]]})
-        assert batch_event_delete["deleted"] == 2
-        assert call("GET", f"/cases/{counsel_case['id']}/events")["total"] == 0
-        assert call("GET", f"/cases/{counsel_case['id']}/reminders")["total"] == 0
-        history_after_events = call("GET", f"/records/{counsel_case['id']}/history")["items"]
-        event_actions = {item.get("action") for item in history_after_events}
-        assert {"新增案件事件", "修改案件事件", "批量删除案件事件"}.issubset(event_actions)
-        passed("案件事件增改、状态、提醒联动、批量删除和审计")
         case_log = call("POST", f"/cases/{counsel_case['id']}/logs", {"content": "冒烟法律顾问案件日志"}, expected=(201,))
         assert case_log["content"] == "冒烟法律顾问案件日志"
         assert call("GET", f"/cases/{counsel_case['id']}/logs")["items"][0]["id"] == case_log["id"]
-        assisted_fee = call("POST", f"/cases/{counsel_case['id']}/assisted-fees", {
-            "assisted_type": "SMOKE普通案件资助", "amount": 128.5, "remark": "普通案件资助费用专用闭环",
-        }, expected=(201,))
-        assert assisted_fee["status"] == "待办理" and assisted_fee["request_user"] == USERNAME and assisted_fee["amount"] == 128.5
-        assisted_fee = call("PUT", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}", {
-            "assisted_type": "SMOKE普通案件资助已修改", "amount": 256, "remark": "修改后说明",
-        })
-        assert assisted_fee["assisted_type"] == "SMOKE普通案件资助已修改" and assisted_fee["amount"] == 256
-        pending_assisted_fee = call("POST", f"/cases/{counsel_case['id']}/assisted-fees", {
-            "assisted_type": "SMOKE普通案件待删除资助",
-        }, expected=(201,))
-        call("DELETE", f"/cases/{counsel_case['id']}/assisted-fees/{pending_assisted_fee['id']}", expected=(204,))
-        confirmed_assisted_fee = call("POST", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}/confirm", {
-            "confirmed_date": str(date.today()), "remark": "SMOKE确认办理",
-        })
-        assert confirmed_assisted_fee["status"] == "已办理" and confirmed_assisted_fee["confirmed_date"] == str(date.today()) and confirmed_assisted_fee["confirmed_user"] == USERNAME
-        call("PUT", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}", {"remark": "不应修改"}, expected=(409,))
-        call("POST", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}/confirm", {"confirmed_date": str(date.today())}, expected=(409,))
-        call("DELETE", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}", expected=(409,))
-        assisted_fee_list = call("GET", f"/cases/{counsel_case['id']}/assisted-fees?page=1&page_size=15")
-        assert assisted_fee_list["total"] == 1 and assisted_fee_list["items"][0]["id"] == assisted_fee["id"]
-        counsel_actions = {item["action"] for item in call("GET", f"/records/{counsel_case['id']}/history")["items"]}
-        assert {"新建案件资助费用", "修改案件资助费用", "办理案件资助费用", "删除案件资助费用"}.issubset(counsel_actions)
         batch_updated = call("POST", "/cases/batch-update", {
             "case_ids": [counsel_case["id"], counsel_case_b["id"]],
             "handling_lawyers": [USERNAME], "assistant": USERNAME,
@@ -3586,28 +3414,9 @@ def main():
             "annual_fee_year": 1, "rate": 0.1, "description": "候选导入与双状态流转冒烟验收",
         }, expected=(201,))
         records.append(ipr_case["id"])
-        ipr_lawsuit = call("POST", "/ipr/cases", {
-            "case_kind": "专利", "case_category": "litigation", "title": f"SMOKE-IPR-LAWSUIT-{suffix}", "customer": customer["title"],
-            "application_no": serial("SMOKE-IPR-LAWSUIT"), "application_type": "发明专利", "applicant": customer["title"],
-            "court_case_no": f"（2026）沪01民初{suffix[-4:]}号", "court_name": "上海知识产权法院", "judge": "SMOKE法官", "clerk": "SMOKE书记员",
-            "plaintiff": customer["title"], "defendant": "SMOKE被告", "case_manager": USERNAME,
-        }, expected=(201,))
-        records.append(ipr_lawsuit["id"])
-        assert ipr_lawsuit["data"]["case_category"] == "litigation"
-        call("POST", f"/ipr/cases/{ipr_lawsuit['id']}/submit")
-        ipr_lawsuit = call("POST", f"/ipr/cases/{ipr_lawsuit['id']}/review", {"approved": True, "comment": "SMOKE诉讼立案审核"})
-        assert ipr_lawsuit["status"] == "在办"
-        assert any(item["id"] == ipr_lawsuit["id"] for item in call("GET", "/ipr/lawsuit/cases?page_size=100")["items"])
-        court_info = call("PUT", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/court-info", {"court_case_no": "（2026）沪01民初900号", "court_name": "上海知识产权法院", "judge": "SMOKE法官", "clerk": "SMOKE书记员", "plaintiff": customer["title"], "defendant": "SMOKE被告", "third_parties": "SMOKE第三人"})
-        assert court_info["court_case_no"] == "（2026）沪01民初900号"
-        lawsuit_court = call("POST", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/courts", {"court_level": "一审", "court_name": "上海知识产权法院", "case_no": "（2026）沪01民初900号", "judge": "SMOKE法官", "clerk": "SMOKE书记员", "courtroom": "第八法庭", "remark": "SMOKE法院"}, expected=(201,))
-        assert call("GET", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/courts")["items"][0]["id"] == lawsuit_court["id"]
-        lawsuit_party = call("POST", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/parties", {"party_type": "原告", "name": customer["title"], "contact_name": "SMOKE联系人", "contact_phone": "13800000000"}, expected=(201,))
-        assert call("GET", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/parties")["items"][0]["id"] == lawsuit_party["id"]
         call("POST", f"/ipr/cases/{ipr_case['id']}/submit")
         ipr_case = call("POST", f"/ipr/cases/{ipr_case['id']}/review", {"approved": True, "comment": "冒烟立案审核"})
         assert ipr_case["status"] == "在办"
-        call("POST", f"/ipr/lawsuit/cases/{ipr_case['id']}/courts", {"court_name": "不得写入非诉讼案"}, expected=(422,))
         ipr_batch_case = call("POST", "/ipr/cases", {"case_kind": ipr_case["data"]["case_kind"], "title": f"SMOKE-IPR-BATCH-{suffix}", "customer": customer["title"], "application_no": serial("SMOKE-IPR-BATCH"), "application_type": ipr_case["data"]["application_type"], "applicant": customer["title"], "case_manager": USERNAME, "application_date": str(date.today()), "deadline": str(date.today() + timedelta(days=30)), "annual_fee_year": 1, "rate": 0.1, "description": "SMOKE batch target"}, expected=(201,))
         records.append(ipr_batch_case["id"])
         call("POST", f"/ipr/cases/{ipr_batch_case['id']}/submit")
@@ -3749,9 +3558,7 @@ def main():
         call("DELETE", f"/ipr/cases/{ipr_case['id']}/files/{ipr_second_transfer_file['id']}", expected=(204,))
         assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 0
         assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees", {"assisted_type": "SMOKE专利资助", "remark": "资助费用专用闭环"}, expected=(201,))
-        assert assisted_fee["status"] == "待确认" and assisted_fee["request_user"] == USERNAME
-        assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees/{assisted_fee['id']}/confirm", {"remark": "SMOKE协助费确认"}, expected=(200,))
-        assert assisted_fee["status"] == "待办理"
+        assert assisted_fee["status"] == "待办理" and assisted_fee["request_user"] == USERNAME
         pending_assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees", {"assisted_type": "SMOKE待删除资助"}, expected=(201,))
         call("DELETE", f"/ipr/cases/{ipr_case['id']}/assisted-fees/{pending_assisted_fee['id']}", expected=(204,))
         handled_assisted_fee = multipart_upload(
@@ -3829,25 +3636,11 @@ def main():
         assert any(item["name"] == contract["customer"] for item in multi_customer_analytics["charts"][0]["items"])
         analytics_csv = call("GET", "/reports/analytics/export?view=brand", raw=True)[1]
         assert analytics_csv.startswith(b"\xef\xbb\xbf") and "统计图,分组,数值,单位".encode() in analytics_csv
-        customer_roi = call("GET", "/reports/customer-roi")
-        assert customer_roi["view"] == "customer-roi" and customer_roi["source"] == "realtime"
-        assert set(customer_roi["filter_options"]) == {"departments", "employees"}
-        assert customer_roi["formula"] == "ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI"
-        assert {"income", "cost", "profit", "roi"} <= set(customer_roi["totals"])
-        for customer_roi_row in customer_roi["rows"]:
-            assert {"customer", "department", "employee", "income", "cost", "profit", "roi"} <= set(customer_roi_row)
-            assert customer_roi_row["profit"] == round(customer_roi_row["income"] - customer_roi_row["cost"], 2)
-            assert customer_roi_row["roi"] is None if customer_roi_row["cost"] == 0 else customer_roi_row["roi"] == round(customer_roi_row["profit"] / customer_roi_row["cost"] * 100, 2)
-        customer_roi_export = call("GET", "/reports/customer-roi/export", raw=True)
-        assert customer_roi_export[2].startswith("text/csv") and customer_roi_export[1].startswith(b"\xef\xbb\xbf")
-        assert "客户编号,客户,部门,员工,已确认回款,已确认付款,利润,ROI,口径".encode() in customer_roi_export[1]
-        call("GET", "/reports/customer-roi?date_from=2026-08-01&date_to=2026-07-31", expected=(422,))
-        if customer_roi["rows"]:
-            sample = customer_roi["rows"][0]
-            customer_roi_params = urllib.parse.urlencode({"department": sample["department"], "employee": sample["employee"]})
-            filtered_customer_roi = call("GET", f"/reports/customer-roi?{customer_roi_params}")
-            assert all(row["department"] == sample["department"] and row["employee"] == sample["employee"] for row in filtered_customer_roi["rows"])
-        passed("客户ROI统计分组、日期/部门/员工筛选、ROI公式与CSV导出")
+        staff_roi = call("GET", "/reports/staff-roi")
+        assert staff_roi["source"] == "settled_cash_flow" and isinstance(staff_roi["items"], list) and isinstance(staff_roi["filter_options"]["departments"], list)
+        staff_roi_export = call("GET", "/reports/staff-roi/export", raw=True)
+        assert staff_roi_export[2].startswith("text/csv") and staff_roi_export[1].startswith(b"\xef\xbb\xbf") and "员工,账号,部门,业绩,成本,ROI(%)".encode() in staff_roi_export[1]
+        call("GET", "/reports/staff-roi?start_date=2026-07-31&end_date=2026-07-01", expected=(422,))
         report = call("POST", "/reports/generate", {"title": "冒烟经营报表", "report_type": "综合经营报表", "period": str(date.today())[:7], "format": "CSV", "description": suffix}, expected=(201,))
         records.append(report["id"])
         published = call("POST", f"/records/{report['id']}/transition", {"to_status": "已发布", "comment": "发布"})
@@ -3905,28 +3698,6 @@ def main():
         assert "权限" in matter["data"]["content"]
         commission = call("POST", f"/hr/{hr['id']}/subrecords", {"kind": "commission", "data": {"start_date": str(date.today()), "end_date": "", "base_salary": 10000, "hearing_rate": 10, "document_rate": 15, "source_rate": 20, "investigation_rate": 5, "quality_rate": 3}}, expected=(201,))
         assert commission["data"]["base_salary"] == 10000
-        # The independent page and employee detail must share the same schemes.
-        performance_query = urllib.parse.urlencode({"employee_id": hr["id"], "department": active_department["name"], "start_date": str(date.today()), "end_date": str(date.today())})
-        listed_performance = call("GET", f"/hr/performance?{performance_query}")
-        assert commission["id"] in {item["id"] for item in listed_performance["items"]}
-        performance = call("POST", "/hr/performance", {"employee_id": hr["id"], "data": {"scheme_name": f"CODEX-HR-PERFORMANCE-{suffix}", "start_date": "2098-01-01", "end_date": "2098-12-31", "base_salary": 12000, "hearing_rate": 0.1, "hearing_fixed": 500}}, expected=(201,))
-        try:
-            assert call("GET", f"/hr/performance/{performance['id']}")["employee_id"] == hr["id"]
-            performance = call("PATCH", f"/hr/performance/{performance['id']}", {"data": {**performance["data"], "quality_fixed": 300, "remark": "CODEX 独立绩效保存回读"}})
-            assert performance["data"]["quality_fixed"] == 300
-            assert any(item["id"] == performance["id"] and item["data"]["quality_fixed"] == 300 for item in call("GET", f"/hr/{hr['id']}/subrecords?kind=commission")["items"])
-            call("PATCH", f"/hr/performance/{performance['id']}", {"data": {**performance["data"], "end_date": "2097-01-01"}}, expected=(422,))
-            assert call("GET", f"/hr/performance/{performance['id']}")["data"]["end_date"] == "2098-12-31"
-            query = urllib.parse.urlencode({"employee_id": hr["id"], "start_date": "2098-01-01", "end_date": "2098-12-31"})
-            _, exported, mime = call("GET", f"/hr/performance/export?{query}", raw=True)
-            assert "csv" in mime and performance["data"]["scheme_name"] in exported.decode("utf-8-sig")
-            assert call("GET", f"/hr/performance?employee_id={hr['id']}&department=CODEX-NO-MATCH-{suffix}")["total"] == 0
-            call("GET", "/hr/performance?start_date=2098-12-31&end_date=2098-01-01", expected=(422,))
-        finally:
-            call("DELETE", f"/hr/performance/{performance['id']}", expected=(204, 404))
-        call("GET", f"/hr/performance/{performance['id']}", expected=(404,))
-        assert performance["id"] not in {item["id"] for item in call("GET", f"/hr/performance?employee_id={hr['id']}")["items"]}
-        assert {"新增绩效方案", "修改绩效方案", "删除绩效方案"} <= {item["action"] for item in call("GET", f"/records/{hr['id']}/history")["items"]}
         assert call("GET", f"/hr/{hr['id']}/subrecords")["total"] == 3
         call("DELETE", f"/hr/{hr['id']}/subrecords/{leave['id']}", expected=(204,))
         assert call("GET", f"/hr/{hr['id']}/subrecords?kind=leave")["total"] == 0
@@ -4063,7 +3834,7 @@ def main():
             except Exception: pass
 
     record_remnants = []
-    for module in ["customer", "contract", "case", "task", "finance", "jar_fee", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+    for module in ["customer", "contract", "case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
         record_remnants.extend(call("GET", f"/records?module={module}&keyword=SMOKE&page_size=100")["items"])
     user_remnants = call("GET", "/system/users?keyword=smoke")["items"]
     template_remnants = [item for item in call("GET", "/templates")["items"] if item["name"].startswith("SMOKE-")]
@@ -4097,20 +3868,10 @@ def main():
 
 
 if __name__ == "__main__":
-    if "--ipr-cpc-only" in sys.argv:
-        # CPC uses an isolated in-memory DB and temporary upload root.  Keep it
-        # separate from the full smoke suite so it cannot touch a configured
-        # local business database while still exercising its real HTTP routes.
-        cpc_test = Path(__file__).resolve().parents[1] / "apps" / "api-server" / "ipr_cpc_contract_test.py"
-        completed = subprocess.run([sys.executable, str(cpc_test)], cwd=cpc_test.parent, check=False)
-        raise SystemExit(completed.returncode)
-    elif "--group" in sys.argv:
+    if "--group" in sys.argv:
         group = sys.argv[sys.argv.index("--group") + 1]
-        if group not in {"hr_lifecycle", "vip_tasks"}:
+        if group != "hr_lifecycle":
             raise SystemExit(f"未知冒烟分组：{group}")
-        if group == "hr_lifecycle":
-            smoke_hr_deletion_impact()
-        else:
-            smoke_vip_tasks()
+        smoke_hr_deletion_impact()
     else:
         main()

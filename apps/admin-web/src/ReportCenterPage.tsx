@@ -70,6 +70,25 @@ type CustomerRoiFilterValues = {
   employee?: string;
 };
 
+type StaffRoiFilterValues = {
+  dateRange?: any;
+  departmentId?: string | number;
+};
+
+type StaffRoiRow = {
+  employee: string;
+  employee_username?: string;
+  department: string;
+  performance: number;
+  cost: number;
+  roi: number | null;
+};
+
+type StaffRoiResponse = {
+  items: StaffRoiRow[];
+  filter_options?: { departments?: { id: string | number; name: string }[] };
+};
+
 const PAGE_SPECS: Record<string, PageSpec> = {
   "reports-brand": {
     title: "资金运营情况统计",
@@ -133,6 +152,12 @@ PAGE_SPECS["reports-execution-3"] = {
     { title: "执行中止案件数量", unit: "个/案", limit: 20 },
   ],
 };
+PAGE_SPECS["reports-staff-roi"] = {
+  title: "员工业绩ROI统计",
+  filter: "none",
+  charts: [],
+};
+
 PAGE_SPECS["reports-customer-roi"] = {
   title: "客户ROI统计",
   filter: "customer-roi",
@@ -326,6 +351,90 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
   );
 }
 
+
+function StaffRoiReport() {
+  const [form] = Form.useForm<StaffRoiFilterValues>();
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<StaffRoiRow[]>([]);
+  const [departments, setDepartments] = useState<{ id: string | number; name: string }[]>([]);
+
+  const paramsFor = (values: StaffRoiFilterValues) => ({
+    start_date: values.dateRange?.[0]?.format("YYYY-MM-DD"),
+    end_date: values.dateRange?.[1]?.format("YYYY-MM-DD"),
+    department_id: values.departmentId || undefined,
+  });
+  const load = async (values: StaffRoiFilterValues = form.getFieldsValue()) => {
+    setLoading(true);
+    try {
+      const { data } = await api.get<StaffRoiResponse>("/reports/staff-roi", { params: paramsFor(values) });
+      setRows(data.items || []);
+      setDepartments(data.filter_options?.departments || []);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "员工业绩ROI统计加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load({}); }, []);
+
+  const reset = () => {
+    form.resetFields();
+    void load({});
+  };
+  const exportCsv = async () => {
+    try {
+      const response = await api.get("/reports/staff-roi/export", {
+        params: paramsFor(form.getFieldsValue()),
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "员工业绩ROI统计.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "员工业绩ROI统计导出失败");
+    }
+  };
+
+  return (
+    <div className="report-page">
+      <div className="report-page-heading">员工业绩ROI统计</div>
+      <div style={{ marginBottom: 16, color: "#666" }}>业绩按到账回款依员工提成比例分摊；成本为提成实际付款；ROI=业绩÷成本×100%，成本为0时不计算。</div>
+      <Form form={form} className="report-filter" onFinish={load}>
+        <Form.Item label="统计时间" name="dateRange">
+          <DatePicker.RangePicker />
+        </Form.Item>
+        <Form.Item label="部门" name="departmentId">
+          <Select allowClear showSearch optionFilterProp="label" placeholder="全部部门" options={(departments || []).map((item) => ({ value: item.id, label: item.name }))} />
+        </Form.Item>
+        <div className="report-filter-action">
+          <Button type="primary" htmlType="submit">查询</Button>
+          <Button onClick={reset}>重置</Button>
+          <Button onClick={exportCsv}>导出CSV</Button>
+        </div>
+      </Form>
+      <Spin spinning={loading}>
+        <Table
+          rowKey={(row) => `${row.department}-${row.employee_username || row.employee}`}
+          dataSource={rows}
+          pagination={{ showSizeChanger: true, showTotal: (total) => `共 ${total} 名员工` }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" /> }}
+          scroll={{ x: 760 }}
+          columns={[
+            { title: "员工", dataIndex: "employee", width: 180 },
+            { title: "部门", dataIndex: "department", width: 160 },
+            { title: "业绩（元）", dataIndex: "performance", align: "right", render: (value: number) => currency(value) },
+            { title: "成本（元）", dataIndex: "cost", align: "right", render: (value: number) => currency(value) },
+            { title: "ROI", dataIndex: "roi", align: "right", render: (value: number | null, row: StaffRoiRow) => roiDisplay(value, row.cost) },
+          ]}
+        />
+      </Spin>
+    </div>
+  );
+}
+
 const largeScreenViews = ["reports-refund", "reports-execution-1", "reports-execution-2", "reports-execution-3"];
 
 export function ReportLargeScreenPage({ initialView = "reports-refund" }: { initialView?: string }) {
@@ -398,6 +507,7 @@ export default function ReportCenterPage({ initialView = "reports-brand", onNavi
   const queryReport = (values: ReportFilterValues) => { setQuery(values); void load(values); };
   const chartItems = (title: string) => analytics.charts.find(item => item.title === title)?.items ?? [];
   if (initialView === "reports-customer-roi") return <CustomerRoiReport onNavigate={onNavigate} />;
+  if (initialView === "reports-staff-roi") return <StaffRoiReport />;
   return (
     <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>
       <div className="report-page-heading">{page.title}</div>

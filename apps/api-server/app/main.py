@@ -211,8 +211,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("finance-fee-query", "finance", "费用查询", "", 7),
     ("platform-finance-overview", "platform-finance", "回款管理", "", 1), ("platform-finance-overview-icbc", "platform-finance-overview", "回款(工行)", "", 1), ("platform-finance-overview-citic", "platform-finance-overview", "回款(中信)", "", 2), ("platform-finance-overview-boc", "platform-finance-overview", "回款(中行)", "", 3), ("platform-finance-overview-cmb", "platform-finance-overview", "回款(招商)", "", 10), ("platform-finance-overview-gdicbc", "platform-finance-overview", "回款(固定工行)", "", 11), ("platform-finance-overview-new", "platform-finance-overview", "新增回款", "", 4), ("platform-finance-overview-manage", "platform-finance-overview", "回款管理", "", 5), ("platform-finance-overview-claim", "platform-finance-overview", "回款领取", "", 6), ("platform-finance-overview-pending", "platform-finance-overview", "待分配回款", "", 7), ("platform-finance-overview-allocated", "platform-finance-overview", "已分配回款", "", 8), ("platform-finance-overview-query", "platform-finance-overview", "到账查询", "", 9),
     ("platform-finance-invoice", "platform-finance", "开票管理", "", 3), ("platform-finance-invoice-mine", "platform-finance-invoice", "我的开票", "", 1), ("platform-finance-invoice-pending", "platform-finance-invoice", "待处理开票", "", 2), ("platform-finance-invoice-company", "platform-finance-invoice", "公司开票", "", 3),
-    ("reports-brand", "reports", "品牌资金运营情况统计", "", 1), ("reports-lawyer", "reports", "律师资金运营情况统计", "", 2), ("reports-refund", "reports", "退费进度案件统计", "", 3), ("reports-execution-1", "reports", "执行进度案件统计1", "", 4), ("reports-execution-2", "reports", "执行进度案件统计2", "", 5), ("reports-execution-3", "reports", "执行进度案件统计3", "", 6), ("reports-customer-roi", "reports", "客户ROI统计", "", 7), ("reports-large-screen", "reports", "报表大屏", "", 8),
-]
+    ("reports-brand", "reports", "品牌资金运营情况统计"undefined, ("reports-lawyer", "reports", "律师资金运营情况统计"undefined, ("reports-refund", "reports", "退费进度案件统计"undefined, ("reports-execution-1", "reports", "执行进度案件统计1"undefined, ("reports-execution-2", "reports", "执行进度案件统计2"undefined, ("reports-execution-3", "reports", "执行进度案件统计3"undefined, ("reports-customer-roi", "reports", "客户ROI统计"undefined, ("reports-large-screen", "reports", "报表大屏"undefined, ("reports-large-screen", "reports", "报表大屏"undefined, ("reports-staff-roi", "reports", "员工业绩ROI统计"undefined]
 DEFAULT_SYSTEM_MENUS += [
     ("platform-finance-payment", "platform-finance", "付款管理", "", 2), ("platform-finance-payment-mine", "platform-finance-payment", "我的请款单", "", 1), ("platform-finance-payment-audit", "platform-finance-payment", "请款单审批", "", 2), ("platform-finance-payment-waiting", "platform-finance-payment", "待付款列表", "", 3), ("platform-finance-payment-print", "platform-finance-payment", "付款单打印", "", 4), ("platform-finance-payment-writeoff", "platform-finance-payment", "待核销列表", "", 5), ("platform-finance-payment-query", "platform-finance-payment", "付款单查询", "", 6),
     ("platform-finance-settlement", "platform-finance", "结算管理", "", 4), ("platform-finance-settlement-pending", "platform-finance-settlement", "待结算", "", 1), ("platform-finance-settlement-audit", "platform-finance-settlement", "待审核", "", 2), ("platform-finance-settlement-payment", "platform-finance-settlement", "待付款", "", 3), ("platform-finance-settlement-paid", "platform-finance-settlement", "已付款", "", 4), ("platform-finance-settlement-refused", "platform-finance-settlement", "已拒绝", "", 5),
@@ -9462,6 +9461,191 @@ async def report_summary(identity: dict = Depends(current_identity), db: AsyncSe
     counts = {module: int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == module, *scope_conditions)) or 0) for module in modules}
     reports = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "report", *scope_conditions))).all()
     return {"business_counts": counts, "total_reports": len(reports), "generated": sum(x.status == "已生成" for x in reports), "published": sum(x.status == "已发布" for x in reports)}
+
+
+def _staff_roi_date_matches(value: date, start_date: date | None, end_date: date | None) -> bool:
+    return (not start_date or value >= start_date) and (not end_date or value <= end_date)
+
+
+async def _staff_roi_report(
+    identity: dict,
+    db: AsyncSession,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    department_id: int | None = None,
+) -> dict:
+    """Report settled staff performance and paid commission cost without duplicating a source fee.
+
+    A bank receipt allocated to an agency-fee record is split only among that
+    fee's generated commission records, in proportion to their actual
+    commission amounts.  Cost is a commission record's posted ``付款`` ledger
+    amount, never an HR salary or commission-setting estimate.
+    """
+    await _require_record_module_menu("report", identity, db, action="查看")
+    if "finance.amount" not in await _allowed_field_keys(identity, db):
+        raise HTTPException(status_code=403, detail="当前角色没有查看员工业绩ROI金额的字段权限")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
+
+    selected_department = None
+    if department_id:
+        selected_department = await db.get(Department, department_id)
+        if not selected_department or not selected_department.is_active:
+            raise HTTPException(status_code=422, detail="部门不存在或已停用")
+
+    scope = await _record_scope_conditions(identity, db)
+    visible_fees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance", *scope,
+    ))).all())
+    visible_by_id = {item.id: item for item in visible_fees}
+    def source_fee_id_for(item: BusinessRecord) -> int | None:
+        try:
+            value = int((item.data or {}).get("source_fee_id") or 0)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    visible_commission_rows = [
+        item for item in visible_fees
+        if str((item.data or {}).get("expense_scope") or "").strip() == "内部"
+        and source_fee_id_for(item)
+        and str((item.data or {}).get("payee") or item.owner or "").strip()
+    ]
+    visible_source_fee_ids = {
+        source_fee_id_for(item)
+        for item in visible_commission_rows
+        if source_fee_id_for(item) in visible_by_id
+    }
+    # The source fee is scope-checked above.  Load every generated commission
+    # for that already-visible source only to establish its denominator; rows
+    # outside the caller's finance scope are never returned or used for costs.
+    all_commission_rows = [
+        item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance"))).all()
+        if str((item.data or {}).get("expense_scope") or "").strip() == "内部"
+        and source_fee_id_for(item) in visible_source_fee_ids
+        and str((item.data or {}).get("payee") or item.owner or "").strip()
+    ]
+    visible_commission_rows = [item for item in visible_commission_rows if source_fee_id_for(item) in visible_source_fee_ids]
+
+    employee_usernames = {
+        str((item.data or {}).get("payee") or item.owner or "").strip()
+        for item in visible_commission_rows
+    }
+    users = list((await db.scalars(select(User).where(User.username.in_(employee_usernames)))).all()) if employee_usernames else []
+    users_by_username = {user.username: user for user in users}
+    allowed_usernames = {
+        username for username, user in users_by_username.items()
+        if not selected_department or user.department == selected_department.name
+    }
+
+    rows: dict[str, dict[str, object]] = {}
+    def bucket(username: str) -> dict[str, object]:
+        user = users_by_username[username]
+        return rows.setdefault(username, {
+            "employee": user.display_name or username,
+            "employee_username": username,
+            "department": user.department,
+            "performance": 0.0,
+            "cost": 0.0,
+        })
+
+    commission_by_source: dict[int, list[BusinessRecord]] = {}
+    for commission in all_commission_rows:
+        username = str((commission.data or {}).get("payee") or commission.owner or "").strip()
+        commission_by_source.setdefault(source_fee_id_for(commission), []).append(commission)
+
+    # Income comes only from allocated, settled incoming payments.  A receipt
+    # may contain unrelated allocations, so use its exact fee_record_id link.
+    incoming = list((await db.scalars(select(IncomingPayment).where(
+        IncomingPayment.status.in_({"部分分配", "已分配"}),
+    ))).all())
+    for receipt in incoming:
+        if not _staff_roi_date_matches(receipt.received_date, start_date, end_date):
+            continue
+        for allocation in receipt.allocations or []:
+            try:
+                source_fee_id = int(allocation.get("fee_record_id") or 0)
+                received_amount = _round_fee_amount(float(allocation.get("amount") or 0))
+            except (TypeError, ValueError):
+                continue
+            commissions = commission_by_source.get(source_fee_id, [])
+            if received_amount <= 0 or not commissions:
+                continue
+            total_weight = sum(max(float((item.data or {}).get("amount") or 0), 0) for item in commissions)
+            if total_weight <= 0:
+                continue
+            for commission in commissions:
+                username = str((commission.data or {}).get("payee") or commission.owner).strip()
+                weight = max(float((commission.data or {}).get("amount") or 0), 0)
+                if username in allowed_usernames:
+                    bucket(username)["performance"] = float(bucket(username)["performance"]) + received_amount * weight / total_weight
+
+    commission_ids = [item.id for item in visible_commission_rows if str((item.data or {}).get("payee") or item.owner or "").strip() in allowed_usernames]
+    payments = list((await db.scalars(select(FinanceTransaction).where(
+        FinanceTransaction.finance_record_id.in_(commission_ids),
+        FinanceTransaction.transaction_type == "付款",
+    ))).all()) if commission_ids else []
+    for payment in payments:
+        if not _staff_roi_date_matches(payment.transaction_date, start_date, end_date):
+            continue
+        commission = visible_by_id.get(payment.finance_record_id)
+        if not commission:
+            continue
+        username = str((commission.data or {}).get("payee") or commission.owner or "").strip()
+        if username in allowed_usernames:
+            bucket(username)["cost"] = float(bucket(username)["cost"]) + float(payment.amount or 0)
+
+    items = []
+    for item in rows.values():
+        performance = _round_fee_amount(float(item["performance"]))
+        cost = _round_fee_amount(float(item["cost"]))
+        items.append({
+            **item,
+            "performance": performance,
+            "cost": cost,
+            "roi": round(performance / cost * 100, 2) if cost > 0 else None,
+        })
+    items.sort(key=lambda item: (-float(item["performance"]), str(item["employee"])))
+    return {
+        "items": items,
+        "total": len(items),
+        "filter_options": {
+            "departments": [{"id": item.id, "name": item.name} for item in (await db.scalars(select(Department).where(Department.is_active.is_(True)).order_by(Department.sort_order, Department.id))).all()],
+        },
+        "definition": {
+            "performance": "已分配银行回款按该代理费生成的员工提成金额比例分摊",
+            "cost": "员工提成记录已登记的付款流水，不含提成方案或基本工资估算",
+            "roi": "业绩÷成本×100%；成本为零时不计算",
+        },
+        "source": "settled_cash_flow",
+    }
+
+
+@app.get(f"{settings.api_prefix}/reports/staff-roi")
+async def report_staff_roi(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    department_id: int | None = Query(default=None, gt=0),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _staff_roi_report(identity, db, start_date, end_date, department_id)
+
+
+@app.get(f"{settings.api_prefix}/reports/staff-roi/export")
+async def export_report_staff_roi(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    department_id: int | None = Query(default=None, gt=0),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    report = await _staff_roi_report(identity, db, start_date, end_date, department_id)
+    output = io.StringIO(); writer = csv.writer(output)
+    writer.writerow(["员工", "账号", "部门", "业绩", "成本", "ROI(%)"])
+    for item in report["items"]:
+        writer.writerow([item["employee"], item["employee_username"], item["department"], item["performance"], item["cost"], "" if item["roi"] is None else item["roi"]])
+    return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="staff-roi-{date.today()}.csv"'})
 
 
 async def _report_analytics(view: str, identity: dict, db: AsyncSession, customer: str = "", court_lawyer: str = "", handling_lawyer: str = "", assistant: str = "", investigator: str = "", court: str = "", source_from: date | None = None, source_to: date | None = None, hearing_from: date | None = None, hearing_to: date | None = None, group_mode: str = "") -> dict:

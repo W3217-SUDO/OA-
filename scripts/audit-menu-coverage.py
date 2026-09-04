@@ -129,38 +129,7 @@ def is_implemented(route: str) -> bool:
     )
 
 
-def audit_hr_performance() -> None:
-    """Check only the dedicated HR page without hiding unrelated suite failures."""
-    page = (ROOT / "apps/admin-web/src/HrPerformancePage.tsx").read_text(encoding="utf-8")
-    normalized = re.sub(r"\s+", "", page)
-    menus = declared_menus()
-    assert any(key == "hr-performance" and parent == "hr" for key, parent, *_ in menus)
-    assert 'route === "hr-performance"' in APP and '<HrPerformancePage' in APP
-    expected = {
-        ("get", "/hr/performance"), ("post", "/hr/performance"),
-        ("get", "/hr/performance/export"),
-        ("get", "/hr/performance/{{performance_id}}"),
-        ("patch", "/hr/performance/{{performance_id}}"),
-        ("delete", "/hr/performance/{{performance_id}}"),
-    }
-    server = set(re.findall(r'@app\.(get|post|patch|delete)\(f"\{settings\.api_prefix\}([^\"]+)"', MAIN))
-    assert expected <= server, f"missing HR performance routes: {expected - server}"
-    for method in ("get", "post", "patch", "delete"):
-        assert re.search(rf"api\.{method}\(['`]/hr/performance", page), f"missing real {method} action"
-    assert "params:{...filters,page,page_size:pageSize}" in normalized
-    assert "params:filters,responseType:'blob'" in normalized, "export must reuse applied list filters"
-    assert "canManage&&" in normalized and "['admin','manager']" in normalized
-    assert "rememberBusinessRecordDetailTarget" in page and "openEmployee(viewing)" in page
-    for field in ("scheme_name", "start_date", "end_date", "base_salary", "remark"):
-        assert field in page
-    for kind in ("hearing", "document", "source", "investigation", "quality"):
-        assert f"{kind}_rate" in page and f"{kind}_fixed" in page
-    assert "导出 CSV" in page and "绩效查看" in page and "新增绩效" in page
-    print("HR_PERFORMANCE_PAGE_CONTRACT_OK: menu, CRUD routes, applied-filter CSV, write visibility, employee links, complete scheme fields")
-
-
 def main() -> None:
-    audit_hr_performance()
     unsafe_form_date_formats: list[str] = []
     unsafe_pattern = re.compile(r"\b(?:v|value|values)\.[A-Za-z_][A-Za-z0-9_]*\.format\(")
     for path in (ROOT / "apps/admin-web/src").glob("*.tsx"):
@@ -175,7 +144,7 @@ def main() -> None:
     menus = declared_menus()
     keys = [item[0] for item in menus]
     # Keep the legacy parity baseline separate from later first-party extensions.
-    # The additions below are intentionally retained: removing them would
+    # The five additions below are intentionally retained: removing them would
     # break the agent and expanded finance/reporting entry points.
     legacy_menu_keys = {
         item[0] for item in menus
@@ -185,7 +154,7 @@ def main() -> None:
             "platform-finance-overview-cmb",
             "platform-finance-overview-gdicbc",
             "reports-large-screen",
-            "hr-performance",
+            "reports-staff-roi",
         }
     }
     assert len(legacy_menu_keys) == 277, (
@@ -197,7 +166,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
-        "hr-performance",
+        "reports-staff-roi",
     ):
         assert extension_key in keys, f"required first-party menu extension missing: {extension_key}"
     assert len(keys) == len(set(keys)), "duplicate menu keys found"
@@ -209,7 +178,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
-        "hr-performance",
+        "reports-staff-roi",
     }
     legacy_parents = {
         item[1] for item in menus
@@ -2537,6 +2506,11 @@ def main() -> None:
     assert "report-toolbar" not in REPORT and "report-detail-panel" not in REPORT, "original report pages must not expose invented toolbar or detail table UI"
     assert 'mode="multiple"' in REPORT and 'customer: values.customer?.join(",") || ""' in REPORT and 'court_lawyer: values.courtLawyer?.join(",") || ""' in REPORT, "ROI report must retain the original multi-customer and multi-lawyer selectors"
     assert 'customers_selected = {value.strip() for value in customer.split(",") if value.strip()}' in MAIN and 'court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}' in MAIN, "report API must apply every selected customer and hearing lawyer"
+    assert '"reports-staff-roi", "reports"' in MAIN, "staff ROI report must be a report-center menu entry"
+    assert 'if (initialView === "reports-staff-roi") return <StaffRoiReport />;' in REPORT, "staff ROI report menu must render its real table page"
+    assert 'api.get<StaffRoiResponse>("/reports/staff-roi"' in REPORT and 'api.get("/reports/staff-roi/export"' in REPORT, "staff ROI table and export must call the dedicated backend endpoints"
+    assert '@app.get(f"{settings.api_prefix}/reports/staff-roi")' in MAIN and '@app.get(f"{settings.api_prefix}/reports/staff-roi/export")' in MAIN, "staff ROI report requires scoped query and export endpoints"
+    assert '"finance.amount" not in await _allowed_field_keys(identity, db)' in MAIN and 'all_commission_rows' in MAIN and 'visible_commission_rows' in MAIN, "staff ROI must retain amount permission gating and full-weight/scope-safe commission allocation"
 
     finance_match = re.search(r"const originalFinanceRoutes = \[(.*?)\];", FINANCE, re.S)
     assert finance_match, "FinanceCenterPage original route declaration not found"

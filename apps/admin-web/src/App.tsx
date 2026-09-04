@@ -521,7 +521,20 @@ const menuItems: NavItem[] = [
     label: "仓库管理",
     children: [{ key: "warehouse-list", label: "仓库一览表" }],
   },
-  { key: "reports", icon: <DashboardOutlined />, label: "报表中心" },
+  {
+    key: "reports",
+    icon: <DashboardOutlined />,
+    label: "报表中心",
+    children: [
+      { key: "reports-brand", label: "资金运营情况统计" },
+      { key: "reports-lawyer", label: "资金运营情况统计（按开庭律师）" },
+      { key: "reports-refund", label: "退费进度案件统计" },
+      { key: "reports-execution-1", label: "执行进度案件统计（一）" },
+      { key: "reports-execution-2", label: "执行进度案件统计（二）" },
+      { key: "reports-execution-3", label: "执行进度案件统计（三）" },
+      { key: "reports-staff-roi", label: "员工业绩ROI统计" },
+    ],
+  },
 ];
 
 function configuredMenuItems(rows: NavConfig[]): NavItem[] {
