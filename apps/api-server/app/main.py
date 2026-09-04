@@ -2085,10 +2085,14 @@ class CaseCreateInput(BaseModel):
 
 IPR_CASE_KINDS = {"专利", "商标"}
 IPR_CASE_DRAFT_STATUSES = {"草稿", "已驳回"}
+IPR_CASE_CATEGORIES = {"litigation", "non_litigation"}
 
 
 class IprCaseCreateInput(BaseModel):
     case_kind: str = Field(min_length=2, max_length=8)
+    # Keep the pre-existing patent/trademark kind as a separate dimension.
+    # A patent or trademark matter can independently be a litigation matter.
+    case_category: str = Field(default="non_litigation", pattern="^(litigation|non_litigation)$")
     title: str = Field(min_length=1, max_length=255)
     customer: str = Field(min_length=1, max_length=255)
     application_no: str = Field(default="", max_length=128)
@@ -2099,10 +2103,18 @@ class IprCaseCreateInput(BaseModel):
     deadline: date | None = None
     annual_fee_year: int | None = Field(default=None, ge=1, le=100)
     rate: float | None = Field(default=None, ge=0, le=1)
+    court_case_no: str = Field(default="", max_length=128)
+    court_name: str = Field(default="", max_length=256)
+    judge: str = Field(default="", max_length=128)
+    clerk: str = Field(default="", max_length=128)
+    plaintiff: str = Field(default="", max_length=256)
+    defendant: str = Field(default="", max_length=256)
+    third_parties: str = Field(default="", max_length=512)
     description: str = Field(default="", max_length=2000)
 
 
 class IprCaseUpdateInput(BaseModel):
+    case_category: str | None = Field(default=None, pattern="^(litigation|non_litigation)$")
     title: str | None = Field(default=None, min_length=1, max_length=255)
     application_no: str | None = Field(default=None, max_length=128)
     application_type: str | None = Field(default=None, max_length=128)
@@ -2121,7 +2133,45 @@ class IprCaseUpdateInput(BaseModel):
     submitter: str | None = Field(default=None, max_length=255)
     inventor: str | None = Field(default=None, max_length=255)
     contract_record_id: int | None = Field(default=None, gt=0)
+    court_case_no: str | None = Field(default=None, max_length=128)
+    court_name: str | None = Field(default=None, max_length=256)
+    judge: str | None = Field(default=None, max_length=128)
+    clerk: str | None = Field(default=None, max_length=128)
+    plaintiff: str | None = Field(default=None, max_length=256)
+    defendant: str | None = Field(default=None, max_length=256)
+    third_parties: str | None = Field(default=None, max_length=512)
     description: str | None = Field(default=None, max_length=2000)
+
+
+class IprLitigationCourtInfoInput(BaseModel):
+    court_case_no: str = Field(default="", max_length=128)
+    court_name: str = Field(default="", max_length=256)
+    judge: str = Field(default="", max_length=128)
+    clerk: str = Field(default="", max_length=128)
+    plaintiff: str = Field(default="", max_length=256)
+    defendant: str = Field(default="", max_length=256)
+    third_parties: str = Field(default="", max_length=512)
+
+
+class IprLitigationCourtInput(BaseModel):
+    court_level: str = Field(default="一审", pattern="^(一审|二审|执行|再审)$")
+    court_name: str = Field(min_length=1, max_length=256)
+    case_no: str = Field(default="", max_length=128)
+    judge: str = Field(default="", max_length=128)
+    clerk: str = Field(default="", max_length=128)
+    courtroom: str = Field(default="", max_length=128)
+    filing_date: date | None = None
+    hearing_date: date | None = None
+    remark: str = Field(default="", max_length=1000)
+
+
+class IprLitigationPartyInput(BaseModel):
+    party_type: str = Field(pattern="^(原告|被告|第三人)$")
+    name: str = Field(min_length=1, max_length=256)
+    contact_name: str = Field(default="", max_length=128)
+    contact_phone: str = Field(default="", max_length=64)
+    address: str = Field(default="", max_length=512)
+    remark: str = Field(default="", max_length=1000)
 
 
 class IprCaseFeeActionInput(BaseModel):
@@ -32236,6 +32286,7 @@ async def _ipr_case_list_conditions(
     case_type: str = "",
     case_phase: str = "",
     reminder_type: str = "",
+    case_category: str = "",
     date_from: date | None = None,
     date_to: date | None = None,
     search_by_month_day: bool = False,
@@ -32245,6 +32296,16 @@ async def _ipr_case_list_conditions(
     """Build the shared visible-scope conditions for the IPR list and exports."""
     conditions = [BusinessRecord.module == "ipr_case", *(await _record_scope_conditions(identity, db))]
     conditions.extend(_ipr_case_role_view_conditions(role_view, identity))
+    if case_category:
+        if case_category not in IPR_CASE_CATEGORIES:
+            raise HTTPException(status_code=422, detail="知识产权案件诉讼类型无效")
+        if case_category == "non_litigation":
+            conditions.append(or_(
+                BusinessRecord.data["case_category"].as_string() == "non_litigation",
+                BusinessRecord.data["case_category"].as_string().is_(None),
+            ))
+        else:
+            conditions.append(BusinessRecord.data["case_category"].as_string() == "litigation")
     if case_kind:
         if case_kind not in IPR_CASE_KINDS:
             raise HTTPException(status_code=422, detail="知识产权案件类型无效")
@@ -32368,7 +32429,7 @@ def _ipr_case_export_values(row: BusinessRecord) -> list[object]:
 @app.get(f"{settings.api_prefix}/ipr/cases")
 async def list_ipr_cases(
     case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,
-    case_type: str = "", case_phase: str = "", reminder_type: str = "",
+    case_type: str = "", case_phase: str = "", reminder_type: str = "", case_category: str = "",
     reminder_type_id: int | None = Query(None, ge=1),
     date_from: date | None = None, date_to: date | None = None,
     search_by_month_day: bool = False, month_day: str = "", role_view: str = "",
@@ -32379,7 +32440,7 @@ async def list_ipr_cases(
     conditions = await _ipr_case_list_conditions(
         identity, db, case_kind=case_kind, record_status=record_status, keyword=keyword,
         annual_fee_monitoring=annual_fee_monitoring, case_type=case_type, case_phase=case_phase,
-        reminder_type=reminder_type, date_from=date_from, date_to=date_to,
+        reminder_type=reminder_type, case_category=case_category, date_from=date_from, date_to=date_to,
         search_by_month_day=search_by_month_day, month_day=month_day, role_view=role_view,
     )
     if reminder_type_id is not None:
@@ -32399,7 +32460,7 @@ async def list_ipr_cases(
 @app.get(f"{settings.api_prefix}/ipr/cases/export/excel")
 async def export_ipr_cases_excel(
     case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,
-    case_type: str = "", case_phase: str = "", reminder_type: str = "",
+    case_type: str = "", case_phase: str = "", reminder_type: str = "", case_category: str = "",
     reminder_type_id: int | None = Query(None, ge=1),
     date_from: date | None = None, date_to: date | None = None,
     search_by_month_day: bool = False, month_day: str = "", role_view: str = "",
@@ -32415,7 +32476,7 @@ async def export_ipr_cases_excel(
     conditions = await _ipr_case_list_conditions(
         identity, db, case_kind=case_kind, record_status=record_status, keyword=keyword,
         annual_fee_monitoring=annual_fee_monitoring, case_type=case_type, case_phase=case_phase,
-        reminder_type=reminder_type, date_from=date_from, date_to=date_to,
+        reminder_type=reminder_type, case_category=case_category, date_from=date_from, date_to=date_to,
         search_by_month_day=search_by_month_day, month_day=month_day, role_view=role_view,
     )
     if reminder_type_id is not None:
@@ -32443,7 +32504,7 @@ async def export_ipr_cases_excel(
 @app.get(f"{settings.api_prefix}/ipr/cases/export/word")
 async def export_ipr_cases_word(
     case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,
-    case_type: str = "", case_phase: str = "", reminder_type: str = "",
+    case_type: str = "", case_phase: str = "", reminder_type: str = "", case_category: str = "",
     reminder_type_id: int | None = Query(None, ge=1),
     date_from: date | None = None, date_to: date | None = None,
     search_by_month_day: bool = False, month_day: str = "", role_view: str = "",
@@ -32454,7 +32515,7 @@ async def export_ipr_cases_word(
     conditions = await _ipr_case_list_conditions(
         identity, db, case_kind=case_kind, record_status=record_status, keyword=keyword,
         annual_fee_monitoring=annual_fee_monitoring, case_type=case_type, case_phase=case_phase,
-        reminder_type=reminder_type, date_from=date_from, date_to=date_to,
+        reminder_type=reminder_type, case_category=case_category, date_from=date_from, date_to=date_to,
         search_by_month_day=search_by_month_day, month_day=month_day, role_view=role_view,
     )
     if reminder_type_id is not None:
@@ -32487,6 +32548,130 @@ async def get_ipr_case(case_id: int, identity: dict = Depends(current_identity),
     return _record_dict(await _ensure_record_module(case_id, "ipr_case", identity, db), await _allowed_field_keys(identity, db))
 
 
+async def _ensure_ipr_litigation_case_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """Guard lawsuit-specific IPR state without weakening the existing IPR scope rules."""
+    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    if (record.data or {}).get("case_category", "non_litigation") != "litigation":
+        raise HTTPException(status_code=422, detail="当前知识产权案件不是诉讼案件")
+    return record
+
+
+def _ipr_litigation_rows(data: dict, key: str) -> list[dict]:
+    rows = data.get(key, [])
+    return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+async def _save_ipr_litigation_data(record: BusinessRecord, data: dict, identity: dict, db: AsyncSession, action: str, comment: str = "") -> None:
+    record.data = data
+    db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=comment))
+    await db.commit()
+    await db.refresh(record)
+
+
+@app.get(f"{settings.api_prefix}/ipr/lawsuit/cases")
+async def list_ipr_lawsuit_cases(
+    case_kind: str = "", record_status: str = "", keyword: str = "", page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """A scoped litigation-only projection of the existing IPR case list."""
+    return await list_ipr_cases(case_kind=case_kind, record_status=record_status, keyword=keyword, case_category="litigation", reminder_type_id=None, page=page, page_size=page_size, identity=identity, db=db)
+
+
+@app.get(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/court-info")
+async def get_ipr_litigation_court_info(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    data = record.data or {}
+    if data.get("case_category", "non_litigation") != "litigation":
+        raise HTTPException(status_code=422, detail="当前知识产权案件不是诉讼案件")
+    return {key: data.get(key, "") for key in ("court_case_no", "court_name", "judge", "clerk", "plaintiff", "defendant", "third_parties")}
+
+
+@app.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/court-info")
+async def update_ipr_litigation_court_info(case_id: int, body: IprLitigationCourtInfoInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {})
+    data.update({key: str(value).strip() for key, value in body.model_dump().items()})
+    await _save_ipr_litigation_data(record, data, identity, db, "修改知识产权诉讼法院及当事人信息", data.get("court_case_no", ""))
+    return await get_ipr_litigation_court_info(case_id, identity, db)
+
+
+@app.get(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts")
+async def list_ipr_litigation_courts(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    if (record.data or {}).get("case_category", "non_litigation") != "litigation":
+        raise HTTPException(status_code=422, detail="当前知识产权案件不是诉讼案件")
+    rows = _ipr_litigation_rows(record.data or {}, "litigation_courts")
+    return {"items": rows, "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts", status_code=status.HTTP_201_CREATED)
+async def create_ipr_litigation_court(case_id: int, body: IprLitigationCourtInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_courts")
+    item = {**body.model_dump(), "id": uuid4().hex, "filing_date": str(body.filing_date or ""), "hearing_date": str(body.hearing_date or ""), "created_by": identity["username"]}
+    rows.append(item); data["litigation_courts"] = rows
+    await _save_ipr_litigation_data(record, data, identity, db, "新增知识产权诉讼法院信息", item["court_name"])
+    return item
+
+
+@app.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts/{{court_id}}")
+async def update_ipr_litigation_court(case_id: int, court_id: str, body: IprLitigationCourtInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_courts")
+    item = next((row for row in rows if row.get("id") == court_id), None)
+    if not item: raise HTTPException(status_code=404, detail="诉讼法院信息不存在")
+    item.update({**body.model_dump(), "id": court_id, "filing_date": str(body.filing_date or ""), "hearing_date": str(body.hearing_date or ""), "updated_by": identity["username"]})
+    data["litigation_courts"] = rows
+    await _save_ipr_litigation_data(record, data, identity, db, "修改知识产权诉讼法院信息", item["court_name"])
+    return item
+
+
+@app.delete(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts/{{court_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_litigation_court(case_id: int, court_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_courts")
+    remaining = [row for row in rows if row.get("id") != court_id]
+    if len(remaining) == len(rows): raise HTTPException(status_code=404, detail="诉讼法院信息不存在")
+    data["litigation_courts"] = remaining
+    await _save_ipr_litigation_data(record, data, identity, db, "删除知识产权诉讼法院信息")
+
+
+@app.get(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties")
+async def list_ipr_litigation_parties(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    if (record.data or {}).get("case_category", "non_litigation") != "litigation": raise HTTPException(status_code=422, detail="当前知识产权案件不是诉讼案件")
+    rows = _ipr_litigation_rows(record.data or {}, "litigation_parties")
+    return {"items": rows, "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties", status_code=status.HTTP_201_CREATED)
+async def create_ipr_litigation_party(case_id: int, body: IprLitigationPartyInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_parties")
+    item = {**body.model_dump(), "id": uuid4().hex, "created_by": identity["username"]}; rows.append(item); data["litigation_parties"] = rows
+    await _save_ipr_litigation_data(record, data, identity, db, "新增知识产权诉讼当事人", f"{item['party_type']}：{item['name']}")
+    return item
+
+
+@app.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties/{{party_id}}")
+async def update_ipr_litigation_party(case_id: int, party_id: str, body: IprLitigationPartyInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_parties"); item = next((row for row in rows if row.get("id") == party_id), None)
+    if not item: raise HTTPException(status_code=404, detail="诉讼当事人不存在")
+    item.update({**body.model_dump(), "id": party_id, "updated_by": identity["username"]}); data["litigation_parties"] = rows
+    await _save_ipr_litigation_data(record, data, identity, db, "修改知识产权诉讼当事人", f"{item['party_type']}：{item['name']}")
+    return item
+
+
+@app.delete(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties/{{party_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ipr_litigation_party(case_id: int, party_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    record = await _ensure_ipr_litigation_case_write(case_id, identity, db)
+    data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_parties"); remaining = [row for row in rows if row.get("id") != party_id]
+    if len(remaining) == len(rows): raise HTTPException(status_code=404, detail="诉讼当事人不存在")
+    data["litigation_parties"] = remaining
+    await _save_ipr_litigation_data(record, data, identity, db, "删除知识产权诉讼当事人")
+
+
 @app.post(f"{settings.api_prefix}/ipr/cases", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     await _require_record_module_menu("ipr_case", identity, db, action="新建")
@@ -32496,15 +32681,23 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
     if not customer: raise HTTPException(status_code=422, detail="客户不存在或当前账号无权选择")
     serial_no = await _next_ipr_case_serial(case_kind, db)
     data = {
-        "case_kind": case_kind, "application_no": body.application_no.strip(), "application_type": body.application_type.strip(),
+        "case_kind": case_kind, "case_category": body.case_category,
+        "application_no": body.application_no.strip(), "application_type": body.application_type.strip(),
         "applicant": body.applicant.strip(), "case_manager": (body.case_manager or identity["username"]).strip(),
         "application_date": str(body.application_date) if body.application_date else "", "deadline": str(body.deadline) if body.deadline else "",
         "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": False, "rate": body.rate, "created_from": "ipr_case_center",
     }
+    if body.case_category == "litigation":
+        data.update({
+            "court_case_no": body.court_case_no.strip(), "court_name": body.court_name.strip(),
+            "judge": body.judge.strip(), "clerk": body.clerk.strip(),
+            "plaintiff": body.plaintiff.strip(), "defendant": body.defendant.strip(),
+            "third_parties": body.third_parties.strip(), "litigation_courts": [], "litigation_parties": [],
+        })
     record = BusinessRecord(module="ipr_case", serial_no=serial_no, title=body.title.strip(), customer=customer.title, status="草稿", owner=identity["username"], department=customer.department, description=body.description.strip(), data=data)
     db.add(record); await db.flush()
     db.add(IprCaseCustomer(case_record_id=record.id, customer_record_id=customer.id, is_primary=True, created_by=identity["username"]))
-    db.add(WorkflowEvent(record_id=record.id, action="新建知识产权案件草稿", to_status=record.status, operator=identity["username"], comment=f"{case_kind}案件"))
+    db.add(WorkflowEvent(record_id=record.id, action="新建知识产权案件草稿", to_status=record.status, operator=identity["username"], comment=f"{case_kind}{'诉讼' if body.case_category == 'litigation' else '非诉讼'}案件"))
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
 
@@ -32763,6 +32956,21 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
     before = record.status
     data = dict(record.data or {})
     values = body.model_dump(exclude_unset=True)
+    litigation_keys = {"court_case_no", "court_name", "judge", "clerk", "plaintiff", "defendant", "third_parties"}
+    current_category = data.get("case_category", "non_litigation")
+    next_category = values.pop("case_category", current_category)
+    if next_category not in IPR_CASE_CATEGORIES:
+        raise HTTPException(status_code=422, detail="知识产权案件诉讼类型无效")
+    if litigation_keys.intersection(values) and next_category != "litigation":
+        raise HTTPException(status_code=422, detail="诉讼专有字段只能用于诉讼知识产权案件")
+    if current_category == "litigation" and next_category == "non_litigation":
+        has_litigation_data = bool(_ipr_litigation_rows(data, "litigation_courts") or _ipr_litigation_rows(data, "litigation_parties") or any(str(data.get(key) or "").strip() for key in litigation_keys))
+        has_litigation_fee = await db.scalar(select(BusinessRecord.id).where(
+            BusinessRecord.module == "finance", BusinessRecord.data["case_id"].as_string() == str(record.id),
+        ))
+        if has_litigation_data or has_litigation_fee:
+            raise HTTPException(status_code=409, detail="诉讼案件已有法院、当事人或费用记录，不能改为非诉讼案件")
+    data["case_category"] = next_category
     for key in {"application_no", "application_type", "applicant", "case_manager", "case_phase", "case_source", "agent", "writer", "submitter", "inventor"}:
         if key in values:
             data[key] = str(values.pop(key) or "").strip()
@@ -32772,6 +32980,9 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
     for key in {"annual_fee_year", "rate"}:
         if key in values:
             data[key] = values.pop(key)
+    for key in litigation_keys:
+        if key in values:
+            data[key] = str(values.pop(key) or "").strip()
     if "contract_record_id" in values:
         contract_id = values.pop("contract_record_id")
         if contract_id is not None:

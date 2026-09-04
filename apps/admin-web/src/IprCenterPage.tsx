@@ -55,6 +55,9 @@ type IprRecord = {
   data: Record<string, any>;
   updated_at: string;
 };
+type IprLawsuitCourt = { id: string; court_level: string; court_name: string; case_no?: string; judge?: string; clerk?: string; courtroom?: string; filing_date?: string; hearing_date?: string; remark?: string };
+type IprLawsuitParty = { id: string; party_type: string; name: string; contact_name?: string; contact_phone?: string; address?: string; remark?: string };
+type IprLawsuitFee = { id: number; fee_type?: string; title?: string; amount?: number; status?: string; fee_date?: string; remark?: string };
 type LegacyIprCaseListItem = {
   legacy_case_id: number;
   case_no: string;
@@ -165,6 +168,26 @@ type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; pag
 const IPR_DETAIL_DEFAULT_PAGE = 1;
 const IPR_DETAIL_DEFAULT_PAGE_SIZE = 15;
 const isLegacyIprRecord = (record: IprRecord) => Number(record.data?.legacy_ipr_case_id || record.data?.legacy_case_id || 0) > 0;
+const isIprLawsuit = (record: IprRecord | null) => record?.data?.case_category === "litigation";
+const IPR_LAWSUIT_FIELDS = ["court_case_no", "court_name", "judge", "clerk", "plaintiff", "defendant", "third_parties"] as const;
+type IprFinanceFeeType = "官方费用" | "代理费" | "其他费用" | "内部费用" | "结算费用" | "预损费用" | "归档费用";
+const IPR_LAWSUIT_FEE_OPTIONS = [
+  { value: "诉讼费", label: "诉讼费", feeType: "官方费用" },
+  { value: "保全费", label: "保全费", feeType: "官方费用" },
+  { value: "公告费", label: "公告费", feeType: "官方费用" },
+  { value: "鉴定费", label: "鉴定费", feeType: "官方费用" },
+  { value: "执行费", label: "执行费", feeType: "官方费用" },
+  { value: "其他", label: "其他", feeType: "其他费用" },
+] as const satisfies ReadonlyArray<{ value: string; label: string; feeType: IprFinanceFeeType }>;
+const lawsuitFeeFromRecord = (record: IprRecord): IprLawsuitFee => ({
+  id: record.id,
+  title: record.title,
+  fee_type: record.data?.fee_type,
+  amount: record.data?.amount,
+  fee_date: record.data?.fee_date,
+  status: record.status,
+  remark: record.description,
+});
 const personDisplayName = (value?: unknown) => String(value || "").trim() || "姓名待维护";
 const statusColor: Record<string, string> = {
   草稿: "default",
@@ -215,6 +238,7 @@ export default function IprCenterPage({
   const [pageSize, setPageSize] = useState(15);
   const [pages, setPages] = useState(0);
   const [keyword, setKeyword] = useState(""),
+    [caseCategoryFilter, setCaseCategoryFilter] = useState<"" | "litigation" | "non_litigation">(""),
     [annualFeeMonitoringFilter, setAnnualFeeMonitoringFilter] = useState<"" | "true" | "false">(""),
     [reminderTypeId, setReminderTypeId] = useState<number | null>(null),
     [reminderTypeName, setReminderTypeName] = useState(""),
@@ -339,6 +363,19 @@ export default function IprCenterPage({
   const [iprRebootForm] = Form.useForm();
   const [iprRebootPreview, setIprRebootPreview] = useState<{ source_case_id: number; source_case_no: string; source_title: string; source_status: string; next_serial_no: string } | null>(null);
   const [iprDetailTab, setIprDetailTab] = useState<string>("files");
+  const [lawsuitCourts, setLawsuitCourts] = useState<IprLawsuitCourt[]>([]);
+  const [lawsuitParties, setLawsuitParties] = useState<IprLawsuitParty[]>([]);
+  const [lawsuitFees, setLawsuitFees] = useState<IprLawsuitFee[]>([]);
+  const [courtInfoOpen, setCourtInfoOpen] = useState(false);
+  const [lawsuitCourtOpen, setLawsuitCourtOpen] = useState(false);
+  const [lawsuitPartyOpen, setLawsuitPartyOpen] = useState(false);
+  const [lawsuitFeeOpen, setLawsuitFeeOpen] = useState(false);
+  const [editingLawsuitCourt, setEditingLawsuitCourt] = useState<IprLawsuitCourt | null>(null);
+  const [editingLawsuitParty, setEditingLawsuitParty] = useState<IprLawsuitParty | null>(null);
+  const [courtInfoForm] = Form.useForm();
+  const [lawsuitCourtForm] = Form.useForm();
+  const [lawsuitPartyForm] = Form.useForm();
+  const [lawsuitFeeForm] = Form.useForm();
   const batchCaseIds = Form.useWatch("case_ids", iprBatchForm) as number[] | undefined;
   const batchSelectedKinds = useMemo(() => {
     const ids = new Set((batchCaseIds || []).map(Number));
@@ -394,6 +431,7 @@ export default function IprCenterPage({
       const { data } = await api.get("/ipr/cases", {
         params: {
           case_kind: kind,
+          case_category: caseCategoryFilter || undefined,
           record_status: reviewView ? "待立案审核" : "",
           role_view: roleView?.roleView,
           keyword: nextKeyword,
@@ -457,10 +495,11 @@ export default function IprCenterPage({
         }))
         .filter((item) => item.username && item.label)))
       .catch(() => setPeopleOptions([]));
-  }, [initialView, annualFeeMonitoringFilter]);
+  }, [initialView, annualFeeMonitoringFilter, caseCategoryFilter]);
   const resetMainListSearch = () => {
     setKeyword("");
     setAnnualFeeMonitoringFilter("");
+    setCaseCategoryFilter("");
     setPage(1);
     setReminderTypeId(null);
     setReminderTypeName("");
@@ -594,7 +633,7 @@ export default function IprCenterPage({
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ case_kind: kind || "专利", rate: 0 });
+    form.setFieldsValue({ case_kind: kind || "专利", case_category: "non_litigation", rate: 0 });
     setCreateOpen(true);
   };
   const openEdit = (record: IprRecord) => {
@@ -602,6 +641,7 @@ export default function IprCenterPage({
     form.resetFields();
     form.setFieldsValue({
       case_kind: record.data.case_kind,
+      case_category: record.data.case_category || "non_litigation",
       customer: record.customer,
       title: record.title,
       application_no: record.data.application_no,
@@ -613,6 +653,13 @@ export default function IprCenterPage({
         : undefined,
       deadline: record.data.deadline ? dayjs(record.data.deadline) : undefined,
       annual_fee_year: record.data.annual_fee_year,
+      court_case_no: record.data.court_case_no,
+      court_name: record.data.court_name,
+      judge: record.data.judge,
+      clerk: record.data.clerk,
+      plaintiff: record.data.plaintiff,
+      defendant: record.data.defendant,
+      third_parties: record.data.third_parties,
       rate: record.data.rate ?? 0,
       description: record.description,
     });
@@ -623,6 +670,7 @@ export default function IprCenterPage({
     form.resetFields();
     form.setFieldsValue({
       case_kind: record.data.case_kind,
+      case_category: record.data.case_category || "non_litigation",
       customer: record.customer,
       title: `${record.title}（复制）`,
       application_no: record.data.application_no,
@@ -634,6 +682,13 @@ export default function IprCenterPage({
         : undefined,
       deadline: record.data.deadline ? dayjs(record.data.deadline) : undefined,
       annual_fee_year: record.data.annual_fee_year,
+      court_case_no: record.data.court_case_no,
+      court_name: record.data.court_name,
+      judge: record.data.judge,
+      clerk: record.data.clerk,
+      plaintiff: record.data.plaintiff,
+      defendant: record.data.defendant,
+      third_parties: record.data.third_parties,
       rate: record.data.rate ?? 0,
       description: record.description,
     });
@@ -677,6 +732,9 @@ export default function IprCenterPage({
         application_date: values.application_date?.format("YYYY-MM-DD"),
         deadline: values.deadline?.format("YYYY-MM-DD"),
       };
+      if (payload.case_category !== "litigation") {
+        IPR_LAWSUIT_FIELDS.forEach((field) => delete payload[field]);
+      }
       if (editing) {
         await api.patch(`/ipr/cases/${editing.id}`, payload);
         message.success("Draft updated");
@@ -694,6 +752,80 @@ export default function IprCenterPage({
             (editing ? "Update failed" : "Create failed"),
         );
     }
+  };
+  const loadLawsuitManagement = async (caseId: number) => {
+    const results = await Promise.allSettled([
+        api.get<{ items: IprLawsuitCourt[] }>(`/ipr/lawsuit/cases/${caseId}/courts`),
+        api.get<{ items: IprLawsuitParty[] }>(`/ipr/lawsuit/cases/${caseId}/parties`),
+        api.get<IprDetailPagePayload<IprRecord>>(`/ipr/cases/${caseId}/fees`),
+    ]);
+    const [courtsResult, partiesResult, feesResult] = results;
+    if (courtsResult.status === "fulfilled") setLawsuitCourts(courtsResult.value.data.items || []);
+    else message.error((courtsResult.reason as any)?.response?.data?.detail || "诉讼法院信息加载失败");
+    if (partiesResult.status === "fulfilled") setLawsuitParties(partiesResult.value.data.items || []);
+    else message.error((partiesResult.reason as any)?.response?.data?.detail || "诉讼当事人加载失败");
+    if (feesResult.status === "fulfilled") setLawsuitFees((feesResult.value.data.items || []).map(lawsuitFeeFromRecord));
+    else message.error((feesResult.reason as any)?.response?.data?.detail || "诉讼费用加载失败");
+  };
+  const saveCourtInfo = async () => {
+    if (!detail) return;
+    try {
+      const values = await courtInfoForm.validateFields();
+      await api.put(`/ipr/lawsuit/cases/${detail.id}/court-info`, values);
+      message.success("诉讼基本信息已保存");
+      setCourtInfoOpen(false);
+      const { data } = await api.get<IprRecord>(`/ipr/cases/${detail.id}`);
+      setDetail(data);
+    } catch (error: any) { if (!error?.errorFields) message.error(error?.response?.data?.detail || "诉讼基本信息保存失败"); }
+  };
+  const saveLawsuitCourt = async () => {
+    if (!detail) return;
+    try {
+      const values = await lawsuitCourtForm.validateFields();
+      const payload = { ...values, filing_date: values.filing_date?.format("YYYY-MM-DD"), hearing_date: values.hearing_date?.format("YYYY-MM-DD") };
+      if (editingLawsuitCourt) await api.put(`/ipr/lawsuit/cases/${detail.id}/courts/${editingLawsuitCourt.id}`, payload);
+      else await api.post(`/ipr/lawsuit/cases/${detail.id}/courts`, payload);
+      message.success(editingLawsuitCourt ? "法院信息已更新" : "法院信息已添加");
+      setLawsuitCourtOpen(false); setEditingLawsuitCourt(null); await loadLawsuitManagement(detail.id);
+    } catch (error: any) { if (!error?.errorFields) message.error(error?.response?.data?.detail || "法院信息保存失败"); }
+  };
+  const saveLawsuitParty = async () => {
+    if (!detail) return;
+    try {
+      const values = await lawsuitPartyForm.validateFields();
+      if (editingLawsuitParty) await api.put(`/ipr/lawsuit/cases/${detail.id}/parties/${editingLawsuitParty.id}`, values);
+      else await api.post(`/ipr/lawsuit/cases/${detail.id}/parties`, values);
+      message.success(editingLawsuitParty ? "当事人已更新" : "当事人已添加");
+      setLawsuitPartyOpen(false); setEditingLawsuitParty(null); await loadLawsuitManagement(detail.id);
+    } catch (error: any) { if (!error?.errorFields) message.error(error?.response?.data?.detail || "当事人保存失败"); }
+  };
+  const createLawsuitFee = async () => {
+    if (!detail) return;
+    try {
+      const values = await lawsuitFeeForm.validateFields();
+      const feeOption = IPR_LAWSUIT_FEE_OPTIONS.find((item) => item.value === values.lawsuit_fee_kind);
+      if (!feeOption) throw new Error("诉讼费用类型无效");
+      await api.post(`/ipr/cases/${detail.id}/fees`, {
+        title: feeOption.label,
+        fee_type: feeOption.feeType,
+        amount: values.amount,
+        fee_date: values.fee_date?.format("YYYY-MM-DD"),
+        description: values.remark || "",
+      });
+      message.success("诉讼费用已登记"); setLawsuitFeeOpen(false); await loadLawsuitManagement(detail.id);
+    } catch (error: any) { if (!error?.errorFields) message.error(error?.response?.data?.detail || "诉讼费用登记失败"); }
+  };
+  const deleteLawsuitCourt = (row: IprLawsuitCourt) => {
+    if (!detail) return;
+    Modal.confirm({ title: "删除诉讼法院信息", content: `确认删除${row.court_level}法院“${row.court_name}”吗？`, okButtonProps: { danger: true }, onOk: async () => {
+      await api.delete(`/ipr/lawsuit/cases/${detail.id}/courts/${row.id}`); message.success("法院信息已删除"); await loadLawsuitManagement(detail.id);
+    }});
+  };
+  const deleteLawsuitParty = (row: IprLawsuitParty) => {
+    if (!detail) return;
+    Modal.confirm({ title: "删除诉讼当事人", content: `确认删除${row.party_type}“${row.name}”吗？`, okButtonProps: { danger: true }, onOk: async () => {
+      await api.delete(`/ipr/lawsuit/cases/${detail.id}/parties/${row.id}`); message.success("当事人已删除"); await loadLawsuitManagement(detail.id);
+    }});
   };
   const loadAssistedFees = async (
     caseId: number,
@@ -1073,6 +1205,8 @@ export default function IprCenterPage({
   };
   const openDetail = async (record: IprRecord) => {
     setDetail(record);
+    setIprDetailTab("files");
+    setLawsuitCourts([]); setLawsuitParties([]); setLawsuitFees([]);
     setAttachments([]);
     setIprBusinessLogs([]);
     setIprOperationLogs([]);
@@ -1097,6 +1231,7 @@ export default function IprCenterPage({
         loadIprCaseEvents(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadIprCaseTasks(record.id, IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE),
         loadReminderSuppressions(record.id),
+        ...(isIprLawsuit(record) ? [loadLawsuitManagement(record.id)] : []),
       ]);
     } catch (error) {
       message.error(getIprApiErrorMessage(error, "案件详情加载失败"));
@@ -1752,6 +1887,12 @@ export default function IprCenterPage({
                 style={{ width: 220 }}
               />
               <Button onClick={() => void load(1, pageSize)}>查询</Button>
+              <Select
+                value={caseCategoryFilter}
+                onChange={setCaseCategoryFilter}
+                style={{ width: 120 }}
+                options={[{ value: "", label: "全部案件" }, { value: "litigation", label: "诉讼案件" }, { value: "non_litigation", label: "非诉案件" }]}
+              />
               <Button onClick={resetMainListSearch}>重置</Button>
               <Button onClick={openReminderTypeWorkbench}>案件提醒类型</Button>
               <Button onClick={openLegacyHistory}>Historical read-only cases</Button>
@@ -2042,6 +2183,9 @@ export default function IprCenterPage({
                 }))}
               />
             </Form.Item>
+            <Form.Item name="case_category" label="案件属性" rules={[{ required: true }]}>
+              <Select options={[{ value: "non_litigation", label: "非诉案件" }, { value: "litigation", label: "诉讼案件" }]} />
+            </Form.Item>
             <Form.Item
               name="customer"
               label="客户"
@@ -2075,6 +2219,17 @@ export default function IprCenterPage({
             </Form.Item>
             <Form.Item name="case_manager" label="案件负责人">
               <Input />
+            </Form.Item>
+            <Form.Item noStyle shouldUpdate={(previous, current) => previous.case_category !== current.case_category}>
+              {({ getFieldValue }) => getFieldValue("case_category") === "litigation" ? <>
+                <Form.Item name="court_case_no" label="法院案号"><Input /></Form.Item>
+                <Form.Item name="court_name" label="受理法院"><Input /></Form.Item>
+                <Form.Item name="judge" label="承办法官"><Input /></Form.Item>
+                <Form.Item name="clerk" label="书记员"><Input /></Form.Item>
+                <Form.Item name="plaintiff" label="原告"><Input /></Form.Item>
+                <Form.Item name="defendant" label="被告"><Input /></Form.Item>
+                <Form.Item name="third_parties" label="第三人"><Input /></Form.Item>
+              </> : null}
             </Form.Item>
             <Form.Item name="application_date" label="申请日期">
               <DatePicker style={{ width: "100%" }} />
@@ -2162,6 +2317,15 @@ export default function IprCenterPage({
                   label: "申请号/注册号",
                   children: detail.data.application_no || "—",
                 },
+                ...(isIprLawsuit(detail) ? [
+                  { key: "case-category", label: "案件属性", children: <Tag color="red">诉讼案件</Tag> },
+                  { key: "court-case-no", label: "法院案号", children: detail.data.court_case_no || "—" },
+                  { key: "court", label: "受理法院", children: detail.data.court_name || "—" },
+                  { key: "judge", label: "承办法官 / 书记员", children: [detail.data.judge, detail.data.clerk].filter(Boolean).join(" / ") || "—" },
+                  { key: "plaintiff", label: "原告", children: detail.data.plaintiff || "—" },
+                  { key: "defendant", label: "被告", children: detail.data.defendant || "—" },
+                  { key: "third-parties", label: "第三人", children: detail.data.third_parties || "—" },
+                ] : [{ key: "case-category", label: "案件属性", children: <Tag>非诉案件</Tag> }]),
                 {
                   key: "type",
                   label: "申请类型",
@@ -2368,6 +2532,38 @@ export default function IprCenterPage({
               activeKey={iprDetailTab}
               onChange={setIprDetailTab}
               items={[
+                ...(isIprLawsuit(detail) ? [{
+                  key: "lawsuit",
+                  label: "诉讼管理",
+                  children: <>
+                    <Alert type="info" showIcon message="诉讼案件文件在“文档信息”页签中统一管理，可上传、下载及标记转文。" style={{ marginBottom: 16 }} />
+                    <Card size="small" title="诉讼基本信息" extra={<Button size="small" onClick={() => { courtInfoForm.setFieldsValue(detail.data); setCourtInfoOpen(true); }}>维护诉讼信息</Button>}>
+                      <Descriptions size="small" column={2} items={[
+                        { key: "caseNo", label: "法院案号", children: detail.data.court_case_no || "—" }, { key: "court", label: "受理法院", children: detail.data.court_name || "—" },
+                        { key: "judge", label: "承办法官", children: detail.data.judge || "—" }, { key: "clerk", label: "书记员", children: detail.data.clerk || "—" },
+                        { key: "plaintiff", label: "原告", children: detail.data.plaintiff || "—" }, { key: "defendant", label: "被告", children: detail.data.defendant || "—" },
+                        { key: "third", label: "第三人", children: detail.data.third_parties || "—", span: 2 },
+                      ]} />
+                    </Card>
+                    <Card size="small" title="诉讼法院信息" style={{ marginTop: 16 }} extra={<Space><Button size="small" onClick={() => void loadLawsuitManagement(detail.id)}>刷新</Button>{detail.status === "在办" ? <Button size="small" type="primary" onClick={() => { setEditingLawsuitCourt(null); lawsuitCourtForm.resetFields(); lawsuitCourtForm.setFieldsValue({ court_level: "一审" }); setLawsuitCourtOpen(true); }}>新增法院</Button> : null}</Space>}>
+                      <Table<IprLawsuitCourt> rowKey="id" size="small" pagination={false} dataSource={lawsuitCourts} scroll={{ x: 780 }} columns={[
+                        { title: "审级", dataIndex: "court_level", width: 80 }, { title: "法院", dataIndex: "court_name", width: 180 }, { title: "案号", dataIndex: "case_no", width: 160, render: value => value || "—" }, { title: "法官 / 书记员", width: 150, render: (_, row) => [row.judge, row.clerk].filter(Boolean).join(" / ") || "—" }, { title: "开庭日期", dataIndex: "hearing_date", width: 110, render: value => value || "—" },
+                        { title: "操作", fixed: "right", width: 140, render: (_, row) => detail.status === "在办" ? <Space size={0}><Button type="link" onClick={() => { setEditingLawsuitCourt(row); lawsuitCourtForm.setFieldsValue({ ...row, filing_date: row.filing_date ? dayjs(row.filing_date) : undefined, hearing_date: row.hearing_date ? dayjs(row.hearing_date) : undefined }); setLawsuitCourtOpen(true); }}>编辑</Button><Button type="link" danger onClick={() => deleteLawsuitCourt(row)}>删除</Button></Space> : "—" },
+                      ]} />
+                    </Card>
+                    <Card size="small" title="诉讼当事人" style={{ marginTop: 16 }} extra={detail.status === "在办" ? <Button size="small" type="primary" onClick={() => { setEditingLawsuitParty(null); lawsuitPartyForm.resetFields(); lawsuitPartyForm.setFieldsValue({ party_type: "原告" }); setLawsuitPartyOpen(true); }}>新增当事人</Button> : null}>
+                      <Table<IprLawsuitParty> rowKey="id" size="small" pagination={false} dataSource={lawsuitParties} columns={[
+                        { title: "身份", dataIndex: "party_type", width: 90 }, { title: "名称", dataIndex: "name", width: 190 }, { title: "联系人", dataIndex: "contact_name", width: 110, render: value => value || "—" }, { title: "联系电话", dataIndex: "contact_phone", width: 135, render: value => value || "—" }, { title: "地址", dataIndex: "address", ellipsis: true, render: value => value || "—" },
+                        { title: "操作", width: 140, render: (_, row) => detail.status === "在办" ? <Space size={0}><Button type="link" onClick={() => { setEditingLawsuitParty(row); lawsuitPartyForm.setFieldsValue(row); setLawsuitPartyOpen(true); }}>编辑</Button><Button type="link" danger onClick={() => deleteLawsuitParty(row)}>删除</Button></Space> : "—" },
+                      ]} />
+                    </Card>
+                    <Card size="small" title="诉讼费用管理" style={{ marginTop: 16 }} extra={detail.status === "在办" ? <Button size="small" type="primary" onClick={() => { lawsuitFeeForm.resetFields(); lawsuitFeeForm.setFieldsValue({ fee_date: dayjs() }); setLawsuitFeeOpen(true); }}>登记诉讼费用</Button> : null}>
+                      <Table<IprLawsuitFee> rowKey="id" size="small" pagination={false} dataSource={lawsuitFees} columns={[
+                        { title: "费用类型", width: 160, render: (_, row) => row.title || row.fee_type || "—" }, { title: "金额", dataIndex: "amount", width: 120, render: value => value == null ? "—" : Number(value).toFixed(2) }, { title: "费用日期", dataIndex: "fee_date", width: 120, render: value => value || "—" }, { title: "状态", dataIndex: "status", width: 100, render: value => value || "—" }, { title: "备注", dataIndex: "remark", ellipsis: true, render: value => value || "—" },
+                      ]} />
+                    </Card>
+                  </>,
+                }] : []),
                 {
                   key: "files",
                   label: "文档信息",
@@ -3084,7 +3280,35 @@ export default function IprCenterPage({
         onCancel={() => setAssistedOpen(false)}
         onOk={() => void createAssistedFee()}
         okText="提交"
-      >
+      />
+      <Modal open={courtInfoOpen} title="维护诉讼基本信息" onCancel={() => setCourtInfoOpen(false)} onOk={() => void saveCourtInfo()} okText="保存">
+        <Form form={courtInfoForm} layout="vertical"><div className="form-grid">
+          <Form.Item name="court_case_no" label="法院案号"><Input /></Form.Item><Form.Item name="court_name" label="受理法院"><Input /></Form.Item>
+          <Form.Item name="judge" label="承办法官"><Input /></Form.Item><Form.Item name="clerk" label="书记员"><Input /></Form.Item>
+          <Form.Item name="plaintiff" label="原告"><Input /></Form.Item><Form.Item name="defendant" label="被告"><Input /></Form.Item>
+        </div><Form.Item name="third_parties" label="第三人"><Input /></Form.Item></Form>
+      </Modal>
+      <Modal open={lawsuitCourtOpen} title={editingLawsuitCourt ? "编辑诉讼法院" : "新增诉讼法院"} onCancel={() => { setLawsuitCourtOpen(false); setEditingLawsuitCourt(null); }} onOk={() => void saveLawsuitCourt()} okText="保存">
+        <Form form={lawsuitCourtForm} layout="vertical"><div className="form-grid">
+          <Form.Item name="court_level" label="审级" rules={[{ required: true }]}><Select options={["一审", "二审", "执行", "再审"].map(value => ({ value, label: value }))} /></Form.Item><Form.Item name="court_name" label="法院名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="case_no" label="本审案号"><Input /></Form.Item><Form.Item name="courtroom" label="法庭"><Input /></Form.Item>
+          <Form.Item name="judge" label="承办法官"><Input /></Form.Item><Form.Item name="clerk" label="书记员"><Input /></Form.Item>
+          <Form.Item name="filing_date" label="立案日期"><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item name="hearing_date" label="开庭日期"><DatePicker style={{ width: "100%" }} /></Form.Item>
+        </div><Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item></Form>
+      </Modal>
+      <Modal open={lawsuitPartyOpen} title={editingLawsuitParty ? "编辑诉讼当事人" : "新增诉讼当事人"} onCancel={() => { setLawsuitPartyOpen(false); setEditingLawsuitParty(null); }} onOk={() => void saveLawsuitParty()} okText="保存">
+        <Form form={lawsuitPartyForm} layout="vertical"><div className="form-grid">
+          <Form.Item name="party_type" label="当事人身份" rules={[{ required: true }]}><Select options={["原告", "被告", "第三人"].map(value => ({ value, label: value }))} /></Form.Item><Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="contact_name" label="联系人"><Input /></Form.Item><Form.Item name="contact_phone" label="联系电话"><Input /></Form.Item>
+        </div><Form.Item name="address" label="地址"><Input /></Form.Item><Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item></Form>
+      </Modal>
+      <Modal open={lawsuitFeeOpen} title="登记诉讼费用" onCancel={() => setLawsuitFeeOpen(false)} onOk={() => void createLawsuitFee()} okText="登记">
+        <Form form={lawsuitFeeForm} layout="vertical"><div className="form-grid">
+          <Form.Item name="lawsuit_fee_kind" label="费用类型" rules={[{ required: true }]}><Select options={IPR_LAWSUIT_FEE_OPTIONS.map(({ value, label }) => ({ value, label }))} /></Form.Item><Form.Item name="amount" label="金额" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
+          <Form.Item name="fee_date" label="费用日期" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item><Form.Item name="remark" label="备注"><Input /></Form.Item>
+        </div></Form>
+      </Modal>
+      <Modal open={assistedOpen} title="新建知识产权资助费用" onCancel={() => setAssistedOpen(false)} onOk={() => void createAssistedFee()} okText="提交">
         <Form form={assistedForm} layout="vertical">
           <Form.Item
             name="assisted_type"

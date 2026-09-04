@@ -3482,9 +3482,28 @@ def main():
             "annual_fee_year": 1, "rate": 0.1, "description": "候选导入与双状态流转冒烟验收",
         }, expected=(201,))
         records.append(ipr_case["id"])
+        ipr_lawsuit = call("POST", "/ipr/cases", {
+            "case_kind": "专利", "case_category": "litigation", "title": f"SMOKE-IPR-LAWSUIT-{suffix}", "customer": customer["title"],
+            "application_no": serial("SMOKE-IPR-LAWSUIT"), "application_type": "发明专利", "applicant": customer["title"],
+            "court_case_no": f"（2026）沪01民初{suffix[-4:]}号", "court_name": "上海知识产权法院", "judge": "SMOKE法官", "clerk": "SMOKE书记员",
+            "plaintiff": customer["title"], "defendant": "SMOKE被告", "case_manager": USERNAME,
+        }, expected=(201,))
+        records.append(ipr_lawsuit["id"])
+        assert ipr_lawsuit["data"]["case_category"] == "litigation"
+        call("POST", f"/ipr/cases/{ipr_lawsuit['id']}/submit")
+        ipr_lawsuit = call("POST", f"/ipr/cases/{ipr_lawsuit['id']}/review", {"approved": True, "comment": "SMOKE诉讼立案审核"})
+        assert ipr_lawsuit["status"] == "在办"
+        assert any(item["id"] == ipr_lawsuit["id"] for item in call("GET", "/ipr/lawsuit/cases?page_size=100")["items"])
+        court_info = call("PUT", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/court-info", {"court_case_no": "（2026）沪01民初900号", "court_name": "上海知识产权法院", "judge": "SMOKE法官", "clerk": "SMOKE书记员", "plaintiff": customer["title"], "defendant": "SMOKE被告", "third_parties": "SMOKE第三人"})
+        assert court_info["court_case_no"] == "（2026）沪01民初900号"
+        lawsuit_court = call("POST", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/courts", {"court_level": "一审", "court_name": "上海知识产权法院", "case_no": "（2026）沪01民初900号", "judge": "SMOKE法官", "clerk": "SMOKE书记员", "courtroom": "第八法庭", "remark": "SMOKE法院"}, expected=(201,))
+        assert call("GET", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/courts")["items"][0]["id"] == lawsuit_court["id"]
+        lawsuit_party = call("POST", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/parties", {"party_type": "原告", "name": customer["title"], "contact_name": "SMOKE联系人", "contact_phone": "13800000000"}, expected=(201,))
+        assert call("GET", f"/ipr/lawsuit/cases/{ipr_lawsuit['id']}/parties")["items"][0]["id"] == lawsuit_party["id"]
         call("POST", f"/ipr/cases/{ipr_case['id']}/submit")
         ipr_case = call("POST", f"/ipr/cases/{ipr_case['id']}/review", {"approved": True, "comment": "冒烟立案审核"})
         assert ipr_case["status"] == "在办"
+        call("POST", f"/ipr/lawsuit/cases/{ipr_case['id']}/courts", {"court_name": "不得写入非诉讼案"}, expected=(422,))
         ipr_batch_case = call("POST", "/ipr/cases", {"case_kind": ipr_case["data"]["case_kind"], "title": f"SMOKE-IPR-BATCH-{suffix}", "customer": customer["title"], "application_no": serial("SMOKE-IPR-BATCH"), "application_type": ipr_case["data"]["application_type"], "applicant": customer["title"], "case_manager": USERNAME, "application_date": str(date.today()), "deadline": str(date.today() + timedelta(days=30)), "annual_fee_year": 1, "rate": 0.1, "description": "SMOKE batch target"}, expected=(201,))
         records.append(ipr_batch_case["id"])
         call("POST", f"/ipr/cases/{ipr_batch_case['id']}/submit")
