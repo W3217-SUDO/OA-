@@ -395,7 +395,7 @@ def main():
                 call("DELETE", f"/templates/{stale_template['id']}", expected=(204, 404, 409))
         # 清理因上一次进程中断而留下的、带明确 SMOKE 标识的本地测试记录。
         # 生产环境不存在 testing cleanup 路由，普通业务数据也不会命中此条件。
-        for smoke_module in ["customer", "contract", "case", "ipr_case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+        for smoke_module in ["customer", "contract", "case", "ipr_case", "task", "finance", "jar_fee", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
             stale = call("GET", f"/records?module={smoke_module}&keyword=SMOKE&page_size=100")["items"]
             for stale_item in stale:
                 # 搜索会命中关联字段中的 SMOKE；清理接口仍应拒绝没有明确测试标识的记录。
@@ -1417,6 +1417,43 @@ def main():
         assert call("POST", f"/contracts/{self_approval_contract['id']}/approve", {"approved": True, "comment": "本人按流程审批"})["status"] == "已通过"
         TOKEN = contract_admin_token
         contract = create_record("contract", "草稿", "冒烟合同", {"amount": 1000, "external_contract_no": f"EXT-{suffix}"})
+        jar_payload = {
+            "contract_id": contract["id"], "title": f"SMOKE-JAR交案费-{suffix}",
+            "payer_name": "冒烟交款单位", "bank_voucher_no": serial("JAR-VOUCHER"),
+            "received_date": str(date.today()), "amount": 100, "official_fee_amount": 20,
+            "agency_fee_amount": 70, "other_fee_amount": 10, "payment_method": "银行转账",
+            "handler": USERNAME, "remark": "JAR独立应收验收",
+        }
+        call("POST", "/records", {"module": "jar_fee", "serial_no": serial("JAR-BYPASS"), "title": "SMOKE-JAR通用入口", "status": "待确认", "owner": USERNAME, "data": {}}, expected=(422,))
+        call("POST", "/finance/jar-fees", {**jar_payload, "official_fee_amount": 40, "agency_fee_amount": 70}, expected=(422,))
+        jar_fee = call("POST", "/finance/jar-fees", jar_payload, expected=(201,))
+        records.append(jar_fee["id"])
+        assert jar_fee["module"] == "jar_fee" and jar_fee["status"] == "待确认" and jar_fee["data"]["contract_id"] == contract["id"]
+        call("PATCH", f"/records/{jar_fee['id']}", {"title": "SMOKE-JAR通用编辑绕过"}, expected=(409,))
+        call("POST", f"/records/{jar_fee['id']}/transition", {"to_status": "已确认", "comment": "通用流转绕过"}, expected=(409,))
+        call("DELETE", f"/records/{jar_fee['id']}", expected=(409,))
+        multipart_upload("/attachments", {"record_id": jar_fee["id"], "category": "普通附件"}, f"smoke-jar-generic-{suffix}.pdf", b"generic attachment bypass", expected=(409,))
+        jar_list = call("GET", f"/finance/jar-fees?contract_id={contract['id']}&keyword={urllib.parse.quote(jar_payload['bank_voucher_no'])}")
+        assert jar_list["total"] == 1 and jar_list["items"][0]["id"] == jar_fee["id"]
+        jar_export_status, jar_export_payload, jar_export_type = call("GET", f"/finance/jar-fees/export?contract_id={contract['id']}", raw=True)
+        assert jar_export_status == 200 and jar_export_type.startswith("text/csv") and jar_payload["bank_voucher_no"].encode() in jar_export_payload
+        multipart_upload(f"/finance/jar-fees/{jar_fee['id']}/files", {"category": "JAR交案费附件"}, f"smoke-jar-{suffix}.txt", b"jar attachment", expected=(422,))
+        # The JAR route permits documents but intentionally rejects generic text files.
+        jar_file = multipart_upload(f"/finance/jar-fees/{jar_fee['id']}/files", {"category": "JAR交案费附件"}, f"smoke-jar-{suffix}.pdf", b"jar attachment")
+        jar_files = call("GET", f"/finance/jar-fees/{jar_fee['id']}/files")
+        assert jar_files["total"] == 1 and jar_files["items"][0]["id"] == jar_file["id"]
+        file_status, file_payload, _ = call("GET", f"/finance/jar-fees/{jar_fee['id']}/files/{jar_file['id']}/download", raw=True)
+        assert file_status == 200 and file_payload == b"jar attachment"
+        call("POST", f"/finance/jar-fees/{jar_fee['id']}/status", {"status": "已入账", "comment": "跳过确认应阻断"}, expected=(409,))
+        jar_fee = call("POST", f"/finance/jar-fees/{jar_fee['id']}/status", {"status": "已确认", "comment": "确认交案费"})
+        assert jar_fee["status"] == "已确认"
+        call("PUT", f"/finance/jar-fees/{jar_fee['id']}", jar_payload, expected=(409,))
+        call("POST", f"/finance/jar-fees/{jar_fee['id']}/files", expected=(422,))
+        jar_fee = call("POST", f"/finance/jar-fees/{jar_fee['id']}/status", {"status": "已入账", "comment": "交案费入账"})
+        assert jar_fee["status"] == "已入账"
+        jar_history = call("GET", f"/records/{jar_fee['id']}/history")["items"]
+        assert {"创建交案费", "上传交案费文件", "变更交案费状态"}.issubset({item["action"] for item in jar_history})
+        passed("JAR交案费独立CRUD、金额校验、状态机、附件下载、导出、操作日志及通用入口阻断")
         call("PATCH", f"/records/{contract['id']}", {"status": "已通过", "title": "绕过合同审批"}, expected=(409,))
         call("POST", f"/records/{contract['id']}/transition", {"to_status": "审批中", "comment": "绕过合同专用审批"}, expected=(409,))
         call("DELETE", f"/records/{contract['id']}", expected=(409,))
@@ -3938,7 +3975,7 @@ def main():
             except Exception: pass
 
     record_remnants = []
-    for module in ["customer", "contract", "case", "task", "finance", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
+    for module in ["customer", "contract", "case", "task", "finance", "jar_fee", "finance_package", "finance_settlement", "finance_archive_settlement", "document", "seal", "report", "hr", "warehouse", "investigation", "clue", "notary", "evidence"]:
         record_remnants.extend(call("GET", f"/records?module={module}&keyword=SMOKE&page_size=100")["items"])
     user_remnants = call("GET", "/system/users?keyword=smoke")["items"]
     template_remnants = [item for item in call("GET", "/templates")["items"] if item["name"].startswith("SMOKE-")]

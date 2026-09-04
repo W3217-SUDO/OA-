@@ -53,8 +53,7 @@ from .ipr_cpc import CPC_APPLICATION_CATEGORY, create_ipr_cpc_router, is_cpc_app
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
-from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationTask, LegacyInvestigationClue, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent
-from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
+from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEventfrom .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
 from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 
@@ -206,6 +205,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("finance-receipts", "finance", "回款管理", "", 1), ("finance-receipts-icbc", "finance-receipts", "回款(工行)", "", 1), ("finance-receipts-citic", "finance-receipts", "回款(中信)", "", 2), ("finance-receipts-boc", "finance-receipts", "回款(中行)", "", 3), ("finance-receipts-new", "finance-receipts", "新增回款", "", 4), ("finance-receipts-manage", "finance-receipts", "回款管理", "", 5), ("finance-receipts-claim", "finance-receipts", "回款领取", "", 6), ("finance-receipts-pending", "finance-receipts", "待分配回款", "", 7), ("finance-receipts-allocated", "finance-receipts", "已分配回款", "", 8), ("finance-receipts-query", "finance-receipts", "到账查询", "", 9),
     ("finance-payment", "finance", "付款管理", "", 2), ("finance-payment-mine", "finance-payment", "我的请款单", "", 1), ("finance-payment-audit", "finance-payment", "请款单审批", "", 2), ("finance-payment-waiting", "finance-payment", "待付款列表", "", 3), ("finance-payment-print", "finance-payment", "付款单打印", "", 4), ("finance-payment-package-manage", "finance-payment", "付款打包-管理", "", 5), ("finance-payment-writeoff", "finance-payment", "待核销列表", "", 6), ("finance-payment-query", "finance-payment", "付款单查询", "", 7),
     ("finance-internal", "finance", "内部费用", "", 3), ("finance-internal-mine", "finance-internal", "我的请款单", "", 1), ("finance-internal-settle", "finance-internal", "内部提成-待结算", "", 2), ("finance-internal-archive", "finance-internal", "内部提成-待归档", "", 3), ("finance-internal-audit", "finance-internal", "内部提成-待审核", "", 4), ("finance-internal-fee-audit", "finance-internal", "内部费用-待审核", "", 5), ("finance-internal-refused", "finance-internal", "内部提成-已拒绝", "", 6), ("finance-internal-void", "finance-internal", "内部提成-已作废", "", 7), ("finance-internal-refund-audit", "finance-internal", "内部提成(退费)-待审核", "", 8), ("finance-internal-payment", "finance-internal", "待付款列表", "", 9), ("finance-internal-writeoff", "finance-internal", "待核销列表", "", 10), ("finance-internal-query", "finance-internal", "付款单查询", "", 11), ("finance-internal-done", "finance-internal", "已核销列表", "", 12), ("finance-internal-detail", "finance-internal", "内部费用明细", "", 13), ("finance-internal-company", "finance-internal", "内部费用明细(公司)", "", 14),
+    ("finance-jar", "finance", "JAR交案费管理", "", 8),
     ("finance-invoice", "finance", "开票管理", "", 4), ("finance-invoice-mine", "finance-invoice", "我的开票", "", 1), ("finance-invoice-pending", "finance-invoice", "待处理开票", "", 2), ("finance-invoice-company", "finance-invoice", "公司开票", "", 3), ("finance-invoice-unissued", "finance-invoice", "未开票", "", 4), ("finance-invoice-company-unissued", "finance-invoice", "公司未开票", "", 5),
     ("finance-settlement", "finance", "结算管理", "", 5), ("finance-settlement-pending", "finance-settlement", "待结算", "", 1), ("finance-settlement-audit", "finance-settlement", "待审核", "", 2), ("finance-settlement-payment", "finance-settlement", "待付款", "", 3), ("finance-settlement-paid", "finance-settlement", "已付款", "", 4), ("finance-settlement-refused", "finance-settlement", "已拒绝", "", 5),
     ("finance-archive-fee", "finance", "归档费结算", "", 6), ("finance-archive-fee-pending", "finance-archive-fee", "待归档", "", 1), ("finance-archive-fee-payment", "finance-archive-fee", "待支付", "", 2), ("finance-archive-fee-paid", "finance-archive-fee", "已支付", "", 3), ("finance-archive-fee-refused", "finance-archive-fee", "已拒绝", "", 4),
@@ -2906,6 +2906,38 @@ class FinanceFeeUpdateInput(FinanceFeeInput):
     pass
 
 
+class JarFeeInput(BaseModel):
+    """Dedicated JAR (交案费) receivable, deliberately separate from payable fees."""
+    contract_id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=255)
+    customer: str = Field(default="", max_length=255)
+    payer_name: str = Field(default="", max_length=255)
+    bank_voucher_no: str = Field(default="", max_length=128)
+    received_date: date | None = None
+    amount: float = Field(gt=0, le=1_000_000_000)
+    official_fee_amount: float = Field(default=0, ge=0, le=1_000_000_000)
+    agency_fee_amount: float = Field(default=0, ge=0, le=1_000_000_000)
+    other_fee_amount: float = Field(default=0, ge=0, le=1_000_000_000)
+    payment_method: str = Field(default="", max_length=64)
+    handler: str = Field(default="", max_length=128)
+    remark: str = Field(default="", max_length=2000)
+
+    @field_validator("title")
+    @classmethod
+    def jar_fee_title_required_after_trim(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("交案费名称不能为空")
+        return value
+
+
+class JarFeeStatusInput(BaseModel):
+    # Legacy JAR had no independent lifecycle action.  This is the smallest
+    # explicit new lifecycle for the requested modern management screen.
+    status: Literal["待确认", "已确认", "已入账", "已作废"]
+    comment: str = Field(default="", max_length=1000)
+
+
 class CaseCommissionCreateItemInput(BaseModel):
     preview_key: str = Field(min_length=1, max_length=256)
     actual_amount: float = Field(gt=0)
@@ -3824,7 +3856,7 @@ FIELD_PERMISSION_DATA_KEYS = {
     "customer.bank": {"bank_name", "bank_account"},
     "customer.legal": {"credit_code", "legal_representative", "registered_address"},
     "contract.amount": {"amount"},
-    "finance.amount": {"amount", "paid_amount", "invoice_amount", "refund_amount"},
+    "finance.amount": {"amount", "paid_amount", "invoice_amount", "refund_amount", "official_fee_amount", "agency_fee_amount", "other_fee_amount"},
     "hr.identity": {"id_no"},
 }
 
@@ -5705,6 +5737,7 @@ RECORD_MODULE_MENU_ROOTS: dict[str, tuple[str, ...]] = {
     "system": ("system",),
     # Financial records are shared by firm finance and platform finance workbenches.
     "finance": ("finance", "platform-finance"),
+    "jar_fee": ("finance-jar",),
     "invoice": ("finance", "platform-finance"),
     "refund": ("finance", "platform-finance"),
     "finance_package": ("finance", "platform-finance"),
@@ -12113,7 +12146,249 @@ async def delete_internal_fee(fee_id: int, identity: dict = Depends(current_iden
     item.status = "已删除"
     db.add(WorkflowEvent(record_id=item.id, action="删除内部费用草稿", from_status=previous, to_status="已删除", operator=identity["username"], comment=item.serial_no))
     await db.commit()
+
+# JAR (交案费) is an accounts-receivable entry.  It has its own module and
+# command routes so the generic record/file endpoints cannot bypass its rules.
+JAR_FEE_MODULE = "jar_fee"
+JAR_FEE_STATUSES = {"待确认", "已确认", "已入账", "已作废"}
+JAR_FEE_TRANSITIONS = {
+    "待确认": {"已确认", "已作废"},
+    "已确认": {"已入账", "已作废"},
+    "已入账": set(),
+    "已作废": set(),
+}
+
+
+async def _require_jar_fee_access(identity: dict, db: AsyncSession, *, write: bool = False) -> None:
+    if identity.get("role") == "admin":
+        return
+    permission = await _permission_payload_for_identity(identity, db)
+    menu_keys = set(permission.get("menu_keys") or [])
+    if "finance-jar" not in menu_keys:
+        raise HTTPException(status_code=403, detail="当前账号没有JAR交案费管理权限")
+    if write and identity.get("role") not in {"manager", "user"}:
+        raise HTTPException(status_code=403, detail="当前账号没有维护交案费权限")
+
+
+def _jar_fee_dict(item: BusinessRecord, allowed_fields: set[str] | None = None) -> dict:
+    result = _record_dict(item, allowed_fields)
+    data = result["data"]
+    result.update({
+        "contract_id": data.get("contract_id"), "contract_no": data.get("contract_no", ""),
+        "payer_name": data.get("payer_name", ""), "bank_voucher_no": data.get("bank_voucher_no", ""),
+        "received_date": data.get("received_date", ""), "amount": data.get("amount"),
+        "official_fee_amount": data.get("official_fee_amount"), "agency_fee_amount": data.get("agency_fee_amount"),
+        "other_fee_amount": data.get("other_fee_amount"), "payment_method": data.get("payment_method", ""),
+        "handler": data.get("handler", item.owner), "remark": data.get("remark", item.description),
+    })
+    if allowed_fields is not None and "finance.amount" not in allowed_fields:
+        for key in ("amount", "official_fee_amount", "agency_fee_amount", "other_fee_amount"):
+            result[key] = None
+            result["data"].pop(key, None)
+    return result
+
+
+def _jar_fee_audit(item: BusinessRecord, action: str, identity: dict, detail: dict | None = None) -> JarFeeAuditLog:
+    """Keep the audit trail after a JAR row is deleted (unlike workflow FK rows)."""
+    return JarFeeAuditLog(jar_fee_record_id=item.id, jar_fee_serial_no=item.serial_no, action=action, operator=identity["username"], detail=detail or {})
+
+
+async def _jar_fee_capabilities(item: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    try:
+        await _require_jar_fee_access(identity, db, write=True)
+        await _require_record_owner_or_manager(item, identity, db)
+        can_manage = True
+    except HTTPException:
+        can_manage = False
+    editable = can_manage and item.status == "待确认"
+    return {
+        "can_update": editable, "can_delete": editable, "can_manage_files": editable,
+        "can_manage_status": can_manage and bool(JAR_FEE_TRANSITIONS.get(item.status, set())),
+        "allowed_statuses": sorted(JAR_FEE_TRANSITIONS.get(item.status, set())) if can_manage else [],
+    }
+
+
+async def _jar_fee_or_404(jar_fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    item = await _ensure_record_visible(jar_fee_id, identity, db)
+    if item.module != JAR_FEE_MODULE:
+        raise HTTPException(status_code=404, detail="交案费记录不存在")
+    return item
+
+
+async def _editable_jar_fee(jar_fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    await _require_jar_fee_access(identity, db, write=True)
+    item = await _jar_fee_or_404(jar_fee_id, identity, db)
+    await _require_record_owner_or_manager(item, identity, db)
+    if item.status != "待确认":
+        raise HTTPException(status_code=409, detail="仅待确认交案费可以修改或删除")
+    return item
+
+
+async def _jar_fee_contract(contract_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    contract = await _ensure_record_visible(contract_id, identity, db)
+    if contract.module != "contract":
+        raise HTTPException(status_code=422, detail="关联记录不是合同")
+    return contract
+
+
+def _jar_fee_data(body: JarFeeInput, contract: BusinessRecord) -> dict:
+    amount = _round_fee_amount(body.amount)
+    components = [_round_fee_amount(body.official_fee_amount), _round_fee_amount(body.agency_fee_amount), _round_fee_amount(body.other_fee_amount)]
+    if sum(components) > amount + 0.001:
+        raise HTTPException(status_code=422, detail="官费、代理费和其他费用合计不能大于交案费金额")
+    return {
+        "fee_kind": "JAR交案费", "contract_id": contract.id, "contract_no": contract.serial_no,
+        "payer_name": body.payer_name.strip() or contract.customer, "bank_voucher_no": body.bank_voucher_no.strip(),
+        "received_date": str(body.received_date) if body.received_date else "", "amount": amount,
+        "official_fee_amount": components[0], "agency_fee_amount": components[1], "other_fee_amount": components[2],
+        "payment_method": body.payment_method.strip(), "handler": body.handler.strip(), "remark": body.remark.strip(),
+    }
+
+
+@app.get(f"{settings.api_prefix}/finance/jar-fees")
+async def list_jar_fees(keyword: str = "", status_filter: str = Query(default="", alias="status"), contract_id: str = "", page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db)
+    conditions = [BusinessRecord.module == JAR_FEE_MODULE, *(await _record_scope_conditions(identity, db))]
+    if status_filter:
+        if status_filter not in JAR_FEE_STATUSES: raise HTTPException(status_code=422, detail="交案费状态无效")
+        conditions.append(BusinessRecord.status == status_filter)
+    try: contract_filter = int(contract_id) if contract_id.strip() else None
+    except ValueError: raise HTTPException(status_code=422, detail="合同编号格式无效")
+    if contract_filter is not None and contract_filter <= 0: raise HTTPException(status_code=422, detail="合同编号格式无效")
+    if contract_filter: conditions.append(BusinessRecord.data["contract_id"].as_integer() == contract_filter)
+    if keyword.strip():
+        term = f"%{keyword.strip()}%"
+        conditions.append(or_(BusinessRecord.serial_no.ilike(term), BusinessRecord.title.ilike(term), BusinessRecord.customer.ilike(term), BusinessRecord.description.ilike(term), BusinessRecord.data["contract_no"].as_string().ilike(term), BusinessRecord.data["payer_name"].as_string().ilike(term), BusinessRecord.data["bank_voucher_no"].as_string().ilike(term), BusinessRecord.data["remark"].as_string().ilike(term)))
+    total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
+    allowed_fields = await _allowed_field_keys(identity, db)
+    items = []
+    for row in rows:
+        projected = _jar_fee_dict(row, allowed_fields); projected["capabilities"] = await _jar_fee_capabilities(row, identity, db); items.append(projected)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@app.get(f"{settings.api_prefix}/finance/jar-fees/export")
+async def export_jar_fees(keyword: str = "", status_filter: str = Query(default="", alias="status"), contract_id: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db)
+    conditions = [BusinessRecord.module == JAR_FEE_MODULE, *(await _record_scope_conditions(identity, db))]
+    if status_filter:
+        if status_filter not in JAR_FEE_STATUSES: raise HTTPException(status_code=422, detail="交案费状态无效")
+        conditions.append(BusinessRecord.status == status_filter)
+    try: contract_filter = int(contract_id) if contract_id.strip() else None
+    except ValueError: raise HTTPException(status_code=422, detail="合同编号格式无效")
+    if contract_filter is not None and contract_filter <= 0: raise HTTPException(status_code=422, detail="合同编号格式无效")
+    if contract_filter: conditions.append(BusinessRecord.data["contract_id"].as_integer() == contract_filter)
+    if keyword.strip():
+        term = f"%{keyword.strip()}%"; conditions.append(or_(BusinessRecord.serial_no.ilike(term), BusinessRecord.title.ilike(term), BusinessRecord.customer.ilike(term), BusinessRecord.description.ilike(term), BusinessRecord.data["contract_no"].as_string().ilike(term), BusinessRecord.data["payer_name"].as_string().ilike(term), BusinessRecord.data["bank_voucher_no"].as_string().ilike(term), BusinessRecord.data["remark"].as_string().ilike(term)))
+    allowed_fields = await _allowed_field_keys(identity, db)
+    output = io.StringIO(); writer = csv.writer(output)
+    writer.writerow(["交案费编号", "合同编号", "客户名称", "回款单位", "经办人", "回款日期", "回款金额", "官费", "代理费", "其他费用", "回款方式", "状态", "银行单据号"])
+    for item in (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all():
+        row = _jar_fee_dict(item, allowed_fields)
+        writer.writerow([row["serial_no"], row["contract_no"], row["customer"], row["payer_name"], row["handler"], row["received_date"], row["amount"], row["official_fee_amount"], row["agency_fee_amount"], row["other_fee_amount"], row["payment_method"], row["status"], row["bank_voucher_no"]])
+    return StreamingResponse(iter(["\ufeff" + output.getvalue()]), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=jar-fees.csv"})
+
+
+@app.post(f"{settings.api_prefix}/finance/jar-fees", status_code=status.HTTP_201_CREATED)
+async def create_jar_fee(body: JarFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db, write=True)
+    contract = await _jar_fee_contract(body.contract_id, identity, db)
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    data = _jar_fee_data(body, contract)
+    item = BusinessRecord(module=JAR_FEE_MODULE, serial_no=f"JAR{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:6].upper()}", title=body.title.strip(), customer=contract.customer, status="待确认", owner=identity["username"], department=user.department if user else contract.department, description=body.remark.strip(), data=data)
+    db.add(item); await db.flush()
+    db.add(WorkflowEvent(record_id=item.id, action="创建交案费", to_status=item.status, operator=identity["username"], comment=f"合同 {contract.serial_no}"))
+    db.add(_jar_fee_audit(item, "创建交案费", identity, {"contract_id": contract.id, "amount": data["amount"]}))
+    await db.commit(); await db.refresh(item)
+    return _jar_fee_dict(item, await _allowed_field_keys(identity, db))
+
+
+@app.get(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}")
+async def get_jar_fee(jar_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db)
+    item = await _jar_fee_or_404(jar_fee_id, identity, db); result = _jar_fee_dict(item, await _allowed_field_keys(identity, db)); result["capabilities"] = await _jar_fee_capabilities(item, identity, db); return result
+
+
+@app.put(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}")
+async def update_jar_fee(jar_fee_id: int, body: JarFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _editable_jar_fee(jar_fee_id, identity, db); contract = await _jar_fee_contract(body.contract_id, identity, db)
+    item.title = body.title.strip(); item.customer = contract.customer; item.description = body.remark.strip(); item.data = _jar_fee_data(body, contract)
+    db.add(WorkflowEvent(record_id=item.id, action="修改交案费", from_status=item.status, to_status=item.status, operator=identity["username"], comment=item.serial_no))
+    db.add(_jar_fee_audit(item, "修改交案费", identity, {"contract_id": contract.id, "amount": item.data["amount"]}))
+    await db.commit(); await db.refresh(item)
+    return _jar_fee_dict(item, await _allowed_field_keys(identity, db))
+
+
+@app.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_jar_fee(jar_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _editable_jar_fee(jar_fee_id, identity, db)
+    files = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == item.id))).all())
+    db.add(WorkflowEvent(record_id=item.id, action="删除交案费", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no)); db.add(_jar_fee_audit(item, "删除交案费", identity)); await db.flush(); await db.delete(item); await db.commit()
+    for attachment in files:
+        path = _attachment_storage_path(attachment)
+        if path: path.unlink(missing_ok=True)
     return None
+
+
+@app.post(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/status")
+async def update_jar_fee_status(jar_fee_id: int, body: JarFeeStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db, write=True)
+    item = await _jar_fee_or_404(jar_fee_id, identity, db); await _require_record_owner_or_manager(item, identity, db)
+    if body.status not in JAR_FEE_TRANSITIONS.get(item.status, set()): raise HTTPException(status_code=409, detail=f"不允许从{item.status}变更为{body.status}")
+    previous = item.status; item.status = body.status; item.data = {**(item.data or {}), "status_changed_at": datetime.now().isoformat(timespec="seconds"), "status_changed_by": identity["username"]}
+    db.add(WorkflowEvent(record_id=item.id, action="变更交案费状态", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment.strip()))
+    db.add(_jar_fee_audit(item, "变更交案费状态", identity, {"from_status": previous, "to_status": item.status, "comment": body.comment.strip()}))
+    await db.commit(); await db.refresh(item)
+    return _jar_fee_dict(item, await _allowed_field_keys(identity, db))
+
+
+@app.get(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files")
+async def list_jar_fee_files(jar_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db); item = await _jar_fee_or_404(jar_fee_id, identity, db)
+    files = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == item.id).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all())
+    return {"record": _jar_fee_dict(item, await _allowed_field_keys(identity, db)), "items": [_attachment_dict(file, item) for file in files], "total": len(files)}
+
+
+@app.get(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/operation-logs")
+async def list_jar_fee_operation_logs(jar_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db); item = await _jar_fee_or_404(jar_fee_id, identity, db)
+    rows = list((await db.scalars(select(JarFeeAuditLog).where(JarFeeAuditLog.jar_fee_record_id == item.id).order_by(JarFeeAuditLog.created_at.desc(), JarFeeAuditLog.id.desc()))).all())
+    return {"items": [{"id": row.id, "action": row.action, "operator": row.operator, "detail": row.detail or {}, "created_at": row.created_at} for row in rows], "total": len(rows)}
+
+
+@app.post(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files", status_code=status.HTTP_201_CREATED)
+async def upload_jar_fee_file(jar_fee_id: int, file: UploadFile = File(...), category: str = Form(default="JAR交案费附件"), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _editable_jar_fee(jar_fee_id, identity, db)
+    suffix = Path(file.filename or "").suffix.lower(); allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".zip"}
+    if suffix not in allowed: raise HTTPException(status_code=422, detail="不支持的交案费附件格式")
+    content = await file.read()
+    if not content: raise HTTPException(status_code=422, detail="上传文件不能为空")
+    if len(content) > 20 * 1024 * 1024: raise HTTPException(status_code=413, detail="单个文件不能超过20MB")
+    stored_name = f"jar-{uuid4().hex}{suffix}"; target = UPLOAD_ROOT / stored_name
+    try:
+        target.write_bytes(content); attachment = FileAttachment(record_id=item.id, category=category.strip() or "JAR交案费附件", original_name=Path(file.filename or stored_name).name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark="JAR交案费文件")
+        db.add(attachment); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="上传交案费文件", from_status=item.status, to_status=item.status, operator=identity["username"], comment=attachment.original_name)); db.add(_jar_fee_audit(item, "上传交案费文件", identity, {"attachment_id": attachment.id, "name": attachment.original_name})); await db.commit(); await db.refresh(attachment)
+    except Exception:
+        await db.rollback(); target.unlink(missing_ok=True); raise
+    return _attachment_dict(attachment, item)
+
+
+@app.get(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}/download")
+async def download_jar_fee_file(jar_fee_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_jar_fee_access(identity, db); item = await _jar_fee_or_404(jar_fee_id, identity, db); attachment = await db.get(FileAttachment, attachment_id)
+    if not attachment or attachment.record_id != item.id: raise HTTPException(status_code=404, detail="交案费文件不存在")
+    path = _attachment_storage_path(attachment)
+    if path is None: raise HTTPException(status_code=404, detail="交案费文件不存在")
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+
+
+@app.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_jar_fee_file(jar_fee_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _editable_jar_fee(jar_fee_id, identity, db); attachment = await db.get(FileAttachment, attachment_id)
+    if not attachment or attachment.record_id != item.id: raise HTTPException(status_code=404, detail="交案费文件不存在")
+    path = _attachment_storage_path(attachment); db.add(WorkflowEvent(record_id=item.id, action="删除交案费文件", from_status=item.status, to_status=item.status, operator=identity["username"], comment=attachment.original_name)); db.add(_jar_fee_audit(item, "删除交案费文件", identity, {"attachment_id": attachment.id, "name": attachment.original_name})); await db.delete(attachment); await db.commit()
+    if path: path.unlink(missing_ok=True)    return None
 
 
 @app.patch(f"{settings.api_prefix}/contracts/{{contract_id}}")
@@ -28218,6 +28493,8 @@ async def list_attachments(
     record = None
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if record.module == JAR_FEE_MODULE:
+            raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用文件接口")
     conditions = []
     if record_id is not None:
         conditions.append(FileAttachment.record_id == record_id)
@@ -28904,6 +29181,8 @@ async def upload_attachment(
             category = expected_category
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if record.module == JAR_FEE_MODULE:
+            raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用文件接口")
         if source_case_id is not None:
             source_case = await _ensure_record_module(source_case_id, "case", identity, db)
             await _require_case_attachment_upload_access(source_case, identity, db)
@@ -29078,6 +29357,8 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
         record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if record.module == JAR_FEE_MODULE:
+            raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用下载接口")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     path = _attachment_storage_path(item)
@@ -29334,7 +29615,8 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
     if record and record.module == "hr" and item.category == "员工头像" and int((record.data or {}).get("avatar_attachment_id") or 0) == item.id:
         raise HTTPException(status_code=409, detail="当前员工头像不能通过附件接口删除，请上传新头像替换")
-    if record and record.module == "ipr_case":
+    if record and record.module == JAR_FEE_MODULE:
+        raise HTTPException(status_code=409, detail="JAR fee files must use the dedicated finance endpoint")    if record and record.module == "ipr_case":
         raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口删除")
     may_manage_customer_document = False
     may_manage_case_document = False
@@ -35893,6 +36175,8 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
         raise HTTPException(status_code=422, detail="归档费支付必须使用归档费结算专用入口创建")
     if body.module == "finance":
         raise HTTPException(status_code=422, detail="费用必须使用费用管理专用入口创建")
+    if body.module == JAR_FEE_MODULE:
+        raise HTTPException(status_code=422, detail="JAR fees must use the dedicated finance endpoint")
     if body.module in {"hr", "warehouse"} and identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="当前角色不能新建人事或仓库记录")
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no)):

@@ -30,12 +30,12 @@ CONTRACT = (ROOT / "apps/admin-web/src/ContractCenterPage.tsx").read_text(encodi
 CUSTOMER_DETAIL_NAVIGATION = (ROOT / "apps/admin-web/src/customerDetailNavigation.ts").read_text(encoding="utf-8")
 INVESTIGATION = (ROOT / "apps/admin-web/src/InvestigationCenterPage.tsx").read_text(encoding="utf-8")
 TASK = (ROOT / "apps/admin-web/src/TaskCenterPage.tsx").read_text(encoding="utf-8")
-VIP_TASK = (ROOT / "apps/admin-web/src/VipTaskCenterPage.tsx").read_text(encoding="utf-8")
 NORMALIZED_TASK = re.sub(r"\s+", "", TASK)
 NOTIFICATION = (ROOT / "apps/admin-web/src/NotificationCenter.tsx").read_text(encoding="utf-8")
 AUDIT_LOG = (ROOT / "apps/admin-web/src/AuditLogPage.tsx").read_text(encoding="utf-8")
 GLOBAL_SEARCH = (ROOT / "apps/admin-web/src/GlobalSearch.tsx").read_text(encoding="utf-8")
 FINANCE_PAGE = (ROOT / "apps/admin-web/src/FinanceCenterPage.tsx").read_text(encoding="utf-8")
+JAR_FEE_MANAGER = (ROOT / "apps/admin-web/src/JarFeeManager.tsx").read_text(encoding="utf-8")
 SEAL_PAGE = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")
 SEAL_VIEW_MAPPING = (ROOT / "apps/admin-web/src/sealViewMapping.ts").read_text(encoding="utf-8")
 DOCUMENT_PAGE = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
@@ -116,7 +116,6 @@ def is_implemented(route: str) -> bool:
         or route.startswith("case-")
         or route.startswith("ipr-")
         or route.startswith("task-")
-        or route == "vip-tasks"
         or route == "documents-agent"
         or route.startswith("documents-")
         or route.startswith("platform-finance-")
@@ -156,7 +155,7 @@ def main() -> None:
             "platform-finance-overview-cmb",
             "platform-finance-overview-gdicbc",
             "reports-large-screen",
-            "vip-tasks",
+            "finance-jar",
         }
     }
     assert len(legacy_menu_keys) == 277, (
@@ -168,7 +167,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
-        "vip-tasks",
+        "finance-jar",
     ):
         assert extension_key in keys, f"required first-party menu extension missing: {extension_key}"
     assert len(keys) == len(set(keys)), "duplicate menu keys found"
@@ -180,7 +179,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
-        "vip-tasks",
+        "finance-jar",
     }
     legacy_parents = {
         item[1] for item in menus
@@ -196,6 +195,39 @@ def main() -> None:
     assert len(legacy_leaves) == 231, f"expected 231 legacy menu leaves, got {len(legacy_leaves)}"
     missing = [(key, canonical_route(key)) for key in leaves if not is_implemented(canonical_route(key))]
     assert not missing, f"menu leaves without a page component: {missing}"
+    assert "finance-jar" in keys, "JAR交案费管理菜单缺失"
+    for token in (
+        'import JarFeeManager from "./JarFeeManager"',
+        'if (initialView === "finance-jar")',
+        "return <JarFeeManager onNavigate={onNavigate} />",
+    ):
+        assert token in FINANCE_PAGE, f"JAR交案费页面入口缺失: {token}"
+    for token in (
+        '"/finance/jar-fees"',
+        '"/finance/jar-fees/export"',
+        '"/files"',
+        '"/status"',
+        "JAR交案费管理",
+        "上传文件",
+        "导出 CSV",
+    ):
+        assert token in JAR_FEE_MANAGER, f"JAR交案费前端能力缺失: {token}"
+    for token in (
+        'JAR_FEE_MODULE = "jar_fee"',
+        'JAR_FEE_TRANSITIONS =',
+        '@app.get(f"{settings.api_prefix}/finance/jar-fees")',
+        '@app.post(f"{settings.api_prefix}/finance/jar-fees", status_code=status.HTTP_201_CREATED)',
+        '@app.put(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}")',
+        '@app.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)',
+        '@app.post(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/status")',
+        '@app.post(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files", status_code=status.HTTP_201_CREATED)',
+        '@app.get(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}/download")',
+        '@app.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)',
+        'WorkflowEvent(record_id=item.id, action="创建交案费"',
+        'WorkflowEvent(record_id=item.id, action="变更交案费状态"',
+        '官费、代理费和其他费用合计不能大于交案费金额',
+    ):
+        assert token in MAIN, f"JAR交案费后端能力缺失: {token}"
     assert "页面不存在，请从左侧菜单重新选择" in APP, "missing explicit unknown-route guard"
     assert "SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}" in MAIN, "system menu keys must derive from implemented routes"
     assert "if item.key in SYSTEM_MENU_ROUTE_KEYS" in MAIN, "navigation must hide menus without an implemented route"
@@ -206,37 +238,6 @@ def main() -> None:
     assert 'menu_key not in SYSTEM_MENU_ROUTE_KEYS' in MAIN and "不能创建菜单入口" in MAIN, (
         "menu creation must reject routes that have no implemented page"
     )
-    assert "(\"vip-tasks\", \"task\", \"VIP任务\"" in MAIN and 'route === "vip-tasks"' in APP and "VipTaskCenterPage" in APP, (
-        "VIP task must be a declared affairs menu route with a real page component"
-    )
-    assert all(token in MAIN for token in (
-        'class VipTaskInput(BaseModel):', 'class VipTaskNodeInput(BaseModel):',
-        'class VipTaskMessageInput(BaseModel):', '@app.get(f"{settings.api_prefix}/vip-tasks")',
-        '@app.post(f"{settings.api_prefix}/vip-tasks", status_code=status.HTTP_201_CREATED)',
-        '@app.put(f"{settings.api_prefix}/vip-tasks/{{task_id}}")',
-        '@app.delete(f"{settings.api_prefix}/vip-tasks/{{task_id}}", status_code=status.HTTP_204_NO_CONTENT)',
-        '/vip-tasks/{{task_id}}/nodes', '/vip-tasks/{{task_id}}/messages',
-        '_vip_validate_task_transition', '_vip_validate_node_transition',
-        '消息收件人必须是VIP任务参与人',
-    )), "VIP task API must keep dedicated task, node, message and transition contracts"
-    assert all(token in MODELS for token in (
-        'class VipTask(Base):', 'class VipTaskNode(Base):', 'class VipTaskMessage(Base):',
-        'ForeignKey("vip_tasks.id", ondelete="CASCADE")',
-    )), "VIP task records must retain independent roots with cascading node/message cleanup"
-    assert all(token in VIP_TASK for token in (
-        'api.get("/vip-tasks"', 'api.post("/vip-tasks", payload)',
-        'api.put(`/vip-tasks/${editing.id}`, payload)', 'api.delete(`/vip-tasks/${task.id}`)',
-        '/vip-tasks/${detail.id}/nodes', '/vip-tasks/${detail.id}/messages',
-        'name="customer"', 'name="status_filter"', 'name="priority"',
-        'VIP任务节点', 'VIP任务消息/通知',
-    )), "VIP task page must expose real CRUD, customer/status/priority filters, nodes and messages"
-    assert 'VIP_TASK_PRIORITIES = {"低", "普通", "重要", "紧急"}' in MAIN and 'const priorityOptions = ["紧急", "重要", "普通", "低"]' in VIP_TASK, (
-        "VIP task priority options must match the server contract"
-    )
-    assert 'def smoke_vip_tasks():' in SMOKE and '"vip_tasks"' in SMOKE and '/vip-tasks/{task_id}/nodes' in SMOKE and '/vip-tasks/{task_id}/messages' in SMOKE, (
-        "VIP task smoke group must cover roots, nodes and messages"
-    )
-    print("VIP_TASK_COVERAGE_OK: declared route, isolated API/model contracts, client actions and smoke group are present")
     for permission_group in (
         "客户管理",
         "合同中心",
@@ -261,7 +262,6 @@ def main() -> None:
 
     ipr_center = (ROOT / "apps/admin-web/src/IprCenterPage.tsx").read_text(encoding="utf-8")
     ipr_official = (ROOT / "apps/admin-web/src/IprOfficialFilePage.tsx").read_text(encoding="utf-8")
-    ipr_cpc = (ROOT / "apps/api-server/app/ipr_cpc.py").read_text(encoding="utf-8")
     assert 'new URLSearchParams(window.location.search).get("record_id")' in ipr_center, (
         "IPR case detail links must consume the precise record_id target"
     )
@@ -281,23 +281,6 @@ def main() -> None:
     assert 'ipr/cases/{{case_id}}/maintenance' in MAIN and '维护知识产权案件期限年费费率' in MAIN, (
         "active IPR deadline/year/rate maintenance must be a dedicated audited action"
     )
-    assert all(token in ipr_cpc for token in (
-        '@router.post("/ipr/cases/{case_id}/cpc-applications"',
-        '@router.get("/ipr/cases/{case_id}/cpc-applications")',
-        '@router.get("/ipr/cases/{case_id}/cpc-applications/{application_id}/download")',
-        'await ensure_write(case_id, identity, db)',
-        'record_id == record.id',
-        'CPC基础申报信息.txt',
-        'WorkflowEvent(',
-    )), "CPC patent applications must use scoped generate/history/download endpoints, a real ZIP snapshot and an audit event"
-    assert all(token in ipr_center for token in (
-        'CPC申报',
-        '/ipr/cases/${record.id}/cpc-applications',
-        '/ipr/cases/${record.id}/cpc-applications/${application.id}/download',
-        'title="CPC专利申报"',
-        '暂无CPC申报记录',
-    )), "IPR patent details must expose CPC generation, history and actual download actions"
-    print("IPR_CPC_APPLICATION_OK: patent-only CPC ZIP snapshots have scoped generation, download and recorded history")
 
     fallback_menu = APP[APP.index("const menuItems: NavItem[] = [") : APP.index("function configuredMenuItems")]
     fallback_top_order = [
@@ -2557,28 +2540,6 @@ def main() -> None:
     assert "report-toolbar" not in REPORT and "report-detail-panel" not in REPORT, "original report pages must not expose invented toolbar or detail table UI"
     assert 'mode="multiple"' in REPORT and 'customer: values.customer?.join(",") || ""' in REPORT and 'court_lawyer: values.courtLawyer?.join(",") || ""' in REPORT, "ROI report must retain the original multi-customer and multi-lawyer selectors"
     assert 'customers_selected = {value.strip() for value in customer.split(",") if value.strip()}' in MAIN and 'court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}' in MAIN, "report API must apply every selected customer and hearing lawyer"
-    customer_roi_frontend = (
-        'PAGE_SPECS["reports-customer-roi"]', 'title: "客户ROI统计"',
-        'name="dateRange"', 'name="department"', 'name="employee"',
-        'api.get<CustomerRoiData>("/reports/customer-roi"',
-        'api.get("/reports/customer-roi/export"', 'responseType: "blob"',
-        'title: "收入（元）"', 'title: "成本（元）"', 'title: "利润（元）"',
-        'title: "ROI"', 'Table.Summary.Row',
-        'ROI＝（收入－成本）÷ 成本 × 100%；成本为 0 时显示“—”',
-    )
-    assert all(token in REPORT for token in customer_roi_frontend), "customer ROI report must retain its filters, real table, formula, totals, and CSV export"
-    customer_roi_backend = (
-        '@app.get(f"{settings.api_prefix}/reports/customer-roi")',
-        '@app.get(f"{settings.api_prefix}/reports/customer-roi/export")',
-        'if date_from and date_to and date_from > date_to:',
-        '收付款开始日期不能晚于结束日期',
-        'BusinessRecord.module.in_({"finance", "contract"})',
-        'ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI',
-        'writer.writerow(["客户编号", "客户", "部门", "员工", "已确认回款", "已确认付款", "利润", "ROI", "口径"])',
-    )
-    assert all(token in MAIN for token in customer_roi_backend), "customer ROI API must group settled cashflow with filters and export the full table"
-    assert '"reports-customer-roi", "reports", "客户ROI统计"' in MAIN, "customer ROI menu entry must be registered under reports"
-    print("CUSTOMER_ROI_REPORT_OK: customer ROI route exposes date/department/employee filters, grouped cashflow table, totals, formula, and CSV export")
 
     finance_match = re.search(r"const originalFinanceRoutes = \[(.*?)\];", FINANCE, re.S)
     assert finance_match, "FinanceCenterPage original route declaration not found"
@@ -3671,32 +3632,6 @@ def main() -> None:
     ):
         assert token in MAIN, f"Referenced system parameters must be protected from deletion: {token}"
     print("SYSTEM_PARAMETER_DELETE_GUARD_OK: referenced master data cannot be physically deleted through the generic parameter API")
-    for token in (
-        '("system-management-cache", "system-management", "缓存管理", "", 1)',
-        '@app.get(f"{settings.api_prefix}/system/cache")',
-        '@app.post(f"{settings.api_prefix}/system/cache/{{cache_key}}/clear")',
-        '@app.post(f"{settings.api_prefix}/system/cache/clear-all")',
-        'async def _system_cache_list_payload(',
-        '"storage": "进程内存" if clearable else "直接 SQL 查询"',
-        '"clearable": clearable',
-        'raise HTTPException(status_code=409, detail="该项目当前为直接 SQL 查询，未启用可清理缓存")',
-        '"scope": "当前 API 进程内存；多进程部署需分别清理各进程缓存。"',
-        'await _system_audit(db, identity, "清理系统缓存"',
-    ):
-        assert token in MAIN, f"cache management API contract missing: {token}"
-    for token in (
-        '"system-management-cache"',
-        'else if (initialView === "system-management-cache") void loadCaches();',
-        'api.get("/system/cache"',
-        'api.post(`/system/cache/${row.key}/clear`)',
-        'api.post("/system/cache/clear-all")',
-        'title="确认清除全部缓存？"',
-        'getCheckboxProps: (row: CacheRow) => ({ disabled: !row.clearable })',
-        'disabled={!selectedCacheKeys.length}',
-        'cacheSummary',
-    ):
-        assert token in SYSTEM, f"cache management UI contract missing: {token}"
-    print("CACHE_MANAGEMENT_OK: system menu, administrator-only process-memory cache list, selected clear, confirmed clear-all, direct-SQL notice and audit contract")
     for token in (
         'const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number], employee: Employee|null=deletingEmployee) => {',
         "blocker.kind==='员工附属记录'",

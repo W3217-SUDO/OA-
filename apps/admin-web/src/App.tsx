@@ -436,6 +436,7 @@ const menuItems: NavItem[] = [
         ],
       },
       { key: "finance-internal", label: "内部费用" },
+      { key: "finance-jar", label: "JAR交案费管理" },
       { key: "finance-invoice", label: "开票管理" },
       { key: "finance-settlement", label: "结算管理" },
       { key: "finance-archive-fee", label: "归档费结算" },

@@ -73,6 +73,7 @@ import {
 } from "./financeRefundHelpers.mjs";
 import RecordImportButton from "./RecordImportButton";
 import { ReceiptCreatePage } from "./PlatformFinancePage";
+import JarFeeManager from "./JarFeeManager";
 import "./finance-center.css";
 
 type Fee = {
@@ -9809,6 +9810,10 @@ export default function FinanceCenterPage({
   ) : null;
 
   if (initialView === "finance-receipts-new") return <ReceiptCreatePage />;
+
+  if (initialView === "finance-jar") {
+    return <JarFeeManager onNavigate={onNavigate} />;
+  }
 
   return (
     <>
