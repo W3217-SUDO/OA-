@@ -2376,13 +2376,23 @@ class IprOfficialDualStatusInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+class CaseLitigantAgentInput(BaseModel):
+    """A case-specific litigation representative; it is not a staff account."""
+    name: str = Field(min_length=1, max_length=256)
+    law_firm: str = Field(default="", max_length=256)
+    position: str = Field(default="", max_length=128)
+    phone: str = Field(default="", max_length=64)
+    authority: str = Field(default="", max_length=500)
+
+
 class CaseLitigantsInput(BaseModel):
     plaintiffs: list[str] = Field(default_factory=list, max_length=50)
-    plaintiff_agents: list[str] = Field(default_factory=list, max_length=50)
+    # Strings remain accepted for historical case JSON and existing callers.
+    plaintiff_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     defendants: list[str] = Field(default_factory=list, max_length=50)
-    defendant_agents: list[str] = Field(default_factory=list, max_length=50)
+    defendant_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     third_parties: list[str] = Field(default_factory=list, max_length=50)
-    third_party_agents: list[str] = Field(default_factory=list, max_length=50)
+    third_party_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     comment: str = Field(default="", max_length=500)
 
 
@@ -24810,6 +24820,30 @@ def _clean_case_litigant_values(values: list[str]) -> list[str]:
     return result
 
 
+def _clean_case_litigant_agents(values: list[CaseLitigantAgentInput | str]) -> list[dict[str, str]]:
+    """Normalize legacy name-only agents into the detailed case JSON format."""
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for value in values:
+        if isinstance(value, str):
+            agent = {"name": value.strip(), "law_firm": "", "position": "", "phone": "", "authority": ""}
+        else:
+            agent = {
+                "name": value.name.strip(),
+                "law_firm": value.law_firm.strip(),
+                "position": value.position.strip(),
+                "phone": value.phone.strip(),
+                "authority": value.authority.strip(),
+            }
+        if not agent["name"]:
+            raise HTTPException(status_code=422, detail="代理人姓名不能为空")
+        key = tuple(agent[field] for field in ("name", "law_firm", "position", "phone", "authority"))
+        if key not in seen:
+            seen.add(key)
+            result.append(agent)
+    return result
+
+
 async def _persist_case_litigant_customers(
     case_record: BusinessRecord,
     parties_by_role: dict[str, list[str]],
@@ -24921,11 +24955,11 @@ async def _persist_case_litigants(
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改当事人")
     plaintiffs = _clean_case_litigant_values(body.plaintiffs)
-    plaintiff_agents = _clean_case_litigant_values(body.plaintiff_agents)
+    plaintiff_agents = _clean_case_litigant_agents(body.plaintiff_agents)
     defendants = _clean_case_litigant_values(body.defendants)
-    defendant_agents = _clean_case_litigant_values(body.defendant_agents)
+    defendant_agents = _clean_case_litigant_agents(body.defendant_agents)
     third_parties = _clean_case_litigant_values(body.third_parties)
-    third_party_agents = _clean_case_litigant_values(body.third_party_agents)
+    third_party_agents = _clean_case_litigant_agents(body.third_party_agents)
     case_type = str((case_record.data or {}).get("case_type") or "")
     permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
     if enforce_create_permission and permission_key and identity.get("role") != "admin":
@@ -25257,8 +25291,14 @@ def _criminal_maintenance_payload(body: BaseModel) -> dict:
 @app.put(f"{settings.api_prefix}/cases/{{case_id}}/criminal/litigants")
 async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await _criminal_detail_maintenance_case(case_id, identity, db)
-    def clean(items: list[str]): return list(dict.fromkeys(str(x or "").strip() for x in items if str(x or "").strip()))
-    payload = {key: clean(getattr(body, key)) for key in ("plaintiffs","plaintiff_agents","defendants","defendant_agents","third_parties","third_party_agents")}
+    payload = {
+        "plaintiffs": _clean_case_litigant_values(body.plaintiffs),
+        "plaintiff_agents": _clean_case_litigant_agents(body.plaintiff_agents),
+        "defendants": _clean_case_litigant_values(body.defendants),
+        "defendant_agents": _clean_case_litigant_agents(body.defendant_agents),
+        "third_parties": _clean_case_litigant_values(body.third_parties),
+        "third_party_agents": _clean_case_litigant_agents(body.third_party_agents),
+    }
     await _persist_case_litigant_customers(
         record,
         {"原告": payload["plaintiffs"], "被告": payload["defendants"], "第三人": payload["third_parties"]},
@@ -36140,7 +36180,13 @@ def _legacy_case_amount(value: object) -> float | None:
 
 def _legacy_case_list(value: object, limit: int = 2000) -> str | None:
     if isinstance(value, list):
-        return _legacy_case_text("、".join(str(item).strip() for item in value if str(item).strip()), limit)
+        entries: list[str] = []
+        for item in value:
+            name = item.get("name") if isinstance(item, dict) else item
+            text = str(name or "").strip()
+            if text:
+                entries.append(text)
+        return _legacy_case_text("、".join(entries), limit)
     return _legacy_case_text(value, limit)
 
 async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSession) -> LegacyCase:
