@@ -6192,8 +6192,12 @@ async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: 
 async def _require_hr_attachment_write_access(record: BusinessRecord, category: str, identity: dict, db: AsyncSession) -> None:
     if record.module != "hr":
         return
-    if category != "员工档案":
-        raise HTTPException(status_code=422, detail="员工档案附件类型必须为员工档案")
+    if category not in {"员工档案", "员工头像"}:
+        raise HTTPException(status_code=422, detail="员工附件类型必须为员工档案或员工头像")
+    if category == "员工头像":
+        await _require_hr_employee_action(identity, db, "hr.employee.update", "修改")
+        await _require_hr_employee_target_access(record, identity, db)
+        return
     if identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="仅系统管理员或部门负责人可以维护员工档案")
     await _ensure_record_module(record.id, "hr", identity, db)
@@ -28455,7 +28459,7 @@ async def upload_attachment(
                 raise HTTPException(status_code=422, detail="客户记录 customer_guid 不能为空")
             if normalized_customer_guid != _customer_guid(record):
                 raise HTTPException(status_code=409, detail="附件 customer_guid 与客户记录不一致")
-        if record.module == "hr":
+        if record.module == "hr" and category != "员工头像":
             category = "员工档案"
         await _require_hr_attachment_write_access(record, category, identity, db)
         if record.module == "ipr_case":
@@ -28524,9 +28528,25 @@ async def upload_attachment(
     # 其他业务文件。文件仍受大小、案件权限和受控下载约束；知识产权
     # 案件继续走自己的专用格式校验接口。
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
-    if (not record or record.module != "case") and suffix not in allowed:
+    is_employee_avatar = bool(record and record.module == "hr" and category == "员工头像")
+    if not is_employee_avatar and (not record or record.module != "case") and suffix not in allowed:
         raise HTTPException(status_code=422, detail="不支持的文件格式")
     content = await file.read()
+    if is_employee_avatar:
+        if suffix not in {".png", ".jpg", ".jpeg", ".gif", ".webp"} or not str(file.content_type or "").lower().startswith("image/"):
+            raise HTTPException(status_code=422, detail="头像仅支持 PNG、JPG、GIF 或 WebP 图片")
+        if not content:
+            raise HTTPException(status_code=422, detail="头像图片不能为空")
+        image_signature_valid = (
+            (suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n"))
+            or (suffix in {".jpg", ".jpeg"} and content.startswith(b"\xff\xd8\xff"))
+            or (suffix == ".gif" and content[:6] in {b"GIF87a", b"GIF89a"})
+            or (suffix == ".webp" and content.startswith(b"RIFF") and content[8:12] == b"WEBP")
+        )
+        if not image_signature_valid:
+            raise HTTPException(status_code=422, detail="头像文件内容不是有效图片")
+        if len(content) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="头像图片不能超过 5MB")
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
     try:
@@ -28536,6 +28556,13 @@ async def upload_attachment(
         item = FileAttachment(record_id=record_id, finance_transaction_id=finance_transaction_id, category=category, file_type_code=resolved_case_file_type.code if resolved_case_file_type else "", original_name=Path(file.filename or stored_name).name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=remark, is_license=bool(is_license), document_date=document_date)
         db.add(item)
         await db.flush()
+        if record and record.module == "hr" and category == "员工头像":
+            record.data = {**(record.data or {}), "avatar_attachment_id": item.id}
+            linked_username = str((record.data or {}).get("username") or record.owner or "").strip().lower()
+            linked_user = await db.scalar(select(User).where(User.username == linked_username)) if linked_username else None
+            if linked_user:
+                linked_user.profile = {**(linked_user.profile or {}), "avatar_attachment_id": item.id}
+            db.add(WorkflowEvent(record_id=record.id, action="更新员工头像", from_status=record.status, to_status=record.status, operator=identity["username"], comment=item.original_name))
         if source_case:
             db.add(WorkflowEvent(record_id=source_case.id, action="上传案件关联文档", from_status=source_case.status, to_status=source_case.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))
         elif record and record.module == "case":
@@ -28842,6 +28869,8 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if item.category == "客户联系人照片":
         raise HTTPException(status_code=409, detail="联系人照片请在客户联系人中维护")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
+    if record and record.module == "hr" and item.category == "员工头像" and int((record.data or {}).get("avatar_attachment_id") or 0) == item.id:
+        raise HTTPException(status_code=409, detail="当前员工头像不能通过附件接口删除，请上传新头像替换")
     if record and record.module == "ipr_case":
         raise HTTPException(status_code=409, detail="知识产权案件文档请使用案件详情中的专用文档入口删除")
     may_manage_customer_document = False
