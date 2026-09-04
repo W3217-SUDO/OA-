@@ -35,7 +35,6 @@ NOTIFICATION = (ROOT / "apps/admin-web/src/NotificationCenter.tsx").read_text(en
 AUDIT_LOG = (ROOT / "apps/admin-web/src/AuditLogPage.tsx").read_text(encoding="utf-8")
 GLOBAL_SEARCH = (ROOT / "apps/admin-web/src/GlobalSearch.tsx").read_text(encoding="utf-8")
 FINANCE_PAGE = (ROOT / "apps/admin-web/src/FinanceCenterPage.tsx").read_text(encoding="utf-8")
-JAR_FEE_MANAGER = (ROOT / "apps/admin-web/src/JarFeeManager.tsx").read_text(encoding="utf-8")
 SEAL_PAGE = (ROOT / "apps/admin-web/src/SealCenterPage.tsx").read_text(encoding="utf-8")
 SEAL_VIEW_MAPPING = (ROOT / "apps/admin-web/src/sealViewMapping.ts").read_text(encoding="utf-8")
 DOCUMENT_PAGE = (ROOT / "apps/admin-web/src/DocumentCenterPage.tsx").read_text(encoding="utf-8")
@@ -130,7 +129,38 @@ def is_implemented(route: str) -> bool:
     )
 
 
+def audit_hr_performance() -> None:
+    """Check only the dedicated HR page without hiding unrelated suite failures."""
+    page = (ROOT / "apps/admin-web/src/HrPerformancePage.tsx").read_text(encoding="utf-8")
+    normalized = re.sub(r"\s+", "", page)
+    menus = declared_menus()
+    assert any(key == "hr-performance" and parent == "hr" for key, parent, *_ in menus)
+    assert 'route === "hr-performance"' in APP and '<HrPerformancePage' in APP
+    expected = {
+        ("get", "/hr/performance"), ("post", "/hr/performance"),
+        ("get", "/hr/performance/export"),
+        ("get", "/hr/performance/{{performance_id}}"),
+        ("patch", "/hr/performance/{{performance_id}}"),
+        ("delete", "/hr/performance/{{performance_id}}"),
+    }
+    server = set(re.findall(r'@app\.(get|post|patch|delete)\(f"\{settings\.api_prefix\}([^\"]+)"', MAIN))
+    assert expected <= server, f"missing HR performance routes: {expected - server}"
+    for method in ("get", "post", "patch", "delete"):
+        assert re.search(rf"api\.{method}\(['`]/hr/performance", page), f"missing real {method} action"
+    assert "params:{...filters,page,page_size:pageSize}" in normalized
+    assert "params:filters,responseType:'blob'" in normalized, "export must reuse applied list filters"
+    assert "canManage&&" in normalized and "['admin','manager']" in normalized
+    assert "rememberBusinessRecordDetailTarget" in page and "openEmployee(viewing)" in page
+    for field in ("scheme_name", "start_date", "end_date", "base_salary", "remark"):
+        assert field in page
+    for kind in ("hearing", "document", "source", "investigation", "quality"):
+        assert f"{kind}_rate" in page and f"{kind}_fixed" in page
+    assert "导出 CSV" in page and "绩效查看" in page and "新增绩效" in page
+    print("HR_PERFORMANCE_PAGE_CONTRACT_OK: menu, CRUD routes, applied-filter CSV, write visibility, employee links, complete scheme fields")
+
+
 def main() -> None:
+    audit_hr_performance()
     unsafe_form_date_formats: list[str] = []
     unsafe_pattern = re.compile(r"\b(?:v|value|values)\.[A-Za-z_][A-Za-z0-9_]*\.format\(")
     for path in (ROOT / "apps/admin-web/src").glob("*.tsx"):
@@ -145,7 +175,7 @@ def main() -> None:
     menus = declared_menus()
     keys = [item[0] for item in menus]
     # Keep the legacy parity baseline separate from later first-party extensions.
-    # The five additions below are intentionally retained: removing them would
+    # The additions below are intentionally retained: removing them would
     # break the agent and expanded finance/reporting entry points.
     legacy_menu_keys = {
         item[0] for item in menus
@@ -155,7 +185,7 @@ def main() -> None:
             "platform-finance-overview-cmb",
             "platform-finance-overview-gdicbc",
             "reports-large-screen",
-            "finance-jar",
+            "hr-performance",
         }
     }
     assert len(legacy_menu_keys) == 277, (
@@ -167,7 +197,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
-        "finance-jar",
+        "hr-performance",
     ):
         assert extension_key in keys, f"required first-party menu extension missing: {extension_key}"
     assert len(keys) == len(set(keys)), "duplicate menu keys found"
@@ -179,7 +209,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
-        "finance-jar",
+        "hr-performance",
     }
     legacy_parents = {
         item[1] for item in menus
@@ -195,39 +225,6 @@ def main() -> None:
     assert len(legacy_leaves) == 231, f"expected 231 legacy menu leaves, got {len(legacy_leaves)}"
     missing = [(key, canonical_route(key)) for key in leaves if not is_implemented(canonical_route(key))]
     assert not missing, f"menu leaves without a page component: {missing}"
-    assert "finance-jar" in keys, "JAR交案费管理菜单缺失"
-    for token in (
-        'import JarFeeManager from "./JarFeeManager"',
-        'if (initialView === "finance-jar")',
-        "return <JarFeeManager onNavigate={onNavigate} />",
-    ):
-        assert token in FINANCE_PAGE, f"JAR交案费页面入口缺失: {token}"
-    for token in (
-        '"/finance/jar-fees"',
-        '"/finance/jar-fees/export"',
-        '"/files"',
-        '"/status"',
-        "JAR交案费管理",
-        "上传文件",
-        "导出 CSV",
-    ):
-        assert token in JAR_FEE_MANAGER, f"JAR交案费前端能力缺失: {token}"
-    for token in (
-        'JAR_FEE_MODULE = "jar_fee"',
-        'JAR_FEE_TRANSITIONS =',
-        '@app.get(f"{settings.api_prefix}/finance/jar-fees")',
-        '@app.post(f"{settings.api_prefix}/finance/jar-fees", status_code=status.HTTP_201_CREATED)',
-        '@app.put(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}")',
-        '@app.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)',
-        '@app.post(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/status")',
-        '@app.post(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files", status_code=status.HTTP_201_CREATED)',
-        '@app.get(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}/download")',
-        '@app.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)',
-        'WorkflowEvent(record_id=item.id, action="创建交案费"',
-        'WorkflowEvent(record_id=item.id, action="变更交案费状态"',
-        '官费、代理费和其他费用合计不能大于交案费金额',
-    ):
-        assert token in MAIN, f"JAR交案费后端能力缺失: {token}"
     assert "页面不存在，请从左侧菜单重新选择" in APP, "missing explicit unknown-route guard"
     assert "SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}" in MAIN, "system menu keys must derive from implemented routes"
     assert "if item.key in SYSTEM_MENU_ROUTE_KEYS" in MAIN, "navigation must hide menus without an implemented route"

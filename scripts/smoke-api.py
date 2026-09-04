@@ -3839,6 +3839,28 @@ def main():
         assert "权限" in matter["data"]["content"]
         commission = call("POST", f"/hr/{hr['id']}/subrecords", {"kind": "commission", "data": {"start_date": str(date.today()), "end_date": "", "base_salary": 10000, "hearing_rate": 10, "document_rate": 15, "source_rate": 20, "investigation_rate": 5, "quality_rate": 3}}, expected=(201,))
         assert commission["data"]["base_salary"] == 10000
+        # The independent page and employee detail must share the same schemes.
+        performance_query = urllib.parse.urlencode({"employee_id": hr["id"], "department": active_department["name"], "start_date": str(date.today()), "end_date": str(date.today())})
+        listed_performance = call("GET", f"/hr/performance?{performance_query}")
+        assert commission["id"] in {item["id"] for item in listed_performance["items"]}
+        performance = call("POST", "/hr/performance", {"employee_id": hr["id"], "data": {"scheme_name": f"CODEX-HR-PERFORMANCE-{suffix}", "start_date": "2098-01-01", "end_date": "2098-12-31", "base_salary": 12000, "hearing_rate": 0.1, "hearing_fixed": 500}}, expected=(201,))
+        try:
+            assert call("GET", f"/hr/performance/{performance['id']}")["employee_id"] == hr["id"]
+            performance = call("PATCH", f"/hr/performance/{performance['id']}", {"data": {**performance["data"], "quality_fixed": 300, "remark": "CODEX 独立绩效保存回读"}})
+            assert performance["data"]["quality_fixed"] == 300
+            assert any(item["id"] == performance["id"] and item["data"]["quality_fixed"] == 300 for item in call("GET", f"/hr/{hr['id']}/subrecords?kind=commission")["items"])
+            call("PATCH", f"/hr/performance/{performance['id']}", {"data": {**performance["data"], "end_date": "2097-01-01"}}, expected=(422,))
+            assert call("GET", f"/hr/performance/{performance['id']}")["data"]["end_date"] == "2098-12-31"
+            query = urllib.parse.urlencode({"employee_id": hr["id"], "start_date": "2098-01-01", "end_date": "2098-12-31"})
+            _, exported, mime = call("GET", f"/hr/performance/export?{query}", raw=True)
+            assert "csv" in mime and performance["data"]["scheme_name"] in exported.decode("utf-8-sig")
+            assert call("GET", f"/hr/performance?employee_id={hr['id']}&department=CODEX-NO-MATCH-{suffix}")["total"] == 0
+            call("GET", "/hr/performance?start_date=2098-12-31&end_date=2098-01-01", expected=(422,))
+        finally:
+            call("DELETE", f"/hr/performance/{performance['id']}", expected=(204, 404))
+        call("GET", f"/hr/performance/{performance['id']}", expected=(404,))
+        assert performance["id"] not in {item["id"] for item in call("GET", f"/hr/performance?employee_id={hr['id']}")["items"]}
+        assert {"新增绩效方案", "修改绩效方案", "删除绩效方案"} <= {item["action"] for item in call("GET", f"/records/{hr['id']}/history")["items"]}
         assert call("GET", f"/hr/{hr['id']}/subrecords")["total"] == 3
         call("DELETE", f"/hr/{hr['id']}/subrecords/{leave['id']}", expected=(204,))
         assert call("GET", f"/hr/{hr['id']}/subrecords?kind=leave")["total"] == 0

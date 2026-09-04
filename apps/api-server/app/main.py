@@ -3,6 +3,7 @@ import base64
 import ctypes
 from contextlib import asynccontextmanager, suppress
 import csv
+import math
 import gc
 import hashlib
 from datetime import date, datetime, timedelta, timezone
@@ -176,7 +177,7 @@ DEFAULT_SYSTEM_MENUS = [
     ("finance", "", "财务中心", "file-text", 90),
     ("platform-finance", "", "平台财务中心", "bank", 100),
     ("user-center", "", "用户中心", "user", 110), ("user-messages", "user-center", "消息通知", "", 111), ("user-communications", "user-center", "沟通日志", "", 112), ("user-account", "user-center", "账户管理", "", 113),
-    ("hr", "", "人事中心", "team", 120), ("hr-new", "hr", "新建员工", "", 1), ("hr-all", "hr", "员工管理", "", 2), ("hr-departments", "hr", "部门管理", "", 3), ("hr-roles", "hr", "角色管理", "", 4),
+    ("hr", "", "人事中心", "team", 120), ("hr-new", "hr", "新建员工", "", 1), ("hr-all", "hr", "员工管理", "", 2), ("hr-departments", "hr", "部门管理", "", 3), ("hr-roles", "hr", "角色管理", "", 4), ("hr-performance", "hr", "绩效管理", "", 5),
     ("system", "", "系统中心", "user", 130), ("system-parameters", "system", "系统参数", "", 1), ("system-management", "system", "系统管理", "", 2),
     ("warehouse", "", "仓库管理", "file-text", 140), ("warehouse-list", "warehouse", "仓库一览表", "", 1), ("reports", "", "报表中心", "dashboard", 150),
 ]
@@ -1472,6 +1473,11 @@ class HrEmployeeBatchDeleteInput(BaseModel):
 
 class HrSubrecordInput(BaseModel):
     kind: str = Field(pattern="^(leave|matter|commission)$")
+    data: dict = Field(default_factory=dict)
+
+
+class HrPerformanceInput(BaseModel):
+    employee_id: int = Field(gt=0)
     data: dict = Field(default_factory=dict)
 
 
@@ -31707,6 +31713,95 @@ async def delete_job_role(role_id: int, identity: dict = Depends(current_identit
 HR_SUBRECORD_KINDS = {"leave", "matter", "commission"}
 
 
+async def _audit_hr_performance(item: HrSubrecord, action: str, identity: dict, db: AsyncSession, before: dict | None = None) -> None:
+    employee = await db.get(BusinessRecord, item.employee_id)
+    db.add(WorkflowEvent(
+        record_id=item.employee_id, action=action, from_status=employee.status, to_status=employee.status,
+        operator=identity["username"],
+        comment=json.dumps({"performance_id": item.id, "before": before, "after": None if action == "删除绩效方案" else item.data}, ensure_ascii=False),
+    ))
+
+
+async def _hr_performance_rows(employee_id: int | None, employee: str, department: str, start_date: date | None, end_date: date | None, identity: dict, db: AsyncSession) -> list[dict]:
+    await _require_record_module_menu("hr", identity, db, action="查看")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="筛选结束日期不能早于开始日期")
+    conditions = [BusinessRecord.module == "hr", HrSubrecord.kind == "commission", *(await _record_scope_conditions(identity, db))]
+    if employee_id is not None:
+        conditions.append(BusinessRecord.id == employee_id)
+    pairs = (await db.execute(select(HrSubrecord, BusinessRecord).join(BusinessRecord, BusinessRecord.id == HrSubrecord.employee_id).where(*conditions).order_by(HrSubrecord.created_at.desc(), HrSubrecord.id.desc()))).all()
+    users = await _user_display_map({value for item, person in pairs for value in (item.created_by, item.updated_by, person.owner)}, db)
+    rows = []
+    for item, person in pairs:
+        name, missing_name = _person_display_name(person.title, person.owner)
+        account = users.get(str(person.owner).lower())
+        if missing_name and account:
+            name = _person_display_name(account.display_name, account.username)[0]
+        if employee and employee.casefold() not in f"{name} {person.serial_no} {person.owner}".casefold():
+            continue
+        if department and department != (person.department or ""):
+            continue
+        data = item.data or {}
+        if start_date or end_date:
+            try:
+                start = date.fromisoformat(str(data.get("start_date") or ""))
+                end = date.fromisoformat(str(data["end_date"])) if data.get("end_date") else None
+            except (ValueError, TypeError):
+                continue
+            if start_date and end and end < start_date or end_date and start > end_date:
+                continue
+        rows.append({**_hr_subrecord_dict(item, users), "employee_name": name, "employee_no": person.serial_no, "department": person.department})
+    return rows
+
+
+@app.get(f"{settings.api_prefix}/hr/performance")
+async def list_hr_performance(employee_id: int | None = Query(None, gt=0), employee: str = "", department: str = "", start_date: date | None = None, end_date: date | None = None, page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    rows = await _hr_performance_rows(employee_id, employee.strip(), department.strip(), start_date, end_date, identity, db)
+    return {"items": rows[(page - 1) * page_size:page * page_size], "total": len(rows), "page": page, "page_size": page_size}
+
+
+@app.get(f"{settings.api_prefix}/hr/performance/export")
+async def export_hr_performance(employee_id: int | None = Query(None, gt=0), employee: str = "", department: str = "", start_date: date | None = None, end_date: date | None = None, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    rows = await _hr_performance_rows(employee_id, employee.strip(), department.strip(), start_date, end_date, identity, db)
+    fields = [("scheme_name", "方案名称"), ("start_date", "开始日期"), ("end_date", "结束日期"), ("base_salary", "基本工资"), ("hearing_rate", "开庭提成"), ("hearing_fixed", "开庭固定"), ("document_rate", "文书提成"), ("document_fixed", "文书固定"), ("source_rate", "案源提成"), ("source_fixed", "案源固定"), ("investigation_rate", "调查提成"), ("investigation_fixed", "调查固定"), ("quality_rate", "品管提成"), ("quality_fixed", "品管固定"), ("remark", "备注")]
+    return _csv_response(f"hr-performance-{date.today()}.csv", ["员工编号", "员工", "部门", *[label for _, label in fields]], [[row["employee_no"], row["employee_name"], row["department"], *[row["data"].get(key, "") for key, _ in fields]] for row in rows])
+
+
+async def _get_hr_performance(performance_id: int, identity: dict, db: AsyncSession) -> HrSubrecord:
+    await _require_record_module_menu("hr", identity, db, action="查看")
+    item = await db.get(HrSubrecord, performance_id)
+    if not item or item.kind != "commission":
+        raise HTTPException(status_code=404, detail="绩效方案不存在")
+    await _ensure_record_module(item.employee_id, "hr", identity, db)
+    return item
+
+
+@app.get(f"{settings.api_prefix}/hr/performance/{{performance_id}}")
+async def get_hr_performance(performance_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _get_hr_performance(performance_id, identity, db)
+    rows = await _hr_performance_rows(item.employee_id, "", "", None, None, identity, db)
+    return next(row for row in rows if row["id"] == item.id)
+
+
+@app.post(f"{settings.api_prefix}/hr/performance", status_code=status.HTTP_201_CREATED)
+async def create_hr_performance(body: HrPerformanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    result = await create_hr_subrecord(body.employee_id, HrSubrecordInput(kind="commission", data=body.data), identity, db)
+    return await get_hr_performance(result["id"], identity, db)
+
+
+@app.patch(f"{settings.api_prefix}/hr/performance/{{performance_id}}")
+async def update_hr_performance(performance_id: int, body: HrSubrecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _get_hr_performance(performance_id, identity, db)
+    await update_hr_subrecord(item.employee_id, item.id, body, identity, db)
+    return await get_hr_performance(item.id, identity, db)
+
+
+@app.delete(f"{settings.api_prefix}/hr/performance/{{performance_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hr_performance(performance_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    item = await _get_hr_performance(performance_id, identity, db)
+    return await delete_hr_subrecord(item.employee_id, item.id, identity, db)
+
+
 def _hr_subrecord_dict(item: HrSubrecord, users_by_username: dict[str, User] | None = None) -> dict:
     users = users_by_username or {}
     return {
@@ -31755,15 +31850,24 @@ def _validate_hr_subrecord(kind: str, raw: dict) -> dict:
             "quality_rate", "quality_fixed",
         ]
         for key in numeric:
-            value = float(data.get(key) or 0)
-            if value < 0: raise HTTPException(status_code=422, detail="提成或工资数值不能为负数")
+            try:
+                value = float(data.get(key) or 0)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise HTTPException(status_code=422, detail="提成或工资必须是有效数值") from exc
+            if not math.isfinite(value) or value < 0:
+                raise HTTPException(status_code=422, detail="提成或工资必须是有限非负数值")
             data[key] = value
-        data.update({"start_date": str(start), "end_date": str(end) if end else ""})
+        scheme_name = str(data.get("scheme_name") or "").strip()
+        remark = str(data.get("remark") or "").strip()
+        if len(scheme_name) > 128 or len(remark) > 2000:
+            raise HTTPException(status_code=422, detail="方案名称不能超过128字，备注不能超过2000字")
+        data.update({"start_date": str(start), "end_date": str(end) if end else "", "scheme_name": scheme_name, "remark": remark})
     return data
 
 
 @app.get(f"{settings.api_prefix}/hr/{{employee_id}}/subrecords")
 async def list_hr_subrecords(employee_id: int, kind: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _require_record_module_menu("hr", identity, db, action="查看")
     await _ensure_record_module(employee_id, "hr", identity, db)
     conditions = [HrSubrecord.employee_id == employee_id]
     if kind:
@@ -31799,8 +31903,13 @@ async def get_employee_performance_for_case(employee_id: int, case_id: int, iden
 async def create_hr_subrecord(employee_id: int, body: HrSubrecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以维护员工记录")
     await _ensure_record_module(employee_id, "hr", identity, db)
+    await _require_record_module_menu("hr", identity, db, action="维护")
     item = HrSubrecord(employee_id=employee_id, kind=body.kind, data=_validate_hr_subrecord(body.kind, body.data), created_by=identity["username"], updated_by=identity["username"])
-    db.add(item); await db.commit(); await db.refresh(item); return _hr_subrecord_dict(item)
+    db.add(item)
+    await db.flush()
+    if item.kind == "commission":
+        await _audit_hr_performance(item, "新增绩效方案", identity, db)
+    await db.commit(); await db.refresh(item); return _hr_subrecord_dict(item)
 
 
 @app.patch(f"{settings.api_prefix}/hr/{{employee_id}}/subrecords/{{subrecord_id}}")
@@ -31809,7 +31918,11 @@ async def update_hr_subrecord(employee_id: int, subrecord_id: int, body: HrSubre
     await _ensure_record_module(employee_id, "hr", identity, db)
     item = await db.get(HrSubrecord, subrecord_id)
     if not item or item.employee_id != employee_id: raise HTTPException(status_code=404, detail="员工附属记录不存在")
+    await _require_record_module_menu("hr", identity, db, action="维护")
+    before = dict(item.data or {})
     item.data = _validate_hr_subrecord(item.kind, body.data); item.updated_by = identity["username"]
+    if item.kind == "commission":
+        await _audit_hr_performance(item, "修改绩效方案", identity, db, before)
     await db.commit(); await db.refresh(item); return _hr_subrecord_dict(item)
 
 
@@ -31819,6 +31932,9 @@ async def delete_hr_subrecord(employee_id: int, subrecord_id: int, identity: dic
     await _ensure_record_module(employee_id, "hr", identity, db)
     item = await db.get(HrSubrecord, subrecord_id)
     if not item or item.employee_id != employee_id: raise HTTPException(status_code=404, detail="员工附属记录不存在")
+    await _require_record_module_menu("hr", identity, db, action="维护")
+    if item.kind == "commission":
+        await _audit_hr_performance(item, "删除绩效方案", identity, db, dict(item.data or {}))
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

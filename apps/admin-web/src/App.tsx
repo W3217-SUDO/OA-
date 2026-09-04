@@ -139,6 +139,7 @@ const SystemCenterPage = lazyWithVersionRecovery("system", () => import("./Syste
 const IprFileTypeSettingsPage = lazyWithVersionRecovery("ipr-file-types", () => import("./IprFileTypeSettingsPage"));
 const LawFirmPage = lazyWithVersionRecovery("law-firms", () => import("./LawFirmPage"));
 const HrCenterPage = lazyWithVersionRecovery("hr", () => import("./HrCenterPage"));
+const HrPerformancePage = lazyWithVersionRecovery("hr-performance", () => import("./HrPerformancePage"));
 const OrganizationCenterPage = lazyWithVersionRecovery("organization", () => import("./OrganizationCenterPage"));
 const WarehousePage = lazyWithVersionRecovery("warehouse", () => import("./WarehousePage"));
 const ReportCenterPage = lazyWithVersionRecovery("report", () => import("./ReportCenterPage"));
@@ -473,6 +474,7 @@ const menuItems: NavItem[] = [
     children: [
       { key: "hr-new", label: "新建员工" },
       { key: "hr-all", label: "员工管理" },
+      { key: "hr-performance", label: "绩效管理" },
       { key: "hr-departments", label: "部门管理" },
       { key: "hr-roles", label: "角色管理" },
     ],
@@ -1824,6 +1826,8 @@ export default function App() {
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
     ) : ["hr-departments", "hr-roles"].includes(route) ? (
       <OrganizationCenterPage initialView={route} />
+    ) : route === "hr-performance" ? (
+      <HrPerformancePage onNavigate={navigate} />
     ) : route.startsWith("hr-") ? (
       <HrCenterPage initialView={route} />
     ) : route.startsWith("warehouse") ? (
