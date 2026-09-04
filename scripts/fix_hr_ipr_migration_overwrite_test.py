@@ -118,6 +118,16 @@ class RepairTest(unittest.TestCase):
         self.assertEqual(MODULE.placeholder("postgresql"), "%s")
         self.assertEqual(MODULE.placeholder("sqlite"), "?")
 
+    def test_application_postgresql_driver_urls_are_normalized_for_psycopg(self):
+        self.assertEqual(
+            MODULE.normalize_postgresql_url("postgresql+asyncpg://user:pass@db/app"),
+            "postgresql://user:pass@db/app",
+        )
+        self.assertEqual(
+            MODULE.normalize_postgresql_url("postgresql+psycopg://user:pass@db/app"),
+            "postgresql://user:pass@db/app",
+        )
+
 
 class Result:
     def __init__(self, rows):
