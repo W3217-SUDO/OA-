@@ -5,13 +5,42 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "apps" / "api-server" / "legal_platform.db"
+
+
+class RepairBlocked(RuntimeError):
+    """Raised before writes when source-to-target identity is ambiguous."""
+
+
+class CursorLike(Protocol):
+    def fetchall(self) -> list[Any]: ...
+
+
+class ConnectionLike(Protocol):
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> CursorLike: ...
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...
+
+
+@dataclass(frozen=True)
+class Change:
+    record_id: int
+    user_id: int
+    username: str
+    department: str
+    active: bool
+    status: str
+    data: dict[str, Any]
+    department_changed: bool
+    status_changed: bool
 
 
 def as_object(value: Any) -> dict[str, Any]:
@@ -40,85 +69,178 @@ def legacy_bool(value: Any) -> bool:
     raise ValueError(f"invalid legacy_is_actived value: {value!r}")
 
 
-def repair(connection: sqlite3.Connection, dry_run: bool) -> dict[str, int]:
-    connection.row_factory = sqlite3.Row
+def row_value(row: Any, key: str) -> Any:
+    if isinstance(row, dict):
+        return row[key]
+    try:
+        return row[key]
+    except (IndexError, TypeError):
+        keys = {"id": 0, "owner": 1, "department": 2, "status": 3, "data": 4}
+        return row[keys[key]]
+
+
+def placeholder(dialect: str) -> str:
+    return "%s" if dialect == "postgresql" else "?"
+
+
+def collect_changes(connection: ConnectionLike, dialect: str) -> tuple[list[Change], dict[str, int]]:
     departments = {
-        normalized(row["code"]): str(row["name"])
-        for row in connection.execute("SELECT code,name FROM departments")
+        normalized(row_value(row, "code")): str(row_value(row, "name"))
+        for row in connection.execute("SELECT code,name FROM departments").fetchall()
     }
-    stats = {"eligible": 0, "department_corrected": 0, "status_corrected": 0, "missing_department": 0, "missing_user": 0}
+    stats = {
+        "eligible": 0,
+        "department_corrected": 0,
+        "status_corrected": 0,
+        "missing_department": 0,
+        "missing_username": 0,
+        "missing_user": 0,
+        "duplicate_user": 0,
+        "blocked": 0,
+        "updated": 0,
+    }
+    changes: list[Change] = []
+    errors: list[str] = []
+    marker = placeholder(dialect)
     rows = connection.execute(
         "SELECT id,owner,department,status,data FROM business_records WHERE module='hr'"
     ).fetchall()
     for row in rows:
-        data = as_object(row["data"])
+        data = as_object(row_value(row, "data"))
         hr_identity = data.get("legacy_hr_identity")
         if not isinstance(hr_identity, dict) or not isinstance(data.get("legacy_ipr_identity"), dict):
             continue
         stats["eligible"] += 1
-        username = str(row["owner"] or data.get("username") or "").strip()
+        record_id = int(row_value(row, "id"))
+        username = str(row_value(row, "owner") or data.get("username") or "").strip()
+        if not username:
+            stats["missing_username"] += 1
+            errors.append(f"record={record_id}: username is empty")
+            continue
         department_code = normalized(hr_identity.get("legacy_department_code"))
         correct_department = departments.get(department_code)
         if not correct_department:
             stats["missing_department"] += 1
-            print(f"SKIP record={row['id']} owner={username}: department code {department_code!r} not found")
+            errors.append(f"record={record_id} owner={username}: department code {department_code!r} not found")
             continue
+        users = connection.execute(
+            f"SELECT id,department,is_active FROM users WHERE username={marker}", (username,)
+        ).fetchall()
+        if not users:
+            stats["missing_user"] += 1
+            errors.append(f"record={record_id} owner={username}: user not found")
+            continue
+        if len(users) != 1:
+            stats["duplicate_user"] += 1
+            errors.append(f"record={record_id} owner={username}: matched {len(users)} users")
+            continue
+
+        user = users[0]
         correct_active = legacy_bool(hr_identity.get("legacy_is_actived"))
         correct_status = "在职" if correct_active else "停用"
-        user = connection.execute(
-            "SELECT id,department,is_active FROM users WHERE username=?", (username,)
-        ).fetchone()
-        if user is None:
-            stats["missing_user"] += 1
-
-        department_changed = str(row["department"] or "") != correct_department or (
-            user is not None and str(user["department"] or "") != correct_department
+        department_changed = str(row_value(row, "department") or "") != correct_department or str(
+            row_value(user, "department") or ""
+        ) != correct_department
+        status_changed = (
+            str(row_value(row, "status") or "") != correct_status
+            or data.get("is_active") is not correct_active
+            or bool(row_value(user, "is_active")) != correct_active
         )
-        status_changed = str(row["status"] or "") != correct_status or data.get("is_active") is not correct_active or (
-            user is not None and bool(user["is_active"]) != correct_active
-        )
-        if department_changed:
-            stats["department_corrected"] += 1
-        if status_changed:
-            stats["status_corrected"] += 1
-        if not department_changed and not status_changed:
-            continue
-
-        print(
-            f"{'DRY-RUN' if dry_run else 'FIX'} record={row['id']} owner={username}: "
-            f"department {row['department']!r}->{correct_department!r}; "
-            f"status {row['status']!r}->{correct_status!r}"
-        )
-        if dry_run:
-            continue
-        data["is_active"] = correct_active
-        connection.execute(
-            "UPDATE business_records SET department=?,status=?,data=? WHERE id=?",
-            (correct_department, correct_status, json.dumps(data, ensure_ascii=False, sort_keys=True), int(row["id"])),
-        )
-        if user is not None:
-            connection.execute(
-                "UPDATE users SET department=?,is_active=? WHERE id=?",
-                (correct_department, int(correct_active), int(user["id"])),
+        stats["department_corrected"] += int(department_changed)
+        stats["status_corrected"] += int(status_changed)
+        if department_changed or status_changed:
+            data["is_active"] = correct_active
+            changes.append(
+                Change(
+                    record_id=record_id,
+                    user_id=int(row_value(user, "id")),
+                    username=username,
+                    department=correct_department,
+                    active=correct_active,
+                    status=correct_status,
+                    data=data,
+                    department_changed=department_changed,
+                    status_changed=status_changed,
+                )
             )
-    if dry_run:
-        connection.rollback()
-    else:
+
+    if errors:
+        stats["blocked"] = len(errors)
+        raise RepairBlocked("repair blocked before writes:\n" + "\n".join(errors))
+    return changes, stats
+
+
+def repair(connection: ConnectionLike, dry_run: bool, dialect: str = "sqlite") -> dict[str, int]:
+    if dialect not in {"sqlite", "postgresql"}:
+        raise ValueError(f"unsupported database dialect: {dialect}")
+    try:
+        changes, stats = collect_changes(connection, dialect)
+        for change in changes:
+            print(
+                f"{'DRY-RUN' if dry_run else 'FIX'} record={change.record_id} owner={change.username}: "
+                f"department->{change.department!r}; status->{change.status!r}"
+            )
+        if dry_run:
+            connection.rollback()
+            return stats
+
+        marker = placeholder(dialect)
+        for change in changes:
+            data_value: Any = json.dumps(change.data, ensure_ascii=False, sort_keys=True)
+            if dialect == "postgresql":
+                from psycopg.types.json import Jsonb
+
+                data_value = Jsonb(change.data)
+            connection.execute(
+                f"UPDATE business_records SET department={marker},status={marker},data={marker} WHERE id={marker}",
+                (change.department, change.status, data_value, change.record_id),
+            )
+            connection.execute(
+                f"UPDATE users SET department={marker},is_active={marker} WHERE id={marker}",
+                (change.department, change.active, change.user_id),
+            )
+            stats["updated"] += 1
         connection.commit()
-    return stats
+        return stats
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def open_connection(database_url: str | None, db_path: Path) -> tuple[ConnectionLike, str]:
+    if database_url:
+        if not database_url.startswith(("postgresql://", "postgres://")):
+            raise ValueError("--database-url must use postgresql:// or postgres://")
+        import psycopg
+        from psycopg.rows import dict_row
+
+        return psycopg.connect(database_url, row_factory=dict_row), "postgresql"
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    return connection, "sqlite"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="SQLite database path")
+    parser.add_argument(
+        "--database-url",
+        default=os.environ.get("DATABASE_URL"),
+        help="PostgreSQL URL; defaults to DATABASE_URL",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Report changes without writing (default)")
+    mode.add_argument("--apply", action="store_true", help="Apply all changes in one transaction")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    with sqlite3.connect(args.db) as connection:
-        stats = repair(connection, args.dry_run)
+    connection, dialect = open_connection(args.database_url, args.db)
+    try:
+        stats = repair(connection, dry_run=not args.apply, dialect=dialect)
+    finally:
+        connection.close()  # type: ignore[attr-defined]
     print(json.dumps(stats, ensure_ascii=False, sort_keys=True))
     return 0
 
