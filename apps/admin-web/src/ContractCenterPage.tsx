@@ -114,6 +114,8 @@ type Contract = {
   status: string;
   owner: string;
   department: string;
+  archive_status?: "归档中" | "已归档";
+  archive_date?: string;
   description: string;
   data: {
     amount: number;
@@ -266,6 +268,7 @@ const consumeContractDetailReturnView = () => {
 const readContractQuery = (view: string): Record<string, any> => {
   const parsed = readContractListQuery(sessionStorage, view) as Record<string, any>;
   if (Array.isArray(parsed.signed_at)) parsed.signed_at = parsed.signed_at.map((value: string) => dayjs(value));
+  if (Array.isArray(parsed.archive_date)) parsed.archive_date = parsed.archive_date.map((value: string) => dayjs(value));
   return parsed;
 };
 const initialProfile = (): Profile => {
@@ -438,6 +441,7 @@ export default function ContractCenterPage({
   const selectedContractPaymentTypeId = Form.useWatch("payment_type_id", paymentForm);
   const selectedContractPaymentType = paymentTypes.find((item) => item.value === Number(selectedContractPaymentTypeId));
   const listViewConfig = contractListViewConfig(initialView);
+  const isArchiveView = initialView === "contract-archive";
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
     contractEventRequestTracker.current.next();
@@ -763,12 +767,21 @@ export default function ContractCenterPage({
       queryForm.setFieldsValue(relationQuery);
       setQuery(effectiveQuery);
     }
-    const recordsParams = buildContractListRequestParams(
-      initialView,
-      paginationOverride || listPagination,
-      effectiveQuery,
-    );
-    const recordsRequest = api.get("/records", { params: recordsParams });
+    const currentPagination = paginationOverride || listPagination;
+    const recordsParams = buildContractListRequestParams(initialView, currentPagination, effectiveQuery);
+    const archiveDate = Array.isArray(effectiveQuery.archive_date) ? effectiveQuery.archive_date : [];
+    const archiveParams = {
+      contract_no: effectiveQuery.serial_no || undefined,
+      customer: effectiveQuery.customer || undefined,
+      archive_status: effectiveQuery.archive_status || undefined,
+      archive_date_from: archiveDate[0]?.format?.("YYYY-MM-DD"),
+      archive_date_to: archiveDate[1]?.format?.("YYYY-MM-DD"),
+      page: currentPagination.current,
+      page_size: currentPagination.pageSize,
+    };
+    const recordsRequest = isArchiveView
+      ? api.get("/contracts/archive-list", { params: archiveParams })
+      : api.get("/records", { params: recordsParams });
     const targetRequest = target ? resolveContractDetailTarget(target) : null;
     const auxiliaryRequests = Promise.allSettled([
       api.get("/auth/me"),
@@ -1922,6 +1935,16 @@ export default function ContractCenterPage({
     );
     return exportParams;
   };
+  const buildArchiveExportParams = () => {
+    const archiveDate = Array.isArray(query.archive_date) ? query.archive_date : [];
+    return {
+      contract_no: query.serial_no || undefined,
+      customer: query.customer || undefined,
+      archive_status: query.archive_status || undefined,
+      archive_date_from: archiveDate[0]?.format?.("YYYY-MM-DD"),
+      archive_date_to: archiveDate[1]?.format?.("YYYY-MM-DD"),
+    };
+  };
   const exportCsv = async () => {
     try {
       const res = await api.get("/records/export", {
@@ -1940,14 +1963,14 @@ export default function ContractCenterPage({
   };
   const exportExcel = async () => {
     try {
-      const res = await api.get("/records/export-excel", {
-        params: buildContractExportParams(),
+      const res = await api.get(isArchiveView ? "/contracts/archive-list/export-excel" : "/records/export-excel", {
+        params: isArchiveView ? buildArchiveExportParams() : buildContractExportParams(),
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "合同资料.xls";
+      link.download = isArchiveView ? "合同归档.xls" : "合同资料.xls";
       link.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -2165,6 +2188,16 @@ export default function ContractCenterPage({
       render: (value: string, r: Contract) => value ? <Button type="link" className="contract-cell-link" onClick={() => openRelatedCustomer(r)}>{value}</Button> : "—",
     },
   ];
+  const archiveColumns = [
+    columns[0],
+    columns[1],
+    { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string, row: Contract) => value ? <Button type="link" className="contract-cell-link" onClick={() => void openRelatedCustomer(row)}>{value}</Button> : "—" },
+    { title: "归档状态", dataIndex: "archive_status", width: 100, render: (value: Contract["archive_status"]) => <Tag color={value === "已归档" ? "green" : "orange"}>{value || "—"}</Tag> },
+    { title: "归档日期", dataIndex: "archive_date", width: 130, render: (value: string) => value ? dayjs(value).format("YYYY-MM-DD") : "—" },
+    { title: "负责人", dataIndex: "owner", width: 110, render: (value: string) => personName(value) },
+    { title: "部门", dataIndex: "department", width: 130 },
+    { title: "操作", width: 90, fixed: "right" as const, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => void openViewing(row)}>查看</Button> },
+  ];
   const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
   const auditActionPolicy = canAccessContractView(initialView, profile)
     ? contractAuditActionPolicy(initialView)
@@ -2369,19 +2402,24 @@ export default function ContractCenterPage({
           className="contract-query"
           onFinish={applyQuery}
         >
-          <Form.Item label="合同名称" name="title"><Input placeholder="合同名称" /></Form.Item>
           <Form.Item label="合同编号" name="serial_no"><Input placeholder="合同编号" /></Form.Item>
-          <Form.Item label="合同类型" name="type"><Select allowClear placeholder="请选择" options={["法律顾问合同","争议解决合同","框架合作合同","非诉项目合同","其他"].map(value=>({value,label:value}))} /></Form.Item>
           <Form.Item label="客户名称" name="customer"><Input placeholder="客户名称" /></Form.Item>
-          <Form.Item label={isAuditView ? "案号" : "案件编号"} name="case_no"><Input placeholder="案号" /></Form.Item>
-          <Form.Item label="收费类型" name="fee_type"><Select allowClear placeholder="请选择" options={["固定收费","固定+后期","免费代理","法律援助","计时收费","全风险代理"].map(value=>({value,label:value}))} /></Form.Item>
-          <Form.Item label="合同日期" name="signed_at"><DatePicker.RangePicker /></Form.Item>
-          {initialView === "contract-mine" ? (
-            <Form.Item label="案源人"><Input disabled value={personName(profile.display_name || profile.username)} /></Form.Item>
-          ) : (
-            <Form.Item label="案源人" name="source_person"><Input placeholder="案源人" /></Form.Item>
-          )}
-          <Form.Item label="合同主体" name="contract_body"><Select allowClear placeholder="请选择" options={["律所","平台"].map(value=>({value,label:value}))} /></Form.Item>
+          {isArchiveView ? <>
+            <Form.Item label="归档状态" name="archive_status"><Select allowClear placeholder="全部状态" options={["归档中", "已归档"].map((value) => ({ value, label: value }))} /></Form.Item>
+            <Form.Item label="归档日期" name="archive_date"><DatePicker.RangePicker /></Form.Item>
+          </> : <>
+            <Form.Item label="合同名称" name="title"><Input placeholder="合同名称" /></Form.Item>
+            <Form.Item label="合同类型" name="type"><Select allowClear placeholder="请选择" options={["法律顾问合同","争议解决合同","框架合作合同","非诉项目合同","其他"].map(value=>({value,label:value}))} /></Form.Item>
+            <Form.Item label={isAuditView ? "案号" : "案件编号"} name="case_no"><Input placeholder="案号" /></Form.Item>
+            <Form.Item label="收费类型" name="fee_type"><Select allowClear placeholder="请选择" options={["固定收费","固定+后期","免费代理","法律援助","计时收费","全风险代理"].map(value=>({value,label:value}))} /></Form.Item>
+            <Form.Item label="合同日期" name="signed_at"><DatePicker.RangePicker /></Form.Item>
+            {initialView === "contract-mine" ? (
+              <Form.Item label="案源人"><Input disabled value={personName(profile.display_name || profile.username)} /></Form.Item>
+            ) : (
+              <Form.Item label="案源人" name="source_person"><Input placeholder="案源人" /></Form.Item>
+            )}
+            <Form.Item label="合同主体" name="contract_body"><Select allowClear placeholder="请选择" options={["律所","平台"].map(value=>({value,label:value}))} /></Form.Item>
+          </>}
           <Form.Item className="contract-query-submit"><Space><Button type="primary" htmlType="submit">查询</Button><Button htmlType="button" onClick={clearQuery}>清空</Button></Space></Form.Item>
         </Form>
         <Table
@@ -2389,7 +2427,7 @@ export default function ContractCenterPage({
           rowKey="id"
           size="small"
           loading={loading}
-          columns={isAuditView ? auditColumns : columns}
+          columns={isArchiveView ? archiveColumns : isAuditView ? auditColumns : columns}
           dataSource={rows}
           rowSelection={{
             selectedRowKeys,
@@ -2399,11 +2437,12 @@ export default function ContractCenterPage({
             },
           }}
           tableLayout="fixed"
-          scroll={{ x: isAuditView ? 1450 : 2360, y: "calc(100dvh - 390px)" }}
+          scroll={{ x: isArchiveView || isAuditView ? 1450 : 2360, y: "calc(100dvh - 390px)" }}
           pagination={{current:listPagination.current,pageSize:listPagination.pageSize,total:listTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:<Button size="small">GO</Button>},showTotal:(total)=>`共有${total}条`,onChange:updateListPagination}}
-          summary={isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}>本页合计</Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
+          summary={isArchiveView || isAuditView ? undefined : () => <Table.Summary><Table.Summary.Row className="contract-total-row"><Table.Summary.Cell index={0} colSpan={6}>本页合计</Table.Summary.Cell>{moneyKeys.map((key,index)=><Table.Summary.Cell key={key} index={index+6} align="right">{amount(totals[key])}</Table.Summary.Cell>)}</Table.Summary.Row></Table.Summary>}
         />
-        {!isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
+        {isArchiveView && <div className="contract-bottom-actions"><Space size={4} wrap><Button onClick={exportExcel}>导出Excel</Button><Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button></Space></div>}
+        {!isArchiveView && !isAuditView && <div className="contract-bottom-actions"><Space size={4} wrap>
           <RecordImportButton module="contract" onImported={load} /><Button onClick={exportExcel}>导出Excel</Button><Button onClick={exportCsv}>导出CSV</Button>
           <Button onClick={()=>needSelected(()=>void openViewing(selected!))}>合同查看</Button>
           <Button danger disabled={!selected || selected.status !== "草稿"} onClick={()=>needSelected(()=>revokeDraft(selected!))}>撤销草稿</Button>

@@ -166,7 +166,7 @@ DEFAULT_SYSTEM_MENUS = [
     ("seal", "", "用印中心", "file-text", 10), ("seal-my", "seal", "我的用印申请", "", 11), ("seal-audit", "seal", "用印审核", "", 12), ("seal-admin", "seal", "行政用印", "", 13),
     ("task", "", "事务中心", "file-text", 20), ("task-my", "task", "我的任务", "", 21), ("task-dept", "task", "部门任务", "", 22), ("task-company", "task", "公司任务", "", 23),
     ("customer", "", "客户管理", "team", 30), ("customer-new", "customer", "新建客户", "", 31), ("customer-mine", "customer", "我的客户", "", 32), ("customer-recycle", "customer", "个人回收站", "", 33), ("customer-dept", "customer", "部门客户", "", 34), ("customer-dept-recycle", "customer", "部门回收站", "", 35), ("customer-company", "customer", "公司客户", "", 36), ("customer-public", "customer", "公海客户", "", 37), ("customer-shared", "customer", "我的共享客户", "", 38), ("customer-recent-contact", "customer", "最近联系的客户", "", 39), ("customer-recent-update", "customer", "最近更新的客户", "", 40), ("customer-company-recycle", "customer", "公司回收站", "", 41), ("customer-conflict", "customer", "客户利益检索", "", 42),
-    ("contract", "", "合同中心", "file-text", 50), ("contract-new", "contract", "合同新建", "", 51), ("contract-mine", "contract", "我的合同", "", 52), ("contract-audit", "contract", "合同审批", "", 53), ("contract-dept", "contract", "部门合同", "", 54), ("contract-company", "contract", "公司合同", "", 55), ("contract-receivable", "contract", "应收款", "", 56),
+    ("contract", "", "合同中心", "file-text", 50), ("contract-new", "contract", "合同新建", "", 51), ("contract-mine", "contract", "我的合同", "", 52), ("contract-audit", "contract", "合同审批", "", 53), ("contract-dept", "contract", "部门合同", "", 54), ("contract-company", "contract", "公司合同", "", 55), ("contract-receivable", "contract", "应收款", "", 56), ("contract-archive", "contract", "合同归档", "", 58),
     ("contract-recycle", "contract", "合同回收站", "", 57),
     ("case", "", "案件中心", "file-text", 60), ("case-new", "case", "新建案件", "", 61), ("case-mine", "case", "我的案件", "", 62), ("case-dept", "case", "部门案件", "", 63), ("case-company", "case", "公司案件", "", 64), ("case-files", "case", "案件文件", "", 65), ("case-archive", "case", "案件归档审核", "", 66),
     ("ipr", "", "知识产权中心", "file-text", 67), ("ipr-patent", "ipr", "专利案件", "", 1), ("ipr-trademark", "ipr", "商标案件", "", 2), ("ipr-review", "ipr", "知识产权立案审核", "", 3), ("ipr-office-files", "ipr", "知识产权官文", "", 4), ("ipr-custom-file-import", "ipr", "案件自定义文件导入", "", 5),
@@ -5092,7 +5092,7 @@ JOB_ROLE_LABEL_MENU_GRANTS: dict[str, tuple[str, ...]] = {
     "客户分配": ("customer",), "客户回收/恢复": ("customer-recycle",), "客户共享": ("customer-shared",),
     "利益冲突检索": ("customer-conflict",),
     "合同查看": ("contract",), "合同新建": ("contract-new",), "合同修改": ("contract-mine",),
-    "合同提交审批": ("contract-mine",), "合同审批": ("contract-audit",), "合同归档": ("contract-recycle",),
+    "合同提交审批": ("contract-mine",), "合同审批": ("contract-audit",), "合同归档": ("contract-archive",),
     "案件查看": ("case",), "案件新建": ("case-new",), "案件分配": ("case-company",),
     "案件承办": ("case-mine",), "案件进展维护": ("case-mine",), "开庭排期": ("case-mine-schedule",),
     "案件办结": ("case-mine",), "案件归档申请": ("case-archive",), "案件归档审核": ("case-archive",),
@@ -11993,6 +11993,109 @@ async def archive_contract(contract_id: int, identity: dict = Depends(current_id
     db.add(WorkflowEvent(record_id=contract.id, action="合同归档", from_status=previous, to_status="已归档", operator=identity["username"], comment="合同列表批量操作归档"))
     await db.commit(); await db.refresh(contract)
     return await _record_dict_for_identity(contract, identity, db)
+
+
+async def _contract_archive_rows(
+    identity: dict,
+    db: AsyncSession,
+    *,
+    contract_no: str = "",
+    customer: str = "",
+    archive_status: str = "",
+    archive_date_from: date | None = None,
+    archive_date_to: date | None = None,
+) -> list[dict]:
+    """List only contracts which really have been archived or have active fee closure."""
+    await _require_record_module_menu("contract", identity, db, action="查看")
+    visible_scope = await _record_scope_conditions(identity, db)
+    contracts = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract", *visible_scope,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    contract_ids = {record.id for record in contracts}
+    active_closure_dates: dict[int, str] = {}
+    if contract_ids:
+        fees = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance",
+            BusinessRecord.data["contract_id"].as_integer().in_(contract_ids),
+        ))).all())
+        for fee in fees:
+            fee_data = fee.data or {}
+            contract_id = int(fee_data.get("contract_id") or 0)
+            if contract_id and fee_data.get("fee_archived"):
+                archived_at = str(fee_data.get("fee_archived_at") or "").strip()
+                active_closure_dates[contract_id] = max(active_closure_dates.get(contract_id, ""), archived_at)
+    no_filter = contract_no.strip().casefold()
+    customer_filter = customer.strip().casefold()
+    requested_state = archive_status.strip()
+    allowed_fields = await _allowed_field_keys(identity, db)
+    rows: list[dict] = []
+    for contract in contracts:
+        data = contract.data or {}
+        archived_at = str(data.get("archived_at") or "").strip()
+        closure_at = active_closure_dates.get(contract.id, "")
+        in_progress = contract.status in {"归档中", "归档审核中"} or bool(closure_at)
+        state = "已归档" if contract.status == "已归档" or archived_at else "归档中" if in_progress else ""
+        archive_date = archived_at or closure_at or str(data.get("archive_started_at") or "").strip()
+        if not state or (requested_state and state != requested_state):
+            continue
+        if no_filter and no_filter not in contract.serial_no.casefold():
+            continue
+        if customer_filter and customer_filter not in str(contract.customer or "").casefold():
+            continue
+        archive_day = None
+        if archive_date:
+            try:
+                archive_day = datetime.fromisoformat(archive_date.replace("Z", "+00:00")).date()
+            except ValueError:
+                try:
+                    archive_day = date.fromisoformat(archive_date[:10])
+                except ValueError:
+                    archive_day = None
+        if archive_date_from and (archive_day is None or archive_day < archive_date_from):
+            continue
+        if archive_date_to and (archive_day is None or archive_day > archive_date_to):
+            continue
+        item = (await _contract_customer_record_dicts([contract], allowed_fields, db, identity))[0]
+        item["archive_status"] = state
+        item["archive_date"] = archive_date
+        rows.append(item)
+    return rows
+
+
+@app.get(f"{settings.api_prefix}/contracts/archive-list")
+async def list_contract_archive_records(
+    contract_no: str = "", customer: str = "",
+    archive_status: str = Query("", pattern="^(|归档中|已归档)$"),
+    archive_date_from: date | None = None, archive_date_to: date | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    if archive_date_from and archive_date_to and archive_date_from > archive_date_to:
+        raise HTTPException(status_code=422, detail="归档开始日期不能晚于结束日期")
+    rows = await _contract_archive_rows(identity, db, contract_no=contract_no, customer=customer,
+                                        archive_status=archive_status, archive_date_from=archive_date_from,
+                                        archive_date_to=archive_date_to)
+    total = len(rows)
+    start = (page - 1) * page_size
+    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size if total else 0}
+
+
+@app.get(f"{settings.api_prefix}/contracts/archive-list/export-excel")
+async def export_contract_archive_records(
+    contract_no: str = "", customer: str = "",
+    archive_status: str = Query("", pattern="^(|归档中|已归档)$"),
+    archive_date_from: date | None = None, archive_date_to: date | None = None,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    if archive_date_from and archive_date_to and archive_date_from > archive_date_to:
+        raise HTTPException(status_code=422, detail="归档开始日期不能晚于结束日期")
+    items = await _contract_archive_rows(identity, db, contract_no=contract_no, customer=customer,
+                                         archive_status=archive_status, archive_date_from=archive_date_from,
+                                         archive_date_to=archive_date_to)
+    headers = ["合同编号", "合同名称", "客户", "归档状态", "归档日期", "负责人", "部门"]
+    rows = [[item.get("serial_no", ""), item.get("title", ""), item.get("customer", ""), item.get("archive_status", ""), item.get("archive_date", ""), item.get("owner", ""), item.get("department", "")] for item in items]
+    return _excel_response(f"合同归档-{date.today()}.xls", headers, rows)
 
 
 def _contract_event_dict(event: ContractEvent) -> dict:

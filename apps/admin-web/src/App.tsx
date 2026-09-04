@@ -269,6 +269,7 @@ const menuItems: NavItem[] = [
       { key: "contract-mine", label: "我的合同" },
       { key: "contract-audit", label: "合同审批" },
       { key: "contract-receivable", label: "合同应收" },
+      { key: "contract-archive", label: "合同归档" },
     ],
   },
   {
@@ -756,6 +757,7 @@ function canonicalRoute(route: string): string {
     "task-company",
     "contract-audit",
     "contract-receivable",
+    "contract-archive",
     "case-new",
     "case-mine",
     "case-dept",

@@ -4,7 +4,7 @@ export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["审批中", "已归档"];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
 export const CONTRACT_LIST_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
 export const CONTRACT_EVENT_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
-export const CONTRACT_QUERY_FIELDS = ["title", "serial_no", "type", "customer", "case_no", "fee_type", "signed_at", "source_person", "contract_body"];
+export const CONTRACT_QUERY_FIELDS = ["title", "serial_no", "type", "customer", "case_no", "fee_type", "signed_at", "source_person", "contract_body", "archive_status", "archive_date"];
 export const createContractListRequestGuard = () => {
   let latestRequestId = 0;
   return {
@@ -12,11 +12,12 @@ export const createContractListRequestGuard = () => {
     isLatest: (requestId) => requestId === latestRequestId,
   };
 };
-const CONTRACT_LIST_ROUTES = new Set(["contract-mine", "contract-dept", "contract-company", "contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"]);
+const CONTRACT_LIST_ROUTES = new Set(["contract-mine", "contract-dept", "contract-company", "contract-archive", "contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"]);
 export const contractMenuEntries = () => [
   { key: "contract-mine", label: "我的合同", scope: "mine", legacyPath: "FCM/Contract/ContractList" },
   { key: "contract-dept", label: "部门合同", scope: "department", legacyPath: "CMS/Contract/ContractList" },
   { key: "contract-company", label: "公司合同", scope: "company", legacyPath: "CMS/Contract/GeneralLedgerList" },
+  { key: "contract-archive", label: "合同归档", scope: "company", legacyPath: "FCM/Contract/ArchiveList" },
   { key: "contract-audit-pending", label: "待审批合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/2" },
   { key: "contract-audit-refused", label: "已驳回合同", scope: "mine", legacyPath: "CMS/Contract/ContractList/4" },
   { key: "contract-audit-approved", label: "已审批合同", scope: "audit", legacyPath: "CMS/Contract/ContractList/3" },
@@ -134,6 +135,8 @@ export const buildContractListRequestParams = (view, pagination, query = {}) => 
     if (field === "signed_at" && Array.isArray(value) && value.length === 2) {
       if (typeof value[0]?.format === "function") params.signed_at_start = value[0].format("YYYY-MM-DD");
       if (typeof value[1]?.format === "function") params.signed_at_end = value[1].format("YYYY-MM-DD");
+    } else if (field === "archive_status" || field === "archive_date") {
+      continue;
     } else if (value !== undefined) params[field] = value;
   }
   for (const field of ["customer_id", "customer_no", "exclude_archived"]) {
@@ -144,7 +147,7 @@ export const buildContractListRequestParams = (view, pagination, query = {}) => 
   if (config.statuses.length) params.statuses = config.statuses.join(",");
   return params;
 };
-const CONTRACT_WORKSPACE_MENUS = ["contract", "contract-new", "contract-mine", "contract-dept", "contract-company"];
+const CONTRACT_WORKSPACE_MENUS = ["contract", "contract-new", "contract-mine", "contract-dept", "contract-company", "contract-archive"];
 const CONTRACT_AUDIT_MENUS = ["contract-audit", "contract-audit-pending", "contract-audit-refused", "contract-audit-approved"];
 
 // The backend emits snake_case arrays today. Keep the camelCase and nested
@@ -269,6 +272,7 @@ export const normalizeContractDetailReturnView = (view) => {
     "contract-mine",
     "contract-dept",
     "contract-company",
+    "contract-archive",
     "contract-audit",
     "contract-audit-pending",
     "contract-audit-refused",
