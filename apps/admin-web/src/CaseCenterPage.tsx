@@ -3256,11 +3256,14 @@ export default function CaseCenterPage({
     return [...counselDetailAttachments, ...counselDetailCustomerAttachments, ...counselDetailContractAttachments]
       .filter((item, index, all) => selected.has(item.id) && all.findIndex((candidate) => candidate.id === item.id) === index);
   };
+  const canApplySealToCounselAttachment = (item: AttachmentRow) =>
+    item.record_id === viewingCounselCase?.id && /\.docx?$/i.test(item.original_name);
   const handleCounselDocumentMoreAction = (key: string) => {
     if (key === "delete") return deleteCounselAttachments();
     const selected = selectedCounselAttachments();
     if (key === "seal") {
       if (selected.length !== 1) return message.warning("请先选择一个文件再申请用印");
+      if (!canApplySealToCounselAttachment(selected[0])) return message.warning("仅案件中的 Word 文件可以申请用印");
       return void openCounselAttachmentSeal(selected[0]);
     }
     if (key === "move") {
@@ -5039,6 +5042,8 @@ export default function CaseCenterPage({
   const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档";
   const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
   const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
+  const selectedCounselDocumentAttachments=selectedCounselAttachments();
+  const canApplySealToSelectedCounselDocument=selectedCounselDocumentAttachments.length===1&&canApplySealToCounselAttachment(selectedCounselDocumentAttachments[0]);
   const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));
   const platformFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="平台");
   const internalFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部"));
@@ -6380,8 +6385,7 @@ export default function CaseCenterPage({
                   {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
                   {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
                   {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
-                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:320,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&row.record_id===viewingCounselCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&/\.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>提交用印</Button>}</Space>},
-                ]}/>
+                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:320,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&row.record_id===viewingCounselCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},                ]}/>
                 {caseDocumentGenerationError && <Alert
                   type="error"
                   showIcon
@@ -6414,7 +6418,7 @@ export default function CaseCenterPage({
                     aria-haspopup="menu"
                     aria-expanded={caseDocumentGenerationMenuOpen}
                   >生成操作</Button></Dropdown>}
-                  {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
+                  {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},...(canApplySealToSelectedCounselDocument?[{key:"seal",label:"申请用印"}]:[]),{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
                   {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
                 </Space>
                 </div>
