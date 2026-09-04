@@ -596,6 +596,7 @@ type TaskRow = {
   created_at?: string;
   description?: string;
   department?: string;
+  is_vip?: boolean;
 };
 type CaseTaskHistoryItem = {
   id: number;
@@ -1083,6 +1084,9 @@ export default function CaseCenterPage({
   const [caseTaskDetailLoading, setCaseTaskDetailLoading] = useState(false);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
+  const [caseTaskVipFilter, setCaseTaskVipFilter] = useState<"all" | "vip" | "normal">("all");
+  const [counselDetailTaskVipFilter, setCounselDetailTaskVipFilter] = useState<"all" | "vip" | "normal">("all");
+  const [counselDetailCustomerTaskVipFilter, setCounselDetailCustomerTaskVipFilter] = useState<"all" | "vip" | "normal">("all");
   const [caseTaskPage, setCaseTaskPage] = useState(CASE_TASK_DEFAULT_PAGE);
   const [caseTaskPageSize, setCaseTaskPageSize] = useState(CASE_TASK_DEFAULT_PAGE_SIZE);
   const [caseTaskTotal, setCaseTaskTotal] = useState(0);
@@ -2024,9 +2028,10 @@ export default function CaseCenterPage({
     row: CaseRow,
     nextPage = caseTaskPage,
     nextPageSize = caseTaskPageSize,
+    nextVipFilter = caseTaskVipFilter,
   ) => {
     const { data } = await api.get(`/cases/${row.id}/tasks`, {
-      params: { page: nextPage, page_size: nextPageSize },
+      params: { page: nextPage, page_size: nextPageSize, is_vip: nextVipFilter === "all" ? undefined : nextVipFilter === "vip" },
     });
     return applyCaseTaskPageState(data, nextPage, nextPageSize);
   };
@@ -2034,9 +2039,10 @@ export default function CaseCenterPage({
     row: CaseRow,
     nextPage = counselDetailTaskPage,
     nextPageSize = counselDetailTaskPageSize,
+    nextVipFilter = counselDetailTaskVipFilter,
   ) => {
     const { data } = await api.get(`/cases/${row.id}/tasks`, {
-      params: { page: nextPage, page_size: nextPageSize, scope: "case" },
+      params: { page: nextPage, page_size: nextPageSize, scope: "case", is_vip: nextVipFilter === "all" ? undefined : nextVipFilter === "vip" },
     });
     return applyCounselDetailTaskPageState(data, nextPage, nextPageSize);
   };
@@ -2044,9 +2050,10 @@ export default function CaseCenterPage({
     row: CaseRow,
     nextPage = counselDetailCustomerTaskPage,
     nextPageSize = counselDetailCustomerTaskPageSize,
+    nextVipFilter = counselDetailCustomerTaskVipFilter,
   ) => {
     const { data } = await api.get(`/cases/${row.id}/tasks`, {
-      params: { page: nextPage, page_size: nextPageSize, scope: "customer" },
+      params: { page: nextPage, page_size: nextPageSize, scope: "customer", is_vip: nextVipFilter === "all" ? undefined : nextVipFilter === "vip" },
     });
     return applyCounselDetailCustomerTaskPageState(data, nextPage, nextPageSize);
   };
@@ -2060,7 +2067,7 @@ export default function CaseCenterPage({
         start_at: startAt,
         end_at: startAt.add(7, "day"),
         priority: "普通",
-        collaborators: [],
+        collaborators: [], is_vip: false,
       });
       setCaseTaskMaterialFiles([]);
       setTaskCase(row);
@@ -2121,10 +2128,10 @@ export default function CaseCenterPage({
       const [historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
         api.get(`/records/${row.id}/history`),
         api.get(`/cases/${row.id}/tasks`, {
-          params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case" },
+          params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case", is_vip: counselDetailTaskVipFilter === "all" ? undefined : counselDetailTaskVipFilter === "vip" },
         }),
         api.get(`/cases/${row.id}/tasks`, {
-          params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "customer" },
+          params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "customer", is_vip: counselDetailCustomerTaskVipFilter === "all" ? undefined : counselDetailCustomerTaskVipFilter === "vip" },
         }),
         api.get("/attachments", { params: { record_id: row.id, page_size: 200 } }),
         api.get(`/cases/${row.id}/reminders`),
@@ -3588,7 +3595,7 @@ export default function CaseCenterPage({
     if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
     taskForm.resetFields();
     const startAt = dayjs().second(0);
-    taskForm.setFieldsValue({ owner: profile.username || row.owner, start_at: startAt, end_at: startAt.add(7, "day"), priority: "普通", collaborators: [] });
+    taskForm.setFieldsValue({ owner: profile.username || row.owner, start_at: startAt, end_at: startAt.add(7, "day"), priority: "普通", collaborators: [], is_vip: false });
     setCaseTaskMaterialFiles([]);
     setCaseTaskKind("案件任务");
     setCaseTaskCreateCase(row);
@@ -3615,6 +3622,7 @@ export default function CaseCenterPage({
         source: taskKind,
         task_type: "手动任务",
         description: v.description || "",
+        is_vip: Boolean(v.is_vip),
       });
       if (caseTaskMaterialFiles.length) {
         const materialBody = new FormData();
@@ -5971,6 +5979,7 @@ export default function CaseCenterPage({
           <Form.Item label="案件编号"><Input value={caseTaskCreateCase?.serial_no || ""} disabled /></Form.Item>
           <Form.Item label="任务主标题" name="title" rules={[{ required: true, message: "请输入任务主标题" }]}><Input placeholder="请输入任务主标题" /></Form.Item>
           <Form.Item label="优先级" name="priority"><Radio.Group options={[{value:"重要",label:"重要"},{value:"普通",label:"一般"}]} /></Form.Item>
+          <Form.Item label="VIP任务" name="is_vip" valuePropName="checked"><Checkbox>标记为VIP任务</Checkbox></Form.Item>
           <div className="form-grid">
             <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请选择负责人" }]}><Select showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
             <Form.Item label="协作人" name="collaborators"><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
@@ -6210,6 +6219,18 @@ export default function CaseCenterPage({
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",width:110,render:(_:unknown,row:CaseLogRow)=>casePersonDisplayName(row.operator,row.operator_display_name)}]}/></>},
               {key:"logs",label:"系统日志",children:<>{counselDetailCapabilities.can_create_log&&<Space style={{marginBottom:10}}><Button type="primary" icon={<PlusOutlined/>} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselDetailHistory} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",width:110,render:(_:unknown,row:any)=>casePersonDisplayName(row.operator,row.operator_display_name)},{title:"说明",dataIndex:"comment"}]}/></>},
               {key:"tasks",label:"案件任务",children:<div className="case-legacy-tab-panel">
+                <Space style={{ marginBottom: 12 }}>
+                  <span>VIP筛选</span>
+                  <Select
+                    value={counselDetailTaskVipFilter}
+                    style={{ width: 130 }}
+                    options={[{ value: "all", label: "全部任务" }, { value: "vip", label: "仅VIP任务" }, { value: "normal", label: "非VIP任务" }]}
+                    onChange={(value: "all" | "vip" | "normal") => {
+                      setCounselDetailTaskVipFilter(value);
+                      if (viewingCounselCase) void loadCounselDetailTasksPage(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, counselDetailTaskPageSize, value).catch((error: any) => message.error(error?.response?.data?.detail || "VIP任务筛选失败"));
+                    }}
+                  />
+                </Space>
                 <Table rowKey="id" size="small" pagination={counselDetailTaskPagination} tableLayout="fixed" scroll={{x:1180}} dataSource={counselDetailTasks} columns={[
                   {title:"序号",width:65,render:(_:unknown,_row:TaskRow,index:number)=>index+1},
                   {title:"任务编号",dataIndex:"serial_no",width:155,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},
@@ -6218,6 +6239,7 @@ export default function CaseCenterPage({
                   {title:"提交时间",width:120,render:(_:unknown,row:TaskRow)=>String((row as any).created_at||(row as any).submitted_at||"").slice(0,10)||"—"},
                   {title:"截止日期",dataIndex:"deadline",width:120,ellipsis:true},
                   {title:"优先级",dataIndex:"priority",width:90,ellipsis:true},
+                  {title:"VIP",width:80,render:(_:unknown,row:TaskRow)=>row.is_vip?<Tag color="gold">VIP</Tag>:"—"},
                   {title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},
                   {title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},
                   {title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},
@@ -6226,7 +6248,19 @@ export default function CaseCenterPage({
                 {counselDetailCapabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>openCaseTaskCreator(viewingCounselCase)}>发布任务</Button></div>}
               </div>},
               {key:"customer-tasks",label:"客户任务",children:<div className="case-legacy-tab-panel">
-                <Table rowKey="id" size="small" pagination={counselDetailCustomerTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailCustomerTasks} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",width:100,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
+                <Space style={{ marginBottom: 12 }}>
+                  <span>VIP筛选</span>
+                  <Select
+                    value={counselDetailCustomerTaskVipFilter}
+                    style={{ width: 130 }}
+                    options={[{ value: "all", label: "全部任务" }, { value: "vip", label: "仅VIP任务" }, { value: "normal", label: "非VIP任务" }]}
+                    onChange={(value: "all" | "vip" | "normal") => {
+                      setCounselDetailCustomerTaskVipFilter(value);
+                      if (viewingCounselCase) void loadCounselDetailCustomerTasksPage(viewingCounselCase, CASE_TASK_DEFAULT_PAGE, counselDetailCustomerTaskPageSize, value).catch((error: any) => message.error(error?.response?.data?.detail || "VIP任务筛选失败"));
+                    }}
+                  />
+                </Space>
+                <Table rowKey="id" size="small" pagination={counselDetailCustomerTaskPagination} tableLayout="fixed" scroll={{x:1130}} dataSource={counselDetailCustomerTasks} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"类型",width:100,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>openRelatedTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"VIP",width:80,render:(_:unknown,row:TaskRow)=>row.is_vip?<Tag color="gold">VIP</Tag>:"—"},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
               </div>},
               {key:"clues",label:"线索信息",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1540}} dataSource={counselDetailClues} columns={[
@@ -6637,6 +6671,18 @@ export default function CaseCenterPage({
           title="分配包含公证材料的案件时，系统会自动生成公证书及公证费发票原件交接任务。扫描文员提交完成后，文书人员 5 日内可退回重启。"
           style={{ marginBottom: 16 }}
         />
+        <Space style={{ marginBottom: 12 }}>
+          <span>VIP筛选</span>
+          <Select
+            value={caseTaskVipFilter}
+            style={{ width: 130 }}
+            options={[{ value: "all", label: "全部任务" }, { value: "vip", label: "仅VIP任务" }, { value: "normal", label: "非VIP任务" }]}
+            onChange={(value: "all" | "vip" | "normal") => {
+              setCaseTaskVipFilter(value);
+              if (taskCase) void loadCaseTasksPage(taskCase, CASE_TASK_DEFAULT_PAGE, caseTaskPageSize, value).catch((error: any) => message.error(error?.response?.data?.detail || "VIP任务筛选失败"));
+            }}
+          />
+        </Space>
         <Table
           rowKey="id"
           size="small"
@@ -6662,6 +6708,7 @@ export default function CaseCenterPage({
             { title: "负责人", width: 90, render: (_:unknown,row:TaskRow) => casePersonDisplayName(row.owner,row.owner_display_name) },
             { title: "截止日", dataIndex: "deadline", width: 110 },
             { title: "优先级", dataIndex: "priority", width: 90 },
+            { title: "是否VIP", width: 90, render: (_: unknown, row: TaskRow) => row.is_vip ? <Tag color="gold">VIP</Tag> : <Tag>否</Tag> },
             {
               title: "状态",
               dataIndex: "status",
@@ -6708,6 +6755,9 @@ export default function CaseCenterPage({
                     label: v,
                   }))}
                 />
+              </Form.Item>
+              <Form.Item label="VIP任务" name="is_vip" valuePropName="checked">
+                <Checkbox>标记为VIP任务</Checkbox>
               </Form.Item>
               <Form.Item label="协作人" name="collaborators">
                 <Select
