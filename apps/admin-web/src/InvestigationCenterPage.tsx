@@ -8,7 +8,6 @@ import {
   Checkbox,
   DatePicker,
   Descriptions,
-  Dropdown,
   Drawer,
   Dropdown,
   Form,
@@ -4091,13 +4090,7 @@ export default function InvestigationCenterPage({
                       </Dropdown>
                     );
                   }
-                  return (                    <Button key={label} onClick={() => runOriginalAction(label)}>
-                      {label === "审批" && initialTab === "clue-audit-customer"
-                        ? "客户审核"
-                        : label === "审批" && initialTab === "clue-audit-pending"
-                          ? "内部审批"
-                          : label}
-                    </Button>
+                  return (
                     <Button key={label} onClick={() => runOriginalAction(label)}>
                       {label === "审批" && initialTab === "clue-audit-customer"
                         ? "客户审核"

@@ -620,7 +620,7 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate }:
         <span>{page.title}</span>
         {onNavigate && <Button size="small" type="primary" onClick={() => onNavigate("reports-large-screen")}>大屏展示</Button>}
       </div>
-      {page.filter !== "none" && <Filters key={initialView} kind={page.filter} options={analytics.filter_options} onQuery={queryReport} />}      {page.tab && (
+      {page.filter !== "none" && <Filters key={initialView} kind={page.filter as "brand" | "lawyer"} options={analytics.filter_options} onQuery={queryReport} />}      {page.tab && (
         <div className="report-tabs">
           <span className="report-tab-active">{page.tab}</span>
         </div>

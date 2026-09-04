@@ -2440,7 +2440,9 @@ export default function CaseCenterPage({
         applyCounselDetailCluePageState(relationRes.value.data, 1, 10);
       } else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
         applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
-            if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, eventRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {        message.warning("部分案件附加信息加载失败，已打开基础详情");
+      }
+      if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, eventRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
+        message.warning("部分案件附加信息加载失败，已打开基础详情");
       }
     } catch (error: any) {
       setCounselDetailCapabilities(noCaseDetailWriteCapability);
@@ -5485,6 +5487,26 @@ export default function CaseCenterPage({
     if(keys.length!==1||!row){message.warning(`请先选择一条费用记录再${action}`);return false;}
     return true;
   };
+  const openInformDateBatchUpdate=(keys:Key[])=>{
+    if(!keys.length){message.warning("请先选择需要修改通知日期的费用记录");return;}
+    informDateForm.resetFields();
+    setInformDateFeeKeys([...keys]);
+  };
+  const submitInformDateBatchUpdate=async()=>{
+    const values=await informDateForm.validateFields();
+    const feeIds=(informDateFeeKeys||[]).map(Number).filter(id=>Number.isInteger(id)&&id>0);
+    if(!feeIds.length)return message.warning("请选择需要修改通知日期的费用记录");
+    try{
+      const {data}=await api.post("/finance/case-fees/batch-update",{
+        fee_ids:feeIds,
+        inform_date:formatRequiredDate(values.inform_date,"通知日期"),
+      });
+      message.success(`已修改 ${data.updated??feeIds.length} 条费用的通知日期`);
+      setInformDateFeeKeys(null);
+      informDateForm.resetFields();
+      if(viewingCounselCase)await openCounselDetail(viewingCounselCase);
+    }catch(error:any){message.error(error?.response?.data?.detail||"批量修改通知日期失败");}
+  };
   const refreshCaseFeeDetail = async () => {
     await load();
     if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
@@ -5581,6 +5603,7 @@ export default function CaseCenterPage({
     } catch (error: any) { message.error(error?.response?.data?.detail || "删除费用通知失败"); }
   };
   const handleExternalFeeOperation=async(keys:Key[],selectedFee:CaseRow|undefined,key:string)=>{
+    if(key==="inform-date")return openInformDateBatchUpdate(keys);
     if(!requireSingleFee(keys,selectedFee,key==="refund"?"办理法院退费":key==="payment"?"申请付款":key==="invoice"?"申请开票":key==="edit"?"修改":key==="delete"?"删除":key==="inform"?"新建费用通知":key==="arrival"?"到账确认":key==="bill"?"上传票据":key==="download-bill"?"查看票据文件":key==="unlock-inform"?"费用通知解锁":key==="link-inform"?"关联费用信息":key==="delete-inform"?"删除费用通知":"标记不缴费"))return;
     if(key==="inform") return openFeeInformCreator(selectedFee!);
     if(key==="arrival") return void openFeeInformArrival(selectedFee!);

@@ -1325,7 +1325,8 @@ class IprCaseWarning(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processed_by: Mapped[str] = mapped_column(String(64), default="")
     process_comment: Mapped[str] = mapped_column(Text, default="")
-    notification_id: Mapped[int | None] = mapped_column(ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True, index=True)    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    notification_id: Mapped[int | None] = mapped_column(ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

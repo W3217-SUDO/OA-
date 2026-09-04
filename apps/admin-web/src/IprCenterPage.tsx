@@ -969,7 +969,8 @@ export default function IprCenterPage({
   };
   const refreshAssistedFeesAndLogs = async (caseId: number) => {
     await Promise.all([loadAssistedFees(caseId), loadIprLogs(caseId)]);
-    const loadAnnualFees = async (
+  };
+  const loadAnnualFees = async (
     caseId: number,
     nextPage = annualFeesPageState.page,
     nextPageSize = annualFeesPageState.pageSize,
