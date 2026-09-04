@@ -432,6 +432,11 @@ def main():
         TOKEN = user_token
         assert call("GET", "/auth/me")["role"] == "user"
         call("POST", "/system/users", {"username": f"smoke_forbidden_{suffix}".lower(), "display_name": "普通用户不得创建审批人", "password": "SmokePass2026!", "role": "auditor"}, expected=(403,))
+        # Cache administration is an administrator-only operational control;
+        # direct access must be blocked before any cache key is inspected.
+        call("GET", "/system/cache", expected=(403,))
+        call("POST", "/system/cache/not-a-real-cache/clear", expected=(403,))
+        call("POST", "/system/cache/clear-all", expected=(403,))
         # A hidden menu must also deny direct generic-record writes/exports;
         # this verifies the API boundary rather than relying on the sidebar.
         call("POST", "/records", {
@@ -1034,9 +1039,31 @@ def main():
         assert call("PATCH", "/system/configs/application_settings", {"value": application})["value"]["page_size"] == 30
         for key, value in system_configs_original.items(): call("PATCH", f"/system/configs/{key}", {"value": value})
         system_configs_original = {}
-        cache = call("GET", "/system/caches")["items"][0]
-        assert cache["key"] == "system-parameters"
-        assert call("POST", "/system/caches/system-parameters/clear")["cleared"] is True
+        # Prime an actual per-category memory bucket, then prove the cache
+        # management contract distinguishes it from legacy direct-SQL rows.
+        call("GET", "/system/parameters?category=case_type")
+        cache_list = call("GET", "/system/cache")
+        assert {"items", "total", "summary"}.issubset(cache_list)
+        assert cache_list["summary"]["scope"].startswith("当前 API 进程内存")
+        cached_row = next(item for item in cache_list["items"] if item["key"] == "IPR_CASETYPE_PREFIX_casetype")
+        direct_sql_row = next(item for item in cache_list["items"] if item["key"] == "DEPARTMENT_PREFIX_department")
+        assert cached_row["storage"] == "进程内存" and cached_row["clearable"] is True and cached_row["entry_count"] > 0
+        assert direct_sql_row["storage"] == "直接 SQL 查询" and direct_sql_row["clearable"] is False
+        call("POST", "/system/cache/not-a-real-cache/clear", expected=(404,))
+        call("POST", f"/system/cache/{direct_sql_row['key']}/clear", expected=(409,))
+        cleared_one = call("POST", f"/system/cache/{cached_row['key']}/clear")
+        assert cleared_one["cleared"] is True and cleared_one["key"] == cached_row["key"]
+        # Court has no legacy cache row.  It still belongs to the process cache
+        # and must be removed by the explicit clear-all operation.
+        call("GET", "/system/parameters?category=court")
+        before_clear_all = call("GET", "/system/cache")
+        assert before_clear_all["summary"]["cache_buckets"] > 0
+        cleared_all = call("POST", "/system/cache/clear-all")
+        assert cleared_all["clear_all"] is True and "court" in cleared_all["cleared"]
+        after_clear_all = call("GET", "/system/cache")
+        assert after_clear_all["summary"]["cache_buckets"] == 0 and after_clear_all["summary"]["cache_entries"] == 0
+        cache_audits = call("GET", "/audit/events?module=system_audit&keyword=%E6%B8%85%E7%90%86%E7%B3%BB%E7%BB%9F%E7%BC%93%E5%AD%98&page_size=50")["items"]
+        assert any(item["action"] == "清理系统缓存" and item["title"] == "系统缓存:全部" for item in cache_audits)
         menus = call("GET", "/system/menus")["items"]
         assert len(menus) >= 264 and any(item["key"] == "dashboard" for item in menus)
         navigation = call("GET", "/system/menus/navigation")["items"]

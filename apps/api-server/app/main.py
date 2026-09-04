@@ -471,10 +471,13 @@ SYSTEM_CACHE_REGISTRY = {
     "IPR_CASEFEETYPE_PREFIX_casefeetype": {"name": "非诉讼案案件费用", "description": "system_parameters:fee_type", "category": "fee_type"},
     "IPR_CASEPHASETYPE_PREFIX_casephasetype": {"name": "非诉讼案案件阶段", "description": "system_parameters:case_phase", "category": "case_phase"},
     "IPR_CASEPHASETYPE_PREFIX_casefiletype": {"name": "非诉讼案案件文档", "description": "system_parameters:case_file_type", "category": "case_file_type"},
-    "IPR_CASEFEETYPE_PREFIX_caseassistedfeeType": {"name": "非诉讼案案件资助费用", "description": "ipr_case_assisted_fees", "model": IprCaseAssistedFee},
-    "DEPARTMENT_PREFIX_department": {"name": "部门", "description": "departments:is_active"},
-    "USER_PREFIX_userlist": {"name": "用户", "description": "users:is_active"},
-    "SYS_APPSETTING_PREFIX_configtype": {"name": "系统自动配置", "description": "system_configs"},
+    # These legacy cache names are retained in the management list.  The last
+    # four are database queries in this service, so they must never pretend to
+    # be Redis/in-memory cache entries or report a successful no-op clear.
+    "IPR_CASEFEETYPE_PREFIX_caseassistedfeeType": {"name": "非诉讼案案件资助费用", "description": "直接查询 IPR 资助费用数据，当前未启用缓存"},
+    "DEPARTMENT_PREFIX_department": {"name": "部门", "description": "直接查询启用部门，当前未启用缓存"},
+    "USER_PREFIX_userlist": {"name": "用户", "description": "直接查询启用用户，当前未启用缓存"},
+    "SYS_APPSETTING_PREFIX_configtype": {"name": "系统自动配置", "description": "直接查询系统配置，当前未启用缓存"},
     "system-parameters": {"name": "系统参数字典缓存", "description": "system_parameters:all", "category": "__all__"},
 }
 SYSTEM_CACHE_META = {key: {"last_cleared_at": None, "last_cleared_by": ""} for key in SYSTEM_CACHE_REGISTRY}
@@ -7353,50 +7356,120 @@ async def _system_cache_entry_count(cache_key: str, definition: dict, db: AsyncS
     return 0
 
 
+def _registered_cache_is_clearable(definition: dict) -> bool:
+    """Only expose a clear operation for a cache this process actually owns."""
+    return bool(definition.get("category"))
+
+
 def _clear_registered_cache(cache_key: str, operator: str) -> None:
     definition = SYSTEM_CACHE_REGISTRY[cache_key]
     category = definition.get("category")
-    if category:
-        _clear_parameter_cache(None if category == "__all__" else category, operator)
+    if not category:
+        raise HTTPException(status_code=409, detail="该项目当前为直接 SQL 查询，未启用可清理缓存")
+    _clear_parameter_cache(None if category == "__all__" else category, operator)
     SYSTEM_CACHE_META[cache_key] = {"last_cleared_at": datetime.now().isoformat(), "last_cleared_by": operator}
 
 
-@app.get(f"{settings.api_prefix}/system/caches")
-async def list_system_caches(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    _require_admin(identity)
-    # system-parameters is retained as a backwards-compatible clear alias, but the
-    # visible registry mirrors the legacy eight cache rows.
+def _clear_all_system_parameter_cache(operator: str) -> list[str]:
+    """Clear every populated dictionary bucket and update all cache metadata."""
+    cleared_buckets = list(SYSTEM_PARAMETER_CACHE)
+    _clear_parameter_cache(None, operator)
+    cleared_at = datetime.now().isoformat()
+    for key, definition in SYSTEM_CACHE_REGISTRY.items():
+        if _registered_cache_is_clearable(definition):
+            SYSTEM_CACHE_META[key] = {"last_cleared_at": cleared_at, "last_cleared_by": operator}
+    return cleared_buckets
+
+
+async def _system_cache_list_payload(keyword: str, page: int | None, page_size: int | None, db: AsyncSession) -> dict:
+    """Build cache facts from the in-process cache only; never inspect Redis queues or credentials."""
+    # system-parameters is an internal aggregate alias; the eight visible rows
+    # keep the legacy CacheList names while showing whether each is cache-backed.
     keys = [key for key in SYSTEM_CACHE_REGISTRY if key != "system-parameters"]
     rows = []
     for key in keys:
         definition = SYSTEM_CACHE_REGISTRY[key]
-        rows.append({"key": key, "name": definition["name"], "description": definition["description"], "entry_count": await _system_cache_entry_count(key, definition, db), "bucket_count": 1, **SYSTEM_CACHE_META[key]})
+        clearable = _registered_cache_is_clearable(definition)
+        bucket_count = (
+            len(SYSTEM_PARAMETER_CACHE)
+            if definition.get("category") == "__all__"
+            else int(definition.get("category") in SYSTEM_PARAMETER_CACHE)
+        ) if clearable else 0
+        rows.append({
+            "key": key,
+            "name": definition["name"],
+            "description": definition["description"],
+            "storage": "进程内存" if clearable else "直接 SQL 查询",
+            "clearable": clearable,
+            "entry_count": await _system_cache_entry_count(key, definition, db),
+            "bucket_count": bucket_count,
+            **SYSTEM_CACHE_META[key],
+        })
     if keyword.strip():
         needle = keyword.strip().lower()
         rows = [row for row in rows if needle in f"{row['key']} {row['name']} {row['description']}".lower()]
-    # Keep the legacy cache-list contract when callers omit pagination: the old
-    # endpoint defaulted to page 1 with 15 rows and always returned metadata.
     current_page, current_size = page or 1, page_size or 15
-    total = len(rows); start = (current_page - 1) * current_size
-    return {"items": rows[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "pages": (total + current_size - 1) // current_size}
+    total = len(rows)
+    start = (current_page - 1) * current_size
+    memory_rows = [row for row in rows if row["clearable"]]
+    return {
+        "items": rows[start:start + current_size],
+        "total": total,
+        "page": current_page,
+        "page_size": current_size,
+        "pages": (total + current_size - 1) // current_size,
+        "summary": {
+            "cache_entries": sum(len(items) for items in SYSTEM_PARAMETER_CACHE.values()),
+            "cache_buckets": len(SYSTEM_PARAMETER_CACHE),
+            "clearable_caches": len(memory_rows),
+            "scope": "当前 API 进程内存；多进程部署需分别清理各进程缓存。",
+        },
+    }
+
+
+@app.get(f"{settings.api_prefix}/system/cache")
+@app.get(f"{settings.api_prefix}/system/caches", include_in_schema=False)
+async def list_system_caches(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    return await _system_cache_list_payload(keyword, page, page_size, db)
 
 
 @app.post(f"{settings.api_prefix}/system/caches/clear")
 async def clear_system_caches(body: CacheBatchClearInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     requested_keys = list(dict.fromkeys(body.cache_keys))
-    keys = requested_keys if requested_keys else [key for key in SYSTEM_CACHE_REGISTRY if key != "system-parameters"]
-    unknown = [key for key in keys if key not in SYSTEM_CACHE_REGISTRY or key == "system-parameters"]
+    keys = requested_keys if requested_keys else [key for key, definition in SYSTEM_CACHE_REGISTRY.items() if _registered_cache_is_clearable(definition)]
+    unknown = [key for key in keys if key not in SYSTEM_CACHE_REGISTRY]
     if unknown:
         raise HTTPException(status_code=404, detail=f"缓存不存在: {unknown[0]}")
-    for key in keys:
-        _clear_registered_cache(key, identity["username"])
+    unavailable = [key for key in keys if not _registered_cache_is_clearable(SYSTEM_CACHE_REGISTRY[key])]
+    if unavailable:
+        raise HTTPException(status_code=409, detail=f"缓存未启用，不能清理: {unavailable[0]}")
+    if not requested_keys:
+        _clear_all_system_parameter_cache(identity["username"])
+    elif "system-parameters" in keys:
+        _clear_all_system_parameter_cache(identity["username"])
+    else:
+        for key in keys:
+            _clear_registered_cache(key, identity["username"])
     await _system_audit(db, identity, "清理系统缓存", "系统缓存:批量", {"cache_keys": keys, "clear_all": not requested_keys})
     await db.commit()
     return {"cleared": keys, "items": [{"key": key, "entry_count": await _system_cache_entry_count(key, SYSTEM_CACHE_REGISTRY[key], db), **SYSTEM_CACHE_META[key]} for key in keys]}
 
 
-@app.post(f"{settings.api_prefix}/system/caches/{{cache_key}}/clear")
+@app.post(f"{settings.api_prefix}/system/cache/clear-all")
+async def clear_all_system_caches(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    _require_admin(identity)
+    # Clear every populated category, including categories without a legacy row.
+    # This is deliberately limited to this API process's dictionary cache.
+    cleared_buckets = _clear_all_system_parameter_cache(identity["username"])
+    await _system_audit(db, identity, "清理系统缓存", "系统缓存:全部", {"cache_keys": cleared_buckets, "clear_all": True, "scope": "in_process_memory"})
+    await db.commit()
+    return {"cleared": cleared_buckets, "clear_all": True}
+
+
+@app.post(f"{settings.api_prefix}/system/cache/{{cache_key}}/clear")
+@app.post(f"{settings.api_prefix}/system/caches/{{cache_key}}/clear", include_in_schema=False)
 async def clear_system_cache(cache_key: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _require_admin(identity)
     if cache_key not in SYSTEM_CACHE_REGISTRY: raise HTTPException(status_code=404, detail="缓存不存在")

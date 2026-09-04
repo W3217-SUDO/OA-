@@ -3596,6 +3596,32 @@ def main() -> None:
         assert token in MAIN, f"Referenced system parameters must be protected from deletion: {token}"
     print("SYSTEM_PARAMETER_DELETE_GUARD_OK: referenced master data cannot be physically deleted through the generic parameter API")
     for token in (
+        '("system-management-cache", "system-management", "缓存管理", "", 1)',
+        '@app.get(f"{settings.api_prefix}/system/cache")',
+        '@app.post(f"{settings.api_prefix}/system/cache/{{cache_key}}/clear")',
+        '@app.post(f"{settings.api_prefix}/system/cache/clear-all")',
+        'async def _system_cache_list_payload(',
+        '"storage": "进程内存" if clearable else "直接 SQL 查询"',
+        '"clearable": clearable',
+        'raise HTTPException(status_code=409, detail="该项目当前为直接 SQL 查询，未启用可清理缓存")',
+        '"scope": "当前 API 进程内存；多进程部署需分别清理各进程缓存。"',
+        'await _system_audit(db, identity, "清理系统缓存"',
+    ):
+        assert token in MAIN, f"cache management API contract missing: {token}"
+    for token in (
+        '"system-management-cache"',
+        'else if (initialView === "system-management-cache") void loadCaches();',
+        'api.get("/system/cache"',
+        'api.post(`/system/cache/${row.key}/clear`)',
+        'api.post("/system/cache/clear-all")',
+        'title="确认清除全部缓存？"',
+        'getCheckboxProps: (row: CacheRow) => ({ disabled: !row.clearable })',
+        'disabled={!selectedCacheKeys.length}',
+        'cacheSummary',
+    ):
+        assert token in SYSTEM, f"cache management UI contract missing: {token}"
+    print("CACHE_MANAGEMENT_OK: system menu, administrator-only process-memory cache list, selected clear, confirmed clear-all, direct-SQL notice and audit contract")
+    for token in (
         'const openDeletionBlockerCleanup = (blocker: DeletionImpact["blockers"][number], employee: Employee|null=deletingEmployee) => {',
         "blocker.kind==='员工附属记录'",
         "blocker.kind==='员工档案文件'",
