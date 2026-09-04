@@ -281,6 +281,47 @@ def contract_approve_as(username: str, contract_id: int, approved: bool, comment
         TOKEN = previous
 
 
+def smoke_vip_tasks():
+    """VIP task root/node/message lifecycle with exact cleanup of its isolated rows."""
+    global TOKEN
+    if not PASSWORD:
+        raise RuntimeError("SMOKE_PASSWORD 未配置；请在本机 .env 中设置测试账号密码")
+    previous = TOKEN
+    task_id: int | None = None
+    suffix = f"{int(time.time())}{uuid.uuid4().hex[:5]}"
+    try:
+        TOKEN = login(USERNAME, PASSWORD)["access_token"]
+        call("GET", f"{BASE}/health", expected=(200,))
+        today = date.today()
+        call("POST", "/vip-tasks", {"title": f"CODEX-VIP-SMOKE-非法日期-{suffix}", "customer": "CODEX-VIP客户", "owner": USERNAME, "priority": "普通", "start_at": f"{today}T12:00:00", "end_at": f"{today}T11:00:00"}, expected=(422,))
+        task = call("POST", "/vip-tasks", {"title": f"CODEX-VIP-SMOKE-{suffix}", "customer": "CODEX-VIP客户", "owner": USERNAME, "priority": "紧急", "status": "待处理", "start_at": f"{today}T09:00:00", "deadline": str(today), "end_at": f"{today}T18:00:00", "description": "VIP 冒烟闭环"}, expected=(201,))
+        task_id = int(task["id"])
+        vip_query = urllib.parse.urlencode({"customer": "CODEX-VIP客户", "status_filter": "待处理", "priority": "紧急"})
+        listed = call("GET", f"/vip-tasks?{vip_query}")
+        assert task_id in {item["id"] for item in listed["items"]}
+        node = call("POST", f"/vip-tasks/{task_id}/nodes", {"title": "CODEX-VIP节点", "owner": USERNAME, "priority": "普通", "status": "待处理", "start_at": f"{today}T09:00:00", "deadline": str(today), "end_at": f"{today}T18:00:00"}, expected=(201,))
+        node_id = int(node["id"])
+        call("PUT", f"/vip-tasks/{task_id}", {"status": "处理中"})
+        call("PUT", f"/vip-tasks/{task_id}", {"status": "已完成"}, expected=(409,))
+        call("PUT", f"/vip-tasks/{task_id}/nodes/{node_id}", {"status": "处理中"})
+        call("PUT", f"/vip-tasks/{task_id}/nodes/{node_id}", {"status": "已完成"})
+        sent = call("POST", f"/vip-tasks/{task_id}/messages", {"node_id": node_id, "content": "CODEX-VIP节点通知", "recipients": [USERNAME]}, expected=(201,))
+        message_ids = [item["id"] for item in sent["items"]]
+        assert message_ids
+        unread = call("GET", f"/vip-tasks/{task_id}/messages?unread_only=true")
+        assert set(message_ids).issubset({item["id"] for item in unread["items"]})
+        assert call("POST", f"/vip-tasks/{task_id}/messages/read", {"message_ids": message_ids})["updated"] == len(message_ids)
+        completed = call("PUT", f"/vip-tasks/{task_id}", {"status": "已完成"})
+        assert completed["status"] == "已完成"
+        detail = call("GET", f"/vip-tasks/{task_id}")
+        assert detail["node_count"] == 1 and detail["unread_message_count"] == 0
+        passed("VIP任务 CRUD、客户/状态/优先级筛选、节点状态、消息已读与完成阻断")
+    finally:
+        if task_id is not None:
+            call("DELETE", f"/vip-tasks/{task_id}", expected=(204, 404))
+        TOKEN = previous
+
+
 def main():
     global TOKEN
     if not PASSWORD:
@@ -3865,8 +3906,11 @@ def main():
 if __name__ == "__main__":
     if "--group" in sys.argv:
         group = sys.argv[sys.argv.index("--group") + 1]
-        if group != "hr_lifecycle":
+        if group not in {"hr_lifecycle", "vip_tasks"}:
             raise SystemExit(f"未知冒烟分组：{group}")
-        smoke_hr_deletion_impact()
+        if group == "hr_lifecycle":
+            smoke_hr_deletion_impact()
+        else:
+            smoke_vip_tasks()
     else:
         main()

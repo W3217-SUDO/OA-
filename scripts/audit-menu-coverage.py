@@ -30,6 +30,7 @@ CONTRACT = (ROOT / "apps/admin-web/src/ContractCenterPage.tsx").read_text(encodi
 CUSTOMER_DETAIL_NAVIGATION = (ROOT / "apps/admin-web/src/customerDetailNavigation.ts").read_text(encoding="utf-8")
 INVESTIGATION = (ROOT / "apps/admin-web/src/InvestigationCenterPage.tsx").read_text(encoding="utf-8")
 TASK = (ROOT / "apps/admin-web/src/TaskCenterPage.tsx").read_text(encoding="utf-8")
+VIP_TASK = (ROOT / "apps/admin-web/src/VipTaskCenterPage.tsx").read_text(encoding="utf-8")
 NORMALIZED_TASK = re.sub(r"\s+", "", TASK)
 NOTIFICATION = (ROOT / "apps/admin-web/src/NotificationCenter.tsx").read_text(encoding="utf-8")
 AUDIT_LOG = (ROOT / "apps/admin-web/src/AuditLogPage.tsx").read_text(encoding="utf-8")
@@ -115,6 +116,7 @@ def is_implemented(route: str) -> bool:
         or route.startswith("case-")
         or route.startswith("ipr-")
         or route.startswith("task-")
+        or route == "vip-tasks"
         or route == "documents-agent"
         or route.startswith("documents-")
         or route.startswith("platform-finance-")
@@ -154,6 +156,7 @@ def main() -> None:
             "platform-finance-overview-cmb",
             "platform-finance-overview-gdicbc",
             "reports-large-screen",
+            "vip-tasks",
         }
     }
     assert len(legacy_menu_keys) == 277, (
@@ -165,6 +168,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
+        "vip-tasks",
     ):
         assert extension_key in keys, f"required first-party menu extension missing: {extension_key}"
     assert len(keys) == len(set(keys)), "duplicate menu keys found"
@@ -176,6 +180,7 @@ def main() -> None:
         "platform-finance-overview-cmb",
         "platform-finance-overview-gdicbc",
         "reports-large-screen",
+        "vip-tasks",
     }
     legacy_parents = {
         item[1] for item in menus
@@ -201,6 +206,37 @@ def main() -> None:
     assert 'menu_key not in SYSTEM_MENU_ROUTE_KEYS' in MAIN and "不能创建菜单入口" in MAIN, (
         "menu creation must reject routes that have no implemented page"
     )
+    assert "(\"vip-tasks\", \"task\", \"VIP任务\"" in MAIN and 'route === "vip-tasks"' in APP and "VipTaskCenterPage" in APP, (
+        "VIP task must be a declared affairs menu route with a real page component"
+    )
+    assert all(token in MAIN for token in (
+        'class VipTaskInput(BaseModel):', 'class VipTaskNodeInput(BaseModel):',
+        'class VipTaskMessageInput(BaseModel):', '@app.get(f"{settings.api_prefix}/vip-tasks")',
+        '@app.post(f"{settings.api_prefix}/vip-tasks", status_code=status.HTTP_201_CREATED)',
+        '@app.put(f"{settings.api_prefix}/vip-tasks/{{task_id}}")',
+        '@app.delete(f"{settings.api_prefix}/vip-tasks/{{task_id}}", status_code=status.HTTP_204_NO_CONTENT)',
+        '/vip-tasks/{{task_id}}/nodes', '/vip-tasks/{{task_id}}/messages',
+        '_vip_validate_task_transition', '_vip_validate_node_transition',
+        '消息收件人必须是VIP任务参与人',
+    )), "VIP task API must keep dedicated task, node, message and transition contracts"
+    assert all(token in MODELS for token in (
+        'class VipTask(Base):', 'class VipTaskNode(Base):', 'class VipTaskMessage(Base):',
+        'ForeignKey("vip_tasks.id", ondelete="CASCADE")',
+    )), "VIP task records must retain independent roots with cascading node/message cleanup"
+    assert all(token in VIP_TASK for token in (
+        'api.get("/vip-tasks"', 'api.post("/vip-tasks", payload)',
+        'api.put(`/vip-tasks/${editing.id}`, payload)', 'api.delete(`/vip-tasks/${task.id}`)',
+        '/vip-tasks/${detail.id}/nodes', '/vip-tasks/${detail.id}/messages',
+        'name="customer"', 'name="status_filter"', 'name="priority"',
+        'VIP任务节点', 'VIP任务消息/通知',
+    )), "VIP task page must expose real CRUD, customer/status/priority filters, nodes and messages"
+    assert 'VIP_TASK_PRIORITIES = {"低", "普通", "重要", "紧急"}' in MAIN and 'const priorityOptions = ["紧急", "重要", "普通", "低"]' in VIP_TASK, (
+        "VIP task priority options must match the server contract"
+    )
+    assert 'def smoke_vip_tasks():' in SMOKE and '"vip_tasks"' in SMOKE and '/vip-tasks/{task_id}/nodes' in SMOKE and '/vip-tasks/{task_id}/messages' in SMOKE, (
+        "VIP task smoke group must cover roots, nodes and messages"
+    )
+    print("VIP_TASK_COVERAGE_OK: declared route, isolated API/model contracts, client actions and smoke group are present")
     for permission_group in (
         "客户管理",
         "合同中心",

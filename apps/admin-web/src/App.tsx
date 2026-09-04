@@ -131,6 +131,7 @@ const IprCenterPage = lazyWithVersionRecovery("ipr", () => import("./IprCenterPa
 const IprOfficialFilePage = lazyWithVersionRecovery("ipr-office-files", () => import("./IprOfficialFilePage"));
 const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import", () => import("./IprCustomFileImportPage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./TaskCenterPage"));
+const VipTaskCenterPage = lazyWithVersionRecovery("vip-task", () => import("./VipTaskCenterPage"));
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
 const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./DocumentCenterPage"));
 const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
@@ -238,6 +239,7 @@ const menuItems: NavItem[] = [
           { key: "task-company-collaborating", label: "公司协作的任务" },
         ],
       },
+      { key: "vip-tasks", label: "VIP任务" },
       { key: "affairs-records", label: "事项记录" },
     ],
   },
@@ -751,6 +753,7 @@ function canonicalRoute(route: string): string {
     "seal-my",
     "seal-audit",
     "seal-admin",
+    "vip-tasks",
     "task-my",
     "task-dept",
     "task-company",
@@ -1791,6 +1794,8 @@ export default function App() {
       <LegacyLsHistoryPanel />
     ) : route.startsWith("case-") ? (
       <CaseCenterPage initialView={active} onNavigate={navigate} />
+    ) : route === "vip-tasks" ? (
+      <VipTaskCenterPage />
     ) : route === "affairs-records" ? (
       <BusinessPage module="task" title="事项记录" onNavigate={navigate} />
     ) : route.startsWith("task-") ? (
