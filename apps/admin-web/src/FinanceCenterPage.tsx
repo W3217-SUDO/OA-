@@ -10994,26 +10994,22 @@ export default function FinanceCenterPage({
                       拒绝结算
                     </Button>
                   )}
-                  <Button
-                    loading={generalSettlementBusy}
-                    onClick={() =>
-                      void exportGeneralSettlement("settlement")
-                    }
+                  <Dropdown
+                    trigger={["click"]}
+                    menu={{
+                      items: [
+                        { key: "settlement", label: "导出结算清单" },
+                        { key: "receipt", label: "导出到账清单" },
+                        { key: "case", label: "导出案件清单" },
+                      ],
+                      onClick: ({ key }) =>
+                        void exportGeneralSettlement(
+                          key as "settlement" | "receipt" | "case",
+                        ),
+                    }}
                   >
-                    导出结算清单
-                  </Button>
-                  <Button
-                    loading={generalSettlementBusy}
-                    onClick={() => void exportGeneralSettlement("receipt")}
-                  >
-                    导出到账清单
-                  </Button>
-                  <Button
-                    loading={generalSettlementBusy}
-                    onClick={() => void exportGeneralSettlement("case")}
-                  >
-                    导出案件清单
-                  </Button>
+                    <Button loading={generalSettlementBusy}>导出 ▾</Button>
+                  </Dropdown>
                 </Space>
               </div>
             )}
