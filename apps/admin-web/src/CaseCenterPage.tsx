@@ -5721,7 +5721,7 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         open={Boolean(feeCase)}
-        title="新增费用"
+        title={activeFeeContractScope === "平台" && feeSubtypePreset === "agency" ? "新增平台代理费" : "新增费用"}
         width={620}
         className="case-fee-create-drawer"
         onClose={closeCaseFeeCreator}
@@ -6183,9 +6183,11 @@ export default function CaseCenterPage({
               {key:"platform-fees",label:"平台费用",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={platformFeeRows} locale={{emptyText:renderCaseFeeEmptyState("平台")}} rowSelection={{selectedRowKeys:selectedPlatformFeeKeys,onChange:setSelectedPlatformFeeKeys}} columns={externalCaseFeeColumns}/>
                 {platformFeeRows.length>0&&<Space className="case-legacy-bottom-actions">
+                  {counselDetailCapabilities.can_create_finance&&<Button title="传统模式：新增平台代理费" onClick={()=>openCaseFeeBySubtype("平台",PLATFORM_AGENCY_FEE_SUBTYPE)}>传统模式</Button>}
                   {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"}],onClick:({key})=>openCaseFeeBySubtype("平台",key)}}><Button>新增案件费用</Button></Dropdown>}
                   <Dropdown trigger={["click"]} menu={{items:[{key:"refund",label:"法院退费"},{key:"payment",label:"申请付款"},{key:"invoice",label:"申请开票"},{key:"edit",label:"修改"},{key:"delete",label:"删除"},{key:"no-payment",label:"标记不缴费"}],onClick:({key})=>key === "refund" ? (selectedPlatformFee ? openCourtRefund(selectedPlatformFee) : requireSingleFee(selectedPlatformFeeKeys,selectedPlatformFee,"办理法院退费")) : void handleExternalFeeOperation(selectedPlatformFeeKeys,selectedPlatformFee,key)}}><Button>其他操作</Button></Dropdown>
                 </Space>}
+                {platformFeeRows.length===0&&counselDetailCapabilities.can_create_finance&&<Space className="case-legacy-bottom-actions"><Button title="传统模式：新增平台代理费" onClick={()=>openCaseFeeBySubtype("平台",PLATFORM_AGENCY_FEE_SUBTYPE)}>传统模式</Button></Space>}
               </div>},
               {key:"internal-fees",label:"内部结算",children:<div className="case-legacy-tab-panel">
                 <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1120}} dataSource={internalFeeRows} rowSelection={{selectedRowKeys:selectedInternalFeeKeys,onChange:setSelectedInternalFeeKeys}} columns={[
