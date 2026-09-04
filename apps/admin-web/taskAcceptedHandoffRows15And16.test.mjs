@@ -19,9 +19,9 @@ test("handoff form displays task times and posts the selected recipient", () => 
 });
 
 test("received task actions are state-scoped and do not expose exception requests", () => {
-  assert.match(source, /\["待接收", "待处理"\]\.includes\(selected\?\.workflow_status/);
-  assert.match(source, /\["待接收", "待处理", "处理中"\]\.includes\(selected\?\.workflow_status/);
-  const acceptedActionBlock = source.slice(source.indexOf("{canManageAcceptedTask && [\"待接收\""), source.indexOf("{selectedRows.length > 1"));
+  assert.match(source, /canManageAcceptedTask && statusTab === "pending"/);
+  assert.match(source, /canManageAcceptedTask && statusTab === "processing"/);
+  const acceptedActionBlock = source.slice(source.indexOf('{canManageAcceptedTask && statusTab === "pending"'), source.indexOf("{selectedRows.length > 1"));
   assert.doesNotMatch(acceptedActionBlock, /requestTaskException|申请挂起|申请取消|撤回任务/);
 });
 
