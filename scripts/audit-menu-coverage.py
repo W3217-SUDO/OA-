@@ -2503,6 +2503,28 @@ def main() -> None:
     assert "report-toolbar" not in REPORT and "report-detail-panel" not in REPORT, "original report pages must not expose invented toolbar or detail table UI"
     assert 'mode="multiple"' in REPORT and 'customer: values.customer?.join(",") || ""' in REPORT and 'court_lawyer: values.courtLawyer?.join(",") || ""' in REPORT, "ROI report must retain the original multi-customer and multi-lawyer selectors"
     assert 'customers_selected = {value.strip() for value in customer.split(",") if value.strip()}' in MAIN and 'court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}' in MAIN, "report API must apply every selected customer and hearing lawyer"
+    customer_roi_frontend = (
+        'PAGE_SPECS["reports-customer-roi"]', 'title: "客户ROI统计"',
+        'name="dateRange"', 'name="department"', 'name="employee"',
+        'api.get<CustomerRoiData>("/reports/customer-roi"',
+        'api.get("/reports/customer-roi/export"', 'responseType: "blob"',
+        'title: "收入（元）"', 'title: "成本（元）"', 'title: "利润（元）"',
+        'title: "ROI"', 'Table.Summary.Row',
+        'ROI＝（收入－成本）÷ 成本 × 100%；成本为 0 时显示“—”',
+    )
+    assert all(token in REPORT for token in customer_roi_frontend), "customer ROI report must retain its filters, real table, formula, totals, and CSV export"
+    customer_roi_backend = (
+        '@app.get(f"{settings.api_prefix}/reports/customer-roi")',
+        '@app.get(f"{settings.api_prefix}/reports/customer-roi/export")',
+        'if date_from and date_to and date_from > date_to:',
+        '收付款开始日期不能晚于结束日期',
+        'BusinessRecord.module.in_({"finance", "contract"})',
+        'ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI',
+        'writer.writerow(["客户编号", "客户", "部门", "员工", "已确认回款", "已确认付款", "利润", "ROI", "口径"])',
+    )
+    assert all(token in MAIN for token in customer_roi_backend), "customer ROI API must group settled cashflow with filters and export the full table"
+    assert '"reports-customer-roi", "reports", "客户ROI统计"' in MAIN, "customer ROI menu entry must be registered under reports"
+    print("CUSTOMER_ROI_REPORT_OK: customer ROI route exposes date/department/employee filters, grouped cashflow table, totals, formula, and CSV export")
 
     finance_match = re.search(r"const originalFinanceRoutes = \[(.*?)\];", FINANCE, re.S)
     assert finance_match, "FinanceCenterPage original route declaration not found"
