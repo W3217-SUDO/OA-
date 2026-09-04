@@ -10,6 +10,7 @@ import {
   Descriptions,
   Dropdown,
   Drawer,
+  Dropdown,
   Form,
   Input,
   InputNumber,
@@ -1420,16 +1421,20 @@ export default function InvestigationCenterPage({
       message.error(error?.response?.data?.detail || "删除失败");
     }
   };
-  const downloadExport = async (endpoint: string, filename: string) => {
-    const source = selectedRows.length ? selectedRows : visibleRows;
-    if (!source.length) {
-      message.warning("当前没有可导出的记录");
+  const downloadExport = async (
+    endpoint: string,
+    filename: string,
+    selectedOnly: boolean,
+  ) => {
+    if (selectedOnly && !selectedRows.length) {
+      message.warning("请至少选择一条记录");
       return;
     }
     try {
-      const ids = source.map((row) => row.id).join(",");
       const res = await api.get(endpoint, {
-        params: { ids },
+        params: selectedOnly
+          ? { ids: selectedRows.map((row) => row.id).join(",") }
+          : undefined,
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
@@ -1442,12 +1447,13 @@ export default function InvestigationCenterPage({
       message.error("导出失败");
     }
   };
-  const exportRows = (kind: "clues" | "handover") =>
+  const exportRows = (kind: "clues" | "handover", selectedOnly: boolean) =>
     downloadExport(
       kind === "handover"
         ? "/investigations/clues/handover-export"
         : "/investigations/clues/export",
       kind === "handover" ? "调查线索交接清单.csv" : "调查线索.csv",
+      selectedOnly,
     );
   const openLinkedCase = async (caseNo: string) => {
     const serialNo = String(caseNo || "").trim();
@@ -2819,8 +2825,8 @@ export default function InvestigationCenterPage({
   const originalActionHandlers: Record<string, () => void> = {
     查询: () => setListQuery((x) => ({ ...x })),
     刷新: () => void load(),
-    导出线索: () => void exportRows("clues"),
-    导出交接清单: () => void exportRows("handover"),
+    导出线索: () => void exportRows("clues", false),
+    导出交接清单: () => void exportRows("handover", false),
     新建调查任务: () => {
       setCreateContextTask(null);
       setCreateModule("investigation");
@@ -4022,47 +4028,76 @@ export default function InvestigationCenterPage({
             />
             {businessActionLabels.length > 0 && (
               <div className="investigation-actions investigation-actions-bottom">
-                {businessActionLabels.map((label) =>
-                  label === "申请费用" ? (
-                    <Dropdown
-                      key={label}
-                      trigger={["click"]}
-                      menu={{
-                        items: [
-                          { key: "notary-paid", label: "公证费已付" },
-                          { key: "notary-fee", label: "新增公证费" },
-                          { key: "notary-service-fee", label: "新增公证服务费" },
-                        ],
-                        onClick: ({ key }) => {
-                          const feeType =
-                            key === "notary-paid"
-                              ? "公证费已付"
-                              : key === "notary-service-fee"
-                                ? "公证服务费"
-                                : "公证费";
-                          requireSingleRow(label, (row) => openFee(row, feeType));
-                        },
-                      }}
-                    >
-                      <Button>申请费用</Button>
-                    </Dropdown>
-                  ) : label === "取证" ? (
-                    <Dropdown
-                      key={label}
-                      menu={{
-                        items: [
-                          { key: "single", label: "单个取证" },
-                          { key: "batch", label: "批量取证" },
-                        ],
-                        onClick: ({ key }) => key === "single"
-                          ? runOriginalAction(label)
-                          : openBatchCollection(),
-                      }}
-                    >
-                      <Button>取证</Button>
-                    </Dropdown>
-                  ) : (                    </Dropdown>
-                  ) : (
+                {businessActionLabels.map((label) => {
+                  if (label === "申请费用") {
+                    return (
+                      <Dropdown
+                        key={label}
+                        trigger={["click"]}
+                        menu={{
+                          items: [
+                            { key: "notary-paid", label: "公证费已付" },
+                            { key: "notary-fee", label: "新增公证费" },
+                            { key: "notary-service-fee", label: "新增公证服务费" },
+                          ],
+                          onClick: ({ key }) => {
+                            const feeType =
+                              key === "notary-paid"
+                                ? "公证费已付"
+                                : key === "notary-service-fee"
+                                  ? "公证服务费"
+                                  : "公证费";
+                            requireSingleRow(label, (row) => openFee(row, feeType));
+                          },
+                        }}
+                      >
+                        <Button>申请费用</Button>
+                      </Dropdown>
+                    );
+                  }
+                  if (label === "取证") {
+                    return (
+                      <Dropdown
+                        key={label}
+                        menu={{
+                          items: [
+                            { key: "single", label: "单个取证" },
+                            { key: "batch", label: "批量取证" },
+                          ],
+                          onClick: ({ key }) => key === "single"
+                            ? runOriginalAction(label)
+                            : openBatchCollection(),
+                        }}
+                      >
+                        <Button>取证</Button>
+                      </Dropdown>
+                    );
+                  }
+                  if (label === "导出线索" || label === "导出交接清单") {
+                    const kind = label === "导出线索" ? "clues" : "handover";
+                    return (
+                      <Dropdown
+                        key={label}
+                        trigger={["click"]}
+                        menu={{
+                          items: [
+                            { key: "selected", label: "导出选中", disabled: !selectedClues.length },
+                            { key: "all", label: "导出全部" },
+                          ],
+                          onClick: ({ key }) => void exportRows(kind, key === "selected"),
+                        }}
+                      >
+                        <Button>{label}</Button>
+                      </Dropdown>
+                    );
+                  }
+                  return (                    <Button key={label} onClick={() => runOriginalAction(label)}>
+                      {label === "审批" && initialTab === "clue-audit-customer"
+                        ? "客户审核"
+                        : label === "审批" && initialTab === "clue-audit-pending"
+                          ? "内部审批"
+                          : label}
+                    </Button>
                     <Button key={label} onClick={() => runOriginalAction(label)}>
                       {label === "审批" && initialTab === "clue-audit-customer"
                         ? "客户审核"
@@ -4070,9 +4105,9 @@ export default function InvestigationCenterPage({
                           ? "内部审批"
                           : label}
                     </Button>
-                  ),
-                )}              </div>
-            )}
+                  );
+                })}
+              </div>            )}
           </>
         )}
       </Card>
