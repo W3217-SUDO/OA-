@@ -211,7 +211,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("finance-fee-query", "finance", "费用查询", "", 7),
     ("platform-finance-overview", "platform-finance", "回款管理", "", 1), ("platform-finance-overview-icbc", "platform-finance-overview", "回款(工行)", "", 1), ("platform-finance-overview-citic", "platform-finance-overview", "回款(中信)", "", 2), ("platform-finance-overview-boc", "platform-finance-overview", "回款(中行)", "", 3), ("platform-finance-overview-cmb", "platform-finance-overview", "回款(招商)", "", 10), ("platform-finance-overview-gdicbc", "platform-finance-overview", "回款(固定工行)", "", 11), ("platform-finance-overview-new", "platform-finance-overview", "新增回款", "", 4), ("platform-finance-overview-manage", "platform-finance-overview", "回款管理", "", 5), ("platform-finance-overview-claim", "platform-finance-overview", "回款领取", "", 6), ("platform-finance-overview-pending", "platform-finance-overview", "待分配回款", "", 7), ("platform-finance-overview-allocated", "platform-finance-overview", "已分配回款", "", 8), ("platform-finance-overview-query", "platform-finance-overview", "到账查询", "", 9),
     ("platform-finance-invoice", "platform-finance", "开票管理", "", 3), ("platform-finance-invoice-mine", "platform-finance-invoice", "我的开票", "", 1), ("platform-finance-invoice-pending", "platform-finance-invoice", "待处理开票", "", 2), ("platform-finance-invoice-company", "platform-finance-invoice", "公司开票", "", 3),
-    ("reports-brand", "reports", "品牌资金运营情况统计", "", 1), ("reports-lawyer", "reports", "律师资金运营情况统计", "", 2), ("reports-refund", "reports", "退费进度案件统计", "", 3), ("reports-execution-1", "reports", "执行进度案件统计1", "", 4), ("reports-execution-2", "reports", "执行进度案件统计2", "", 5), ("reports-execution-3", "reports", "执行进度案件统计3", "", 6), ("reports-large-screen", "reports", "报表大屏", "", 7),
+    ("reports-brand", "reports", "品牌资金运营情况统计", "", 1), ("reports-lawyer", "reports", "律师资金运营情况统计", "", 2), ("reports-refund", "reports", "退费进度案件统计", "", 3), ("reports-execution-1", "reports", "执行进度案件统计1", "", 4), ("reports-execution-2", "reports", "执行进度案件统计2", "", 5), ("reports-execution-3", "reports", "执行进度案件统计3", "", 6), ("reports-customer-roi", "reports", "客户ROI统计", "", 7), ("reports-large-screen", "reports", "报表大屏", "", 8),
 ]
 DEFAULT_SYSTEM_MENUS += [
     ("platform-finance-payment", "platform-finance", "付款管理", "", 2), ("platform-finance-payment-mine", "platform-finance-payment", "我的请款单", "", 1), ("platform-finance-payment-audit", "platform-finance-payment", "请款单审批", "", 2), ("platform-finance-payment-waiting", "platform-finance-payment", "待付款列表", "", 3), ("platform-finance-payment-print", "platform-finance-payment", "付款单打印", "", 4), ("platform-finance-payment-writeoff", "platform-finance-payment", "待核销列表", "", 5), ("platform-finance-payment-query", "platform-finance-payment", "付款单查询", "", 6),
@@ -9141,6 +9141,200 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
 @app.get(f"{settings.api_prefix}/reports/analytics")
 async def report_analytics(view: str, customer: str = "", court_lawyer: str = "", handling_lawyer: str = "", assistant: str = "", investigator: str = "", court: str = "", source_from: date | None = None, source_to: date | None = None, hearing_from: date | None = None, hearing_to: date | None = None, group_mode: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await _report_analytics(view, identity, db, customer, court_lawyer, handling_lawyer, assistant, investigator, court, source_from, source_to, hearing_from, hearing_to, group_mode)
+
+
+async def _customer_roi_analytics(
+    identity: dict,
+    db: AsyncSession,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    department: str = "",
+    employee: str = "",
+) -> dict:
+    """Aggregate settled cash movements by an unambiguous, visible customer.
+
+    This is deliberately distinct from the legacy-style ``brand`` chart above:
+    it counts only posted ``回款`` plus ``付款``/``合同付款`` transactions,
+    rather than fee applications or their denormalized received fields.  That
+    makes the result a net ROI: (income - cost) / cost * 100.
+    """
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="收付款开始日期不能晚于结束日期")
+    if "finance.amount" not in await _allowed_field_keys(identity, db):
+        raise HTTPException(status_code=403, detail="当前账号没有查看财务金额的权限")
+
+    scope = await _record_scope_conditions(identity, db)
+    source_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_({"finance", "contract", "contract_payment"}), *scope,
+    ))).all())
+    if not source_records:
+        return {
+            "view": "customer-roi", "rows": [],
+            "totals": {"income": 0.0, "cost": 0.0, "profit": 0.0, "roi": None},
+            "filter_options": {"departments": [], "employees": []},
+            "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI",
+            "date_basis": "收付款流水日期", "source": "realtime",
+        }
+
+    source_by_id = {record.id: record for record in source_records}
+    related_ids: set[int] = set()
+    related_serials: set[str] = set()
+    for record in source_records:
+        if record.module == "contract":
+            continue
+        data = record.data or {}
+        related_ids.update(_positive_record_id(data.get(key)) for key in ("case_id", "contract_id", "contract_record_id"))
+        related_serials.update(str(data.get(key) or "").strip() for key in ("case_no", "contract_no"))
+    related_ids.discard(0)
+    related_serials.discard("")
+    related_conditions = [BusinessRecord.module.in_({"case", "contract"}), *scope]
+    related_links = []
+    if related_ids:
+        related_links.append(BusinessRecord.id.in_(related_ids))
+    if related_serials:
+        related_links.append(BusinessRecord.serial_no.in_(related_serials))
+    related_records = list((await db.scalars(select(BusinessRecord).where(
+        *related_conditions, or_(*related_links),
+    ))).all()) if related_links else []
+    related_by_id = {record.id: record for record in related_records}
+    related_by_serial = {record.serial_no: record for record in related_records}
+
+    customer_ids: set[int] = set()
+    customer_nos: set[str] = set()
+    for record in [*source_records, *related_records]:
+        data = record.data or {}
+        customer_ids.add(_positive_record_id(data.get("customer_id") or data.get("customer_record_id")))
+        customer_nos.add(str(data.get("customer_no") or "").strip())
+    customer_ids.discard(0)
+    customer_nos.discard("")
+    customer_links = []
+    if customer_ids:
+        customer_links.append(BusinessRecord.id.in_(customer_ids))
+    if customer_nos:
+        customer_links.append(BusinessRecord.serial_no.in_(customer_nos))
+    customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "customer", *scope, or_(*customer_links),
+    ))).all()) if customer_links else []
+    customers_by_id = {record.id: record for record in customers}
+    customers_by_no: dict[str, list[BusinessRecord]] = {}
+    for customer_record in customers:
+        customers_by_no.setdefault(customer_record.serial_no, []).append(customer_record)
+
+    def linked_records(source: BusinessRecord) -> list[BusinessRecord]:
+        if source.module == "contract":
+            return [source]
+        data = source.data or {}
+        result = [source]
+        for key in ("contract_id", "contract_record_id", "case_id"):
+            candidate = related_by_id.get(_positive_record_id(data.get(key)))
+            if candidate and candidate not in result:
+                result.append(candidate)
+        for key in ("contract_no", "case_no"):
+            candidate = related_by_serial.get(str(data.get(key) or "").strip())
+            if candidate and candidate not in result:
+                result.append(candidate)
+        return result
+
+    def resolve_customer(source: BusinessRecord) -> BusinessRecord | None:
+        # Never fall back to a copied customer name.  A missing, ambiguous, or
+        # out-of-scope customer relation is excluded instead of risking a merge
+        # of same-named customers or disclosure of an inaccessible master row.
+        for record in linked_records(source):
+            data = record.data or {}
+            customer_id = _positive_record_id(data.get("customer_id") or data.get("customer_record_id"))
+            customer_no = str(data.get("customer_no") or "").strip()
+            customer_record = customers_by_id.get(customer_id) if customer_id else None
+            if customer_record is None and customer_no:
+                candidates = customers_by_no.get(customer_no, [])
+                customer_record = candidates[0] if len(candidates) == 1 else None
+            if not customer_record:
+                continue
+            if customer_no and customer_record.serial_no != customer_no:
+                continue
+            if record.customer and _normalized_customer_name(record.customer) != _normalized_customer_name(customer_record.title):
+                continue
+            return customer_record
+        return None
+
+    transaction_conditions = [
+        FinanceTransaction.finance_record_id.in_(set(source_by_id)),
+        FinanceTransaction.transaction_type.in_({"回款", "付款", "合同付款"}),
+    ]
+    if date_from:
+        transaction_conditions.append(FinanceTransaction.transaction_date >= date_from)
+    if date_to:
+        transaction_conditions.append(FinanceTransaction.transaction_date <= date_to)
+    transactions = list((await db.scalars(select(FinanceTransaction).where(*transaction_conditions))).all())
+
+    grouped: dict[int, dict] = {}
+    eligible_sources: set[int] = set()
+    for transaction in transactions:
+        source = source_by_id.get(int(transaction.finance_record_id or 0))
+        if not source:
+            continue
+        customer_record = resolve_customer(source)
+        if not customer_record:
+            continue
+        eligible_sources.add(source.id)
+        if department.strip() and source.department != department.strip():
+            continue
+        if employee.strip() and source.owner != employee.strip():
+            continue
+        bucket = grouped.setdefault(customer_record.id, {
+            "customer_id": customer_record.id, "customer": customer_record.title,
+            "customer_no": customer_record.serial_no, "income": 0.0, "cost": 0.0,
+            "departments": set(), "employees": set(),
+        })
+        bucket["departments"].add(source.department)
+        bucket["employees"].add(source.owner)
+        amount = abs(float(transaction.amount or 0))
+        if transaction.transaction_type == "回款":
+            bucket["income"] += amount
+        else:
+            bucket["cost"] += amount
+
+    rows = []
+    for bucket in sorted(grouped.values(), key=lambda value: (value["customer"], value["customer_id"])):
+        income, cost = round(bucket["income"], 2), round(bucket["cost"], 2)
+        profit = round(income - cost, 2)
+        rows.append({
+            "customer_id": bucket["customer_id"], "customer": bucket["customer"], "customer_no": bucket["customer_no"],
+            "department": "、".join(sorted(value for value in bucket["departments"] if value)),
+            "employee": "、".join(sorted(value for value in bucket["employees"] if value)),
+            "income": income, "cost": cost, "profit": profit,
+            "roi": round(profit / cost * 100, 2) if cost else None,
+        })
+    total_income = round(sum(row["income"] for row in rows), 2)
+    total_cost = round(sum(row["cost"] for row in rows), 2)
+    total_profit = round(total_income - total_cost, 2)
+    visible_sources = [source_by_id[source_id] for source_id in eligible_sources]
+    return {
+        "view": "customer-roi", "rows": rows,
+        "totals": {"income": total_income, "cost": total_cost, "profit": total_profit, "roi": round(total_profit / total_cost * 100, 2) if total_cost else None},
+        "filter_options": {
+            "departments": sorted({source.department for source in visible_sources if source and source.department}),
+            "employees": sorted({source.owner for source in visible_sources if source and source.owner}),
+        },
+        "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI",
+        "date_basis": "收付款流水日期", "source": "realtime",
+    }
+
+
+@app.get(f"{settings.api_prefix}/reports/customer-roi")
+async def customer_roi_report(date_from: date | None = None, date_to: date | None = None, department: str = "", employee: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _customer_roi_analytics(identity, db, date_from=date_from, date_to=date_to, department=department, employee=employee)
+
+
+@app.get(f"{settings.api_prefix}/reports/customer-roi/export")
+async def export_customer_roi_report(date_from: date | None = None, date_to: date | None = None, department: str = "", employee: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    data = await _customer_roi_analytics(identity, db, date_from=date_from, date_to=date_to, department=department, employee=employee)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["客户编号", "客户", "部门", "员工", "已确认回款", "已确认付款", "利润", "ROI", "口径"])
+    for row in data["rows"]:
+        writer.writerow([row["customer_no"], row["customer"], row["department"], row["employee"], row["income"], row["cost"], row["profit"], "" if row["roi"] is None else f'{row["roi"]:.2f}%', data["formula"]])
+    return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="customer-roi-{date.today()}.csv"'})
 
 
 @app.get(f"{settings.api_prefix}/reports/analytics/export")

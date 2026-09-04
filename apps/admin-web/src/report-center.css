@@ -185,6 +185,72 @@
   height: 310px;
 }
 
+.report-customer-roi-filter {
+  grid-template-columns: 300px 240px 240px;
+  min-height: 74px;
+}
+
+.report-customer-roi-filter .ant-form-item {
+  grid-template-columns: 98px minmax(0, 1fr);
+}
+
+.report-customer-roi-filter .report-filter-action {
+  grid-column: auto;
+  padding: 0 0 0 98px;
+}
+
+.report-customer-roi-filter .report-filter-action .ant-btn + .ant-btn {
+  margin-left: 8px;
+}
+
+.report-customer-roi-filter .report-filter-action .ant-btn:not(:first-child) {
+  border-color: #d9d9d9;
+  background: #fff;
+  color: #333;
+}
+
+.report-roi-table-panel {
+  margin-top: 10px;
+  border: 1px solid #e4e7e9;
+  background: #fff;
+}
+
+.report-roi-description {
+  margin-top: 10px;
+  padding: 7px 10px;
+  border: 1px solid #e4e7e9;
+  background: #f8fcf9;
+  color: #555;
+  font-size: 12px;
+}
+
+.report-roi-customer-link.ant-btn-link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-roi-table-panel .ant-table-thead > tr > th {
+  background: #f5f5f5;
+  color: #333;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.report-roi-table-panel .ant-table-tbody > tr > td,
+.report-roi-table-panel .ant-table-summary > tr > td {
+  font-size: 12px;
+}
+
+.report-roi-table-panel .ant-table-summary > tr > td {
+  background: #fafafa;
+  font-weight: 600;
+}
+
 @media (max-width: 1200px) {
   .report-filter {
     grid-template-columns: 265px 235px minmax(230px, 255px);

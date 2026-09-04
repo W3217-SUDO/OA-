@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, DatePicker, Empty, Form, Input, message, Select, Spin } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
+import { Button, DatePicker, Empty, Form, Input, message, Select, Spin, Table } from "antd";
 import {
   Bar,
   BarChart,
@@ -10,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "./api";
+import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import "./report-center.css";
 
 type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number }[] };
@@ -36,8 +38,36 @@ type ChartSpec = {
 type PageSpec = {
   title: string;
   tab?: string;
-  filter: "brand" | "lawyer" | "none";
+  filter: "brand" | "lawyer" | "none" | "customer-roi";
   charts: ChartSpec[];
+};
+
+type CustomerRoiRow = {
+  customer: string;
+  customer_id?: number;
+  customer_no?: string;
+  department: string;
+  employee: string;
+  income: number;
+  cost: number;
+  profit: number;
+  roi: number | null;
+};
+
+type CustomerRoiData = {
+  view: "customer-roi";
+  rows: CustomerRoiRow[];
+  totals: Omit<CustomerRoiRow, "customer" | "department" | "employee">;
+  filter_options: { departments: string[]; employees: string[] };
+  source: "realtime";
+  date_basis?: string;
+  formula?: string;
+};
+
+type CustomerRoiFilterValues = {
+  dateRange?: any;
+  department?: string;
+  employee?: string;
 };
 
 const PAGE_SPECS: Record<string, PageSpec> = {
@@ -102,6 +132,11 @@ PAGE_SPECS["reports-execution-3"] = {
     { title: "执行终结案件数量", unit: "个/案", limit: 20 },
     { title: "执行中止案件数量", unit: "个/案", limit: 20 },
   ],
+};
+PAGE_SPECS["reports-customer-roi"] = {
+  title: "客户ROI统计",
+  filter: "customer-roi",
+  charts: [],
 };
 
 function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options: Analytics["filter_options"]; onQuery: (values: ReportFilterValues) => void }) {
@@ -186,6 +221,111 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
   );
 }
 
+const currency = (value: number) => Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const percentage = (value: number) => `${Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+const roiDisplay = (roi: number | null, cost: number) => Number(cost || 0) === 0 || roi === null ? "—" : percentage(roi);
+
+function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => void }) {
+  const [form] = Form.useForm<CustomerRoiFilterValues>();
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [data, setData] = useState<CustomerRoiData>({
+    view: "customer-roi",
+    rows: [],
+    totals: { income: 0, cost: 0, profit: 0, roi: 0 },
+    filter_options: { departments: [], employees: [] },
+    source: "realtime",
+  });
+
+  const paramsFor = (values: CustomerRoiFilterValues) => ({
+    date_from: values.dateRange?.[0]?.format("YYYY-MM-DD"),
+    date_to: values.dateRange?.[1]?.format("YYYY-MM-DD"),
+    department: values.department || undefined,
+    employee: values.employee || undefined,
+  });
+  const load = async (values: CustomerRoiFilterValues = form.getFieldsValue()) => {
+    setLoading(true);
+    try {
+      const { data: result } = await api.get<CustomerRoiData>("/reports/customer-roi", { params: paramsFor(values) });
+      setData(result);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "客户ROI统计加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const exportReport = async () => {
+    setExporting(true);
+    try {
+      const response = await api.get("/reports/customer-roi/export", { params: paramsFor(form.getFieldsValue()), responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "客户ROI统计.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "客户ROI统计导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+  const openCustomer = async (row: CustomerRoiRow) => {
+    const target = await resolveCustomerDetailTarget({ id: row.customer_id, serial_no: row.customer_no, title: row.customer });
+    if (!target || !rememberCustomerDetailTarget(target)) {
+      message.warning("未找到关联客户或当前账号无权查看");
+      return;
+    }
+    onNavigate?.("customer-company");
+  };
+
+  useEffect(() => { void load({}); }, []);
+  return (
+    <div className="report-page report-customer-roi-page">
+      <div className="report-page-heading">客户ROI统计</div>
+      <Form form={form} className="report-filter report-customer-roi-filter" onFinish={values => void load(values)}>
+        <Form.Item label="收付款日期" name="dateRange"><DatePicker.RangePicker /></Form.Item>
+        <Form.Item label="归属部门" name="department"><Select allowClear showSearch optionFilterProp="label" placeholder="全部收付款归属部门" options={data.filter_options.departments.map(value => ({ value, label: value }))} /></Form.Item>
+        <Form.Item label="负责人" name="employee"><Select allowClear showSearch optionFilterProp="label" placeholder="全部收付款负责人" options={data.filter_options.employees.map(value => ({ value, label: value }))} /></Form.Item>
+        <div className="report-filter-action">
+          <Button type="primary" htmlType="submit">查询</Button>
+          <Button onClick={() => { form.resetFields(); void load({}); }}>重置</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={() => void exportReport()}>导出CSV</Button>
+        </div>
+      </Form>
+      <div className="report-roi-description">{data.date_basis || "收付款流水日期"}；{data.formula || "ROI＝（收入－成本）÷ 成本 × 100%"}，成本为 0 时显示“—”。部门和负责人按收付款归属筛选。</div>
+      <div className="report-roi-table-panel">
+        <Table<CustomerRoiRow>
+          rowKey={(row) => `${row.customer}-${row.department}-${row.employee}`}
+          loading={loading}
+          dataSource={data.rows}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" /> }}
+          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: total => `共 ${total} 条` }}
+          scroll={{ x: 1050 }}
+          summary={() => (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={3}>合计</Table.Summary.Cell>
+              <Table.Summary.Cell index={3}>{currency(data.totals.income)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={4}>{currency(data.totals.cost)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={5}>{currency(data.totals.profit)}</Table.Summary.Cell>
+              <Table.Summary.Cell index={6}>{roiDisplay(data.totals.roi, data.totals.cost)}</Table.Summary.Cell>
+            </Table.Summary.Row>
+          )}
+          columns={[
+            { title: "客户", dataIndex: "customer", width: 240, ellipsis: true, render: (value, row) => <Button type="link" className="report-roi-customer-link" onClick={() => void openCustomer(row)}>{value || "—"}</Button> },
+            { title: "部门", dataIndex: "department", width: 170, ellipsis: true, render: value => value || "—" },
+            { title: "员工", dataIndex: "employee", width: 160, ellipsis: true, render: value => value || "—" },
+            { title: "收入（元）", dataIndex: "income", width: 150, align: "right", render: currency },
+            { title: "成本（元）", dataIndex: "cost", width: 150, align: "right", render: currency },
+            { title: "利润（元）", dataIndex: "profit", width: 150, align: "right", render: currency },
+            { title: "ROI", dataIndex: "roi", width: 130, align: "right", render: (value, row) => roiDisplay(value, row.cost) },
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
 const largeScreenViews = ["reports-refund", "reports-execution-1", "reports-execution-2", "reports-execution-3"];
 
 export function ReportLargeScreenPage({ initialView = "reports-refund" }: { initialView?: string }) {
@@ -218,7 +358,7 @@ export function ReportLargeScreenPage({ initialView = "reports-refund" }: { init
   );
 }
 
-export default function ReportCenterPage({ initialView = "reports-brand" }: { initialView?: string }) {
+export default function ReportCenterPage({ initialView = "reports-brand", onNavigate }: { initialView?: string; onNavigate?: (route: string) => void }) {
   const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
   const [loading, setLoading] = useState(false);
   const [analytics, setAnalytics] = useState<Analytics>({ charts: [], filter_options: { customers: [], lawyers: [] }, source: "realtime" });
@@ -253,14 +393,15 @@ export default function ReportCenterPage({ initialView = "reports-brand" }: { in
 
   useEffect(() => {
     setQuery({});
-    void load({});
+    if (initialView !== "reports-customer-roi") void load({});
   }, [initialView]);
   const queryReport = (values: ReportFilterValues) => { setQuery(values); void load(values); };
   const chartItems = (title: string) => analytics.charts.find(item => item.title === title)?.items ?? [];
+  if (initialView === "reports-customer-roi") return <CustomerRoiReport onNavigate={onNavigate} />;
   return (
     <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>
       <div className="report-page-heading">{page.title}</div>
-      {page.filter !== "none" && <Filters key={initialView} kind={page.filter} options={analytics.filter_options} onQuery={queryReport} />}
+      {(page.filter === "brand" || page.filter === "lawyer") && <Filters key={initialView} kind={page.filter} options={analytics.filter_options} onQuery={queryReport} />}
       {page.tab && (
         <div className="report-tabs">
           <span className="report-tab-active">{page.tab}</span>

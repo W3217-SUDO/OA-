@@ -1827,7 +1827,7 @@ export default function App() {
     ) : route.startsWith("warehouse") ? (
       <WarehousePage onNavigate={navigate} />
     ) : route === "reports" ? (
-      <ReportCenterPage initialView={active} />
+      <ReportCenterPage initialView={active} onNavigate={navigate} />
     ) : (
       <Card className="panel">
         <div className="placeholder">页面不存在，请从左侧菜单重新选择。</div>

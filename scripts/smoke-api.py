@@ -3704,6 +3704,25 @@ def main():
         assert any(item["name"] == contract["customer"] for item in multi_customer_analytics["charts"][0]["items"])
         analytics_csv = call("GET", "/reports/analytics/export?view=brand", raw=True)[1]
         assert analytics_csv.startswith(b"\xef\xbb\xbf") and "统计图,分组,数值,单位".encode() in analytics_csv
+        customer_roi = call("GET", "/reports/customer-roi")
+        assert customer_roi["view"] == "customer-roi" and customer_roi["source"] == "realtime"
+        assert set(customer_roi["filter_options"]) == {"departments", "employees"}
+        assert customer_roi["formula"] == "ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI"
+        assert {"income", "cost", "profit", "roi"} <= set(customer_roi["totals"])
+        for customer_roi_row in customer_roi["rows"]:
+            assert {"customer", "department", "employee", "income", "cost", "profit", "roi"} <= set(customer_roi_row)
+            assert customer_roi_row["profit"] == round(customer_roi_row["income"] - customer_roi_row["cost"], 2)
+            assert customer_roi_row["roi"] is None if customer_roi_row["cost"] == 0 else customer_roi_row["roi"] == round(customer_roi_row["profit"] / customer_roi_row["cost"] * 100, 2)
+        customer_roi_export = call("GET", "/reports/customer-roi/export", raw=True)
+        assert customer_roi_export[2].startswith("text/csv") and customer_roi_export[1].startswith(b"\xef\xbb\xbf")
+        assert "客户编号,客户,部门,员工,已确认回款,已确认付款,利润,ROI,口径".encode() in customer_roi_export[1]
+        call("GET", "/reports/customer-roi?date_from=2026-08-01&date_to=2026-07-31", expected=(422,))
+        if customer_roi["rows"]:
+            sample = customer_roi["rows"][0]
+            customer_roi_params = urllib.parse.urlencode({"department": sample["department"], "employee": sample["employee"]})
+            filtered_customer_roi = call("GET", f"/reports/customer-roi?{customer_roi_params}")
+            assert all(row["department"] == sample["department"] and row["employee"] == sample["employee"] for row in filtered_customer_roi["rows"])
+        passed("客户ROI统计分组、日期/部门/员工筛选、ROI公式与CSV导出")
         report = call("POST", "/reports/generate", {"title": "冒烟经营报表", "report_type": "综合经营报表", "period": str(date.today())[:7], "format": "CSV", "description": suffix}, expected=(201,))
         records.append(report["id"])
         published = call("POST", f"/records/{report['id']}/transition", {"to_status": "已发布", "comment": "发布"})
