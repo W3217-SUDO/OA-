@@ -686,7 +686,20 @@ const normalizeCaseTaskPageState = (
   return { items, total, page, pageSize, pages };
 };
 type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
-type CaseClueEvidenceRow = CaseRow & {
+type CaseAssistedFee = {
+  id: number;
+  case_record_id: number;
+  assisted_type: string;
+  amount?: number | null;
+  status: "待办理" | "已办理";
+  request_date: string;
+  request_user: string;
+  confirmed_date?: string | null;
+  confirmed_user?: string | null;
+  remark?: string;
+  created_at?: string;
+  updated_at?: string;
+};type CaseClueEvidenceRow = CaseRow & {
   files: AttachmentRow[];
   can_edit: boolean;
   can_delete: boolean;
@@ -764,6 +777,7 @@ type CaseDetailCapabilities = {
   can_close_case: boolean;
   can_archive: boolean;
   can_create_finance: boolean;
+  can_manage_assisted_fees: boolean;
   team_role: "manager" | "handling_lawyer" | "assistant" | "none";
   reason: string;
 };
@@ -772,7 +786,7 @@ const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
   can_update_progress: false, can_change_phase: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_hearing_lawyer: false, can_edit_basic: false, can_edit_court_info: false, can_close_case: false, can_archive: false,
-  can_create_finance: false, team_role: "none",
+  can_create_finance: false, can_manage_assisted_fees: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
 };
 const AGENT_DOCUMENT_LIMIT = 12;
@@ -1032,6 +1046,14 @@ export default function CaseCenterPage({
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailCustomerTasks, setCounselDetailCustomerTasks] = useState<TaskRow[]>([]);
   const [counselDetailFinance, setCounselDetailFinance] = useState<CaseRow[]>([]);
+  const [counselDetailAssistedFees, setCounselDetailAssistedFees] = useState<CaseAssistedFee[]>([]);
+  const [counselDetailAssistedFeePage, setCounselDetailAssistedFeePage] = useState(1);
+  const [counselDetailAssistedFeePageSize, setCounselDetailAssistedFeePageSize] = useState(15);
+  const [counselDetailAssistedFeeTotal, setCounselDetailAssistedFeeTotal] = useState(0);
+  const [assistedFeeEditor, setAssistedFeeEditor] = useState<CaseAssistedFee | null>(null);
+  const [assistedFeeModalOpen, setAssistedFeeModalOpen] = useState(false);
+  const [assistedFeeConfirming, setAssistedFeeConfirming] = useState<CaseAssistedFee | null>(null);
+  const [assistedFeeSaving, setAssistedFeeSaving] = useState(false);
   const [counselDetailClues, setCounselDetailClues] = useState<CaseRow[]>([]);
   const [counselDetailCluePage, setCounselDetailCluePage] = useState(1);
   const [counselDetailCluePageSize, setCounselDetailCluePageSize] = useState(10);
@@ -1160,7 +1182,8 @@ export default function CaseCenterPage({
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailClueRequestRef = useRef(0);
-  const caseLitigantSearchTimerRef = useRef<number | undefined>(undefined);
+    const counselDetailCaseIdRef = useRef<number | null>(null);
+  const counselDetailAssistedFeeRequestRef = useRef(0);  const caseLitigantSearchTimerRef = useRef<number | undefined>(undefined);
   const caseLitigantSearchRequestRef = useRef(0);
   const [createForm] = Form.useForm();
   const [createDefendantEditorForm] = Form.useForm();
@@ -1237,7 +1260,8 @@ export default function CaseCenterPage({
   const [taskForm] = Form.useForm();
   const [feeForm] = Form.useForm();
   const [informDateForm] = Form.useForm();
-  const [paymentRequestForm] = Form.useForm();
+    const [assistedFeeForm] = Form.useForm();
+  const [assistedFeeConfirmForm] = Form.useForm();  const [paymentRequestForm] = Form.useForm();
   const [paymentTypeCreateForm] = Form.useForm();
   const [courtRefundForm] = Form.useForm();
   const [progressForm] = Form.useForm();
@@ -2171,6 +2195,103 @@ export default function CaseCenterPage({
     setCounselDetailAttachments(items);
     return items;
   };
+  const loadCounselDetailAssistedFees = async (
+    caseId: number,
+    page = counselDetailAssistedFeePage,
+    pageSize = counselDetailAssistedFeePageSize,
+  ) => {
+    const requestId = ++counselDetailAssistedFeeRequestRef.current;
+    try {
+      const { data } = await api.get(`/cases/${caseId}/assisted-fees`, { params: { page, page_size: pageSize } });
+      if (requestId !== counselDetailAssistedFeeRequestRef.current || counselDetailCaseIdRef.current !== caseId) return;
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setCounselDetailAssistedFees(items);
+      setCounselDetailAssistedFeePage(Number(data?.page) || page);
+      setCounselDetailAssistedFeePageSize(Number(data?.page_size) || pageSize);
+      setCounselDetailAssistedFeeTotal(Number(data?.total) || items.length);
+    } catch (error: any) {
+      if (requestId !== counselDetailAssistedFeeRequestRef.current || counselDetailCaseIdRef.current !== caseId) return;
+      setCounselDetailAssistedFees([]);
+      setCounselDetailAssistedFeeTotal(0);
+      message.error(error?.response?.data?.detail || "资助费用加载失败");
+    }
+  };
+  const saveCounselDetailAssistedFee = async () => {
+    if (!viewingCounselCase) return;
+    setAssistedFeeSaving(true);
+    try {
+      const values = await assistedFeeForm.validateFields();
+      const payload = {
+        assisted_type: String(values.assisted_type || "").trim(),
+        ...(assistedFeeEditor
+          ? { amount: values.amount === undefined || values.amount === null ? null : Number(values.amount) }
+          : values.amount === undefined || values.amount === null ? {} : { amount: Number(values.amount) }),
+        remark: String(values.remark || "").trim(),
+      };
+      if (assistedFeeEditor) {
+        await api.put(`/cases/${viewingCounselCase.id}/assisted-fees/${assistedFeeEditor.id}`, payload);
+        message.success("资助费用已修改");
+      } else {
+        await api.post(`/cases/${viewingCounselCase.id}/assisted-fees`, payload);
+        message.success("资助费用已提交，等待办理确认");
+      }
+      const historyResponse = await api.get(`/records/${viewingCounselCase.id}/history`);
+      setCounselDetailHistory(historyResponse.data.items || []);
+      setAssistedFeeModalOpen(false);
+      setAssistedFeeEditor(null);
+      assistedFeeForm.resetFields();
+      await loadCounselDetailAssistedFees(viewingCounselCase.id, 1, counselDetailAssistedFeePageSize);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || (assistedFeeEditor ? "修改资助费用失败" : "新建资助费用失败"));
+    } finally {
+      setAssistedFeeSaving(false);
+    }
+  };
+  const confirmCounselDetailAssistedFee = async () => {
+    if (!viewingCounselCase || !assistedFeeConfirming) return;
+    setAssistedFeeSaving(true);
+    try {
+      const values = await assistedFeeConfirmForm.validateFields();
+      await api.post(`/cases/${viewingCounselCase.id}/assisted-fees/${assistedFeeConfirming.id}/confirm`, {
+        confirmed_date: formatRequiredDate(values.confirmed_date, "确认日期"),
+        remark: String(values.remark || "").trim(),
+      });
+      const historyResponse = await api.get(`/records/${viewingCounselCase.id}/history`);
+      setCounselDetailHistory(historyResponse.data.items || []);
+      message.success("资助费用已确认办理");
+      setAssistedFeeConfirming(null);
+      assistedFeeConfirmForm.resetFields();
+      await loadCounselDetailAssistedFees(viewingCounselCase.id, counselDetailAssistedFeePage, counselDetailAssistedFeePageSize);
+    } catch (error: any) {
+      if (!error?.errorFields) message.error(error?.response?.data?.detail || "确认办理资助费用失败");
+    } finally {
+      setAssistedFeeSaving(false);
+    }
+  };
+  const deleteCounselDetailAssistedFee = (row: CaseAssistedFee) => {
+    if (!viewingCounselCase) return;
+    Modal.confirm({
+      title: `删除资助费用：${row.assisted_type}`,
+      content: "删除后不可恢复，是否继续？",
+      okText: "确认删除",
+      cancelText: "取消",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.delete(`/cases/${viewingCounselCase.id}/assisted-fees/${row.id}`);
+          const historyResponse = await api.get(`/records/${viewingCounselCase.id}/history`);
+          setCounselDetailHistory(historyResponse.data.items || []);
+          message.success("资助费用已删除");
+          const nextPage = counselDetailAssistedFees.length === 1 && counselDetailAssistedFeePage > 1
+            ? counselDetailAssistedFeePage - 1
+            : counselDetailAssistedFeePage;
+          await loadCounselDetailAssistedFees(viewingCounselCase.id, nextPage, counselDetailAssistedFeePageSize);
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "删除资助费用失败");
+        }
+      },
+    });
+  };
   const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
     if (!isCaseDetailView) {
       sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
@@ -2198,6 +2319,10 @@ export default function CaseCenterPage({
       if (clueRequestId !== counselDetailClueRequestRef.current) return;
       const detailRecord = recordRes.data as CaseRow;
       setViewingCounselCase(detailRecord);
+      counselDetailCaseIdRef.current = detailRecord.id;
+      setCounselDetailAssistedFees([]);
+      setCounselDetailAssistedFeeTotal(0);
+      void loadCounselDetailAssistedFees(detailRecord.id, 1, counselDetailAssistedFeePageSize);
       void api.get<{ legacy_case_id: number }>(`/legacy-ls-history/current-records/${detailRecord.id}`)
         .then((response) => setLegacyLsHistoryCaseIds((current) => ({ ...current, [detailRecord.id]: response.data.legacy_case_id })))
         .catch(() => setLegacyLsHistoryCaseIds((current) => {
@@ -6272,6 +6397,37 @@ export default function CaseCenterPage({
           <Form.Item label="合并说明" name="comment"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
         </Form>
       </Modal>
+      <Modal
+        open={assistedFeeModalOpen}
+        title={assistedFeeEditor ? `修改资助费用：${assistedFeeEditor.assisted_type}` : "新建资助费用"}
+        okText={assistedFeeEditor ? "保存修改" : "提交"}
+        cancelText="取消"
+        confirmLoading={assistedFeeSaving}
+        onOk={() => void saveCounselDetailAssistedFee()}
+        onCancel={() => { setAssistedFeeModalOpen(false); setAssistedFeeEditor(null); assistedFeeForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Form form={assistedFeeForm} layout="vertical">
+          <Form.Item label="资助类别" name="assisted_type" rules={[{required:true,whitespace:true,message:"请输入资助类别"},{max:128,message:"资助类别不能超过128个字符"}]}><Input maxLength={128} placeholder="例如：专利资助、商标资助" /></Form.Item>
+          <Form.Item label="金额" name="amount"><InputNumber min={0} max={100000000} precision={2} style={{width:"100%"}} placeholder="未明确金额时可留空" /></Form.Item>
+          <Form.Item label="说明" name="remark" rules={[{max:1000,message:"说明不能超过1000个字符"}]}><Input.TextArea rows={3} maxLength={1000} showCount /></Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={Boolean(assistedFeeConfirming)}
+        title={assistedFeeConfirming ? `办理确认：${assistedFeeConfirming.assisted_type}` : "办理确认"}
+        okText="确认办理"
+        cancelText="取消"
+        confirmLoading={assistedFeeSaving}
+        onOk={() => void confirmCounselDetailAssistedFee()}
+        onCancel={() => { setAssistedFeeConfirming(null); assistedFeeConfirmForm.resetFields(); }}
+        destroyOnHidden
+      >
+        <Form form={assistedFeeConfirmForm} layout="vertical">
+          <Form.Item label="办理日期" name="confirmed_date" rules={[{required:true,message:"请选择办理日期"}]}><DatePicker style={{width:"100%"}} /></Form.Item>
+          <Form.Item label="办理说明" name="remark" rules={[{max:1000,message:"办理说明不能超过1000个字符"}]}><Input.TextArea rows={3} maxLength={1000} showCount /></Form.Item>
+        </Form>
+      </Modal>
       <Drawer
         width="100%"
         rootClassName={isCaseDetailView ? "case-detail-static-root" : undefined}
@@ -6482,6 +6638,42 @@ export default function CaseCenterPage({
                   {counselDetailCapabilities.can_create_finance&&<Button disabled={selectedInternalFee?.status!=="草稿"} onClick={()=>handleInternalFeeAction("edit")}>编辑</Button>}
                                     <Button onClick={()=>openInformDateBatchUpdate(selectedInternalFeeKeys)}>修改通知日期</Button>
                                     {counselDetailCapabilities.can_create_finance&&<Button danger disabled={selectedInternalFee?.status!=="草稿"} onClick={()=>handleInternalFeeAction("delete")}>删除</Button>}                </Space>
+              </div>},
+              {key:"assisted-fees",label:"资助费用",children:<div className="case-legacy-tab-panel">
+                <Space className="case-legacy-bottom-actions">
+                  <Button onClick={() => viewingCounselCase && void loadCounselDetailAssistedFees(viewingCounselCase.id, counselDetailAssistedFeePage, counselDetailAssistedFeePageSize)}>刷新</Button>
+                  {counselDetailCapabilities.can_manage_assisted_fees && <Button type="primary" onClick={() => { assistedFeeForm.resetFields(); setAssistedFeeEditor(null); setAssistedFeeModalOpen(true); }}>新建资助费用</Button>}
+                </Space>
+                <Table
+                  rowKey="id"
+                  size="small"
+                  scroll={{x:1370}}
+                  dataSource={counselDetailAssistedFees}
+                  pagination={{
+                    current: counselDetailAssistedFeePage,
+                    pageSize: counselDetailAssistedFeePageSize,
+                    total: counselDetailAssistedFeeTotal,
+                    showSizeChanger: true,
+                    showTotal: (total) => `共有${total}条`,
+                    onChange: (page, pageSize) => viewingCounselCase && void loadCounselDetailAssistedFees(viewingCounselCase.id, page, pageSize),
+                  }}
+                  locale={{emptyText:<span>没有查询到资助费用信息。</span>}}
+                  columns={[
+                    {title:"资助类别",dataIndex:"assisted_type",width:180},
+                    {title:"金额",dataIndex:"amount",width:110,align:"right",render:(value:number|null|undefined)=>value === null || value === undefined ? "—" : Number(value).toFixed(2)},
+                    {title:"提交日期",dataIndex:"request_date",width:120,render:(value:string)=>value||"—"},
+                    {title:"提交人",dataIndex:"request_user",width:120,render:(value:string)=>casePersonDisplayName(value)},
+                    {title:"办理日期",dataIndex:"confirmed_date",width:120,render:(value:string|undefined)=>value||"待办理"},
+                    {title:"办理人",dataIndex:"confirmed_user",width:120,render:(value:string|undefined)=>value?casePersonDisplayName(value):"—"},
+                    {title:"状态",dataIndex:"status",width:100,render:(value:string)=><Tag color={value === "已办理" ? "green" : "gold"}>{value}</Tag>},
+                    {title:"说明",dataIndex:"remark",width:220,ellipsis:true,render:(value:string)=>value||"—"},
+                    {title:"操作",key:"actions",fixed:"right",width:180,render:(_:unknown,row:CaseAssistedFee)=><Space size={0}>
+                      {row.status === "待办理" && counselDetailCapabilities.can_manage_assisted_fees && <Button type="link" onClick={()=>{ assistedFeeForm.setFieldsValue({assisted_type:row.assisted_type,amount:row.amount ?? undefined,remark:row.remark}); setAssistedFeeEditor(row); setAssistedFeeModalOpen(true); }}>修改</Button>}
+                      {row.status === "待办理" && counselDetailCapabilities.can_manage_assisted_fees && <Button type="link" onClick={()=>{ assistedFeeConfirmForm.setFieldsValue({confirmed_date:dayjs(),remark:""}); setAssistedFeeConfirming(row); }}>办理确认</Button>}
+                      {row.status === "待办理" && counselDetailCapabilities.can_manage_assisted_fees && <Button type="link" danger onClick={()=>deleteCounselDetailAssistedFee(row)}>删除</Button>}
+                    </Space>},
+                  ]}
+                />
               </div>},
               {key:"reminders",label:"案件提醒",children:<>{counselDetailCapabilities.can_create_reminder && <Button type="primary" style={{marginBottom:10}} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}<Table rowKey="id" size="small" pagination={false} dataSource={counselReminders} columns={[{title:"提醒日期",render:(_:unknown,row:CaseReminderRow)=>row.data.reminder_date,width:120},{title:"截止日期",render:(_:unknown,row:CaseReminderRow)=>row.data.deadline,width:120},{title:"提醒内容",dataIndex:"description"},{title:"创建人",width:110,render:(_:unknown,row:CaseReminderRow)=>casePersonDisplayName(row.owner)},{title:"操作",width:80,render:(_:unknown,row:CaseReminderRow)=>counselDetailCapabilities.can_delete_reminder?<Button type="link" danger onClick={()=>deleteCounselReminder(row)}>删除</Button>:null}]}/></>},
               {key:"case-logs",label:"案件日志",children:<>{counselDetailCapabilities.can_create_log && <Space style={{marginBottom:10}}><Button type="primary" onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={counselLogs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"日志内容",dataIndex:"content"},{title:"记录人",width:110,render:(_:unknown,row:CaseLogRow)=>casePersonDisplayName(row.operator,row.operator_display_name)}]}/></>},

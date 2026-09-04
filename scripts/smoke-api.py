@@ -1826,6 +1826,29 @@ def main():
         case_log = call("POST", f"/cases/{counsel_case['id']}/logs", {"content": "冒烟法律顾问案件日志"}, expected=(201,))
         assert case_log["content"] == "冒烟法律顾问案件日志"
         assert call("GET", f"/cases/{counsel_case['id']}/logs")["items"][0]["id"] == case_log["id"]
+        assisted_fee = call("POST", f"/cases/{counsel_case['id']}/assisted-fees", {
+            "assisted_type": "SMOKE普通案件资助", "amount": 128.5, "remark": "普通案件资助费用专用闭环",
+        }, expected=(201,))
+        assert assisted_fee["status"] == "待办理" and assisted_fee["request_user"] == USERNAME and assisted_fee["amount"] == 128.5
+        assisted_fee = call("PUT", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}", {
+            "assisted_type": "SMOKE普通案件资助已修改", "amount": 256, "remark": "修改后说明",
+        })
+        assert assisted_fee["assisted_type"] == "SMOKE普通案件资助已修改" and assisted_fee["amount"] == 256
+        pending_assisted_fee = call("POST", f"/cases/{counsel_case['id']}/assisted-fees", {
+            "assisted_type": "SMOKE普通案件待删除资助",
+        }, expected=(201,))
+        call("DELETE", f"/cases/{counsel_case['id']}/assisted-fees/{pending_assisted_fee['id']}", expected=(204,))
+        confirmed_assisted_fee = call("POST", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}/confirm", {
+            "confirmed_date": str(date.today()), "remark": "SMOKE确认办理",
+        })
+        assert confirmed_assisted_fee["status"] == "已办理" and confirmed_assisted_fee["confirmed_date"] == str(date.today()) and confirmed_assisted_fee["confirmed_user"] == USERNAME
+        call("PUT", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}", {"remark": "不应修改"}, expected=(409,))
+        call("POST", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}/confirm", {"confirmed_date": str(date.today())}, expected=(409,))
+        call("DELETE", f"/cases/{counsel_case['id']}/assisted-fees/{assisted_fee['id']}", expected=(409,))
+        assisted_fee_list = call("GET", f"/cases/{counsel_case['id']}/assisted-fees?page=1&page_size=15")
+        assert assisted_fee_list["total"] == 1 and assisted_fee_list["items"][0]["id"] == assisted_fee["id"]
+        counsel_actions = {item["action"] for item in call("GET", f"/records/{counsel_case['id']}/history")["items"]}
+        assert {"新建案件资助费用", "修改案件资助费用", "办理案件资助费用", "删除案件资助费用"}.issubset(counsel_actions)
         batch_updated = call("POST", "/cases/batch-update", {
             "case_ids": [counsel_case["id"], counsel_case_b["id"]],
             "handling_lawyers": [USERNAME], "assistant": USERNAME,

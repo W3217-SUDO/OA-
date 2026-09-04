@@ -1068,6 +1068,32 @@ class IprCaseAssistedFee(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CaseAssistedFee(Base):
+    """A civil/ordinary case's standalone assistance-fee lifecycle.
+
+    Assistance applications are case-detail records, rather than generic finance
+    records: confirmation must remain attributable to the case and cannot be
+    bypassed through finance draft or payment endpoints.
+    """
+
+    __tablename__ = "case_assisted_fees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_record_id: Mapped[int] = mapped_column(
+        ForeignKey("business_records.id", ondelete="CASCADE"), index=True,
+    )
+    assisted_type: Mapped[str] = mapped_column(String(128), index=True)
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="待办理", index=True)
+    request_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    request_user: Mapped[str] = mapped_column(String(64), index=True)
+    confirmed_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    confirmed_user: Mapped[str] = mapped_column(String(64), default="", index=True)
+    remark: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class IprCaseTypeAssignment(Base):
     __tablename__ = "ipr_case_type_assignments"
     __table_args__ = (UniqueConstraint("case_record_id", name="uq_ipr_case_type_assignment_case"),)

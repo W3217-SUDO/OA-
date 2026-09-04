@@ -54,8 +54,7 @@ from .ipr_cpc import CPC_APPLICATION_CATEGORY, create_ipr_cpc_router, is_cpc_app
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
-from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEventfrom .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
-from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
+from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JarFeeAuditLog, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationClue, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, LegacyInvestigationTask, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_passwordfrom .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
 
 logger = logging.getLogger(__name__)
@@ -1865,6 +1864,23 @@ class CaseReminderInput(BaseModel):
 
 class CaseLogInput(BaseModel):
     content: str = Field(min_length=1, max_length=1000)
+
+
+class CaseAssistedFeeCreateInput(BaseModel):
+    assisted_type: str = Field(min_length=1, max_length=128)
+    amount: float | None = Field(default=None, ge=0, le=100000000)
+    remark: str = Field(default="", max_length=1000)
+
+
+class CaseAssistedFeeUpdateInput(BaseModel):
+    assisted_type: str | None = Field(default=None, min_length=1, max_length=128)
+    amount: float | None = Field(default=None, ge=0, le=100000000)
+    remark: str | None = Field(default=None, max_length=1000)
+
+
+class CaseAssistedFeeConfirmInput(BaseModel):
+    confirmed_date: date | None = None
+    remark: str = Field(default="", max_length=1000)
 
 
 class CaseBatchFeeInput(BaseModel):
@@ -5453,6 +5469,7 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
     "案件承办": (
         "case.detail.update", "case.log.create", "case.reminder.manage",
         "case.task.create", "case.attachment.write", "case.progress.update", "case.phase.update",
+        "case.assisted_fee.manage",
     ),
     "案件进展维护": ("case.progress.update", "case.phase.update"),
     "案件法院信息修改": ("case.court.update",),
@@ -25203,6 +25220,7 @@ async def delete_case(case_id: int, identity: dict = Depends(current_identity), 
         await _delete_task_notifications(task.id, db)
         await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == task.id))
         await db.delete(task)
+    await db.execute(delete(CaseAssistedFee).where(CaseAssistedFee.case_record_id == case_id))
     await db.execute(delete(HearingSchedule).where(HearingSchedule.case_record_id == case_id))
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == case_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == case_id))
@@ -25211,6 +25229,200 @@ async def delete_case(case_id: int, identity: dict = Depends(current_identity), 
     for path in attachment_paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
             path.unlink()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _case_assisted_fee_dict(row: CaseAssistedFee) -> dict:
+    return {
+        "id": row.id,
+        "case_record_id": row.case_record_id,
+        "assisted_type": row.assisted_type,
+        "amount": row.amount,
+        "status": row.status,
+        "request_date": row.request_date,
+        "request_user": row.request_user,
+        "confirmed_date": row.confirmed_date,
+        "confirmed_user": row.confirmed_user,
+        "remark": row.remark,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+async def _ensure_case_assisted_fee_write(
+    case_id: int, identity: dict, db: AsyncSession,
+) -> BusinessRecord:
+    """Keep assisted-fee lifecycle writes inside the ordinary case-detail gate."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_action(identity, db, "case.assisted_fee.manage")
+    await _require_case_detail_write_access(case_record, identity, db)
+    return case_record
+
+
+async def _case_assisted_fee_for_case(
+    case_record: BusinessRecord, assisted_fee_id: int, db: AsyncSession,
+) -> CaseAssistedFee:
+    row = await db.scalar(select(CaseAssistedFee).where(
+        CaseAssistedFee.id == assisted_fee_id,
+        CaseAssistedFee.case_record_id == case_record.id,
+    ).with_for_update())
+    if not row:
+        raise HTTPException(status_code=404, detail="资助费用不存在或不属于当前案件")
+    return row
+
+
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/assisted-fees")
+async def list_case_assisted_fees(
+    case_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """List the visible ordinary case's standalone assistance applications."""
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    total = int(await db.scalar(select(func.count()).select_from(CaseAssistedFee).where(
+        CaseAssistedFee.case_record_id == case_record.id,
+    )) or 0)
+    rows = list((await db.scalars(
+        select(CaseAssistedFee).where(CaseAssistedFee.case_record_id == case_record.id)
+        .order_by(CaseAssistedFee.created_at.desc(), CaseAssistedFee.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).all())
+    return {
+        "items": [_case_assisted_fee_dict(row) for row in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if total else 0,
+    }
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/assisted-fees", status_code=status.HTTP_201_CREATED)
+async def create_case_assisted_fee(
+    case_id: int,
+    body: CaseAssistedFeeCreateInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_case_assisted_fee_write(case_id, identity, db)
+    assisted_type = body.assisted_type.strip()
+    if not assisted_type:
+        raise HTTPException(status_code=422, detail="资助类别不能为空")
+    row = CaseAssistedFee(
+        case_record_id=case_record.id,
+        assisted_type=assisted_type,
+        amount=body.amount,
+        request_user=identity["username"],
+        remark=body.remark.strip(),
+    )
+    db.add(row)
+    await db.flush()
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="新建案件资助费用",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator=identity["username"],
+        comment=f"资助费用 #{row.id}；类别：{row.assisted_type}" + (f"；金额：{row.amount:.2f}" if row.amount is not None else "") + (f"；{row.remark}" if row.remark else ""),
+    ))
+    await db.commit()
+    await db.refresh(row)
+    return _case_assisted_fee_dict(row)
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}")
+async def update_case_assisted_fee(
+    case_id: int,
+    assisted_fee_id: int,
+    body: CaseAssistedFeeUpdateInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    if not body.model_fields_set:
+        raise HTTPException(status_code=422, detail="请至少填写一项要修改的资助费用信息")
+    case_record = await _ensure_case_assisted_fee_write(case_id, identity, db)
+    row = await _case_assisted_fee_for_case(case_record, assisted_fee_id, db)
+    if row.status != "待办理":
+        raise HTTPException(status_code=409, detail="已办理的资助费用必须保留确认记录，不能修改")
+    before = (row.assisted_type, row.amount, row.remark)
+    if "assisted_type" in body.model_fields_set:
+        assisted_type = (body.assisted_type or "").strip()
+        if not assisted_type:
+            raise HTTPException(status_code=422, detail="资助类别不能为空")
+        row.assisted_type = assisted_type
+    if "amount" in body.model_fields_set:
+        row.amount = body.amount
+    if "remark" in body.model_fields_set:
+        row.remark = (body.remark or "").strip()
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="修改案件资助费用",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator=identity["username"],
+        comment=(
+            f"资助费用 #{row.id}：类别 {before[0]} → {row.assisted_type}；"
+            f"金额 {before[1] if before[1] is not None else '未填'} → {row.amount if row.amount is not None else '未填'}；"
+            f"备注 {before[2] or '未填'} → {row.remark or '未填'}"
+        ),
+    ))
+    await db.commit()
+    await db.refresh(row)
+    return _case_assisted_fee_dict(row)
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}/confirm")
+async def confirm_case_assisted_fee(
+    case_id: int,
+    assisted_fee_id: int,
+    body: CaseAssistedFeeConfirmInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_case_assisted_fee_write(case_id, identity, db)
+    row = await _case_assisted_fee_for_case(case_record, assisted_fee_id, db)
+    if row.status != "待办理":
+        raise HTTPException(status_code=409, detail="该资助费用已办理，不能重复确认")
+    row.status = "已办理"
+    row.confirmed_date = body.confirmed_date or date.today()
+    row.confirmed_user = identity["username"]
+    if body.remark.strip():
+        row.remark = (row.remark + "\n" + body.remark.strip()).strip()
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="办理案件资助费用",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator=identity["username"],
+        comment=f"资助费用 #{row.id}；类别：{row.assisted_type}；办理日期：{row.confirmed_date}",
+    ))
+    await db.commit()
+    await db.refresh(row)
+    return _case_assisted_fee_dict(row)
+
+
+@app.delete(f"{settings.api_prefix}/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_case_assisted_fee(
+    case_id: int,
+    assisted_fee_id: int,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_case_assisted_fee_write(case_id, identity, db)
+    row = await _case_assisted_fee_for_case(case_record, assisted_fee_id, db)
+    if row.status != "待办理":
+        raise HTTPException(status_code=409, detail="已办理的资助费用必须保留确认记录，不能删除")
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="删除案件资助费用",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator=identity["username"],
+        comment=f"资助费用 #{row.id}；类别：{row.assisted_type}",
+    ))
+    await db.delete(row)
+    await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -25351,6 +25563,13 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
         ))
         moved_fees += 1
 
+    assisted_fees = list((await db.scalars(select(CaseAssistedFee).where(
+        CaseAssistedFee.case_record_id == source.id,
+    ))).all())
+    for assisted_fee in assisted_fees:
+        assisted_fee.case_record_id = target.id
+    moved_assisted_fees = len(assisted_fees)
+
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == source.id))).all())
     for attachment in attachments:
         attachment.record_id = target.id
@@ -25367,19 +25586,19 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
         WorkflowEvent(
             record_id=target.id, action="合并案件", from_status=target.status, to_status=target.status,
             operator=identity["username"],
-            comment=f"合并来源案件 {source.serial_no}；迁移费用 {moved_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
+            comment=f"合并来源案件 {source.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
         ),
         WorkflowEvent(
             record_id=source.id, action="案件已合并", from_status=source_previous, to_status=source.status,
             operator=identity["username"],
-            comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
+            comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
         ),
     ])
     await db.commit(); await db.refresh(target); await db.refresh(source)
     return {
         "target": await _record_dict_for_identity(target, identity, db),
         "source": await _record_dict_for_identity(source, identity, db),
-        "moved_fees": moved_fees, "moved_attachments": len(attachments),
+        "moved_fees": moved_fees, "moved_assisted_fees": moved_assisted_fees, "moved_attachments": len(attachments),
         "not_moved": ["tasks", "reminders", "hearings", "workflow_history"],
     }
 
@@ -26166,7 +26385,7 @@ async def _require_case_document_write_access(case_record: BusinessRecord, ident
 
 
 async def _case_action_granted(identity: dict, db: AsyncSession, action_code: str) -> bool:
-    if action_code.startswith("case."):
+    if action_code.startswith("case.") and action_code != "case.assisted_fee.manage":
         return True
     if "admin" in _identity_role_ids(identity):
         return True
@@ -26385,7 +26604,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     can_close_case = active
     can_archive_case = case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     base = {
-        "can_write": False, "can_generate_document": False, "can_upload_attachment": False,
+        "can_write": False, "can_manage_assisted_fees": False, "can_generate_document": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_change_phase": False, "can_manage_hearing": False,
@@ -26436,9 +26655,11 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     except HTTPException as exc:
         return {**base, "reason": str(exc.detail)}
     can_progress = active
+    can_manage_assisted_fees = await _case_action_granted(identity, db, "case.assisted_fee.manage")
     return {
         **base,
         "can_write": True,
+        "can_manage_assisted_fees": can_manage_assisted_fees,
         "can_delete_attachment": base["can_upload_attachment"],
         "can_update_progress": can_progress, "can_manage_hearing": can_progress,
         "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
@@ -36584,6 +36805,7 @@ async def delete_smoke_case(case_id: int, identity: dict = Depends(current_ident
         await _delete_task_notifications(task.id, db)
         await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == task.id))
         await db.delete(task)
+    await db.execute(delete(CaseAssistedFee).where(CaseAssistedFee.case_record_id == case_id))
     await db.execute(delete(HearingSchedule).where(HearingSchedule.case_record_id == case_id))
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == case_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == case_id))
@@ -36642,6 +36864,7 @@ async def delete_smoke_record(record_id: int, identity: dict = Depends(current_i
             await _delete_task_notifications(task.id, db)
             await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == task.id))
             await db.delete(task)
+        await db.execute(delete(CaseAssistedFee).where(CaseAssistedFee.case_record_id == record.id))
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == record_id))
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == record_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == record_id))
