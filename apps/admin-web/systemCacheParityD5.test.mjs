@@ -49,10 +49,20 @@ test("cache clear actions keep confirmation and both feedback paths", () => {
   assert.match(cacheHandlers, /message\.error/);
 });
 
-test("cache list and clear endpoints require an administrator", () => {
+test("cache management uses the required singular endpoints and administrators guard every action", () => {
   const cacheApi = apiSource.slice(
-    apiSource.indexOf('@app.get(f"{settings.api_prefix}/system/caches")'),
-    apiSource.indexOf("def _law_firm_contact_dict", apiSource.indexOf('@app.get(f"{settings.api_prefix}/system/caches")')),
+    apiSource.indexOf('@app.get(f"{settings.api_prefix}/system/cache")'),
+    apiSource.indexOf("def _law_firm_contact_dict", apiSource.indexOf('@app.get(f"{settings.api_prefix}/system/cache")')),
   );
+  assert.match(source, /api\.get\("\/system\/cache"/);
+  assert.match(source, /api\.post\(`\/system\/cache\/\$\{row\.key\}\/clear`\)/);
+  assert.match(source, /api\.post\("\/system\/cache\/clear-all"\)/);
+  assert.match(cacheApi, /@app\.post\(f"\{settings\.api_prefix\}\/system\/cache\/clear-all"\)/);
   assert.equal((cacheApi.match(/_require_admin\(identity\)/g) || []).length, 3);
+});
+
+test("direct SQL rows are not selectable as cache entries", () => {
+  assert.match(cacheBlock, /getCheckboxProps:[\s\S]*disabled: !row\.clearable/);
+  assert.match(cacheBlock, /未启用缓存/);
+  assert.match(cacheBlock, /清除全部缓存/);
 });

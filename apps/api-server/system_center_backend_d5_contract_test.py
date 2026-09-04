@@ -104,7 +104,7 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
         self.assertIn("categories", legacy_parameter.json())
         self.assertNotIn("page", legacy_parameter.json())
 
-        for path in ("/system/menus", "/system/configs", "/system/caches"):
+        for path in ("/system/menus", "/system/configs", "/system/cache"):
             paged = await self.client.get(f"{API}{path}", params={"page": 1, "page_size": 1, "keyword": "系统"})
             self.assertEqual(paged.status_code, status.HTTP_200_OK, path)
             paged_body = paged.json()
@@ -116,6 +116,40 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
             self.assertIn("items", legacy.json(), path)
             if path == "/system/menus":
                 self.assertIn("total", legacy.json())
+
+    async def test_cache_management_uses_real_memory_stats_clear_all_and_admin_boundary(self):
+        # Populate both a registered bucket and an arbitrary parameter bucket.
+        self.assertEqual((await self.client.get(f"{API}/system/parameters", params={"category": "case_phase"})).status_code, status.HTTP_200_OK)
+        self.assertEqual((await self.client.get(f"{API}/system/parameters", params={"category": "cause"})).status_code, status.HTTP_200_OK)
+
+        listed = await self.client.get(f"{API}/system/cache")
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        body = listed.json()
+        self.assertEqual(body["total"], 8)
+        self.assertGreaterEqual(body["summary"]["cache_entries"], 4)
+        self.assertEqual(body["summary"]["cache_buckets"], 2)
+        case_phase = next(item for item in body["items"] if item["key"] == "IPR_CASEPHASETYPE_PREFIX_casephasetype")
+        self.assertTrue(case_phase["clearable"])
+        self.assertEqual(case_phase["storage"], "进程内存")
+        direct_query = next(item for item in body["items"] if item["key"] == "USER_PREFIX_userlist")
+        self.assertFalse(direct_query["clearable"])
+        self.assertEqual(direct_query["entry_count"], 0)
+        self.assertEqual((await self.client.post(f"{API}/system/cache/USER_PREFIX_userlist/clear")).status_code, status.HTTP_409_CONFLICT)
+
+        cleared_one = await self.client.post(f"{API}/system/cache/IPR_CASEPHASETYPE_PREFIX_casephasetype/clear")
+        self.assertEqual(cleared_one.status_code, status.HTTP_200_OK)
+        self.assertEqual(cleared_one.json()["entry_count"], 0)
+
+        cleared_all = await self.client.post(f"{API}/system/cache/clear-all")
+        self.assertEqual(cleared_all.status_code, status.HTTP_200_OK)
+        self.assertTrue(cleared_all.json()["clear_all"])
+        from app import main as main_module
+        self.assertEqual(main_module.SYSTEM_PARAMETER_CACHE, {})
+
+        app.dependency_overrides[current_identity] = lambda: USER
+        self.assertEqual((await self.client.get(f"{API}/system/cache")).status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual((await self.client.post(f"{API}/system/cache/clear-all")).status_code, status.HTTP_403_FORBIDDEN)
+        app.dependency_overrides[current_identity] = lambda: ADMIN
                 self.assertNotIn("page", legacy.json())
             elif path == "/system/configs":
                 self.assertNotIn("page", legacy.json())
