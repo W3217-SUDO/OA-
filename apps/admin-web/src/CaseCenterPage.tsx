@@ -241,10 +241,46 @@ type CaseLitigantCandidate = {
   title: string;
   customer_type?: string;
 };
+type CaseLitigantAgent = {
+  name: string;
+  law_firm: string;
+  position: string;
+  phone: string;
+  authority: string;
+};
+type CaseLitigantAgentField = "plaintiff_agents" | "defendant_agents" | "third_party_agents";
 const CASE_LITIGANT_PARTY_LABELS: Record<CaseLitigantPartyField, string> = {
   plaintiffs: "原告",
   defendants: "被告",
   third_parties: "第三人",
+};
+const CASE_LITIGANT_AGENT_LABELS: Record<CaseLitigantAgentField, string> = {
+  plaintiff_agents: "原告代理人",
+  defendant_agents: "被告代理人",
+  third_party_agents: "第三人代理人",
+};
+const normalizeCaseLitigantAgents = (value: unknown): CaseLitigantAgent[] => Array.isArray(value)
+  ? value.map((item) => {
+    if (typeof item === "string") return { name: item, law_firm: "", position: "", phone: "", authority: "" };
+    const agent = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    return {
+      name: String(agent.name || "").trim(),
+      law_firm: String(agent.law_firm || "").trim(),
+      position: String(agent.position || "").trim(),
+      phone: String(agent.phone || "").trim(),
+      authority: String(agent.authority || "").trim(),
+    };
+  }).filter((agent) => agent.name)
+  : [];
+const renderCaseLitigantAgentSummary = (value: unknown) => {
+  const agents = normalizeCaseLitigantAgents(value);
+  if (!agents.length) return "—";
+  return <Space direction="vertical" size={2}>
+    {agents.map((agent, index) => <span key={`${agent.name}-${index}`}>
+      <strong>{agent.name}</strong>
+      {[agent.law_firm, agent.position, agent.phone, agent.authority].filter(Boolean).join("｜") ? `（${[agent.law_firm, agent.position, agent.phone, agent.authority].filter(Boolean).join("｜")}）` : ""}
+    </span>)}
+  </Space>;
 };
 type CaseAgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
 type CaseAgentDocument = { id: number; original_name: string; category?: string; source_module?: string; size?: number };
@@ -3443,7 +3479,14 @@ export default function CaseCenterPage({
   };
   const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
     const dateFields=["first_court_filing_date","first_court_hearing_date","second_court_filing_date","second_court_hearing_date","execution_court_filing_date","execution_court_hearing_date","retrial_court_filing_date","retrial_court_hearing_date"];
-    criminalMaintenanceForm.setFieldsValue({...row.data,...Object.fromEntries(dateFields.map(key=>[key,row.data[key]?dayjs(row.data[key]):undefined])),comment:""}); setCriminalMaintenance({row,kind});
+    criminalMaintenanceForm.setFieldsValue({
+      ...row.data,
+      plaintiff_agents: normalizeCaseLitigantAgents(row.data.plaintiff_agents),
+      defendant_agents: normalizeCaseLitigantAgents(row.data.defendant_agents),
+      third_party_agents: normalizeCaseLitigantAgents(row.data.third_party_agents),
+      ...Object.fromEntries(dateFields.map(key=>[key,row.data[key]?dayjs(row.data[key]):undefined])),
+      comment:"",
+    }); setCriminalMaintenance({row,kind});
   };
   const saveCriminalMaintenance = async () => {
     if (!criminalMaintenance) return; const values=await criminalMaintenanceForm.validateFields();
@@ -3534,15 +3577,40 @@ export default function CaseCenterPage({
       </Space.Compact>
     </Form.Item>
   );
+  const renderCaseLitigantAgentEditor = (fieldName: CaseLitigantAgentField, label = CASE_LITIGANT_AGENT_LABELS[fieldName]) => (
+    <Card
+      key={fieldName}
+      size="small"
+      title={label}
+      style={{ marginBottom: 12 }}
+      extra={<span style={{ color: "#8c8c8c", fontSize: 12 }}>按本案独立维护</span>}
+    >
+      <Form.List name={fieldName}>
+        {(fields, { add, remove }) => <>
+          {fields.map((field) => <Card key={field.key} size="small" style={{ marginBottom: 10, background: "#fafafa" }}>
+            <div className="form-grid">
+              <Form.Item {...field} name={[field.name, "name"]} label="姓名" rules={[{ required: true, whitespace: true, message: "请输入代理人姓名" }]}><Input maxLength={256} /></Form.Item>
+              <Form.Item {...field} name={[field.name, "law_firm"]} label="律所"><Input maxLength={256} /></Form.Item>
+              <Form.Item {...field} name={[field.name, "position"]} label="职务"><Input maxLength={128} /></Form.Item>
+              <Form.Item {...field} name={[field.name, "phone"]} label="电话"><Input maxLength={64} /></Form.Item>
+            </div>
+            <Form.Item {...field} name={[field.name, "authority"]} label="代理权限"><Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} maxLength={500} /></Form.Item>
+            <Button danger type="link" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)}>删除代理人</Button>
+          </Card>)}
+          <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ name: "", law_firm: "", position: "", phone: "", authority: "" })}>新增{label}</Button>
+        </>}
+      </Form.List>
+    </Card>
+  );
   const openCaseLitigants = (row: CaseRow) => {
     if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改当事人");
     caseLitigantsForm.setFieldsValue({
       plaintiffs: row.data.plaintiffs || (row.data.plaintiff ? [row.data.plaintiff] : row.customer ? [row.customer] : []),
-      plaintiff_agents: row.data.plaintiff_agents || [],
+      plaintiff_agents: normalizeCaseLitigantAgents(row.data.plaintiff_agents),
       defendants: row.data.defendants || (row.data.opponent ? [row.data.opponent] : []),
-      defendant_agents: row.data.defendant_agents || [],
+      defendant_agents: normalizeCaseLitigantAgents(row.data.defendant_agents),
       third_parties: row.data.third_parties || [],
-      third_party_agents: row.data.third_party_agents || [],
+      third_party_agents: normalizeCaseLitigantAgents(row.data.third_party_agents),
       comment: "",
     });
     setEditingCaseLitigants(row);
@@ -6035,6 +6103,8 @@ export default function CaseCenterPage({
                   <tr><th>我方案号</th><td>{viewingCounselCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCounselCase.data.cause_or_charge||viewingCounselCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCounselCase.status||"—"}</td><th>原告</th><td>{viewingCounselCase.data.plaintiff||viewingCounselCase.customer||"—"}</td></tr>
                   <tr><th>案件名称</th><td colSpan={3}>{viewingCounselCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayName(viewingCounselCase.data.hearing_lawyer||viewingCounselCase.data.handling_lawyers?.[0],viewingCounselCase.data.hearing_lawyer_display_name)}</td><th>被告</th><td>{viewingCounselCase.data.defendant||viewingCounselCase.data.opponent||caseDetailNames(viewingCounselCase.data.defendants)}</td></tr>
                   <tr><th>案件参与人</th><td colSpan={7}>{legacyCaseParticipantDisplayNames(viewingCounselCase.data)}</td></tr>
+                  <tr><th>原告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCounselCase.data.plaintiff_agents)}</td><th>被告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCounselCase.data.defendant_agents)}</td></tr>
+                  <tr><th>第三人代理人</th><td colSpan={7}>{renderCaseLitigantAgentSummary(viewingCounselCase.data.third_party_agents)}</td></tr>
                   <tr><th>客户</th><td colSpan={3}><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCounselCase.data.customer_id) || undefined, serial_no: viewingCounselCase.data.customer_no, title: viewingCounselCase.customer })}>{viewingCounselCase.customer||"—"}</Button></td><th>经办律师</th><td>{casePersonDisplayNames(viewingCounselCase.data.handling_lawyers)}</td><th>第三人</th><td>{viewingCounselCase.data.third_party||caseDetailNames(viewingCounselCase.data.third_parties)}</td></tr>
                   <tr><th>合同号</th><td>{viewingCounselCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCounselCase.data.contract_record_id) || undefined, serial_no: viewingCounselCase.data.contract_no })}>{viewingCounselCase.data.contract_no}</Button>:"—"}</td><th>调查员</th><td>{casePersonDisplayName(viewingCounselCase.data.investigator,viewingCounselCase.data.investigator_display_name)}</td><th>律师助理</th><td>{caseAssistantDisplayNames(viewingCounselCase.data)}</td><th>公证书号</th><td>{viewingCounselCase.data.notarial_no||viewingCounselCase.data.notary_no||viewingCounselCase.data.certificate_no||"—"}</td></tr>
                   <tr><th>线索号</th><td colSpan={3}>{String(viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no||viewingCounselCase.data.investigation_clue_nos||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCounselCase.data.clue_record_id || viewingCounselCase.data.investigation_clue_id) || undefined, serial_no: viewingCounselCase.data.clue_no || viewingCounselCase.data.investigation_clue || viewingCounselCase.data.source_clue_no || viewingCounselCase.data.investigation_clue_nos })}>{caseDetailNames(viewingCounselCase.data.investigation_clue_nos||viewingCounselCase.data.clue_no||viewingCounselCase.data.investigation_clue||viewingCounselCase.data.source_clue_no)}</Button>:"—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCounselCase.data.case_register_date||viewingCounselCase.data.filing_date||viewingCounselCase.data.first_court_filing_date)}</td><th>仓库位置</th><td>{viewingCounselCase.data.warehouse||viewingCounselCase.data.warehouse_location||viewingCounselCase.data.storage_location||viewingCounselCase.data.location||viewingCounselCase.data.deposit_address||"—"}</td></tr>
@@ -6540,7 +6610,7 @@ export default function CaseCenterPage({
       </Modal>
       <Modal width={760} open={Boolean(criminalMaintenance)} title={`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
         <Form form={criminalMaintenanceForm} layout="vertical">
-          {criminalMaintenance?.kind==="litigants"&&<div className="form-grid">{[["plaintiffs","受害人"],["plaintiff_agents","受害人代理人"],["defendants","被告/犯罪嫌疑人"],["defendant_agents","被告代理人"],["third_parties","第三人"],["third_party_agents","第三人代理人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>)}</div>}
+          {criminalMaintenance?.kind==="litigants"&&<><div className="form-grid">{[["plaintiffs","受害人"],["defendants","被告/犯罪嫌疑人"],["third_parties","第三人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>)}</div>{renderCaseLitigantAgentEditor("plaintiff_agents", "受害人代理人")}{renderCaseLitigantAgentEditor("defendant_agents")}{renderCaseLitigantAgentEditor("third_party_agents")}</>}
           {criminalMaintenance?.kind==="public-security"&&<div className="form-grid">{[["public_security_name","公安机关"],["public_security_case_no","公安案件号"],["public_security_address","地址"],["public_security_phone","联系电话"],["public_security_operator","承办人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>}
           {criminalMaintenance?.kind==="procuratorates"&&["first","second","retrial"].map(level=><div className="form-grid" key={level}>{[[`${level}_procuratorate_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}检察院`],[`${level}_procuratorate_case_no`,`案件号`],[`${level}_procuratorate_address`,`地址`],[`${level}_procuratorate_phone`,`联系电话`],[`${level}_procuratorate_operator`,`承办人`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>)}
           {criminalMaintenance?.kind==="courts"&&["first","second","execution","retrial"].map(level=>{
@@ -6553,17 +6623,17 @@ export default function CaseCenterPage({
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={760} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden>
-        <Alert type="info" showIcon title="输入关键字可搜索系统已有当事人；点击字段右侧加号可新增并立即选中。代理人单独维护，保存后仅更新本案当事人。" style={{marginBottom:12}} />
+      <Modal width={960} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden>
+        <Alert type="info" showIcon title="输入关键字可搜索系统已有当事人；点击字段右侧加号可新增并立即选中。下方三组代理人按本案独立维护，保存后仅更新本案当事人。" style={{marginBottom:12}} />
         <Form form={caseLitigantsForm} layout="vertical">
           <div className="form-grid">
             {renderCasePartySelector("plaintiffs", true)}
-            <Form.Item label="原告代理人" name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
             {renderCasePartySelector("defendants", true)}
-            <Form.Item label="被告代理人" name="defendant_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
             {renderCasePartySelector("third_parties")}
-            <Form.Item label="第三人代理人" name="third_party_agents"><Select mode="tags" tokenSeparators={[",","，"]} showSearch /></Form.Item>
           </div>
+          {renderCaseLitigantAgentEditor("plaintiff_agents")}
+          {renderCaseLitigantAgentEditor("defendant_agents")}
+          {renderCaseLitigantAgentEditor("third_party_agents")}
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
