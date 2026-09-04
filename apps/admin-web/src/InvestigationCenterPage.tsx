@@ -8,6 +8,7 @@ import {
   Checkbox,
   DatePicker,
   Descriptions,
+  Dropdown,
   Drawer,
   Form,
   Input,
@@ -1851,10 +1852,13 @@ export default function InvestigationCenterPage({
       message.error(error?.response?.data?.detail || "调查员分配失败");
     }
   };
-  const openFee = (row: Row) => {
+  const openFee = (
+    row: Row,
+    feeType: "公证费已付" | "公证费" | "公证服务费" = "公证费",
+  ) => {
     setFeeTarget(row);
     feeForm.setFieldsValue({
-      fee_type: "调查取证费",
+      fee_type: feeType,
       amount: row.data.fee_amount || undefined,
       description: "",
     });
@@ -2901,7 +2905,7 @@ export default function InvestigationCenterPage({
     新增子任务: () =>
       requireSingleRow("新增子任务", (row) => void openTasks(row, true)),
     新增调查员: () => requireSingleRow("新增调查员", openAssign),
-    申请费用: () => requireSingleRow("申请费用", openFee),
+    申请费用: () => requireSingleRow("申请费用", (row) => openFee(row)),
     关闭任务并生成报告: () =>
       requireSingleRow(
         "关闭任务并生成报告",
@@ -4005,15 +4009,40 @@ export default function InvestigationCenterPage({
             />
             {businessActionLabels.length > 0 && (
               <div className="investigation-actions investigation-actions-bottom">
-                {businessActionLabels.map((label) => (
-                  <Button key={label} onClick={() => runOriginalAction(label)}>
-                    {label === "审批" && initialTab === "clue-audit-customer"
-                      ? "客户审核"
-                      : label === "审批" && initialTab === "clue-audit-pending"
-                        ? "内部审批"
-                        : label}
-                  </Button>
-                ))}
+                {businessActionLabels.map((label) =>
+                  label === "申请费用" ? (
+                    <Dropdown
+                      key={label}
+                      trigger={["click"]}
+                      menu={{
+                        items: [
+                          { key: "notary-paid", label: "公证费已付" },
+                          { key: "notary-fee", label: "新增公证费" },
+                          { key: "notary-service-fee", label: "新增公证服务费" },
+                        ],
+                        onClick: ({ key }) => {
+                          const feeType =
+                            key === "notary-paid"
+                              ? "公证费已付"
+                              : key === "notary-service-fee"
+                                ? "公证服务费"
+                                : "公证费";
+                          requireSingleRow(label, (row) => openFee(row, feeType));
+                        },
+                      }}
+                    >
+                      <Button>申请费用</Button>
+                    </Dropdown>
+                  ) : (
+                    <Button key={label} onClick={() => runOriginalAction(label)}>
+                      {label === "审批" && initialTab === "clue-audit-customer"
+                        ? "客户审核"
+                        : label === "审批" && initialTab === "clue-audit-pending"
+                          ? "内部审批"
+                          : label}
+                    </Button>
+                  ),
+                )}
               </div>
             )}
           </>
@@ -5150,7 +5179,9 @@ export default function InvestigationCenterPage({
             <Select
               options={[
                 "调查取证费",
+                "公证费已付",
                 "公证费",
+                "公证服务费",
                 "差旅费",
                 "购买样品费",
                 "其他",
