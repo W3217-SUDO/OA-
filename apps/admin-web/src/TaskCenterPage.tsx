@@ -62,8 +62,6 @@ type TaskRow = {
   defendant: string;
   case_stage: string;
   department: string;
-  start_at: string;
-  end_at: string;
   created_at: string;
   updated_at: string;
   verified_at: string;
@@ -1059,10 +1057,6 @@ export default function TaskCenterPage({
       return;
     }
     void simpleAction(selected, selected.handoff_auto_complete_at ? "restart" : "accept");
-  };
-  const openTaskHandoff = (row: TaskRow) => {
-    setHandoff(row);
-    handoffForm.setFieldsValue({ recipient: "", comment: "" });
   };
   const markSelectedUnreadTasksRead = async () => {
     if (!selectedRows.length) {
