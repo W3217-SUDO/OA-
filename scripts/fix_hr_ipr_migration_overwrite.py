@@ -83,6 +83,12 @@ def placeholder(dialect: str) -> str:
     return "%s" if dialect == "postgresql" else "?"
 
 
+def normalize_postgresql_url(database_url: str) -> str:
+    for driver in ("+asyncpg", "+psycopg", "+psycopg2"):
+        database_url = database_url.replace(f"postgresql{driver}://", "postgresql://", 1)
+    return database_url
+
+
 def collect_changes(connection: ConnectionLike, dialect: str) -> tuple[list[Change], dict[str, int]]:
     departments = {
         normalized(row_value(row, "code")): str(row_value(row, "name"))
@@ -209,6 +215,7 @@ def repair(connection: ConnectionLike, dry_run: bool, dialect: str = "sqlite") -
 
 def open_connection(database_url: str | None, db_path: Path) -> tuple[ConnectionLike, str]:
     if database_url:
+        database_url = normalize_postgresql_url(database_url)
         if not database_url.startswith(("postgresql://", "postgres://")):
             raise ValueError("--database-url must use postgresql:// or postgres://")
         import psycopg
