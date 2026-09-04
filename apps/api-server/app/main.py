@@ -2262,6 +2262,31 @@ class IprCaseAssistedFeeCreateInput(BaseModel):
     assisted_type: str = Field(min_length=1, max_length=128)
     remark: str = Field(default="", max_length=1000)
 
+    @field_validator("assisted_type")
+    @classmethod
+    def assisted_type_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("协助类别不能为空")
+        return value
+
+
+class IprCaseAssistedFeeUpdateInput(BaseModel):
+    assisted_type: str = Field(min_length=1, max_length=128)
+    remark: str = Field(default="", max_length=1000)
+
+    @field_validator("assisted_type")
+    @classmethod
+    def assisted_type_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("协助类别不能为空")
+        return value
+
+
+class IprCaseAssistedFeeConfirmInput(BaseModel):
+    remark: str = Field(default="", max_length=1000)
+
 
 class IprCaseReminderInput(BaseModel):
     event_type_id: int = Field(default=0, ge=0)
@@ -33255,11 +33280,19 @@ async def delete_ipr_case_log(case_id: int, log_id: int, identity: dict = Depend
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _ipr_assisted_fee_dict(row: IprCaseAssistedFee, attachment: FileAttachment | None = None) -> dict:
+def _ipr_assisted_fee_dict(
+    row: IprCaseAssistedFee,
+    attachment: FileAttachment | None = None,
+    users_by_username: dict[str, User] | None = None,
+) -> dict:
+    users_by_username = users_by_username or {}
     return {
         "id": row.id, "case_record_id": row.case_record_id, "assisted_type": row.assisted_type,
         "status": row.status, "request_date": row.request_date, "request_user": row.request_user,
-        "response_date": row.response_date, "response_user": row.response_user, "remark": row.remark,
+        "request_user_display_name": _person_reference_display(row.request_user, users_by_username)[0],
+        "response_date": row.response_date, "response_user": row.response_user,
+        "response_user_display_name": _person_reference_display(row.response_user, users_by_username)[0],
+        "remark": row.remark,
         "receipt_attachment_id": row.receipt_attachment_id,
         "receipt": _attachment_dict(attachment) if attachment else None,
         "created_at": row.created_at, "updated_at": row.updated_at,
@@ -33286,23 +33319,105 @@ async def list_ipr_case_assisted_fees(
     attachment_ids = [row.receipt_attachment_id for row in rows if row.receipt_attachment_id]
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all()) if attachment_ids else []
     by_id = {item.id: item for item in attachments}
+    users_by_username = await _user_display_map(
+        {row.request_user for row in rows} | {row.response_user for row in rows if row.response_user}, db,
+    )
     return {
-        "items": [_ipr_assisted_fee_dict(row, by_id.get(row.receipt_attachment_id)) for row in rows],
+        "items": [_ipr_assisted_fee_dict(row, by_id.get(row.receipt_attachment_id), users_by_username) for row in rows],
         "total": total, "page": page, "page_size": page_size,
         "pages": (total + page_size - 1) // page_size if total else 0,
+        "capabilities": await _ipr_case_assisted_fee_capabilities(case_record, identity, db),
     }
 
 
 @app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_assisted_fee(case_id: int, body: IprCaseAssistedFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Create the legacy-equivalent IPR assistance application, not a finance record."""
+    case_record = await _ensure_ipr_case_assisted_fee_write(case_id, identity, db)
+    row = IprCaseAssistedFee(case_record_id=case_record.id, assisted_type=body.assisted_type.strip(), request_user=identity["username"], remark=body.remark.strip())
+    db.add(row); await db.flush()
+    db.add(WorkflowEvent(record_id=case_record.id, action="新建知识产权案件协助费", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"协助费 #{row.id}；协助类别：{row.assisted_type}" + (f"；{row.remark}" if row.remark else "")))
+    await db.commit(); await db.refresh(row)
+    return _ipr_assisted_fee_dict(row)
+
+
+async def _ipr_case_assisted_fee_row(
+    case_record: BusinessRecord, assisted_fee_id: int, db: AsyncSession,
+) -> IprCaseAssistedFee:
+    row = await db.scalar(select(IprCaseAssistedFee).where(
+        IprCaseAssistedFee.id == assisted_fee_id,
+        IprCaseAssistedFee.case_record_id == case_record.id,
+    ).with_for_update())
+    if not row:
+        raise HTTPException(status_code=404, detail="协助费不存在或不属于当前案件")
+    return row
+
+
+async def _ensure_ipr_case_assisted_fee_write(
+    case_id: int, identity: dict, db: AsyncSession,
+) -> BusinessRecord:
+    """Guard dedicated assistance workflow mutations from generic fee bypasses."""
     case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
     if case_record.status != "在办":
-        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以新建资助费用")
-    row = IprCaseAssistedFee(case_record_id=case_record.id, assisted_type=body.assisted_type.strip(), request_user=identity["username"], remark=body.remark.strip())
-    db.add(row); await db.flush()
-    db.add(WorkflowEvent(record_id=case_record.id, action="新建知识产权案件资助费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"资助类别：{row.assisted_type}" + (f"；{row.remark}" if row.remark else "")))
+        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护协助费")
+    return case_record
+
+
+async def _ipr_case_assisted_fee_capabilities(
+    case_record: BusinessRecord, identity: dict, db: AsyncSession,
+) -> dict[str, bool]:
+    """Expose the same ownership rule enforced by assistance workflow writes."""
+    if case_record.status != "在办":
+        return {"can_manage": False}
+    if identity.get("role") == "admin" or case_record.owner == identity["username"]:
+        return {"can_manage": True}
+    if identity.get("role") != "manager":
+        return {"can_manage": False}
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    return {"can_manage": bool(user and user.department == case_record.department)}
+
+
+@app.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}")
+async def update_ipr_case_assisted_fee(
+    case_id: int, assisted_fee_id: int, body: IprCaseAssistedFeeUpdateInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_ipr_case_assisted_fee_write(case_id, identity, db)
+    row = await _ipr_case_assisted_fee_row(case_record, assisted_fee_id, db)
+    if row.status != "待确认":
+        raise HTTPException(status_code=409, detail="仅待确认的协助费可以编辑")
+    before = f"类别：{row.assisted_type}" + (f"；{row.remark}" if row.remark else "")
+    row.assisted_type = body.assisted_type.strip()
+    row.remark = body.remark.strip()
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="编辑知识产权案件协助费",
+        from_status=case_record.status, to_status=case_record.status,
+        operator=identity["username"],
+        comment=f"协助费 #{row.id}；原{before}；新类别：{row.assisted_type}" + (f"；{row.remark}" if row.remark else ""),
+    ))
+    await db.commit(); await db.refresh(row)
+    return _ipr_assisted_fee_dict(row)
+
+
+@app.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}/confirm")
+async def confirm_ipr_case_assisted_fee(
+    case_id: int, assisted_fee_id: int, body: IprCaseAssistedFeeConfirmInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    case_record = await _ensure_ipr_case_assisted_fee_write(case_id, identity, db)
+    row = await _ipr_case_assisted_fee_row(case_record, assisted_fee_id, db)
+    if row.status != "待确认":
+        raise HTTPException(status_code=409, detail="仅待确认的协助费可以确认")
+    row.status = "待办理"
+    confirmation_remark = body.remark.strip()
+    if confirmation_remark:
+        row.remark = (row.remark + "\n确认说明：" + confirmation_remark).strip()
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="确认知识产权案件协助费",
+        from_status="待确认", to_status="待办理", operator=identity["username"],
+        comment=f"协助费 #{row.id}；协助类别：{row.assisted_type}" + (f"；{confirmation_remark}" if confirmation_remark else ""),
+    ))
     await db.commit(); await db.refresh(row)
     return _ipr_assisted_fee_dict(row)
 
@@ -33313,15 +33428,10 @@ async def transact_ipr_case_assisted_fee(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Complete an assistance application only with a dated, persisted receipt file."""
-    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    if case_record.status != "在办":
-        raise HTTPException(status_code=409, detail="只有在办知识产权案件可以办理资助费用")
-    row = await db.scalar(select(IprCaseAssistedFee).where(IprCaseAssistedFee.id == assisted_fee_id, IprCaseAssistedFee.case_record_id == case_record.id))
-    if not row:
-        raise HTTPException(status_code=404, detail="资助费用不存在或不属于当前案件")
+    case_record = await _ensure_ipr_case_assisted_fee_write(case_id, identity, db)
+    row = await _ipr_case_assisted_fee_row(case_record, assisted_fee_id, db)
     if row.status != "待办理":
-        raise HTTPException(status_code=409, detail="该资助费用已办理，不能重复上传回执")
+        raise HTTPException(status_code=409, detail="协助费须先确认且只能办理一次")
     suffix = Path(receipt_file.filename or "").suffix.lower()
     if suffix not in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".jpg", ".jpeg", ".png"}:
         raise HTTPException(status_code=422, detail="不支持的资助回执文件格式")
@@ -33333,24 +33443,27 @@ async def transact_ipr_case_assisted_fee(
     target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
     target.write_bytes(content)
     attachment = FileAttachment(record_id=case_record.id, category="知识产权资助回执", original_name=Path(receipt_file.filename or target.name).name, stored_name=target.name, content_type=receipt_file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=f"资助费用 #{row.id} 回执")
-    db.add(attachment); await db.flush()
-    row.status = "已办理"; row.response_date = response_date; row.response_user = identity["username"]; row.receipt_attachment_id = attachment.id
-    if remark.strip(): row.remark = (row.remark + "\n" + remark.strip()).strip()
-    db.add(WorkflowEvent(record_id=case_record.id, action="办理知识产权案件资助费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"资助类别：{row.assisted_type}；办理日期：{response_date}；回执：{attachment.original_name}"))
-    await db.commit(); await db.refresh(row)
+    try:
+        db.add(attachment); await db.flush()
+        row.status = "已办理"; row.response_date = response_date; row.response_user = identity["username"]; row.receipt_attachment_id = attachment.id
+        if remark.strip(): row.remark = (row.remark + "\n" + remark.strip()).strip()
+        db.add(WorkflowEvent(record_id=case_record.id, action="办理知识产权案件协助费", from_status="待办理", to_status="已办理", operator=identity["username"], comment=f"协助类别：{row.assisted_type}；办理日期：{response_date}；回执：{attachment.original_name}"))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        target.unlink(missing_ok=True)
+        raise
+    await db.refresh(row)
     return _ipr_assisted_fee_dict(row, attachment)
 
 
 @app.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_assisted_fee(case_id: int, assisted_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    await _require_record_owner_or_manager(case_record, identity, db)
-    row = await db.scalar(select(IprCaseAssistedFee).where(IprCaseAssistedFee.id == assisted_fee_id, IprCaseAssistedFee.case_record_id == case_record.id))
-    if not row:
-        raise HTTPException(status_code=404, detail="资助费用不存在或不属于当前案件")
-    if row.status != "待办理":
-        raise HTTPException(status_code=409, detail="已办理的资助费用必须保留回执和审计记录，不能删除")
-    db.add(WorkflowEvent(record_id=case_record.id, action="删除知识产权案件资助费用", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"资助类别：{row.assisted_type}"))
+    case_record = await _ensure_ipr_case_assisted_fee_write(case_id, identity, db)
+    row = await _ipr_case_assisted_fee_row(case_record, assisted_fee_id, db)
+    if row.status not in {"待确认", "待办理"}:
+        raise HTTPException(status_code=409, detail="已办理的协助费必须保留回执和审计记录，不能删除")
+    db.add(WorkflowEvent(record_id=case_record.id, action="删除知识产权案件协助费", from_status=row.status, to_status="已删除", operator=identity["username"], comment=f"协助费 #{row.id}；协助类别：{row.assisted_type}"))
     await db.delete(row); await db.commit()
 
 

@@ -161,7 +161,7 @@ type IprOperationLog = { id: number; action: string; operator: string; operator_
 type IprHistoryItem = { id: number; action: string; operator: string; operator_display_name?: string; comment?: string; from_status?: string; to_status?: string; created_at: string };
 type IprBatchCreateError = { row_no: number; message: string; errors: Record<string, string> };
 type IprDetailPageState = { page: number; pageSize: number; total: number; pages: number };
-type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number };
+type IprDetailPagePayload<T> = { items?: T[]; total?: number; page?: number; page_size?: number; pages?: number; capabilities?: Record<string, boolean> };
 const IPR_DETAIL_DEFAULT_PAGE = 1;
 const IPR_DETAIL_DEFAULT_PAGE_SIZE = 15;
 const isLegacyIprRecord = (record: IprRecord) => Number(record.data?.legacy_ipr_case_id || record.data?.legacy_case_id || 0) > 0;
@@ -268,8 +268,11 @@ export default function IprCenterPage({
     ),
     [maintenanceForm] = Form.useForm(),
     [assistedFees, setAssistedFees] = useState<AssistedFee[]>([]),
+    [canManageAssistedFees, setCanManageAssistedFees] = useState(false),
     [assistedOpen, setAssistedOpen] = useState(false),
     [assistedForm] = Form.useForm(),
+    [editingAssistedFee, setEditingAssistedFee] = useState<AssistedFee | null>(null),
+    [assistedEditForm] = Form.useForm(),
     [transactTarget, setTransactTarget] = useState<AssistedFee | null>(null),
     [transactForm] = Form.useForm(),
     [receiptFile, setReceiptFile] = useState<File | null>(null),
@@ -703,6 +706,7 @@ export default function IprCenterPage({
         { params: { page: nextPage, page_size: nextPageSize } },
       );
       setAssistedFees(data.items || []);
+      setCanManageAssistedFees(Boolean(data.capabilities?.can_manage));
       setAssistedFeesPageState({
         page: data.page ?? nextPage,
         pageSize: data.page_size ?? nextPageSize,
@@ -716,6 +720,9 @@ export default function IprCenterPage({
   };
   const refreshAssistedFees = () => {
     if (detail) void loadAssistedFees(detail.id, assistedFeesPageState.page, assistedFeesPageState.pageSize);
+  };
+  const refreshAssistedFeesAndLogs = async (caseId: number) => {
+    await Promise.all([loadAssistedFees(caseId), loadIprLogs(caseId)]);
   };
   const loadIprCaseEvents = async (
     caseId: number,
@@ -1070,6 +1077,7 @@ export default function IprCenterPage({
     setIprBusinessLogs([]);
     setIprOperationLogs([]);
     setAssistedFees([]);
+    setCanManageAssistedFees(false);
     setIprCaseEvents([]);
     setIprCaseTasks([]);
     setFilesPageState({ page: IPR_DETAIL_DEFAULT_PAGE, pageSize: IPR_DETAIL_DEFAULT_PAGE_SIZE, total: 0, pages: 0 });
@@ -1264,13 +1272,43 @@ export default function IprCenterPage({
     try {
       const values = await assistedForm.validateFields();
       await api.post(`/ipr/cases/${detail.id}/assisted-fees`, values);
-      message.success("资助费用已提交，等待办理");
+      message.success("协助费已提交，等待确认");
       setAssistedOpen(false);
       assistedForm.resetFields();
-      await loadAssistedFees(detail.id);
+      await refreshAssistedFeesAndLogs(detail.id);
     } catch (e: any) {
       if (!e?.errorFields)
-        message.error(e?.response?.data?.detail || "新建资助费用失败");
+        message.error(e?.response?.data?.detail || "新增协助费失败");
+    }
+  };
+  const updateAssistedFee = async () => {
+    if (!detail || !editingAssistedFee) return;
+    try {
+      const values = await assistedEditForm.validateFields();
+      await api.patch(
+        `/ipr/cases/${detail.id}/assisted-fees/${editingAssistedFee.id}`,
+        values,
+      );
+      message.success("协助费已更新");
+      setEditingAssistedFee(null);
+      assistedEditForm.resetFields();
+      await refreshAssistedFeesAndLogs(detail.id);
+    } catch (e: any) {
+      if (!e?.errorFields)
+        message.error(e?.response?.data?.detail || "编辑协助费失败");
+    }
+  };
+  const confirmAssistedFee = async (row: AssistedFee) => {
+    if (!detail) return;
+    try {
+      await api.post(
+        `/ipr/cases/${detail.id}/assisted-fees/${row.id}/confirm`,
+        {},
+      );
+      message.success("协助费已确认，等待办理");
+      await refreshAssistedFeesAndLogs(detail.id);
+    } catch (e: any) {
+      message.error(e?.response?.data?.detail || "确认协助费失败");
     }
   };
   const transactAssistedFee = async () => {
@@ -1278,7 +1316,7 @@ export default function IprCenterPage({
     try {
       const values = await transactForm.validateFields();
       if (!receiptFile) {
-        message.warning("请上传资助回执文件");
+        message.warning("请上传协助费回执文件");
         return;
       }
       const payload = new FormData();
@@ -1292,24 +1330,24 @@ export default function IprCenterPage({
         `/ipr/cases/${detail.id}/assisted-fees/${transactTarget.id}/transact`,
         payload,
       );
-      message.success("资助费用已办理并保存回执");
+      message.success("协助费已办理并保存回执");
       setTransactTarget(null);
       setReceiptFile(null);
       transactForm.resetFields();
-      await loadAssistedFees(detail.id);
+      await refreshAssistedFeesAndLogs(detail.id);
     } catch (e: any) {
       if (!e?.errorFields)
-        message.error(e?.response?.data?.detail || "办理资助费用失败");
+        message.error(e?.response?.data?.detail || "办理协助费失败");
     }
   };
   const deleteAssistedFee = async (row: AssistedFee) => {
     if (!detail) return;
     try {
       await api.delete(`/ipr/cases/${detail.id}/assisted-fees/${row.id}`);
-      message.success("资助费用已删除");
+      message.success("协助费已删除");
       await loadAssistedFees(detail.id);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || "删除资助费用失败");
+      message.error(e?.response?.data?.detail || "删除协助费失败");
     }
   };
   const saveIprCaseEvent = async () => {
@@ -2440,16 +2478,16 @@ export default function IprCenterPage({
                 },
                 {
                   key: "assistedFees",
-                  label: "资助明细",
+                  label: "协助费",
                   children: (
           <Card
             size="small"
-              title="资助明细"
+              title="协助费"
               style={{ marginTop: 16 }}
               extra={
                 <Space size={0}>
                   <Button size="small" onClick={refreshAssistedFees}>刷新</Button>
-                  {detail.status === "在办" ? (
+                  {detail.status === "在办" && canManageAssistedFees ? (
                     <Button
                       type="primary"
                       size="small"
@@ -2458,7 +2496,7 @@ export default function IprCenterPage({
                         setAssistedOpen(true);
                       }}
                     >
-                      新建资助费用
+                      新增协助费
                     </Button>
                   ) : null}
                 </Space>
@@ -2470,9 +2508,9 @@ export default function IprCenterPage({
                 size="small"
                 pagination={assistedFeesPagination}
                 dataSource={assistedFees}
-                scroll={{ x: 780 }}
+                scroll={{ x: 980 }}
                 columns={[
-                  { title: "资助类别", dataIndex: "assisted_type", width: 150 },
+                  { title: "协助类别", dataIndex: "assisted_type", width: 150 },
                   {
                     title: "提交",
                     width: 145,
@@ -2485,7 +2523,7 @@ export default function IprCenterPage({
                     render: (_, row: AssistedFee) =>
                       row.response_date
                       ? `${row.response_date} / ${personDisplayName(row.response_user_display_name)}`
-                        : "待办理",
+                        : "—",
                   },
                   {
                     title: "回执文件",
@@ -2523,11 +2561,35 @@ export default function IprCenterPage({
                   {
                     title: "操作",
                     fixed: "right",
-                    width: 145,
+                    width: 190,
                     render: (_, row: AssistedFee) => (
                       <Space size={0}>
+                        {row.status === "待确认" &&
+                          detail.status === "在办" && canManageAssistedFees && (
+                            <Button
+                              type="link"
+                              onClick={() => {
+                                assistedEditForm.setFieldsValue({
+                                  assisted_type: row.assisted_type,
+                                  remark: row.remark,
+                                });
+                                setEditingAssistedFee(row);
+                              }}
+                            >
+                              编辑
+                            </Button>
+                          )}
+                        {row.status === "待确认" &&
+                          detail.status === "在办" && canManageAssistedFees && (
+                            <Button
+                              type="link"
+                              onClick={() => void confirmAssistedFee(row)}
+                            >
+                              确认
+                            </Button>
+                          )}
                         {row.status === "待办理" &&
-                          detail.status === "在办" && (
+                          detail.status === "在办" && canManageAssistedFees && (
                             <Button
                               type="link"
                               onClick={() => {
@@ -2542,7 +2604,8 @@ export default function IprCenterPage({
                               办理
                             </Button>
                           )}
-                        {row.status === "待办理" && (
+                        {(row.status === "待确认" || row.status === "待办理") &&
+                          detail.status === "在办" && canManageAssistedFees && (
                           <Button
                             type="link"
                             danger
@@ -3017,7 +3080,7 @@ export default function IprCenterPage({
       </Modal>
       <Modal
         open={assistedOpen}
-        title="新建知识产权资助费用"
+        title="新增知识产权协助费"
         onCancel={() => setAssistedOpen(false)}
         onOk={() => void createAssistedFee()}
         okText="提交"
@@ -3025,8 +3088,37 @@ export default function IprCenterPage({
         <Form form={assistedForm} layout="vertical">
           <Form.Item
             name="assisted_type"
-            label="资助类别"
-            rules={[{ required: true, message: "请选择或填写资助类别" }]}
+            label="协助类别"
+            rules={[{ required: true, message: "请选择或填写协助类别" }]}
+          >
+            <Select
+              showSearch
+              allowClear
+              options={["专利资助", "商标资助", "高新技术资助", "其他资助"].map(
+                (value) => ({ value, label: value }),
+              )}
+            />
+          </Form.Item>
+          <Form.Item name="remark" label="说明">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={!!editingAssistedFee}
+        title={editingAssistedFee ? `编辑协助费：${editingAssistedFee.assisted_type}` : "编辑协助费"}
+        onCancel={() => {
+          setEditingAssistedFee(null);
+          assistedEditForm.resetFields();
+        }}
+        onOk={() => void updateAssistedFee()}
+        okText="保存"
+      >
+        <Form form={assistedEditForm} layout="vertical">
+          <Form.Item
+            name="assisted_type"
+            label="协助类别"
+            rules={[{ required: true, message: "请选择或填写协助类别" }]}
           >
             <Select
               showSearch
@@ -3045,8 +3137,8 @@ export default function IprCenterPage({
         open={!!transactTarget}
         title={
           transactTarget
-            ? `办理资助费用：${transactTarget.assisted_type}`
-            : "办理资助费用"
+            ? `办理协助费：${transactTarget.assisted_type}`
+            : "办理协助费"
         }
         onCancel={() => {
           setTransactTarget(null);

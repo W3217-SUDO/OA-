@@ -1041,7 +1041,9 @@ class IprCaseAssistedFee(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     case_record_id: Mapped[int] = mapped_column(ForeignKey("business_records.id", ondelete="CASCADE"), index=True)
     assisted_type: Mapped[str] = mapped_column(String(128), index=True)
-    status: Mapped[str] = mapped_column(String(32), default="待办理", index=True)
+    # New applications must be confirmed before a receipt-backed handling action.
+    # Existing rows using the former "待办理" default remain valid and handleable.
+    status: Mapped[str] = mapped_column(String(32), default="待确认", index=True)
     request_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
     request_user: Mapped[str] = mapped_column(String(64), index=True)
     response_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)

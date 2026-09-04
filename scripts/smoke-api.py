@@ -3626,7 +3626,9 @@ def main():
         call("DELETE", f"/ipr/cases/{ipr_case['id']}/files/{ipr_second_transfer_file['id']}", expected=(204,))
         assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 0
         assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees", {"assisted_type": "SMOKE专利资助", "remark": "资助费用专用闭环"}, expected=(201,))
-        assert assisted_fee["status"] == "待办理" and assisted_fee["request_user"] == USERNAME
+        assert assisted_fee["status"] == "待确认" and assisted_fee["request_user"] == USERNAME
+        assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees/{assisted_fee['id']}/confirm", {"remark": "SMOKE协助费确认"}, expected=(200,))
+        assert assisted_fee["status"] == "待办理"
         pending_assisted_fee = call("POST", f"/ipr/cases/{ipr_case['id']}/assisted-fees", {"assisted_type": "SMOKE待删除资助"}, expected=(201,))
         call("DELETE", f"/ipr/cases/{ipr_case['id']}/assisted-fees/{pending_assisted_fee['id']}", expected=(204,))
         handled_assisted_fee = multipart_upload(
