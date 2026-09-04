@@ -560,6 +560,13 @@ def _upgrade_schema(connection) -> None:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN locked_at TIMESTAMP WITH TIME ZONE"))
     if "locked_by" not in columns:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN locked_by VARCHAR(64) NOT NULL DEFAULT ''"))
+    if "word_editor_lock_token" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN word_editor_lock_token VARCHAR(96) NOT NULL DEFAULT ''"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_word_editor_lock_token ON file_attachments (word_editor_lock_token)"))
+    if "word_editor_lock_expires_at" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN word_editor_lock_expires_at TIMESTAMP WITH TIME ZONE"))
+    if "word_editor_locked_by" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN word_editor_locked_by VARCHAR(64) NOT NULL DEFAULT ''"))
     if "communication_log_id" not in columns:
         connection.execute(text("ALTER TABLE file_attachments ADD COLUMN communication_log_id INTEGER REFERENCES communication_logs(id) ON DELETE CASCADE"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_communication_log_id ON file_attachments (communication_log_id)"))
@@ -1978,6 +1985,21 @@ class CaseAiDraftUpdateInput(BaseModel):
 
 class CaseAiDraftPromoteInput(BaseModel):
     category: str = Field(min_length=1, max_length=64)
+
+
+class WordEditorTextBlockInput(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    text: str = Field(max_length=200_000)
+
+
+class CaseWordEditorSaveInput(BaseModel):
+    lock_token: str = Field(min_length=24, max_length=96)
+    version: str = Field(min_length=64, max_length=64)
+    blocks: list[WordEditorTextBlockInput] = Field(min_length=1, max_length=10_000)
+
+
+class CaseWordEditorLockInput(BaseModel):
+    lock_token: str = Field(min_length=24, max_length=96)
 
 
 class CaseDocumentFolderInput(BaseModel):
@@ -29636,6 +29658,187 @@ def _case_ai_draft_text(item: FileAttachment, path: Path) -> str:
     return "\n".join(lines).strip()
 
 
+WORD_EDITOR_LOCK_SECONDS = 15 * 60
+
+
+def _word_editor_now() -> datetime:
+    """Use naive UTC because SQLite drops timezone data while PostgreSQL accepts it."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _word_editor_paragraph_editable(paragraph) -> bool:
+    """Only permit plain w:p/w:r text; preserve every other Word construct."""
+    allowed_paragraph_children = {"pPr", "r"}
+    allowed_run_children = {"rPr", "t", "tab", "br", "cr"}
+    if any(child.tag.rsplit("}", 1)[-1] not in allowed_paragraph_children for child in paragraph._p):
+        return False
+    return all(
+        child.tag.rsplit("}", 1)[-1] in allowed_run_children
+        for run in paragraph.runs for child in run._r
+    )
+
+
+def _word_editor_blocks(document: Document) -> list[dict]:
+    """Return stable editable text locations without flattening a DOCX file."""
+    blocks: list[dict[str, str]] = []
+
+    def block_value(block_id: str, paragraph) -> dict:
+        editable = _word_editor_paragraph_editable(paragraph)
+        return {
+            "id": block_id, "text": paragraph.text, "editable": editable,
+            "read_only_reason": "该段落包含非纯文本 Word 结构，在线编辑会保护其原有内容" if not editable else "",
+        }
+
+    def add_paragraphs(paragraphs, prefix: str) -> None:
+        for index, paragraph in enumerate(paragraphs):
+            blocks.append(block_value(f"{prefix}/p:{index}", paragraph))
+
+    seen_cells: set[object] = set()
+
+    def add_tables(tables, prefix: str) -> None:
+        for table_index, table in enumerate(tables):
+            table_prefix = f"{prefix}/t:{table_index}"
+            for row_index, row in enumerate(table.rows):
+                for cell_index, cell in enumerate(row.cells):
+                    cell_key = cell._tc
+                    if cell_key in seen_cells:
+                        continue
+                    seen_cells.add(cell_key)
+                    cell_prefix = f"{table_prefix}/r:{row_index}/c:{cell_index}"
+                    add_paragraphs(cell.paragraphs, cell_prefix)
+                    add_tables(cell.tables, cell_prefix)
+
+    add_paragraphs(document.paragraphs, "body")
+    add_tables(document.tables, "body")
+    return blocks
+
+
+def _word_editor_version(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _replace_word_editor_blocks(document: Document, requested_blocks: list[WordEditorTextBlockInput]) -> None:
+    """Update only identified paragraphs, retaining all unedited DOCX XML."""
+    requested = {item.id: item.text for item in requested_blocks}
+    if len(requested) != len(requested_blocks):
+        raise HTTPException(status_code=422, detail="Word 编辑内容包含重复文本块")
+
+    paragraphs: dict[str, object] = {}
+
+    def add_paragraphs(values, prefix: str) -> None:
+        for index, paragraph in enumerate(values):
+            paragraphs[f"{prefix}/p:{index}"] = paragraph
+
+    seen_cells: set[object] = set()
+
+    def add_tables(tables, prefix: str) -> None:
+        for table_index, table in enumerate(tables):
+            table_prefix = f"{prefix}/t:{table_index}"
+            for row_index, row in enumerate(table.rows):
+                for cell_index, cell in enumerate(row.cells):
+                    cell_key = cell._tc
+                    if cell_key in seen_cells:
+                        continue
+                    seen_cells.add(cell_key)
+                    cell_prefix = f"{table_prefix}/r:{row_index}/c:{cell_index}"
+                    add_paragraphs(cell.paragraphs, cell_prefix)
+                    add_tables(cell.tables, cell_prefix)
+
+    add_paragraphs(document.paragraphs, "body")
+    add_tables(document.tables, "body")
+    if set(requested) != set(paragraphs):
+        raise HTTPException(status_code=409, detail="Word 文档结构已变化，请重新打开后再保存")
+    for block_id, paragraph in paragraphs.items():
+        replacement = requested[block_id]
+        if paragraph.text == replacement:
+            continue
+        if not _word_editor_paragraph_editable(paragraph):
+            raise HTTPException(status_code=422, detail="含非纯文本 Word 结构的段落暂不支持修改；未修改的内容会原样保留")
+        runs = paragraph.runs
+        if runs:
+            # Preserve paragraph properties and the original first-run formatting.
+            runs[0].text = replacement
+            for run in runs[1:]:
+                run.text = ""
+        else:
+            paragraph.add_run(replacement)
+
+
+def _word_editor_lock_payload(item: FileAttachment, *, include_token: bool = False) -> dict:
+    payload = {
+        "lock_holder": item.word_editor_locked_by or "",
+        "lock_expires_at": item.word_editor_lock_expires_at.isoformat() if item.word_editor_lock_expires_at else "",
+    }
+    if include_token:
+        payload["lock_token"] = item.word_editor_lock_token
+    return payload
+
+
+async def _case_word_editor_attachment(
+    case_id: int, attachment_id: int, identity: dict, db: AsyncSession,
+) -> tuple[BusinessRecord, FileAttachment, Path]:
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_detail_write_access(case_record, identity, db)
+    item = await db.get(FileAttachment, attachment_id)
+    if not item or item.record_id != case_record.id or item.category == AI_SPACE_CATEGORY:
+        raise HTTPException(status_code=404, detail="案件正式 Word 文件不存在")
+    suffix = Path(item.original_name).suffix.lower()
+    if suffix == ".doc":
+        raise HTTPException(status_code=422, detail="旧版 .doc 文件不支持在线编辑，请转换为 .docx 后再编辑")
+    if suffix != ".docx":
+        raise HTTPException(status_code=422, detail="仅支持 .docx Word 文件在线编辑")
+    path = _attachment_storage_path(item)
+    if path is None:
+        raise HTTPException(status_code=404, detail="案件 Word 文件不存在")
+    return case_record, item, path
+
+
+async def _acquire_case_word_editor_lock(item: FileAttachment, identity: dict, db: AsyncSession) -> FileAttachment:
+    """Acquire one DB-backed lease using a conditional UPDATE for multi-process safety."""
+    now = _word_editor_now()
+    expires_at = now + timedelta(seconds=WORD_EDITOR_LOCK_SECONDS)
+    token = secrets.token_urlsafe(48)
+    attachment_id = item.id
+    result = await db.execute(update(FileAttachment).where(
+        FileAttachment.id == item.id,
+        or_(
+            FileAttachment.word_editor_lock_token == "",
+            FileAttachment.word_editor_lock_expires_at.is_(None),
+            FileAttachment.word_editor_lock_expires_at <= now,
+        ),
+    ).values(
+        word_editor_lock_token=token,
+        word_editor_locked_by=identity["username"],
+        word_editor_lock_expires_at=expires_at,
+    ).execution_options(synchronize_session=False))
+    if not result.rowcount:
+        await db.rollback()
+        current = await db.get(FileAttachment, attachment_id)
+        detail = "该 Word 文件正在由其他会话编辑"
+        if current and current.word_editor_locked_by == identity["username"]:
+            detail = "该 Word 文件已在另一个页面编辑，请在原页面继续"
+        raise HTTPException(status_code=409, detail={"message": detail, **_word_editor_lock_payload(current or item)})
+    await db.commit()
+    await db.refresh(item)
+    return item
+
+
+async def _require_case_word_editor_lock(item: FileAttachment, token: str, db: AsyncSession) -> None:
+    expires_at = item.word_editor_lock_expires_at
+    if not item.word_editor_lock_token or not secrets.compare_digest(item.word_editor_lock_token, token):
+        raise HTTPException(status_code=409, detail={"message": "Word 编辑锁已被其他会话占用", **_word_editor_lock_payload(item)})
+    now = _word_editor_now()
+    if not expires_at or expires_at <= now:
+        raise HTTPException(status_code=409, detail={"message": "Word 编辑锁已过期，请重新打开文件", **_word_editor_lock_payload(item)})
+
+
+def _ensure_case_word_editor_not_locked(item: FileAttachment) -> None:
+    expires_at = item.word_editor_lock_expires_at
+    now = _word_editor_now()
+    if item.word_editor_lock_token and expires_at and expires_at > now:
+        raise HTTPException(status_code=409, detail=f"文件 {item.original_name} 正在由 {item.word_editor_locked_by or '其他用户'} 在线编辑，不能修改或删除")
+
+
 async def _case_ai_draft(
     case_record: BusinessRecord, attachment_id: int, db: AsyncSession,
 ) -> FileAttachment:
@@ -29811,6 +30014,165 @@ async def promote_case_ai_draft(
     return _attachment_dict(item, destination_record)
 
 
+@app.get(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/word-editor/content")
+async def get_case_word_editor_content(
+    case_id: int, attachment_id: int,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """Open a formal DOCX in the limited, format-preserving online editor."""
+    _record, item, path = await _case_word_editor_attachment(case_id, attachment_id, identity, db)
+    item = await _acquire_case_word_editor_lock(item, identity, db)
+    try:
+        content = path.read_bytes()
+        document = Document(io.BytesIO(content))
+        blocks = _word_editor_blocks(document)
+    except Exception as exc:
+        # Do not leave a lease for a document that could not be opened.
+        item.word_editor_lock_token = ""; item.word_editor_locked_by = ""; item.word_editor_lock_expires_at = None
+        await db.commit()
+        raise HTTPException(status_code=422, detail="DOCX 文件无法在线读取") from exc
+    return {
+        "id": item.id,
+        "name": item.original_name,
+        "content": "\n".join(block["text"] for block in blocks),
+        "blocks": blocks,
+        "version": _word_editor_version(content),
+        **_word_editor_lock_payload(item, include_token=True),
+    }
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/word-editor/lock")
+async def acquire_case_word_editor_lock(
+    case_id: int, attachment_id: int,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    _record, item, _path = await _case_word_editor_attachment(case_id, attachment_id, identity, db)
+    item = await _acquire_case_word_editor_lock(item, identity, db)
+    return {"id": item.id, **_word_editor_lock_payload(item, include_token=True)}
+
+
+@app.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/word-editor/lock/renew")
+async def renew_case_word_editor_lock(
+    case_id: int, attachment_id: int, body: CaseWordEditorLockInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    _record, item, _path = await _case_word_editor_attachment(case_id, attachment_id, identity, db)
+    now = _word_editor_now()
+    result = await db.execute(update(FileAttachment).where(
+        FileAttachment.id == item.id,
+        FileAttachment.word_editor_lock_token == body.lock_token,
+        FileAttachment.word_editor_locked_by == identity["username"],
+        FileAttachment.word_editor_lock_expires_at > now,
+    ).values(word_editor_lock_expires_at=now + timedelta(seconds=WORD_EDITOR_LOCK_SECONDS)).execution_options(synchronize_session=False))
+    if not result.rowcount:
+        await db.rollback()
+        current = await db.get(FileAttachment, attachment_id)
+        raise HTTPException(status_code=409, detail={"message": "Word 编辑锁已过期或已被释放，请重新打开文件", **_word_editor_lock_payload(current or item)})
+    await db.commit(); await db.refresh(item)
+    return {"id": item.id, **_word_editor_lock_payload(item)}
+
+
+@app.put(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/word-editor/content")
+async def update_case_word_editor_content(
+    case_id: int, attachment_id: int, body: CaseWordEditorSaveInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    record, item, path = await _case_word_editor_attachment(case_id, attachment_id, identity, db)
+    # Rotate the lease token in one conditional UPDATE.  This gives SQLite and
+    # PostgreSQL the same single-writer guarantee; a second save using the old
+    # token fails before it can read or replace the file.
+    now = _word_editor_now()
+    next_token = secrets.token_urlsafe(48)
+    lock_result = await db.execute(update(FileAttachment).where(
+        FileAttachment.id == attachment_id,
+        FileAttachment.record_id == record.id,
+        FileAttachment.word_editor_lock_token == body.lock_token,
+        FileAttachment.word_editor_locked_by == identity["username"],
+        FileAttachment.word_editor_lock_expires_at > now,
+    ).values(
+        word_editor_lock_token=next_token,
+        word_editor_lock_expires_at=now + timedelta(seconds=WORD_EDITOR_LOCK_SECONDS),
+    ).execution_options(synchronize_session=False))
+    if not lock_result.rowcount:
+        await db.rollback()
+        current = await db.get(FileAttachment, attachment_id)
+        raise HTTPException(status_code=409, detail={"message": "Word 编辑锁已过期、已释放或正在保存，请重新打开", **_word_editor_lock_payload(current or item)})
+    await db.refresh(item)
+    path = _attachment_storage_path(item)
+    if path is None:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail="案件 Word 文件不存在")
+    source = path.read_bytes()
+    if not secrets.compare_digest(_word_editor_version(source), body.version):
+        raise HTTPException(status_code=409, detail="Word 文件已被更新，请重新打开后再保存")
+    try:
+        document = Document(io.BytesIO(source))
+        _replace_word_editor_blocks(document, body.blocks)
+        output = io.BytesIO(); document.save(output)
+        content = output.getvalue()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Word 文档保存失败，原文件未修改") from exc
+    replacement_path = UPLOAD_ROOT / f"{uuid4().hex}.docx"
+    try:
+        replacement_path.write_bytes(content)
+        # Point at a completed immutable object only after it is fully written;
+        # a failed DB transaction leaves the original attachment untouched.
+        item.path = str(replacement_path)
+        item.stored_name = replacement_path.name
+        item.size = len(content)
+        item.content_type = WORD_DOCUMENT_CONTENT_TYPE
+        db.add(WorkflowEvent(
+            record_id=record.id, action="在线编辑案件 Word 文件", from_status=record.status,
+            to_status=record.status, operator=identity["username"], comment=item.original_name,
+        ))
+        await db.commit()
+    except Exception:
+        replacement_path.unlink(missing_ok=True)
+        await db.rollback()
+        raise
+    # The original object becomes unreferenced only after the metadata commit.
+    # Do not delete an imported legacy-root source; it may be retained for audit.
+    still_referenced = True
+    try:
+        still_referenced = bool(await db.scalar(select(FileAttachment.id).where(
+            FileAttachment.id != item.id, FileAttachment.path == str(path),
+        ).limit(1)))
+    except SQLAlchemyError:
+        # Metadata is already committed.  Retaining one old object is safer
+        # than surfacing a false save failure or deleting a shared reference.
+        logger.warning("Word editor saved attachment %s but could not check old-object references", item.id)
+    with suppress(OSError):
+        if not still_referenced and path != replacement_path and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink(missing_ok=True)
+    return {
+        "id": item.id, "name": item.original_name, "size": item.size,
+        "version": _word_editor_version(content), **_word_editor_lock_payload(item, include_token=True),
+    }
+
+
+@app.delete(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/word-editor/lock")
+async def release_case_word_editor_lock(
+    case_id: int, attachment_id: int, body: CaseWordEditorLockInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    _record, item, _path = await _case_word_editor_attachment(case_id, attachment_id, identity, db)
+    now = _word_editor_now()
+    result = await db.execute(update(FileAttachment).where(
+        FileAttachment.id == item.id,
+        FileAttachment.word_editor_lock_token == body.lock_token,
+        FileAttachment.word_editor_locked_by == identity["username"],
+        FileAttachment.word_editor_lock_expires_at > now,
+    ).values(word_editor_lock_token="", word_editor_locked_by="", word_editor_lock_expires_at=None).execution_options(synchronize_session=False))
+    if not result.rowcount:
+        await db.rollback()
+        current = await db.get(FileAttachment, attachment_id)
+        raise HTTPException(status_code=409, detail={"message": "Word 编辑锁已过期或已被释放", **_word_editor_lock_payload(current or item)})
+    await db.commit()
+    return {"released": True}
+
+
 @app.post(f"{settings.api_prefix}/cases/attachments/download")
 async def download_case_attachments(body: AttachmentBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
@@ -29869,6 +30231,7 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
         prepared.append((item, record, Path(item.path)))
     affected_cases: dict[int, BusinessRecord] = {}
     for item, record, path in prepared:
+        _ensure_case_word_editor_not_locked(item)
         affected_cases[record.id] = record
         await db.delete(item)
         db.add(WorkflowEvent(
@@ -29934,6 +30297,7 @@ async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, ide
     for item in attachments:
         if item.record_id != case_record.id:
             raise HTTPException(status_code=409, detail="客户、合同或其他案件的文件不能移动到当前案件目录")
+        _ensure_case_word_editor_not_locked(item)
     for item in attachments:
         previous = item.category
         item.category = category
@@ -29955,6 +30319,7 @@ async def rename_case_attachment(attachment_id: int, body: CaseAttachmentRenameI
         raise HTTPException(status_code=404, detail="案件文件不存在")
     case_record = await _ensure_record_module(item.record_id, "case", identity, db)
     await _require_case_detail_write_access(case_record, identity, db)
+    _ensure_case_word_editor_not_locked(item)
     requested_name = body.original_name.strip()
     if not requested_name or "/" in requested_name or "\\" in requested_name or Path(requested_name).name != requested_name or requested_name in {".", ".."}:
         raise HTTPException(status_code=422, detail="文件名不能为空，且不能包含路径")
@@ -30521,6 +30886,7 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if record and record.module == "case":
         record = await _ensure_record_module(record.id, "case", identity, db)
         await _require_case_detail_write_access(record, identity, db)
+        _ensure_case_word_editor_not_locked(item)
         may_manage_case_document = True
     if record and record.module == "customer":
         record = await _ensure_record_module(record.id, "customer", identity, db)

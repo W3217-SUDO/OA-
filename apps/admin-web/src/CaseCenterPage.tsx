@@ -774,6 +774,16 @@ type CaseLogKind = "case" | "refund";
 type CaseTaskKind = "案件任务" | "客户任务";
 type CaseDocumentFolderEditor = {mode:"create"|"rename";originalName?:string};
 type CaseAiDraftEditor = {mode:"create"|"edit";item?:AttachmentRow};
+type CaseWordEditorBlock = { id: string; text: string; editable: boolean; readOnlyReason?: string };
+type CaseWordEditor = {
+  caseId: number;
+  item: AttachmentRow;
+  lockToken: string;
+  blocks: CaseWordEditorBlock[];
+  savedBlocks: CaseWordEditorBlock[];
+  version: string;
+  expiresAt?: string;
+};
 type CaseDetailCapabilities = {
   can_write: boolean;
   can_generate_document: boolean;
@@ -1103,6 +1113,12 @@ export default function CaseCenterPage({
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [aiDraftEditor, setAiDraftEditor] = useState<CaseAiDraftEditor | null>(null);
+  const [wordEditor, setWordEditor] = useState<CaseWordEditor | null>(null);
+  const [wordEditorOpening, setWordEditorOpening] = useState(false);
+  const [wordEditorSaving, setWordEditorSaving] = useState(false);
+  const [wordEditorLockLost, setWordEditorLockLost] = useState(false);
+  const wordEditorSavingRef = useRef(false);
+  const wordEditorLockTokenRef = useRef("");
   const [promotingAiDraft, setPromotingAiDraft] = useState<AttachmentRow | null>(null);
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [movingCounselAttachmentIds, setMovingCounselAttachmentIds] = useState<number[] | null>(null);
@@ -3573,6 +3589,151 @@ export default function CaseCenterPage({
       message.error(error?.response?.data?.detail || "AI 草稿读取失败");
     }
   };
+  const wordEditorChanged = (editor: CaseWordEditor) => JSON.stringify(editor.blocks) !== JSON.stringify(editor.savedBlocks);
+  const releaseCaseWordEditorLock = async (editor: CaseWordEditor) => {
+    try {
+      await api.delete(`/cases/${editor.caseId}/attachments/${editor.item.id}/word-editor/lock`, {
+        data: { lock_token: editor.lockToken },
+      });
+    } catch {
+      // The lock has a server-side expiry. A failed best-effort release must not hide the editor close action.
+    }
+  };
+  const finishClosingCaseWordEditor = async (editor: CaseWordEditor) => {
+    await releaseCaseWordEditorLock(editor);
+    if (wordEditorLockTokenRef.current === editor.lockToken) wordEditorLockTokenRef.current = "";
+    setWordEditor((current) => current?.lockToken === editor.lockToken ? null : current);
+    setWordEditorLockLost(false);
+  };
+  const requestCloseCaseWordEditor = () => {
+    if (!wordEditor) return;
+    if (!wordEditorChanged(wordEditor)) {
+      void finishClosingCaseWordEditor(wordEditor);
+      return;
+    }
+    Modal.confirm({
+      title: "尚有未保存的 Word 修改",
+      content: "关闭后未保存的修改将不会写回案件文件。",
+      okText: "放弃修改并关闭",
+      okButtonProps: { danger: true },
+      cancelText: "继续编辑",
+      onOk: () => finishClosingCaseWordEditor(wordEditor),
+    });
+  };
+  const openCaseWordEditor = async (item: AttachmentRow) => {
+    if (!viewingCounselCase) return;
+    if (wordEditorOpening || wordEditor) return;
+    if (/\.doc$/i.test(item.original_name)) {
+      message.warning("旧版 .doc 文件暂不支持在线编辑，请先转换为 .docx 后再编辑");
+      return;
+    }
+    if (!/\.docx$/i.test(item.original_name)) {
+      message.warning("仅 .docx Word 文件支持在线编辑");
+      return;
+    }
+    const caseId = viewingCounselCase.id;
+    setWordEditorOpening(true);
+    try {
+      const { data } = await api.get(`/cases/${caseId}/attachments/${item.id}/word-editor/content`);
+      const blocks = Array.isArray(data.blocks)
+        ? data.blocks.map((block: any, index: number) => ({ id: String(block.id || index), text: String(block.text || ""), editable: block.editable !== false, readOnlyReason: block.read_only_reason }))
+        : [{ id: "content", text: String(data.content || ""), editable: true }];
+      if (!data.lock_token) throw new Error("未取得文件编辑锁");
+      wordEditorLockTokenRef.current = data.lock_token;
+      setWordEditor({
+        caseId,
+        item,
+        lockToken: data.lock_token,
+        blocks,
+        savedBlocks: blocks.map((block: CaseWordEditorBlock) => ({ ...block })),
+        version: String(data.version || ""),
+        expiresAt: data.lock_expires_at,
+      });
+      setWordEditorLockLost(false);
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const lockDetail = detail && typeof detail === "object" ? detail : {};
+      const holder = lockDetail.lock_holder || error?.response?.data?.lock_holder;
+      const expiresAt = lockDetail.lock_expires_at || error?.response?.data?.lock_expires_at;
+      const detailMessage = typeof detail === "string" ? detail : lockDetail.message;
+      message.error(holder ? `文件正由 ${holder} 编辑，锁定至 ${expiresAt || "稍后"}` : detailMessage || error?.message || "打开 Word 在线编辑失败");
+    } finally {
+      setWordEditorOpening(false);
+    }
+  };
+  const saveCaseWordEditor = async () => {
+    if (!wordEditor) return;
+    if (!wordEditorChanged(wordEditor)) {
+      message.info("文档内容没有变化，无需保存");
+      return;
+    }
+    const blocksSnapshot = wordEditor.blocks.map((block) => ({ ...block }));
+    wordEditorSavingRef.current = true;
+    setWordEditorSaving(true);
+    try {
+      const { data } = await api.put(
+        `/cases/${wordEditor.caseId}/attachments/${wordEditor.item.id}/word-editor/content`,
+        { lock_token: wordEditor.lockToken, version: wordEditor.version, blocks: blocksSnapshot },
+      );
+      const nextLockToken = String(data.lock_token || wordEditor.lockToken);
+      wordEditorLockTokenRef.current = nextLockToken;
+      setWordEditor((current) => current && current.lockToken === wordEditor.lockToken ? {
+        ...current,
+        savedBlocks: blocksSnapshot,
+        lockToken: nextLockToken,
+        version: String(data.version ?? current.version),
+        expiresAt: data.lock_expires_at || current.expiresAt,
+      } : current);
+      setWordEditorLockLost(false);
+      message.success("Word 文档已保存回案件文件");
+      try {
+        await refreshCounselDetailAttachments(wordEditor.caseId);
+      } catch {
+        message.warning("Word 文档已保存，但附件列表刷新失败，请稍后刷新页面");
+      }
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const detailMessage = typeof detail === "string" ? detail : detail?.message;
+      setWordEditorLockLost(error?.response?.status === 409);
+      message.error(error?.response?.status === 409
+        ? `${detailMessage || "Word 编辑锁已失效"}；当前内容仍保留，请复制后关闭并重新打开文件`
+        : detailMessage || "Word 文档保存失败；当前编辑内容仍保留，可稍后重试");
+    } finally {
+      wordEditorSavingRef.current = false;
+      setWordEditorSaving(false);
+    }
+  };
+  useEffect(() => {
+    if (!wordEditor) return;
+    const renew = async () => {
+      if (wordEditorSavingRef.current) return;
+      try {
+        const { data } = await api.post(
+          `/cases/${wordEditor.caseId}/attachments/${wordEditor.item.id}/word-editor/lock/renew`,
+          { lock_token: wordEditor.lockToken },
+        );
+        setWordEditor((current) => current?.lockToken === wordEditor.lockToken ? { ...current, expiresAt: data.lock_expires_at || current.expiresAt } : current);
+      } catch (error: any) {
+        if (wordEditorLockTokenRef.current !== wordEditor.lockToken) return;
+        const detail = error?.response?.data?.detail;
+        message.error((typeof detail === "string" ? detail : detail?.message) || "Word 编辑锁续期失败，请尽快保存并重新打开文件");
+      }
+    };
+    const timer = window.setInterval(() => void renew(), 120000);
+    return () => {
+      window.clearInterval(timer);
+      void releaseCaseWordEditorLock(wordEditor);
+    };
+  }, [wordEditor?.caseId, wordEditor?.item.id, wordEditor?.lockToken]);
+  useEffect(() => {
+    if (!wordEditor || !wordEditorChanged(wordEditor)) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [wordEditor]);
   const saveAiDraft = async () => {
     if (!viewingCounselCase || !aiDraftEditor) return;
     const values = await aiDraftForm.validateFields();
@@ -6829,8 +6990,7 @@ export default function CaseCenterPage({
                   {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
                   {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
                   {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
-                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:320,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&row.record_id===viewingCounselCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},                ]}/>
-                {caseDocumentGenerationError && <Alert
+                  {title:"操作",key:"actions",width:isAiSpaceFolder?410:420,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&row.record_id===viewingCounselCase.id&&/.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCaseWordEditor(row)}>在线编辑</Button>}{counselDetailCapabilities.can_write&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&row.record_id===viewingCounselCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},                ]}/>                {caseDocumentGenerationError && <Alert
                   type="error"
                   showIcon
                   closable
@@ -7216,6 +7376,49 @@ export default function CaseCenterPage({
           <Form.Item label="Word 文件名" name="name" rules={[{required:true,message:"请输入文件名"},{pattern:/\.(docx|md|txt)$/i,message:"新建 Word 文档请使用 .docx 格式"}]}><Input maxLength={255} disabled={aiDraftEditor?.mode==="edit"}/></Form.Item>
           <Form.Item label="文档正文" name="content"><Input.TextArea autoSize={{minRows:16,maxRows:28}} placeholder="在这里编辑 Word 文档正文；保存后可查看、下载或转入正式系统"/></Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        width={920}
+        open={Boolean(wordEditor)}
+        title={`在线编辑 Word：${wordEditor?.item.original_name || ""}`}
+        okText="保存回案件文件"
+        cancelText="关闭"
+        confirmLoading={wordEditorSaving}
+        maskClosable={false}
+        keyboard={false}
+        onOk={() => void saveCaseWordEditor()}
+        onCancel={requestCloseCaseWordEditor}
+        destroyOnHidden
+      >
+        <Alert
+          style={{ marginBottom: 12 }}
+          type="info"
+          showIcon
+          title="正在编辑原案件 Word 文件"
+          description={`支持正文与表格文字；修改的段落沿用该段首文字样式，图片、域、超链接等复杂内容只读。${wordEditor?.expiresAt ? ` 当前编辑锁有效至 ${wordEditor.expiresAt}，页面会自动续期。` : ""}`}
+        />
+        {wordEditorLockLost && <Alert
+          style={{ marginBottom: 12 }}
+          type="error"
+          showIcon
+          title="编辑锁已失效"
+          description="当前修改仍保留在此页面。请先复制未保存内容，关闭后重新打开文件以获取新的编辑锁。"
+        />}
+        {wordEditor?.blocks.map((block, index) => (
+          <Form.Item key={block.id} label={wordEditor.blocks.length > 1 ? `文档内容 ${index + 1}` : "文档正文"} extra={!block.editable ? block.readOnlyReason || "此处包含不支持的 Word 内容，已设为只读以保护原文件。" : undefined}>
+            <Input.TextArea
+              value={block.text}
+              disabled={wordEditorSaving || !block.editable}
+              autoSize={{ minRows: index === 0 ? 16 : 4, maxRows: 28 }}
+              onChange={(event) => setWordEditor((current) => current ? {
+                ...current,
+                blocks: current.blocks.map((currentBlock) => currentBlock.id === block.id ? { ...currentBlock, text: event.target.value } : currentBlock),
+              } : current)}
+              placeholder="在此修改 Word 正文；保存后将写回原案件文件"
+            />
+          </Form.Item>
+        ))}
+        <Alert type="warning" showIcon title="旧版 .doc 文件不支持在线编辑" description="请先转换为 .docx 后重新上传或替换，再使用本入口编辑。" />
       </Modal>
       <Modal open={Boolean(promotingAiDraft)} title={`转入正式系统：${promotingAiDraft?.original_name || ""}`} okText="确认转入" cancelText="取消" onOk={promoteAiDraft} onCancel={()=>{setPromotingAiDraft(null);aiDraftPromoteForm.resetFields();}}>
         <Alert style={{marginBottom:12}} type="warning" showIcon title="转入后将成为正式案件文件" description="该文件会从 AI 空间移出，并进入所选正式目录；操作将写入案件日志。"/>

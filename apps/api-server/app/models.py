@@ -936,6 +936,10 @@ class FileAttachment(Base):
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     locked_by: Mapped[str] = mapped_column(String(64), default="")
+    # This short-lived lease is separate from the IPR application-package lock.
+    word_editor_lock_token: Mapped[str] = mapped_column(String(96), default="", index=True)
+    word_editor_lock_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    word_editor_locked_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
