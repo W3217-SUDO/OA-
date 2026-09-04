@@ -355,6 +355,62 @@ class BusinessRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class VipTask(Base):
+    """Independent VIP task root, kept separate from the ordinary task workflow."""
+
+    __tablename__ = "vip_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    serial_no: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), index=True)
+    customer: Mapped[str] = mapped_column(String(255), default="", index=True)
+    status: Mapped[str] = mapped_column(String(32), default="待处理", index=True)
+    priority: Mapped[str] = mapped_column(String(32), default="普通", index=True)
+    owner: Mapped[str] = mapped_column(String(64), index=True)
+    department: Mapped[str] = mapped_column(String(64), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    collaborators: Mapped[list] = mapped_column(JSON, default=list)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class VipTaskNode(Base):
+    __tablename__ = "vip_task_nodes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vip_task_id: Mapped[int] = mapped_column(ForeignKey("vip_tasks.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), default="待处理", index=True)
+    priority: Mapped[str] = mapped_column(String(32), default="普通")
+    owner: Mapped[str] = mapped_column(String(64), index=True)
+    participants: Mapped[list] = mapped_column(JSON, default=list)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class VipTaskMessage(Base):
+    __tablename__ = "vip_task_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vip_task_id: Mapped[int] = mapped_column(ForeignKey("vip_tasks.id", ondelete="CASCADE"), index=True)
+    vip_task_node_id: Mapped[int | None] = mapped_column(ForeignKey("vip_task_nodes.id", ondelete="CASCADE"), nullable=True, index=True)
+    sender: Mapped[str] = mapped_column(String(64), index=True)
+    recipient: Mapped[str] = mapped_column(String(64), index=True)
+    content: Mapped[str] = mapped_column(Text)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class LegacyCaseTaskHistory(Base):
     """Immutable, dedicated projection of ordinary-case task roots.
 

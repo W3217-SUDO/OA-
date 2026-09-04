@@ -52,7 +52,7 @@ from .ipr_fee_file_router import router as ipr_fee_file_router
 from .legacy_ls_history_router import create_legacy_ls_history_router
 from .dingtalk import DingTalkError, dingtalk_client
 from .legacy_schema import align_legacy_column_types, align_legacy_constraints, align_legacy_indexes, create_full_legacy_schema, ensure_legacy_indexes
-from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationTask, LegacyInvestigationClue, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent
+from .models import AgentDocument, BusinessRecord, CaseFileTypeFeeTypeRelation, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, CommunicationLog, ContractApprovalStep, ContractEvent, ContractObject, ContractObjectLog, ContractPaymentLine, Department, DocumentTemplate, FileAttachment, FinanceTransaction, HearingSchedule, HrSubrecord, IncomingPayment, InvestigationClueLink, InvestigationEvidence, InvestigationEvidenceFile, InvestigationHistoricalReference, InvestigationTaskLink, IprCaseAssistedFee, IprCaseBatch, IprCaseBatchItem, IprCaseCustomer, IprCaseCustomerContact, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, IprCaseLawFirm, IprCaseLog, IprCaseRebootLink, IprCaseReminder, IprCaseReminderSuppression, IprCaseReminderType, IprOfficialImportBatch, IprOfficialImportCandidate, JobRole, LawFirm, LawFirmAudit, LawFirmContact, LegacyCase, LegacyCaseFile, LegacyCaseLog, LegacyCaseParticipant, LegacyCaseTaskHistory, LegacyCaseTaskHistoryFile, LegacyCaseTaskHistoryMessage, LegacyCaseTaskHistoryNode, LegacyCaseTaskHistoryNodeParticipant, LegacyCaseTaskHistoryNotification, LegacyCaseTaskHistoryReadReceipt, LegacyContract, LegacyContractAudit, LegacyContractFile, LegacyCustomer, LegacyCustomerContact, LegacyCustomerHistoryBaseline, LegacyCustomerHistoryContact, LegacyCustomerHistoryCoordinator, LegacyCustomerHistoryEvent, LegacyCustomerHistoryFile, LegacyFinanceAllocation, LegacyFinanceAudit, LegacyFinanceFile, LegacyFinanceRecord, LegacyHistoricalAttachment, LegacyInvestigation, LegacyInvestigationTask, LegacyInvestigationClue, LegacyOfficialDocument, LegacyOfficialDocumentAudit, LegacyOfficialDocumentFile, LegacyInvestigationClueEvidence, LegacyInvestigationClueEvidenceFile, LegacyInvestigationClueFile, Notification, OfficialOutgoingDocument, ReceivablePlan, ReconciliationBatch, RolePermission, SealAsset, SealAssetAudit, SecurityPolicy, SystemConfig, SystemMenu, SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, Warehouse, WarehouseEvidenceLocation, WarehouseLegacyEvidenceMapping, WarehouseStorageLocation, WorkflowEvent
 from .security import create_token, current_identity, hash_password, password_needs_rehash, user_role_ids, verify_password
 from .user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, CUSTOM_SKILL_LIMIT, custom_skill_agent, custom_skill_public, normalize_custom_skill, parse_uploaded_skill, user_skill_config_key
 
@@ -164,7 +164,7 @@ DEFAULT_SYSTEM_MENUS = [
     ("dashboard", "", "控制台", "dashboard", 0),
     ("agent-center", "", "智能体中心", "robot", 5),
     ("seal", "", "用印中心", "file-text", 10), ("seal-my", "seal", "我的用印申请", "", 11), ("seal-audit", "seal", "用印审核", "", 12), ("seal-admin", "seal", "行政用印", "", 13),
-    ("task", "", "事务中心", "file-text", 20), ("task-my", "task", "我的任务", "", 21), ("task-dept", "task", "部门任务", "", 22), ("task-company", "task", "公司任务", "", 23),
+    ("task", "", "事务中心", "file-text", 20), ("task-my", "task", "我的任务", "", 21), ("task-dept", "task", "部门任务", "", 22), ("task-company", "task", "公司任务", "", 23), ("vip-tasks", "task", "VIP任务", "", 24),
     ("customer", "", "客户管理", "team", 30), ("customer-new", "customer", "新建客户", "", 31), ("customer-mine", "customer", "我的客户", "", 32), ("customer-recycle", "customer", "个人回收站", "", 33), ("customer-dept", "customer", "部门客户", "", 34), ("customer-dept-recycle", "customer", "部门回收站", "", 35), ("customer-company", "customer", "公司客户", "", 36), ("customer-public", "customer", "公海客户", "", 37), ("customer-shared", "customer", "我的共享客户", "", 38), ("customer-recent-contact", "customer", "最近联系的客户", "", 39), ("customer-recent-update", "customer", "最近更新的客户", "", 40), ("customer-company-recycle", "customer", "公司回收站", "", 41), ("customer-conflict", "customer", "客户利益检索", "", 42),
     ("contract", "", "合同中心", "file-text", 50), ("contract-new", "contract", "合同新建", "", 51), ("contract-mine", "contract", "我的合同", "", 52), ("contract-audit", "contract", "合同审批", "", 53), ("contract-dept", "contract", "部门合同", "", 54), ("contract-company", "contract", "公司合同", "", 55), ("contract-receivable", "contract", "应收款", "", 56), ("contract-archive", "contract", "合同归档", "", 58),
     ("contract-recycle", "contract", "合同回收站", "", 57),
@@ -2646,6 +2646,66 @@ class TaskInput(BaseModel):
     start_at: datetime | None = None
     end_at: datetime | None = None
     description: str = ""
+
+
+class VipTaskInput(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    customer: str = Field(default="", max_length=255)
+    owner: str = Field(min_length=1, max_length=64)
+    priority: str = Field(default="普通", max_length=32)
+    status: str = Field(default="待处理", max_length=32)
+    start_at: datetime | None = None
+    deadline: date | None = None
+    end_at: datetime | None = None
+    description: str = Field(default="", max_length=10000)
+    collaborators: list[str] = Field(default_factory=list, max_length=20)
+
+
+class VipTaskUpdateInput(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    customer: str | None = Field(default=None, max_length=255)
+    owner: str | None = Field(default=None, min_length=1, max_length=64)
+    priority: str | None = Field(default=None, max_length=32)
+    status: str | None = Field(default=None, max_length=32)
+    start_at: datetime | None = None
+    deadline: date | None = None
+    end_at: datetime | None = None
+    description: str | None = Field(default=None, max_length=10000)
+    collaborators: list[str] | None = Field(default=None, max_length=20)
+
+
+class VipTaskNodeInput(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    owner: str = Field(min_length=1, max_length=64)
+    priority: str = Field(default="普通", max_length=32)
+    status: str = Field(default="待处理", max_length=32)
+    start_at: datetime | None = None
+    deadline: date | None = None
+    end_at: datetime | None = None
+    description: str = Field(default="", max_length=10000)
+    participants: list[str] = Field(default_factory=list, max_length=20)
+
+
+class VipTaskNodeUpdateInput(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    owner: str | None = Field(default=None, min_length=1, max_length=64)
+    priority: str | None = Field(default=None, max_length=32)
+    status: str | None = Field(default=None, max_length=32)
+    start_at: datetime | None = None
+    deadline: date | None = None
+    end_at: datetime | None = None
+    description: str | None = Field(default=None, max_length=10000)
+    participants: list[str] | None = Field(default=None, max_length=20)
+
+
+class VipTaskMessageInput(BaseModel):
+    content: str = Field(min_length=1, max_length=10000)
+    recipients: list[str] = Field(default_factory=list, max_length=30)
+    node_id: int | None = Field(default=None, gt=0)
+
+
+class VipTaskMessageReadInput(BaseModel):
+    message_ids: list[int] = Field(default_factory=list, max_length=100)
 
 
 class TaskHandoffInput(BaseModel):
@@ -14735,6 +14795,310 @@ async def _require_company_task_read_scope(identity: dict, db: AsyncSession, rel
         raise HTTPException(status_code=403, detail="当前角色没有查看公司任务的菜单权限")
     if str(permission.get("data_scope") or "") != "全所数据":
         raise HTTPException(status_code=403, detail="当前角色没有查看公司任务的全所数据权限")
+
+
+VIP_TASK_STATUSES = {"待处理", "处理中", "已完成", "已验收", "已拒绝", "已暂停", "已取消"}
+VIP_TASK_PRIORITIES = {"低", "普通", "重要", "紧急"}
+
+
+def _vip_task_member(task: VipTask, identity: dict) -> bool:
+    return identity.get("role") == "admin" or identity["username"] in {
+        task.created_by, task.owner, *(str(value) for value in (task.collaborators or [])),
+    }
+
+
+def _vip_node_member(node: VipTaskNode, identity: dict) -> bool:
+    return identity.get("role") == "admin" or identity["username"] in {
+        node.created_by, node.owner, *(str(value) for value in (node.participants or [])),
+    }
+
+
+def _vip_validate_schedule(start_at: datetime | None, deadline: date | None, end_at: datetime | None) -> None:
+    if start_at and end_at and start_at >= end_at:
+        raise HTTPException(status_code=422, detail="结束时间必须晚于开始时间")
+    if deadline and end_at and deadline != end_at.date():
+        raise HTTPException(status_code=422, detail="截止日期必须与结束时间日期一致")
+
+
+async def _vip_validate_task_transition(task: VipTask, target: str, identity: dict, db: AsyncSession) -> None:
+    if target == task.status:
+        return
+    actor = identity["username"]
+    is_admin = identity.get("role") == "admin"
+    allowed = {
+        "待处理": {"处理中", "已拒绝", "已暂停", "已取消"},
+        "处理中": {"已完成", "已暂停", "已取消"},
+        "已暂停": {"待处理", "处理中", "已取消"},
+        "已完成": {"待处理", "已验收", "已拒绝"},
+        "已拒绝": {"待处理"},
+        "已验收": set(),
+        "已取消": set(),
+    }
+    if target not in allowed.get(task.status, set()):
+        raise HTTPException(status_code=409, detail=f"VIP任务不能从{task.status}变更为{target}")
+    if target == "已完成":
+        if not is_admin and actor != task.owner:
+            raise HTTPException(status_code=403, detail="只有VIP任务负责人可以完成任务")
+        node_statuses = list((await db.scalars(select(VipTaskNode.status).where(VipTaskNode.vip_task_id == task.id))).all())
+        if any(value not in {"已完成", "已取消"} for value in node_statuses):
+            raise HTTPException(status_code=409, detail="存在未办结的VIP任务节点，不能完成任务")
+    elif target == "待处理" and task.status in {"已完成", "已拒绝", "已暂停"}:
+        if not is_admin and actor != task.created_by:
+            raise HTTPException(status_code=403, detail="只有VIP任务创建人可以重新打开任务")
+    elif target in {"已验收", "已拒绝"} and task.status == "已完成":
+        if not is_admin and actor != task.created_by:
+            raise HTTPException(status_code=403, detail="只有VIP任务创建人可以验收或拒绝任务")
+    elif not is_admin and actor not in {task.created_by, task.owner}:
+        raise HTTPException(status_code=403, detail="只有VIP任务创建人或负责人可以变更状态")
+
+
+def _vip_validate_node_transition(node: VipTaskNode, target: str, identity: dict) -> None:
+    if target == node.status:
+        return
+    allowed = {
+        "待处理": {"处理中", "已拒绝", "已暂停", "已取消"}, "处理中": {"已完成", "已暂停", "已取消"},
+        "已暂停": {"待处理", "处理中", "已取消"}, "已完成": {"待处理", "已验收", "已拒绝"},
+        "已拒绝": {"待处理"}, "已验收": set(), "已取消": set(),
+    }
+    if target not in allowed.get(node.status, set()):
+        raise HTTPException(status_code=409, detail=f"VIP任务节点不能从{node.status}变更为{target}")
+    if identity.get("role") != "admin" and identity["username"] not in {node.created_by, node.owner}:
+        raise HTTPException(status_code=403, detail="只有VIP节点创建人或负责人可以变更状态")
+
+
+async def _vip_active_usernames(values: list[str], db: AsyncSession, *, owner: str = "") -> list[str]:
+    normalized: list[str] = []
+    for raw in values:
+        username = await _active_task_username(raw, db, field_name="VIP任务参与人")
+        if username != owner and username not in normalized:
+            normalized.append(username)
+    return normalized
+
+
+async def _vip_task_or_404(task_id: int, identity: dict, db: AsyncSession, *, write: bool = False) -> VipTask:
+    task = await db.get(VipTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="VIP任务不存在")
+    if not _vip_task_member(task, identity):
+        raise HTTPException(status_code=403, detail="无权访问该VIP任务")
+    if write and identity.get("role") != "admin" and identity["username"] not in {task.created_by, task.owner}:
+        raise HTTPException(status_code=403, detail="只有发起人或负责人可以修改VIP任务")
+    return task
+
+
+async def _vip_node_or_404(task: VipTask, node_id: int, identity: dict, db: AsyncSession, *, write: bool = False) -> VipTaskNode:
+    node = await db.scalar(select(VipTaskNode).where(VipTaskNode.id == node_id, VipTaskNode.vip_task_id == task.id))
+    if not node:
+        raise HTTPException(status_code=404, detail="VIP任务节点不存在")
+    if not _vip_node_member(node, identity):
+        raise HTTPException(status_code=403, detail="无权访问该VIP任务节点")
+    if write and identity.get("role") != "admin" and identity["username"] not in {node.created_by, node.owner}:
+        raise HTTPException(status_code=403, detail="只有节点创建人或负责人可以修改节点")
+    return node
+
+
+def _vip_task_dict(task: VipTask, *, node_count: int = 0, unread_message_count: int = 0) -> dict:
+    return {
+        "id": task.id, "serial_no": task.serial_no, "title": task.title, "customer": task.customer,
+        "status": task.status, "priority": task.priority, "owner": task.owner, "department": task.department,
+        "description": task.description, "collaborators": task.collaborators or [], "created_by": task.created_by,
+        "start_at": task.start_at, "deadline": task.deadline, "end_at": task.end_at,
+        "created_at": task.created_at, "updated_at": task.updated_at,
+        "node_count": node_count, "unread_message_count": unread_message_count,
+    }
+
+
+def _vip_node_dict(node: VipTaskNode) -> dict:
+    return {
+        "id": node.id, "task_id": node.vip_task_id, "title": node.title, "status": node.status,
+        "priority": node.priority, "owner": node.owner, "participants": node.participants or [],
+        "description": node.description, "created_by": node.created_by, "start_at": node.start_at,
+        "deadline": node.deadline, "end_at": node.end_at, "created_at": node.created_at, "updated_at": node.updated_at,
+    }
+
+
+def _vip_message_dict(message: VipTaskMessage) -> dict:
+    return {
+        "id": message.id, "task_id": message.vip_task_id, "node_id": message.vip_task_node_id,
+        "sender": message.sender, "recipient": message.recipient, "content": message.content,
+        "is_read": message.is_read, "read_at": message.read_at, "created_at": message.created_at,
+    }
+
+
+async def _vip_task_response(task: VipTask, identity: dict, db: AsyncSession) -> dict:
+    node_count = int(await db.scalar(select(func.count()).select_from(VipTaskNode).where(VipTaskNode.vip_task_id == task.id)) or 0)
+    unread_count = int(await db.scalar(select(func.count()).select_from(VipTaskMessage).where(
+        VipTaskMessage.vip_task_id == task.id, VipTaskMessage.recipient == identity["username"], VipTaskMessage.is_read.is_(False),
+    )) or 0)
+    return _vip_task_dict(task, node_count=node_count, unread_message_count=unread_count)
+
+
+@app.get(f"{settings.api_prefix}/vip-tasks")
+async def list_vip_tasks(
+    keyword: str = "", customer: str = "", status_filter: str = "", priority: str = "",
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    conditions = []
+    if identity.get("role") != "admin":
+        username = identity["username"]
+        # JSON participant membership is normalized after fetch for SQLite/PostgreSQL parity.
+        candidates = list((await db.scalars(select(VipTask).order_by(VipTask.updated_at.desc(), VipTask.id.desc()))).all())
+        tasks = [task for task in candidates if _vip_task_member(task, identity)]
+    else:
+        tasks = list((await db.scalars(select(VipTask).order_by(VipTask.updated_at.desc(), VipTask.id.desc()))).all())
+    needle = keyword.strip().casefold()
+    customer_needle = customer.strip().casefold()
+    tasks = [task for task in tasks if (
+        (not needle or needle in f"{task.serial_no} {task.title} {task.customer} {task.description}".casefold())
+        and (not customer_needle or customer_needle in task.customer.casefold())
+        and (not status_filter or task.status == status_filter)
+        and (not priority or task.priority == priority)
+    )]
+    total = len(tasks); start = (page - 1) * page_size
+    return {"items": [await _vip_task_response(task, identity, db) for task in tasks[start:start + page_size]], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
+
+
+@app.post(f"{settings.api_prefix}/vip-tasks", status_code=status.HTTP_201_CREATED)
+async def create_vip_task(body: VipTaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if body.status not in VIP_TASK_STATUSES or body.priority not in VIP_TASK_PRIORITIES:
+        raise HTTPException(status_code=422, detail="VIP任务状态或优先级无效")
+    if body.status != "待处理":
+        raise HTTPException(status_code=422, detail="新建VIP任务必须从待处理开始")
+    _vip_validate_schedule(body.start_at, body.deadline, body.end_at)
+    owner = await _active_task_username(body.owner, db, field_name="VIP任务负责人")
+    collaborators = await _vip_active_usernames(body.collaborators, db, owner=owner)
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    task = VipTask(serial_no=f"VIP-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:6].upper()}", title=body.title.strip(), customer=body.customer.strip(), status=body.status, priority=body.priority, owner=owner, department=user.department if user else "", description=body.description.strip(), collaborators=collaborators, created_by=identity["username"], start_at=body.start_at, deadline=body.deadline, end_at=body.end_at)
+    db.add(task); await db.flush()
+    recipients = {owner, *collaborators} - {identity["username"]}
+    for recipient in recipients:
+        db.add(VipTaskMessage(vip_task_id=task.id, sender=identity["username"], recipient=recipient, content=f"已向您分派VIP任务：{task.title}"))
+    await db.commit(); await db.refresh(task)
+    return await _vip_task_response(task, identity, db)
+
+
+@app.get(f"{settings.api_prefix}/vip-tasks/{{task_id}}")
+async def get_vip_task(task_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db)
+    result = await _vip_task_response(task, identity, db)
+    nodes = list((await db.scalars(select(VipTaskNode).where(VipTaskNode.vip_task_id == task.id).order_by(VipTaskNode.created_at, VipTaskNode.id))).all())
+    messages = list((await db.scalars(select(VipTaskMessage).where(VipTaskMessage.vip_task_id == task.id, or_(VipTaskMessage.recipient == identity["username"], VipTaskMessage.sender == identity["username"])).order_by(VipTaskMessage.created_at.desc(), VipTaskMessage.id.desc()))).all())
+    result.update({"nodes": [_vip_node_dict(node) for node in nodes if _vip_node_member(node, identity)], "messages": [_vip_message_dict(message) for message in messages]})
+    return result
+
+
+@app.put(f"{settings.api_prefix}/vip-tasks/{{task_id}}")
+async def update_vip_task(task_id: int, body: VipTaskUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db, write=True)
+    updates = body.model_dump(exclude_unset=True)
+    if "status" in updates and updates["status"] not in VIP_TASK_STATUSES or "priority" in updates and updates["priority"] not in VIP_TASK_PRIORITIES:
+        raise HTTPException(status_code=422, detail="VIP任务状态或优先级无效")
+    if "status" in updates:
+        await _vip_validate_task_transition(task, updates["status"], identity, db)
+    owner = await _active_task_username(updates["owner"], db, field_name="VIP任务负责人") if "owner" in updates else task.owner
+    collaborators = await _vip_active_usernames(updates["collaborators"], db, owner=owner) if "collaborators" in updates else task.collaborators
+    _vip_validate_schedule(updates.get("start_at", task.start_at), updates.get("deadline", task.deadline), updates.get("end_at", task.end_at))
+    for field in ("title", "customer", "status", "priority", "start_at", "deadline", "end_at", "description"):
+        if field in updates: setattr(task, field, updates[field].strip() if isinstance(updates[field], str) else updates[field])
+    task.owner = owner; task.collaborators = collaborators
+    await db.commit(); await db.refresh(task)
+    return await _vip_task_response(task, identity, db)
+
+
+@app.delete(f"{settings.api_prefix}/vip-tasks/{{task_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vip_task(task_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db, write=True)
+    # SQLite does not enable foreign-key cascades on every local connection;
+    # delete child rows explicitly so the command has identical semantics in
+    # local verification and PostgreSQL deployments.
+    await db.execute(delete(VipTaskMessage).where(VipTaskMessage.vip_task_id == task.id))
+    await db.execute(delete(VipTaskNode).where(VipTaskNode.vip_task_id == task.id))
+    await db.delete(task); await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(f"{settings.api_prefix}/vip-tasks/{{task_id}}/nodes")
+async def list_vip_task_nodes(task_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db)
+    nodes = list((await db.scalars(select(VipTaskNode).where(VipTaskNode.vip_task_id == task.id).order_by(VipTaskNode.created_at, VipTaskNode.id))).all())
+    return {"items": [_vip_node_dict(node) for node in nodes if _vip_node_member(node, identity)]}
+
+
+@app.post(f"{settings.api_prefix}/vip-tasks/{{task_id}}/nodes", status_code=status.HTTP_201_CREATED)
+async def create_vip_task_node(task_id: int, body: VipTaskNodeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db, write=True)
+    if body.status not in VIP_TASK_STATUSES or body.priority not in VIP_TASK_PRIORITIES:
+        raise HTTPException(status_code=422, detail="VIP节点状态或优先级无效")
+    if body.status != "待处理":
+        raise HTTPException(status_code=422, detail="新建VIP节点必须从待处理开始")
+    _vip_validate_schedule(body.start_at, body.deadline, body.end_at)
+    owner = await _active_task_username(body.owner, db, field_name="VIP节点负责人")
+    node = VipTaskNode(vip_task_id=task.id, title=body.title.strip(), owner=owner, priority=body.priority, status=body.status, start_at=body.start_at, deadline=body.deadline, end_at=body.end_at, description=body.description.strip(), participants=await _vip_active_usernames(body.participants, db, owner=owner), created_by=identity["username"])
+    db.add(node); await db.commit(); await db.refresh(node)
+    return _vip_node_dict(node)
+
+
+@app.put(f"{settings.api_prefix}/vip-tasks/{{task_id}}/nodes/{{node_id}}")
+async def update_vip_task_node(task_id: int, node_id: int, body: VipTaskNodeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db)
+    node = await _vip_node_or_404(task, node_id, identity, db, write=True); updates = body.model_dump(exclude_unset=True)
+    if "status" in updates and updates["status"] not in VIP_TASK_STATUSES or "priority" in updates and updates["priority"] not in VIP_TASK_PRIORITIES:
+        raise HTTPException(status_code=422, detail="VIP节点状态或优先级无效")
+    if "status" in updates:
+        _vip_validate_node_transition(node, updates["status"], identity)
+    owner = await _active_task_username(updates["owner"], db, field_name="VIP节点负责人") if "owner" in updates else node.owner
+    participants = await _vip_active_usernames(updates["participants"], db, owner=owner) if "participants" in updates else node.participants
+    _vip_validate_schedule(updates.get("start_at", node.start_at), updates.get("deadline", node.deadline), updates.get("end_at", node.end_at))
+    for field in ("title", "status", "priority", "start_at", "deadline", "end_at", "description"):
+        if field in updates: setattr(node, field, updates[field].strip() if isinstance(updates[field], str) else updates[field])
+    node.owner = owner; node.participants = participants
+    await db.commit(); await db.refresh(node); return _vip_node_dict(node)
+
+
+@app.delete(f"{settings.api_prefix}/vip-tasks/{{task_id}}/nodes/{{node_id}}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vip_task_node(task_id: int, node_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db); node = await _vip_node_or_404(task, node_id, identity, db, write=True)
+    await db.execute(delete(VipTaskMessage).where(VipTaskMessage.vip_task_node_id == node.id))
+    await db.delete(node); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(f"{settings.api_prefix}/vip-tasks/{{task_id}}/messages")
+async def list_vip_task_messages(task_id: int, unread_only: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db)
+    conditions = [VipTaskMessage.vip_task_id == task.id, or_(VipTaskMessage.recipient == identity["username"], VipTaskMessage.sender == identity["username"])]
+    if unread_only: conditions.extend([VipTaskMessage.recipient == identity["username"], VipTaskMessage.is_read.is_(False)])
+    messages = list((await db.scalars(select(VipTaskMessage).where(*conditions).order_by(VipTaskMessage.created_at.desc(), VipTaskMessage.id.desc()))).all())
+    unread = int(await db.scalar(select(func.count()).select_from(VipTaskMessage).where(VipTaskMessage.vip_task_id == task.id, VipTaskMessage.recipient == identity["username"], VipTaskMessage.is_read.is_(False))) or 0)
+    return {"items": [_vip_message_dict(message) for message in messages], "unread_count": unread}
+
+
+@app.post(f"{settings.api_prefix}/vip-tasks/{{task_id}}/messages", status_code=status.HTTP_201_CREATED)
+async def create_vip_task_message(task_id: int, body: VipTaskMessageInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db)
+    node = await _vip_node_or_404(task, body.node_id, identity, db) if body.node_id else None
+    task_recipients = {task.created_by, task.owner, *(str(value) for value in (task.collaborators or []))} - {""}
+    if node: task_recipients.update({node.created_by, node.owner, *(str(value) for value in (node.participants or []))} - {""})
+    recipients = set(body.recipients) if body.recipients else task_recipients - {identity["username"]}
+    if not recipients.issubset(task_recipients): raise HTTPException(status_code=403, detail="消息收件人必须是VIP任务参与人")
+    if recipients:
+        active = set(await _vip_active_usernames(list(recipients), db))
+        rows = [VipTaskMessage(vip_task_id=task.id, vip_task_node_id=node.id if node else None, sender=identity["username"], recipient=recipient, content=body.content.strip()) for recipient in active]
+        db.add_all(rows); await db.commit()
+        for row in rows: await db.refresh(row)
+        return {"items": [_vip_message_dict(row) for row in rows]}
+    await db.commit(); return {"items": []}
+
+
+@app.post(f"{settings.api_prefix}/vip-tasks/{{task_id}}/messages/read")
+async def read_vip_task_messages(task_id: int, body: VipTaskMessageReadInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    task = await _vip_task_or_404(task_id, identity, db)
+    conditions = [VipTaskMessage.vip_task_id == task.id, VipTaskMessage.recipient == identity["username"], VipTaskMessage.is_read.is_(False)]
+    if body.message_ids: conditions.append(VipTaskMessage.id.in_(set(body.message_ids)))
+    messages = list((await db.scalars(select(VipTaskMessage).where(*conditions))).all())
+    now = datetime.now(timezone.utc)
+    for message in messages: message.is_read = True; message.read_at = now
+    await db.commit(); return {"updated": len(messages)}
 
 
 @app.get(f"{settings.api_prefix}/tasks")
