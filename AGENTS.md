@@ -148,3 +148,9 @@
 - For each row in an explicitly active batch, inspect its text and every embedded same-row screenshot before deciding whether the new system has an issue. A source-code review alone never closes a row.
 - Use the Codex in-app browser for the final acceptance path on `http://150.158.3.104:8089/`. Reproduce the reported behavior first; if it fails, fix the new-system source, run focused regression/build/deployment checks, then repeat the same in-app-browser path before marking the row accepted.
 - Update the row-by-row acceptance ledger immediately after each browser outcome. Record either `已验收` with the exact page and observed result, or `未通过/待修复` with the reproduced behavior and next action. Do not carry an unrecorded result into the next row.
+## GitHub 同步项目记忆（用户要求，2026-09-05）
+
+- 用户明确要求：“以后改动都要上传github”。每次完成项目代码、配置或文档改动后，必须精确提交并推送至 `https://github.com/W3217-SUDO/OA-.git`，不能只保留本地提交或服务器副本。
+- 开发集成使用 `dev`，正式发布成功后将 `main` 快进到同一发布提交，保持线性历史，禁止普通发布强制推送。本条优先于本文件中旧的分支规则。
+- 完成汇报须注明 GitHub 推送结果和提交号；推送失败须明确记录未同步并继续排查，不得宣称已同步。
+- 仅提交项目必要文件，不上传密钥、环境凭据、数据库、业务附件、依赖目录或临时构建文件。用户明确要求暂不提交或暂不上传时，以该次最新要求为准。
