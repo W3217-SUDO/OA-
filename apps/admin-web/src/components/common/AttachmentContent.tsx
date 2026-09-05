@@ -1,5 +1,7 @@
 import { useEffect, useState, type InputHTMLAttributes, ReactNode } from "react";
+import { Tabs } from "antd";
 import mammoth from "mammoth";
+import * as XLSX from "xlsx";
 
 /** File selection is shared; permission checks and upload requests stay with each area. */
 export function AttachmentFileInput({ onFileChange, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> & { onFileChange: (file: File | null) => void }) {
@@ -76,6 +78,85 @@ function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
   );
 }
 
+function XlsxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: Blob; url?: string; text?: string } }) {
+  const [sheets, setSheets] = useState<{ name: string; html: string }[]>([]);
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function render() {
+      setLoading(true);
+      setError("");
+      try {
+        let blob: Blob | undefined = attachment.blob;
+        if (!blob && attachment.url) {
+          const resp = await fetch(attachment.url);
+          blob = await resp.blob();
+        }
+        if (!blob) {
+          throw new Error("没有可渲染的文件数据");
+        }
+        const arrayBuffer = await blob.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
+        const sheetNames = workbook.SheetNames;
+        const sheetData = sheetNames.map((name) => {
+          const sheet = workbook.Sheets[name];
+          const html = XLSX.utils.sheet_to_html(sheet, { editable: false });
+          return { name, html };
+        });
+        if (!cancelled) {
+          setSheets(sheetData);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e.message || "渲染失败");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    render();
+    return () => { cancelled = true; };
+  }, [attachment.url, attachment.blob]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "#86909c" }}>正在渲染 Excel 表格...</div>;
+  if (error) return (
+    <div>
+      <div style={{ padding: "16px 20px", background: "#fff7e8", border: "1px solid #ffd591", color: "#d46b08", borderRadius: 4, marginBottom: 12 }}>
+        渲染 Excel 表格失败：{error}，以下为纯文本预览：
+      </div>
+      <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "#fff", border: "1px solid #dfe2e7" }}>{attachment.text}</pre>
+    </div>
+  );
+
+  if (!sheets.length) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#86909c" }}>（该 Excel 文件没有可显示的工作表）</div>;
+  }
+
+  const tabItems = sheets.map((sheet, idx) => ({
+    key: String(idx),
+    label: sheet.name,
+    children: (
+      <div style={{ overflow: "auto", maxHeight: "62vh", border: "1px solid #dfe2e7", borderTop: 0 }}>
+        <div
+          dangerouslySetInnerHTML={{ __html: sheet.html.replace(/<table/, '<table style="border-collapse:collapse;width:100%;font-size:12px"') }}
+          style={{ padding: 0 }}
+        />
+      </div>
+    ),
+  }));
+
+  return (
+    <Tabs
+      items={tabItems}
+      defaultActiveKey="0"
+      size="small"
+      style={{ background: "#fff" }}
+    />
+  );
+}
+
 /** Common image/text rendering; callers can supply an authenticated PDF page renderer. */
 export function AttachmentPreviewContent({ preview, pdfContent }: { preview: PreviewAttachment | null; pdfContent?: ReactNode }) {
   return <>
@@ -83,5 +164,6 @@ export function AttachmentPreviewContent({ preview, pdfContent }: { preview: Pre
     {preview?.kind === "pdf" && (pdfContent ?? <iframe title={preview.name} src={preview.url} style={{ width: "100%", height: "72vh", border: 0 }} />)}
     {preview?.kind === "text" && <pre style={{ maxHeight: "70vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7 }}>{preview.text}</pre>}
     {preview?.kind === "docx" && <DocxPreview attachment={preview} />}
+    {preview?.kind === "xlsx" && <XlsxPreview attachment={preview} />}
   </>;
 }

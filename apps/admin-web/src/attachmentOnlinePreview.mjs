@@ -1,4 +1,5 @@
 import mammoth from "mammoth";
+import * as XLSX from "xlsx";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
@@ -41,7 +42,20 @@ const page = (title, body, extraStyle = "") => `<!doctype html>
     .docx-preview a:hover{text-decoration:underline}
     .docx-preview img{max-width:100%;height:auto}
     .docx-preview hr{border:none;border-top:1px solid #e5e6eb;margin:16px 0}
-    .docx-preview-error{max-width:900px;margin:0 auto;padding:24px;background:#fff7e8;border:1px solid #ffd591;color:#d46b08}
+    .xlsx-preview{max-width:100%;margin:0 auto;background:#fff;border:1px solid #dfe2e7;overflow:auto;max-height:calc(100vh - 120px)}
+    .xlsx-tabs{display:flex;gap:4px;padding:8px 12px 0;background:#f5f6f8;border-bottom:1px solid #dfe2e7;flex-wrap:wrap}
+    .xlsx-tab{padding:8px 16px;border:1px solid #dfe2e7;border-bottom:none;border-radius:4px 4px 0 0;cursor:pointer;background:#fff;font-size:13px;color:#4e5969;user-select:none}
+    .xlsx-tab.active{background:#fff;color:#165dff;font-weight:600;border-color:#165dff;border-bottom:2px solid #fff;margin-bottom:-1px;position:relative;z-index:1}
+    .xlsx-tab:hover{color:#165dff}
+    .xlsx-sheet-container{padding:0;overflow:auto}
+    .xlsx-table{border-collapse:collapse;width:100%;font-size:12px;font-family:Arial,"Microsoft YaHei",sans-serif}
+    .xlsx-table th,.xlsx-table td{border:1px solid #d0d5dd;padding:4px 8px;white-space:nowrap;max-width:300px;overflow:hidden;text-overflow:ellipsis;text-align:left;vertical-align:top}
+    .xlsx-table th{background:#f5f7fa;font-weight:600;position:sticky;top:0;z-index:1;color:#1f2329}
+    .xlsx-table tr:nth-child(even) td{background:#fafbfc}
+    .xlsx-table td:hover{background:#e8f3ff;white-space:normal}
+    .xlsx-empty{padding:40px;text-align:center;color:#86909c}
+    .xlsx-info{padding:8px 12px;background:#f5f7fa;border-top:1px solid #dfe2e7;font-size:12px;color:#4e5969}
+    .render-error{max-width:900px;margin:0 auto 12px;padding:16px 20px;background:#fff7e8;border:1px solid #ffd591;color:#d46b08;border-radius:4px}
     ${extraStyle}
   </style>
 </head>
@@ -60,6 +74,53 @@ async function renderDocxFromBlob(blob) {
   return result.value;
 }
 
+function renderXlsxFromArrayBuffer(arrayBuffer, fileName) {
+  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+  const sheetNames = workbook.SheetNames;
+  if (!sheetNames.length) {
+    return { html: '<div class="xlsx-empty">（该 Excel 文件没有可显示的工作表）</div>', sheetCount: 0, rowCount: 0 };
+  }
+
+  const sheetTables = sheetNames.map((name) => {
+    const sheet = workbook.Sheets[name];
+    const html = XLSX.utils.sheet_to_html(sheet, { id: `sheet-${name}`, editable: false });
+    return { name, html };
+  });
+
+  const totalRows = sheetTables.reduce((sum, sheet) => {
+    const match = sheet.html.match(/<tr/g);
+    return sum + (match ? match.length : 0);
+  }, 0);
+
+  const tabsHtml = sheetNames.map((name, idx) =>
+    `<div class="xlsx-tab ${idx === 0 ? "active" : ""}" data-sheet="${escapeHtml(name)}" onclick="switchSheet(this)">${escapeHtml(name)}</div>`
+  ).join("");
+
+  const sheetsHtml = sheetTables.map((sheet, idx) =>
+    `<div class="xlsx-sheet-container" data-sheet-content="${escapeHtml(sheet.name)}" style="${idx === 0 ? "" : "display:none"}">${sheet.html.replace(/<table/, '<table class="xlsx-table"')}</div>`
+  ).join("");
+
+  const infoHtml = `<div class="xlsx-info">共 ${sheetNames.length} 个工作表，约 ${totalRows} 行数据</div>`;
+
+  const fullHtml = `
+    <div class="xlsx-tabs">${tabsHtml}</div>
+    <div class="xlsx-preview">${sheetsHtml}</div>
+    ${infoHtml}
+    <script>
+      function switchSheet(tabEl) {
+        const sheetName = tabEl.getAttribute('data-sheet');
+        document.querySelectorAll('.xlsx-tab').forEach(t => t.classList.remove('active'));
+        tabEl.classList.add('active');
+        document.querySelectorAll('[data-sheet-content]').forEach(el => {
+          el.style.display = el.getAttribute('data-sheet-content') === sheetName ? '' : 'none';
+        });
+      }
+    <\/script>
+  `;
+
+  return { html: fullHtml, sheetCount: sheetNames.length, rowCount: totalRows };
+}
+
 export async function openAttachmentOnlinePreview(api, attachment, options = {}) {
   const openWindow = options.openWindow || (() => window.open("about:blank", "_blank"));
   const createObjectURL = options.createObjectURL || ((blob) => URL.createObjectURL(blob));
@@ -68,6 +129,7 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
   if (!target) throw new Error("浏览器阻止了新标签页，请允许本站打开新标签页后重试");
 
   const name = attachment.original_name || "附件预览";
+  const suffix = String(name).split(".").pop()?.toLowerCase() || "";
   writePage(target, page(name, '<div class="status">正在加载文件...</div>'));
   try {
     const { data } = await api.get(`/attachments/${attachment.id}/preview`);
@@ -94,10 +156,23 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
         writePage(target, page(name, body));
       } catch (renderError) {
         const fallbackText = data.text || "（文件没有可显示的文字内容）";
-        const body = `<div class="docx-preview-error">渲染 Word 排版失败，以下为纯文本预览：${renderError.message || ""}</div><pre>${escapeHtml(fallbackText)}</pre>`;
+        const body = `<div class="render-error">渲染 Word 排版失败，以下为纯文本预览：${renderError.message || ""}</div><pre>${escapeHtml(fallbackText)}</pre>`;
         writePage(target, page(name, body));
       }
       return "docx";
+    }
+    if (data.kind === "xlsx" || suffix === "xls" || suffix === "xlsx") {
+      const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: "blob" });
+      try {
+        const arrayBuffer = await response.data.arrayBuffer();
+        const result = renderXlsxFromArrayBuffer(arrayBuffer, name);
+        writePage(target, page(name, result.html));
+      } catch (renderError) {
+        const fallbackText = data.text || "（文件没有可显示的内容）";
+        const body = `<div class="render-error">渲染 Excel 表格失败，以下为纯文本预览：${renderError.message || ""}</div><pre>${escapeHtml(fallbackText)}</pre>`;
+        writePage(target, page(name, body));
+      }
+      return "xlsx";
     }
     writePage(target, page(name, `<pre>${escapeHtml(data.text || "（文件没有可显示的文字内容）")}</pre>`));
     return data.kind;
