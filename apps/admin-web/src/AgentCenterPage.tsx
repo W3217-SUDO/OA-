@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { Button, Empty, Form, Image, Input, List, message, Modal, Select, Space, Spin, Switch, Tag } from "antd";
 import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, UploadOutlined } from "@ant-design/icons";
-import { api } from "./api";
+import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import "./agent-center.css";
@@ -70,6 +70,9 @@ export default function AgentCenterPage() {
   const skillFileInputRef = useRef<HTMLInputElement>(null);
   const screenshotPreviewUrlsRef = useRef(new Map<number, string>());
   const activeAgentRequestRef = useRef<AbortController | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
+  selectedIdRef.current = selected?.id ?? null;
+  const loadGenerationRef = useRef(0);
 
   const stateWithScreenshotPreviews = (nextState: AgentState) => ({
     ...nextState,
@@ -106,41 +109,54 @@ export default function AgentCenterPage() {
     }
   };
   const loadAgent = async (record: CaseOption) => {
+    const generation = ++loadGenerationRef.current;
+    const isCurrent = () => generation === loadGenerationRef.current && selectedIdRef.current === record.id;
     setAgentLoading(true);
     setWorkflowGuide(null);
     void api.get(`/case-spaces/${record.id}/workflow-guide`)
-      .then((response) => setWorkflowGuide(response.data || null))
-      .catch(() => setWorkflowGuide(null));
+      .then((response) => { if (isCurrent()) setWorkflowGuide(response.data || null); })
+      .catch(() => { if (isCurrent()) setWorkflowGuide(null); });
     try {
       const [statusRes, stateRes] = await Promise.all([
         api.get(`/case-spaces/${record.id}/agent/status`),
         api.get(`/case-spaces/${record.id}/agent/state`),
       ]);
+      if (!isCurrent()) return;
       setStatus(statusRes.data);
       setState(stateRes.data);
       const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
       const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
       setSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
     } catch (error: any) {
+      if (!isCurrent()) return;
       setStatus(null);
       setState(null);
       message.error(error?.response?.data?.detail || "智能体会话加载失败");
     } finally {
-      setAgentLoading(false);
+      if (isCurrent()) setAgentLoading(false);
     }
   };
   useEffect(() => { void loadCases(""); }, []);
   useEffect(() => {
+    activeAgentRequestRef.current?.abort();
+    activeAgentRequestRef.current = null;
+    setSending(false);
+    setState(null);
+    setStatus(null);
     clearScreenshotPreviews();
     setScreenshots([]);
     if (selected) void loadAgent(selected);
     else { setStatus(null); setState(null); setWorkflowGuide(null); }
   }, [selected?.id]);
-  useEffect(() => () => clearScreenshotPreviews(), []);
+  useEffect(() => () => {
+    activeAgentRequestRef.current?.abort();
+    loadGenerationRef.current++;
+    clearScreenshotPreviews();
+  }, []);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: "end" }); }, [state?.messages.length]);
 
   const send = async (preset?: string) => {
-    if (!selected) return;
+    if (!selected || !status?.ready || agentLoading) return;
     const content = String(preset ?? input).trim() || (skillId === "screenshot-evidence" && screenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的问题");
     if (sending) activeAgentRequestRef.current?.abort();
@@ -154,22 +170,72 @@ export default function AgentCenterPage() {
     setScreenshots([]);
     const controller = new AbortController();
     activeAgentRequestRef.current = controller;
+    const caseId = selected.id;
+    const isCurrent = () => activeAgentRequestRef.current === controller && selectedIdRef.current === caseId;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 195_000);
     setSending(true);
     try {
-      const { data } = await api.post(`/case-spaces/${selected.id}/agent/messages`, {
-        message: encodeAgentSkillMessage(skillId, content),
-        skill_id: skillId,
-        attachment_ids: outgoingScreenshots.map((item) => item.id),
-      }, { signal: controller.signal });
-      setState(stateWithScreenshotPreviews(data));
+      const response = await fetch(`/api/v1/case-spaces/${caseId}/agent/messages`, {
+        method: "POST", signal: controller.signal,
+        headers: { "Content-Type": "application/json", ...(localStorage.getItem("access_token") ? { Authorization: `Bearer ${localStorage.getItem("access_token")}` } : {}) },
+        body: JSON.stringify({ message: encodeAgentSkillMessage(skillId, content), skill_id: skillId,
+          attachment_ids: outgoingScreenshots.map((item) => item.id), stream: true }),
+      });
+      if (!response.ok || !response.body) {
+        if (response.status === 401 && localStorage.getItem("access_token")) {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("user");
+          window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+        }
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || "智能体响应失败，请重新发送");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const streamId = `${optimisticId}-reply`;
+      let buffer = "", answer = "", receivedState = false;
+      const consume = (line: string) => {
+        if (!line.trim() || !isCurrent()) return;
+        const event = JSON.parse(line);
+        if (event.type === "error") throw new Error(event.detail || "智能体生成失败，请重新发送");
+        if (event.type === "delta") {
+          answer += String(event.content || "");
+          setState(current => current ? { ...current, messages: [...current.messages.filter(item => item.id !== streamId), { id: streamId, role: "assistant", content: answer }] } : current);
+        } else if (event.type === "state") {
+          const messages = event.state?.messages;
+          if (!Array.isArray(messages) || messages[messages.length - 1]?.role !== "assistant" || !String(messages[messages.length - 1]?.content || "").trim()) {
+            throw new Error("本轮没有返回答复，请重新发送");
+          }
+          receivedState = true;
+          setState(stateWithScreenshotPreviews(event.state));
+        }
+      };
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          lines.forEach(consume);
+          if (done) { consume(buffer); break; }
+        }
+        if (isCurrent() && !receivedState) throw new Error("连接已中断，本轮答复未完成，请重新发送");
+      } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
     } catch (error: any) {
-      if (!controller.signal.aborted) {
-        setState((current) => current ? { ...current, messages: current.messages.filter((item) => item.id !== optimisticId) } : current);
+      if (isCurrent() && (!controller.signal.aborted || timedOut)) {
+        const raw = String(error?.message || "智能体响应失败");
+        const detail = timedOut ? "本轮等待超时，请重新发送。已发送的问题仍保留。" : /model_|upstream/i.test(raw) ? "模型本轮生成失败，请重新发送。已发送的问题仍保留。" : raw;
+        setState((current) => current ? { ...current, messages: [...current.messages, { id: `${optimisticId}-error`, role: "assistant", content: detail }] } : current);
         setInput(content);
         setScreenshots(outgoingScreenshots);
-        message.error(error?.response?.data?.detail || "智能体响应失败");
+        message.error(detail);
       }
     } finally {
+      window.clearTimeout(timeout);
       if (activeAgentRequestRef.current === controller) {
         activeAgentRequestRef.current = null;
         setSending(false);

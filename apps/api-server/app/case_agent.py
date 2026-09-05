@@ -537,6 +537,15 @@ class CaseAgentRuntime:
         return migrated_snapshot.values or {}
 
     async def invoke(
+        self, **kwargs: Any,
+    ) -> dict[str, Any]:
+        # Bound queueing, checkpoint access and model generation together.
+        try:
+            return await asyncio.wait_for(self._invoke_impl(**kwargs), timeout=180)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError("model_request_timeout") from exc
+
+    async def _invoke_impl(
         self,
         *,
         case_id: int,
@@ -607,7 +616,11 @@ class CaseAgentRuntime:
         task = asyncio.create_task(run())
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield {"type": "heartbeat"}
+                    continue
                 if event["type"] == "done":
                     break
                 yield event
