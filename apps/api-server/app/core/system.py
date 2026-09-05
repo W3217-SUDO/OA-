@@ -856,31 +856,9 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
         return {"view": view, "charts": charts, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     finances = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *scope))).all() if can_view_amount else []
-    grouped: dict[str, dict[str, float]] = {}
-    for case in cases:
-        data = case.data or {}
-        group = case.customer if view == "brand" else str((data.get("document_lawyer") or data.get("assistant") or "未分配") if group_mode == "按文书分组统计" else (data.get("hearing_lawyer") or "未分配"))
-        grouped.setdefault(group, {"expense": 0, "received": 0, "loss": 0, "cycle_total": 0, "cycle_count": 0})
-    for fee in finances:
-        data = fee.data or {}; case = case_by_no.get(str(data.get("case_no") or ""))
-        if not case: continue
-        case_data = case.data or {}
-        group = case.customer if view == "brand" else str((case_data.get("document_lawyer") or case_data.get("assistant") or "未分配") if group_mode == "按文书分组统计" else (case_data.get("hearing_lawyer") or "未分配")); bucket = grouped[group]
-        amount = float(data.get("amount") or 0); received = float(data.get("paid_amount") or data.get("received_amount") or 0); loss = float(data.get("loss_amount") or 0)
-        bucket["expense"] += amount; bucket["received"] += received; bucket["loss"] += loss
-        recovery_days = data.get("recovery_days")
-        if recovery_days not in {None, ""}: bucket["cycle_total"] += float(recovery_days); bucket["cycle_count"] += 1
-    def series(metric):
-        items = []
-        for name, value in sorted(grouped.items(), key=lambda pair: pair[0]):
-            if metric == "cycle": result = value["cycle_total"] / value["cycle_count"] if value["cycle_count"] else 0
-            elif metric == "loss": result = value["loss"]
-            elif metric == "return": result = value["received"] / value["expense"] * 100 if value["expense"] else 0
-            else: result = value["loss"] / value["expense"] * 100 if value["expense"] else 0
-            items.append({"name": name, "value": round(result, 2)})
-        return items
-    charts = [{"title": "资金回款周期统计", "unit": "天/案", "items": series("cycle")}, {"title": "资金亏损金额统计", "unit": "元", "items": series("loss")}, {"title": "资金回报率统计", "unit": "百分比", "items": series("return")}, {"title": "资金亏损率统计", "unit": "百分比", "items": series("loss_rate")}]
-    return {"view": view, "charts": charts, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
+    from app.core.roi import operating_charts
+    charts, warnings = await operating_charts(cases, finances, view, group_mode, db) if can_view_amount else ([], [])
+    return {"view": view, "charts": charts, "warnings": warnings, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
 
 
 def _export_ids(value: str) -> list[int]:
@@ -1421,6 +1399,7 @@ def _validate_hr_subrecord(kind: str, raw: dict) -> dict:
     else:
         start_date, end_date = str(data.get("start_date") or ""), str(data.get("end_date") or "")
         if not start_date: raise HTTPException(status_code=422, detail="请填写提成开始日期")
+        if not end_date: raise HTTPException(status_code=422, detail="请填写提成结束日期")
         try:
             start = date.fromisoformat(start_date); end = date.fromisoformat(end_date) if end_date else None
         except ValueError as exc: raise HTTPException(status_code=422, detail="提成日期格式无效") from exc

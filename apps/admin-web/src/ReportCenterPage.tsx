@@ -19,8 +19,8 @@ import { api } from "./api";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import "./report-center.css";
 
-type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number }[] };
-type Analytics = { charts: ChartResult[]; filter_options: { customers: string[]; lawyers: string[] }; source: "realtime" };
+type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number | null }[] };
+type Analytics = { charts: ChartResult[]; warnings?: string[]; filter_options: { customers: string[]; lawyers: string[] }; source: "realtime" };
 type ReportFilterValues = {
   customer?: string[];
   courtLawyer?: string[];
@@ -222,7 +222,7 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
   );
 }
 
-function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; value: number }[] }) {
+function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; value: number | null }[] }) {
   const chartItems = spec.limit ? items.slice(0, spec.limit) : items;
   return (
     <section className="report-chart-panel">
@@ -242,7 +242,7 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
               tickLine={false}
               tick={{ fill: "#777", fontSize: 11 }}
             />
-            <Tooltip formatter={(item) => [`${Number(item).toLocaleString()} ${spec.unit}`, spec.title]} />
+            <Tooltip formatter={(item) => [item == null ? '不可计算' : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]} />
             <Bar dataKey="value" fill="#36b978" maxBarSize={72} />
           </BarChart>
         </ResponsiveContainer> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />}
@@ -626,6 +626,7 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate }:
         </div>
       )}
       <Spin spinning={loading}>
+        {Boolean(analytics.warnings?.length) && <Alert type="warning" showIcon message="部分统计缺少计算条件" description={analytics.warnings?.join('；')} />}
         <div className={`report-chart-grid ${page.charts.length === 2 ? "report-chart-grid-two" : ""}`}>
           {page.charts.map((chart, index) => (
             <MetricChart key={`${chart.title}-${index}`} spec={chart} items={chartItems(chart.title)} />

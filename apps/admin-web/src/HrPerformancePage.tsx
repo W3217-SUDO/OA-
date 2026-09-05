@@ -49,7 +49,7 @@ export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string
     try{
       const record:Performance|null=row?(await api.get(`/hr/performance/${row.id}`)).data:null
       form.resetFields();setEditing(record)
-      form.setFieldsValue({...defaults,...record?.data,employee_id:record?.employee_id,start_date:record?.data.start_date?dayjs(record.data.start_date):dayjs(),end_date:record?.data.end_date?dayjs(record.data.end_date):null})
+      form.setFieldsValue({...defaults,...record?.data,employee_id:record?.employee_id,start_date:record?.data.start_date?dayjs(record.data.start_date):dayjs(),end_date:record?record.data.end_date?dayjs(record.data.end_date):null:dayjs().add(1,'year')})
       if(record)setEmployees([{value:record.employee_id,label:`${record.employee_name} · ${record.employee_no}`}]);else void searchEmployees()
       setOpen(true)
     }catch(error){message.error(errorText(error,'绩效设置加载失败'))}
@@ -95,7 +95,7 @@ export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string
         <Form.Item name="scheme_name" label="方案名称" rules={[{max:128,message:'方案名称最多 128 个字符'}]}><Input maxLength={128} placeholder="例如：年度提成方案"/></Form.Item>
         <div className="commission-form-grid">
           <Form.Item name="start_date" label="开始日期" rules={[{required:true,message:'请选择开始日期'}]}><DatePicker style={{width:'100%'}}/></Form.Item>
-          <Form.Item name="end_date" label="结束日期（留空为长期）" dependencies={['start_date']} rules={[({getFieldValue})=>({validator:(_,value)=>!value||!getFieldValue('start_date')||!value.isBefore(getFieldValue('start_date'),'day')?Promise.resolve():Promise.reject(new Error('结束日期不能早于开始日期'))})]}><DatePicker style={{width:'100%'}}/></Form.Item>
+          <Form.Item name="end_date" label="结束日期" dependencies={['start_date']} rules={[{required:true,message:'请选择结束日期'},({getFieldValue})=>({validator:(_,value)=>!value||!getFieldValue('start_date')||!value.isBefore(getFieldValue('start_date'),'day')?Promise.resolve():Promise.reject(new Error('结束日期不能早于开始日期'))})]}><DatePicker style={{width:'100%'}}/></Form.Item>
           {amounts.map(([key,label])=><Form.Item key={key} name={key} label={`${label}${key.endsWith('_rate')?'（比例值，同员工提成设定）':''}`} rules={[{required:true,message:`请填写${label}`}]}><InputNumber min={0} precision={key.endsWith('_rate')?4:2} step={key.endsWith('_rate')?0.01:1} style={{width:'100%'}}/></Form.Item>)}
         </div>
         <Form.Item name="remark" label="备注" rules={[{max:2000,message:'备注最多 2000 个字符'}]}><Input.TextArea rows={3} maxLength={2000} showCount/></Form.Item>
