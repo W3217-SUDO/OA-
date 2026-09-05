@@ -3692,7 +3692,10 @@ async def send_case_agent_message(
             async for event in case_agent_runtime.invoke_stream(**invoke_arguments):
                 yield json.dumps(event, ensure_ascii=False, default=str) + "\n"
 
-        return StreamingResponse(stream_events(), media_type="application/x-ndjson")
+        return StreamingResponse(
+            stream_events(), media_type="application/x-ndjson",
+            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+        )
     try:
         return await case_agent_runtime.invoke(
             **invoke_arguments,

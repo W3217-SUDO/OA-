@@ -428,7 +428,9 @@ class CaseAgentRuntime:
                                 if not line.startswith("data:"):
                                     continue
                                 payload_text = line[5:].strip()
-                                if not payload_text or payload_text == "[DONE]":
+                                if payload_text == "[DONE]":
+                                    break
+                                if not payload_text:
                                     continue
                                 payload = json.loads(payload_text)
                                 choices = payload.get("choices") or []
@@ -438,6 +440,8 @@ class CaseAgentRuntime:
                                 if delta:
                                     parts.append(delta)
                                     chunk_callback(delta)
+                                if choices[0].get("finish_reason") is not None:
+                                    break
                             self._model_stream_supported = True
                     content = "".join(parts).strip()
                     if fallback_to_non_stream:
