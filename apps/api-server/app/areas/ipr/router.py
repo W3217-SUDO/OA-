@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from typing import Literal
 from app.models_shared import IprCaseBatchCreateRow
 from app.core.constants import (
     EXPENSE_SCOPE_FEE_TYPES, FINANCE_FEE_TYPES, IPR_CASE_CATEGORIES, IPR_CASE_DOCUMENT_TYPES, IPR_CASE_DRAFT_STATUSES,
@@ -3400,3 +3401,56 @@ async def batch_ipr_official_history_action(action: str, body: IprOfficialFileBa
         db.add(WorkflowEvent(record_id=official.id, action=event_action, from_status=official.status, to_status=official.status, operator=identity["username"], comment=body.comment.strip()))
     await db.commit()
     return {"processed": len(records), "ids": ids, "field": key, "value": "已处理"}
+
+
+class IprOfficialProcessingBatchInput(IprOfficialFileBatchActionInput):
+    status: Literal["未处理", "处理中", "已处理"]
+
+
+@router.post(f"{settings.api_prefix}/ipr/official-files/processing/{{dimension}}")
+async def update_ipr_official_processing(
+    dimension: Literal["business", "service"],
+    body: IprOfficialProcessingBatchInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set one independent legacy processing dimension without changing lifecycle."""
+    from app.core.permissions import (
+        _ensure_record_visible, _require_record_owner_or_manager, _require_record_module_menu,
+    )
+    await _require_record_module_menu("ipr_official_file", identity, db, action="编辑")
+    ids = list(dict.fromkeys(body.official_ids))
+    records = list((await db.scalars(
+        select(BusinessRecord)
+        .where(BusinessRecord.id.in_(ids), BusinessRecord.module == "ipr_official_file")
+        .order_by(BusinessRecord.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).all())
+    if len(records) != len(ids):
+        raise HTTPException(status_code=404, detail="选中的官文不存在，请刷新后重试")
+    for official in records:
+        await _ensure_record_visible(official.id, identity, db)
+        await _require_record_owner_or_manager(official, identity, db)
+    key = f"{dimension}_process_status"
+    label = "业务" if dimension == "business" else "流程"
+    now = datetime.now().isoformat(timespec="seconds")
+    changed = 0
+    for official in records:
+        data = dict(official.data or {})
+        previous = data.get(key) or "未处理"
+        if previous == body.status:
+            continue
+        official.data = {
+            **data, key: body.status,
+            f"{key}_at": now, f"{key}_by": identity["username"],
+        }
+        db.add(WorkflowEvent(
+            record_id=official.id, action=f"官文{label}处理状态变更",
+            from_status=official.status, to_status=official.status,
+            operator=identity["username"],
+            comment=f"{label}处理：{previous} → {body.status}。{body.comment.strip()}",
+        ))
+        changed += 1
+    await db.commit()
+    return {"processed": len(records), "changed": changed, "ids": ids, "field": key, "value": body.status}
