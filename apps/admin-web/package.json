@@ -15,10 +15,12 @@
     "axios": "^1.11.0",
     "dayjs": "^1.11.13",
     "dingtalk-jsapi": "^3.2.9",
+    "mammoth": "^1.12.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.8.0",
-    "recharts": "^3.1.2"
+    "recharts": "^3.1.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^19.1.10",
