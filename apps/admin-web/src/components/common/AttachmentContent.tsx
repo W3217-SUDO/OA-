@@ -1,6 +1,6 @@
-import { useEffect, useState, type InputHTMLAttributes, ReactNode } from "react";
+import { useEffect, useRef, useState, type InputHTMLAttributes, ReactNode } from "react";
 import { Tabs } from "antd";
-import mammoth from "mammoth";
+import { renderAsync as renderDocxAsync } from "docx-preview";
 import * as XLSX from "xlsx";
 
 /** File selection is shared; permission checks and upload requests stay with each area. */
@@ -11,20 +11,15 @@ export function AttachmentFileInput({ onFileChange, ...props }: Omit<InputHTMLAt
 export type PreviewAttachment = { name: string; kind: string; url?: string; text?: string; blob?: Blob };
 
 const docxPreviewStyle: React.CSSProperties = {
-  maxWidth: "900px",
-  margin: "0 auto",
-  padding: "32px 40px",
-  background: "#fff",
-  border: "1px solid #dfe2e7",
-  lineHeight: 1.8,
-  fontSize: 14,
-  color: "#1f2329",
   maxHeight: "70vh",
   overflow: "auto",
+  padding: "16px",
+  background: "#eef0f3",
+  border: "1px solid #dfe2e7",
 };
 
 function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: Blob; url?: string; text?: string } }) {
-  const [html, setHtml] = useState<string>("");
+  const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +28,8 @@ function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
     async function render() {
       setLoading(true);
       setError("");
+      const container = containerRef.current;
+      container?.replaceChildren();
       try {
         let blob: Blob | undefined = attachment.blob;
         if (!blob && attachment.url) {
@@ -43,10 +40,19 @@ function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
           throw new Error("没有可渲染的文件数据");
         }
         const arrayBuffer = await blob.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        if (!cancelled) {
-          setHtml(result.value);
-        }
+        if (cancelled || !container) return;
+        await renderDocxAsync(arrayBuffer, container, container, {
+          breakPages: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+          useBase64URL: true,
+        });
+        if (cancelled) container.replaceChildren();
       } catch (e: any) {
         if (!cancelled) {
           setError(e.message || "渲染失败");
@@ -56,25 +62,23 @@ function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
       }
     }
     render();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      containerRef.current?.replaceChildren();
+    };
   }, [attachment.url, attachment.blob]);
 
-  if (loading) return <div style={docxPreviewStyle}>正在渲染 Word 文档...</div>;
-  if (error) return (
-    <div>
+  return (
+    <div style={docxPreviewStyle}>
+      {loading && <div style={{ padding: 24, textAlign: "center", color: "#86909c" }}>正在还原 Word 模板版式...</div>}
+      {error && <>
       <div style={{ ...docxPreviewStyle, background: "#fff7e8", borderColor: "#ffd591", color: "#d46b08", marginBottom: 12 }}>
-        渲染 Word 排版失败：{error}，以下为纯文本预览：
+        Word 模板版式渲染失败：{error}。以下为纯文本内容，请通过下载查看原文件：
       </div>
       <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "#fff", border: "1px solid #dfe2e7" }}>{attachment.text}</pre>
+      </>}
+      <div ref={containerRef} style={{ display: error ? "none" : undefined }} />
     </div>
-  );
-
-  return (
-    <div
-      style={docxPreviewStyle}
-      className="docx-preview"
-      dangerouslySetInnerHTML={{ __html: html || '<p style="color:#86909c">（文件没有可显示的内容）</p>' }}
-    />
   );
 }
 

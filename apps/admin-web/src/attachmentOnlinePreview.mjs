@@ -1,4 +1,4 @@
-import mammoth from "mammoth";
+import { renderAsync as renderDocxAsync } from "docx-preview";
 import * as XLSX from "xlsx";
 
 const escapeHtml = (value) => String(value ?? "")
@@ -22,26 +22,7 @@ const page = (title, body, extraStyle = "") => `<!doctype html>
     iframe{display:block;width:100%;height:calc(100vh - 89px);border:0;background:#fff}
     img{display:block;max-width:100%;max-height:calc(100vh - 89px);margin:0 auto;background:#fff}
     .status{max-width:1200px;margin:0 auto;padding:24px;background:#fff;border:1px solid #dfe2e7}
-    .docx-preview{max-width:900px;margin:0 auto;padding:48px 64px;background:#fff;border:1px solid #dfe2e7;box-shadow:0 2px 8px rgba(0,0,0,.04);line-height:1.8;font-size:14px;color:#1f2329;min-height:600px}
-    .docx-preview h1{font-size:24px;font-weight:700;margin:24px 0 16px;border-bottom:2px solid #eee;padding-bottom:8px}
-    .docx-preview h2{font-size:20px;font-weight:700;margin:20px 0 12px}
-    .docx-preview h3{font-size:17px;font-weight:700;margin:16px 0 10px}
-    .docx-preview h4{font-size:15px;font-weight:700;margin:14px 0 8px}
-    .docx-preview p{margin:10px 0;text-indent:0}
-    .docx-preview table{border-collapse:collapse;margin:12px 0;width:100%}
-    .docx-preview th,.docx-preview td{border:1px solid #d0d5dd;padding:8px 12px;vertical-align:top;text-align:left}
-    .docx-preview th{background:#f5f7fa;font-weight:600}
-    .docx-preview ul,.docx-preview ol{margin:10px 0;padding-left:28px}
-    .docx-preview li{margin:4px 0}
-    .docx-preview strong{font-weight:700}
-    .docx-preview em{font-style:italic}
-    .docx-preview u{text-decoration:underline}
-    .docx-preview strike{text-decoration:line-through}
-    .docx-preview blockquote{border-left:3px solid #d0d5dd;margin:12px 0;padding:8px 16px;color:#4e5969;background:#fafbfc}
-    .docx-preview a{color:#165dff;text-decoration:none}
-    .docx-preview a:hover{text-decoration:underline}
-    .docx-preview img{max-width:100%;height:auto}
-    .docx-preview hr{border:none;border-top:1px solid #e5e6eb;margin:16px 0}
+    .docx-layout-preview{min-height:600px;overflow:auto}
     .xlsx-preview{max-width:100%;margin:0 auto;background:#fff;border:1px solid #dfe2e7;overflow:auto;max-height:calc(100vh - 120px)}
     .xlsx-tabs{display:flex;gap:4px;padding:8px 12px 0;background:#f5f6f8;border-bottom:1px solid #dfe2e7;flex-wrap:wrap}
     .xlsx-tab{padding:8px 16px;border:1px solid #dfe2e7;border-bottom:none;border-radius:4px 4px 0 0;cursor:pointer;background:#fff;font-size:13px;color:#4e5969;user-select:none}
@@ -67,12 +48,6 @@ const writePage = (target, html) => {
   target.document.write(html);
   target.document.close();
 };
-
-async function renderDocxFromBlob(blob) {
-  const arrayBuffer = await blob.arrayBuffer();
-  const result = await mammoth.convertToHtml({ arrayBuffer });
-  return result.value;
-}
 
 function renderXlsxFromArrayBuffer(arrayBuffer, fileName) {
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
@@ -151,12 +126,23 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
     if (data.kind === "docx") {
       const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: "blob" });
       try {
-        const html = await renderDocxFromBlob(response.data);
-        const body = `<div class="docx-preview">${html || '<p style="color:#86909c">（文件没有可显示的内容）</p>'}</div>`;
-        writePage(target, page(name, body));
+        writePage(target, page(name, '<div id="docx-layout-preview" class="docx-layout-preview"></div>'));
+        const container = target.document.getElementById("docx-layout-preview");
+        if (!container) throw new Error("预览页面初始化失败");
+        await renderDocxAsync(await response.data.arrayBuffer(), container, container, {
+          breakPages: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+          useBase64URL: true,
+        });
       } catch (renderError) {
         const fallbackText = data.text || "（文件没有可显示的文字内容）";
-        const body = `<div class="render-error">渲染 Word 排版失败，以下为纯文本预览：${renderError.message || ""}</div><pre>${escapeHtml(fallbackText)}</pre>`;
+        const body = `<div class="render-error">Word 模板版式渲染失败，请通过下载查看原文件。以下为纯文本内容：${escapeHtml(renderError.message || "")}</div><pre>${escapeHtml(fallbackText)}</pre>`;
         writePage(target, page(name, body));
       }
       return "docx";
