@@ -17,6 +17,11 @@ from app.models_shared import (
     RecordInput, RecordUpdate, TaskActionInput,
 )
 from fastapi import APIRouter
+import json
+
+_AUTHORIZATION_CITIES = {item["province"]: item["cities"] for item in json.loads(
+    (Path(__file__).parents[2] / "core" / "investigation_regions.json").read_text(encoding="utf-8")
+)}
 
 router = APIRouter()
 
@@ -265,6 +270,55 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
     if "data" in changes and changes["data"] is not None:
         incoming_data = dict(changes["data"] or {})
         editable_data = {key: incoming_data[key] for key in INVESTIGATION_EDIT_DATA_FIELDS if key in incoming_data}
+        if record.module == "investigation" and set(incoming_data) & {"authorization_scope", "authorization_regions", "authorized_from", "authorized_to", "contract_id", "customer_review"} and "authorization_scope_type" not in incoming_data:
+            raise HTTPException(status_code=422, detail="请通过基本信息修改表单完整提交授权信息")
+        if record.module == "investigation" and "authorization_scope_type" in incoming_data:
+            scope_type = incoming_data.get("authorization_scope_type")
+            if scope_type not in {"N", "R"}:
+                raise HTTPException(status_code=422, detail="授权范围只能为全国或区域")
+            right_types = {"商标": 110010, "专利": 110020, "著作权": 110030, "不正当竞争": 110040}
+            right_type = incoming_data.get("right_type")
+            if right_type not in right_types:
+                raise HTTPException(status_code=422, detail="请选择有效的权利类型")
+            if not isinstance(incoming_data.get("customer_review"), bool):
+                raise HTTPException(status_code=422, detail="请选择线索是否客户审核")
+            try:
+                start = date.fromisoformat(str(incoming_data.get("authorized_from") or ""))
+                end = date.fromisoformat(str(incoming_data.get("authorized_to") or ""))
+                contract_id = int(incoming_data.get("contract_id") or 0)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail="合同及授权起止日期为必填项")
+            if end <= start:
+                raise HTTPException(status_code=422, detail="授权结束日期必须晚于开始日期")
+            contract = await _ensure_record_visible(contract_id, identity, db)
+            if contract.module != "contract" or contract.customer != record.customer:
+                raise HTTPException(status_code=422, detail="请选择当前权利人的合同")
+            if contract.status in {"已删除", "已取消", "已作废"}:
+                raise HTTPException(status_code=422, detail="该合同已失效，请重新选择")
+            regions = incoming_data.get("authorization_regions") or []
+            if not isinstance(regions, list) or len(regions) > 500 or any(
+                not isinstance(path, list) or not 1 <= len(path) <= 2
+                or any(not isinstance(part, str) or not part.strip() or len(part) > 60 for part in path)
+                for path in regions
+            ):
+                raise HTTPException(status_code=422, detail="授权区域格式无效，请重新选择省市")
+            if scope_type == "R" and not regions:
+                raise HTTPException(status_code=422, detail="请选择授权区域")
+            if any(path[0] not in _AUTHORIZATION_CITIES or (len(path) == 2 and path[1] not in _AUTHORIZATION_CITIES[path[0]]) for path in regions):
+                raise HTTPException(status_code=422, detail="授权省市不存在或不属于同一区域")
+            regions = regions if scope_type == "R" else []
+            provinces = list(dict.fromkeys(path[0].strip() for path in regions))
+            cities = list(dict.fromkeys(city for path in regions for city in (_AUTHORIZATION_CITIES[path[0]] if len(path) == 1 else [path[1]])))
+            scope = "全国" if scope_type == "N" else "、".join(" ".join(path) for path in regions)
+            editable_data.update({
+                "authorization_scope_type": scope_type, "authorization_regions": regions,
+                "authorization_scope": scope, "region": "全国" if scope_type == "N" else "区域",
+                "province": ",".join(provinces), "city": ",".join(cities), "district": "",
+                "authorized_from": str(start), "authorized_to": str(end),
+                "customer_review": incoming_data["customer_review"], "case_type_id": right_types[right_type],
+                "contract_id": contract.id, "contract_record_id": contract.id,
+                "contract_no": contract.serial_no, "contract_name": contract.title,
+            })
         record.data = {**(record.data or {}), **editable_data}
     if reflow_clue:
         record.status = "待审批"
@@ -1331,6 +1385,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "contract_no": contract.serial_no if contract else "",
         "contract_name": contract.title if contract else "",
         "authorization_scope": requested_scope or str(parent_or_source.get("authorization_scope") or ""),
+        "authorization_scope_type": parent_or_source.get("authorization_scope_type", ""),
+        "authorization_regions": parent_or_source.get("authorization_regions", []),
         "attachment_ids": attachment_ids,
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
         "investigation_module": source.module,

@@ -823,7 +823,7 @@ async def _sync_legacy_investigation(record: BusinessRecord, identity: dict, db:
     legacy.AuthorizationBeginTime = _legacy_case_datetime(data.get("authorized_from"))
     legacy.AuthorizationEndTime = _legacy_case_datetime(data.get("authorized_to"))
     scope = str(data.get("authorization_scope") or "").strip()
-    legacy.InvestigationScope = "1" if scope in {"全国", "全国范围"} else "0"
+    legacy.InvestigationScope = "N" if scope in {"N", "1", "全国", "全国范围"} else "R"
     legacy.Province = _legacy_region(data, "province") or _legacy_region(data, "region")
     legacy.City = _legacy_region(data, "city")
     legacy.BusinessOwner = record.owner[:20]

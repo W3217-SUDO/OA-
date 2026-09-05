@@ -1,5 +1,6 @@
-import { Modal, Form, Input, Select, Radio, DatePicker } from "antd";
-import type { Row, PersonOption } from "./types";
+import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space } from "antd";
+import type { Row, PersonOption, Contract } from "./types";
+import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
 
 interface EditRecordModalProps {
@@ -7,6 +8,7 @@ interface EditRecordModalProps {
   editTarget: Row | null;
   editForm: any;
   systemPersonOptions: PersonOption[];
+  contracts?: Contract[];
   onOk: () => void;
   onCancel: () => void;
 }
@@ -16,9 +18,28 @@ export default function EditRecordModal({
   editTarget,
   editForm,
   systemPersonOptions,
+  contracts = [],
   onOk,
   onCancel,
 }: EditRecordModalProps) {
+  const scope = Form.useWatch("authorization_scope_type", editForm);
+  if (editTarget?.module === "investigation") return (
+    <Modal open={open} title="基本信息修改" width={660} okText="确定" cancelText="取消" onOk={onOk} onCancel={onCancel}>
+      <Form form={editForm} layout="horizontal" labelCol={{ span: 7 }} wrapperCol={{ span: 15 }} style={{ paddingTop: 16 }}>
+        <Form.Item name="customer" label="权利人" rules={[{ required: true }]}><Input readOnly /></Form.Item>
+        <Form.Item name="contract_id" label="合同" rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" options={contracts.map(c => ({ value: c.id, label: `${c.serial_no}_${c.title}`, disabled: ["不可选", "已删除", "已取消", "已作废"].includes(c.status) }))} /></Form.Item>
+        <Form.Item name="right_type" label="权利类型" rules={[{ required: true }]}><Select options={["商标", "专利", "著作权", "不正当竞争"].map(value => ({ value, label: value }))} /></Form.Item>
+        <Form.Item name="customer_review" label="线索是否客户审核" rules={[{ required: true }]}><Select options={[{ value: false, label: "否" }, { value: true, label: "是" }]} /></Form.Item>
+        <Form.Item label="授权期限" required><Space.Compact style={{ width: "100%" }}>
+          <Form.Item name="authorized_from" noStyle rules={[{ required: true, message: "请选择授权开始日期" }]}><DatePicker placeholder="开始日期" style={{ width: "50%" }} /></Form.Item>
+          <Form.Item name="authorized_to" noStyle dependencies={["authorized_from"]} rules={[{ required: true, message: "请选择授权结束日期" }, ({ getFieldValue }) => ({ validator(_, value) { return !value || !getFieldValue("authorized_from") || value.isAfter(getFieldValue("authorized_from"), "day") ? Promise.resolve() : Promise.reject(new Error("授权结束日期必须晚于开始日期")); } })]}><DatePicker placeholder="结束日期" style={{ width: "50%" }} /></Form.Item>
+        </Space.Compact></Form.Item>
+        <Form.Item name="authorization_scope_type" label="授权范围" rules={[{ required: true }]}><Select options={[{ value: "N", label: "全国" }, { value: "R", label: "区域" }]} /></Form.Item>
+        {scope === "R" && <Form.Item name="authorization_regions" label="授权区域" rules={[{ required: true, message: "请选择授权区域" }]}><Cascader multiple changeOnSelect showSearch options={INVESTIGATION_REGION_GROUPS.map(({ province, cities }) => ({ value: province, label: province, children: cities.map(city => ({ value: city, label: city })) }))} placeholder="请选择授权省、市（可多选）" /></Form.Item>}
+        <Form.Item name="description" label="备注"><Input.TextArea rows={3} /></Form.Item>
+      </Form>
+    </Modal>
+  );
   return (
     <Modal
       open={open}

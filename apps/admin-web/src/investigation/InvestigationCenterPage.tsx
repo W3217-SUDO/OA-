@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Alert,
   AutoComplete,
@@ -135,6 +135,11 @@ const investigationTaskRegionOptions = (groups: InvestigationRegionGroup[]) =>
   }));
 
 const investigationTaskScopeGroups = (data: Record<string, any>) => {
+  if (data.authorization_scope_type === "R" && Array.isArray(data.authorization_regions)) {
+    return (INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[]).map(group => ({
+      ...group, cities: group.cities.filter(city => data.authorization_regions.some((path: string[]) => path[0] === group.province && (path.length === 1 || path[1] === city))),
+    })).filter(group => group.cities.length > 0);
+  }
   const scope = String(data.authorization_scope || "").trim();
   const scopeTokens = scope
     .split(/[\s,，、;；|/]+/)
@@ -255,6 +260,8 @@ export default function InvestigationCenterPage({
     ResolvedClueContract[]
   >([]);
   const [contractOptions, setContractOptions] = useState<Contract[]>([]);
+  const [editContracts, setEditContracts] = useState<Contract[]>([]);
+  const editRequestRef = useRef(0);
   const [batchStep, setBatchStep] = useState(0);
   const [validatedBatchCaseValues, setValidatedBatchCaseValues] = useState<Record<string, any> | null>(null);
   const [materialOpen, setMaterialOpen] = useState(false);
@@ -1639,9 +1646,41 @@ export default function InvestigationCenterPage({
       );
     }
   };
-  const openEdit = (row: Row) => {
+  const openEdit = async (row: Row) => {
+    const requestId = ++editRequestRef.current;
+    if (row.module === "investigation") {
+      const closeLoading = message.loading("正在加载基本信息…", 0);
+      try {
+        const contracts: Contract[] = [];
+        for (let page = 1; ; page++) {
+          const { data } = await api.get("/records", { params: { module: "contract", customer: row.customer, page, page_size: 100 } });
+          contracts.push(...(data.items || []));
+          if (contracts.length >= Number(data.total || 0) || !(data.items || []).length) break;
+        }
+        if (requestId !== editRequestRef.current) return;
+        const matchingContracts = contracts.filter(c => c.customer === row.customer);
+        const selectedContract = matchingContracts.find(c => c.id === Number(row.data.contract_id || row.data.contract_record_id) || c.serial_no === row.data.contract_no);
+        const currentId = Number(row.data.contract_id || row.data.contract_record_id) || undefined;
+        setEditContracts(!selectedContract && currentId ? [...matchingContracts, { id: currentId, serial_no: row.data.contract_no || "原关联合同", title: "当前不可选，请选择有效合同", customer: row.customer, status: "不可选" }] : matchingContracts);
+        editForm.setFieldValue("contract_id", selectedContract?.id || currentId);
+      } catch (error: any) { message.error(error?.response?.data?.detail || "合同加载失败，请重新打开修改"); return; }
+      finally { closeLoading(); }
+    }
     setEditTarget(row);
+    const scopeText = String(row.data.authorization_scope || row.data.region || "");
+    const tokens = [scopeText, row.data.province, row.data.city].filter(Boolean).join(",").split(/[、,，;；\s]+/).filter(Boolean);
+    const regions = Array.isArray(row.data.authorization_regions) ? row.data.authorization_regions : INVESTIGATION_REGION_GROUPS.flatMap(({ province, cities }) => {
+      const knownProvinces = INVESTIGATION_REGION_GROUPS.map(group => group.province).filter(name => tokens.includes(name));
+      if (knownProvinces.length && !knownProvinces.includes(province)) return [];
+      const selectedCities = cities.filter(city => tokens.includes(city));
+      return selectedCities.length ? selectedCities.map(city => [province, city]) : tokens.includes(province) ? [[province]] : [];
+    });
     editForm.setFieldsValue({
+      authorization_scope_type: row.data.authorization_scope_type || (["N", "1", "全国", "全国范围"].includes(scopeText) ? "N" : "R"),
+      authorization_regions: regions,
+      authorized_from: row.data.authorized_from ? dayjs(row.data.authorized_from) : undefined,
+      authorized_to: row.data.authorized_to ? dayjs(row.data.authorized_to) : undefined,
+      customer_review: [true, "true", "Y", "T", "是", 1].includes(row.data.customer_review),
       title: row.title,
       customer: row.customer,
       owner: row.owner,
@@ -1671,6 +1710,15 @@ export default function InvestigationCenterPage({
     if (!editTarget) return;
     const v = await editForm.validateFields();
     try {
+      if (editTarget.module === "investigation") {
+        await api.patch(`/investigations/records/${editTarget.id}`, {
+          description: v.description || "",
+          data: { contract_id: v.contract_id, right_type: v.right_type, customer_review: v.customer_review,
+            authorized_from: formatRequiredDate(v.authorized_from, "授权开始日期"), authorized_to: formatRequiredDate(v.authorized_to, "授权结束日期"),
+            authorization_scope_type: v.authorization_scope_type, authorization_regions: v.authorization_scope_type === "R" ? v.authorization_regions : [] },
+        });
+        message.success("基本信息已修改"); setEditTarget(null); await load(); return;
+      }
       const resubmit =
         editTarget.module === "clue" &&
         !["草稿", "已驳回"].includes(editTarget.status);
@@ -3844,6 +3892,7 @@ export default function InvestigationCenterPage({
         open={Boolean(editTarget)}
         editTarget={editTarget}
         editForm={editForm}
+        contracts={editContracts}
         systemPersonOptions={systemPersonOptions}
         onOk={saveEdit}
         onCancel={() => setEditTarget(null)}
