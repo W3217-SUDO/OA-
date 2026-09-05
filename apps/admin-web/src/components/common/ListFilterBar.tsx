@@ -5,4 +5,3 @@ import type { ReactNode } from "react";
 export function ListFilterBar<Values = Record<string, unknown>>({ actions, children, ...props }: Omit<FormProps<Values>, "children"> & { children?: ReactNode; actions?: ReactNode }) {
   return <Form<Values> {...props}>{children}{actions && <Form.Item>{actions}</Form.Item>}</Form>;
 }
-

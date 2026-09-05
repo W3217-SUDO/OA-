@@ -912,7 +912,7 @@ export default function IprCenterPage({
   };
 
   // ==================== 协助费 ====================
-  
+
   const refreshAssistedFees = () => {
     if (detail)
       void loadAssistedFees(
@@ -923,7 +923,7 @@ export default function IprCenterPage({
   };
 
   // ==================== 年费 ====================
-  
+
   const refreshAnnualFees = () => {
     if (detail)
       void loadAnnualFees(
@@ -1148,7 +1148,7 @@ export default function IprCenterPage({
     });
     setMaintenanceTarget(record);
   };
-  
+
   const openBatchMaintenance = () => {
     const selected = items.filter((item) =>
       selectedIprCaseIds.includes(item.id)
@@ -1220,7 +1220,7 @@ export default function IprCenterPage({
       loadReminderEventTypes(),
     ]);
   };
-  
+
   const openWarningRuleEditor = (rule?: IprWarningRule) => {
     setEditingWarningRule(rule || null);
     warningRuleForm.resetFields();
@@ -1236,7 +1236,7 @@ export default function IprCenterPage({
     });
     setWarningRuleEditorOpen(true);
   };
-  
+
   const deleteWarningRule = (rule: IprWarningRule) =>
     confirmOperation({
       title: `删除预警规则：${rule.name}`,

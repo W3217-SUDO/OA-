@@ -1076,7 +1076,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
   };
-  
+
   const feeQueryParams = (
     query: Record<string, any>,
     page = 1,
@@ -1125,7 +1125,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
   };
-  
+
   const internalDetailParams = (
     query: Record<string, any>,
     page = 1,
@@ -1160,7 +1160,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
   };
-  
+
   const invoiceMineParams = (
     query: Record<string, any>,
     page = 1,
@@ -1182,7 +1182,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
   };
-  
+
   const invoicePendingParams = (
     query: Record<string, any>,
     page = 1,
@@ -1227,7 +1227,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
   };
-  
+
   const invoiceUnissuedParams = (
     query: Record<string, any>,
     page = 1,
@@ -1423,7 +1423,7 @@ export default function FinanceCenterPage({
     setPaymentRollbackComment("");
     setPaymentRollbackTarget(row);
   };
-  
+
   const voidRejectedInternalFee = (row: Fee) => {
     Modal.confirm({
       title: "请款单作废",
@@ -1485,7 +1485,7 @@ export default function FinanceCenterPage({
       case_fee_ids: nextIds,
     });
   };
-  
+
   const openInvoiceEdit = (row: FinanceFlow) => {
     setInvoiceEditTarget(row);
     setInvoiceSourceFeeId(null);
@@ -2316,7 +2316,7 @@ export default function FinanceCenterPage({
     setGeneralSettlementReviewComment("");
     setGeneralSettlementReviewTargets(targets);
   };
-  
+
   const openGeneralSettlementPayment = (
     targets: Fee[],
     action: "paid" | "rollback",
@@ -2333,7 +2333,7 @@ export default function FinanceCenterPage({
     setGeneralSettlementPaymentComment("");
     setGeneralSettlementPaymentTargets(targets);
   };
-  
+
   const openGeneralSettlementReapply = (targets: Fee[]) => {
     if (!targets.length) {
       Modal.info({
@@ -2346,7 +2346,7 @@ export default function FinanceCenterPage({
     setGeneralSettlementReapplyComment("");
     setGeneralSettlementReapplyTargets(targets);
   };
-  
+
   const generalSettlementOperation = (_: unknown, row: Fee) => (
     <Space size={0} className="finance-settlement-row-actions">
       <Button
@@ -3122,7 +3122,7 @@ export default function FinanceCenterPage({
     });
     setInvoiceNumberTarget(row);
   };
-  
+
   const openInvoiceDateChange = (row: FinanceFlow) => {
     invoiceDateForm.setFieldsValue({
       application_no: row.serial_no,
@@ -3442,7 +3442,7 @@ export default function FinanceCenterPage({
         : cellValue(row, header);
     openCustomerDetail(customerName, customerNo);
   };
-  
+
   const refundCaseFeeOperation = (_: unknown, row: Fee) => (
     <Button type="link" onClick={() => void openRowCaseLogs(row)}>
       日志
@@ -3764,7 +3764,7 @@ export default function FinanceCenterPage({
     value == null || value === "" || Number.isNaN(Number(value))
       ? "—"
       : Number(value).toFixed(2);
-  
+
   const openBatchFeeReview = () => {
     const targets = configuredRows.filter(
       (row) => selectedOriginalRows.includes(row.id) && row.status === "待审批",
@@ -3795,7 +3795,7 @@ export default function FinanceCenterPage({
       .then(({ data }) => setPaymentPackageCandidates(data.items || []))
       .catch((error: any) => message.error(error?.response?.data?.detail || "付款包候选费用加载失败"));
   };
-  
+
   const deletePaymentPackage = (row: Fee) => {
     Modal.confirm({
       title: `删除付款包：${row.serial_no}`,
@@ -4043,7 +4043,7 @@ export default function FinanceCenterPage({
     setOriginalQueryDraft(next);
     setOriginalQuery(next);
   };
-  
+
   const selectedRefundCaseFeeIds = () =>
     selectedOriginalRows.map(Number).filter((value) => Number.isInteger(value));
   const requireRefundCaseFeeSelection = () => {
@@ -4065,7 +4065,7 @@ export default function FinanceCenterPage({
     setArchiveSettlementReviewComment("");
     setArchiveSettlementReviewTargets(targets);
   };
-  
+
   const openArchiveSettlementRollback = (targets: any[]) => {
     if (!targets.length) {
       Modal.info({
@@ -4078,7 +4078,7 @@ export default function FinanceCenterPage({
     setArchiveSettlementRollbackComment("");
     setArchiveSettlementRollbackTargets(targets);
   };
-  
+
   const openArchiveSettlementReapply = (targets: any[]) => {
     if (!targets.length) {
       Modal.info({
@@ -4091,7 +4091,7 @@ export default function FinanceCenterPage({
     setArchiveSettlementReapplyComment("");
     setArchiveSettlementReapplyTargets(targets);
   };
-  
+
   const applyGeneralSettlementRows = (ids?: (string | number)[]) => {
     const selectedIds = ids ?? selectedOriginalRows;
     if (!selectedIds.length) {
@@ -4174,7 +4174,7 @@ export default function FinanceCenterPage({
     settlementBatchForm.resetFields();
     setSettlementBatchOpen(true);
   };
-  
+
   const openRefundBatchFee = (feeType: string) => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
@@ -4235,7 +4235,7 @@ export default function FinanceCenterPage({
       ),
     );
   };
-  
+
   const runSettlementMoreAction = (key: string) => {
     const feeTypeByKey: Record<string, string> = {
       "official-fee": "官方费用",

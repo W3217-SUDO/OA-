@@ -371,7 +371,7 @@ export default function ContractCenterPage({
     get buildContractExportParams() { return buildContractExportParams; },
     get buildArchiveExportParams() { return buildArchiveExportParams; },
   });
-  
+
   const { reloadViewingAttachments, loadLegacyHistoricalAttachments, downloadAttachment, previewAttachment, uploadDraftContractAttachment, uploadViewingAttachment, deleteViewingAttachment, batchDeleteViewingAttachments } = createContractDocumentsActions({
     get setViewingAttachmentsLoading() { return setViewingAttachmentsLoading; },
     get setViewingAttachmentsError() { return setViewingAttachmentsError; },
@@ -390,7 +390,7 @@ export default function ContractCenterPage({
     get contractMutationGates() { return contractMutationGates; },
     get setAttachmentBatchSaving() { return setAttachmentBatchSaving; },
   });
-  
+
   useEffect(() => {
     if (viewing && detailActiveTab === "legacy-attachments") void loadLegacyHistoricalAttachments(viewing);
   }, [detailActiveTab, viewing?.id]);
@@ -628,7 +628,7 @@ export default function ContractCenterPage({
     setOpen(true);
   };
   const canOpenSubmitWizard = (contract?: Contract | null) => ["草稿", "已拒绝"].includes(contract?.status || "");
-  
+
   const openContractAttachments = (contract: Contract) => {
     void openViewing(contract, { detailTab: "attachments" });
   };
@@ -666,7 +666,7 @@ export default function ContractCenterPage({
     eventForm.resetFields();
     setEventTarget(contract);
   };
-  
+
   const revokeDraft = (contract: Contract) => {
     if (!contractCapabilities(contract).canEdit) {
       denyContractAction();
@@ -760,7 +760,7 @@ export default function ContractCenterPage({
     investigationForm.resetFields();
     if (isContractInvestigationView) onNavigate?.(consumeContractDetailReturnView());
   };
-  
+
   const { openContractPayment, createContractPaymentType, createContractPayment, createContractInvoice } = createContractFinanceActions({
     get contractCapabilities() { return contractCapabilities; },
     get denyContractAction() { return denyContractAction; },

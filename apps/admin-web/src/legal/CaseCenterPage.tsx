@@ -1136,7 +1136,7 @@ export default function CaseCenterPage({
     setOriginalPageSize(pageSize);
     onNavigate?.(route);
   };
-  
+
   const redirectAfterCreate = () => {
     const params = new URLSearchParams(window.location.search);
     params.set("page", createRedirectPage);
@@ -1197,7 +1197,7 @@ export default function CaseCenterPage({
       },
     });
   };
-  
+
   const openUnarchiveReview = (row: CaseRow, approved: boolean) => {
     if (approved) {
       void reviewUnarchive(row, true);
@@ -1352,7 +1352,7 @@ export default function CaseCenterPage({
     get caseUploadRef() { return caseUploadRef; },
     get load() { return load; },
   });
-  
+
   const { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
     get counselDetailAssistedFeePage() { return counselDetailAssistedFeePage; },
     get counselDetailAssistedFeePageSize() { return counselDetailAssistedFeePageSize; },
@@ -1489,7 +1489,7 @@ export default function CaseCenterPage({
       },
     });
   };
-  
+
   const { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction } = createCaseAssistantActions({
     get setAgentLoading() { return setAgentLoading; },
     get setAgentStatus() { return setAgentStatus; },
@@ -1529,7 +1529,7 @@ export default function CaseCenterPage({
     setAgentHistoryExpanded(false);
     void loadCaseAgent(row, true);
   };
-  
+
   const updateAgentDocumentSelection = (checkedKeys: Key[] | { checked: Key[]; halfChecked: Key[] }) => {
     const keys = Array.isArray(checkedKeys) ? checkedKeys : checkedKeys.checked;
     const selectedIds = keys.map(String).filter((key) => key.startsWith("document:")).map((key) => Number(key.slice("document:".length))).filter((id) => id > 0);
@@ -1542,7 +1542,7 @@ export default function CaseCenterPage({
     setAgentSending(false);
     message.info("已停止本轮生成，可以继续补充要求");
   };
-  
+
   const pasteCaseAgentScreenshot = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const itemFile = Array.from(event.clipboardData.items)
       .find((item) => item.kind === "file" && item.type.startsWith("image/"))
@@ -1553,12 +1553,12 @@ export default function CaseCenterPage({
     if (agentSkillId !== "screenshot-evidence") setAgentSkillId("screenshot-evidence");
     void uploadCaseAgentScreenshot(file);
   };
-  
+
   useEffect(() => {
     if (!agentOpen) return;
     requestAnimationFrame(() => agentMessagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" }));
   }, [agentOpen, agentState?.messages.length]);
-  
+
   useEffect(() => () => clearAgentScreenshotPreviews(), []);
 
   const openRelatedContract = (target: { id?: number; serial_no?: unknown } | unknown) => {
@@ -1571,7 +1571,7 @@ export default function CaseCenterPage({
     rememberContractDetailTarget({ id: contractId, serial_no: serialNo || undefined });
     onNavigate?.("contract-company");
   };
-  
+
   const openRelatedTask = (task: TaskRow) => {
     if (!task.id) return message.warning("当前案件任务未生成可查看编号");
     setCaseTaskFeedbackText("");
@@ -1652,7 +1652,7 @@ export default function CaseCenterPage({
     });
     setEditingCaseClueEvidence(selectedCaseClueEvidence);
   };
-  
+
   const closeCaseClueWorkspace = () => {
     setViewingCaseClue(null);
     setSelectedCaseClueEvidenceId(null);
@@ -1767,7 +1767,7 @@ export default function CaseCenterPage({
     clueConversionForm.setFieldsValue({ case_type: "民事案件" });
     setClueConversionOpen(true);
   };
-  
+
   const openRelatedOriginalCase = (target: { id?: number; serial_no?: unknown }) => {
     const id = Number(target.id || 0) || undefined;
     const serialNo = String(target.serial_no || "").trim();
@@ -1788,7 +1788,7 @@ export default function CaseCenterPage({
       } catch(error:any){message.error(error?.response?.data?.detail||"案件提醒删除失败");}
     }});
   };
-  
+
   const openCaseEventEditor = (event?: CaseEventRow) => {
     setEditingCaseEvent(event || null);
     caseEventForm.resetFields();
@@ -1803,7 +1803,7 @@ export default function CaseCenterPage({
     });
     setCaseEventOpen(true);
   };
-  
+
   const deleteCounselCaseEvent = (event: CaseEventRow) => {
     if (!viewingCounselCase) return;
     if (caseEventSubmitting) return;
@@ -1884,17 +1884,17 @@ export default function CaseCenterPage({
       setMovingCounselAttachmentIds(selected.map((item) => item.id));
     }
   };
-  
+
   const openCounselAttachmentRename = (item: AttachmentRow) => {
     attachmentRenameForm.setFieldsValue({ original_name: item.original_name });
     setRenamingCounselAttachment(item);
   };
-  
+
   const openCreateAiDraft = () => {
     aiDraftForm.setFieldsValue({ name: `AI文档-${dayjs().format("YYYYMMDD-HHmm")}.docx`, content: "" });
     setAiDraftEditor({ mode: "create" });
   };
-  
+
   const wordEditorChanged = (editor: CaseWordEditor) => JSON.stringify(editor.blocks) !== JSON.stringify(editor.savedBlocks);
 
   const requestCloseCaseWordEditor = () => {
@@ -1944,7 +1944,7 @@ export default function CaseCenterPage({
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [wordEditor]);
-  
+
   const deleteAiDraft = (item: AttachmentRow) => {
     if (!viewingCounselCase) return;
     Modal.confirm({
@@ -1999,7 +1999,7 @@ export default function CaseCenterPage({
     caseDocumentFolderForm.setFieldValue("name", editor.originalName || "");
     setCaseDocumentFolderEditor(editor);
   };
-  
+
   const deleteCaseDocumentFolder = (name:string) => {
     if (!viewingCounselCase) return;
     Modal.confirm({title:`删除目录：${name}`,content:"仅空目录可以删除。确认删除当前自定义目录吗？",okText:"删除",okButtonProps:{danger:true},cancelText:"取消",onOk:async()=>{
@@ -2025,7 +2025,7 @@ export default function CaseCenterPage({
     });
     setEditingCounselCase(row);
   };
-  
+
   const isNormalEditableCase = (row: CaseRow) => isNormalCaseBasicType(row.data.case_type);
 
   const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
@@ -2049,7 +2049,7 @@ export default function CaseCenterPage({
     casePartyCreateForm.setFieldsValue({ title: "", credit_code: "", phone: "", legal_representative: "", registered_address: "" });
     setCreatingCasePartyRole(role);
   };
-  
+
   const renderCasePartySelector = (role: CaseLitigantPartyField, required = false) => (
     <Form.Item label={CASE_LITIGANT_PARTY_LABELS[role]} required={required}>
       <Space.Compact block>
@@ -2113,7 +2113,7 @@ export default function CaseCenterPage({
     setEditingCaseLitigants(row);
     void loadCaseLitigantCandidates("");
   };
-  
+
   const openCaseHearingLawyer = (row: CaseRow) => {
     const capability = viewingCounselCase?.id === row.id ? counselDetailCapabilities : getCaseCapability(row);
     if (!capability.can_edit_hearing_lawyer) return message.warning("当前账号无权查看或修改该案件");
@@ -2121,7 +2121,7 @@ export default function CaseCenterPage({
     caseHearingLawyerForm.setFieldsValue({ hearing_lawyer: row.data.hearing_lawyer || "", comment: "" });
     setEditingCaseHearingLawyer(row);
   };
-  
+
   const openCaseTaskCreator = (row: CaseRow) => {
     if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
     taskForm.resetFields();
@@ -2131,7 +2131,7 @@ export default function CaseCenterPage({
     setCaseTaskKind("案件任务");
     setCaseTaskCreateCase(row);
   };
-  
+
   const caseTaskBasePagination = getCaseTaskPagination();
   const caseTaskPagination = {
     current: caseTaskPage,
@@ -2196,7 +2196,7 @@ export default function CaseCenterPage({
     setPaymentTypeCreateTarget(null);
     feeForm.resetFields();
   };
-  
+
   const openCourtRefund = (row: CaseRow) => {
     const amount = Number(row.data.amount || 0);
     const refunded = Number(row.data.refund_amount || row.data.refund_requested_amount || 0);
@@ -2204,7 +2204,7 @@ export default function CaseCenterPage({
     courtRefundForm.setFieldsValue({ amount: Math.max(amount - refunded, 0) });
     setCourtRefundFee(row);
   };
-  
+
   const deleteCaseFee = (row: CaseRow) => {
     if (row.status !== "草稿") return message.warning("仅草稿费用可以删除");
     Modal.confirm({ title: `删除费用：${row.serial_no}`, content: "删除后不可恢复，是否继续？", okText: "确认删除", cancelText: "取消", onOk: async () => {
@@ -2287,7 +2287,7 @@ export default function CaseCenterPage({
     });
     setProgressEditing(row);
   };
-  
+
   const openExecutionStatus = (rows: CaseRow[]) => {
     const selected = rows.filter(Boolean);
     if (!selected.length) return message.warning("请先选择执行案件");
@@ -2324,7 +2324,7 @@ export default function CaseCenterPage({
     setCompanyScheduleCourtInfo(null);
     companyScheduleCourtInfoForm.resetFields();
   };
-  
+
   const openHearing = (row: CaseRow) => {
     if (!getCaseCapability(row).can_manage_hearing) return message.warning("当前账号没有开庭排期权限");
     setHearingOpen(true);
@@ -2465,7 +2465,7 @@ export default function CaseCenterPage({
     const url = URL.createObjectURL(blob), link = document.createElement("a");
     link.href = url; link.download = "案件阶段统计.csv"; link.click(); URL.revokeObjectURL(url);
   };
-  
+
   const openCaseFileUpload = () => {
     if (!selectedCase) return message.warning("请先选择案件再上传文件");
     const options = fileTypeOptionsForCase(selectedCase.data.case_type);
@@ -2567,7 +2567,7 @@ export default function CaseCenterPage({
   const invoiceRows=attachments.filter(row=>row.category.includes("发票")||row.category.includes("票据"));
   const specialRows:any[]=specialMode==="schedule"?scheduleRows:specialMode==="execution"?specialCases:specialMode==="unclaimed"?specialCases.filter(row=>!row.data.commission_applied):specialMode==="stage"?phaseRows:specialMode==="refund"?financeRows.filter(row=>String(row.data.fee_type||row.title).includes("退费")&&caseMatches(row)):specialMode==="receipt"?receiptRows:specialMode==="invoice"?invoiceRows:[];
   const selectedSpecialRow:any=specialRows.find(row=>selectedCaseKeySet.has(String(row.id)));
-  
+
   const markCommissionPaid=()=>{
     if(!selectedSpecialRow)return message.warning("请先选择一条到账案件");
     Modal.confirm({title:"标识提成已发",content:`确认将 ${selectedSpecialRow.serial_no} 标识为提成已发？`,onOk:async()=>{
@@ -2586,7 +2586,7 @@ export default function CaseCenterPage({
     }
     message.info(`当前退费状态：${selectedSpecialRow.status}，无需重复办理`);
   };
-  
+
   const specialColumns:Record<string,any[]>=createSpecialColumns({
     get openSpecialCaseDetail() { return openSpecialCaseDetail; },
     get casePersonDisplayName() { return casePersonDisplayName; },
@@ -2699,7 +2699,7 @@ export default function CaseCenterPage({
     setCaseCommissionRows([]);
     setCaseCommissionResult(null);
   };
-  
+
   const cloneCaseCommissionRow = (source: CaseCommissionPreviewRow) => {
     setCaseCommissionRows((rows) => [
       ...rows,
@@ -2709,7 +2709,7 @@ export default function CaseCenterPage({
   const updateCaseCommissionRow = (clientKey: string, patch: Partial<CaseCommissionPreviewRow>) => {
     setCaseCommissionRows((rows) => rows.map((row) => row.client_key === clientKey ? { ...row, ...patch } : row));
   };
-  
+
   const handleInternalFeeAction=(key:string)=>{
     if(key==="create")return openCaseFeeBySubtype("内部","内部费用");
     if(!requireSingleFee(selectedInternalFeeKeys,selectedInternalFee,key==="payment"?"申请付款":key==="edit"?"修改":"删除"))return;
