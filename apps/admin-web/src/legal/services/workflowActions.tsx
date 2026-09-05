@@ -41,11 +41,13 @@ export interface CaseWorkflowDependencies {
     readonly archiveType: "normal" | "deficit";
     readonly reviewing: {
         row: CaseRow;
+        rows?: CaseRow[];
         approved: boolean;
     } | null;
     readonly reviewForm: FormInstance<any>;
     readonly setReviewing: React.Dispatch<React.SetStateAction<{
         row: CaseRow;
+        rows?: CaseRow[];
         approved: boolean;
     } | null>>;
     readonly setSelectedCaseKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
@@ -483,29 +485,34 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         const { reviewing, profile, reviewForm, setReviewing, load } = context;
         if (!reviewing)
             return;
-        const permissionError = getCaseArchiveReviewValidationError({ role: profile.role, status: reviewing.row.status });
-        if (permissionError)
-            return message.warning(permissionError);
-        const v = await reviewForm.validateFields(["comment"]);
-        const archiveNo = String(reviewForm.getFieldValue("archive_no") || "").trim();
-        if (approved && reviewing.row.status !== "亏损内审" && (reviewing.row.data.archive_type || "normal") !== "deficit" && !archiveNo) {
-            return message.warning("请填写归档号");
+        const rows = reviewing.rows || [reviewing.row];
+        for (const row of rows) {
+            const permissionError = getCaseArchiveReviewValidationError({ role: profile.role, status: row.status });
+            if (permissionError) return message.warning(`${row.serial_no}：${permissionError}`);
         }
         try {
-            await api.post(`/cases/${reviewing.row.id}/archive/review`, {
-                approved,
-                comment: v.comment,
-                archive_no: approved ? archiveNo : "",
-            });
-            const internalStage = reviewing.row.status === "亏损内审";
-            message.success(internalStage
-                ? (approved ? "内部审核已通过，案件进入亏损审核" : "内部审核已驳回")
-                : (approved ? "归档审核已通过" : "归档审核已驳回"));
+            const values = await reviewForm.validateFields();
+            const items = rows.map(row => ({case_id: row.id, approved,
+                comment: String(values.items?.[String(row.id)]?.comment || "").trim(),
+                archive_no: approved ? String(values.items?.[String(row.id)]?.archive_no || "").trim() : "",
+            }));
+            for (const [index, row] of rows.entries()) {
+                if (approved && row.status !== "亏损内审" && (row.data.archive_type || "normal") !== "deficit" && !items[index].archive_no)
+                    return message.warning(`${row.serial_no}：请填写归档号`);
+            }
+            if (items.length === 1) {
+                const {case_id, ...body} = items[0];
+                await api.post(`/cases/${case_id}/archive/review`, body);
+            } else {
+                await api.post("/cases/archive/batch-review", {items});
+            }
+            message.success(`已${approved ? "同意" : "拒绝"} ${items.length} 条归档审核`);
             setReviewing(null);
             reviewForm.resetFields();
-            load();
+            await load();
         }
         catch (error: any) {
+            if (error?.errorFields) return;
             message.error(error?.response?.data?.detail || "归档审核失败");
         }
     };

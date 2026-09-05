@@ -107,6 +107,7 @@ import { incomingPaymentDetailRoute } from "../incomingPaymentDetailNavigation";
 import { LegacyLsHistoryPanel } from "../LegacyLsHistoryPanel";
 import "../task-center.css";
 import { createArchiveColumns } from "./columns/archiveColumns";
+import { useArchiveCases } from "./hooks/useArchiveCases";
 import { createCaseColumns } from "./columns/caseColumns";
 import { createExternalCaseFeeColumns } from "./columns/externalCaseFeeColumns";
 import { createGroupedOriginalCaseColumns } from "./columns/groupedOriginalCaseColumns";
@@ -366,8 +367,12 @@ export default function CaseCenterPage({
   const [archiveChecks, setArchiveChecks] = useState<Record<string, boolean>>({});
   const [reviewing, setReviewing] = useState<{
     row: CaseRow;
+    rows?: CaseRow[];
     approved: boolean;
   } | null>(null);
+  const [archiveReviewSubmitting, setArchiveReviewSubmitting] = useState(false);
+  const archiveReviewSubmittingRef = useRef(false);
+  const [archiveExporting, setArchiveExporting] = useState(false);
   const [progressEditing, setProgressEditing] = useState<CaseRow | null>(null);
   const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
@@ -571,6 +576,7 @@ export default function CaseCenterPage({
     [selectedCaseKeys],
   );
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
+  const archiveList = useArchiveCases(initialView);
   const legacyCaseListDefaults = getLegacyCaseListDefaults(initialView);
   const legacyCaseListOperationLabels = getLegacyCaseListOperationLabels();
   const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
@@ -724,7 +730,7 @@ export default function CaseCenterPage({
     get assigning() { return assigning; },
     get assignForm() { return assignForm; },
     get setAssigning() { return setAssigning; },
-    get load() { return load; },
+    get load() { return reloadCaseData; },
     get hearingForm() { return hearingForm; },
     get setHearingOpen() { return setHearingOpen; },
     get getCaseCapability() { return getCaseCapability; },
@@ -1117,6 +1123,15 @@ export default function CaseCenterPage({
       await Promise.all([phaseLoad, load(), listLoad]);
     })();
   }, [initialView]);
+  const reloadCaseData = async () => {
+    if (initialView.startsWith("case-archive-")) {
+      setSelectedCaseKeys([]);
+      await archiveList.reload();
+    } else await load();
+  };
+  useEffect(() => {
+    if (initialView.startsWith("case-archive-")) void loadCaseCapabilities(archiveList.rows);
+  }, [archiveList.rows, initialView]);
   const returnToCaseList = () => {
     let route = caseListReturnContext?.route || "case-mine";
     let page = originalPage;
@@ -1164,13 +1179,21 @@ export default function CaseCenterPage({
     });
   };
 
-  const openArchiveReview = (row: CaseRow) => {
+  const openArchiveReview = (target: CaseRow | CaseRow[]) => {
+    const rows = Array.isArray(target) ? target : [target];
+    if (!rows.length) return message.warning("请先选择案件");
+    if (rows.some(row => !ARCHIVE_REVIEW_STATUSES.includes(row.status))) return message.warning("只有待归档审核案件可执行审核");
     reviewForm.resetFields();
-    reviewForm.setFieldsValue({
-      archive_no: row.data.archive_no || "",
-      comment: row.data.archive_review_comment || "",
-    });
-    setReviewing({ row, approved: true });
+    reviewForm.setFieldsValue({ items: Object.fromEntries(rows.map(row => [String(row.id), {
+      archive_no: row.data.archive_no || "", comment: row.data.archive_review_comment || "",
+    }])) });
+    setReviewing({ row: rows[0], rows, approved: true });
+  };
+  const submitArchiveReview = async (approved: boolean) => {
+    if (archiveReviewSubmittingRef.current) return;
+    archiveReviewSubmittingRef.current = true; setArchiveReviewSubmitting(true);
+    try { await reviewArchive(approved); }
+    finally { archiveReviewSubmittingRef.current = false; setArchiveReviewSubmitting(false); }
   };
 
   const requestUnarchive = (row: CaseRow) => {
@@ -1189,7 +1212,7 @@ export default function CaseCenterPage({
         try {
           await api.post(`/cases/${row.id}/unarchive/request`, { reason });
           message.success("解档申请已提交特殊审批");
-          await load();
+          await reloadCaseData();
         } catch (error: any) {
           message.error(error?.response?.data?.detail || "解档申请失败");
           throw error;
@@ -1350,7 +1373,7 @@ export default function CaseCenterPage({
     get caseUploadCategory() { return caseUploadCategory; },
     get fileTypeOptionsForCase() { return fileTypeOptionsForCase; },
     get caseUploadRef() { return caseUploadRef; },
-    get load() { return load; },
+    get load() { return reloadCaseData; },
   });
 
   const { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
@@ -1376,7 +1399,7 @@ export default function CaseCenterPage({
     get settlementAmountForm() { return settlementAmountForm; },
     get setSettlementAmountCase() { return setSettlementAmountCase; },
     get openCounselDetail() { return openCounselDetail; },
-    get load() { return load; },
+    get load() { return reloadCaseData; },
     get viewingCaseTask() { return viewingCaseTask; },
     get caseTaskFeedbackText() { return caseTaskFeedbackText; },
     get setCaseTaskDetailLoading() { return setCaseTaskDetailLoading; },
@@ -2438,18 +2461,28 @@ export default function CaseCenterPage({
     selectedOnly ? selectedCaseKeys : originalCases.map((row) => row.id),
     selectedOnly ? "请选择需要导出的案件" : "当前查询没有可导出的案件",
   );
-  const exportArchiveManifest = (selectedOnly: boolean) => {
+  const exportArchiveManifest = async (selectedOnly: boolean, format: "excel" | "csv" = "excel") => {
+    if (archiveExporting) return;
     const currentArchiveIds = originalArchiveRows.map((row) => row.id);
     const currentArchiveIdSet = new Set(currentArchiveIds.map(String));
     const ids = selectedOnly
       ? selectedCaseKeys.filter((key) => currentArchiveIdSet.has(String(key)))
       : currentArchiveIds;
-    void downloadCaseExport(
-      "/cases/export/archive-manifest",
-      selectedOnly ? "案件归档清单-选中.xls" : "案件归档清单-当前筛选.xls",
-      ids,
-      selectedOnly ? "请选择需要导出归档清单的案件" : "当前筛选没有可导出的归档案件",
-    );
+    if (selectedOnly && !ids.length) return message.warning("请选择需要导出归档清单的案件");
+    setArchiveExporting(true);
+    try {
+      const response = await archiveList.exportFile(format, selectedOnly ? ids.map(Number) : undefined);
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = `案件归档清单-${selectedOnly ? "选中" : "当前筛选"}.${format === "csv" ? "csv" : "xls"}`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+    } catch (error: any) {
+      let detail = error?.response?.data?.detail;
+      if (error?.response?.data instanceof Blob) {
+        try { detail = JSON.parse(await error.response.data.text()).detail; } catch { /* Keep the export failure fallback. */ }
+      }
+      message.error(typeof detail === "string" ? detail : "归档清单导出失败");
+    } finally { setArchiveExporting(false); }
   };
   const exportCaseQrWord = () => void downloadCaseExport(
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
@@ -2526,10 +2559,8 @@ export default function CaseCenterPage({
   const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts) as CasePhaseTreeItem[];
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
-  const originalArchiveRows=cases.filter(row=>archiveDone?ARCHIVE_FINAL_STATUSES.includes(row.status):archiveRefused?row.status==="亏损归档拒绝"||Boolean(row.data.archive_reject_reason):ARCHIVE_REVIEW_STATUSES.includes(row.status)).filter(row=>{
-    const match=(value:unknown,key:string)=>!caseQuery[key]||String(value||"").toLowerCase().includes(String(caseQuery[key]).toLowerCase());
-    return match(row.data.plaintiff||row.customer,"plaintiff")&&match(row.serial_no,"serial_no")&&match(row.data.assistant,"assistant")&&match(row.data.court,"court")&&match(row.data.opponent,"defendant")&&match(row.data.notary_no,"notary_no")&&match(row.data.hearing_lawyer,"hearing_lawyer")&&match((row.data.handling_lawyers||[]).join(","),"handling_lawyer")&&match(row.data.archive_submitter||row.owner,"submitter");
-  });
+  const originalArchiveRows = archiveList.rows;
+  const selectedArchiveCases = originalArchiveRows.filter(row => selectedCaseKeySet.has(String(row.id)));
   const selectedArchiveCase = originalArchiveRows.find((row) => selectedCaseKeySet.has(String(row.id)));
   const selectedArchiveCaseCapability = getCaseCapability(selectedArchiveCase);
   const originalArchiveColumns:any[]=createOriginalArchiveColumns({
@@ -2861,17 +2892,18 @@ export default function CaseCenterPage({
           {specialMode==="unclaimed"&&<Button onClick={()=>selectedCase?openCaseTasks(selectedCase):message.warning("请先选择案件")}>更多操作</Button>}
         </Space></div>}
       </Card> : originalArchiveMode ? <Card className="panel case-original-panel" title={archiveDone?"已审核":archiveRefused?"已拒绝":"待审核"}>
-        <ListFilterBar form={caseQueryForm} className="case-archive-query" layout="inline" onFinish={values=>setCaseQuery(values)}>
+        <ListFilterBar form={caseQueryForm} className="case-archive-query" layout="inline" onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);void archiveList.search(values,1,archiveList.pageSize);}}>
           <Form.Item label="原告/申请人/公诉机关" name="plaintiff"><Input /></Form.Item><Form.Item label="案号" name="serial_no"><Input /></Form.Item><Form.Item label="律师助理" name="assistant"><Input /></Form.Item><Form.Item label="法院/机构" name="court"><Input /></Form.Item>
           <Form.Item label="被告/被申请人" name="defendant"><Input /></Form.Item><Form.Item label="公证书号" name="notary_no"><Input /></Form.Item><Form.Item label="开庭律师" name="hearing_lawyer"><Input /></Form.Item><Form.Item label={archiveDone||archiveRefused?"审核时间":"开庭时间"} name="review_range"><DatePicker.RangePicker /></Form.Item>
           <Form.Item label="第三人/受害人" name="third_party"><Input /></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input /></Form.Item><Form.Item label="提交人" name="submitter"><Input /></Form.Item><Form.Item label="提交时间" name="submit_range"><DatePicker.RangePicker /></Form.Item>
-          <Form.Item className="case-archive-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>重置</Button></Space></Form.Item>
+          <Form.Item className="case-archive-query-actions"><Space><Button type="primary" htmlType="submit" loading={archiveList.loading}>查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);void archiveList.search({},1,archiveList.pageSize);}}>重置</Button></Space></Form.Item>
         </ListFilterBar>
-<Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={getCaseArchivePagination(initialView)} />
+        {archiveList.error && <Alert type="error" showIcon title={archiveList.error} action={<Button onClick={()=>void archiveList.reload()}>重试</Button>} />}
+<Table className="case-original-table" rowKey="id" size="small" loading={archiveList.loading} locale={{emptyText:archiveList.loading?"归档案件加载中…":archiveList.error||"暂无符合条件的案件"}} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX}} pagination={{...getCaseArchivePagination(initialView),current:archiveList.page,pageSize:archiveList.pageSize,total:archiveList.total,onChange:(page:number,pageSize:number)=>{setSelectedCaseKeys([]);void archiveList.search(undefined,pageSize!==archiveList.pageSize?1:page,pageSize);}}} />
         <div className="case-bottom-actions"><Space wrap>
-          <Button onClick={exportCases}>导出全部（CSV）</Button>
-          <Button onClick={()=>exportArchiveManifest(true)}>导出选中归档清单（Excel）</Button>
-          <Button onClick={()=>exportArchiveManifest(false)}>导出当前筛选归档清单（Excel）</Button>
+          <Button loading={archiveExporting} onClick={()=>void exportArchiveManifest(false,"csv")}>导出全部（CSV）</Button>
+          <Button disabled={archiveExporting} onClick={()=>void exportArchiveManifest(true)}>导出选中归档清单（Excel）</Button>
+          <Button disabled={archiveExporting} onClick={()=>void exportArchiveManifest(false)}>导出当前筛选归档清单（Excel）</Button>
           <Dropdown
             menu={{
               items: selectedArchiveCase ? [
@@ -2888,7 +2920,7 @@ export default function CaseCenterPage({
                 if (key === "review") {
                   if (!isArchiveManager) return message.warning("当前账号没有归档审核权限");
                   if (!ARCHIVE_REVIEW_STATUSES.includes(selectedArchiveCase.status)) return message.warning("只有待归档审核案件可执行审核");
-                  openArchiveReview(selectedArchiveCase);
+                  openArchiveReview(selectedArchiveCases);
                 }
                 if (key === "unarchive-request") void requestUnarchive(selectedArchiveCase);
                 if (key === "unarchive-approve" || key === "unarchive-reject") {
@@ -2901,7 +2933,7 @@ export default function CaseCenterPage({
           ><Button>更多操作</Button></Dropdown>
           {!archiveDone && !archiveRefused && isArchiveManager && <Button onClick={() => {
             if (!selectedArchiveCase) return message.warning("请先选择一条案件");
-            openArchiveReview(selectedArchiveCase);
+            openArchiveReview(selectedArchiveCases);
           }}>归档审核</Button>}
           {archiveDone && selectedArchiveCaseCapability.can_edit_basic && <Button onClick={() => selectedArchiveCase ? void requestUnarchive(selectedArchiveCase) : message.warning("请先选择一条案件")}>申请解档</Button>}
           {archiveDone && isArchiveManager && <Button onClick={() => {
@@ -4667,14 +4699,14 @@ export default function CaseCenterPage({
       </Modal>
       <Modal
         open={Boolean(reviewing)}
-        title={reviewing?.row.status === "亏损内审" ? "内部审核" : "归档审核"}
+        title={(reviewing?.rows?.length || 0) > 1 ? `批量归档审核（${reviewing?.rows?.length}条）` : reviewing?.row.status === "亏损内审" ? "内部审核" : "归档审核"}
         width={860}
         footer={[
-          <Button key="approve" type="primary" onClick={() => void reviewArchive(true)}>同意</Button>,
-          <Button key="reject" danger onClick={() => void reviewArchive(false)}>拒绝</Button>,
-          <Button key="cancel" onClick={() => setReviewing(null)}>取消</Button>,
+          <Button key="approve" type="primary" loading={archiveReviewSubmitting} onClick={() => void submitArchiveReview(true)}>同意</Button>,
+          <Button key="reject" danger disabled={archiveReviewSubmitting} onClick={() => void submitArchiveReview(false)}>拒绝</Button>,
+          <Button key="cancel" disabled={archiveReviewSubmitting} onClick={() => setReviewing(null)}>取消</Button>,
         ]}
-        onCancel={() => setReviewing(null)}
+        onCancel={() => { if (!archiveReviewSubmitting) setReviewing(null); }}
       >
         <Alert
           type="info"
@@ -4688,7 +4720,7 @@ export default function CaseCenterPage({
             rowKey="id"
             size="small"
             pagination={false}
-            dataSource={reviewing ? [reviewing.row] : []}
+            dataSource={reviewing ? reviewing.rows || [reviewing.row] : []}
             columns={[
               { title: "案号", dataIndex: "serial_no", width: 150 },
               { title: "案件阶段", dataIndex: "status", width: 110 },
@@ -4696,18 +4728,18 @@ export default function CaseCenterPage({
                 title: "归档号",
                 key: "archive_no",
                 width: 180,
-                render: () => <Form.Item name="archive_no" noStyle><Input maxLength={100} placeholder="请输入归档号" /></Form.Item>,
+                render: (_: unknown, row: CaseRow) => <Form.Item name={["items", String(row.id), "archive_no"]} noStyle><Input maxLength={100} placeholder="请输入归档号" /></Form.Item>,
               },
               {
                 title: "审核备注",
                 key: "comment",
-                render: () => <Form.Item name="comment" noStyle rules={[{ required: true, whitespace: true, message: "请输入审核备注" }]}><Input.TextArea autoSize={{ minRows: 1, maxRows: 3 }} /></Form.Item>,
+                render: (_: unknown, row: CaseRow) => <Form.Item name={["items", String(row.id), "comment"]} noStyle rules={[{ required: true, whitespace: true, min: 2, max: 1000, message: "请填写2至1000字审核备注" }]}><Input.TextArea autoSize={{ minRows: 1, maxRows: 3 }} /></Form.Item>,
               },
               {
                 title: "操作",
                 key: "operation",
                 width: 80,
-                render: () => <Button type="link" onClick={() => reviewing && void openCounselDetail(reviewing.row)}>查看</Button>,
+                render: (_: unknown, row: CaseRow) => <Button type="link" onClick={() => void openCounselDetail(row)}>查看</Button>,
               },
             ]}
           />

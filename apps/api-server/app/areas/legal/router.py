@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.case_archive import ArchiveSearchInput, ArchiveBatchReviewInput, ArchiveExportInput, search_archive_cases
 from app.core.constants import (
     ADMINISTRATIVE_CLIENT_POSITIONS, AI_SPACE_CATEGORY, AI_SPACE_EDITABLE_SUFFIXES, CASE_CLIENT_POSITIONS_BY_TYPE, CASE_CREATABLE_TYPES,
     CASE_CREATE_PERMISSION_BY_TYPE, CASE_CREATE_STATUS_ALIASES, CASE_CUSTOM_DOCUMENT_FOLDERS_KEY, CASE_DOCUMENT_CATEGORY, CASE_DOCUMENT_TYPES,
@@ -4447,6 +4448,20 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/archive/review")
 async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.system import _record_dict
+    try:
+        await db.scalar(select(BusinessRecord).where(BusinessRecord.id == case_id).with_for_update())
+        record = await _apply_case_archive_review(case_id, body, identity, db)
+        await db.commit()
+        await db.refresh(record)
+        return _record_dict(record)
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, identity: dict, db: AsyncSession):
+    """Apply one review inside the caller's transaction; never commit here."""
     from app.core.cases import (
         _case_archive_checks,
     )
@@ -4462,6 +4477,8 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
     await _require_case_action(identity, db, "case.archive.review")
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     if case_record.status not in {"待归档审核", "亏损内审", "亏损审核"}: raise HTTPException(status_code=409, detail="只有待归档审核案件可以审核")
+    if len(body.comment.strip()) < 2:
+        raise HTTPException(status_code=422, detail="审核备注至少填写两个字")
     data = dict(case_record.data or {})
     if str(data.get("archive_submitter") or "").strip() == identity["username"]:
         raise HTTPException(status_code=403, detail="归档申请人不能审核本人提交的归档申请")
@@ -4550,8 +4567,7 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
             action = "归档审核驳回"
     db.add(WorkflowEvent(record_id=case_record.id, action=action, from_status=previous, to_status=case_record.status, operator=identity["username"], comment=body.comment))
     await _sync_legacy_case(case_record, identity, db)
-    await db.commit(); await db.refresh(case_record)
-    return _record_dict(case_record)
+    return case_record
 
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/unarchive/request")
@@ -6367,3 +6383,60 @@ async def delete_record(record_id: int, identity: dict = Depends(current_identit
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
             path.unlink()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(f"{settings.api_prefix}/cases/archive/search")
+async def search_case_archive(body: ArchiveSearchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await search_archive_cases(body, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/cases/archive/batch-review")
+async def batch_review_case_archive(body: ArchiveBatchReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _record_scope_conditions, _require_case_action
+    from app.core.system import _record_dict
+    ids = [item.case_id for item in body.items]
+    if len(ids) != len(set(ids)):
+        raise HTTPException(status_code=422, detail="批量审核不能包含重复案件")
+    await _require_case_action(identity, db, "case.archive.review")
+    try:
+        records = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id.in_(ids), BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db)),
+        ).order_by(BusinessRecord.id).with_for_update())).all())
+        if len(records) != len(ids):
+            raise HTTPException(status_code=404, detail="选中的案件不存在或无权访问，整批未审核")
+        by_id = {record.id: record for record in records}
+        for item in body.items:
+            try:
+                await _apply_case_archive_review(item.case_id, item, identity, db)
+            except HTTPException as exc:
+                raise HTTPException(status_code=exc.status_code, detail=f"案件 {by_id[item.case_id].serial_no}：{exc.detail}；整批未审核") from exc
+        await db.commit()
+        for record in records:
+            await db.refresh(record)
+        return {"processed": len(records), "items": [_record_dict(by_id[item_id]) for item_id in ids]}
+    except Exception:
+        await db.rollback()
+        raise
+
+
+@router.post(f"{settings.api_prefix}/cases/archive/export")
+async def export_case_archive(body: ArchiveExportInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.system import _csv_response, _excel_response
+    records = await search_archive_cases(body, identity, db, export=True)
+    if not records:
+        raise HTTPException(status_code=422, detail="当前筛选没有可导出的归档案件")
+    # Count each page of IDs separately to stay below database bind limits.
+    counts = {}
+    ids = [record.id for record in records]
+    for start in range(0, len(ids), 400):
+        counts.update(dict((await db.execute(select(FileAttachment.record_id, func.count(FileAttachment.id)).where(
+            FileAttachment.record_id.in_(ids[start:start + 400]),
+        ).group_by(FileAttachment.record_id))).all()))
+    headers = ["案号", "案件名称", "客户", "案件类型", "归档状态", "合同编号", "负责人", "附件数量", "归档号", "纸质卷宗位置", "纸质卷宗数量"]
+    rows = [[record.serial_no, record.title, record.customer, (record.data or {}).get("case_type", ""), record.status,
+             (record.data or {}).get("contract_no", ""), record.owner, counts.get(record.id, 0),
+             (record.data or {}).get("archive_no", ""), (record.data or {}).get("paper_archive_location", ""),
+             (record.data or {}).get("paper_volume_count", "")] for record in records]
+    if body.format == "csv":
+        return _csv_response(f"案件归档清单-{date.today()}.csv", headers, rows)
+    return _excel_response(f"案件归档清单-{date.today()}.xls", headers, rows)
