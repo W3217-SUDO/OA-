@@ -1,0 +1,12 @@
+export { IprAnnualFeesPanel } from "./IprAnnualFeesPanel";
+export { IprAssistedFeesPanel } from "./IprAssistedFeesPanel";
+export { IprCaseDetailHeader } from "./IprCaseDetailHeader";
+export { IprContactsPanel } from "./IprContactsPanel";
+export { IprCustomersPanel } from "./IprCustomersPanel";
+export { IprFilesPanel } from "./IprFilesPanel";
+export { IprLawFirmsPanel } from "./IprLawFirmsPanel";
+export { IprLawsuitPanel } from "./IprLawsuitPanel";
+export { IprLogsPanel } from "./IprLogsPanel";
+export { IprMaintenancePanel } from "./IprMaintenancePanel";
+export { IprRemindersPanel } from "./IprRemindersPanel";
+export { IprTasksPanel } from "./IprTasksPanel";

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const source = fs.readFileSync(new URL("./src/TaskCenterPage.tsx", import.meta.url), "utf8");
+const source = ["TaskCenterPage", "TaskList", "TaskActionModals", "TaskDetail"].map(name => fs.readFileSync(new URL(`./src/tp/${name}.tsx`, import.meta.url), "utf8")).join("\n");
 
 test("rows 15 and 16 use an active employee selector with stable usernames", () => {
   assert.match(source, /api\.get\("\/users\/directory"\)/);
@@ -26,7 +26,7 @@ test("received task actions are state-scoped and do not expose exception request
 });
 
 test("received task detail exposes only legal lifecycle actions", () => {
-  const detailFooter = source.slice(source.indexOf("footer={", source.indexOf('title="案件任务"')), source.indexOf("onCancel={closeCommunication}"));
+  const detailFooter = source.slice(source.indexOf("footer={", source.indexOf('title="案件任务"')), source.indexOf("onCancel={onClose}"));
   assert.match(detailFooter, /接受任务/);
   assert.match(detailFooter, /完成任务/);
   assert.match(detailFooter, /转交任务/);
