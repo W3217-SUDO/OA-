@@ -1,0 +1,9 @@
+{
+  "original_contract_matches_frozen_baseline": true,
+  "python_hash_seed": 2,
+  "openapi_sha256": "100f22562db679dfac7d2d40a15f5319193ef6c535c25337cc1469bbc5f46925",
+  "backup_sha256": "bba4d06870d10de561d85d2a0dc72eaa72ca9806ad7383bfda4482030ebcdc46",
+  "git_backup_attributes": "reference/main.before-area-split.py.txt: text: unset",
+  "git_clean_filter_preserves_backup": true,
+  "generated_lf_and_git_clean_unchanged": 31
+}

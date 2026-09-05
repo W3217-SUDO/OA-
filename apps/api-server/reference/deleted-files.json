@@ -1,0 +1,13 @@
+[
+  "apps/api-server/app/core/shared.py",
+  "apps/api-server/app/core/models_shared.py",
+  "apps/api-server/app/main_lean.py",
+  "apps/api-server/app/main_split.py",
+  "apps/api-server/app/main_refactored.py",
+  "apps/api-server/split_all_routes.py",
+  "apps/api-server/split_router.py",
+  "apps/api-server/apply_split.py",
+  "apps/api-server/test_split_app.py",
+  "apps/api-server/test_split_import.py",
+  "apps/api-server/test_split_lazy.py"
+]

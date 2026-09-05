@@ -1,0 +1,2 @@
+# Preserve the exact archived source bytes; its manifest uses raw SHA256.
+main.before-area-split.py.txt -text

@@ -12,6 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app import main
+from app.core import storage
+from app.areas.legal import router as legal_router
 from app.database import Base
 from app.main import (
     ContractSealApplicationInput,
@@ -39,8 +41,10 @@ STAMPER = {"username": "seal-cap-stamper", "role": "user", "department": "上海
 class SealWorkflowCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory(prefix="seal-capabilities-")
-        self.original_upload_root = main.UPLOAD_ROOT
-        main.UPLOAD_ROOT = Path(self.tempdir.name)
+        self.upload_modules = (main, storage, legal_router)
+        self.original_upload_roots = [module.UPLOAD_ROOT for module in self.upload_modules]
+        for module in self.upload_modules:
+            module.UPLOAD_ROOT = Path(self.tempdir.name)
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
             BusinessRecord.__table__, ContractApprovalStep.__table__, ContractObject.__table__, FileAttachment.__table__, WorkflowEvent.__table__,
@@ -67,7 +71,8 @@ class SealWorkflowCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.db.close()
         await self.engine.dispose()
-        main.UPLOAD_ROOT = self.original_upload_root
+        for module, original in zip(self.upload_modules, self.original_upload_roots):
+            module.UPLOAD_ROOT = original
         self.tempdir.cleanup()
 
     async def _seal(self, serial: str, *, status: str = "待审批", approver: str = AUDITOR["username"], owner: str = APPLICANT["username"]) -> BusinessRecord:

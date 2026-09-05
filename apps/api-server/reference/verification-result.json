@@ -1,0 +1,58 @@
+{
+  "result": "PASS",
+  "ordered_routes": 763,
+  "paths": 614,
+  "schema_components": 338,
+  "openapi_sha256": "100f22562db679dfac7d2d40a15f5319193ef6c535c25337cc1469bbc5f46925",
+  "unchanged_definitions": 1616,
+  "new_unresolved_globals": 0,
+  "preexisting_unresolved_references": [
+    [
+      "_dashboard_case_date",
+      8434,
+      "time"
+    ],
+    [
+      "delete_company_contract_records",
+      13310,
+      "attachment_paths"
+    ],
+    [
+      "delete_company_contract_records",
+      13310,
+      "contract"
+    ],
+    [
+      "import_business_records",
+      10557,
+      "contracts"
+    ]
+  ],
+  "independent_module_imports": 30,
+  "route_coverage_guards": "missing/duplicate/bounds PASS",
+  "middleware": [
+    {
+      "class": "CORSMiddleware",
+      "args": [],
+      "kwargs": {
+        "allow_origins": [
+          "http://localhost",
+          "http://127.0.0.1"
+        ],
+        "allow_credentials": true,
+        "allow_methods": [
+          "*"
+        ],
+        "allow_headers": [
+          "*"
+        ]
+      }
+    }
+  ],
+  "lifespan": [
+    "lifespan"
+  ],
+  "database": "memory; no connections or lifespan startup",
+  "temporary_uploads": "cleaned",
+  "python_hash_seed": 2
+}
