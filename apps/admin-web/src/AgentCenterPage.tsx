@@ -66,6 +66,8 @@ export default function AgentCenterPage() {
   const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
   const [screenshotUploading, setScreenshotUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const followResponseRef = useRef(true);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const skillFileInputRef = useRef<HTMLInputElement>(null);
   const screenshotPreviewUrlsRef = useRef(new Map<number, string>());
@@ -138,6 +140,7 @@ export default function AgentCenterPage() {
   };
   useEffect(() => { void loadCases(""); }, []);
   useEffect(() => {
+    followResponseRef.current = true;
     activeAgentRequestRef.current?.abort();
     activeAgentRequestRef.current = null;
     setSending(false);
@@ -153,12 +156,17 @@ export default function AgentCenterPage() {
     loadGenerationRef.current++;
     clearScreenshotPreviews();
   }, []);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: "end" }); }, [state?.messages.length]);
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container && followResponseRef.current) container.scrollTop = container.scrollHeight;
+  }, [state?.messages, sending]);
 
   const send = async (preset?: string) => {
     if (!selected || !status?.ready || agentLoading) return;
     const content = String(preset ?? input).trim() || (skillId === "screenshot-evidence" && screenshots.length ? "请分析上传的截图证据" : "");
     if (!content) return message.warning("请输入要询问的问题");
+    loadGenerationRef.current++;
+    followResponseRef.current = true;
     if (sending) activeAgentRequestRef.current?.abort();
     const outgoingScreenshots = [...screenshots];
     const optimisticId = `pending-${Date.now()}`;
@@ -218,6 +226,7 @@ export default function AgentCenterPage() {
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
           lines.forEach(consume);
+          if (receivedState) break;
           if (done) { consume(buffer); break; }
         }
         if (isCurrent() && !receivedState) throw new Error("连接已中断，本轮答复未完成，请重新发送");
@@ -295,10 +304,12 @@ export default function AgentCenterPage() {
   };
   const decide = async (action: AgentAction, decision: "approved" | "rejected") => {
     if (!selected || decisionLoading) return;
+    const caseId = selected.id;
+    const generation = loadGenerationRef.current;
     setDecisionLoading(action.id);
     try {
       const { data } = await api.post(`/case-spaces/${selected.id}/agent/actions/${action.id}/decision`, { decision, comment: "智能体中心人工审批" });
-      setState(data);
+      if (selectedIdRef.current === caseId && generation === loadGenerationRef.current) setState(data);
       message.success(decision === "approved" ? "操作已批准并写入系统" : "操作已驳回，系统数据未修改");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "审批失败");
@@ -455,7 +466,7 @@ export default function AgentCenterPage() {
                 <span>{PHASE_SHORT_NAMES[phase.code] || phase.name}</span>
               </div>)}
             </div> : <div className="agent-phase-strip-placeholder" />}
-            <Space wrap><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务正常" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">已关联业务数据</Tag><Tag color="gold">人工审批</Tag></Space>
+            <Space wrap><Button size="small" icon={<ReloadOutlined />} loading={agentLoading} disabled={sending} onClick={() => void loadAgent(selected)}>刷新会话</Button><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务已连接" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">已关联业务数据</Tag><Tag color="gold">人工审批</Tag></Space>
           </div>
           <Modal
             open={Boolean(activeAction)}
@@ -480,7 +491,10 @@ export default function AgentCenterPage() {
               </div> : null}
             </div> : null}
           </Modal>
-          <div className="agent-global-messages">
+          <div className="agent-global-messages" ref={messagesContainerRef} onScroll={(event) => {
+            const container = event.currentTarget;
+            followResponseRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+          }}>
             {!agentLoading && !state?.messages?.length && <div className="agent-global-empty"><RobotOutlined /><strong>开始分析当前业务空间</strong><span>回答会综合关联的客户、合同、案件、线索、调查和财务数据。</span></div>}
             {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.attachments?.length ? <div className="agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.role === "assistant" ? <AgentMessageContent content={item.content} /> : item.content}</div></div>)}
             {(agentLoading || sending) && <div className="agent-global-loading"><RobotOutlined /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
