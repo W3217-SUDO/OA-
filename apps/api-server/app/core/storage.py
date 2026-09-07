@@ -1,4 +1,7 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from html.parser import HTMLParser
+from xml.etree import ElementTree
+
 import xlrd
 from app.core.constants import (
     AI_SPACE_CATEGORY, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, CASE_EVENT_TIME_ZONE, CONTRACT_PERSON_NAME_PLACEHOLDER, LEGACY_UPLOAD_ROOTS,
@@ -424,9 +427,98 @@ def _docx_bytes(title: str, content: str) -> bytes:
     output = io.BytesIO(); document.save(output); return output.getvalue()
 
 
+class _LegacyXlsHtmlTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "tr":
+            self._row = []
+        elif tag.lower() in {"td", "th"} and self._row is not None:
+            self._cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"td", "th"} and self._row is not None and self._cell is not None:
+            self._row.append("".join(self._cell).strip())
+            self._cell = None
+        elif tag.lower() == "tr" and self._row is not None:
+            self.rows.append(self._row)
+            self._row = None
+
+
+def _decode_legacy_xls_source(payload: bytes) -> str:
+    for encoding in ("utf-8-sig", "gb18030", "utf-16"):
+        try:
+            return payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return payload.decode("utf-8", errors="replace")
+
+
+def _legacy_markup_xls_preview_sheets(path: Path) -> tuple[list[dict], bool]:
+    """Read HTML/SpreadsheetML exports that legacy systems commonly name .xls."""
+    source = _decode_legacy_xls_source(path.read_bytes())
+    lowered = source[:8192].lower()
+    if "<workbook" not in lowered and ("<table" in lowered or "<html" in lowered):
+        parser = _LegacyXlsHtmlTableParser()
+        parser.feed(source)
+        rows = parser.rows[:XLSX_PREVIEW_MAX_ROWS_PER_SHEET]
+        trimmed = [row[:XLSX_PREVIEW_MAX_COLUMNS] for row in rows]
+        truncated = len(parser.rows) > len(rows) or any(len(row) > XLSX_PREVIEW_MAX_COLUMNS for row in parser.rows)
+        return [{"name": "表格1", "rows": trimmed}], truncated
+
+    try:
+        root = ElementTree.fromstring(source)
+    except ElementTree.ParseError as exc:
+        raise ValueError("不是可识别的旧版 Excel 文件") from exc
+    worksheets = [element for element in root.iter() if element.tag.rsplit("}", 1)[-1] == "Worksheet"]
+    if not worksheets:
+        raise ValueError("不是可识别的旧版 Excel 文件")
+    sheets: list[dict] = []
+    truncated = len(worksheets) > XLSX_PREVIEW_MAX_SHEETS
+    for worksheet_index, worksheet in enumerate(worksheets[:XLSX_PREVIEW_MAX_SHEETS], start=1):
+        name = next(
+            (value for key, value in worksheet.attrib.items() if key.rsplit("}", 1)[-1] == "Name"),
+            f"工作表{worksheet_index}",
+        )
+        row_elements = [element for element in worksheet.iter() if element.tag.rsplit("}", 1)[-1] == "Row"]
+        if len(row_elements) > XLSX_PREVIEW_MAX_ROWS_PER_SHEET:
+            truncated = True
+        rows: list[list[str]] = []
+        for row_element in row_elements[:XLSX_PREVIEW_MAX_ROWS_PER_SHEET]:
+            values: list[str] = []
+            for cell in (element for element in row_element if element.tag.rsplit("}", 1)[-1] == "Cell"):
+                index_value = next(
+                    (value for key, value in cell.attrib.items() if key.rsplit("}", 1)[-1] == "Index"),
+                    "",
+                )
+                if index_value.isdigit():
+                    values.extend([""] * max(0, int(index_value) - len(values) - 1))
+                data = next((element for element in cell.iter() if element.tag.rsplit("}", 1)[-1] == "Data"), None)
+                values.append("" if data is None else "".join(data.itertext()).strip())
+                if len(values) >= XLSX_PREVIEW_MAX_COLUMNS:
+                    truncated = True
+                    break
+            while values and not values[-1]:
+                values.pop()
+            rows.append(values[:XLSX_PREVIEW_MAX_COLUMNS])
+        sheets.append({"name": name, "rows": rows})
+    return sheets, truncated
+
+
 def _xls_preview_sheets(path: Path) -> tuple[list[dict], bool]:
     """Read a bounded legacy BIFF workbook for safe browser table rendering."""
-    workbook = xlrd.open_workbook(path, on_demand=True)
+    try:
+        workbook = xlrd.open_workbook(path, on_demand=True)
+    except xlrd.XLRDError:
+        return _legacy_markup_xls_preview_sheets(path)
     sheets: list[dict] = []
     truncated = workbook.nsheets > XLSX_PREVIEW_MAX_SHEETS
     try:
