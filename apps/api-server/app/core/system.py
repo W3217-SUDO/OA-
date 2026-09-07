@@ -1018,7 +1018,7 @@ async def _business_rule_loop() -> None:
         _apply_notary_auto_conversion,
     )
     from app.core.tasks import (
-        _apply_hearing_sms_reminders, _apply_task_auto_completion, _apply_task_overdue_performance,
+        _apply_case_automatic_task_rules, _apply_hearing_sms_reminders, _apply_task_auto_completion, _apply_task_overdue_performance,
     )
     while True:
         async with SessionLocal() as db:
@@ -1027,6 +1027,7 @@ async def _business_rule_loop() -> None:
                 await _apply_task_auto_completion(db)
                 await _apply_task_overdue_performance(db)
                 await _apply_hearing_sms_reminders(db)
+                await _apply_case_automatic_task_rules(db)
             except Exception:
                 await db.rollback()
         await asyncio.sleep(3600)
