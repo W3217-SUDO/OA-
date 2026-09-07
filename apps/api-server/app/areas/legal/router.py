@@ -3766,7 +3766,8 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
         _record_dict,
     )
     from app.core.tasks import (
-        _add_task_message_notifications, _ensure_document_preparation_task, _next_manual_task_serial,
+        _add_task_message_notifications, _ensure_document_preparation_task,
+        _ensure_timestamp_evidence_handoff_task, _next_manual_task_serial,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     previous = case_record.status
@@ -3787,6 +3788,7 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
         case_record.status = "文书准备"
     db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{case_data['hearing_lawyer']}；经办律师：{','.join(handling_lawyers)}；助理：{assistant}。{body.comment}"))
     await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
+    await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
     notary_id = int(case_data.get("notary_id") or 0)
     if notary_id and not case_data.get("notary_handoff_task_id"):
         notary = await db.get(BusinessRecord, notary_id)
@@ -4104,6 +4106,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
     from app.core.tasks import (
         _ensure_execution_application_reminder_task,
         _ensure_document_preparation_task,
+        _ensure_timestamp_evidence_handoff_task,
     )
     case_nos = _normalize_case_numbers(body.case_nos)
     if not case_nos:
@@ -4146,6 +4149,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
                 case_record, db, previous_status=previous_status, operator=identity["username"],
             )
             await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
+            await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
         await db.commit()
     except HTTPException:
         await db.rollback()

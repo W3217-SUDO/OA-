@@ -202,9 +202,13 @@ async def _register_clue_collection(clue_id: int, body: ClueCollectionInput, ide
     evidence_status = body.evidence_status.strip() or "未入库"
     if evidence_status not in {"未入库", "已入库", "已出库", "已重新入库", "已销毁"}:
         raise HTTPException(status_code=422, detail="证物状态无效")
+    notary_institution = body.notary_institution.strip()
+    timestamp_evidence = notary_institution in {"时间戳", "权利卫士", "时间戳取证"}
     clue.status = "已取证"; clue.data = {
         **(clue.data or {}), "collected_at": str(body.collected_at),
-        "notary_institution": body.notary_institution.strip(),
+        "notary_institution": notary_institution,
+        "evidence_method": "timestamp" if timestamp_evidence else "notarial",
+        "is_timestamp_evidence": timestamp_evidence,
         "notarization_no": body.notarization_no.strip(), "certificate_no": body.notarization_no.strip(),
         "invoice_no": body.invoice_no.strip(), "storage_location": storage_location,
         **_warehouse_location_data(warehouse, location),
@@ -216,7 +220,7 @@ async def _register_clue_collection(clue_id: int, body: ClueCollectionInput, ide
         collection_evidence.id, warehouse, location, identity["username"], db
     )
     clue.data = {**(clue.data or {}), "collection_evidence_record_id": collection_evidence.id}
-    db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {body.notary_institution.strip()}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
+    db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {notary_institution}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
     await _sync_legacy_projection(clue, identity, db)
     await _sync_legacy_investigation_clue_evidence(clue, identity, db, evidence_file_ids)
     return clue

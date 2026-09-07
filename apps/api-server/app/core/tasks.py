@@ -7,6 +7,7 @@ from app.core.constants import (
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, CaseEvent, ContractApprovalStep, DingTalkError,
     HTTPException, HearingSchedule, IprCaseWarning, Notification, SessionLocal,
+    LegacyInvestigationClue, LegacyInvestigationClueEvidence,
     User, VipTask, VipTaskMessage, VipTaskNode, WorkflowEvent,
     asyncio, date, datetime, delete, dingtalk_client,
     func, httpx, or_, secrets, select,
@@ -791,6 +792,164 @@ async def _ensure_document_preparation_task(
         **case_data,
         "document_preparation_task_id": task.id,
     }
+    return task
+
+
+_TIMESTAMP_EVIDENCE_ORGANIZATIONS = {"时间戳", "权利卫士", "时间戳取证"}
+
+
+def _case_clue_numbers(case_data: dict) -> list[str]:
+    values = (
+        case_data.get("investigation_clue_nos")
+        or case_data.get("clue_nos")
+        or case_data.get("clue_no")
+        or case_data.get("investigation_clue")
+        or case_data.get("source_clue_no")
+        or []
+    )
+    raw_values = values if isinstance(values, list) else str(values).replace("，", ",").split(",")
+    return list(dict.fromkeys(str(value or "").strip() for value in raw_values if str(value or "").strip()))
+
+
+async def _case_originates_from_timestamp_evidence(
+    case_record: BusinessRecord,
+    db: AsyncSession,
+) -> bool:
+    case_data = case_record.data or {}
+    if case_data.get("source_is_timestamp_evidence") is True:
+        return True
+    if str(case_data.get("source_evidence_method") or "").strip() == "timestamp":
+        return True
+    if str(case_data.get("source_notary_institution") or "").strip() in _TIMESTAMP_EVIDENCE_ORGANIZATIONS:
+        return True
+
+    raw_ids = (
+        case_data.get("investigation_clue_ids")
+        or [case_data.get("investigation_clue_id") or case_data.get("clue_record_id") or case_data.get("clue_id")]
+    )
+    clue_ids = []
+    for raw_id in raw_ids if isinstance(raw_ids, list) else [raw_ids]:
+        try:
+            clue_id = int(raw_id or 0)
+        except (TypeError, ValueError):
+            continue
+        if clue_id and clue_id not in clue_ids:
+            clue_ids.append(clue_id)
+    if clue_ids:
+        clues = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "clue", BusinessRecord.id.in_(clue_ids),
+        ))).all())
+        for clue in clues:
+            clue_data = clue.data or {}
+            if (
+                clue_data.get("is_timestamp_evidence") is True
+                or str(clue_data.get("evidence_method") or "").strip() == "timestamp"
+                or str(clue_data.get("notary_institution") or "").strip() in _TIMESTAMP_EVIDENCE_ORGANIZATIONS
+            ):
+                return True
+
+    clue_numbers = _case_clue_numbers(case_data)
+    if not clue_numbers:
+        return False
+    legacy_clues = list((await db.scalars(select(LegacyInvestigationClue).where(
+        LegacyInvestigationClue.ClueNo.in_(clue_numbers),
+    ))).all())
+    clue_guids = [str(item.ClueGuid or "").strip() for item in legacy_clues if str(item.ClueGuid or "").strip()]
+    if not clue_guids:
+        return False
+    legacy_evidence = list((await db.scalars(select(LegacyInvestigationClueEvidence).where(
+        LegacyInvestigationClueEvidence.ClueGuid.in_(clue_guids),
+        LegacyInvestigationClueEvidence.NotaryOrganization.in_(_TIMESTAMP_EVIDENCE_ORGANIZATIONS),
+    ))).all())
+    return any(str(item.IsActived or "").strip().upper() not in {"N", "F", "0"} for item in legacy_evidence)
+
+
+async def _ensure_timestamp_evidence_handoff_task(
+    case_record: BusinessRecord,
+    db: AsyncSession,
+    *,
+    system_operator: str,
+) -> BusinessRecord | None:
+    """Create the legacy timestamp-file handoff task once all conditions hold."""
+    if case_record.status != "文书准备" or not await _case_originates_from_timestamp_evidence(case_record, db):
+        return None
+
+    case_data = case_record.data or {}
+    assistant_username, assistant_user = await _resolve_case_task_username(
+        case_data.get("assistant_usernames")
+        or case_data.get("assistant_username")
+        or case_data.get("assistants")
+        or case_data.get("assistant"),
+        db,
+    )
+    if not assistant_username or not assistant_user:
+        return None
+
+    linked_tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task",
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+        ),
+    ).order_by(BusinessRecord.id))).all())
+    existing = next((task for task in linked_tasks if (
+        str((task.data or {}).get("auto_task_type") or "") == "timestamp_evidence_handoff"
+        or (task.title == "交接时间戳文件" and _task_creation_mode(task.data or {}) == "自动")
+    )), None)
+    if existing:
+        case_record.data = {**case_data, "timestamp_evidence_handoff_task_id": existing.id}
+        return existing
+
+    owner_matches = list((await db.scalars(select(User).where(
+        User.display_name == "范应根", User.is_active.is_(True),
+    ).order_by(User.id))).all())
+    if len(owner_matches) != 1:
+        raise HTTPException(status_code=422, detail="自动任务负责人范应根不存在、已停用或姓名不唯一")
+    owner_user = owner_matches[0]
+    started_on = date.today()
+    deadline = started_on + timedelta(days=7)
+    description = f"{case_record.serial_no},交接时间戳文件."
+    assistant_name = str(assistant_user.display_name or assistant_username).strip()
+    owner_name = str(owner_user.display_name or owner_user.username).strip()
+    task = BusinessRecord(
+        module="task",
+        serial_no=await _next_manual_task_serial(db),
+        title="交接时间戳文件",
+        customer=case_record.customer,
+        status="待接收",
+        owner=owner_user.username,
+        department=str(owner_user.department or case_record.department).strip(),
+        description=description,
+        data={
+            "deadline": str(deadline), "start_at": str(started_on), "end_at": str(deadline),
+            "priority": "普通", "source": "案件任务", "creation_mode": "自动",
+            "task_type": "自动任务", "auto_task_type": "timestamp_evidence_handoff",
+            "initiator": assistant_username, "collaborators": [],
+            "case_no": case_record.serial_no, "case_nos": [case_record.serial_no],
+            "case_id": case_record.id, "case_record_id": case_record.id, "case_ids": [case_record.id],
+            "case_module": "case", "case_stage": "文书准备",
+            "source_evidence_method": "timestamp", "system_created_by": system_operator,
+        },
+    )
+    db.add(task)
+    await db.flush()
+    comment = f"{assistant_name}新建任务给负责人({owner_name})，协作人(无)，附言：\n\n{description}"
+    await _add_task_message_notifications(
+        task,
+        WorkflowEvent(
+            record_id=task.id, action="系统生成交接时间戳文件任务",
+            to_status="待接收", operator=assistant_username, comment=comment,
+        ),
+        db,
+        content=comment,
+    )
+    db.add(WorkflowEvent(
+        record_id=case_record.id, action="生成交接时间戳文件任务",
+        from_status=case_record.status, to_status=case_record.status, operator="system",
+        comment=f"任务 {task.serial_no}；负责人 {owner_name}；发起人 {assistant_name}",
+    ))
+    case_record.data = {**case_data, "timestamp_evidence_handoff_task_id": task.id}
     return task
 
 
