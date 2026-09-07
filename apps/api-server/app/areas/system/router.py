@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+import jwt
 from app.core.storage import _xls_preview_sheets
 from app.core.constants import (
     AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, CASE_FORMAL_DOCUMENT_FOLDERS, DEFAULT_ROLE_PERMISSIONS,
@@ -2382,6 +2383,80 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
             preview_text = f"{preview_text[:ATTACHMENT_TEXT_PREVIEW_MAX_CHARS]}\n\n[文件内容过长，在线预览仅显示前 200000 个字符]"
         return {**base, "kind": "text", "text": preview_text}
     return {**base, "kind": "unsupported", "detail": "当前文件格式暂不支持在线预览，请下载后查看"}
+
+
+@router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/office-preview")
+async def create_office_preview_link(
+    attachment_id: int,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authorize once, then issue a short-lived URL Office Online can fetch."""
+    from app.core.permissions import (
+        _ensure_attachment_record_visible,
+    )
+    from app.core.storage import (
+        _attachment_storage_path,
+    )
+
+    item = await db.get(FileAttachment, attachment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    if item.record_id:
+        await _ensure_attachment_record_visible(item.record_id, identity, db)
+    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
+        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    path = _attachment_storage_path(item)
+    if path is None:
+        raise HTTPException(status_code=404, detail="附件文件不存在")
+    suffix = Path(item.original_name).suffix.lower()
+    if suffix not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
+        raise HTTPException(status_code=422, detail="该文件不是 Office 文档")
+    token = jwt.encode(
+        {
+            "attachment_id": item.id,
+            "purpose": "office-online-preview",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        },
+        settings.secret_key,
+        algorithm="HS256",
+    )
+    return {
+        "kind": "office",
+        "source_url": f"{settings.api_prefix}/public/attachments/office-preview/{token}",
+        "expires_in": 600,
+    }
+
+
+@router.get(f"{settings.api_prefix}/public/attachments/office-preview/{{token}}")
+async def stream_office_preview_attachment(token: str, db: AsyncSession = Depends(get_db)):
+    """Serve an Office file through a bearer URL that expires after ten minutes."""
+    from app.core.storage import (
+        _attachment_storage_path,
+    )
+
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        if payload.get("purpose") != "office-online-preview":
+            raise ValueError("invalid token purpose")
+        attachment_id = int(payload["attachment_id"])
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="Office 预览地址无效或已过期") from exc
+    item = await db.get(FileAttachment, attachment_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    if Path(item.original_name).suffix.lower() not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
+        raise HTTPException(status_code=422, detail="该文件不是 Office 文档")
+    path = _attachment_storage_path(item)
+    if path is None:
+        raise HTTPException(status_code=404, detail="附件文件不存在")
+    return FileResponse(
+        path,
+        media_type=item.content_type or "application/octet-stream",
+        filename=item.original_name,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, max-age=600", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/pdf-preview")

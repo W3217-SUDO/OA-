@@ -49,6 +49,12 @@ const writePage = (target, html) => {
   target.document.close();
 };
 
+const officeExtensions = new Set(["doc", "docx", "xls", "xlsx", "ppt", "pptx"]);
+
+export function buildOfficeOnlineViewerUrl(sourceUrl) {
+  return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(sourceUrl)}`;
+}
+
 function renderXlsxFromArrayBuffer(arrayBuffer, fileName) {
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
   const sheetNames = workbook.SheetNames;
@@ -149,6 +155,15 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
   const suffix = String(name).split(".").pop()?.toLowerCase() || "";
   writePage(target, page(name, '<div class="status">正在加载文件...</div>'));
   try {
+    if (officeExtensions.has(suffix)) {
+      const { data } = await api.get(`/attachments/${attachment.id}/office-preview`);
+      const origin = options.origin || window.location.origin;
+      const sourceUrl = new URL(data.source_url, origin).toString();
+      const viewerUrl = buildOfficeOnlineViewerUrl(sourceUrl);
+      if (typeof target.location?.replace === "function") target.location.replace(viewerUrl);
+      else target.location.href = viewerUrl;
+      return "office";
+    }
     const { data } = await api.get(`/attachments/${attachment.id}/preview`);
     if (data.kind === "unsupported") {
       const error = new Error(data.detail || "当前文件格式暂不支持在线预览");

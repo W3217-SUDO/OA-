@@ -9,7 +9,10 @@ export type OnlinePreviewOptions = {
   openWindow?: () => Window | null;
   createObjectURL?: (blob: Blob) => string;
   revokeObjectURL?: (url: string) => void;
+  origin?: string;
 };
+
+export function buildOfficeOnlineViewerUrl(sourceUrl: string): string;
 
 export function openAttachmentOnlinePreview(
   api: AxiosInstance,
