@@ -22,6 +22,10 @@ class AttachmentOfficeOnlinePreviewContractTest(unittest.TestCase):
         self.assertIn('content_disposition_type="inline"', self.source)
         self.assertIn('"Cache-Control": "private, max-age=600"', self.source)
 
+    def test_main_composes_every_system_route_after_new_endpoints(self):
+        main_source = (ROUTER.parents[2] / "main.py").read_text(encoding="utf-8")
+        self.assertIn("include_route_slice(app, system_router, 77, 91)", main_source)
+
 
 if __name__ == "__main__":
     unittest.main()
