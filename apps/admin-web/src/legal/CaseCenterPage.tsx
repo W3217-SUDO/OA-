@@ -1890,14 +1890,19 @@ export default function CaseCenterPage({
     return [...counselDetailAttachments, ...counselDetailCustomerAttachments, ...counselDetailContractAttachments]
       .filter((item, index, all) => selected.has(item.id) && all.findIndex((candidate) => candidate.id === item.id) === index);
   };
+  const relatedCounselDocumentAttachmentIds = new Set([
+    ...counselDetailAttachments,
+    ...counselDetailCustomerAttachments,
+    ...counselDetailContractAttachments,
+  ].map((item) => item.id));
   const canApplySealToCounselAttachment = (item: AttachmentRow) =>
-    item.record_id === viewingCounselCase?.id && /\.docx?$/i.test(item.original_name);
+    relatedCounselDocumentAttachmentIds.has(item.id) && /\.docx?$/i.test(item.original_name);
   const handleCounselDocumentMoreAction = (key: string) => {
     if (key === "delete") return deleteCounselAttachments();
     const selected = selectedCounselAttachments();
     if (key === "seal") {
       if (selected.length !== 1) return message.warning("请先选择一个文件再申请用印");
-      if (!canApplySealToCounselAttachment(selected[0])) return message.warning("仅案件中的 Word 文件可以申请用印");
+      if (!canApplySealToCounselAttachment(selected[0])) return message.warning("仅当前案件关联文档中的 Word 文件可以申请用印");
       return void openCounselAttachmentSeal(selected[0]);
     }
     if (key === "move") {
