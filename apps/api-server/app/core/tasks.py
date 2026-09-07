@@ -655,6 +655,137 @@ async def _next_manual_task_serial(db: AsyncSession, *, now: datetime | None = N
     raise HTTPException(status_code=503, detail="任务编号生成失败，请稍后重试")
 
 
+def _one_calendar_month_after(value: date) -> date:
+    year = value.year + (1 if value.month == 12 else 0)
+    month = 1 if value.month == 12 else value.month + 1
+    return value.replace(year=year, month=month, day=min(value.day, calendar.monthrange(year, month)[1]))
+
+
+async def _resolve_case_task_username(values: object, db: AsyncSession) -> tuple[str, User | None]:
+    raw_values = values if isinstance(values, list) else [values]
+    for raw_value in raw_values:
+        value = str(raw_value or "").strip()
+        if not value:
+            continue
+        users = list((await db.scalars(select(User).where(
+            User.is_active.is_(True),
+            or_(User.username == value, User.display_name == value),
+        ).order_by(User.id))).all())
+        exact_username = next((user for user in users if user.username == value), None)
+        if exact_username:
+            return exact_username.username, exact_username
+        if len(users) == 1:
+            return users[0].username, users[0]
+    return "", None
+
+
+async def _ensure_document_preparation_task(
+    case_record: BusinessRecord,
+    db: AsyncSession,
+    *,
+    system_operator: str,
+) -> BusinessRecord | None:
+    """Create the legacy document-preparation assignment once its two conditions hold."""
+    if case_record.status != "文书准备":
+        return None
+
+    case_data = case_record.data or {}
+    assistant_username, assistant_user = await _resolve_case_task_username(
+        case_data.get("assistant_usernames")
+        or case_data.get("assistant_username")
+        or case_data.get("assistants")
+        or case_data.get("assistant"),
+        db,
+    )
+    initiator_username, initiator_user = await _resolve_case_task_username(
+        case_data.get("handling_lawyer_usernames") or case_data.get("handling_lawyers"),
+        db,
+    )
+    if not assistant_username or not initiator_username:
+        return None
+
+    linked_tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task",
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+        ),
+    ).order_by(BusinessRecord.id))).all())
+    existing = next((task for task in linked_tasks if (
+        str((task.data or {}).get("auto_task_type") or "") == "document_preparation_stage"
+        or (
+            task.title == "文书准备阶段"
+            and _task_creation_mode(task.data or {}) == "自动"
+        )
+    )), None)
+    if existing:
+        return existing
+
+    started_on = date.today()
+    deadline = _one_calendar_month_after(started_on)
+    description = f"{case_record.serial_no}已经分案,尽快完成文书."
+    assistant_name = str(assistant_user.display_name or assistant_username).strip()
+    initiator_name = str(initiator_user.display_name or initiator_username).strip()
+    task = BusinessRecord(
+        module="task",
+        serial_no=await _next_manual_task_serial(db),
+        title="文书准备阶段",
+        customer=case_record.customer,
+        status="待接收",
+        owner=assistant_username,
+        department=str(assistant_user.department or case_record.department).strip(),
+        description=description,
+        data={
+            "deadline": str(deadline),
+            "start_at": str(started_on),
+            "end_at": str(deadline),
+            "priority": "普通",
+            "source": "案件任务",
+            "creation_mode": "自动",
+            "task_type": "自动任务",
+            "auto_task_type": "document_preparation_stage",
+            "initiator": initiator_username,
+            "collaborators": [assistant_username],
+            "case_no": case_record.serial_no,
+            "case_nos": [case_record.serial_no],
+            "case_id": case_record.id,
+            "case_record_id": case_record.id,
+            "case_ids": [case_record.id],
+            "case_module": "case",
+            "case_stage": "文书准备",
+            "system_created_by": system_operator,
+        },
+    )
+    db.add(task)
+    await db.flush()
+    comment = (
+        f"{initiator_name}新建任务给负责人({assistant_name})，协作人({assistant_name})，附言：\n\n"
+        f"{description}"
+    )
+    await _add_task_message_notifications(
+        task,
+        WorkflowEvent(
+            record_id=task.id,
+            action="系统生成文书准备阶段任务",
+            to_status="待接收",
+            operator=initiator_username,
+            comment=comment,
+        ),
+        db,
+        content=comment,
+    )
+    db.add(WorkflowEvent(
+        record_id=case_record.id,
+        action="生成文书准备阶段任务",
+        from_status=case_record.status,
+        to_status=case_record.status,
+        operator="system",
+        comment=f"任务 {task.serial_no}；负责人 {assistant_name}；发起人 {initiator_name}",
+    ))
+    return task
+
+
 async def _next_rw_task_serial_no(db: AsyncSession, *, now: datetime | None = None) -> str:
     """Generate RW-prefixed task serial number: RW + yyMMdd + 4-digit sequence."""
     today = now or datetime.now()
