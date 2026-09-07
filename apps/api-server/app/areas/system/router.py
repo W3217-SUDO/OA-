@@ -1165,13 +1165,13 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         _is_investigation_task,
     )
     from app.core.permissions import (
-        _case_personal_scope_condition, _record_scope_conditions,
+        _case_personal_scope_condition, _permission_payload_for_identity, _record_scope_conditions,
     )
     from app.core.projections import (
         _receivable_detail_projection,
     )
     from app.core.system import (
-        _record_person_usernames,
+        _record_module_menu_allowed, _record_person_usernames,
     )
     from app.core.tasks import (
         _apply_task_auto_completion, _apply_task_overdue_performance, _task_dict,
@@ -1180,8 +1180,13 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
     await _apply_task_overdue_performance(db)
     scope = await _record_scope_conditions(identity, db)
     dashboard_modules = {"case", "task", "finance", "refund", "contract", "clue", "seal"}
+    permission = await _permission_payload_for_identity(identity, db)
+    allowed_dashboard_modules = {
+        module for module in dashboard_modules
+        if _record_module_menu_allowed(module, identity, permission)
+    }
     records = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module.in_(dashboard_modules), *scope,
+        BusinessRecord.module.in_(allowed_dashboard_modules), *scope,
     ))).all()
     by_module = {module: [item for item in records if item.module == module] for module in {"case", "task", "finance", "refund", "contract", "clue", "seal"}}
     cases, tasks = by_module["case"], by_module["task"]
@@ -1206,7 +1211,7 @@ async def dashboard(identity: dict = Depends(current_identity), db: AsyncSession
         if item["fee_category"] == "official" and item["owner"] == username
     ]
     unpaid_amount = sum(item["remaining_amount"] for item in personal_official_receivables)
-    pending_refunds = await _refund_case_fee_rows(identity, db)
+    pending_refunds = await _refund_case_fee_rows(identity, db) if "finance" in allowed_dashboard_modules else []
     def case_signal(item: BusinessRecord, *words: str) -> bool:
         data = item.data or {}
         values = [
