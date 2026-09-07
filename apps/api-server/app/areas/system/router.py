@@ -2422,7 +2422,8 @@ async def create_office_preview_link(
         algorithm="HS256",
     )
     public_base = settings.office_preview_public_base_url.strip().rstrip("/")
-    source_path = f"{settings.api_prefix}/public/attachments/office-preview/{token}"
+    public_file_name = f"attachment-{item.id}{suffix}"
+    source_path = f"{settings.api_prefix}/public/attachments/office-preview/{token}/{public_file_name}"
     return {
         "kind": "office",
         "source_url": f"{public_base}{source_path}" if public_base else source_path,
@@ -2430,8 +2431,8 @@ async def create_office_preview_link(
     }
 
 
-@router.get(f"{settings.api_prefix}/public/attachments/office-preview/{{token}}")
-async def stream_office_preview_attachment(token: str, db: AsyncSession = Depends(get_db)):
+@router.get(f"{settings.api_prefix}/public/attachments/office-preview/{{token}}/{{file_name}}")
+async def stream_office_preview_attachment(token: str, file_name: str, db: AsyncSession = Depends(get_db)):
     """Serve an Office file through a bearer URL that expires after ten minutes."""
     from app.core.storage import (
         _attachment_storage_path,
@@ -2447,8 +2448,11 @@ async def stream_office_preview_attachment(token: str, db: AsyncSession = Depend
     item = await db.get(FileAttachment, attachment_id)
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
-    if Path(item.original_name).suffix.lower() not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
+    suffix = Path(item.original_name).suffix.lower()
+    if suffix not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
         raise HTTPException(status_code=422, detail="该文件不是 Office 文档")
+    if file_name != f"attachment-{item.id}{suffix}":
+        raise HTTPException(status_code=404, detail="Office 预览文件名不匹配")
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
