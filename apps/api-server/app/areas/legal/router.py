@@ -2876,6 +2876,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     from app.core.system import (
         _record_dict,
     )
+    from app.core.tasks import (
+        _ensure_execution_application_reminder_task,
+    )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_action(identity, db, "case.detail.update")
     case_data = case_record.data or {}
@@ -2949,6 +2952,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
     if phase != previous_status:
         case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
+        await _ensure_execution_application_reminder_task(
+            case_record, db, previous_status=previous_status, operator=identity["username"],
+        )
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改普通案件基本信息",
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],
@@ -4094,6 +4100,9 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
     from app.core.system import (
         _record_dict,
     )
+    from app.core.tasks import (
+        _ensure_execution_application_reminder_task,
+    )
     case_nos = _normalize_case_numbers(body.case_nos)
     if not case_nos:
         raise HTTPException(status_code=422, detail="至少选择一件案件")
@@ -4131,6 +4140,9 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
                 to_status=case_record.status, operator=identity["username"],
                 comment=f"{phase['name']}（{phase['id']}）" + (f"｜{body.comment.strip()}" if body.comment.strip() else ""),
             ))
+            await _ensure_execution_application_reminder_task(
+                case_record, db, previous_status=previous_status, operator=identity["username"],
+            )
         await db.commit()
     except HTTPException:
         await db.rollback()

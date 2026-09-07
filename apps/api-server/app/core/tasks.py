@@ -1,4 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+import calendar
+
 from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
 )
@@ -22,6 +24,125 @@ def _task_creation_mode(data: dict) -> str:
     if task_type in {"固定任务", "自动任务"} or data.get("auto_task_type") or source in {"自动", "自动任务"}:
         return "自动"
     return "人工"
+
+
+def _add_calendar_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return value.replace(year=year, month=month, day=min(value.day, calendar.monthrange(year, month)[1]))
+
+
+def _case_person_references(data: dict, *keys: str) -> list[str]:
+    references: list[str] = []
+    for key in keys:
+        value = data.get(key)
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            reference = str(item or "").strip()
+            if reference and reference not in references:
+                references.append(reference)
+    return references
+
+
+async def _active_case_task_user(data: dict, db: AsyncSession, *, username_keys: tuple[str, ...], display_keys: tuple[str, ...], field_name: str) -> User:
+    references = _case_person_references(data, *username_keys, *display_keys)
+    for reference in references:
+        user = await db.scalar(select(User).where(User.username == reference, User.is_active.is_(True)))
+        if user:
+            return user
+        matches = list((await db.scalars(select(User).where(
+            User.display_name == reference, User.is_active.is_(True),
+        ))).all())
+        if len(matches) == 1:
+            return matches[0]
+    raise HTTPException(status_code=422, detail=f"案件未设置有效{field_name}，无法生成执行申请提醒任务")
+
+
+async def _ensure_execution_application_reminder_task(
+    case_record: BusinessRecord,
+    db: AsyncSession,
+    *,
+    previous_status: str,
+    operator: str,
+    today: date | None = None,
+) -> BusinessRecord | None:
+    """Create the legacy execution reminder once when a case enters first-instance pending execution."""
+    if case_record.status != "一审待执行" or previous_status == "一审待执行":
+        return None
+    existing = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "task",
+        BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["auto_task_type"].as_string() == "execution_application_reminder",
+    ))
+    if existing:
+        return existing
+    data = case_record.data or {}
+    lawyer = await _active_case_task_user(
+        data, db,
+        username_keys=("handling_lawyer_usernames",),
+        display_keys=("handling_lawyers",),
+        field_name="经办律师",
+    )
+    assistant = await _active_case_task_user(
+        data, db,
+        username_keys=("assistant_usernames", "assistant_username"),
+        display_keys=("assistants", "assistant"),
+        field_name="律师助理",
+    )
+    effective_today = today or date.today()
+    description = f"本案{case_record.serial_no}判决书或调解书已生效,请尽快提交申请执行材料,并上传"
+    task = BusinessRecord(
+        module="task",
+        serial_no=await _next_manual_task_serial(db),
+        title="执行申请-提醒任务",
+        customer=case_record.customer,
+        status="待接收",
+        owner=assistant.username,
+        department=assistant.department,
+        description=description,
+        data={
+            "deadline": str(_add_calendar_months(effective_today, 2)),
+            "priority": "普通",
+            "source": "案件任务",
+            "creation_mode": "自动",
+            "task_type": "自动任务",
+            "auto_task_type": "execution_application_reminder",
+            "initiator": lawyer.username,
+            "collaborators": [],
+            "case_no": case_record.serial_no,
+            "case_nos": [case_record.serial_no],
+            "case_id": case_record.id,
+            "case_record_id": case_record.id,
+            "case_ids": [case_record.id],
+            "case_module": "case",
+            "case_stage": case_record.status,
+            "system_created_by": operator,
+        },
+    )
+    db.add(task)
+    await db.flush()
+    message = (
+        f"{lawyer.display_name}新建任务给负责人({assistant.display_name})，"
+        f"协作人(无)，附言：{description}"
+    )
+    await _add_task_message_notifications(
+        task,
+        WorkflowEvent(
+            record_id=task.id,
+            action="系统生成执行申请提醒任务",
+            to_status="待接收",
+            operator=lawyer.username,
+            comment=message,
+        ),
+        db,
+        content=message,
+    )
+    case_record.data = {
+        **data,
+        "execution_application_reminder_task_id": task.id,
+    }
+    return task
 
 
 async def _task_has_vip_customer(task: BusinessRecord, db: AsyncSession) -> bool:
