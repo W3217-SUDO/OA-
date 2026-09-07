@@ -1618,7 +1618,7 @@ export default function SealCenterPage({
       dataIndex: "serial_no",
       width: 175,
       render: (v: string, r: SealRow) => (
-        <Button type="link" onClick={() => openSealNumber(r)}>
+        <Button className="seal-table-cell-link" type="link" title={v} onClick={() => openSealNumber(r)}>
           {v}
         </Button>
       ),
@@ -1719,7 +1719,7 @@ export default function SealCenterPage({
       width: 145,
       render: (_: unknown, r: SealRow) =>
         r.data.case_no ? (
-          <Button type="link" onClick={() => openCaseDetail(r.data.case_no)}>
+          <Button className="seal-table-cell-link" type="link" title={r.data.case_no} onClick={() => openCaseDetail(r.data.case_no)}>
             {r.data.case_no}
           </Button>
         ) : (
@@ -1732,7 +1732,9 @@ export default function SealCenterPage({
       render: (_: unknown, r: SealRow) =>
         r.data.contract_no ? (
           <Button
+            className="seal-table-cell-link"
             type="link"
+            title={r.data.contract_no}
             onClick={() => openContractDetail(r.data.contract_no)}
           >
             {r.data.contract_no}
@@ -1741,7 +1743,7 @@ export default function SealCenterPage({
           "—"
         ),
     },
-    { title: "客户", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string, r: SealRow) => value ? <Button type="link" onClick={() => openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
+    { title: "客户", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string, r: SealRow) => value ? <Button className="seal-table-cell-link" type="link" title={value} onClick={() => openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
     {
       title: "审核人",
       width: 90,
