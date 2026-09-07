@@ -2685,8 +2685,6 @@ export default function CaseCenterPage({
   const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档";
   const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
   const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
-  const selectedCounselDocumentAttachments=selectedCounselAttachments();
-  const canApplySealToSelectedCounselDocument=selectedCounselDocumentAttachments.length===1&&canApplySealToCounselAttachment(selectedCounselDocumentAttachments[0]);
   const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));
   const platformFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="平台");
   const internalFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部"));
@@ -3936,7 +3934,6 @@ export default function CaseCenterPage({
                 generatingCaseDocumentType={generatingCaseDocumentType}
                 generateCaseDocument={generateCaseDocument}
                 handleCounselDocumentMoreAction={handleCounselDocumentMoreAction}
-                canApplySealToSelectedCounselDocument={canApplySealToSelectedCounselDocument}
               />},
               {key:"firm-fees",label:"律所费用",children:<CaseFeesPanel
                 scope="firm"

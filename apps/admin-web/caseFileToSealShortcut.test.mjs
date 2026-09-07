@@ -16,7 +16,8 @@ test("case document seal shortcut supports Word files in the related document ch
   assert.match(guard, /relatedCounselDocumentAttachmentIds\.has\(item\.id\)/);
   assert.match(guard, /\\\.docx\?\$\/i\.test\(item\.original_name\)/);
   assert.match(panelSource, /canApplySealToCounselAttachment\(row\).*?>申请用印<\/Button>/);
-  assert.match(panelSource, /canApplySealToSelectedCounselDocument\?\[\{key:"seal",label:"申请用印"\}\]:\[\]/);
+  assert.match(panelSource, /items:\[\{key:"delete",label:"删除"\},\{key:"seal",label:"申请用印"\},\{key:"move",label:"更改文档目录"\}\]/);
+  assert.doesNotMatch(panelSource, /canApplySealToSelectedCounselDocument/);
   assert.match(pageSource, /仅当前案件关联文档中的 Word 文件可以申请用印/);
 });
 

@@ -61,7 +61,6 @@ interface CaseDocumentsPanelProps {
   generatingCaseDocumentType: string | null;
   generateCaseDocument: (type: string) => Promise<unknown>;
   handleCounselDocumentMoreAction: (key: string) => void;
-  canApplySealToSelectedCounselDocument: boolean;
 }
 
 export const CaseDocumentsPanel = ({
@@ -103,7 +102,6 @@ export const CaseDocumentsPanel = ({
   generatingCaseDocumentType,
   generateCaseDocument,
   handleCounselDocumentMoreAction,
-  canApplySealToSelectedCounselDocument,
 }: CaseDocumentsPanelProps) => {
   return (
     <div className="case-documents-layout">
@@ -168,7 +166,7 @@ export const CaseDocumentsPanel = ({
           aria-haspopup="menu"
           aria-expanded={caseDocumentGenerationMenuOpen}
         >生成操作</Button></Dropdown>}
-        {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},...(canApplySealToSelectedCounselDocument?[{key:"seal",label:"申请用印"}]:[]),{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
+        {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
         {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
       </Space>
       </div>
