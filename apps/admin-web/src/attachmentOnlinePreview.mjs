@@ -96,6 +96,48 @@ function renderXlsxFromArrayBuffer(arrayBuffer, fileName) {
   return { html: fullHtml, sheetCount: sheetNames.length, rowCount: totalRows };
 }
 
+export function renderStructuredWorkbook(sheets, truncated = false) {
+  const normalizedSheets = (Array.isArray(sheets) ? sheets : []).map((sheet, sheetIndex) => ({
+    name: String(sheet?.name || `工作表${sheetIndex + 1}`),
+    rows: Array.isArray(sheet?.rows) ? sheet.rows : [],
+  }));
+  if (!normalizedSheets.length) {
+    return '<div class="xlsx-empty">（该 Excel 文件没有可显示的工作表）</div>';
+  }
+  const tabsHtml = normalizedSheets.map((sheet, index) =>
+    `<div class="xlsx-tab ${index === 0 ? "active" : ""}" data-sheet-index="${index}" onclick="switchSheet(this)">${escapeHtml(sheet.name)}</div>`
+  ).join("");
+  const sheetsHtml = normalizedSheets.map((sheet, sheetIndex) => {
+    const columnCount = sheet.rows.reduce((maximum, row) => Math.max(maximum, Array.isArray(row) ? row.length : 0), 0);
+    const body = sheet.rows.map((row, rowIndex) => {
+      const cells = Array.isArray(row) ? row : [];
+      const tag = rowIndex === 0 ? "th" : "td";
+      const renderedCells = Array.from({ length: columnCount }, (_, columnIndex) =>
+        `<${tag}>${escapeHtml(cells[columnIndex] ?? "")}</${tag}>`
+      ).join("");
+      return `<tr>${renderedCells}</tr>`;
+    }).join("");
+    const empty = body || '<tr><td class="xlsx-empty">（工作表没有可显示的数据）</td></tr>';
+    return `<div class="xlsx-sheet-container" data-sheet-content-index="${sheetIndex}" style="${sheetIndex === 0 ? "" : "display:none"}"><table class="xlsx-table">${empty}</table></div>`;
+  }).join("");
+  const rowCount = normalizedSheets.reduce((total, sheet) => total + sheet.rows.length, 0);
+  const truncatedText = truncated ? "，内容较多，仅显示前部分数据" : "";
+  return `
+    <div class="xlsx-tabs">${tabsHtml}</div>
+    <div class="xlsx-preview">${sheetsHtml}</div>
+    <div class="xlsx-info">共 ${normalizedSheets.length} 个工作表，约 ${rowCount} 行数据${truncatedText}</div>
+    <script>
+      function switchSheet(tabEl) {
+        const sheetIndex = tabEl.getAttribute('data-sheet-index');
+        document.querySelectorAll('.xlsx-tab').forEach(t => t.classList.remove('active'));
+        tabEl.classList.add('active');
+        document.querySelectorAll('[data-sheet-content-index]').forEach(el => {
+          el.style.display = el.getAttribute('data-sheet-content-index') === sheetIndex ? '' : 'none';
+        });
+      }
+    <\/script>`;
+}
+
 export async function openAttachmentOnlinePreview(api, attachment, options = {}) {
   const openWindow = options.openWindow || (() => window.open("about:blank", "_blank"));
   const createObjectURL = options.createObjectURL || ((blob) => URL.createObjectURL(blob));
@@ -146,6 +188,10 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
         writePage(target, page(name, body));
       }
       return "docx";
+    }
+    if (data.kind === "workbook") {
+      writePage(target, page(name, renderStructuredWorkbook(data.sheets, data.truncated)));
+      return "workbook";
     }
     if (data.kind === "xlsx" || suffix === "xls" || suffix === "xlsx") {
       const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: "blob" });
