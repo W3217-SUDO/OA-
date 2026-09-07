@@ -2421,9 +2421,11 @@ async def create_office_preview_link(
         settings.secret_key,
         algorithm="HS256",
     )
+    public_base = settings.office_preview_public_base_url.strip().rstrip("/")
+    source_path = f"{settings.api_prefix}/public/attachments/office-preview/{token}"
     return {
         "kind": "office",
-        "source_url": f"{settings.api_prefix}/public/attachments/office-preview/{token}",
+        "source_url": f"{public_base}{source_path}" if public_base else source_path,
         "expires_in": 600,
     }
 

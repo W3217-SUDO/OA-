@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     initial_admin_department: str = "上海分所"
     seed_demo_data: bool = True
     access_token_minutes: int = 720
+    # Office Online fetches documents server-to-server and therefore needs a
+    # publicly trusted HTTPS origin rather than the user's authenticated OA URL.
+    office_preview_public_base_url: str = ""
     # Local non-Docker development falls back to uploads/; Docker/production
     # explicitly set minio:9000, preventing unavailable MinIO from blocking uploads.
     minio_endpoint: str = ""

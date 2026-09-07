@@ -15,6 +15,8 @@ class AttachmentOfficeOnlinePreviewContractTest(unittest.TestCase):
         self.assertIn('"purpose": "office-online-preview"', self.source)
         self.assertIn("timedelta(minutes=10)", self.source)
         self.assertIn("_ensure_attachment_record_visible(item.record_id, identity, db)", self.source)
+        self.assertIn("settings.office_preview_public_base_url.strip().rstrip", self.source)
+        self.assertIn('"source_url": f"{public_base}{source_path}" if public_base else source_path', self.source)
 
     def test_public_endpoint_validates_token_and_streams_original_file_inline(self):
         self.assertIn("async def stream_office_preview_attachment(", self.source)
