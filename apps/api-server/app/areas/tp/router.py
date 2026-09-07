@@ -333,7 +333,6 @@ async def list_tasks(
         department_usernames = set((await db.scalars(select(User.username).where(User.department == user.department))).all())
         department_tokens = [BusinessRecord.data["collaborators"].as_string().contains(f'"{name}"') for name in department_usernames]
         task_conditions.append(or_(
-            BusinessRecord.department == user.department,
             BusinessRecord.owner.in_(department_usernames),
             BusinessRecord.data["initiator"].as_string().in_(department_usernames),
             *department_tokens,

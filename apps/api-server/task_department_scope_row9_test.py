@@ -43,10 +43,11 @@ class TaskDepartmentScopeRow9Test(unittest.IsolatedAsyncioTestCase):
             ])
             base = {"deadline": str(date.today() + timedelta(days=7)), "priority": "普通", "source": "案件任务"}
             db.add_all([
-                BusinessRecord(module="task", serial_no="CODEX-814-R9-INIT", title="Department initiated", customer="", status="待接收", owner="row9-other", department="品牌一部", data={**base, "initiator": "row9-peer", "collaborators": []}),
+                BusinessRecord(module="task", serial_no="CODEX-814-R9-INIT", title="Department initiated", customer="", status="待接收", owner="row9-other", department="品牌二部", data={**base, "initiator": "row9-peer", "collaborators": []}),
                 BusinessRecord(module="task", serial_no="CODEX-814-R9-OWN", title="Department accepted", customer="", status="待接收", owner="row9-peer", department="品牌二部", data={**base, "initiator": "row9-other", "collaborators": []}),
                 BusinessRecord(module="task", serial_no="CODEX-814-R9-COLLAB", title="Department collaborating", customer="", status="待接收", owner="row9-other", department="品牌二部", data={**base, "initiator": "row9-other", "collaborators": ["row9-peer"]}),
                 BusinessRecord(module="task", serial_no="CODEX-814-R9-HIDDEN", title="Other department", customer="", status="待接收", owner="row9-other", department="品牌二部", data={**base, "initiator": "row9-other", "collaborators": []}),
+                BusinessRecord(module="task", serial_no="CODEX-814-R9-DEPT-ONLY", title="Stamped department only", customer="", status="待接收", owner="row9-other", department="品牌一部", data={**base, "initiator": "row9-other", "collaborators": []}),
             ])
             await db.commit()
         self.previous_overrides = dict(app.dependency_overrides)
