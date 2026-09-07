@@ -129,7 +129,9 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
     position = await db.scalar(select(JobRole).where(JobRole.name == body.position, JobRole.is_active.is_(True)))
     if not position:
         raise HTTPException(status_code=422, detail="所选职务不存在或已停用")
-    staff_role = str(body.data.get("staff_role") or body.position).strip()
+    # Position and permission role share the JobRole catalog. Keep one
+    # authoritative value so stale form/profile data cannot retain old access.
+    staff_role = body.position.strip()
     assigned_role: JobRole | None = None
     if account_type == "员工账号":
         assigned_role = await _job_role_for_name(staff_role, db)
@@ -224,9 +226,9 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     department = await db.scalar(select(Department).where(Department.name == body.department, Department.is_active.is_(True)))
     if not department: raise HTTPException(status_code=422, detail="所选部门不存在或已停用")
     current_position = str((employee.data or {}).get("position") or "").strip()
+    position_role = await db.scalar(select(JobRole).where(JobRole.name == body.position, JobRole.is_active.is_(True)))
     if body.position != current_position:
-        position = await db.scalar(select(JobRole).where(JobRole.name == body.position, JobRole.is_active.is_(True)))
-        if not position:
+        if not position_role:
             raise HTTPException(status_code=422, detail="所选职务不存在或已停用")
     account_type = str(body.data.get("account_type") or (employee.data or {}).get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
@@ -234,7 +236,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if "admin" not in _identity_role_ids(identity) and body.role != "user":
         raise HTTPException(status_code=403, detail="非系统管理员不能调整系统账号角色")
     effective_role = body.role if account_type == "员工账号" else "user"
-    requested_staff_role = str(body.data.get("permission_role_code") or body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
+    requested_staff_role = body.position.strip() if account_type == "员工账号" and position_role else str(body.data.get("permission_role_code") or body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
     current_staff_role = str((employee.data or {}).get("permission_role_code") or (employee.data or {}).get("staff_role") or (employee.data or {}).get("permission_role") or "").strip()
     if "admin" not in _identity_role_ids(identity) and requested_staff_role and requested_staff_role != current_staff_role:
         raise HTTPException(status_code=403, detail="非系统管理员不能调整员工的权限角色")

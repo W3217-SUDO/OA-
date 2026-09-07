@@ -493,6 +493,60 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         directory_row = next(item for item in directory.json()["items"] if item["username"] == "approval_user")
         self.assertTrue(directory_row["can_approve_contract"])
 
+    async def test_hr_employee_edit_reconciles_stale_permission_role_to_position(self):
+        admin_headers = await self._admin_headers()
+        async with self.sessions() as db:
+            db.add(Department(code="CODEX-ROLE-SYNC", name="Role Sync Department", is_active=True))
+            db.add_all([
+                JobRole(code="GENERAL-USER", name="普通用户", permissions=["dashboard"], is_active=True),
+                JobRole(code="LEAD-LAWYER", name="主办律师", permissions=["dashboard", "case"], is_active=True),
+            ])
+            user = User(
+                username="role_sync_user", display_name="Role Sync User",
+                department="Role Sync Department", role="user",
+                password_hash=hash_password("RoleSyncPass2026!"), is_active=True,
+                must_change_password=False,
+                profile={
+                    "account_type": "员工账号", "position": "主办律师",
+                    "staff_role": "普通用户", "permission_role": "普通用户",
+                    "permission_role_code": "GENERAL-USER",
+                },
+            )
+            db.add(user)
+            employee = BusinessRecord(
+                module="hr", serial_no="HR-ROLE-SYNC-01", title="Role Sync User",
+                status=STATUS_ACTIVE, owner="role_sync_user",
+                department="Role Sync Department",
+                data={
+                    "username": "role_sync_user", "account_type": "员工账号",
+                    "position": "主办律师", "staff_role": "普通用户",
+                    "permission_role": "普通用户", "permission_role_code": "GENERAL-USER",
+                },
+            )
+            db.add(employee)
+            await db.flush()
+            employee_id = int(employee.id)
+            await db.commit()
+
+        response = await self.client.patch(
+            f"{API}/hr/employees/{employee_id}", headers=admin_headers,
+            json={
+                "username": "role_sync_user", "display_name": "Role Sync User",
+                "department": "Role Sync Department", "role": "user",
+                "position": "主办律师", "is_active": True,
+                "email": "", "mobile": "", "office_phone": "",
+                "joined_at": "2026-09-07", "left_at": None,
+                "data": {
+                    "account_type": "员工账号", "position": "主办律师",
+                    "staff_role": "普通用户", "permission_role": "普通用户",
+                    "permission_role_code": "GENERAL-USER",
+                },
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        self.assertEqual(response.json()["user"]["profile"]["permission_role_code"], "LEAD-LAWYER")
+        self.assertEqual(response.json()["employee"]["data"]["permission_role_code"], "LEAD-LAWYER")
+
     async def test_hr_employee_edit_keeps_legacy_position_but_rejects_unknown_replacement(self):
         admin_headers = await self._admin_headers()
         async with self.sessions() as db:
