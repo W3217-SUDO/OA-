@@ -720,6 +720,10 @@ async def _ensure_document_preparation_task(
         )
     )), None)
     if existing:
+        case_record.data = {
+            **case_data,
+            "document_preparation_task_id": existing.id,
+        }
         return existing
 
     started_on = date.today()
@@ -783,6 +787,10 @@ async def _ensure_document_preparation_task(
         operator="system",
         comment=f"任务 {task.serial_no}；负责人 {assistant_name}；发起人 {initiator_name}",
     ))
+    case_record.data = {
+        **case_data,
+        "document_preparation_task_id": task.id,
+    }
     return task
 
 

@@ -138,15 +138,26 @@ class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((task.title, task.status, task.owner), ("文书准备阶段", "待接收", ASSISTANT["username"]))
         self.assertEqual(data["initiator"], LAWYER["username"])
         self.assertEqual(data["collaborators"], [ASSISTANT["username"]])
+        self.assertEqual(data["creation_mode"], "自动")
+        self.assertEqual(data["task_type"], "自动任务")
+        self.assertEqual(data["source"], "案件任务")
         self.assertEqual(data["auto_task_type"], "document_preparation_stage")
         self.assertEqual(data["case_no"], "CODEX-94-R3-ASSIGN")
+        self.assertEqual(data["case_nos"], ["CODEX-94-R3-ASSIGN"])
+        self.assertEqual(data["case_id"], case_id)
+        self.assertEqual(data["case_record_id"], case_id)
+        self.assertEqual(data["case_ids"], [case_id])
+        self.assertEqual(data["case_module"], "case")
+        self.assertEqual(data["case_stage"], "文书准备")
         self.assertEqual(task.description, "CODEX-94-R3-ASSIGN已经分案,尽快完成文书.")
         start_year, start_month, start_day = map(int, data["start_at"].split("-"))
         end_year, end_month, end_day = map(int, data["deadline"].split("-"))
         self.assertEqual((end_year * 12 + end_month) - (start_year * 12 + start_month), 1)
         self.assertLessEqual(end_day, start_day)
+        self.assertEqual(data["end_at"], data["deadline"])
 
         async with self.sessions() as db:
+            case_record = await db.get(BusinessRecord, case_id)
             task_events = list((await db.scalars(select(WorkflowEvent).where(
                 WorkflowEvent.record_id == task.id,
             ))).all())
@@ -154,9 +165,34 @@ class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
                 Notification.source_type == "task",
                 Notification.source_id == task.id,
             )) or 0)
+        self.assertEqual((case_record.data or {})["document_preparation_task_id"], task.id)
         self.assertEqual([event.action for event in task_events], ["系统生成文书准备阶段任务"])
-        self.assertIn("新建任务给负责人(律师助理)", task_events[0].comment)
+        self.assertEqual(task_events[0].operator, LAWYER["username"])
+        self.assertEqual(
+            task_events[0].comment,
+            "经办律师新建任务给负责人(律师助理)，协作人(律师助理)，附言：\n\n"
+            "CODEX-94-R3-ASSIGN已经分案,尽快完成文书.",
+        )
         self.assertEqual(notice_count, 1)
+
+        for identity, relation in (
+            (LAWYER, "initiated"),
+            (ASSISTANT, "owned"),
+            (ASSISTANT, "collaborating"),
+        ):
+            self.identity = dict(identity)
+            response = await self.client.get(f"{API}/tasks", params={
+                "relation": relation,
+                "case_no": "CODEX-94-R3-ASSIGN",
+            })
+            self.assertEqual(response.status_code, 200, response.text)
+            items = response.json()["items"]
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["title"], "文书准备阶段")
+            self.assertEqual(items[0]["initiator_display_name"], LAWYER["display_name"])
+            self.assertEqual(items[0]["owner_display_name"], ASSISTANT["display_name"])
+            self.assertEqual(items[0]["collaborator_display_names"], [ASSISTANT["display_name"]])
+        self.identity = dict(ADMIN)
 
     async def test_phase_change_creates_task_and_missing_assistant_does_not(self) -> None:
         ready_id = await self.create_case("CODEX-94-R3-PHASE", "新案待分配", with_team=True)
