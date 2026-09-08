@@ -65,6 +65,31 @@ class CaseAutomaticTasks94Rows59Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((mediation_tasks[0].title, mediation_tasks[0].owner), ("跟进和解—提醒任务", "lawyer"))
         self.assertEqual(mediation_tasks[0].data["deadline"], "2027-03-07")
 
+    async def test_closed_archive_falls_back_to_case_assistant_when_configured_owner_is_unavailable(self) -> None:
+        async with self.sessions() as db:
+            archive_owner = await db.scalar(select(User).where(User.username == "archive-owner"))
+            archive_owner.is_active = False
+            await db.commit()
+        case_id = await self.create_case("R6-FALLBACK", "一审和解结案", date(2026, 9, 8))
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, case_id)
+            created = await _ensure_phase_automatic_tasks(case, db, previous_status="文书准备", today=date(2026, 9, 8))
+            await db.commit()
+        self.assertEqual(len(created), 1)
+        task = (await self.tasks(case_id))[0]
+        self.assertEqual(task.owner, "assistant")
+        self.assertEqual(task.data["configured_owner"], "梁晨宇")
+        self.assertEqual(task.data["owner_fallback_reason"], "configured_owner_unavailable")
+
+    async def test_scheduler_backfills_document_preparation_task(self) -> None:
+        case_id = await self.create_case("R3-BACKFILL", "文书准备", date(2026, 9, 8))
+        async with self.sessions() as db:
+            self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 8)), 1)
+            self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 8)), 0)
+        task = (await self.tasks(case_id))[0]
+        self.assertEqual((task.title, task.owner), ("文书准备阶段", "assistant"))
+        self.assertEqual(task.data["auto_task_type"], "document_preparation_stage")
+
     async def test_delayed_phase_rules_observe_boundaries_and_are_idempotent(self) -> None:
         closed_id = await self.create_case("R5", "一审和解结案", date(2026, 7, 19))
         filing_id = await self.create_case("R9", "提交立案", date(2026, 8, 18))
@@ -98,6 +123,8 @@ class CaseAutomaticTasks94Rows59Test(unittest.IsolatedAsyncioTestCase):
         legal = (root / "app/areas/legal/router.py").read_text(encoding="utf-8")
         system = (root / "app/core/system.py").read_text(encoding="utf-8")
         self.assertEqual(legal.count("await _ensure_phase_automatic_tasks("), 2)
+        normal_basic = legal[legal.index("async def update_normal_case_basic"):legal.index("async def update_arbitration_case_basic")]
+        self.assertIn("await _ensure_document_preparation_task(case_record, db", normal_basic)
         self.assertIn("await _apply_case_automatic_task_rules(db)", system)
 
 

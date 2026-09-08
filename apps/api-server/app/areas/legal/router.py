@@ -2877,7 +2877,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         _record_dict,
     )
     from app.core.tasks import (
-        _ensure_execution_application_reminder_task, _ensure_phase_automatic_tasks,
+        _ensure_document_preparation_task, _ensure_execution_application_reminder_task,
+        _ensure_phase_automatic_tasks, _ensure_timestamp_evidence_handoff_task,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_action(identity, db, "case.detail.update")
@@ -2956,6 +2957,11 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
             case_record, db, previous_status=previous_status, operator=identity["username"],
         )
         await _ensure_phase_automatic_tasks(case_record, db, previous_status=previous_status)
+    # These rules depend on both the current phase and assigned people. Run
+    # after every basic-information save so assigning the assistant after the
+    # phase transition cannot silently lose the automatic tasks.
+    await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
+    await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改普通案件基本信息",
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],

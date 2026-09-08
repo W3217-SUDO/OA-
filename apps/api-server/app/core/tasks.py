@@ -1058,13 +1058,20 @@ async def _ensure_phase_automatic_tasks(
     created: list[BusinessRecord] = []
     if case_record.status == "一审和解结案":
         fixed = list((await db.scalars(select(User).where(User.display_name == "梁晨宇", User.is_active.is_(True)))).all())
-        if len(fixed) == 1:
+        archive_owner = fixed[0] if len(fixed) == 1 else assistant
+        if archive_owner:
             created.append(await _materialize_legacy_case_task(
                 case_record, db, auto_task_type="first_mediation_closed_archive", legacy_task_type_id=101024,
-                title="结算归档一审和解结案", initiator=None, owner=fixed[0], collaborators=[],
+                title="结算归档一审和解结案", initiator=None, owner=archive_owner, collaborators=[],
                 description="结算归档", started_on=effective_today, deadline=effective_today + timedelta(days=50),
                 trigger_at=effective_today, trigger_source_id=f"phase:101024:{effective_today}",
             ))
+            if not fixed:
+                created[-1].data = {
+                    **(created[-1].data or {}),
+                    "configured_owner": "梁晨宇",
+                    "owner_fallback_reason": "configured_owner_unavailable",
+                }
     elif case_record.status == "一审和解中" and lawyer:
         created.append(await _materialize_legacy_case_task(
             case_record, db, auto_task_type="first_mediation_follow_up", legacy_task_type_id=101023,
@@ -1108,6 +1115,8 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         if not phase_date:
             continue
         lawyer, assistant = await _case_rule_people(case_record, db)
+        await _ensure_document_preparation_task(case_record, db, system_operator="system")
+        await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator="system")
         if case_record.status in {"一审和解结案", "一审和解中"}:
             await _ensure_phase_automatic_tasks(case_record, db, previous_status="", today=phase_date)
         if case_record.status == "一审和解结案" and lawyer and assistant and effective_today >= phase_date + timedelta(days=50):
