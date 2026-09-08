@@ -65,7 +65,7 @@ class CaseAutomaticTasks94Rows59Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((mediation_tasks[0].title, mediation_tasks[0].owner), ("跟进和解—提醒任务", "lawyer"))
         self.assertEqual(mediation_tasks[0].data["deadline"], "2027-03-07")
 
-    async def test_closed_archive_falls_back_to_case_assistant_when_configured_owner_is_unavailable(self) -> None:
+    async def test_closed_archive_rejects_missing_configured_owner_without_fallback(self) -> None:
         async with self.sessions() as db:
             archive_owner = await db.scalar(select(User).where(User.username == "archive-owner"))
             archive_owner.is_active = False
@@ -73,28 +73,24 @@ class CaseAutomaticTasks94Rows59Test(unittest.IsolatedAsyncioTestCase):
         case_id = await self.create_case("R6-FALLBACK", "一审和解结案", date(2026, 9, 8))
         async with self.sessions() as db:
             case = await db.get(BusinessRecord, case_id)
-            created = await _ensure_phase_automatic_tasks(case, db, previous_status="文书准备", today=date(2026, 9, 8))
-            await db.commit()
-        self.assertEqual(len(created), 1)
-        task = (await self.tasks(case_id))[0]
-        self.assertEqual(task.owner, "assistant")
-        self.assertEqual(task.data["configured_owner"], "梁晨宇")
-        self.assertEqual(task.data["owner_fallback_reason"], "configured_owner_unavailable")
+            with self.assertRaisesRegex(Exception, "梁晨宇"):
+                await _ensure_phase_automatic_tasks(case, db, previous_status="文书准备", today=date(2026, 9, 8))
+            await db.rollback()
+        self.assertEqual(await self.tasks(case_id), [])
 
-    async def test_scheduler_backfills_document_preparation_task(self) -> None:
-        case_id = await self.create_case("R3-BACKFILL", "文书准备", date(2026, 9, 8))
+    async def test_scheduler_does_not_backfill_immediate_phase_rules(self) -> None:
+        document_id = await self.create_case("R3-HISTORY", "文书准备", date(2026, 9, 8))
+        closed_id = await self.create_case("R6-HISTORY", "一审和解结案", date(2026, 9, 8))
         async with self.sessions() as db:
-            self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 8)), 1)
             self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 8)), 0)
-        task = (await self.tasks(case_id))[0]
-        self.assertEqual((task.title, task.owner), ("文书准备阶段", "assistant"))
-        self.assertEqual(task.data["auto_task_type"], "document_preparation_stage")
+        self.assertEqual(await self.tasks(document_id), [])
+        self.assertEqual(await self.tasks(closed_id), [])
 
     async def test_delayed_phase_rules_observe_boundaries_and_are_idempotent(self) -> None:
         closed_id = await self.create_case("R5", "一审和解结案", date(2026, 7, 19))
         filing_id = await self.create_case("R9", "提交立案", date(2026, 8, 18))
         async with self.sessions() as db:
-            self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 6)), 1)
+            self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 6)), 0)
             self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 7)), 2)
             self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 7)), 0)
         closed = next(task for task in await self.tasks(closed_id) if task.title == "归档结算—提醒任务")
@@ -103,20 +99,32 @@ class CaseAutomaticTasks94Rows59Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((filing.title, filing.owner, filing.data["legacy_task_type_id"]), ("跟进立案", "assistant", 1010131))
         self.assertEqual((date.fromisoformat(filing.data["deadline"]) - date(2026, 9, 7)).days, 220)
 
-    async def test_payment_rule_uses_allocation_relation_and_receipt_identity(self) -> None:
+    async def test_payment_rule_is_case_scoped_and_recovers_after_people_are_added(self) -> None:
         case_id = await self.create_case("R8", "执行立案", date(2026, 8, 1))
         async with self.sessions() as db:
+            case = await db.get(BusinessRecord, case_id)
+            case.data = {**(case.data or {}), "assistant_usernames": [], "assistants": []}
             db.add(IncomingPayment(
-                receipt_no="HK-R8", received_date=date(2026, 8, 8), amount=100, payer_name="客户",
+                receipt_no="HK-R8-A", received_date=date(2026, 8, 7), amount=100, payer_name="客户",
                 status="已分配", claimed_customer="客户", allocated_amount=100,
                 allocations=[{"case_id": case_id, "case_no": "R8", "amount": 100}], operator="finance",
             ))
+            db.add(IncomingPayment(
+                receipt_no="HK-R8-B", received_date=date(2026, 8, 8), amount=200, payer_name="客户",
+                status="已分配", claimed_customer="客户", allocated_amount=200,
+                allocations=[{"case_id": case_id, "case_no": "R8", "amount": 200}], operator="finance",
+            ))
+            await db.commit()
+            self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 7)), 0)
+            case = await db.get(BusinessRecord, case_id)
+            case.data = {**(case.data or {}), "assistant_usernames": ["assistant"], "assistants": ["律师助理"]}
             await db.commit()
             self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 7)), 1)
             self.assertEqual(await _apply_case_automatic_task_rules(db, today=date(2026, 9, 7)), 0)
         task = (await self.tasks(case_id))[0]
         self.assertEqual((task.title, task.owner, task.data["legacy_task_type_id"]), ("结算归档任务", "assistant", 1001003))
-        self.assertEqual(task.data["trigger_source_id"], "payment:1:30d")
+        self.assertEqual(task.data["trigger_source_id"], f"case:{case_id}:payment_received_30d")
+        self.assertEqual(task.data["trigger_at"], "2026-09-06")
 
     def test_both_phase_entry_points_and_scheduler_are_wired(self) -> None:
         root = Path(__file__).parent

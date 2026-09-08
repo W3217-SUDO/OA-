@@ -685,9 +685,10 @@ async def _ensure_document_preparation_task(
     db: AsyncSession,
     *,
     system_operator: str,
+    transition_date: date | None = None,
 ) -> BusinessRecord | None:
     """Create the legacy document-preparation assignment once its two conditions hold."""
-    if case_record.status != "文书准备":
+    if case_record.status != "文书准备" and transition_date is None:
         return None
 
     case_data = case_record.data or {}
@@ -727,7 +728,7 @@ async def _ensure_document_preparation_task(
         }
         return existing
 
-    started_on = date.today()
+    started_on = transition_date or date.today()
     deadline = _one_calendar_month_after(started_on)
     description = f"{case_record.serial_no}已经分案,尽快完成文书."
     assistant_name = str(assistant_user.display_name or assistant_username).strip()
@@ -1058,20 +1059,14 @@ async def _ensure_phase_automatic_tasks(
     created: list[BusinessRecord] = []
     if case_record.status == "一审和解结案":
         fixed = list((await db.scalars(select(User).where(User.display_name == "梁晨宇", User.is_active.is_(True)))).all())
-        archive_owner = fixed[0] if len(fixed) == 1 else assistant
-        if archive_owner:
-            created.append(await _materialize_legacy_case_task(
-                case_record, db, auto_task_type="first_mediation_closed_archive", legacy_task_type_id=101024,
-                title="结算归档一审和解结案", initiator=None, owner=archive_owner, collaborators=[],
-                description="结算归档", started_on=effective_today, deadline=effective_today + timedelta(days=50),
-                trigger_at=effective_today, trigger_source_id=f"phase:101024:{effective_today}",
-            ))
-            if not fixed:
-                created[-1].data = {
-                    **(created[-1].data or {}),
-                    "configured_owner": "梁晨宇",
-                    "owner_fallback_reason": "configured_owner_unavailable",
-                }
+        if len(fixed) != 1:
+            raise HTTPException(status_code=422, detail="自动任务固定负责人“梁晨宇”未配置或存在重名账号")
+        created.append(await _materialize_legacy_case_task(
+            case_record, db, auto_task_type="first_mediation_closed_archive", legacy_task_type_id=101024,
+            title="结算归档一审和解结案", initiator=None, owner=fixed[0], collaborators=[],
+            description="结算归档", started_on=effective_today, deadline=effective_today + timedelta(days=50),
+            trigger_at=effective_today, trigger_source_id=f"phase:101024:{effective_today}",
+        ))
     elif case_record.status == "一审和解中" and lawyer:
         created.append(await _materialize_legacy_case_task(
             case_record, db, auto_task_type="first_mediation_follow_up", legacy_task_type_id=101023,
@@ -1115,10 +1110,6 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         if not phase_date:
             continue
         lawyer, assistant = await _case_rule_people(case_record, db)
-        await _ensure_document_preparation_task(case_record, db, system_operator="system")
-        await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator="system")
-        if case_record.status in {"一审和解结案", "一审和解中"}:
-            await _ensure_phase_automatic_tasks(case_record, db, previous_status="", today=phase_date)
         if case_record.status == "一审和解结案" and lawyer and assistant and effective_today >= phase_date + timedelta(days=50):
             await _materialize_legacy_case_task(
                 case_record, db, auto_task_type="first_mediation_closed_reminder", legacy_task_type_id=101024,
@@ -1139,15 +1130,29 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         case_receipts = list({receipt.id: receipt for receipt in (
             receipts_by_case_id.get(case_record.id, []) + receipts_by_case_no.get(case_record.serial_no, [])
         )}.values())
-        for receipt in case_receipts:
-            if lawyer and assistant:
-                await _materialize_legacy_case_task(
-                    case_record, db, auto_task_type="payment_received_30d_archive", legacy_task_type_id=1001003,
-                    title="结算归档任务", initiator=lawyer, owner=assistant, collaborators=[assistant],
-                    description=f"本案{case_record.serial_no}已到账超过30日,请尽快提交结算并归档.",
-                    started_on=effective_today, deadline=_add_calendar_months(effective_today, 2),
-                    trigger_at=receipt.received_date + timedelta(days=30), trigger_source_id=f"payment:{receipt.id}:30d",
+        if case_receipts:
+            if not lawyer or not assistant:
+                logger.warning(
+                    "case automatic task skipped: case_id=%s rule=payment_received_30d_archive missing=%s",
+                    case_record.id,
+                    "handling_lawyer" if not lawyer else "assistant",
                 )
+            else:
+                existing_payment_task = await db.scalar(select(BusinessRecord).where(
+                    BusinessRecord.module == "task",
+                    BusinessRecord.data["case_id"].as_integer() == case_record.id,
+                    BusinessRecord.data["auto_task_type"].as_string() == "payment_received_30d_archive",
+                ))
+                if not existing_payment_task:
+                    first_receipt = min(case_receipts, key=lambda item: (item.received_date, item.id))
+                    await _materialize_legacy_case_task(
+                        case_record, db, auto_task_type="payment_received_30d_archive", legacy_task_type_id=1001003,
+                        title="结算归档任务", initiator=lawyer, owner=assistant, collaborators=[assistant],
+                        description=f"本案{case_record.serial_no}已到账超过30日,请尽快提交结算并归档.",
+                        started_on=effective_today, deadline=_add_calendar_months(effective_today, 2),
+                        trigger_at=first_receipt.received_date + timedelta(days=30),
+                        trigger_source_id=f"case:{case_record.id}:payment_received_30d",
+                    )
     task_count_after = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
         BusinessRecord.module == "task",
     )) or 0)

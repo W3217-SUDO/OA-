@@ -213,7 +213,7 @@ class TimestampHandoffAutoTask94Row4Test(unittest.IsolatedAsyncioTestCase):
         legal_source = (root / "app/areas/legal/router.py").read_text(encoding="utf-8")
         self.assertIn('"evidence_method": "timestamp" if timestamp_evidence else "notarial"', collection_source)
         self.assertIn('"source_is_timestamp_evidence": timestamp_evidence', conversion_source)
-        self.assertEqual(legal_source.count("await _ensure_timestamp_evidence_handoff_task("), 2)
+        self.assertEqual(legal_source.count("await _ensure_timestamp_evidence_handoff_task("), 3)
 
 
 if __name__ == "__main__":

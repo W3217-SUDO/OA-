@@ -18,6 +18,7 @@ API = settings.api_prefix
 ADMIN = {"username": "row3-admin", "role": "admin", "display_name": "管理员", "department": "管理部"}
 LAWYER = {"username": "row3-lawyer", "role": "user", "display_name": "经办律师", "department": "诉讼部"}
 ASSISTANT = {"username": "row3-assistant", "role": "user", "display_name": "律师助理", "department": "诉讼部"}
+TIMESTAMP_OWNER = {"username": "row4-owner", "role": "user", "display_name": "范应根", "department": "调查部"}
 
 
 class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
@@ -31,7 +32,7 @@ class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         async with self.sessions() as db:
-            for identity in (ADMIN, LAWYER, ASSISTANT):
+            for identity in (ADMIN, LAWYER, ASSISTANT, TIMESTAMP_OWNER):
                 db.add(User(
                     username=identity["username"],
                     display_name=identity["display_name"],
@@ -47,6 +48,17 @@ class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
                 menu_keys=["case", "@action:case.phase.update"],
                 field_keys=[],
             ))
+            customer = BusinessRecord(
+                module="customer",
+                serial_no="CODEX-94-CUSTOMER",
+                title="测试客户",
+                customer="",
+                status="正常",
+                owner=ADMIN["username"],
+                department="诉讼部",
+                data={},
+            )
+            db.add(customer)
             phase = SystemParameter(
                 category="case_phase",
                 code="DOCUMENT",
@@ -58,6 +70,7 @@ class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
             db.add(phase)
             await db.flush()
             self.phase_id = phase.id
+            self.customer_id = customer.id
             await db.commit()
 
         self.identity = dict(ADMIN)
@@ -205,6 +218,36 @@ class DocumentPreparationAutoTask94Row3Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(len(await self.tasks_for_case(ready_id)), 1)
         self.assertEqual(await self.tasks_for_case(missing_id), [])
+
+    async def test_normal_basic_entry_creates_document_and_timestamp_tasks_once(self) -> None:
+        case_id = await self.create_case("CODEX-94-R3-R4-NORMAL", "新案待分配", with_team=True)
+        async with self.sessions() as db:
+            case_record = await db.get(BusinessRecord, case_id)
+            case_record.data = {**(case_record.data or {}), "source_is_timestamp_evidence": True}
+            await db.commit()
+        payload = {
+            "customer_record_id": self.customer_id,
+            "title": "普通基本信息入口案件",
+            "case_phase": "文书准备",
+            "cause_or_charge": "合同纠纷",
+            "handling_lawyers": [LAWYER["username"]],
+            "assistants": [ASSISTANT["username"]],
+            "assistant": ASSISTANT["username"],
+            "business_owner": "",
+            "investigator": "",
+            "investigation_clue_ids": [],
+            "right_type": "",
+            "source_person": "",
+            "comment": "经普通基本信息入口进入文书准备",
+        }
+        first = await self.client.put(f"{API}/cases/{case_id}/normal-basic", json=payload)
+        second = await self.client.put(f"{API}/cases/{case_id}/normal-basic", json=payload)
+        self.assertEqual((first.status_code, second.status_code), (200, 200), second.text)
+        tasks = await self.tasks_for_case(case_id)
+        self.assertEqual(
+            [(task.title, task.owner) for task in tasks],
+            [("文书准备阶段", ASSISTANT["username"]), ("交接时间戳文件", TIMESTAMP_OWNER["username"])],
+        )
 
 
 if __name__ == "__main__":
