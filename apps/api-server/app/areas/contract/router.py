@@ -450,11 +450,6 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         raise HTTPException(status_code=422, detail="用印审批人不存在或已停用")
     if not await _user_has_seal_action(approver, "approve", db):
         raise HTTPException(status_code=422, detail="所选人员没有用印审批动作权限")
-    existing_id = int((contract.data or {}).get("seal_application_id") or 0)
-    if existing_id:
-        existing = await db.get(BusinessRecord, existing_id)
-        if existing:
-            raise HTTPException(status_code=409, detail=f"合同已生成用印申请 {existing.serial_no}")
     asset = await db.get(SealAsset, body.seal_asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="印章不存在")
@@ -511,9 +506,11 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         db.add(seal)
         await db.flush()
         copied_targets = await _copy_seal_source_attachments(seal, source_attachment_ids, identity, db)
+        previous_seal_ids = [int(item) for item in (contract.data or {}).get("seal_application_ids", []) if str(item).isdigit()]
         contract.data = {
             **(contract.data or {}),
             "seal_application_id": seal.id,
+            "seal_application_ids": list(dict.fromkeys([*previous_seal_ids, seal.id])),
             "seal_application_no": seal.serial_no,
             "seal_requested_at": datetime.now().isoformat(timespec="seconds"),
             "sync_seal": sync_seal_requested,

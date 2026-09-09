@@ -928,6 +928,13 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
     }
     return "合同详情";
   }
+  if (normalizedKey.startsWith("customer-detail-")) {
+    const match = normalizedKey.match(/^customer-detail-\d+-(.+)$/);
+    if (match?.[1]) {
+      try { return decodeURIComponent(match[1]); } catch { return match[1]; }
+    }
+    return "客户查看";
+  }
   if (normalizedKey.startsWith("contract-investigation-")) return "新建调查任务";
   const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
   return menuLabel || routePageLabels[normalizedKey] || "业务页面";
@@ -1763,6 +1770,8 @@ export default function App() {
       )) ||
     (active.startsWith("contract-detail-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
+    (active.startsWith("customer-detail-") &&
+      Array.from(grantedMenuKeys).some((key) => key.startsWith("customer-"))) ||
     (active.startsWith("contract-investigation-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
     // Leaf menus are independently grantable.  A canonical route can collapse

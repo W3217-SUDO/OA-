@@ -40,6 +40,8 @@ export interface ContractFinanceDependencies {
     readonly setInvoiceSaving: React.Dispatch<React.SetStateAction<boolean>>;
     readonly invoiceForm: FormInstance<any>;
     readonly setInvoiceTarget: React.Dispatch<React.SetStateAction<Contract | null>>;
+    readonly invoiceSubjects: Array<{ contract_object_id: number; case_fee_ids: number[] }>;
+    readonly selectedInvoiceObjectKeys: React.Key[];
 }
 export function createContractFinanceActions(context: ContractFinanceDependencies) {
     const openContractPayment = async (contract: Contract) => {
@@ -147,7 +149,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         }
     };
     const createContractInvoice = async () => {
-        const { invoiceTarget, contractMutationGates, contractCapabilities, denyContractAction, setInvoiceSaving, invoiceForm, viewing, openViewing, setInvoiceTarget } = context;
+        const { invoiceTarget, contractMutationGates, contractCapabilities, denyContractAction, setInvoiceSaving, invoiceForm, viewing, openViewing, setInvoiceTarget, invoiceSubjects, selectedInvoiceObjectKeys } = context;
         if (!invoiceTarget || !contractMutationGates.current.invoice.tryEnter())
             return;
         if (!contractCapabilities(invoiceTarget).canInvoice) {
@@ -158,8 +160,15 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         setInvoiceSaving(true);
         try {
             const values = await invoiceForm.validateFields();
+            const selectedObjects = invoiceSubjects.filter((item: any) => selectedInvoiceObjectKeys.includes(item.contract_object_id));
+            const caseFeeIds = [...new Set(selectedObjects.flatMap((item: any) => item.case_fee_ids || []))];
+            if (!caseFeeIds.length) {
+                message.warning("请至少选择一项合同名下的案件费用");
+                return;
+            }
             const response = await api.post("/finance/invoices", {
                 ...values,
+                case_fee_ids: caseFeeIds,
                 customer: invoiceTarget.customer,
                 case_no: invoiceTarget.data.case_no || "",
                 contract_record_id: invoiceTarget.id,

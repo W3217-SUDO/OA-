@@ -687,7 +687,8 @@ export default function InvestigationCenterPage({
             ? formatRequiredDate(values.investigated_at, "调查日期")
             : "",
           producer: values.producer || "",
-          indictee: values.indictee || "",
+          indictee: values.indictees?.[0]?.name || values.indictee || "",
+          indictees: Array.isArray(values.indictees) ? values.indictees : [],
           investigation_assistant: values.investigation_assistant || "",
           authorized_from:
             targetModule === "investigation"

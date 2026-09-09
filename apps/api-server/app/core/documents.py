@@ -720,7 +720,11 @@ async def _user_has_seal_action(user: User, action: str, db: AsyncSession) -> bo
         return False
     permission = await _user_permission_payload(user, db)
     keys = set(permission.get("action_keys") or [])
-    return "*" in keys or SEAL_ACTION_CODES[action] in keys
+    if "*" in keys or SEAL_ACTION_CODES[action] in keys:
+        return True
+    # Contract approvers also approve the seal request attached to that
+    # contract. Keep candidate discovery and submission validation aligned.
+    return action == "approve" and bool((user.profile or {}).get("contract_approval_enabled"))
 
 
 async def _get_seal_application_for_action(record_id: int, action: str, identity: dict, db: AsyncSession) -> BusinessRecord:

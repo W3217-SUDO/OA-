@@ -6,7 +6,7 @@ import { api } from "../api";
 import { LegacyContractHistoryPanel } from "../LegacyContractHistoryPanel";
 import { buildChinesePersonOptions, displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
 import { customerStatusLabel } from "../customerStatusLabel";
-import { consumeCustomerDetailTarget } from "../customerDetailNavigation";
+import { consumeCustomerDetailTarget, rememberCustomerDetailTarget } from "../customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "../customerRelationNavigation";
 import {
   filterCustomerPatchData,
@@ -106,8 +106,9 @@ export default function CustomerCenterPage({
     "customer-recent-update": "recent_update",
     "customer-company-recycle": "company_recycle",
   }[initialView];
+  const isCustomerDetailRoute = initialView.startsWith("customer-detail-");
   const isOriginalCustomerList = Boolean(originalCustomerScope);
-  const isReadOnlyCustomerList = isOriginalCustomerList;
+  const isReadOnlyCustomerList = isOriginalCustomerList || isCustomerDetailRoute;
 
   // ========== State ==========
   const [allRows, setAllRows] = useState<Customer[]>([]);
@@ -817,6 +818,11 @@ export default function CustomerCenterPage({
   };
 
   const openDetail = async (r: Customer, tab = "contacts") => {
+    if (isOriginalCustomerList && !isCustomerDetailRoute) {
+      rememberCustomerDetailTarget({ id: r.id, serial_no: r.serial_no, title: r.title });
+      onNavigate?.(`customer-detail-${r.id}-${encodeURIComponent(r.title || r.serial_no || "客户查看")}`);
+      return;
+    }
     setContactPage(1);
     setContactPageSize(15);
     setContactTotal(0);

@@ -202,6 +202,8 @@ export default function ContractCenterPage({
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
+  const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{contract_object_id:number;case_no:string;case_title:string;fee_type:string;case_fee_ids:number[]}>>([]);
+  const [selectedInvoiceObjectKeys, setSelectedInvoiceObjectKeys] = useState<Key[]>([]);
   const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
   const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);
   const [objectLogTarget, setObjectLogTarget] = useState<ContractObjectRow | null>(null);
@@ -747,6 +749,24 @@ export default function ContractCenterPage({
       },
     });
   };
+  const archiveContract = (contract: Contract) => {
+    Modal.confirm({
+      title: "合同归档",
+      content: "归档后，该合同将不允许继续新增案件及费用，确认归档？",
+      okText: "确定",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await api.post(`/contracts/${contract.id}/archive`);
+          message.success("合同已归档");
+          setSelectedRowKeys([]);
+          await load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "合同归档失败");
+        }
+      },
+    });
+  };
   const [investigationError, setInvestigationError] = useState("");
 
   const closeInvestigationWizard = () => {
@@ -786,6 +806,8 @@ export default function ContractCenterPage({
     get setInvoiceSaving() { return setInvoiceSaving; },
     get invoiceForm() { return invoiceForm; },
     get setInvoiceTarget() { return setInvoiceTarget; },
+    get invoiceSubjects() { return invoiceSubjects; },
+    get selectedInvoiceObjectKeys() { return selectedInvoiceObjectKeys; },
   });
   const openContractPaymentTypeCreator = () => {
     paymentTypeCreateForm.resetFields();
@@ -793,7 +815,7 @@ export default function ContractCenterPage({
     setPaymentTypeCreateOpen(true);
   };
 
-  const openContractInvoice = (contract: Contract) => {
+  const openContractInvoice = async (contract: Contract) => {
     if (!contractCapabilities(contract).canInvoice) {
       denyContractAction();
       return;
@@ -807,6 +829,14 @@ export default function ContractCenterPage({
       invoice_content: "法律服务费",
       delivery_method: "电子发票",
     });
+    try {
+      const { data } = await api.get(`/contracts/${contract.id}/archive-subjects`);
+      setInvoiceSubjects(data.items || []);
+      setSelectedInvoiceObjectKeys([]);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "合同关联案件费用加载失败");
+      return;
+    }
     setInvoiceTarget(contract);
   };
 
@@ -1044,9 +1074,10 @@ export default function ContractCenterPage({
           onRevokeDraft={revokeDraft}
           onDeleteRecycled={deleteRecycledContract}
           onDeleteCompany={deleteCompanyContract}
+          onArchive={archiveContract}
           onChangeContract={openChange}
           onPayment={(contract) => void openContractPayment(contract)}
-          onInvoice={openContractInvoice}
+          onInvoice={(contract) => void openContractInvoice(contract)}
           onInvestigation={(contract) => void openInvestigation(contract)}
           onApprove={(contract) => void openReview(contract)}
           onReviewChange={reviewChange}
@@ -1155,7 +1186,7 @@ export default function ContractCenterPage({
                   刷新审批状态
                 </Button>
               )}
-              {wizardStep === 3 && !wizardDraft?.data.seal_application_id && (
+              {wizardStep === 3 && (
                 <Button
                   onClick={() => {
                     sealForm.setFieldValue("submit", false);
@@ -1166,7 +1197,6 @@ export default function ContractCenterPage({
                 </Button>
               )}
               {wizardStep === 3 &&
-                !wizardDraft?.data.seal_application_id &&
                 wizardDraft?.status === "审批中" &&
                 wizardDraft.data.sync_seal && (
                   <Button
@@ -1179,7 +1209,6 @@ export default function ContractCenterPage({
                   </Button>
                 )}
               {wizardStep === 3 &&
-                !wizardDraft?.data.seal_application_id &&
                 !(wizardDraft?.status === "审批中" && wizardDraft?.data.sync_seal) && (
                   <Button
                     type="primary"
@@ -1466,7 +1495,7 @@ export default function ContractCenterPage({
                   刷新审批状态
                 </Button>
               )}
-              {wizardStep === 3 && !wizardDraft?.data.seal_application_id && (
+              {wizardStep === 3 && (
                 <Button
                   onClick={() => {
                     sealForm.setFieldValue("submit", false);
@@ -1477,7 +1506,6 @@ export default function ContractCenterPage({
                 </Button>
               )}
               {wizardStep === 3 &&
-                !wizardDraft?.data.seal_application_id &&
                 wizardDraft?.status === "审批中" &&
                 wizardDraft.data.sync_seal && (
                   <Button type="primary" onClick={() => void createSealApplication(true)}>
@@ -1485,7 +1513,6 @@ export default function ContractCenterPage({
                   </Button>
                 )}
               {wizardStep === 3 &&
-                !wizardDraft?.data.seal_application_id &&
                 !(wizardDraft?.status === "审批中" && wizardDraft?.data.sync_seal) && (
                   <Button type="primary" onClick={() => void createSealApplication(true)}>
                     提交申请
@@ -1655,9 +1682,14 @@ export default function ContractCenterPage({
         invoiceTarget={invoiceTarget}
         invoiceForm={invoiceForm}
         invoiceSaving={invoiceSaving}
+        invoiceSubjects={invoiceSubjects}
+        selectedInvoiceObjectKeys={selectedInvoiceObjectKeys}
+        onInvoiceSelectionChange={setSelectedInvoiceObjectKeys}
         onCancel={() => {
           if (invoiceSaving) return;
           setInvoiceTarget(null);
+          setInvoiceSubjects([]);
+          setSelectedInvoiceObjectKeys([]);
         }}
         onOk={createContractInvoice}
       />

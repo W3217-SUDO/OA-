@@ -722,6 +722,9 @@ interface ContractInvoiceModalProps {
   invoiceTarget: Contract | null;
   invoiceForm: FormInstance;
   invoiceSaving: boolean;
+  invoiceSubjects: Array<{ contract_object_id: number; case_no: string; case_title: string; fee_type: string; case_fee_ids: number[] }>;
+  selectedInvoiceObjectKeys: Key[];
+  onInvoiceSelectionChange: (keys: Key[]) => void;
   onCancel: () => void;
   onOk: () => void;
 }
@@ -731,6 +734,9 @@ export function ContractInvoiceModal({
   invoiceTarget,
   invoiceForm,
   invoiceSaving,
+  invoiceSubjects,
+  selectedInvoiceObjectKeys,
+  onInvoiceSelectionChange,
   onCancel,
   onOk,
 }: ContractInvoiceModalProps) {
@@ -745,6 +751,7 @@ export function ContractInvoiceModal({
       onOk={onOk}
       cancelButtonProps={{ disabled: invoiceSaving }}
       onCancel={onCancel}
+      width={920}
     >
       <Form form={invoiceForm} layout="vertical">
         <div className="form-grid">
@@ -755,6 +762,18 @@ export function ContractInvoiceModal({
             <Input />
           </Form.Item>
           <Form.Item label="纳税人识别号" name="taxpayer_id" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="注册地址" name="invoice_address">
+            <Input />
+          </Form.Item>
+          <Form.Item label="注册电话" name="invoice_phone">
+            <Input />
+          </Form.Item>
+          <Form.Item label="开户银行" name="bank_name">
+            <Input />
+          </Form.Item>
+          <Form.Item label="银行账号" name="bank_account">
             <Input />
           </Form.Item>
           <Form.Item label="发票类型" name="invoice_type" rules={[{ required: true }]}>
@@ -787,6 +806,20 @@ export function ContractInvoiceModal({
           <Input.TextArea rows={2} />
         </Form.Item>
       </Form>
+      <Table
+        rowKey="contract_object_id"
+        size="small"
+        pagination={false}
+        dataSource={invoiceSubjects}
+        locale={{ emptyText: "当前合同没有可开票的案件费用" }}
+        rowSelection={{ selectedRowKeys: selectedInvoiceObjectKeys, onChange: onInvoiceSelectionChange }}
+        columns={[
+          { title: "案号", dataIndex: "case_no", width: 150 },
+          { title: "案件名称", dataIndex: "case_title", ellipsis: true },
+          { title: "费用类型", dataIndex: "fee_type", width: 130 },
+          { title: "费用条数", render: (_value, row) => row.case_fee_ids.length, width: 90 },
+        ]}
+      />
     </Modal>
   );
 }

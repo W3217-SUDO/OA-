@@ -541,6 +541,8 @@ export default function OrganizationCenterPage({
   ];
   const title = rolesView ? "角色列表" : "部门列表",
     button = rolesView ? "新增角色" : "新增部门";
+  const [organizationPage, setOrganizationPage] = useState(1);
+  const [organizationPageSize, setOrganizationPageSize] = useState(15);
   const emptyContent = (
     <div className="organization-empty">
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
@@ -572,11 +574,13 @@ export default function OrganizationCenterPage({
             dataSource={roles}
             locale={{ emptyText: emptyContent }}
             pagination={{
-              pageSize: 15,
+              current: organizationPage,
+              pageSize: organizationPageSize,
               showSizeChanger: true,
               pageSizeOptions: ["10", "15", "20", "50", "100"],
               showQuickJumper: { goButton: "GO" },
               showTotal: (total) => `共 ${total} 条`,
+              onChange: (page, pageSize) => { setOrganizationPage(page); setOrganizationPageSize(pageSize); },
             }}
           />
         ) : (
@@ -589,11 +593,13 @@ export default function OrganizationCenterPage({
             scroll={{ x: 960 }}
             locale={{ emptyText: emptyContent }}
             pagination={{
-              pageSize: 15,
+              current: organizationPage,
+              pageSize: organizationPageSize,
               showSizeChanger: true,
               pageSizeOptions: ["10", "15", "20", "50", "100"],
               showQuickJumper: { goButton: "GO" },
               showTotal: (total) => `共 ${total} 条`,
+              onChange: (page, pageSize) => { setOrganizationPage(page); setOrganizationPageSize(pageSize); },
             }}
           />
         )}

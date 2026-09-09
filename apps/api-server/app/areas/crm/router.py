@@ -1763,11 +1763,39 @@ async def list_customers(
         elif _is_civil_case_type(related_data.get("case_type")):
             relationship_counts[linked_customer.id]["civil_case_count"] += 1
     response_items = []
+    directory_users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    person_names: dict[str, str] = {}
+    for user in directory_users:
+        profile = user.profile or {}
+        display = str(user.display_name or "").strip()
+        if not display:
+            continue
+        aliases = {
+            str(user.username or "").strip(),
+            str(user.id),
+            str(profile.get("employee_id") or "").strip(),
+            str(profile.get("employee_no") or "").strip(),
+            str(profile.get("legacy_guid") or profile.get("person_guid") or profile.get("user_guid") or "").strip(),
+            display,
+        }
+        person_names.update({alias.casefold(): display for alias in aliases if alias})
+
+    def person_display(value: object) -> str:
+        token = str(value or "").strip()
+        return person_names.get(token.casefold(), token)
+
     for item in page_items:
         row = _record_dict(item, allowed_fields)
+        row_data = row.get("data") or {}
+        manager_values = row_data.get("customer_managers") or ([row.get("owner")] if row.get("owner") else [])
+        if not isinstance(manager_values, list):
+            manager_values = [manager_values]
+        source_value = row_data.get("customer_source") or row_data.get("source_person") or row.get("owner")
         row["data"] = {
-            **(row.get("data") or {}),
+            **row_data,
             **relationship_counts[item.id],
+            "customer_manager_display_names": [person_display(value) for value in manager_values if str(value or "").strip()],
+            "customer_source_display_name": person_display(source_value),
         }
         response_items.append(row)
     legacy_summary_fields = [

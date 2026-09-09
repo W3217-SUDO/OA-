@@ -31,6 +31,8 @@ export default function MessageCenterPage(){
   const [selected,setSelected]=useState<Notice|null>(null)
   const [directory,setDirectory]=useState<DirectoryUser[]>([])
   const [composeOpen,setComposeOpen]=useState(false)
+  const [page,setPage]=useState(1)
+  const [pageSize,setPageSize]=useState(15)
   const [composeForm]=Form.useForm()
 
   const params=useMemo(()=>({
@@ -104,7 +106,7 @@ export default function MessageCenterPage(){
           <label><span>消息类型</span><Select value={type} onChange={setType} options={[{value:'',label:'全部'},{value:'系统通知',label:'系统通知'},{value:'用户通知',label:'用户通知'}]}/></label>
           <Button type="primary" onClick={load}>查询</Button><Button type="primary" icon={<PlusOutlined/>} onClick={()=>setComposeOpen(true)}>发送消息</Button>
         </div>
-        <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{pageSize:15,showTotal:total=>`共 ${total} 条`}} scroll={{x:1120}}/>
+        <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{current:page,pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:'GO'},showTotal:total=>`共 ${total} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize)}}} scroll={{x:1120}}/>
         <div className="message-table-actions">{view!=='sent'&&<><Button disabled={!selectedKeys.length} onClick={markSelectedRead}>标记已读</Button><Button onClick={markAllRead}>全部标记已读</Button></>}<Popconfirm title="确认删除选中的消息？" onConfirm={()=>deleteMessages(selectedKeys)}><Button danger disabled={!selectedKeys.length}>删除选中</Button></Popconfirm></div>
         <Button onClick={() => { setDates(null); setSender(""); setKeyword(""); setType(""); void load(); }}>重置</Button>
       </section>

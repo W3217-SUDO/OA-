@@ -24,7 +24,7 @@ router = APIRouter()
 @router.get(f"{settings.api_prefix}/hr/employees")
 async def list_hr_employees(
     company: str = "", department: str = "", username: str = "", name: str = "", mobile: str = "", enabled: str = "",
-    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100),
+    page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Return the HR list with authoritative filtering and pagination.
@@ -38,19 +38,22 @@ async def list_hr_employees(
         _person_display_name,
     )
     from app.core.permissions import (
-        _record_scope_conditions,
+        _permission_payload_for_identity, _record_scope_conditions,
     )
     from app.core.system import (
         _record_dict,
     )
-    scope = await _record_scope_conditions(identity, db)
+    permission = await _permission_payload_for_identity(identity, db)
+    menu_keys = set(permission.get("menu_keys") or [])
+    # Employee Management is a company directory. Department-only visibility
+    # belongs to a separate department-employee view, not this endpoint.
+    scope = [] if identity.get("role") == "admin" or "hr-all" in menu_keys else await _record_scope_conditions(identity, db)
     employees = list((await db.scalars(
         select(BusinessRecord).where(BusinessRecord.module == "hr", *scope).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
     )).all())
     users_by_name: dict[str, User] = {}
-    if identity.get("role") == "admin":
-        users = list((await db.scalars(select(User).order_by(User.id))).all())
-        users_by_name = {str(user.username).strip().lower(): user for user in users}
+    users = list((await db.scalars(select(User).order_by(User.id))).all())
+    users_by_name = {str(user.username).strip().lower(): user for user in users}
     rows: list[dict] = []
     linked_names: set[str] = set()
     for employee in employees:

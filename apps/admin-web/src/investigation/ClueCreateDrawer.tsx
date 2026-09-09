@@ -1,4 +1,5 @@
-import { Drawer, Form, Alert, Input, Select, Radio, DatePicker, Button, Space, Typography } from "antd";
+import { useState } from "react";
+import { Drawer, Form, Alert, Input, Select, Radio, DatePicker, Button, Space, Typography, Modal } from "antd";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
 import type { PersonOption } from "./types";
 
@@ -23,6 +24,9 @@ export default function ClueCreateDrawer({
   onSubmit,
   onClose,
 }: ClueCreateDrawerProps) {
+  const [subjectOpen, setSubjectOpen] = useState(false);
+  const subjects = Form.useWatch("indictees", createForm) as Array<Record<string, string>> | undefined;
+  const subjectName = subjects?.[0]?.name;
   return (
     <Drawer
       open={open}
@@ -135,8 +139,10 @@ export default function ClueCreateDrawer({
           <Form.Item label="生产商" name="producer">
             <Input placeholder="生产商" />
           </Form.Item>
-          <Form.Item label="主体信息" name="indictee">
-            <Input placeholder="主体信息" />
+          <Form.Item label="主体信息">
+            <Button block onClick={() => setSubjectOpen(true)}>
+              {subjectName || "填写经营主体详细信息"}
+            </Button>
           </Form.Item>
           <Form.Item label="调查辅助员" name="investigation_assistant">
             <Select
@@ -188,6 +194,36 @@ export default function ClueCreateDrawer({
           </Form.Item>
         </div>
       </Form>
+      <Modal
+        open={subjectOpen}
+        title="经营主体"
+        okText="确定"
+        cancelText="取消"
+        onOk={() => setSubjectOpen(false)}
+        onCancel={() => setSubjectOpen(false)}
+        destroyOnHidden
+      >
+        <Form form={createForm} layout="vertical">
+          <Form.Item name={["indictees", 0, "nature"]} label="经营性质" rules={[{ required: true, message: "请选择经营性质" }]}>
+            <Select options={["企业", "个人", "个体工商户"].map((value) => ({ value, label: value }))} />
+          </Form.Item>
+          <Form.Item name={["indictees", 0, "name"]} label="主体名称" rules={[{ required: true, message: "请输入主体名称" }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name={["indictees", 0, "confirmation_method"]} label="确认方式">
+            <Select options={["工商登记", "身份证明", "现场确认", "网络核验", "其他"].map((value) => ({ value, label: value }))} />
+          </Form.Item>
+          <Form.Item name={["indictees", 0, "identity_no"]} label="证件号码">
+            <Input />
+          </Form.Item>
+          <Form.Item name={["indictees", 0, "region"]} label="所在地区">
+            <Input />
+          </Form.Item>
+          <Form.Item name={["indictees", 0, "business_address"]} label="经营地址">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Drawer>
   );
 }

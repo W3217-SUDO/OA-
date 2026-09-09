@@ -61,6 +61,7 @@ interface ContractListProps {
   onRevokeDraft: (contract: Contract) => void;
   onDeleteRecycled: (contract: Contract) => void;
   onDeleteCompany: (contract: Contract) => void;
+  onArchive: (contract: Contract) => void;
   onChangeContract: (contract: Contract) => void;
   onPayment: (contract: Contract) => void;
   onInvoice: (contract: Contract) => void;
@@ -110,6 +111,7 @@ export function ContractList({
   onRevokeDraft,
   onDeleteRecycled,
   onDeleteCompany,
+  onArchive,
   onChangeContract,
   onPayment,
   onInvoice,
@@ -562,6 +564,14 @@ export function ContractList({
               >
                 删除合同
               </Button>
+            ) : initialView === "contract-mine" ? (
+              <Button
+                danger
+                disabled={!selected || selected.status !== "草稿"}
+                onClick={() => needSelected(() => onRevokeDraft(selected!))}
+              >
+                删除合同
+              </Button>
             ) : (
               <Button
                 danger
@@ -578,6 +588,14 @@ export function ContractList({
               合同变更
             </Button>
             <Button onClick={() => needSelected(() => onSeal(selected!))}>合同用印</Button>
+            {initialView === "contract-mine" && (
+              <Button
+                disabled={!selected || !["审批通过", "已完成", "A", "Approved", "approved"].includes(selected.status)}
+                onClick={() => needSelected(() => onArchive(selected!))}
+              >
+                合同归档
+              </Button>
+            )}
             <Button
               disabled={!selectedContractCapabilities.canPayment}
               onClick={() => needSelected(() => onPayment(selected!))}
