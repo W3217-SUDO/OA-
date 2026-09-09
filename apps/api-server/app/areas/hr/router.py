@@ -47,7 +47,8 @@ async def list_hr_employees(
     menu_keys = set(permission.get("menu_keys") or [])
     # Employee Management is a company directory. Department-only visibility
     # belongs to a separate department-employee view, not this endpoint.
-    scope = [] if identity.get("role") == "admin" or "hr-all" in menu_keys else await _record_scope_conditions(identity, db)
+    can_view_company_directory = identity.get("role") == "admin" or "hr-all" in menu_keys
+    scope = [] if can_view_company_directory else await _record_scope_conditions(identity, db)
     employees = list((await db.scalars(
         select(BusinessRecord).where(BusinessRecord.module == "hr", *scope).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
     )).all())
@@ -76,7 +77,7 @@ async def list_hr_employees(
         if person_name_missing:
             row["title"] = person_name
         rows.append(row)
-    if identity.get("role") == "admin":
+    if can_view_company_directory:
         for user in users_by_name.values():
             key = str(user.username).strip().lower()
             if key in linked_names:

@@ -326,7 +326,7 @@ export function ContractWizardContent({
               <p>合同草稿、审批意见、附件和时间线均已保存，可以继续办理合同用印。</p>
             </div>
           )}
-          {wizardDraft?.data.seal_application_id ? (
+          {wizardDraft?.data.seal_application_id && (
             <Descriptions
               bordered
               size="small"
@@ -353,7 +353,8 @@ export function ContractWizardContent({
                 },
               ]}
             />
-          ) : (
+          )}
+          {(
             <Form form={sealForm} layout="vertical" className="contract-seal-form">
               <div className="form-grid">
                 <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>

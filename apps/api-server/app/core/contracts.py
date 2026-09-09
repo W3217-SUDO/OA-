@@ -15,8 +15,9 @@ from app.models_shared import (
 
 
 def _contract_allows_downstream_creation(contract: BusinessRecord | None) -> bool:
-    """Only a persisted contract draft is barred from creating downstream work."""
-    return bool(contract and contract.module == "contract" and contract.status != "草稿")
+    """Return whether the contract may still create case, seal, or finance work."""
+    blocked = {"草稿", "归档中", "归档审核中", "已归档", "已回收", "已删除", "已作废"}
+    return bool(contract and contract.module == "contract" and contract.status not in blocked)
 
 
 def _valid_contract_person_name(value: object, username: object = "") -> str:
@@ -416,6 +417,7 @@ async def _delete_contract_records(
     db: AsyncSession,
     *,
     allow_company_contract: bool = False,
+    allow_empty_contract: bool = False,
 ):
     """Legacy FCM ContractDelete parity: physically delete whole contract records.
 
@@ -424,8 +426,6 @@ async def _delete_contract_records(
     retaining every downstream-record guard before physical removal.
     """
     ids = list(dict.fromkeys([int(item_id) for item_id in [*body.contract_ids, *body.contractIds] if int(item_id) > 0]))
-    if identity["role"] != "admin":
-        return JSONResponse(status_code=status.HTTP_200_OK, content={"IsSuccess": False, "Message": "仅管理员可以删除合同", "deleted": 0})
     prepared: list[tuple[BusinessRecord, list[FileAttachment]]] = []
     try:
         if not ids:
@@ -436,9 +436,11 @@ async def _delete_contract_records(
         by_id = {item.id: item for item in contracts}
         ordered = [by_id[item_id] for item_id in ids]
         for contract in ordered:
-            if not allow_company_contract and contract.status != "已回收":
+            if identity["role"] != "admin" and contract.owner != identity["username"]:
+                raise HTTPException(status_code=403, detail="只能删除本人创建的空合同")
+            if not allow_company_contract and not allow_empty_contract and contract.status != "已回收":
                 raise HTTPException(status_code=409, detail="只有回收站合同可以整体删除")
-            if int(await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)) or 0):
+            if not allow_empty_contract and int(await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)) or 0):
                 raise HTTPException(status_code=409, detail="合同已有审批记录，不能整体删除")
             if int(await db.scalar(select(func.count()).select_from(ReceivablePlan).where(ReceivablePlan.contract_record_id == contract.id)) or 0):
                 raise HTTPException(status_code=409, detail="合同已有应收计划，不能整体删除")

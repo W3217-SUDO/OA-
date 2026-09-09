@@ -45,6 +45,8 @@ export type Contract = {
     submitted_by?: string;
     submit_comment?: string;
     seal_application_id?: number;
+    seal_application_ids?: number[];
+    seal_applications?: Array<{ id: number; serial_no: string; status: string; created_at?: string }>;
     seal_application_no?: string;
     current_approver?: string;
     approval_capabilities?: {

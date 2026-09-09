@@ -277,7 +277,7 @@ async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict
     from app.core.contracts import (
         _delete_contract_records,
     )
-    return await _delete_contract_records(body, identity, db)
+    return await _delete_contract_records(body, identity, db, allow_empty_contract=True)
 
 
 @router.post(f"{settings.api_prefix}/contracts/company/delete")
@@ -507,10 +507,12 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
         await db.flush()
         copied_targets = await _copy_seal_source_attachments(seal, source_attachment_ids, identity, db)
         previous_seal_ids = [int(item) for item in (contract.data or {}).get("seal_application_ids", []) if str(item).isdigit()]
+        previous_seal_items = [item for item in (contract.data or {}).get("seal_applications", []) if isinstance(item, dict)]
         contract.data = {
             **(contract.data or {}),
             "seal_application_id": seal.id,
             "seal_application_ids": list(dict.fromkeys([*previous_seal_ids, seal.id])),
+            "seal_applications": [*previous_seal_items, {"id": seal.id, "serial_no": seal.serial_no, "status": seal.status, "created_at": datetime.now().isoformat(timespec="seconds")}],
             "seal_application_no": seal.serial_no,
             "seal_requested_at": datetime.now().isoformat(timespec="seconds"),
             "sync_seal": sync_seal_requested,
@@ -1266,7 +1268,8 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
     if contract.module != "contract": raise HTTPException(status_code=404, detail="合同不存在")
     await _require_contract_action(identity, db, "contract.application.change", "发起变更")
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status != CONTRACT_APPROVED_STATUS: raise HTTPException(status_code=409, detail="只有审批通过的合同可以发起变更")
+    if contract.status in {"归档中", "归档审核中", "已归档", "已回收", "已删除", "已作废"}:
+        raise HTTPException(status_code=409, detail="归档或已终止的合同不能发起变更")
     data = dict(contract.data or {}); changes = []
     if (data.get("pending_change") or {}).get("status") == "待审批":
         raise HTTPException(status_code=409, detail="已有合同变更正在审批")

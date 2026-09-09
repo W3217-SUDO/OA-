@@ -567,8 +567,8 @@ export function ContractList({
             ) : initialView === "contract-mine" ? (
               <Button
                 danger
-                disabled={!selected || selected.status !== "草稿"}
-                onClick={() => needSelected(() => onRevokeDraft(selected!))}
+                disabled={!selected || ["归档中", "归档审核中", "已归档", "已回收", "已删除"].includes(selected.status)}
+                onClick={() => needSelected(() => onDeleteCompany(selected!))}
               >
                 删除合同
               </Button>

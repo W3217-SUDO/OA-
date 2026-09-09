@@ -73,11 +73,12 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
 
         {wizardStep === 3 && (<div className="contract-wizard-panel contract-seal-step contract-page-stage">
               {wizardDraft?.status === "审批中" ? <Alert type="info" showIcon title={wizardDraft.data.sync_seal ? "已选择同步用印" : "合同正在审批中"} description={wizardDraft.data.sync_seal ? "可保存用印草稿，或立即提交同步用印；合同审批与用印审批将分别流转。" : "可先提交用印申请；合同审批与用印审批将分别流转。"}/> : <div className="contract-wizard-finished"><CheckOutlined /><h3>合同审批已通过</h3><p>合同草稿、审批意见、附件和时间线均已保存；请在用印中心上传真实用印文件后提交审批。</p></div>}
-              {wizardDraft?.data.seal_application_id ? (<Descriptions bordered size="small" column={2} items={[
+              {wizardDraft?.data.seal_application_id && (<Descriptions bordered size="small" column={2} items={[
                     { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                     { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}` },
                     { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <Tag color="blue">用印草稿待提交</Tag> : wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已提交用印审批</Tag>, span: 2 },
-                ]}/>) : (<Form form={sealForm} layout="vertical" className="contract-seal-form">
+                ]}/>)}
+              {(<Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">
                     <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
                       <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置合同审批资格"/>

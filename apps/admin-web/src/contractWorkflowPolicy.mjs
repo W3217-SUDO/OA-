@@ -251,7 +251,7 @@ export const contractWorkflowActionPolicy = (profile = {}, contract = {}, option
     canCreate: hasMenuAccess(profile, CONTRACT_WORKSPACE_MENUS),
     canEdit: allowed("update", editable),
     canSubmit: allowed("submit", editable),
-    canChange: allowed("change", listPolicy.canPayment),
+    canChange: allowed("change", secondaryPolicy.canEdit && !pendingChange),
     canReviewChange: allowed("changeReview", pendingChange, true),
     canPayment: allowed("payment", listPolicy.canPayment),
     canInvoice: allowed("invoice", listPolicy.canInvoice),

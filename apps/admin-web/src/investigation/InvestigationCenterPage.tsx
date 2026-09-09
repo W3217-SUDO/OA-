@@ -1701,7 +1701,9 @@ export default function InvestigationCenterPage({
         ? dayjs(String(row.data.investigated_at))
         : undefined,
       producer: row.data.producer || "",
-      indictee: row.data.indictee || "",
+      indictees: Array.isArray(row.data.indictees) && row.data.indictees.length
+        ? row.data.indictees
+        : (row.data.indictee ? [{ nature: "", name: row.data.indictee, identity_no: "", region: "", business_address: "" }] : []),
       investigation_assistant: row.data.investigation_assistant || "",
       deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined,
       priority: row.data.priority || "普通",
@@ -1745,7 +1747,8 @@ export default function InvestigationCenterPage({
             ? formatRequiredDate(v.investigated_at, "调查日期")
             : "",
           producer: v.producer || "",
-          indictee: v.indictee || "",
+          indictee: v.indictees?.[0]?.name || "",
+          indictees: Array.isArray(v.indictees) ? v.indictees : [],
           investigation_assistant: v.investigation_assistant || "",
           deadline:
             v.deadline?.format("YYYY-MM-DD") || editTarget.data.deadline,
@@ -3356,8 +3359,10 @@ export default function InvestigationCenterPage({
                 key: "indictee",
                 label: "主体信息",
                 children:
+                  (Array.isArray(investigationDetail.data.indictees)
+                    ? investigationDetail.data.indictees.map((item: any) => [item.nature, item.name, item.identity_no, item.region, item.business_address].filter(Boolean).join(" / ")).join("；")
+                    : "") ||
                   investigationDetail.data.indictee ||
-                  investigationDetail.data.indictees ||
                   investigationDetail.data.subject ||
                   "—",
               },

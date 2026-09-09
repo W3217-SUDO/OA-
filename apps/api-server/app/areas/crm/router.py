@@ -1763,7 +1763,10 @@ async def list_customers(
         elif _is_civil_case_type(related_data.get("case_type")):
             relationship_counts[linked_customer.id]["civil_case_count"] += 1
     response_items = []
-    directory_users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    # Historical customer rows may reference disabled accounts or HR employee
+    # identifiers instead of the current username. Resolve against both
+    # directories so the UI never leaks an internal login/GUID as a name.
+    directory_users = list((await db.scalars(select(User))).all())
     person_names: dict[str, str] = {}
     for user in directory_users:
         profile = user.profile or {}
@@ -1779,6 +1782,21 @@ async def list_customers(
             display,
         }
         person_names.update({alias.casefold(): display for alias in aliases if alias})
+    hr_people = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all())
+    for employee in hr_people:
+        employee_data = employee.data or {}
+        display = str(employee.title or employee_data.get("display_name") or employee_data.get("name") or "").strip()
+        if not display:
+            continue
+        aliases = {
+            str(employee.id), str(employee.serial_no or "").strip(), str(employee.owner or "").strip(),
+            str(employee_data.get("username") or "").strip(), str(employee_data.get("employee_id") or "").strip(),
+            str(employee_data.get("employee_no") or "").strip(), str(employee_data.get("legacy_guid") or "").strip(),
+            str(employee_data.get("person_guid") or "").strip(), str(employee_data.get("system_user_id") or "").strip(),
+        }
+        for alias in aliases:
+            if alias:
+                person_names.setdefault(alias.casefold(), display)
 
     def person_display(value: object) -> str:
         token = str(value or "").strip()
