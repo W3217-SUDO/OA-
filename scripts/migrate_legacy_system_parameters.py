@@ -81,9 +81,14 @@ def audit(rows: list[dict[str, Any]]) -> None:
             raise RuntimeError(f"{category} 存在孤立父节点：{orphaned[:10]}")
 
 async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str, int]]:
-    stats = {category: {"source": 0, "created": 0, "updated": 0} for category in ("fee_type", "cause", "payment_type")}
+    stats = {category: {"source": 0, "created": 0, "updated": 0, "deleted": 0} for category in ("fee_type", "cause", "payment_type")}
     async with SessionLocal() as db:
         existing = list((await db.scalars(select(SystemParameter).where(SystemParameter.category.in_(stats)))).all())
+        for item in existing:
+            legacy_id = (item.extra or {}).get("legacy_id")
+            if item.category == "fee_type" and isinstance(legacy_id, int) and legacy_id < 0 and item.created_by == ACTOR:
+                await db.delete(item)
+                stats["fee_type"]["deleted"] += 1
         by_key = {(item.category, item.code): item for item in existing}
         by_legacy = {(item.category, str((item.extra or {}).get("legacy_id"))): item for item in existing if (item.extra or {}).get("legacy_id") is not None}
         for row in rows:

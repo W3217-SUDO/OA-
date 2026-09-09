@@ -84,6 +84,7 @@ class Rework95BatchContractTest(unittest.TestCase):
         self.assertIn("if legacy_id < 0", source)
         self.assertIn("if parent_id > 0 else", source)
         self.assertIn("def audit(rows", source)
+        self.assertIn("legacy_id < 0 and item.created_by == ACTOR", source)
 
 
 if __name__ == "__main__":
