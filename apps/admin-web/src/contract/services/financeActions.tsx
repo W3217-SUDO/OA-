@@ -40,7 +40,7 @@ export interface ContractFinanceDependencies {
     readonly setInvoiceSaving: React.Dispatch<React.SetStateAction<boolean>>;
     readonly invoiceForm: FormInstance<any>;
     readonly setInvoiceTarget: React.Dispatch<React.SetStateAction<Contract | null>>;
-    readonly invoiceSubjects: Array<{ contract_object_id: number; case_fee_ids: number[] }>;
+    readonly invoiceSubjects: Array<{ fee_id: number; case_no: string; invoiceable_amount: number }>;
     readonly selectedInvoiceObjectKeys: React.Key[];
 }
 export function createContractFinanceActions(context: ContractFinanceDependencies) {
@@ -160,17 +160,27 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         setInvoiceSaving(true);
         try {
             const values = await invoiceForm.validateFields();
-            const selectedObjects = invoiceSubjects.filter((item: any) => selectedInvoiceObjectKeys.includes(item.contract_object_id));
-            const caseFeeIds = [...new Set(selectedObjects.flatMap((item: any) => item.case_fee_ids || []))];
+            const selectedObjects = invoiceSubjects.filter((item) => selectedInvoiceObjectKeys.includes(item.fee_id));
+            const caseFeeIds = selectedObjects.map((item) => item.fee_id);
             if (!caseFeeIds.length) {
-                message.warning("请至少选择一项合同名下的案件费用");
+                message.warning("请至少选择一笔合同名下的案件费用");
+                return;
+            }
+            const caseNos = [...new Set(selectedObjects.map((item) => item.case_no).filter(Boolean))];
+            if (caseNos.length > 1) {
+                message.warning("同一张发票只能选择同一案件的费用");
+                return;
+            }
+            const availableAmount = selectedObjects.reduce((sum, item) => sum + Number(item.invoiceable_amount || 0), 0);
+            if (Number(values.amount || 0) > availableAmount + 0.0001) {
+                message.warning(`开票金额不能超过所选费用合计 ${availableAmount.toFixed(2)} 元`);
                 return;
             }
             const response = await api.post("/finance/invoices", {
                 ...values,
                 case_fee_ids: caseFeeIds,
                 customer: invoiceTarget.customer,
-                case_no: invoiceTarget.data.case_no || "",
+                case_no: caseNos[0] || invoiceTarget.data.case_no || "",
                 contract_record_id: invoiceTarget.id,
                 remark: `来源合同 ${invoiceTarget.serial_no}${values.remark ? `；${values.remark}` : ""}`,
             });

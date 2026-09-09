@@ -1770,6 +1770,8 @@ export default function App() {
       )) ||
     (active.startsWith("contract-detail-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
+    (active.startsWith("contract-change-") &&
+      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
     (active.startsWith("customer-detail-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("customer-"))) ||
     (active.startsWith("contract-investigation-") &&

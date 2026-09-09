@@ -954,6 +954,47 @@ async def contract_archive_subjects(contract_id: int, identity: dict = Depends(c
     }
 
 
+@router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/invoice-candidates")
+async def contract_invoice_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return individual, currently invoiceable case-fee rows for a contract."""
+    from app.core.constants import INVOICE_RELEASED_STATUSES
+    from app.core.contracts import _contract_allows_downstream_creation
+    from app.core.finance import _invoice_linked_fee_ids, _round_fee_amount
+    from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_record_module_menu
+
+    await _require_record_module_menu("contract", identity, db, action="查看")
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    if not _contract_allows_downstream_creation(contract):
+        raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请")
+    conditions = [
+        BusinessRecord.module == "finance",
+        or_(
+            BusinessRecord.data["contract_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_no"].as_string() == contract.serial_no,
+        ),
+        *(await _record_scope_conditions(identity, db)),
+    ]
+    fees = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.id))).all())
+    active_invoices = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "invoice", BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
+        *(await _record_scope_conditions(identity, db)),
+    ))).all())
+    reserved_ids = {fee_id for invoice in active_invoices for fee_id in _invoice_linked_fee_ids(invoice.data or {})}
+    items = []
+    for fee in fees:
+        data = fee.data or {}
+        amount = _round_fee_amount(float(data.get("amount") or 0))
+        if fee.id in reserved_ids or amount <= 0:
+            continue
+        items.append({
+            "fee_id": fee.id, "fee_no": fee.serial_no, "case_record_id": data.get("case_id"),
+            "case_no": str(data.get("case_no") or ""), "fee_type": str(data.get("fee_type_path") or data.get("fee_type_name") or data.get("fee_type") or fee.title),
+            "amount": amount, "invoiceable_amount": amount, "expense_scope": str(data.get("expense_scope") or ""),
+        })
+    return {"contract": {"id": contract.id, "serial_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body")}, "items": items, "total": len(items)}
+
+
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/archive-closure")
 async def close_contract_archive_subjects(contract_id: int, body: ContractArchiveClosureInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
@@ -1130,6 +1171,7 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications", status_code=status.HTTP_201_CREATED)
 async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contracts import _contract_allows_downstream_creation
     from app.core.finance import (
         _active_payment_type, _contract_payment_candidate_rows, _finance_payment_type_dict, _round_fee_amount,
     )
@@ -1139,7 +1181,9 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_contract_action(identity, db, "contract.payment.create", "发起付款申请")
     await _require_record_owner_or_manager(contract, identity, db)
-    if contract.status in {"审批中", "已归档"}:
+    if not _contract_allows_downstream_creation(contract):
+        raise HTTPException(status_code=409, detail="归档或已终止合同不能发起合同付款")
+    if contract.status == "审批中":
         raise HTTPException(status_code=409, detail="审批中或已归档合同不能发起合同付款")
     if contract.status not in {CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="仅审批通过或已完成的合同可以发起合同付款")
@@ -1164,7 +1208,8 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     total = _round_fee_amount(sum(_round_fee_amount(line.amount) for line, _ in normalized_lines))
     serial = f"CP{datetime.now():%Y%m%d%H%M%S%f}"
     snapshot = [{"contract_object_id": item["contract_object_id"], "case_id": item["case_record_id"], "case_no": item["case_no"], "fee_type": item["fee_type"], "amount": _round_fee_amount(line.amount)} for line, item in normalized_lines]
-    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "payment_type_id": payment_type.id, "payment_type_code": payment_type.code, "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"], "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"], "account": payment_type_data["account"], "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
+    accounting_center = "平台财务中心" if str((contract.data or {}).get("contract_body") or "").strip() == "平台" else "财务中心"
+    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body"), "accounting_center": accounting_center, "finance_scope": "platform" if accounting_center == "平台财务中心" else "firm", "payment_type_id": payment_type.id, "payment_type_code": payment_type.code, "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"], "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"], "account": payment_type_data["account"], "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
     db.add(payment); await db.flush()
     for line, candidate in normalized_lines:
         db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=line.contract_object_id, case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))
@@ -1279,6 +1324,10 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
     normalized_external_numbers = None
     if requested_external_numbers is not None:
         normalized_external_numbers = _normalize_external_contract_numbers({"external_contract_numbers": requested_external_numbers})["external_contract_numbers"]
+    if body.owner is not None:
+        next_owner = body.owner.strip()
+        if not next_owner or not await db.scalar(select(User.id).where(User.username == next_owner, User.is_active.is_(True))):
+            raise HTTPException(status_code=422, detail="负责人账号不存在或已停用")
     candidates = {
         "contract_body": (data.get("contract_body", ""), body.contract_body),
         "contract_type": (data.get("type", ""), body.contract_type),
@@ -1288,8 +1337,11 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
         "description": (data.get("description", ""), body.description),
         "external_contract_numbers": (data.get("external_contract_numbers") or ([data.get("external_contract_no")] if data.get("external_contract_no") else []), normalized_external_numbers),
         "end_date": (data.get("end_date", ""), str(body.end_date) if body.end_date else None),
+        "signed_at": (data.get("signed_at", ""), str(body.signed_at) if body.signed_at else None),
+        "owner": (contract.owner, body.owner.strip() if body.owner is not None else None),
+        "department": (contract.department, body.department.strip() if body.department is not None else None),
     }
-    labels = {"contract_body": "合同主体", "contract_type": "合同类别", "fee_type": "收费模式", "title": "合同名称", "amount": "合同金额", "description": "备注", "external_contract_numbers": "外部合同号", "end_date": "合同期限"}
+    labels = {"contract_body": "合同主体", "contract_type": "合同类别", "fee_type": "收费模式", "title": "合同名称", "amount": "合同金额", "description": "备注", "external_contract_numbers": "外部合同号", "end_date": "合同期限", "signed_at": "签订日期", "owner": "负责人", "department": "所属部门"}
     for key, (before, after) in candidates.items():
         if after is not None and after != before:
             changes.append({"field": key, "label": labels[key], "before": before, "after": after})
@@ -1319,9 +1371,11 @@ async def review_contract_change(contract_id: int, body: ContractChangeReviewInp
         for change in pending.get("changes", []):
             key = change.get("field"); value = change.get("after")
             if key == "title": contract.title = str(value)
+            elif key == "owner": contract.owner = str(value)
+            elif key == "department": contract.department = str(value)
             elif key == "external_contract_numbers": data = _normalize_external_contract_numbers({**data, "external_contract_numbers": value})
             elif key == "contract_type": data["type"] = value
-            elif key in {"amount", "end_date"}: data[key] = value
+            elif key in {"amount", "end_date", "signed_at"}: data[key] = value
             elif key in {"contract_body", "fee_type", "description"}: data[key] = value
         data["last_changed_at"] = datetime.now().isoformat(timespec="seconds")
         data["change_count"] = int(data.get("change_count", 0)) + 1

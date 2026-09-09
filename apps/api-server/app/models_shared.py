@@ -2456,6 +2456,9 @@ class ContractChangeInput(BaseModel):
     external_contract_no: str | None = None
     external_contract_numbers: list[str] | None = Field(default=None, max_length=50)
     end_date: date | None = None
+    signed_at: date | None = None
+    owner: str | None = Field(default=None, max_length=64)
+    department: str | None = Field(default=None, max_length=128)
 
 
 class ContractChangeReviewInput(BaseModel):

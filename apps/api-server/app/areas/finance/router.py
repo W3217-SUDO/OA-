@@ -1198,6 +1198,7 @@ async def export_finance_fee_query(
 
 @router.post(f"{settings.api_prefix}/finance/invoices", status_code=status.HTTP_201_CREATED)
 async def create_invoice_application(body: InvoiceApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contracts import _contract_allows_downstream_creation
     from app.core.finance import (
         _round_fee_amount, _validate_invoice_source_links,
     )
@@ -1207,11 +1208,19 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     case_record, contract_record, case_fees, allocations = await _validate_invoice_source_links(
         body, identity, db, require_source=True,
     )
+    if contract_record and not _contract_allows_downstream_creation(contract_record):
+        raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请")
+    if "专用" in body.invoice_type and not all(value.strip() for value in (body.invoice_address, body.invoice_phone, body.bank_name, body.bank_account)):
+        raise HTTPException(status_code=422, detail="增值税专用发票必须填写注册地址、注册电话、开户银行和银行账号")
     case_fee_ids = [fee.id for fee in case_fees]
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     serial = f"FP{datetime.now():%Y%m%d%H%M%S%f}"
     data = body.model_dump(); data["case_fee_ids"] = case_fee_ids; data["case_fee_allocations"] = allocations; data["amount"] = _round_fee_amount(body.amount); data["extra_amount"] = _round_fee_amount(body.extra_amount); data["applicant"] = identity.get("display_name") or identity["username"]; data["case_id"] = case_record.id if case_record else None; data["contract_id"] = contract_record.id if contract_record else None
+    if contract_record:
+        data["contract_body"] = (contract_record.data or {}).get("contract_body")
+        data["accounting_center"] = "平台财务中心" if str(data["contract_body"] or "").strip() == "平台" else "财务中心"
+        data["finance_scope"] = "platform" if data["accounting_center"] == "平台财务中心" else "firm"
     if case_record: data["case_no"] = case_record.serial_no
     if contract_record: data["contract_no"] = contract_record.serial_no
     item = BusinessRecord(module="invoice", serial_no=serial, title=f"{body.customer}发票申请", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)

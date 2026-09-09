@@ -140,13 +140,14 @@ export default function EditRecordModal({
                         <Space key={key} wrap align="start">
                           <Form.Item name={[name, "nature"]} noStyle><Select placeholder="主体性质" style={{ width: 120 }} options={["企业", "个体工商户", "自然人", "其他"].map(value => ({ value, label: value }))} /></Form.Item>
                           <Form.Item name={[name, "name"]} noStyle rules={[{ required: true, message: "请输入主体名称" }]}><Input placeholder="主体名称" style={{ width: 180 }} /></Form.Item>
+                          <Form.Item name={[name, "confirmation_method"]} noStyle><Select placeholder="确认方式" style={{ width: 130 }} options={["现场确认", "工商查询", "网络核验", "客户提供", "其他"].map(value => ({ value, label: value }))} /></Form.Item>
                           <Form.Item name={[name, "identity_no"]} noStyle><Input placeholder="证件/统一社会信用代码" style={{ width: 190 }} /></Form.Item>
-                          <Form.Item name={[name, "region"]} noStyle><Input placeholder="所属地区" style={{ width: 130 }} /></Form.Item>
+                          <Form.Item name={[name, "region"]} noStyle><Cascader placeholder="所属地区" style={{ width: 170 }} changeOnSelect showSearch options={INVESTIGATION_REGION_GROUPS.map(({ province, cities }) => ({ value: province, label: province, children: cities.map(city => ({ value: city, label: city })) }))} /></Form.Item>
                           <Form.Item name={[name, "business_address"]} noStyle><Input placeholder="经营地址" style={{ width: 180 }} /></Form.Item>
                           <Button danger onClick={() => remove(name)}>删除</Button>
                         </Space>
                       ))}
-                      <Button type="dashed" onClick={() => add({ nature: "企业", name: "", identity_no: "", region: "", business_address: "" })}>新增主体</Button>
+                      <Button type="dashed" onClick={() => add({ nature: "企业", name: "", confirmation_method: "", identity_no: "", region: [], business_address: "" })}>新增主体</Button>
                     </Space>
                   </Form.Item>
                 )}

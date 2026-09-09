@@ -580,7 +580,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
         }
     };
     const saveChange = async () => {
-        const { changing, contractCapabilities, denyContractAction, changeForm, changeFile, setChanging, setChangeFile, load } = context;
+        const { changing, contractCapabilities, denyContractAction, changeForm, changeFile, setChanging, setChangeFile, load, onNavigate } = context;
         if (!changing)
             return;
         if (!contractCapabilities(changing).canChange) {
@@ -592,6 +592,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             const response = await api.post(`/contracts/${changing.id}/changes`, {
                 ...v,
                 end_date: v.end_date?.format("YYYY-MM-DD"),
+                signed_at: v.signed_at?.format("YYYY-MM-DD"),
             });
             const feedback = normalizeContractActionResponse(response, "合同变更失败");
             if (!feedback.ok)
@@ -610,7 +611,8 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             message.success("合同变更已提交审批");
             setChanging(null);
             setChangeFile(null);
-            load();
+            await load();
+            onNavigate?.(`contract-detail-${changing.id}-${encodeURIComponent(changing.serial_no)}`);
         }
         catch (error: any) {
             message.error(extractContractErrorMessage(error, "合同变更失败"));

@@ -336,7 +336,9 @@ export function ContractWizardContent({
                 {
                   key: "seal",
                   label: "用印申请编号",
-                  children: wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}`,
+                  children: wizardDraft.data.seal_applications?.length
+                    ? wizardDraft.data.seal_applications.map((item) => item.serial_no || `#${item.id}`).join("、")
+                    : (wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}`),
                 },
                 {
                   key: "status",

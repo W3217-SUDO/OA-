@@ -40,16 +40,45 @@ def read_source(server: str, database: str, driver: str) -> dict[str, list[dict[
 
 def normalize(source: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
+    fee_group_names = {1: "官方费用", 2: "律师费用", 3: "提成费用", 4: "第三方费用", 5: "内部费用"}
+    fee_group_bases = {1: "官方费用", 2: "代理费", 3: "其他费用", 4: "其他费用", 5: "内部费用"}
+    used_fee_groups = sorted({int(row["TypeId"]) for row in source["fee_type"] if row.get("TypeId")})
+    for type_id in used_fee_groups:
+        result.append({
+            "category": "fee_type", "code": f"LEGACY-FEE-GROUP-{type_id}",
+            "name": fee_group_names.get(type_id, f"费用大类{type_id}"), "is_active": True,
+            "sort_order": type_id * 100000000,
+            "extra": {"legacy_group_id": type_id, "parent_code": "", "base_fee_type": fee_group_bases.get(type_id, "其他费用"), "expense_scopes": ["law_firm", "platform", "internal"]},
+        })
     for row in source["fee_type"]:
         legacy_id = int(row["FeeTypeId"])
-        result.append({"category": "fee_type", "code": clean(row["FeeTypeCode"]) or f"LEGACY-FEE-{legacy_id}", "name": clean(row["FeeTypeName"]), "is_active": enabled(row["IsActived"]), "sort_order": legacy_id, "extra": {"legacy_id": legacy_id, "parent_code": f"LEGACY-FEE-{int(row['TypeId'])}" if row.get("TypeId") else "", "case_type_id": row.get("CaseTypeId"), "office_name": clean(row.get("OfficeName")), "cpc_office_name": clean(row.get("CPCOfficeName"))}})
+        # Negative rows are the old selector's "请选择..." placeholders, not
+        # payable leaf values. The real hierarchy is TypeId -> FeeTypeId.
+        if legacy_id < 0:
+            continue
+        type_id = int(row["TypeId"])
+        result.append({"category": "fee_type", "code": f"LEGACY-FEE-{legacy_id}", "name": clean(row["FeeTypeName"]), "is_active": enabled(row["IsActived"]), "sort_order": type_id * 100000000 + legacy_id, "extra": {"legacy_id": legacy_id, "legacy_code": clean(row.get("FeeTypeCode")), "legacy_group_id": type_id, "parent_code": f"LEGACY-FEE-GROUP-{type_id}", "base_fee_type": fee_group_bases.get(type_id, "其他费用"), "expense_scopes": ["law_firm", "platform", "internal"], "case_type_id": row.get("CaseTypeId"), "office_name": clean(row.get("OfficeName")), "cpc_office_name": clean(row.get("CPCOfficeName"))}})
     for row in source["cause"]:
         legacy_id = int(row["CauseId"])
-        result.append({"category": "cause", "code": f"LEGACY-CAUSE-{legacy_id}", "name": clean(row["CauseName"]), "is_active": True, "sort_order": legacy_id, "extra": {"legacy_id": legacy_id, "parent_code": f"LEGACY-CAUSE-{int(row['ParentCauseId'])}" if row.get("ParentCauseId") else ""}})
+        parent_id = int(row.get("ParentCauseId") or 0)
+        result.append({"category": "cause", "code": f"LEGACY-CAUSE-{legacy_id}", "name": clean(row["CauseName"]), "is_active": True, "sort_order": legacy_id, "extra": {"legacy_id": legacy_id, "parent_code": f"LEGACY-CAUSE-{parent_id}" if parent_id > 0 else ""}})
     for row in source["payment_type"]:
         legacy_id = int(row["PaymentTypeId"])
         result.append({"category": "payment_type", "code": f"LEGACY-PAYMENT-{legacy_id}", "name": clean(row["OrganizationName"]) or clean(row["PaymentTypeName"]), "is_active": enabled(row["IsActived"]), "sort_order": legacy_id, "extra": {"legacy_id": legacy_id, "fee_type_legacy_id": row.get("CaseFeeTypeId"), "nature": clean(row.get("PaymentTypeName")), "payee": clean(row.get("OrganizationName")), "account": clean(row.get("Account")), "account_bank": clean(row.get("AccountBank")), "remark": clean(row.get("Remark"))}})
-    return [row for row in result if row["name"]]
+    rows = [row for row in result if row["name"]]
+    audit(rows)
+    return rows
+
+
+def audit(rows: list[dict[str, Any]]) -> None:
+    keys = [(row["category"], row["code"]) for row in rows]
+    if len(keys) != len(set(keys)):
+        raise RuntimeError("迁移源存在重复的系统参数编码")
+    for category in ("fee_type", "cause"):
+        codes = {row["code"] for row in rows if row["category"] == category}
+        orphaned = [row["code"] for row in rows if row["category"] == category and (row["extra"].get("parent_code") or "") not in codes | {""}]
+        if orphaned:
+            raise RuntimeError(f"{category} 存在孤立父节点：{orphaned[:10]}")
 
 async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str, int]]:
     stats = {category: {"source": 0, "created": 0, "updated": 0} for category in ("fee_type", "cause", "payment_type")}
@@ -60,7 +89,8 @@ async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str
         for row in rows:
             category = row["category"]
             stats[category]["source"] += 1
-            item = by_key.get((category, row["code"])) or by_legacy.get((category, str(row["extra"]["legacy_id"])))
+            legacy_id = row["extra"].get("legacy_id")
+            item = by_key.get((category, row["code"])) or (by_legacy.get((category, str(legacy_id))) if legacy_id is not None else None)
             if item is None:
                 db.add(SystemParameter(created_by=ACTOR, updated_by=ACTOR, **row))
                 stats[category]["created"] += 1

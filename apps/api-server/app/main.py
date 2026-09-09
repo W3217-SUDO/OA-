@@ -8,7 +8,7 @@ from app.areas.aws.router import (
 )
 from app.areas.contract.router import (
     approve_contract, archive_contract, batch_delete_contract_attachments, change_contract, close_contract_archive_subjects,
-    contract_approvals, contract_approver_settings, contract_archive_subjects, contract_changes, contract_payment_candidates,
+    contract_approvals, contract_approver_settings, contract_archive_subjects, contract_changes, contract_invoice_candidates, contract_payment_candidates,
     create_contract_draft, create_contract_event, create_contract_event_by_guid, create_contract_investigation, create_contract_object,
     create_contract_payment_application, create_contract_payment_type, create_contract_seal_application, delete_company_contract_records, delete_contract_object,
     delete_contract_records, export_contract_archive_records, export_contract_detail_excel, list_contract_archive_records, list_contract_events,
@@ -528,9 +528,9 @@ include_route_slice(app, crm_router, 13, 49)
 include_route_slice(app, investigation_router, 3, 4)
 include_route_slice(app, contract_router, 3, 4)
 include_route_slice(app, finance_router, 0, 25)
-include_route_slice(app, contract_router, 4, 30)
+include_route_slice(app, contract_router, 4, 31)
 include_route_slice(app, finance_router, 25, 26)
-include_route_slice(app, contract_router, 30, 37)
+include_route_slice(app, contract_router, 31, 38)
 include_route_slice(app, finance_router, 26, 28)
 include_route_slice(app, investigation_router, 4, 25)
 include_route_slice(app, wms_router, 0, 5)
@@ -558,7 +558,7 @@ include_route_slice(app, system_router, 62, 69)
 include_route_slice(app, legal_router, 91, 110)
 include_route_slice(app, aws_router, 17, 18)
 include_route_slice(app, system_router, 69, 75)
-include_route_slice(app, contract_router, 37, 38)
+include_route_slice(app, contract_router, 38, 39)
 include_route_slice(app, legal_router, 110, 111)
 include_route_slice(app, finance_router, 137, 140)
 include_route_slice(app, legal_router, 111, 131)

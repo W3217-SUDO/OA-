@@ -1703,7 +1703,7 @@ export default function InvestigationCenterPage({
       producer: row.data.producer || "",
       indictees: Array.isArray(row.data.indictees) && row.data.indictees.length
         ? row.data.indictees
-        : (row.data.indictee ? [{ nature: "", name: row.data.indictee, identity_no: "", region: "", business_address: "" }] : []),
+        : (row.data.indictee ? [{ nature: "", name: row.data.indictee, confirmation_method: "", identity_no: "", region: [], business_address: "" }] : []),
       investigation_assistant: row.data.investigation_assistant || "",
       deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined,
       priority: row.data.priority || "普通",
@@ -3360,7 +3360,7 @@ export default function InvestigationCenterPage({
                 label: "主体信息",
                 children:
                   (Array.isArray(investigationDetail.data.indictees)
-                    ? investigationDetail.data.indictees.map((item: any) => [item.nature, item.name, item.identity_no, item.region, item.business_address].filter(Boolean).join(" / ")).join("；")
+                    ? investigationDetail.data.indictees.map((item: any) => [item.nature, item.name, item.confirmation_method, item.identity_no, Array.isArray(item.region) ? item.region.join("/") : item.region, item.business_address].filter(Boolean).join(" / ")).join("；")
                     : "") ||
                   investigationDetail.data.indictee ||
                   investigationDetail.data.subject ||

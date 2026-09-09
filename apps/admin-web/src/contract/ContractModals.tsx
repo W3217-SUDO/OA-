@@ -3,6 +3,7 @@ import type { FormInstance } from "antd";
 import {
 Alert,
 Button,
+Card,
 Checkbox,
 DatePicker,
 Empty,
@@ -402,6 +403,7 @@ interface ContractChangeModalProps {
   onCancel: () => void;
   onOk: () => void;
   onChangeFile: (file: File | null) => void;
+  mode?: "modal" | "page";
 }
 
 export function ContractChangeModal({
@@ -413,17 +415,10 @@ export function ContractChangeModal({
   onCancel,
   onOk,
   onChangeFile,
+  mode = "modal",
 }: ContractChangeModalProps) {
-  return (
-    <Modal
-      width={820}
-      open={open}
-      title={`合同变更：${changing?.serial_no || ""}`}
-      okText="下一步"
-      cancelText="取消"
-      onOk={onOk}
-      onCancel={onCancel}
-    >
+  const content = (
+    <>
       <Steps className="contract-create-steps" current={0} items={CONTRACT_CREATE_STEP_TITLES.map((title) => ({ title }))} />
       <Form form={changeForm} layout="vertical">
         <Form.Item label="客户" name="customer">
@@ -462,6 +457,15 @@ export function ContractChangeModal({
           <Form.Item className="span-2" label="合同截止日期" name="end_date">
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
+          <Form.Item label="签订日期" name="signed_at">
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="所属部门" name="department" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
           <Form.Item className="span-2" label="备注" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -475,6 +479,23 @@ export function ContractChangeModal({
           </Form.Item>
         </div>
       </Form>
+    </>
+  );
+  if (mode === "page") {
+    if (!open) return null;
+    return (
+      <Card
+        className="panel contract-create-page"
+        title={`合同变更：${changing?.serial_no || ""}`}
+        extra={<Space><Button onClick={onCancel}>取消</Button><Button type="primary" onClick={onOk}>提交变更审批</Button></Space>}
+      >
+        {content}
+      </Card>
+    );
+  }
+  return (
+    <Modal width={820} open={open} title={`合同变更：${changing?.serial_no || ""}`} okText="提交变更审批" cancelText="取消" onOk={onOk} onCancel={onCancel}>
+      {content}
     </Modal>
   );
 }
@@ -722,7 +743,7 @@ interface ContractInvoiceModalProps {
   invoiceTarget: Contract | null;
   invoiceForm: FormInstance;
   invoiceSaving: boolean;
-  invoiceSubjects: Array<{ contract_object_id: number; case_no: string; case_title: string; fee_type: string; case_fee_ids: number[] }>;
+  invoiceSubjects: Array<{ fee_id: number; fee_no: string; case_record_id?: number; case_no: string; fee_type: string; amount: number; invoiceable_amount: number; expense_scope: string }>;
   selectedInvoiceObjectKeys: Key[];
   onInvoiceSelectionChange: (keys: Key[]) => void;
   onCancel: () => void;
@@ -764,16 +785,16 @@ export function ContractInvoiceModal({
           <Form.Item label="纳税人识别号" name="taxpayer_id" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="注册地址" name="invoice_address">
+          <Form.Item label="注册地址" name="invoice_address" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写注册地址" })]}>
             <Input />
           </Form.Item>
-          <Form.Item label="注册电话" name="invoice_phone">
+          <Form.Item label="注册电话" name="invoice_phone" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写注册电话" })]}>
             <Input />
           </Form.Item>
-          <Form.Item label="开户银行" name="bank_name">
+          <Form.Item label="开户银行" name="bank_name" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写开户银行" })]}>
             <Input />
           </Form.Item>
-          <Form.Item label="银行账号" name="bank_account">
+          <Form.Item label="银行账号" name="bank_account" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写银行账号" })]}>
             <Input />
           </Form.Item>
           <Form.Item label="发票类型" name="invoice_type" rules={[{ required: true }]}>
@@ -807,7 +828,7 @@ export function ContractInvoiceModal({
         </Form.Item>
       </Form>
       <Table
-        rowKey="contract_object_id"
+        rowKey="fee_id"
         size="small"
         pagination={false}
         dataSource={invoiceSubjects}
@@ -815,9 +836,10 @@ export function ContractInvoiceModal({
         rowSelection={{ selectedRowKeys: selectedInvoiceObjectKeys, onChange: onInvoiceSelectionChange }}
         columns={[
           { title: "案号", dataIndex: "case_no", width: 150 },
-          { title: "案件名称", dataIndex: "case_title", ellipsis: true },
+          { title: "费用编号", dataIndex: "fee_no", width: 150 },
           { title: "费用类型", dataIndex: "fee_type", width: 130 },
-          { title: "费用条数", render: (_value, row) => row.case_fee_ids.length, width: 90 },
+          { title: "费用归属", dataIndex: "expense_scope", width: 100 },
+          { title: "可开票金额", dataIndex: "invoiceable_amount", width: 120, render: (value) => Number(value || 0).toFixed(2) },
         ]}
       />
     </Modal>

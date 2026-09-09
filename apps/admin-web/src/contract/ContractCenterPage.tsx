@@ -116,6 +116,8 @@ export default function ContractCenterPage({
   const newContractRouteInitializedRef = useRef(false);
   const isContractDetailView = initialView.startsWith("contract-detail-") || initialView.startsWith("contract-preview-");
   const isContractInvestigationView = initialView.startsWith("contract-investigation-");
+  const contractChangeRouteMatch = initialView.match(/^contract-change-(\d+)-(.+)$/);
+  const isContractChangeView = Boolean(contractChangeRouteMatch);
   const contractDetailRouteMatch = initialView.match(/^contract-detail-(\d+)-(.+)$/);
   const contractInvestigationRouteMatch = initialView.match(/^contract-investigation-(\d+)-(.+)$/);
   const contractPreviewRouteMatch = initialView.match(/^contract-preview-(.+)$/);
@@ -202,7 +204,7 @@ export default function ContractCenterPage({
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
-  const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{contract_object_id:number;case_no:string;case_title:string;fee_type:string;case_fee_ids:number[]}>>([]);
+  const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{fee_id:number;fee_no:string;case_record_id?:number;case_no:string;fee_type:string;amount:number;invoiceable_amount:number;expense_scope:string}>>([]);
   const [selectedInvoiceObjectKeys, setSelectedInvoiceObjectKeys] = useState<Key[]>([]);
   const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
   const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);
@@ -661,8 +663,37 @@ export default function ContractCenterPage({
       description: (r.data as any).description || "",
       external_contract_numbers: r.data.external_contract_numbers || (r.data.external_contract_no ? [r.data.external_contract_no] : []),
       end_date: r.data.end_date ? dayjs(r.data.end_date) : undefined,
+      signed_at: r.data.signed_at ? dayjs(r.data.signed_at) : undefined,
+      owner: r.owner,
+      department: r.department,
     });
+    onNavigate?.(`contract-change-${r.id}-${encodeURIComponent(r.serial_no)}`);
   };
+
+  useEffect(() => {
+    if (!contractChangeRouteMatch || changing?.id === Number(contractChangeRouteMatch[1])) return;
+    void api.get(`/records/${contractChangeRouteMatch[1]}`).then(({ data }) => {
+      const contract = data as Contract;
+      setChanging(contract);
+      setChangeFile(null);
+      changeForm.resetFields();
+      changeForm.setFieldsValue({
+        change_type: "合同补充/修订",
+        customer: contract.customer,
+        contract_body: contract.data.contract_body || "律所",
+        contract_type: contract.data.type || "其他",
+        fee_type: contract.data.fee_type || "固定收费",
+        title: contract.title,
+        amount: contract.data.amount,
+        description: (contract.data as any).description || "",
+        external_contract_numbers: contract.data.external_contract_numbers || (contract.data.external_contract_no ? [contract.data.external_contract_no] : []),
+        end_date: contract.data.end_date ? dayjs(contract.data.end_date) : undefined,
+        signed_at: contract.data.signed_at ? dayjs(contract.data.signed_at) : undefined,
+        owner: contract.owner,
+        department: contract.department,
+      });
+    }).catch(() => message.error("合同变更页面加载失败"));
+  }, [initialView, changing?.id]);
 
   const openContractEvent = (contract: Contract) => {
     eventForm.resetFields();
@@ -830,7 +861,7 @@ export default function ContractCenterPage({
       delivery_method: "电子发票",
     });
     try {
-      const { data } = await api.get(`/contracts/${contract.id}/archive-subjects`);
+      const { data } = await api.get(`/contracts/${contract.id}/invoice-candidates`);
       setInvoiceSubjects(data.items || []);
       setSelectedInvoiceObjectKeys([]);
     } catch (error: any) {
@@ -1032,7 +1063,7 @@ export default function ContractCenterPage({
 
   return (
     <>
-      {initialView !== "contract-new" && !isContractDetailView && !isContractInvestigationView && (
+      {initialView !== "contract-new" && !isContractDetailView && !isContractInvestigationView && !isContractChangeView && (
         <ContractList
           initialView={initialView}
           queryForm={queryForm}
@@ -1618,7 +1649,8 @@ export default function ContractCenterPage({
       />
 
       <ContractChangeModal
-        open={Boolean(changing)}
+        open={Boolean(changing) && (!isContractChangeView || Boolean(contractChangeRouteMatch))}
+        mode={isContractChangeView ? "page" : "modal"}
         changing={changing}
         changeForm={changeForm}
         changeFile={changeFile}
@@ -1627,6 +1659,7 @@ export default function ContractCenterPage({
           setChanging(null);
           setChangeFile(null);
           changeForm.resetFields();
+          if (isContractChangeView) onNavigate?.("contract-mine");
         }}
         onOk={saveChange}
         onChangeFile={setChangeFile}

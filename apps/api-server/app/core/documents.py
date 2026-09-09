@@ -709,6 +709,11 @@ async def _seal_authorization_context(identity: dict, db: AsyncSession) -> dict:
     permission = await _permission_payload_for_identity(identity, db)
     action_keys = set(permission.get("action_keys") or [])
     granted = {name: ("*" in action_keys or code in action_keys) for name, code in SEAL_ACTION_CODES.items()}
+    username = str(identity.get("username") or "").strip()
+    user = await db.scalar(select(User).where(User.username == username)) if username else None
+    if user and user.is_active and bool((user.profile or {}).get("contract_approval_enabled")):
+        action_keys.add(SEAL_ACTION_CODES["approve"])
+        granted["approve"] = True
     return {"identity": identity, "action_keys": action_keys, **granted}
 
 
