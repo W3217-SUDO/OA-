@@ -259,7 +259,9 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
         ("customer", "新建"): "record.customer.create",
         ("customer", "编辑"): "record.customer.update",
     }.get((module, action))
-    if action_key and "*" not in permission.get("action_keys", []) and action_key not in permission.get("action_keys", []):
+    # A granted customer menu is the complete capability contract for that
+    # page. Do not add an invisible action-key requirement behind the UI.
+    if action_key and module != "customer" and "*" not in permission.get("action_keys", []) and action_key not in permission.get("action_keys", []):
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的动作权限")
 
 
@@ -472,7 +474,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
         raise HTTPException(status_code=401, detail="当前用户不存在")
-    scope = (await _user_permission_payload(user, db))["data_scope"]
+    permission = await _user_permission_payload(user, db)
+    scope = permission["data_scope"]
     if scope == "全所数据":
         return []
     public_customer = and_(BusinessRecord.module == "customer", BusinessRecord.status == "公海")
@@ -512,15 +515,25 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
             ContractApprovalStep.status == "待审批",
         ).exists(),
     )
+    menu_keys = set(permission.get("menu_keys") or [])
+    customer_menu_scope = None
+    if menu_keys & {"customer-company", "customer-company-recycle"}:
+        customer_menu_scope = BusinessRecord.module == "customer"
+    elif menu_keys & {"customer-dept", "customer-dept-recycle"}:
+        customer_menu_scope = and_(BusinessRecord.module == "customer", BusinessRecord.department == user.department)
+
+    def include_customer_menu_scope(condition):
+        return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
+
     if scope == "本部门数据":
-        return [or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
+        return [include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
-    return [or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval)]
+        return [include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+    return [include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:
@@ -674,6 +687,11 @@ async def _ensure_record_module(record_id: int, module: str, identity: dict, db:
 async def _require_record_owner_or_manager(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     if record.module == "customer" and record.status == "公海" and identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="公海客户必须先领取后才能修改")
+    if record.module == "customer":
+        from app.core.system import _record_module_menu_allowed
+        permission = await _permission_payload_for_identity(identity, db)
+        if _record_module_menu_allowed("customer", identity, permission):
+            return
     if identity.get("role") == "admin" or record.owner == identity["username"] or (
         record.module == "customer" and identity["username"] in (record.data or {}).get("customer_managers", [])
     ):

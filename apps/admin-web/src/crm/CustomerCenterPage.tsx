@@ -1273,32 +1273,26 @@ export default function CustomerCenterPage({
       { key: "portal-open", label: "开通/重置客户服务端" },
       { key: "portal-close", label: "停用客户服务端" },
     ];
+    const completeCustomerActions = [
+      { key: "edit", label: "客户编辑" },
+      { key: "delete", label: "客户删除" },
+      { key: "assign", label: "分配客户" },
+      { key: "release", label: "释放到公海" },
+      { key: "contract", label: "新增合同" },
+      ...customerNavigationActions,
+      { key: "share", label: "共享客户" },
+      ...customerPortalActions,
+    ];
     return (
-      initialView === "customer-mine"
-        ? [
-            { key: "edit", label: "客户编辑" },
-            { key: "delete", label: "客户删除" },
-            { key: "release", label: "释放到公海" },
-            { key: "contract", label: "新增合同" },
-            ...customerNavigationActions,
-            { key: "share", label: "共享客户" },
-            ...customerPortalActions,
-          ]
-        : initialView === "customer-dept"
-          ? [{ key: "assign", label: "分配客户" }]
-          : initialView === "customer-company"
-            ? [{ key: "assign", label: "分配客户" }]
+      ["customer-mine", "customer-dept", "customer-company", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView)
+        ? completeCustomerActions
             : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
               ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]
-              : initialView === "customer-shared"
-                ? [...customerNavigationActions]
-                : initialView === "customer-public"
+              : initialView === "customer-public"
                   ? profile.role === "admin"
                     ? [{ key: "edit", label: "客户编辑" }, { key: "claim", label: "拾回" }]
                     : [{ key: "claim", label: "拾回" }]
-                  : ["customer-recent-contact", "customer-recent-update"].includes(initialView)
-                    ? [{ key: "edit", label: "客户编辑" }, ...customerNavigationActions]
-                    : []
+                  : []
     );
   })();
 

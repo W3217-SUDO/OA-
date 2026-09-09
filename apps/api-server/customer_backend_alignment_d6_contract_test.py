@@ -372,6 +372,32 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             ]
         self.assertIn("编辑", actions)
 
+    async def test_customer_menu_grant_controls_page_visibility_and_operations(self):
+        async with self.sessions() as db:
+            db.add(RolePermission(
+                role="user", display_name="Test User", data_scope="本人及共享数据",
+                menu_keys=["customer-dept"], field_keys=["customer.legal"],
+            ))
+            await db.commit()
+
+        app.dependency_overrides[current_identity] = lambda: USER
+        department = await self.client.get(
+            f"{API}/customers", params={"scope": "department", "customer_type": "客户"},
+        )
+        self.assertEqual(department.status_code, status.HTTP_200_OK, department.text)
+        self.assertEqual([item["id"] for item in department.json()["items"]], [self.customer_id])
+
+        company = await self.client.get(
+            f"{API}/customers", params={"scope": "company", "customer_type": "客户"},
+        )
+        self.assertEqual(company.status_code, status.HTTP_403_FORBIDDEN, company.text)
+
+        updated = await self.client.patch(
+            f"{API}/records/{self.customer_id}", json={"description": "菜单授权用户可编辑"},
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
+        self.assertEqual(updated.json()["description"], "菜单授权用户可编辑")
+
     async def test_customer_list_summary_returns_full_legacy_monetary_projection(self):
         async with self.sessions() as db:
             first = await db.get(BusinessRecord, self.customer_id)

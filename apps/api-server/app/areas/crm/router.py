@@ -1511,6 +1511,17 @@ async def list_customers(
     )
     if not current_user:
         raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
+    from app.core.permissions import _permission_payload_for_identity
+    permission = await _permission_payload_for_identity(identity, db)
+    scope_menu_keys = {
+        "mine": "customer-mine", "recycle": "customer-recycle",
+        "department": "customer-dept", "department_recycle": "customer-dept-recycle",
+        "company": "customer-company", "company_recycle": "customer-company-recycle",
+        "public": "customer-public", "shared": "customer-shared",
+        "recent_contact": "customer-recent-contact", "recent_update": "customer-recent-update",
+    }
+    if scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
+        raise HTTPException(status_code=403, detail="当前账号未开通该客户页面权限")
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
     ))).all())
@@ -1565,12 +1576,6 @@ async def list_customers(
         conditions.append(BusinessRecord.status.not_in(["已回收", "公海"]))
     else:
         conditions.append(BusinessRecord.status.not_in(["已回收", "公海"]))
-    if scope in {"department", "department_recycle"}:
-        if current_user.role not in {"admin", "manager"}:
-            raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以查看部门客户")
-    elif scope in {"company", "company_recycle"} and current_user.role != "admin":
-        detail = "只有系统管理员可以查看公司回收站" if scope == "company_recycle" else "只有系统管理员可以查看公司客户"
-        raise HTTPException(status_code=403, detail=detail)
     normalized_name = customer_name.strip()
     if normalized_name:
         like = f"%{normalized_name}%"
