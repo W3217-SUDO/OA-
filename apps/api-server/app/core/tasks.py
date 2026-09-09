@@ -5,10 +5,10 @@ from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
 )
 from app.core.dependencies import (
-    AsyncSession, BusinessRecord, CaseEvent, ContractApprovalStep, DingTalkError,
+    AsyncSession, BusinessRecord, CaseEvent, ContractApprovalStep, Department, DingTalkError,
     HTTPException, HearingSchedule, IncomingPayment, IprCaseWarning, Notification, SessionLocal,
     LegacyInvestigationClue, LegacyInvestigationClueEvidence,
-    User, VipTask, VipTaskMessage, VipTaskNode, WorkflowEvent,
+    SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, WorkflowEvent,
     asyncio, date, datetime, delete, dingtalk_client,
     func, httpx, or_, secrets, select,
     settings, timedelta,
@@ -451,6 +451,30 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
     changed = False
     for task in tasks:
         data = task.data or {}
+        owner_user = await db.scalar(select(User).where(User.username == task.owner))
+        if owner_user and not owner_user.is_active and task.status not in {"已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"}:
+            department = await db.scalar(select(Department).where(
+                Department.name == owner_user.department, Department.is_active.is_(True),
+            ))
+            manager = await db.scalar(select(User).where(
+                User.username == department.manager, User.is_active.is_(True),
+            )) if department and department.manager else None
+            if manager:
+                previous_owner = task.owner
+                task.owner = manager.username
+                task.department = manager.department
+                task.data = {
+                    **data, "deadline": str(date.today() + timedelta(days=7)),
+                    "departing_owner": previous_owner, "departing_transfer_at": str(date.today()),
+                }
+                await _add_task_message_notifications(
+                    task,
+                    WorkflowEvent(record_id=task.id, action="员工离职任务自动交接部门负责人", from_status=task.status, to_status=task.status, operator="system", comment=f"{previous_owner} -> {manager.username}"),
+                    db,
+                    content="员工离职，任务自动交接部门负责人.",
+                )
+                data = task.data or {}
+                changed = True
         confirm_at = data.get("completion_auto_confirm_at")
         if task.status in {"待确认", "已完成"} and confirm_at:
             try:
@@ -465,6 +489,19 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
                 await _advance_case_from_fixed_task(task, db, operator="system")
                 changed = True
                 continue
+        auto_task_type = str(data.get("auto_task_type") or "")
+        if task.status in {"已完成", "待确认", "已验收"} and (auto_task_type.startswith("take_evidence") or auto_task_type.startswith("evidence_destroy")):
+            raw_ids = data.get("warehouse_evidence_ids") or [data.get("warehouse_evidence_id")]
+            for raw_id in raw_ids if isinstance(raw_ids, list) else [raw_ids]:
+                try:
+                    evidence = await db.get(BusinessRecord, int(raw_id or 0))
+                except (TypeError, ValueError):
+                    evidence = None
+                if not evidence or evidence.module != "warehouse":
+                    continue
+                target = "已出库" if auto_task_type.startswith("take_evidence") else "已销毁"
+                evidence.data = {**(evidence.data or {}), "evidence_status": target, "automatic_task_id": task.id}
+                changed = True
         auto_at = data.get("handoff_auto_complete_at")
         if not auto_at or data.get("handoff_restarted") or task.status != "待接收":
             continue
@@ -1011,7 +1048,8 @@ async def _materialize_legacy_case_task(
             "initiator": initiator_username, "collaborators": [user.username for user in collaborator_users],
             "case_no": case_record.serial_no, "case_nos": [case_record.serial_no],
             "case_id": case_record.id, "case_record_id": case_record.id, "case_ids": [case_record.id],
-            "case_module": "case", "case_stage": case_record.status,
+            "case_module": case_record.module, "case_stage": case_record.status,
+            "source_module": case_record.module, "source_record_id": case_record.id,
             "trigger_at": str(trigger_at), "trigger_source_id": trigger_source_id, "system_created_by": "system",
         },
     )
@@ -1045,6 +1083,45 @@ async def _case_rule_people(case_record: BusinessRecord, db: AsyncSession) -> tu
     return lawyer, assistant
 
 
+async def _legacy_configured_task_user(db: AsyncSession, *codes: str) -> User | None:
+    for code in codes:
+        parameter = await db.scalar(select(SystemParameter).where(
+            SystemParameter.category.in_({"task_service", "task_officer", "system"}),
+            SystemParameter.code == code, SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.id))
+        if not parameter:
+            continue
+        reference = str((parameter.extra or {}).get("username") or parameter.name or "").strip()
+        username, user = await _resolve_case_task_username(reference, db)
+        if username and user:
+            return user
+    return None
+
+
+async def _linked_case_for_record(record: BusinessRecord, cases_by_id: dict[int, BusinessRecord], cases_by_no: dict[str, BusinessRecord]) -> BusinessRecord | None:
+    data = record.data or {}
+    try:
+        case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
+    except (TypeError, ValueError):
+        case_id = 0
+    return cases_by_id.get(case_id) or cases_by_no.get(str(data.get("case_no") or "").strip())
+
+
+async def _finish_legacy_auto_task(task: BusinessRecord, db: AsyncSession, *, reason: str) -> bool:
+    if task.status in {"已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"}:
+        return False
+    previous = task.status
+    task.status = "已完成"
+    task.data = {**(task.data or {}), "auto_completed": True, "auto_completed_at": str(date.today())}
+    await _add_task_message_notifications(
+        task,
+        WorkflowEvent(record_id=task.id, action="业务状态联动自动完成", from_status=previous, to_status="已完成", operator="system", comment=reason),
+        db,
+        content=reason,
+    )
+    return True
+
+
 async def _ensure_phase_automatic_tasks(
     case_record: BusinessRecord,
     db: AsyncSession,
@@ -1057,6 +1134,30 @@ async def _ensure_phase_automatic_tasks(
     effective_today = today or date.today()
     lawyer, assistant = await _case_rule_people(case_record, db)
     created: list[BusinessRecord] = []
+    if case_record.status in {"二审待执行", "再审待执行"} and lawyer and assistant:
+        created.append(await _materialize_legacy_case_task(
+            case_record, db, auto_task_type="execution_application_reminder", legacy_task_type_id={"二审待执行": 102017, "再审待执行": 103015}[case_record.status],
+            title="执行申请-提醒任务", initiator=lawyer, owner=assistant, collaborators=[],
+            description=f"本案{case_record.serial_no}判决书或调解书已生效,请尽快提交申请执行材料,并上传",
+            started_on=effective_today, deadline=_add_calendar_months(effective_today, 2),
+            trigger_at=effective_today, trigger_source_id=f"phase:{case_record.status}",
+        ))
+    if case_record.status in {"执行受理", "执行立案受理"} and lawyer and assistant:
+        created.append(await _materialize_legacy_case_task(
+            case_record, db, auto_task_type="execution_follow_up", legacy_task_type_id=104012,
+            title="跟进执行", initiator=lawyer, owner=assistant, collaborators=[],
+            description=f"{case_record.serial_no} 执行情况跟踪.", started_on=effective_today,
+            deadline=_add_calendar_months(effective_today, 3), trigger_at=effective_today,
+            trigger_source_id="phase:104012",
+        ))
+    if case_record.status == "执行终本" and assistant:
+        created.append(await _materialize_legacy_case_task(
+            case_record, db, auto_task_type="execution_end_follow_up", legacy_task_type_id=104015,
+            title="案件研究", initiator=assistant, owner=lawyer or assistant, collaborators=[],
+            description=f"{case_record.serial_no}研究终本案件后续处理.", started_on=effective_today,
+            deadline=_add_calendar_months(effective_today, 2), trigger_at=effective_today,
+            trigger_source_id="phase:104015",
+        ))
     if case_record.status == "一审和解结案":
         fixed = list((await db.scalars(select(User).where(User.display_name == "梁晨宇", User.is_active.is_(True)))).all())
         if len(fixed) != 1:
@@ -1065,15 +1166,37 @@ async def _ensure_phase_automatic_tasks(
             case_record, db, auto_task_type="first_mediation_closed_archive", legacy_task_type_id=101024,
             title="结算归档一审和解结案", initiator=None, owner=fixed[0], collaborators=[],
             description="结算归档", started_on=effective_today, deadline=effective_today + timedelta(days=50),
-            trigger_at=effective_today, trigger_source_id=f"phase:101024:{effective_today}",
+            trigger_at=effective_today, trigger_source_id="phase:101024:immediate",
         ))
-    elif case_record.status == "一审和解中" and lawyer:
+    elif case_record.status in {"一审和解中", "二审和解中", "再审和解中"} and lawyer:
+        legacy_type = {"一审和解中": 101023, "二审和解中": 102023, "再审和解中": 103023}[case_record.status]
         created.append(await _materialize_legacy_case_task(
-            case_record, db, auto_task_type="first_mediation_follow_up", legacy_task_type_id=101023,
+            case_record, db, auto_task_type=f"mediation_follow_up_{legacy_type}", legacy_task_type_id=legacy_type,
             title="跟进和解—提醒任务", initiator=lawyer, owner=lawyer, collaborators=[],
             description=f"本案{case_record.serial_no}和解中，请尽快协商确定.", started_on=effective_today,
-            deadline=_add_calendar_months(effective_today, 6), trigger_at=effective_today,
-            trigger_source_id=f"phase:101023:{effective_today}",
+            deadline=_add_calendar_months(effective_today, 1), trigger_at=effective_today,
+            trigger_source_id=f"phase:{legacy_type}",
+        ))
+    closing_types = {
+        "一审和解结案": 101024,
+        "一审判决结案": 101025, "二审和解结案": 102024, "二审判决结案": 102025,
+        "再审和解结案": 103024, "再审判决结案": 103025, "执行结案": 104014,
+    }
+    if case_record.status in closing_types and lawyer and assistant:
+        created.append(await _materialize_legacy_case_task(
+            case_record, db, auto_task_type=f"settlement_archive_{closing_types[case_record.status]}",
+            legacy_task_type_id=closing_types[case_record.status], title="归档结算—提醒任务",
+            initiator=lawyer, owner=assistant, collaborators=[assistant],
+            description=f"本案{case_record.serial_no}已结案,请尽快提交结算并归档.",
+            started_on=effective_today, deadline=_add_calendar_months(effective_today, 2),
+            trigger_at=effective_today, trigger_source_id=f"phase:{closing_types[case_record.status]}",
+        ))
+        created.append(await _materialize_legacy_case_task(
+            case_record, db, auto_task_type=f"close_case_{closing_types[case_record.status]}",
+            legacy_task_type_id=closing_types[case_record.status], title=f"结算归档{case_record.status}",
+            initiator=lawyer, owner=assistant, collaborators=[], description="结算归档",
+            started_on=effective_today, deadline=effective_today + timedelta(days=20),
+            trigger_at=effective_today, trigger_source_id=f"close-case:{closing_types[case_record.status]}",
         ))
     return created
 
@@ -1084,6 +1207,11 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         BusinessRecord.module == "task",
     )) or 0)
     cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all())
+    cases_by_id = {item.id: item for item in cases}
+    cases_by_no = {item.serial_no: item for item in cases}
+    related_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_({"contract", "invoice", "refund", "warehouse", "notary", "case_fee"}),
+    ))).all())
     receipts = list((await db.scalars(select(IncomingPayment).where(
         IncomingPayment.received_date <= effective_today - timedelta(days=30),
     ))).all())
@@ -1110,6 +1238,15 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         if not phase_date:
             continue
         lawyer, assistant = await _case_rule_people(case_record, db)
+        # Compensation scan shares the same idempotency keys as the synchronous
+        # transition path, covering imports, batch changes and earlier failures.
+        await _ensure_document_preparation_task(case_record, db, system_operator="system")
+        await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator="system")
+        if case_record.status == "一审待执行":
+            await _ensure_execution_application_reminder_task(
+                case_record, db, previous_status="", operator="system", today=effective_today,
+            )
+        await _ensure_phase_automatic_tasks(case_record, db, previous_status="", today=effective_today)
         if case_record.status == "一审和解结案" and lawyer and assistant and effective_today >= phase_date + timedelta(days=50):
             await _materialize_legacy_case_task(
                 case_record, db, auto_task_type="first_mediation_closed_reminder", legacy_task_type_id=101024,
@@ -1145,7 +1282,7 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
                 ))
                 if not existing_payment_task:
                     first_receipt = min(case_receipts, key=lambda item: (item.received_date, item.id))
-                    await _materialize_legacy_case_task(
+                    collection_task = await _materialize_legacy_case_task(
                         case_record, db, auto_task_type="payment_received_30d_archive", legacy_task_type_id=1001003,
                         title="结算归档任务", initiator=lawyer, owner=assistant, collaborators=[assistant],
                         description=f"本案{case_record.serial_no}已到账超过30日,请尽快提交结算并归档.",
@@ -1153,6 +1290,161 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
                         trigger_at=first_receipt.received_date + timedelta(days=30),
                         trigger_source_id=f"case:{case_record.id}:payment_received_30d",
                     )
+
+    # Complete tasks whose source business state has already reached the old
+    # service's terminal condition. This also repairs missed historical events.
+    tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
+    for task in tasks:
+        data = task.data or {}
+        case_record = cases_by_id.get(int(data.get("case_id") or 0)) if str(data.get("case_id") or "").isdigit() else None
+        task_kind = str(data.get("auto_task_type") or "")
+        if case_record and task_kind == "document_preparation_stage" and case_record.status not in {"新案待分配", "文书准备"}:
+            await _finish_legacy_auto_task(task, db, reason="案件已提交立案，文书准备任务自动完成")
+        if case_record and task_kind == "payment_received_30d_archive" and case_record.status in {"已归档", "亏损归档"}:
+            await _finish_legacy_auto_task(task, db, reason="案件已归档，结算归档任务自动完成")
+        if case_record and task_kind.startswith("notary_audit:") and case_record.status not in {"等待审核公证书", "审核公证书"}:
+            await _finish_legacy_auto_task(task, db, reason="案件已离开公证审核阶段，审核公证书任务自动完成")
+        if case_record and task_kind.startswith("agency_fee_collection:") and (
+            receipts_by_case_id.get(case_record.id) or receipts_by_case_no.get(case_record.serial_no)
+        ):
+            await _finish_legacy_auto_task(task, db, reason="案件代理费已到账，催收代理费任务自动完成")
+
+    for source in related_records:
+        data = source.data or {}
+        case_record = await _linked_case_for_record(source, cases_by_id, cases_by_no)
+        lawyer, assistant = await _case_rule_people(case_record, db) if case_record else (None, None)
+
+        if source.module == "refund" and case_record and assistant:
+            requested = float(data.get("refund_requested_amount") or data.get("refund_amount") or data.get("amount") or 0)
+            refunded = float(data.get("refunded_amount") or 0)
+            if requested > 0:
+                refund_task = await _materialize_legacy_case_task(
+                    case_record, db, auto_task_type=f"refund_application:{source.id}", legacy_task_type_id=1001004,
+                    title="办理退费", initiator=lawyer, owner=assistant, collaborators=[],
+                    description=f"本案{case_record.serial_no}存在退费，请补充退费材料日期、法院联系人和联系方式.",
+                    started_on=effective_today, deadline=_add_calendar_months(effective_today, 2),
+                    trigger_at=_task_rule_date(source.created_at) or effective_today, trigger_source_id=f"refund:{source.id}",
+                )
+                if source.status in {"已退款", "已完成"} or refunded >= requested:
+                    await _finish_legacy_auto_task(refund_task, db, reason="退费已全部到账，办理退费任务自动完成")
+
+        if source.module == "invoice" and case_record:
+            invoice_date = _task_rule_date(data.get("invoice_date") or source.created_at)
+            fee_type = str(data.get("fee_type") or data.get("invoice_type") or "")
+            cashed = bool(data.get("cashed_at") or data.get("received_at") or data.get("receipt_date"))
+            if invoice_date and "代理" in fee_type and not cashed and effective_today >= invoice_date + timedelta(days=90):
+                owner_name = str(data.get("invoice_applicant") or data.get("applicant") or source.owner or "").strip()
+                _, owner = await _resolve_case_task_username(owner_name, db)
+                finance_user = await _legacy_configured_task_user(db, "FinanceTaskOfficer", "TASK_FINANCE")
+                if owner:
+                    collection_task = await _materialize_legacy_case_task(
+                        case_record, db, auto_task_type=f"agency_fee_collection:{source.id}", legacy_task_type_id=1001005,
+                        title="催收代理费", initiator=finance_user, owner=owner,
+                        collaborators=[lawyer] if lawyer else [], description=f"本案{case_record.serial_no}代理费发票开具已超过90日，请跟进到账.",
+                        started_on=effective_today, deadline=effective_today + timedelta(days=30),
+                        trigger_at=invoice_date + timedelta(days=90), trigger_source_id=f"invoice:{source.id}:90d",
+                    )
+                    if receipts_by_case_id.get(case_record.id) or receipts_by_case_no.get(case_record.serial_no):
+                        await _finish_legacy_auto_task(collection_task, db, reason="案件代理费已到账，催收代理费任务自动完成")
+
+        if source.module == "contract":
+            end_date = _task_rule_date(data.get("end_date") or data.get("contract_end_date"))
+            contract_type = str(data.get("contract_type") or data.get("contract_category") or source.title)
+            if end_date and any(word in contract_type for word in ("顾问", "框架")) and effective_today >= _add_calendar_months(end_date, -2) and end_date >= effective_today:
+                _, owner = await _resolve_case_task_username(
+                    data.get("brand_manager_username") or data.get("customer_manager_username") or source.owner, db,
+                )
+                if owner:
+                    await _materialize_legacy_case_task(
+                        source, db, auto_task_type=f"consulting_contract_expiry:{source.id}", legacy_task_type_id=1001006,
+                        title="顾问合同到期", initiator=owner, owner=owner, collaborators=[],
+                        description=f"合同{source.serial_no}将在{end_date}到期，请及时联系续签.",
+                        started_on=effective_today, deadline=end_date, trigger_at=_add_calendar_months(end_date, -2),
+                        trigger_source_id=f"contract:{source.id}:expiry",
+                    )
+
+        if source.module == "notary" and case_record and source.status in {"待审核", "等待审核", "审核中"}:
+            evidence_status = str(data.get("evidence_status") or data.get("storage_state") or "未入库")
+            owner = assistant or lawyer
+            if owner:
+                await _materialize_legacy_case_task(
+                    case_record, db, auto_task_type=f"notary_audit:{source.id}", legacy_task_type_id=101002,
+                    title="审核公证书", initiator=lawyer, owner=owner, collaborators=[],
+                    description=f"本案{case_record.serial_no}公证书待审核，请完成审核.",
+                    started_on=effective_today, deadline=effective_today + timedelta(days=30),
+                    trigger_at=_task_rule_date(source.updated_at) or effective_today, trigger_source_id=f"notary:{source.id}:audit",
+                )
+                if evidence_status not in {"已入库", "已重新入库"}:
+                    await _materialize_legacy_case_task(
+                        case_record, db, auto_task_type=f"notary_evidence_storage:{source.id}", legacy_task_type_id=101003,
+                        title="证物入库", initiator=lawyer, owner=owner, collaborators=[],
+                        description=f"本案{case_record.serial_no}公证证物尚未入库，请办理入库.",
+                        started_on=effective_today, deadline=effective_today + timedelta(days=30),
+                        trigger_at=_task_rule_date(source.updated_at) or effective_today, trigger_source_id=f"notary:{source.id}:storage",
+                    )
+
+    task_officer = await _legacy_configured_task_user(db, "TaskOfficer", "TASK_OFFICER")
+    hearings = list((await db.scalars(select(HearingSchedule).where(HearingSchedule.status == "已排期"))).all())
+    for hearing in hearings:
+        case_record = cases_by_id.get(hearing.case_record_id)
+        if not case_record:
+            continue
+        lawyer, assistant = await _case_rule_people(case_record, db)
+        handling = set(_case_person_references(case_record.data or {}, "handling_lawyer_usernames", "handling_lawyers"))
+        _, hearing_user = await _resolve_case_task_username(hearing.hearing_lawyer, db)
+        if hearing_user and hearing.hearing_lawyer not in handling and hearing_user.username not in handling:
+            await _materialize_legacy_case_task(
+                case_record, db, auto_task_type=f"court_lawyer_mismatch:{hearing.id}", legacy_task_type_id=1001007,
+                title="开庭律师与经办律师不一致", initiator=lawyer, owner=hearing_user, collaborators=[],
+                description=f"本案{case_record.serial_no}开庭律师不在经办律师中，请修改授权文件并变更经办律师.",
+                started_on=effective_today, deadline=_add_calendar_months(effective_today, 1),
+                trigger_at=_task_rule_date(hearing.created_at) or effective_today, trigger_source_id=f"hearing:{hearing.id}:lawyer",
+            )
+        needs_evidence = bool((case_record.data or {}).get("needs_hearing_evidence") or (case_record.data or {}).get("evidence_required"))
+        if task_officer and needs_evidence and hearing.hearing_date >= effective_today:
+            investigator_name = str((case_record.data or {}).get("investigator_username") or (case_record.data or {}).get("investigator") or "")
+            _, investigator = await _resolve_case_task_username(investigator_name, db)
+            take_task = await _materialize_legacy_case_task(
+                case_record, db, auto_task_type=f"take_evidence:{hearing.id}", legacy_task_type_id=1001008,
+                title="系统自动任务-拿证物", initiator=lawyer, owner=task_officer,
+                collaborators=[investigator] if investigator else [], description=f"本案{case_record.serial_no}开庭需要证物，请办理出库.",
+                started_on=effective_today, deadline=hearing.hearing_date - timedelta(days=3),
+                trigger_at=effective_today, trigger_source_id=f"hearing:{hearing.id}:evidence",
+            )
+            evidence_rows = list((await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.module == "warehouse",
+                or_(
+                    BusinessRecord.data["case_id"].as_integer() == case_record.id,
+                    BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+                ),
+            ))).all())
+            take_task.data = {**(take_task.data or {}), "warehouse_evidence_ids": [item.id for item in evidence_rows]}
+
+    for case_record in cases:
+        data = case_record.data or {}
+        lawyer, assistant = await _case_rule_people(case_record, db)
+        if data.get("notary_certificate_ready") is True or data.get("notary_prepared_at"):
+            owner = await _legacy_configured_task_user(db, "TaskOfficer_Gzs", "TASK_OFFICER_GZS")
+            if owner:
+                prepared_on = _task_rule_date(data.get("notary_prepared_at")) or effective_today
+                await _materialize_legacy_case_task(
+                    case_record, db, auto_task_type="notary_certificate_handover", legacy_task_type_id=101004,
+                    title="交接公证书", initiator=assistant or lawyer, owner=owner, collaborators=[],
+                    description=f"{case_record.serial_no},交接公证书.", started_on=effective_today,
+                    deadline=effective_today + timedelta(days=7), trigger_at=prepared_on,
+                    trigger_source_id=f"case:{case_record.id}:notary-handover",
+                )
+        if data.get("preservation_fee_paid_at") or data.get("preservation_fee_paid") is True:
+            owner = lawyer or assistant
+            if owner:
+                paid_on = _task_rule_date(data.get("preservation_fee_paid_at")) or effective_today
+                await _materialize_legacy_case_task(
+                    case_record, db, auto_task_type="preservation_deadline", legacy_task_type_id=1001009,
+                    title="设定保全期限任务", initiator=lawyer, owner=owner, collaborators=[],
+                    description=f"本案{case_record.serial_no}保全费已支付，请设定保全期限.",
+                    started_on=effective_today, deadline=effective_today + timedelta(days=7),
+                    trigger_at=paid_on, trigger_source_id=f"case:{case_record.id}:preservation",
+                )
     task_count_after = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
         BusinessRecord.module == "task",
     )) or 0)
