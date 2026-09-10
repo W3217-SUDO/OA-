@@ -1,26 +1,30 @@
 function accessContext(input) {
-  if (typeof input === 'string') return { role: input, actionKeys: [] }
+  if (typeof input === 'string') return { role: input, actionKeys: [], menuKeys: [] }
   return {
     role: String(input?.role || ''),
     actionKeys: Array.isArray(input?.action_keys) ? input.action_keys.map(String) : [],
+    menuKeys: Array.isArray(input?.menu_keys) ? input.menu_keys.map(String) : [],
   }
 }
 
 export function hrActionAccess(input) {
-  const { role, actionKeys } = accessContext(input)
+  const { role, actionKeys, menuKeys } = accessContext(input)
   const isAdmin = role === 'admin'
-  const hasAction = (key) => isAdmin || actionKeys.includes('*') || actionKeys.includes(key)
+  const hasHrMenu = menuKeys.some((key) => key === 'hr' || key.startsWith('hr-'))
+  const hasAction = (key) => isAdmin || hasHrMenu || actionKeys.includes('*') || actionKeys.includes(key)
   return {
     canCreateEmployee: hasAction('hr.employee.create'),
     canEditEmployee: hasAction('hr.employee.update'),
-    canProcessStatus: isAdmin || role === 'manager',
-    canManageAccount: isAdmin,
-    canDeleteEmployee: isAdmin,
+    canProcessStatus: isAdmin || hasHrMenu || role === 'manager',
+    canManageAccount: isAdmin || hasHrMenu,
+    canDeleteEmployee: isAdmin || hasHrMenu,
   }
 }
 
-export function organizationActionAccess(role) {
-  return { canManageOrganization: role === 'admin' }
+export function organizationActionAccess(input) {
+  const { role, menuKeys } = accessContext(input)
+  const hasOrganizationMenu = menuKeys.some((key) => key === 'hr' || key === 'hr-departments' || key === 'hr-roles')
+  return { canManageOrganization: role === 'admin' || hasOrganizationMenu }
 }
 
 // Keep the built-in administrator role available; the API enforces the same

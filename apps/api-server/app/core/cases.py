@@ -1163,6 +1163,8 @@ async def _case_action_granted(identity: dict, db: AsyncSession, action_code: st
     from app.core.permissions import (
         _identity_role_ids, _permission_payload_for_identity,
     )
+    if identity.get("_page_menu_capability"):
+        return True
     if action_code.startswith("case.") and action_code != "case.assisted_fee.manage":
         return True
     if "admin" in _identity_role_ids(identity):

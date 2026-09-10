@@ -4,7 +4,7 @@ import {SaveOutlined} from '@ant-design/icons'
 import {api} from './api'
 import './user-center.css'
 
-type Profile={id:number;username:string;display_name:string;department:string;role:string;is_active:boolean;created_at:string;email?:string;office_phone?:string;mobile?:string;menu_auto_collapse?:'yes'|'no'}
+type Profile={id:number;username:string;display_name:string;department:string;role:string;actual_role?:string;is_active:boolean;created_at:string;email?:string;office_phone?:string;mobile?:string;menu_auto_collapse?:'yes'|'no'}
 type BasicProfile={email:string;office_phone:string;mobile:string}
 type Preferences={auto_collapse:'yes'|'no'}
 
@@ -91,8 +91,10 @@ export default function UserCenterPage(){
     </section>},
   ]
 
+  const displayRole=profile?.actual_role||profile?.role
+  const displayRoleLabel=displayRole==='admin'?'系统管理员·最高权限':displayRole==='manager'?'部门负责人':displayRole==='auditor'?'审计人员':'普通用户'
   return <Card className="panel user-account-panel" title="账户管理" loading={loading}>
-    {profile&&<Alert type={profile.role==='admin'?'warning':'info'} showIcon message={`${profile.display_name}（${profile.username}）｜${profile.role==='admin'?'系统管理员·最高权限':profile.role==='manager'?'部门负责人':profile.role==='auditor'?'审计人员':'普通用户'}｜${profile.department}`} style={{marginBottom:12}}/>}
+    {profile&&<Alert type={displayRole==='admin'?'warning':'info'} showIcon message={`${profile.display_name}（${profile.username}）｜${displayRoleLabel}｜${profile.department}`} style={{marginBottom:12}}/>}
     <Tabs items={tabItems}/>
   </Card>
 }

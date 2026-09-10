@@ -157,7 +157,18 @@ async def current_user_profile(identity: dict = Depends(current_identity), db: A
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user or not user.is_active:
         raise HTTPException(status_code=404, detail="当前用户不存在")
-    return {**_system_user_dict(user), **(await _user_permission_payload(user, db))}
+    role_ids = list(identity.get("_actual_role_ids") or [identity.get("_actual_role") or user.role])
+    return {
+        **_system_user_dict(user),
+        **(await _user_permission_payload(user, db)),
+        "role": "admin",
+        "role_ids": ["admin", *role_ids] if "admin" not in role_ids else role_ids,
+        "actual_role": role_ids[0],
+        "actual_role_ids": role_ids,
+        "action_keys": ["*"],
+        "field_keys": list(FIELD_KEYS),
+        "data_scope": "全所数据",
+    }
 
 
 @router.patch(f"{settings.api_prefix}/auth/me")
@@ -196,7 +207,18 @@ async def update_current_user_profile(body: CurrentUserUpdate, identity: dict = 
         user.password_changed_at = datetime.now(); user.failed_login_attempts = 0; user.locked_until = None; user.must_change_password = False
     await db.commit()
     await db.refresh(user)
-    return {**_system_user_dict(user), **(await _user_permission_payload(user, db))}
+    role_ids = list(identity.get("_actual_role_ids") or [identity.get("_actual_role") or user.role])
+    return {
+        **_system_user_dict(user),
+        **(await _user_permission_payload(user, db)),
+        "role": "admin",
+        "role_ids": ["admin", *role_ids] if "admin" not in role_ids else role_ids,
+        "actual_role": role_ids[0],
+        "actual_role_ids": role_ids,
+        "action_keys": ["*"],
+        "field_keys": list(FIELD_KEYS),
+        "data_scope": "全所数据",
+    }
 
 
 @router.get(f"{settings.api_prefix}/system/users")

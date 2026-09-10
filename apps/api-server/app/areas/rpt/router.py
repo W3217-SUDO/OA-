@@ -75,7 +75,7 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         _allowed_field_keys, _large_screen_month_keys,
     )
     permission = await _permission_payload_for_identity(identity, db)
-    if "admin" not in _identity_role_ids(identity) and "reports-large-screen" not in permission.get("menu_keys", []):
+    if not identity.get("_page_menu_capability") and "admin" not in _identity_role_ids(identity) and "reports-large-screen" not in permission.get("menu_keys", []):
         raise HTTPException(status_code=403, detail="当前角色没有报表大屏权限")
 
     scope = await _record_scope_conditions(identity, db)

@@ -114,6 +114,7 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const [rows,setRows]=useState<Employee[]>([]),[loading,setLoading]=useState(false),[employeePage,setEmployeePage]=useState(1),[employeePageSize,setEmployeePageSize]=useState(15),[employeeTotal,setEmployeeTotal]=useState(0)
   const [accessRole,setAccessRole]=useState('')
   const [accessActionKeys,setAccessActionKeys]=useState<string[]>([])
+  const [accessMenuKeys,setAccessMenuKeys]=useState<string[]>([])
   const [currentUsername,setCurrentUsername]=useState('')
   const [company,setCompany]=useState(companyName),[department,setDepartment]=useState(''),[username,setUsername]=useState(''),[name,setName]=useState(''),[mobile,setMobile]=useState(''),[enabled,setEnabled]=useState('')
   const [departments,setDepartments]=useState<{value:string;label:string}[]>([]),[positions,setPositions]=useState<{value:string;label:string}[]>([])
@@ -134,9 +135,11 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
     const [profileResult,employeeResult]=await Promise.allSettled([api.get('/auth/me'),api.get('/hr/employees',{params:{page:requestedPage,page_size:requestedPageSize,company,department,username,name,mobile,enabled}})])
     const role=profileResult.status==='fulfilled'?String(profileResult.value.data.role||''):''
     const actionKeys=profileResult.status==='fulfilled'&&Array.isArray(profileResult.value.data.action_keys)?profileResult.value.data.action_keys.map(String):[]
+    const menuKeys=profileResult.status==='fulfilled'&&Array.isArray(profileResult.value.data.menu_keys)?profileResult.value.data.menu_keys.map(String):[]
     const currentLoginUsername=profileResult.status==='fulfilled'?String(profileResult.value.data.username||profileResult.value.data.user?.username||''):''
     setAccessRole(role)
     setAccessActionKeys(actionKeys)
+    setAccessMenuKeys(menuKeys)
     setCurrentUsername(currentLoginUsername)
     if(employeeResult.status==='rejected')throw employeeResult.reason
     const payload=employeeResult.value.data
@@ -150,7 +153,7 @@ export default function HrCenterPage({initialView='hr-all'}:{initialView?:string
   const resetNewEmployee=()=>{setCurrentEmployeeId(undefined);form.resetFields();form.setFieldsValue({serial_no:'',company:companyName,data_level:'公司',is_active:true,account_type:employeeAccountType,role:undefined,joined_at:dayjs(),contract_approval_enabled:false,...legacyEmployeeBasicDefaults})}
   useEffect(()=>{if(isNew)resetNewEmployee()},[isNew])
 
-  const actionAccess=hrActionAccess({role:accessRole,action_keys:accessActionKeys})
+  const actionAccess=hrActionAccess({role:accessRole,action_keys:accessActionKeys,menu_keys:accessMenuKeys})
   useEffect(()=>{if(!editingEmployee)return;const loginEnabled=(editingEmployee.data||{}).is_active!==false;setEmployeeLoginEnabled(loginEnabled);employeeEditForm.setFieldValue('login_enabled',loginEnabled)},[editingEmployee,employeeEditForm])
   useEffect(()=>{if(!employeeEditInitialValues)return;employeeEditForm.setFieldsValue(employeeEditInitialValues)},[employeeEditInitialValues,employeeEditForm])
 

@@ -849,6 +849,8 @@ type SessionUser = {
   display_name: string;
   department?: string;
   role: string;
+  actual_role?: string;
+  actual_role_ids?: string[];
   menu_keys?: string[];
   data_scope?: string;
   must_change_password?: boolean;
@@ -1614,6 +1616,8 @@ export default function App() {
           display_name: data.display_name,
           department: data.department,
           role: data.role,
+          actual_role: data.actual_role || data.role,
+          actual_role_ids: data.actual_role_ids || data.role_ids,
           menu_keys: data.menu_keys,
           data_scope: data.data_scope,
           must_change_password: data.must_change_password,
@@ -1746,8 +1750,9 @@ export default function App() {
   );
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
   const navigationMenuKeys = flattenMenu(effectiveMenuItems).map((item) => item.key);
+  const actualRole = sessionUser?.actual_role || sessionUser?.role;
   const grantedMenuKeys = new Set(
-    sessionUser?.role === "admin"
+    actualRole === "admin"
       ? navigationMenuKeys
       : ["user-center", ...(sessionUser?.menu_keys || [])],
   );
@@ -1759,7 +1764,7 @@ export default function App() {
   const accountProfileRoute = grantedMenuKeys.has("user-account") ? "user-account" : "user-center";
   const route = canonicalRoute(active);
   const pageAllowed =
-    sessionUser?.role === "admin" ||
+    actualRole === "admin" ||
     route === "dashboard" ||
     (active.startsWith("case-detail-") &&
       Array.from(grantedMenuKeys).some((key) =>

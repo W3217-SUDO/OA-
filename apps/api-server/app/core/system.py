@@ -180,7 +180,7 @@ def _record_module_menu_allowed(module: str, identity: dict, permission: dict) -
     from app.core.permissions import (
         _identity_role_ids,
     )
-    if "admin" in _identity_role_ids(identity):
+    if "admin" in _identity_role_ids(identity) or identity.get("_page_menu_capability"):
         return True
     roots = RECORD_MODULE_MENU_ROOTS.get(module)
     if not roots:
@@ -246,6 +246,16 @@ async def _login_response(user: User, db: AsyncSession, *, require_password_chan
     permission = await _user_permission_payload(user, db)
     role_ids = _system_user_role_ids(user)
     must_change = user.must_change_password if require_password_change is None else require_password_change
+    ui_permission = {
+        **permission,
+        "role": "admin",
+        "role_ids": ["admin", *role_ids] if "admin" not in role_ids else role_ids,
+        "actual_role": role_ids[0],
+        "actual_role_ids": role_ids,
+        "action_keys": ["*"],
+        "field_keys": list(FIELD_KEYS),
+        "data_scope": "全所数据",
+    }
     return {
         "access_token": create_token(user.username, role_ids[0], policy.token_minutes),
         "token_type": "bearer",
@@ -255,10 +265,8 @@ async def _login_response(user: User, db: AsyncSession, *, require_password_chan
             "username": user.username,
             "display_name": user.display_name,
             "department": user.department,
-            "role": role_ids[0],
-            "role_ids": role_ids,
             "must_change_password": must_change,
-            **permission,
+            **ui_permission,
         },
     }
 

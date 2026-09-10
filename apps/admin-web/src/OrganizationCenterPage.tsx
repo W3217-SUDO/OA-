@@ -253,7 +253,7 @@ export default function OrganizationCenterPage({
   const [departments, setDepartments] = useState<Department[]>([]),
     [roles, setRoles] = useState<JobRole[]>([]),
     [loading, setLoading] = useState(false);
-  const [accessRole, setAccessRole] = useState("");
+  const [accessRole, setAccessRole] = useState<{ role: string; menu_keys: string[] }>({ role: "", menu_keys: [] });
   const [open, setOpen] = useState(false),
     [editingDepartment, setEditingDepartment] = useState<Department | null>(
       null,
@@ -287,7 +287,10 @@ export default function OrganizationCenterPage({
   };
   useEffect(() => {
     void load();
-    void api.get("/auth/me").then(({ data }) => setAccessRole(String(data.role || ""))).catch(() => setAccessRole(""));
+    void api.get("/auth/me").then(({ data }) => setAccessRole({
+      role: String(data.role || ""),
+      menu_keys: Array.isArray(data.menu_keys) ? data.menu_keys.map(String) : [],
+    })).catch(() => setAccessRole({ role: "", menu_keys: [] }));
   }, []);
   const canManageOrganization = organizationActionAccess(accessRole).canManageOrganization;
   const departmentTreeData = useMemo<TreeDataNode[]>(() => {

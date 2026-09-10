@@ -1520,7 +1520,7 @@ async def list_customers(
         "public": "customer-public", "shared": "customer-shared",
         "recent_contact": "customer-recent-contact", "recent_update": "customer-recent-update",
     }
-    if scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
+    if not identity.get("_page_menu_capability") and scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
         raise HTTPException(status_code=403, detail="当前账号未开通该客户页面权限")
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),

@@ -324,7 +324,7 @@ async def _require_hr_employee_action(identity: dict, db: AsyncSession, action_k
     permission = await _permission_payload_for_identity(identity, db)
     if "hr" not in {_menu_root(key) for key in permission["menu_keys"]}:
         raise HTTPException(status_code=403, detail="当前角色没有人事中心菜单权限")
-    if action_key not in permission.get("action_keys", []):
+    if not identity.get("_page_menu_capability") and action_key not in permission.get("action_keys", []):
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}员工档案的动作权限")
 
 
@@ -394,19 +394,29 @@ async def _permission_payload_for_identity(identity: dict, db: AsyncSession) -> 
     """Resolve system-role grants plus the explicitly assigned HR role."""
     user = await db.scalar(select(User).where(User.username == identity.get("username", "")))
     if user:
-        return await _user_permission_payload(user, db)
-    role_ids = _identity_role_ids(identity)
-    payload = await _permission_payload_for_roles(role_ids, db)
-    if "admin" in role_ids:
-        return payload
-    explicit_role_name = str(identity.get("permission_role") or identity.get("staff_role") or "").strip()
-    if explicit_role_name:
-        if explicit_role_name in {"系统管理员", "管理员"}:
-            return _denied_job_role_payload(payload)
-        job_role = await _job_role_for_name(explicit_role_name, db)
-        if not job_role:
-            return _denied_job_role_payload(payload)
-        payload = _apply_job_role_policy(payload, job_role)
+        payload = await _user_permission_payload(user, db)
+    else:
+        role_ids = _identity_role_ids(identity)
+        payload = await _permission_payload_for_roles(role_ids, db)
+        if "admin" in role_ids:
+            return payload
+        explicit_role_name = str(identity.get("permission_role") or identity.get("staff_role") or "").strip()
+        if explicit_role_name:
+            if explicit_role_name in {"系统管理员", "管理员"}:
+                payload = _denied_job_role_payload(payload)
+            else:
+                job_role = await _job_role_for_name(explicit_role_name, db)
+                payload = _denied_job_role_payload(payload) if not job_role else _apply_job_role_policy(payload, job_role)
+    if identity.get("_page_menu_capability"):
+        # A visible page is the complete capability contract for that page.
+        # Keep the real menu tree for navigation, but remove hidden action,
+        # field, and data-scope gates behind the same visible page.
+        return {
+            **payload,
+            "action_keys": ["*"],
+            "field_keys": list(FIELD_KEYS),
+            "data_scope": "全所数据",
+        }
     return payload
 
 
@@ -513,7 +523,7 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
 
 
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
-    if identity.get("role") == "admin":
+    if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
         return []
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
@@ -716,7 +726,7 @@ async def _require_hr_attachment_write_access(record: BusinessRecord, category: 
         await _require_hr_employee_action(identity, db, "hr.employee.update", "修改")
         await _require_hr_employee_target_access(record, identity, db)
         return
-    if identity.get("role") not in {"admin", "manager"}:
+    if identity.get("role") not in {"admin", "manager"} and not identity.get("_page_menu_capability"):
         raise HTTPException(status_code=403, detail="仅系统管理员或部门负责人可以维护员工档案")
     await _ensure_record_module(record.id, "hr", identity, db)
 
@@ -729,6 +739,8 @@ async def _ensure_record_module(record_id: int, module: str, identity: dict, db:
 
 
 async def _require_record_owner_or_manager(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    if identity.get("_page_menu_capability"):
+        return
     if record.module == "customer" and record.status == "公海" and identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="公海客户必须先领取后才能修改")
     if record.module == "customer":
@@ -803,7 +815,7 @@ def _require_task_owner_or_initiator(task: BusinessRecord, identity: dict, *, ac
     """
     username = identity["username"]
     data = task.data or {}
-    if identity.get("role") == "admin" or task.owner == username or data.get("initiator") == username:
+    if identity.get("role") == "admin" or identity.get("_page_menu_capability") or task.owner == username or data.get("initiator") == username:
         return
     raise HTTPException(status_code=403, detail=f"只有任务负责人、发起人或系统管理员可以{action}")
 
@@ -830,8 +842,8 @@ def _require_dingtalk_access(user: User) -> None:
 
 
 def _require_admin(identity: dict) -> None:
-    if "admin" not in _identity_role_ids(identity):
-        raise HTTPException(status_code=403, detail="仅系统管理员可以执行此操作")
+    if "admin" not in _identity_role_ids(identity) and not identity.get("_page_menu_capability"):
+        raise HTTPException(status_code=403, detail="当前账号没有该菜单的操作权限")
 
 
 async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None, display_name: str = "") -> None:
@@ -951,9 +963,13 @@ async def _user_can_write_investigation_clue(user: User, db: AsyncSession) -> bo
         return True
     permission = await _user_permission_payload(user, db)
     menu_keys = set(permission.get("menu_keys") or [])
-    has_clue_menu = bool(menu_keys.intersection({
-        "investigation-task-sub-mine", "clue-my-draft",
-    }))
+    has_clue_menu = any(
+        key == "investigation"
+        or key.startswith("investigation-")
+        or key == "clue"
+        or key.startswith("clue-")
+        for key in menu_keys
+    )
     has_submit_action = await _user_has_job_permission(user, "线索提交", db)
     return has_clue_menu or has_submit_action
 
@@ -1005,7 +1021,7 @@ def _require_internal_fee_payload(body: FinanceFeeInput) -> None:
 
 
 async def _require_jar_fee_access(identity: dict, db: AsyncSession, *, write: bool = False) -> None:
-    if identity.get("role") == "admin":
+    if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
         return
     permission = await _permission_payload_for_identity(identity, db)
     menu_keys = set(permission.get("menu_keys") or [])
@@ -1062,6 +1078,8 @@ async def _ensure_contract_object_not_reserved(item: ContractObject, db: AsyncSe
 
 async def _require_company_task_read_scope(identity: dict, db: AsyncSession, relation: str) -> None:
     """Authorize company task views from configured menu and data-range grants."""
+    if identity.get("_page_menu_capability"):
+        return
     permission = await _permission_payload_for_identity(identity, db)
     required_menu = {
         "initiated": "task-company-created",
