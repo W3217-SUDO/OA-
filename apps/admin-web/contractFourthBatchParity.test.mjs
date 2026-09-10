@@ -32,7 +32,7 @@ test("contract menus preserve mine, department, company, and audit routes", () =
 });
 
 test("contract list config keeps legacy audit and department/company page defaults", () => {
-  assert.deepEqual(CONTRACT_LIST_PAGE_SIZES, [10, 15, 20, 50, 100, 200]);
+  assert.deepEqual(CONTRACT_LIST_PAGE_SIZES, [10, 15, 20, 50, 100]);
   assert.equal(contractListViewConfig("contract-mine").defaultPageSize, 15);
   assert.equal(contractListViewConfig("contract-dept").defaultPageSize, 15);
   assert.equal(contractListViewConfig("contract-company").defaultPageSize, 15);
@@ -66,6 +66,12 @@ test("contract list request keeps view scope, page, size, and query filters toge
     signed_at_start: "2026-01-01",
     signed_at_end: "2026-01-31",
   });
+});
+
+test("contract list rejects the stale 200-row cache value before calling the API", () => {
+  const params = buildContractListRequestParams("contract-company", { current: 1, pageSize: 200 });
+  assert.equal(params.page_size, 15);
+  assert.ok(params.page_size <= 100);
 });
 
 test("unknown contract routes fail closed while authenticated roles retain menus", () => {

@@ -2,7 +2,10 @@ export const CONTRACT_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx
 export const CONTRACT_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["审批中", "已归档"];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
-export const CONTRACT_LIST_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
+// The generic contract list endpoint accepts at most 100 rows per request.
+// Keep the client options aligned with that contract so restored state cannot
+// produce a validation error before the list is rendered.
+export const CONTRACT_LIST_PAGE_SIZES = [10, 15, 20, 50, 100];
 export const CONTRACT_EVENT_PAGE_SIZES = [10, 15, 20, 50, 100, 200];
 export const CONTRACT_QUERY_FIELDS = ["title", "serial_no", "type", "customer", "case_no", "fee_type", "signed_at", "source_person", "contract_body", "archive_status", "archive_date"];
 export const createContractListRequestGuard = () => {

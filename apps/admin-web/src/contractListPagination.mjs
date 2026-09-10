@@ -1,6 +1,8 @@
+import { CONTRACT_LIST_PAGE_SIZES } from "./contractWorkflowPolicy.mjs";
+
 const DEFAULT_PAGINATION = { current: 1, pageSize: 15 };
 const AUDIT_DEFAULT_PAGE_SIZE = 15;
-const PAGE_SIZES = new Set([10, 15, 20, 50, 100, 200]);
+const PAGE_SIZES = new Set(CONTRACT_LIST_PAGE_SIZES);
 
 const storageKey = (view) => `sunhold:contract-pagination:${view}`;
 

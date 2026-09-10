@@ -18,5 +18,7 @@ test("contract audit list views use the legacy fifteen-row default without leaki
     assert.deepEqual(saveContractListPagination(memory, view, { current: 2, pageSize: 15 }), { current: 2, pageSize: 15 });
   }
   assert.deepEqual(readContractListPagination(memory, "contract-mine"), { current: 1, pageSize: 15 });
-  assert.deepEqual(saveContractListPagination(memory, "contract-mine", { current: 1, pageSize: 200 }), { current: 1, pageSize: 200 });
+  assert.deepEqual(saveContractListPagination(memory, "contract-mine", { current: 1, pageSize: 200 }), { current: 1, pageSize: 15 });
+  memory.setItem("sunhold:contract-pagination:contract-mine", JSON.stringify({ current: 1, pageSize: 200 }));
+  assert.deepEqual(readContractListPagination(memory, "contract-mine"), { current: 1, pageSize: 15 });
 });

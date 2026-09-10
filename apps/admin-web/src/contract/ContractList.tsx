@@ -510,7 +510,7 @@ export function ContractList({
           pageSize: listPagination.pageSize,
           total: listTotal,
           showSizeChanger: true,
-          pageSizeOptions: [10, 15, 20, 50, 100, 200],
+          pageSizeOptions: [10, 15, 20, 50, 100],
           showQuickJumper: { goButton: <Button size="small">GO</Button> },
           showTotal: (total) => `共有${total}条`,
           onChange: onPageChange,
