@@ -513,12 +513,20 @@ async def update_security_policy(body: SecurityPolicyUpdate, identity: dict = De
 
 
 @router.get(f"{settings.api_prefix}/system/parameter-categories")
-async def list_system_parameter_categories(identity: dict = Depends(current_identity)):
+async def list_system_parameter_categories(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _permission_payload_for_identity, _system_parameter_menu_granted,
     )
-    _require_admin(identity)
-    return {"items": [{"key": key, "name": name} for key, name in SYSTEM_PARAMETER_CATEGORIES.items()]}
+    permission = await _permission_payload_for_identity(identity, db)
+    menu_keys = set(permission.get("menu_keys") or [])
+    items = [
+        {"key": key, "name": name}
+        for key, name in SYSTEM_PARAMETER_CATEGORIES.items()
+        if _system_parameter_menu_granted(key, menu_keys)
+    ]
+    if not items:
+        raise HTTPException(status_code=403, detail="当前账号没有系统参数菜单权限")
+    return {"items": items}
 
 
 @router.get(f"{settings.api_prefix}/system/parameters/cause/autocomplete")
@@ -557,24 +565,37 @@ async def list_system_parameter_options(category: str, identity: dict = Depends(
 @router.get(f"{settings.api_prefix}/system/parameters")
 async def list_system_parameters(category: str = "", keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _permission_payload_for_identity, _system_parameter_menu_granted,
     )
     from app.core.system import (
         _system_parameter_dict,
     )
-    _require_admin(identity)
     if category and category not in SYSTEM_PARAMETER_CATEGORIES: raise HTTPException(status_code=422, detail="参数分类无效")
+    permission = await _permission_payload_for_identity(identity, db)
+    menu_keys = set(permission.get("menu_keys") or [])
+    visible_categories = {
+        key: name for key, name in SYSTEM_PARAMETER_CATEGORIES.items()
+        if _system_parameter_menu_granted(key, menu_keys)
+    }
+    if category and category not in visible_categories:
+        raise HTTPException(status_code=403, detail="当前账号没有访问该系统参数菜单的权限")
+    if not category and not visible_categories:
+        raise HTTPException(status_code=403, detail="当前账号没有系统参数菜单权限")
+    requested_categories = {category: visible_categories[category]} if category else visible_categories
     cache_key = category or "__all__"
     if not keyword.strip() and cache_key in SYSTEM_PARAMETER_CACHE:
         result = SYSTEM_PARAMETER_CACHE[cache_key]
+        if not category:
+            result = [item for item in result if item.get("category") in requested_categories]
         if page is None and page_size is None:
-            return {"items": result, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": True}
+            return {"items": result, "categories": requested_categories, "cached": True}
         current_page, current_size = page or 1, page_size or 15
         total = len(result)
         start = (current_page - 1) * current_size
-        return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": True}
+        return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": requested_categories, "cached": True}
     statement = select(SystemParameter)
     if category: statement = statement.where(SystemParameter.category == category)
+    else: statement = statement.where(SystemParameter.category.in_(requested_categories))
     if keyword.strip():
         term = f"%{keyword.strip()}%"
         keyword_fields = [SystemParameter.code.ilike(term), SystemParameter.name.ilike(term)]
@@ -590,21 +611,25 @@ async def list_system_parameters(category: str = "", keyword: str = "", page: in
     result = [_system_parameter_dict(item) for item in items]
     if not keyword.strip(): SYSTEM_PARAMETER_CACHE[cache_key] = result
     if page is None and page_size is None:
-        return {"items": result, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": False}
+        return {"items": result, "categories": requested_categories, "cached": False}
     current_page, current_size = page or 1, page_size or 15
     total = len(result)
     start = (current_page - 1) * current_size
-    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": SYSTEM_PARAMETER_CATEGORIES, "cached": False}
+    return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": requested_categories, "cached": False}
 
 
 @router.get(f"{settings.api_prefix}/system/parameter-relations/{{kind}}")
 async def list_system_parameter_relations(kind: str, source_id: int | None = Query(None), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    # These relations are runtime business rules used by ordinary case forms.
-    # Authentication is sufficient for read access; mutation remains admin-only.
+    # Relation editors are part of the source parameter page. The source menu
+    # grant covers both loading and saving the relation.
+    from app.core.permissions import (
+        _require_system_parameter_menu,
+    )
     from app.core.system import (
         _system_parameter_dict, _system_parameter_relation_config,
     )
     model, source_field, target_field, source_category, target_category = _system_parameter_relation_config(kind)
+    await _require_system_parameter_menu(source_category, identity, db)
     sources = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == source_category,
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
@@ -630,13 +655,13 @@ async def list_system_parameter_relations(kind: str, source_id: int | None = Que
 @router.put(f"{settings.api_prefix}/system/parameter-relations/{{kind}}")
 async def replace_system_parameter_relations(kind: str, body: SystemParameterRelationReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _require_system_parameter_menu,
     )
     from app.core.system import (
         _system_audit, _system_parameter_relation_config,
     )
-    _require_admin(identity)
     model, source_field, target_field, source_category, target_category = _system_parameter_relation_config(kind)
+    await _require_system_parameter_menu(source_category, identity, db, action="修改")
     target_ids = list(dict.fromkeys(body.target_ids))
     source = await db.scalar(select(SystemParameter).where(
         SystemParameter.id == body.source_id,
@@ -676,13 +701,13 @@ async def create_system_parameter(body: SystemParameterInput, identity: dict = D
         _normalized_fee_type_extra,
     )
     from app.core.permissions import (
-        _require_admin,
+        _require_system_parameter_menu,
     )
     from app.core.system import (
         _clear_parameter_cache, _system_audit, _system_parameter_dict, _validate_parameter_parent, _validate_parameter_references,
     )
-    _require_admin(identity)
     if body.category not in SYSTEM_PARAMETER_CATEGORIES: raise HTTPException(status_code=422, detail="参数分类无效")
+    await _require_system_parameter_menu(body.category, identity, db, action="新增")
     code, name = body.code.strip(), body.name.strip()
     if body.category == "payment_type":
         candidates = list((await db.scalars(select(SystemParameter).where(SystemParameter.category == body.category))).all())
@@ -709,14 +734,14 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
         _normalized_fee_type_extra,
     )
     from app.core.permissions import (
-        _require_admin,
+        _require_system_parameter_menu,
     )
     from app.core.system import (
         _clear_parameter_cache, _system_audit, _system_parameter_dict, _validate_parameter_parent, _validate_parameter_references,
     )
-    _require_admin(identity)
     item = await db.get(SystemParameter, parameter_id)
     if not item: raise HTTPException(status_code=404, detail="系统参数不存在")
+    await _require_system_parameter_menu(item.category, identity, db, action="修改")
     code = body.code.strip() if body.code is not None else item.code
     name = body.name.strip() if body.name is not None else item.name
     next_extra = body.extra if body.extra is not None else (item.extra or {})
@@ -758,14 +783,14 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
 @router.delete(f"{settings.api_prefix}/system/parameters/{{parameter_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_system_parameter(parameter_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _require_system_parameter_menu,
     )
     from app.core.system import (
         _clear_parameter_cache, _parameter_reference_examples, _system_audit,
     )
-    _require_admin(identity)
     item = await db.get(SystemParameter, parameter_id)
     if not item: raise HTTPException(status_code=404, detail="系统参数不存在")
+    await _require_system_parameter_menu(item.category, identity, db, action="删除")
     references = await _parameter_reference_examples(item, db)
     if references:
         raise HTTPException(status_code=409, detail=f"参数“{item.name}”已被业务记录引用（{ '、'.join(references) }），不能删除；请停用以保留历史数据")

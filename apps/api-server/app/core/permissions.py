@@ -265,6 +265,50 @@ async def _require_record_module_menu(module: str, identity: dict, db: AsyncSess
         raise HTTPException(status_code=403, detail=f"当前角色没有{action}该业务模块的动作权限")
 
 
+SYSTEM_PARAMETER_MENU_BY_CATEGORY = {
+    "case_type": "system-parameters-case-type",
+    "fee_type": "system-parameters-fee-type",
+    "case_phase": "system-parameters-case-phase",
+    "court": "system-parameters-court",
+    "notary_office": "system-parameters-notary",
+    "cause": "system-parameters-cause",
+    "payment_type": "system-parameters-payment",
+    "customer_type": "system-parameters-customer-type",
+    "case_file_type": "system-parameters-case-file-type",
+    "ipr_case_file_type": "system-parameters-ipr-case-file-type",
+    "district": "system-parameters-district",
+    "court_officer": "system-parameters-court-officer",
+}
+
+
+def _system_parameter_menu_granted(category: str, menu_keys: set[str]) -> bool:
+    """A parameter page's menu grant is its complete page capability."""
+    required = SYSTEM_PARAMETER_MENU_BY_CATEGORY.get(category)
+    return bool(
+        required
+        and ("system-parameters" in menu_keys or required in menu_keys)
+    )
+
+
+async def _require_system_parameter_menu(
+    category: str,
+    identity: dict,
+    db: AsyncSession,
+    *,
+    action: str = "访问",
+) -> dict:
+    """Authorize system parameters solely from the effective menu tree.
+
+    CRUD and relation operations belong to the visible parameter page. They do
+    not have a second administrator-only or action-permission gate.
+    """
+    permission = await _permission_payload_for_identity(identity, db)
+    menu_keys = set(permission.get("menu_keys") or [])
+    if not _system_parameter_menu_granted(category, menu_keys):
+        raise HTTPException(status_code=403, detail=f"当前账号没有{action}该系统参数菜单的权限")
+    return permission
+
+
 async def _require_contract_action(identity: dict, db: AsyncSession, action_key: str, action: str) -> None:
     """Allow visible contract workbenches while preserving workflow/data guards."""
     await _require_record_module_menu("contract", identity, db, action=action)
